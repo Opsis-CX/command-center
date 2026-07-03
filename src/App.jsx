@@ -5,6 +5,7 @@ import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 import Certifications from './modules/Certifications'
 import { Dashboard, Placeholder } from './modules/Placeholders'
+import PeopleTags from './modules/PeopleTags'
 
 export default function App() {
   const { session, loading, isAdmin } = useAuth()
