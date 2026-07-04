@@ -431,3 +431,20 @@ function QuizEditor({ courseId }) {
     </div>
   )
 }
+function EditableBlock({ html, isCallout, onChange }) {
+  const ref = React.useRef(null)
+  React.useEffect(() => {
+    if (ref.current && ref.current.innerHTML !== html) {
+      ref.current.innerHTML = html
+    }
+  }, [])
+  return (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      onInput={e => onChange(e.currentTarget.innerHTML)}
+      style={{ outline: 'none', fontSize: 15, lineHeight: 1.65, padding: isCallout ? '12px 14px' : '4px 2px', borderRadius: isCallout ? 8 : 0, background: isCallout ? 'var(--accent-bg)' : 'transparent', minHeight: 26 }}
+    />
+  )
+}
