@@ -126,6 +126,7 @@ function LessonEditor({ courseId, onBack }) {
   const [lessons, setLessons] = useState([])
   const [activeLesson, setActiveLesson] = useState(null)
   const [tab, setTab] = useState('lessons')
+  const [previewing, setPreviewing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [saveMsg, setSaveMsg] = useState('')
@@ -192,11 +193,14 @@ function LessonEditor({ courseId, onBack }) {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {saveMsg && <span className="page-sub" style={{ color: 'var(--passed)' }}>{saveMsg}</span>}
+          <button className="btn btn-ghost" onClick={() => setPreviewing(true)}>Preview</button>
           <button className="btn btn-cta" onClick={publish}>{course?.status === 'published' ? 'Unpublish' : 'Publish'}</button>
         </div>
       </div>
 
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
+
+      {previewing && <CoursePreview course={course} lessons={lessons} onClose={() => setPreviewing(false)} />}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={'btn ' + (tab === 'lessons' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('lessons')}>Lessons</button>
@@ -357,6 +361,76 @@ function ImageBlock({ block, onChange }) {
         <Btn label="Left" active={align === 'left'} onClick={() => onChange({ align: 'left' })} />
         <Btn label="Center" active={align === 'center'} onClick={() => onChange({ align: 'center' })} />
         <Btn label="Right" active={align === 'right'} onClick={() => onChange({ align: 'right' })} />
+      </div>
+    </div>
+  )
+}
+
+// ============ COURSE PREVIEW (reusable lesson renderer) ============
+// LessonView renders a lesson's blocks read-only — reused by the agent
+// learning view later. CoursePreview wraps it with lesson-by-lesson paging.
+export function LessonView({ blocks }) {
+  const widths = { small: '30%', medium: '55%', large: '80%', full: '100%' }
+  return (
+    <div>
+      {(blocks || []).map((b, i) => {
+        if (b.type === 'text' || b.type === 'callout') {
+          return <div key={i}
+            style={{ fontSize: 15.5, lineHeight: 1.7, margin: '12px 0', padding: b.type === 'callout' ? '13px 15px' : 0, borderRadius: b.type === 'callout' ? 8 : 0, background: b.type === 'callout' ? 'var(--accent-bg)' : 'transparent' }}
+            dangerouslySetInnerHTML={{ __html: b.html || '' }} />
+        }
+        if (b.type === 'image' && b.url) {
+          const justify = b.align === 'center' ? 'center' : b.align === 'right' ? 'flex-end' : 'flex-start'
+          return <div key={i} style={{ display: 'flex', justifyContent: justify, margin: '14px 0' }}>
+            <img src={b.url} alt="" style={{ width: widths[b.width || 'full'], maxWidth: '100%', borderRadius: 10 }} />
+          </div>
+        }
+        if (b.type === 'video' && b.embed) {
+          return <div key={i} style={{ position: 'relative', paddingBottom: '56.25%', height: 0, margin: '14px 0' }}>
+            <iframe src={b.embed} allowFullScreen style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, borderRadius: 10 }} />
+          </div>
+        }
+        return null
+      })}
+    </div>
+  )
+}
+
+function CoursePreview({ course, lessons, onClose }) {
+  const [idx, setIdx] = React.useState(0)
+  const total = lessons.length
+  const lesson = lessons[idx]
+  const pct = total ? Math.round(((idx + 1) / total) * 100) : 0
+  return (
+    <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
+      <div className="modal" style={{ width: 720, maxWidth: '100%', padding: 0, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '16px 22px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600 }}>PREVIEW</div>
+            <div style={{ fontSize: 17, fontWeight: 600 }}>{course?.title}</div>
+          </div>
+          <button className="btn btn-ghost" onClick={onClose}>Close preview</button>
+        </div>
+        <div style={{ height: 5, background: 'var(--line-soft)' }}>
+          <div style={{ height: '100%', width: pct + '%', background: 'var(--cta)', transition: 'width .2s' }} />
+        </div>
+        <div style={{ padding: '22px 26px', overflow: 'auto', flex: 1 }}>
+          {total === 0 ? <p className="page-sub">No lessons yet.</p> : (
+            <>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 4 }}>Lesson {idx + 1} of {total}</div>
+              <h2 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 600 }}>{lesson?.title}</h2>
+              <LessonView blocks={lesson?.content_blocks} />
+            </>
+          )}
+        </div>
+        {total > 0 && (
+          <div style={{ padding: '14px 22px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between' }}>
+            <button className="btn btn-ghost" disabled={idx === 0} onClick={() => setIdx(i => Math.max(0, i - 1))}>← Back</button>
+            {idx < total - 1
+              ? <button className="btn btn-primary" onClick={() => setIdx(i => Math.min(total - 1, i + 1))}>Next →</button>
+              : <span className="page-sub" style={{ alignSelf: 'center' }}>End of lessons — quiz comes next for agents</span>}
+          </div>
+        )}
       </div>
     </div>
   )
