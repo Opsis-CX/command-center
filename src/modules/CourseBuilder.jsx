@@ -298,10 +298,10 @@ function LessonBody({ lesson, onChange, onSave }) {
             <button onClick={() => delBlock(i)} title="Delete"
               style={{ position: 'absolute', right: -6, top: 2, border: 0, background: 'transparent', color: 'var(--ink-soft)', cursor: 'pointer', fontSize: 13 }}>✕</button>
             {(b.type === 'text' || b.type === 'callout') && (
-              <div contentEditable suppressContentEditableWarning
-                onInput={e => setBlock(i, { html: e.currentTarget.innerHTML })}
-                dangerouslySetInnerHTML={{ __html: b.html || '' }}
-                style={{ outline: 'none', fontSize: 15, lineHeight: 1.65, padding: b.type === 'callout' ? '12px 14px' : '4px 2px', borderRadius: b.type === 'callout' ? 8 : 0, background: b.type === 'callout' ? 'var(--accent-bg)' : 'transparent', minHeight: 26 }} />
+ {(b.type === 'text' || b.type === 'callout') && (
+              <EditableBlock html={b.html || ''} isCallout={b.type === 'callout'}
+                onChange={html => setBlock(i, { html })} />
+            )}
             )}
             {b.type === 'image' && (b.url
               ? <div><img src={b.url} alt="" style={{ maxWidth: '100%', borderRadius: 8 }} /></div>
