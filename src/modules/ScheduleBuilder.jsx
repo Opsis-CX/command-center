@@ -206,12 +206,12 @@ function ScheduleModal({ schedule, callTypes, profiles, audience, onClose, onSav
             <option value="published">Published (visible per audience + release time)</option>
             <option value="archived">Archived</option>
           </select></div>
-        <div className="field"><label>Call type</label>
+        <div className="field"><label>Position</label>
           <select value={callTypeId} onChange={e => setCallTypeId(e.target.value)}>
             {activeCallTypes.length ? activeCallTypes.map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)
-              : <option value="">No call types — create one first</option>}
+              : <option value="">No positions — create one first</option>}
           </select>
-          <div className="hint">Only people certified for this call type (where a certification requires it) can claim.</div>
+          <div className="hint">Only people certified for this position (where a certification requires it) can claim.</div>
         </div>
 
         <div className="field">
