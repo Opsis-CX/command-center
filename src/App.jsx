@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar'
 import Certifications from './modules/Certifications'
 import { Dashboard, Placeholder } from './modules/Placeholders'
 import PeopleTags from './modules/PeopleTags'
+import CourseBuilder from './modules/CourseBuilder'
 
 export default function App() {
   const { session, loading, isAdmin } = useAuth()
@@ -30,7 +31,7 @@ export default function App() {
 
             {isAdmin && <Route path="/certifications" element={<Certifications />} />}
             {isAdmin && <Route path="/matrix" element={<Placeholder title="Certification matrix" note="The agents × call-types grid mounts here." />} />}
-            {isAdmin && <Route path="/courses" element={<Placeholder title="Course builder" note="The block editor mounts here." />} />}
+            {isAdmin && <Route path="/courses" element={<CourseBuilder />} />}
             {isAdmin && <Route path="/projects" element={<Placeholder title="Projects" note="Your existing project management module." />} />}
             
 {isAdmin && <Route path="/people" element={<PeopleTags />} />}
