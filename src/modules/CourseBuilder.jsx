@@ -245,6 +245,19 @@ function LessonBody({ lesson, onChange, onSave }) {
   function setBlock(i, patch) { update(blocks.map((b, j) => j === i ? { ...b, ...patch } : b)) }
   function delBlock(i) { update(blocks.filter((_, j) => j !== i)) }
 
+  async function uploadImage(file, blockIndex) {
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const { error: upErr } = await supabase.storage.from('course-media').upload(path, file)
+      if (upErr) throw upErr
+      const { data } = supabase.storage.from('course-media').getPublicUrl(path)
+      setBlock(blockIndex, { url: data.publicUrl })
+    } catch (e) {
+      alert('Upload failed: ' + e.message)
+    }
+  }
+  
   function toEmbed(url) {
     const yt = url.match(/(?:youtu\.be\/|v=)([\w-]{11})/); if (yt) return `https://www.youtube.com/embed/${yt[1]}`
     const vm = url.match(/vimeo\.com\/(\d+)/); if (vm) return `https://player.vimeo.com/video/${vm[1]}`
