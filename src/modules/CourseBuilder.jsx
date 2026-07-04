@@ -2,10 +2,6 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 // ============ COURSE BUILDER ============
-// Flow: pick/create a course (tied to a certification) -> edit lessons
-// (text/image/video blocks) -> author quiz -> publish.
-// Writes: courses, lessons (content_blocks jsonb), quiz_questions, quiz_options.
-
 export default function CourseBuilder() {
   const [courses, setCourses] = useState([])
   const [certs, setCerts] = useState([])
@@ -129,7 +125,7 @@ function LessonEditor({ courseId, onBack }) {
   const [course, setCourse] = useState(null)
   const [lessons, setLessons] = useState([])
   const [activeLesson, setActiveLesson] = useState(null)
-  const [tab, setTab] = useState('lessons') // lessons | quiz
+  const [tab, setTab] = useState('lessons')
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [saveMsg, setSaveMsg] = useState('')
@@ -167,6 +163,7 @@ function LessonEditor({ courseId, onBack }) {
         .update({ title: lesson.title, content_blocks: lesson.content_blocks, updated_at: new Date().toISOString() })
         .eq('id', lesson.id)
       if (error) throw error
+      setLessons(ls => ls.map(l => l.id === lesson.id ? lesson : l))
       flash('Lesson saved')
     } catch (e) { setErr(e.message) }
   }
@@ -217,9 +214,7 @@ function LessonEditor({ courseId, onBack }) {
             ))}
             <button className="btn btn-ghost" style={{ width: '100%', marginTop: 8 }} onClick={addLesson}>+ Add lesson</button>
           </div>
-          {lesson ? <LessonBody key={lesson.id} lesson={lesson}
-            onChange={updated => setLessons(ls => ls.map(l => l.id === updated.id ? updated : l))}
-            onSave={saveLesson} />
+          {lesson ? <LessonBody key={lesson.id} lesson={lesson} onSave={saveLesson} />
             : <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>Add a lesson to start.</div></div>}
         </div>
       ) : (
@@ -230,34 +225,22 @@ function LessonEditor({ courseId, onBack }) {
 }
 
 // ============ LESSON BODY (block editor) ============
-function LessonBody({ lesson, onChange, onSave }) {
+// Keeps all editing state LOCAL so typing never re-renders the parent
+// (that's what caused the cursor to jump). Reports up only on Save.
+function LessonBody({ lesson, onSave }) {
   const [title, setTitle] = useState(lesson.title)
   const [blocks, setBlocks] = useState(lesson.content_blocks || [])
 
-  function update(newBlocks) { setBlocks(newBlocks); onChange({ ...lesson, title, content_blocks: newBlocks }) }
   function addBlock(type) {
     const b = type === 'text' ? { type: 'text', html: '' }
       : type === 'image' ? { type: 'image', url: '' }
       : type === 'video' ? { type: 'video', embed: '' }
       : { type: 'callout', tone: 'info', html: '' }
-    update([...blocks, b])
+    setBlocks(bs => [...bs, b])
   }
-  function setBlock(i, patch) { update(blocks.map((b, j) => j === i ? { ...b, ...patch } : b)) }
-  function delBlock(i) { update(blocks.filter((_, j) => j !== i)) }
+  function setBlock(i, patch) { setBlocks(bs => bs.map((b, j) => j === i ? { ...b, ...patch } : b)) }
+  function delBlock(i) { setBlocks(bs => bs.filter((_, j) => j !== i)) }
 
-  async function uploadImage(file, blockIndex) {
-    try {
-      const ext = file.name.split('.').pop()
-      const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-      const { error: upErr } = await supabase.storage.from('course-media').upload(path, file)
-      if (upErr) throw upErr
-      const { data } = supabase.storage.from('course-media').getPublicUrl(path)
-      setBlock(blockIndex, { url: data.publicUrl })
-    } catch (e) {
-      alert('Upload failed: ' + e.message)
-    }
-  }
-  
   function toEmbed(url) {
     const yt = url.match(/(?:youtu\.be\/|v=)([\w-]{11})/); if (yt) return `https://www.youtube.com/embed/${yt[1]}`
     const vm = url.match(/vimeo\.com\/(\d+)/); if (vm) return `https://player.vimeo.com/video/${vm[1]}`
@@ -265,10 +248,21 @@ function LessonBody({ lesson, onChange, onSave }) {
   }
   function exec(cmd, val) { document.execCommand(cmd, false, val || null) }
 
+  async function uploadImage(file, i) {
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const { error: upErr } = await supabase.storage.from('course-media').upload(path, file)
+      if (upErr) throw upErr
+      const { data } = supabase.storage.from('course-media').getPublicUrl(path)
+      setBlock(i, { url: data.publicUrl })
+    } catch (e) { alert('Upload failed: ' + e.message) }
+  }
+
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
       <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 10, alignItems: 'center' }}>
-        <input value={title} onChange={e => { setTitle(e.target.value); onChange({ ...lesson, title: e.target.value, content_blocks: blocks }) }}
+        <input value={title} onChange={e => setTitle(e.target.value)}
           style={{ border: 0, fontSize: 17, fontWeight: 600, outline: 'none', flex: 1, fontFamily: 'inherit', color: 'var(--ink)' }} />
         <button className="btn btn-primary" onClick={() => onSave({ ...lesson, title, content_blocks: blocks })}>Save lesson</button>
       </div>
@@ -277,15 +271,15 @@ function LessonBody({ lesson, onChange, onSave }) {
         <TB onClick={() => exec('bold')}><b>B</b></TB>
         <TB onClick={() => exec('italic')}><i>I</i></TB>
         <TB onClick={() => exec('underline')}><u>U</u></TB>
-        <Div />
+        <Divider />
         <TB onClick={() => exec('insertUnorderedList')}>• ≡</TB>
         <TB onClick={() => exec('outdent')}>⇤</TB>
         <TB onClick={() => exec('indent')}>⇥</TB>
-        <Div />
+        <Divider />
         {['#0d1518', '#0077B6', '#00E6E6', '#1f8a53', '#c0392b', '#245866'].map(c =>
           <span key={c} onMouseDown={e => e.preventDefault()} onClick={() => exec('foreColor', c)}
             style={{ width: 18, height: 18, borderRadius: 4, background: c, cursor: 'pointer', border: '1px solid rgba(0,0,0,.1)' }} />)}
-        <Div />
+        <Divider />
         <AddBtn onClick={() => addBlock('text')}>¶ Text</AddBtn>
         <AddBtn onClick={() => addBlock('image')}>🖼 Image</AddBtn>
         <AddBtn onClick={() => addBlock('video')}>▶ Video</AddBtn>
@@ -298,14 +292,12 @@ function LessonBody({ lesson, onChange, onSave }) {
             <button onClick={() => delBlock(i)} title="Delete"
               style={{ position: 'absolute', right: -6, top: 2, border: 0, background: 'transparent', color: 'var(--ink-soft)', cursor: 'pointer', fontSize: 13 }}>✕</button>
             {(b.type === 'text' || b.type === 'callout') && (
- {(b.type === 'text' || b.type === 'callout') && (
-              <EditableBlock html={b.html || ''} isCallout={b.type === 'callout'}
+              <EditableBlock initialHtml={b.html || ''} isCallout={b.type === 'callout'}
                 onChange={html => setBlock(i, { html })} />
-            )}
             )}
             {b.type === 'image' && (b.url
               ? <div><img src={b.url} alt="" style={{ maxWidth: '100%', borderRadius: 8 }} /></div>
-            : <div style={{ border: '1px dashed var(--line)', borderRadius: 8, padding: 20, textAlign: 'center', background: 'var(--canvas)' }}>
+              : <div style={{ border: '1px dashed var(--line)', borderRadius: 8, padding: 20, textAlign: 'center', background: 'var(--canvas)' }}>
                   <div className="page-sub" style={{ marginBottom: 8 }}>Upload an image from your computer</div>
                   <input type="file" accept="image/*"
                     onChange={e => { if (e.target.files[0]) uploadImage(e.target.files[0], i) }} />
@@ -323,11 +315,29 @@ function LessonBody({ lesson, onChange, onSave }) {
   )
 }
 
+// Editable rich-text block. Sets its HTML ONCE on mount, then lets the browser
+// own the DOM while typing — so the cursor never jumps.
+function EditableBlock({ initialHtml, isCallout, onChange }) {
+  const ref = React.useRef(null)
+  React.useEffect(() => {
+    if (ref.current) ref.current.innerHTML = initialHtml
+  }, [])
+  return (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      onInput={e => onChange(e.currentTarget.innerHTML)}
+      style={{ outline: 'none', fontSize: 15, lineHeight: 1.65, padding: isCallout ? '12px 14px' : '4px 2px', borderRadius: isCallout ? 8 : 0, background: isCallout ? 'var(--accent-bg)' : 'transparent', minHeight: 26 }}
+    />
+  )
+}
+
 const TB = ({ children, onClick }) => (
   <button onMouseDown={e => e.preventDefault()} onClick={onClick}
     style={{ border: 0, background: 'transparent', width: 30, height: 30, borderRadius: 6, cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 14 }}>{children}</button>
 )
-const Div = () => <span style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)', margin: '4px 4px' }} />
+const Divider = () => <span style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)', margin: '4px 4px' }} />
 const AddBtn = ({ children, onClick }) => (
   <button onClick={onClick} style={{ border: 0, background: 'transparent', color: 'var(--ink-soft)', fontSize: 12.5, fontWeight: 600, padding: '6px 9px', borderRadius: 6, cursor: 'pointer' }}>{children}</button>
 )
@@ -362,7 +372,6 @@ function QuizEditor({ courseId }) {
         .insert({ course_id: courseId, prompt: '', kind: 'single', sort_order: questions.length, points: 1 })
         .select().single()
       if (error) throw error
-      // add two starter options
       const { data: opts } = await supabase.from('quiz_options').insert([
         { question_id: data.id, label: '', is_correct: true, sort_order: 0 },
         { question_id: data.id, label: '', is_correct: false, sort_order: 1 },
@@ -429,22 +438,5 @@ function QuizEditor({ courseId }) {
       ))}
       <button className="btn btn-cta" onClick={addQuestion}>+ Add question</button>
     </div>
-  )
-}
-function EditableBlock({ html, isCallout, onChange }) {
-  const ref = React.useRef(null)
-  React.useEffect(() => {
-    if (ref.current && ref.current.innerHTML !== html) {
-      ref.current.innerHTML = html
-    }
-  }, [])
-  return (
-    <div
-      ref={ref}
-      contentEditable
-      suppressContentEditableWarning
-      onInput={e => onChange(e.currentTarget.innerHTML)}
-      style={{ outline: 'none', fontSize: 15, lineHeight: 1.65, padding: isCallout ? '12px 14px' : '4px 2px', borderRadius: isCallout ? 8 : 0, background: isCallout ? 'var(--accent-bg)' : 'transparent', minHeight: 26 }}
-    />
   )
 }
