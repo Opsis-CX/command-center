@@ -296,7 +296,7 @@ function LessonBody({ lesson, onSave }) {
                 onChange={html => setBlock(i, { html })} />
             )}
             {b.type === 'image' && (b.url
-              ? <div><img src={b.url} alt="" style={{ maxWidth: '100%', borderRadius: 8 }} /></div>
+              ? <ImageBlock block={b} onChange={patch => setBlock(i, patch)} />
               : <div style={{ border: '1px dashed var(--line)', borderRadius: 8, padding: 20, textAlign: 'center', background: 'var(--canvas)' }}>
                   <div className="page-sub" style={{ marginBottom: 8 }}>Upload an image from your computer</div>
                   <input type="file" accept="image/*"
@@ -330,6 +330,35 @@ function EditableBlock({ initialHtml, isCallout, onChange }) {
       onInput={e => onChange(e.currentTarget.innerHTML)}
       style={{ outline: 'none', fontSize: 15, lineHeight: 1.65, padding: isCallout ? '12px 14px' : '4px 2px', borderRadius: isCallout ? 8 : 0, background: isCallout ? 'var(--accent-bg)' : 'transparent', minHeight: 26 }}
     />
+  )
+}
+
+function ImageBlock({ block, onChange }) {
+  const widths = { small: '30%', medium: '55%', large: '80%', full: '100%' }
+  const w = block.width || 'full'
+  const align = block.align || 'left'
+  const justify = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start'
+  const Btn = ({ label, active, onClick }) => (
+    <button onClick={onClick} style={{ border: '1px solid var(--line)', background: active ? 'var(--accent)' : 'var(--surface)', color: active ? '#fff' : 'var(--ink-soft)', fontSize: 11.5, fontWeight: 600, padding: '4px 9px', borderRadius: 6, cursor: 'pointer' }}>{label}</button>
+  )
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: justify }}>
+        <img src={block.url} alt="" style={{ width: widths[w], maxWidth: '100%', borderRadius: 8, display: 'block' }} />
+      </div>
+      <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: 'var(--ink-soft)', marginRight: 2 }}>Size</span>
+        <Btn label="S" active={w === 'small'} onClick={() => onChange({ width: 'small' })} />
+        <Btn label="M" active={w === 'medium'} onClick={() => onChange({ width: 'medium' })} />
+        <Btn label="L" active={w === 'large'} onClick={() => onChange({ width: 'large' })} />
+        <Btn label="Full" active={w === 'full'} onClick={() => onChange({ width: 'full' })} />
+        <span style={{ width: 1, height: 16, background: 'var(--line)', margin: '0 4px' }} />
+        <span style={{ fontSize: 11, color: 'var(--ink-soft)', marginRight: 2 }}>Align</span>
+        <Btn label="Left" active={align === 'left'} onClick={() => onChange({ align: 'left' })} />
+        <Btn label="Center" active={align === 'center'} onClick={() => onChange({ align: 'center' })} />
+        <Btn label="Right" active={align === 'right'} onClick={() => onChange({ align: 'right' })} />
+      </div>
+    </div>
   )
 }
 
