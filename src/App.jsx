@@ -39,8 +39,7 @@ export default function App() {
             {!isAdmin && <Route path="/my-certifications" element={<Placeholder title="My certifications" note="These unlock the schedules you can claim." />} />}
             {!isAdmin && <Route path="/my-courses" element={<Placeholder title="My courses" note="Work through lessons, then take the quiz." />} />}
 
-            <Route path="/schedule" element={<Placeholder title="Schedule" note="Your existing schedule module mounts here." />} />
-
+<Route path="/schedule" element={<Schedule />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </div>
