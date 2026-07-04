@@ -9,6 +9,7 @@ import PeopleTags from './modules/PeopleTags'
 import CourseBuilder from './modules/CourseBuilder'
 import Schedule from './modules/Schedule'
 import ScheduleBuilder from './modules/ScheduleBuilder'
+import Positions from './modules/Positions'
 
 export default function App() {
   const { session, loading, isAdmin } = useAuth()
