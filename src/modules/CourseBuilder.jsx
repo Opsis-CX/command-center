@@ -398,6 +398,8 @@ export function LessonView({ blocks }) {
 
 function CoursePreview({ course, lessons, onClose }) {
   const [idx, setIdx] = React.useState(0)
+  const scrollRef = React.useRef(null)
+  React.useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0 }, [idx])
   const total = lessons.length
   const lesson = lessons[idx]
   const pct = total ? Math.round(((idx + 1) / total) * 100) : 0
@@ -414,7 +416,7 @@ function CoursePreview({ course, lessons, onClose }) {
         <div style={{ height: 5, background: 'var(--line-soft)' }}>
           <div style={{ height: '100%', width: pct + '%', background: 'var(--cta)', transition: 'width .2s' }} />
         </div>
-        <div style={{ padding: '22px 26px', overflow: 'auto', flex: 1 }}>
+        <div ref={scrollRef} style={{ padding: '22px 26px', overflow: 'auto', flex: 1 }}>
           {total === 0 ? <p className="page-sub">No lessons yet.</p> : (
             <>
               <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 4 }}>Lesson {idx + 1} of {total}</div>
