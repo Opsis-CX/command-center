@@ -8,6 +8,7 @@ import { Dashboard, Placeholder } from './modules/Placeholders'
 import PeopleTags from './modules/PeopleTags'
 import CourseBuilder from './modules/CourseBuilder'
 import Schedule from './modules/Schedule'
+import ScheduleBuilder from './modules/ScheduleBuilder'
 
 export default function App() {
   const { session, loading, isAdmin } = useAuth()
@@ -40,6 +41,7 @@ export default function App() {
             {!isAdmin && <Route path="/my-courses" element={<Placeholder title="My courses" note="Work through lessons, then take the quiz." />} />}
 
 <Route path="/schedule" element={<Schedule />} />
+  {isAdmin && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </div>
