@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-// Certifications module with CREATE + assign-by-tag.
-// Reads: certifications, cert_record_status, tags, call_types
-// Writes: certifications (insert), certification_assignments (insert),
-//         then calls sync_cert_assignment() to create 'needed' records.
+// Certifications: list, create (assign by tag), and delete.
 export default function Certifications() {
   const [certs, setCerts] = useState([])
   const [records, setRecords] = useState([])
@@ -29,7 +26,7 @@ export default function Certifications() {
       if (recsRes.error) throw recsRes.error
       setCerts(certsRes.data || [])
       setRecords(recsRes.data || [])
-      setTags(tagsRes.data || [])       // tags/call_types errors are non-fatal
+      setTags(tagsRes.data || [])
       setCallTypes(ctRes.data || [])
     } catch (e) {
       setErr(e.message || 'Failed to load certifications')
@@ -47,6 +44,24 @@ export default function Certifications() {
     }
   }
 
+  async function deleteCert(cert) {
+    const s = statsFor(cert.id)
+    const attached = s.needed + s.passed + s.failed
+    let msg = `Delete "${cert.name}"?`
+    if (s.passed > 0) {
+      msg += `\n\nWARNING: ${s.passed} person(s) have PASSED this certification. Deleting it erases those earned records.`
+    } else if (attached > 0) {
+      msg += `\n\n${attached} person(s) have records for this (needed/failed) that will be removed.`
+    }
+    msg += '\n\nThis cannot be undone.'
+    if (!window.confirm(msg)) return
+    try {
+      const { error } = await supabase.from('certifications').delete().eq('id', cert.id)
+      if (error) throw error
+      load()
+    } catch (e) { setErr(e.message) }
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, marginBottom: 22, flexWrap: 'wrap' }}>
@@ -54,9 +69,7 @@ export default function Certifications() {
           <h1 className="page-title">Certifications</h1>
           <p className="page-sub">Create certifications, assign them by tag, and track who has passed.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-          + New certification
-        </button>
+        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New certification</button>
       </div>
 
       {loading && <p className="page-sub">Loading…</p>}
@@ -81,12 +94,16 @@ export default function Certifications() {
           const s = statsFor(cert.id)
           return (
             <div className="card" key={cert.id}>
-              <h3 style={{ margin: 0, fontSize: 16.5, fontWeight: 660 }}>{cert.name}</h3>
+              <h3 style={{ margin: 0, fontSize: 16.5, fontWeight: 600 }}>{cert.name}</h3>
               {cert.description && <p className="page-sub" style={{ marginTop: 5 }}>{cert.description}</p>}
               <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
                 <span className="badge needed">{s.needed} needed</span>
                 <span className="badge passed">{s.passed} passed</span>
                 <span className="badge failed">{s.failed} failed</span>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <button className="btn btn-ghost" style={{ color: 'var(--failed)', borderColor: 'var(--failed-bg)', fontSize: 12.5, padding: '6px 12px' }}
+                  onClick={() => deleteCert(cert)}>Delete</button>
               </div>
             </div>
           )
@@ -121,10 +138,7 @@ function CreateCertModal({ tags, callTypes, onClose, onCreated }) {
     if (!name.trim()) { setErr('Give the certification a name.'); return }
     setSaving(true); setErr('')
     try {
-      // 1. Get current user for created_by.
       const { data: { user } } = await supabase.auth.getUser()
-
-      // 2. Insert the certification.
       const { data: cert, error: ce } = await supabase
         .from('certifications')
         .insert({
@@ -138,7 +152,6 @@ function CreateCertModal({ tags, callTypes, onClose, onCreated }) {
         .single()
       if (ce) throw ce
 
-      // 3. Assign to the chosen tags.
       if (pickedTags.length) {
         const rows = pickedTags.map(tagId => ({
           certification_id: cert.id,
@@ -147,14 +160,9 @@ function CreateCertModal({ tags, callTypes, onClose, onCreated }) {
         }))
         const { error: ae } = await supabase.from('certification_assignments').insert(rows)
         if (ae) throw ae
-
-        // 4. Create 'needed' records for everyone carrying those tags.
-        const { error: se } = await supabase.rpc('sync_cert_assignment', {
-          p_certification_id: cert.id,
-        })
+        const { error: se } = await supabase.rpc('sync_cert_assignment', { p_certification_id: cert.id })
         if (se) throw se
       }
-
       onCreated()
     } catch (e) {
       setErr(e.message || 'Could not create certification')
@@ -165,7 +173,7 @@ function CreateCertModal({ tags, callTypes, onClose, onCreated }) {
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal">
-        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 680 }}>New certification</h3>
+        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>New certification</h3>
         <p className="page-sub" style={{ marginBottom: 18 }}>Create the credential, then build its course and quiz.</p>
 
         {err && <div className="login-err" style={{ marginBottom: 14 }}>{err}</div>}
@@ -188,7 +196,6 @@ function CreateCertModal({ tags, callTypes, onClose, onCreated }) {
             <option value="">No — credential only</option>
             {callTypes.map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)}
           </select>
-          <div className="hint">If set, passing also unlocks schedules of this call type.</div>
         </div>
 
         <div className="field">
