@@ -15,6 +15,7 @@ const NAV = [
   { group: 'Operations', items: [
     { to: '/schedule', label: 'Schedule', ic: '◷', roles: ['admin', 'agent'] },
 { to: '/schedule-builder', label: 'Schedule builder', ic: '🛠', roles: ['admin'] },
+    { to: '/positions', label: 'Positions', ic: '🏷', roles: ['admin'] },
     { to: '/projects', label: 'Projects', ic: '❏', roles: ['admin'] },
     { to: '/people', label: 'People & tags', ic: '☺', roles: ['admin'] },
   ]},
