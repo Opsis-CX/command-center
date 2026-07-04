@@ -7,6 +7,7 @@ import Certifications from './modules/Certifications'
 import { Dashboard, Placeholder } from './modules/Placeholders'
 import PeopleTags from './modules/PeopleTags'
 import CourseBuilder from './modules/CourseBuilder'
+import Schedule from './modules/Schedule'
 
 export default function App() {
   const { session, loading, isAdmin } = useAuth()
