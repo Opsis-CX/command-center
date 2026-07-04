@@ -66,6 +66,7 @@ export default function Schedule() {
   const [tab, setTab] = useState('claim') // claim | myshifts
   const [weekStart, setWeekStart] = useState(mondayOf(etNow()))
   const [toast, setToast] = useState('')
+  const [adminView, setAdminView] = useState('team') // team | mine (admins only)
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -101,20 +102,22 @@ export default function Schedule() {
 
   // ---------- visibility: audience AND passed-cert (admin bypass) ----------
   function hasPassedCertForCallType(callTypeId) {
-    if (!callTypeId) return false
-    // certifications that gate this call type
+    // Graceful gating: if NO active certification gates this call type,
+    // the schedule is open to everyone. Once a gating cert is defined,
+    // the person must have PASSED it.
     const gatingCertIds = certifications.filter(c => c.call_type_id === callTypeId && c.active !== false).map(c => c.id)
-    if (!gatingCertIds.length) return false
-    // did I pass any of them?
+    if (!gatingCertIds.length) return true
     return certRecords.some(r => r.profile_id === me?.id && gatingCertIds.includes(r.certification_id) && r.status === 'passed')
   }
   function inAudience(scheduleId) {
     return audience.some(a => a.schedule_id === scheduleId && a.profile_id === me?.id)
   }
-  function myVisibleSchedules() {
+  function myVisibleSchedules(forceMine) {
     const published = schedules.filter(s => s.status === 'published')
-    if (isAdmin) return published
-    return published.filter(s => inAudience(s.id) && hasPassedCertForCallType(s.call_type_id))
+    if (isAdmin && !forceMine) return published
+    // agent (or admin in 'my view'): must hold the cert (graceful) — audience check
+    // applies to non-admins; admins in my-view can claim any they're certified for.
+    return published.filter(s => hasPassedCertForCallType(s.call_type_id) && (isAdmin || inAudience(s.id)))
   }
 
   // ---------- release status ----------
@@ -242,8 +245,9 @@ export default function Schedule() {
 
       {tab === 'claim' ? (
         <ClaimView
-          isAdmin={isAdmin} me={me} profiles={profiles} tiers={tiers}
-          schedules={myVisibleSchedules()} blocks={blocks} claims={claims}
+          isAdmin={isAdmin} adminView={adminView} setAdminView={setAdminView}
+          me={me} profiles={profiles} tiers={tiers}
+          schedules={myVisibleSchedules(isAdmin && adminView === 'mine')} blocks={blocks} claims={claims}
           weekStart={weekStart} setWeekStart={setWeekStart}
           releaseStatus={getMyReleaseStatus()}
           claimedHoursInWeek={claimedHoursInWeek} hasIntervalStarted={hasIntervalStarted}
@@ -258,9 +262,12 @@ export default function Schedule() {
 
 // Sub-components live in the same file (Stage 1). Placeholder imports resolved below.
 function ClaimView(props) {
-  const { isAdmin, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
+  const { isAdmin, adminView, setAdminView, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
     claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn } = props
   const [popBlock, setPopBlock] = useState(null)
+  // Admins in 'team' view see the team grid; everyone else (agents, and
+  // admins who switched to 'My view') see the personal claim grid.
+  const teamMode = isAdmin && adminView === 'team'
 
   if (!schedules.length) {
     return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>
@@ -281,7 +288,13 @@ function ClaimView(props) {
 
   return (
     <div>
-      {!isAdmin && <ReleaseBanner status={releaseStatus} />}
+      {!teamMode && !isAdmin && <ReleaseBanner status={releaseStatus} />}
+      {isAdmin && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+          <button className={'btn ' + (adminView === 'team' ? 'btn-primary' : 'btn-ghost')} onClick={() => setAdminView('team')}>Team view</button>
+          <button className={'btn ' + (adminView === 'mine' ? 'btn-primary' : 'btn-ghost')} onClick={() => setAdminView('mine')}>My view</button>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <button className="btn btn-ghost" onClick={() => shiftWeek(-1)}>‹</button>
@@ -291,15 +304,15 @@ function ClaimView(props) {
           <button className="btn btn-ghost" onClick={() => shiftWeek(1)}>›</button>
         </div>
         <button className="btn btn-ghost" onClick={() => setWeekStart(mondayOf(etNow()))}>Today</button>
-        {!isAdmin && <HoursCap hours={claimedHoursInWeek(me.id, monday)} />}
+        {!teamMode && <HoursCap hours={claimedHoursInWeek(me.id, monday)} />}
       </div>
 
-      {isAdmin
+      {teamMode
         ? <AdminGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} profiles={profiles} onPop={setPopBlock} />
         : <AgentGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} me={me} hasIntervalStarted={hasIntervalStarted} onPop={setPopBlock} />}
 
       {popBlock && <IntervalPopover
-        block={popBlock} claims={claims} profiles={profiles} me={me} isAdmin={isAdmin}
+        block={popBlock} claims={claims} profiles={profiles} me={me} canClaim={!teamMode}
         hasIntervalStarted={hasIntervalStarted}
         onClose={() => setPopBlock(null)}
         onClaim={(b) => { onClaim(b); setPopBlock(null) }}
@@ -483,7 +496,7 @@ function Iv({ block, cls, spots, time, role, onPop }) {
 }
 
 // ---------- INTERVAL POPOVER ----------
-function IntervalPopover({ block, claims, profiles, me, isAdmin, hasIntervalStarted, onClose, onClaim, onUnclaim, onCheckIn }) {
+function IntervalPopover({ block, claims, profiles, me, canClaim, hasIntervalStarted, onClose, onClaim, onUnclaim, onCheckIn }) {
   const cl = claims.filter(c => c.shift_block_id === block.id)
   const mine = cl.find(c => c.profile_id === me.id)
   const left = block.total_spots - cl.length
@@ -508,7 +521,7 @@ function IntervalPopover({ block, claims, profiles, me, isAdmin, hasIntervalStar
         {mine ? <>
           {!started && !mine.checked_in_at && mine.status !== 'no_show' && <button className="btn btn-ghost" style={{ color: 'var(--failed)' }} onClick={() => onUnclaim(block)}>Release spot</button>}
           {started && !mine.checked_in_at && mine.status !== 'no_show' && <button className="btn btn-primary" onClick={() => onCheckIn(mine.id, block)}>Check in</button>}
-        </> : (!isFull && !started && !isAdmin && <button className="btn btn-primary" onClick={() => onClaim(block)}>Claim this interval</button>)}
+        </> : (!isFull && !started && canClaim && <button className="btn btn-primary" onClick={() => onClaim(block)}>Claim this interval</button>)}
       </div>
     </div>
   </div>
