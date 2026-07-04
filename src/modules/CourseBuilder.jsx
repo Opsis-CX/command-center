@@ -25,6 +25,15 @@ export default function CourseBuilder() {
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }
 
+  async function deleteCourse(id, title) {
+    if (!window.confirm(`Delete the course "${title}"? Its lessons and quiz will be removed. This cannot be undone.`)) return
+    try {
+      const { error } = await supabase.from('courses').delete().eq('id', id)
+      if (error) throw error
+      load()
+    } catch (e) { setErr(e.message) }
+  }
+
   if (editingId) {
     return <LessonEditor courseId={editingId} onBack={() => { setEditingId(null); load() }} />
   }
@@ -54,8 +63,9 @@ export default function CourseBuilder() {
                 </span>
               </div>
               {c.description && <p className="page-sub" style={{ marginTop: 5 }}>{c.description}</p>}
-              <div style={{ marginTop: 14 }}>
+              <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
                 <button className="btn btn-ghost" onClick={() => setEditingId(c.id)}>Edit content</button>
+                <button className="btn btn-ghost" style={{ color: 'var(--failed)', borderColor: 'var(--failed-bg)' }} onClick={() => deleteCourse(c.id, c.title)}>Delete</button>
               </div>
             </div>
           ))}
