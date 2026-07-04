@@ -305,8 +305,11 @@ function LessonBody({ lesson, onChange, onSave }) {
             )}
             {b.type === 'image' && (b.url
               ? <div><img src={b.url} alt="" style={{ maxWidth: '100%', borderRadius: 8 }} /></div>
-              : <input placeholder="Paste image URL (Cloudinary, etc.)" onChange={e => setBlock(i, { url: e.target.value })}
-                style={{ width: '100%', padding: 9, border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit' }} />)}
+            : <div style={{ border: '1px dashed var(--line)', borderRadius: 8, padding: 20, textAlign: 'center', background: 'var(--canvas)' }}>
+                  <div className="page-sub" style={{ marginBottom: 8 }}>Upload an image from your computer</div>
+                  <input type="file" accept="image/*"
+                    onChange={e => { if (e.target.files[0]) uploadImage(e.target.files[0], i) }} />
+                </div>)}
             {b.type === 'video' && (b.embed
               ? <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0 }}>
                 <iframe src={b.embed} allowFullScreen style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, borderRadius: 8 }} /></div>
