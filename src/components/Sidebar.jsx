@@ -18,6 +18,7 @@ const NAV = [
     { to: '/positions', label: 'Positions', ic: '🏷', roles: ['admin'] },
     { to: '/projects', label: 'Projects', ic: '❏', roles: ['admin'] },
     { to: '/people', label: 'People & tags', ic: '☺', roles: ['admin'] },
+    { to: '/insights', label: 'Schedule insights', ic: '📊', roles: ['admin'] },
   ]},
 ]
 
