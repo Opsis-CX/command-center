@@ -28,6 +28,7 @@ export default function ScheduleBuilder() {
   const [callTypes, setCallTypes] = useState([])
   const [profiles, setProfiles] = useState([])
   const [audience, setAudience] = useState([])
+  const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [toast, setToast] = useState('')
@@ -38,13 +39,14 @@ export default function ScheduleBuilder() {
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     try {
-      const [schRes, blkRes, clmRes, ctRes, profRes, audRes] = await Promise.all([
+      const [schRes, blkRes, clmRes, ctRes, profRes, audRes, cliRes] = await Promise.all([
         supabase.from('schedules').select('*').order('week_start_date', { ascending: false }),
         supabase.from('shift_blocks').select('*').order('block_date').order('start_time'),
         supabase.from('shift_claims').select('*'),
         supabase.from('call_types').select('*').order('name'),
         supabase.from('profiles').select('id, full_name, email, is_active').eq('is_active', true).order('full_name'),
         supabase.from('schedule_audience').select('*'),
+        supabase.from('clients').select('*').order('name'),
       ])
       if (schRes.error) throw schRes.error
       setSchedules(schRes.data || [])
@@ -53,6 +55,7 @@ export default function ScheduleBuilder() {
       setCallTypes(ctRes.data || [])
       setProfiles(profRes.data || [])
       setAudience(audRes.data || [])
+      setClients(cliRes.data || [])
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }, [])
 
@@ -94,7 +97,8 @@ export default function ScheduleBuilder() {
         const sBlocks = blocks.filter(b => b.schedule_id === s.id).sort((a, b) => (a.block_date + a.start_time).localeCompare(b.block_date + b.start_time))
         const totalSpots = sBlocks.reduce((sum, b) => sum + b.total_spots, 0)
         const totalClaimed = sBlocks.reduce((sum, b) => sum + claims.filter(c => c.shift_block_id === b.id).length, 0)
-        const callTypeName = callTypes.find(ct => ct.id === s.call_type_id)?.name || 'No call type'
+        const callTypeName = callTypes.find(ct => ct.id === s.call_type_id)?.name || 'No position'
+        const clientName = clients.find(cl => cl.id === s.client_id)?.name || 'No client'
         const audienceCount = audience.filter(a => a.schedule_id === s.id).length
         return (
           <div className="card" key={s.id} style={{ marginBottom: 14 }}>
@@ -105,7 +109,7 @@ export default function ScheduleBuilder() {
                   <span className="badge" style={{ background: s.status === 'published' ? 'var(--passed-bg)' : s.status === 'archived' ? 'var(--failed-bg)' : 'var(--needed-bg)', color: s.status === 'published' ? 'var(--passed)' : s.status === 'archived' ? 'var(--failed)' : 'var(--needed)' }}>{s.status}</span>
                 </div>
                 <div className="page-sub" style={{ marginTop: 3 }}>
-                  {callTypeName} · Week of {new Date(s.week_start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · {sBlocks.length} interval{sBlocks.length !== 1 ? 's' : ''} · {totalClaimed}/{totalSpots} claimed · {audienceCount} in audience
+                  {clientName} · {callTypeName} · Week of {new Date(s.week_start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · {sBlocks.length} interval{sBlocks.length !== 1 ? 's' : ''} · {totalClaimed}/{totalSpots} claimed · {audienceCount} in audience
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -134,7 +138,7 @@ export default function ScheduleBuilder() {
         )
       })}
 
-      {editSchedule && <ScheduleModal schedule={editSchedule} callTypes={callTypes} profiles={profiles} audience={audience}
+      {editSchedule && <ScheduleModal schedule={editSchedule} callTypes={callTypes} clients={clients} profiles={profiles} audience={audience}
         onClose={() => setEditSchedule(null)} onSaved={() => { setEditSchedule(null); load(); flash('Schedule saved') }} />}
       {editBlock && <BlockModal editBlock={editBlock} schedules={schedules}
         onClose={() => setEditBlock(null)} onSaved={() => { setEditBlock(null); load(); flash('Interval saved') }} />}
@@ -145,12 +149,13 @@ export default function ScheduleBuilder() {
 }
 
 // ---------- SCHEDULE CREATE/EDIT ----------
-function ScheduleModal({ schedule, callTypes, profiles, audience, onClose, onSaved }) {
+function ScheduleModal({ schedule, callTypes, clients, profiles, audience, onClose, onSaved }) {
   const isNew = !schedule.id
   const [title, setTitle] = useState(schedule.title || '')
   const [weekStart, setWeekStart] = useState(schedule.week_start_date || nextWednesdayISO())
   const [status, setStatus] = useState(schedule.status || 'draft')
   const [callTypeId, setCallTypeId] = useState(schedule.call_type_id || (callTypes.filter(c => c.active !== false)[0]?.id || ''))
+  const [clientId, setClientId] = useState(schedule.client_id || '')
   const [picked, setPicked] = useState(() => new Set(audience.filter(a => a.schedule_id === schedule.id).map(a => a.profile_id)))
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -165,7 +170,7 @@ function ScheduleModal({ schedule, callTypes, profiles, audience, onClose, onSav
     setSaving(true); setErr('')
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      const payload = { title: title.trim(), week_start_date: weekStart, status, call_type_id: callTypeId }
+      const payload = { title: title.trim(), week_start_date: weekStart, status, call_type_id: callTypeId, client_id: clientId || null }
       let scheduleId = schedule.id
       if (isNew) {
         payload.created_by = user?.id ?? null
@@ -206,6 +211,12 @@ function ScheduleModal({ schedule, callTypes, profiles, audience, onClose, onSav
             <option value="published">Published (visible per audience + release time)</option>
             <option value="archived">Archived</option>
           </select></div>
+        <div className="field"><label>Client</label>
+          <select value={clientId} onChange={e => setClientId(e.target.value)}>
+            <option value="">— Select client —</option>
+            {clients.map(cl => <option key={cl.id} value={cl.id}>{cl.name}</option>)}
+          </select>
+        </div>
         <div className="field"><label>Position</label>
           <select value={callTypeId} onChange={e => setCallTypeId(e.target.value)}>
             {activeCallTypes.length ? activeCallTypes.map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)
