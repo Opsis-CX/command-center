@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { notifyIntervalReleased } from '../lib/notify'
+import { notifyIntervalReleased, notifyNoShow } from '../lib/notify'
 
 // ============================================================
 // SCHEDULE — Stage 1
@@ -203,8 +203,7 @@ export default function Schedule() {
     })
     const { error } = await supabase.from('shift_claims').delete().eq('shift_block_id', block.id).eq('profile_id', me.id)
     if (error) { flash('Could not release'); return }
-logActivity(wasLate ? 'released_late' : 'released', block)
-    // notify the schedule's audience that an interval opened up
+    logActivity(wasLate ? 'released_late' : 'released', block)
     try {
       const { data: aud } = await supabase.from('schedule_audience').select('profile_id').eq('schedule_id', block.schedule_id)
       notifyIntervalReleased({
@@ -215,6 +214,20 @@ logActivity(wasLate ? 'released_late' : 'released', block)
       })
     } catch (e) { /* non-blocking */ }
     flash(wasLate ? 'Released (late cancellation)' : 'Interval released'); load()
+  }
+
+  async function markNoShow(claim, block) {
+    if (!window.confirm('Mark this person as a no-show for this interval?')) return
+    const { error } = await supabase.from('shift_claims').update({ status: 'no_show' }).eq('id', claim.id)
+    if (error) { flash('Could not mark no-show'); return }
+    logActivity('marked_no_show', block)
+    try {
+      notifyNoShow({
+        recipientId: claim.profile_id,
+        when: `${formatTime(block.start_time)}–${formatTime(block.end_time)} on ${block.block_date}`,
+      })
+    } catch (e) { /* non-blocking */ }
+    flash('Marked as no-show'); load()
   }
 
   async function checkIn(claimId, block) {
@@ -262,7 +275,7 @@ logActivity(wasLate ? 'released_late' : 'released', block)
           weekStart={weekStart} setWeekStart={setWeekStart}
           releaseStatus={getMyReleaseStatus()}
           claimedHoursInWeek={claimedHoursInWeek} hasIntervalStarted={hasIntervalStarted}
-          onClaim={claimBlock} onUnclaim={unclaimBlock} onCheckIn={checkIn}
+          onClaim={claimBlock} onUnclaim={unclaimBlock} onCheckIn={checkIn} onNoShow={markNoShow}
         />
       ) : (
         <MyScheduleView me={me} blocks={blocks} claims={claims} hasIntervalStarted={hasIntervalStarted} onUnclaim={unclaimBlock} onCheckIn={checkIn} />
@@ -274,7 +287,7 @@ logActivity(wasLate ? 'released_late' : 'released', block)
 // Sub-components live in the same file (Stage 1). Placeholder imports resolved below.
 function ClaimView(props) {
   const { isAdmin, adminView, setAdminView, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
-    claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn } = props
+    claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn, onNoShow } = props
   const [popBlock, setPopBlock] = useState(null)
   // Admins in 'team' view see the team grid; everyone else (agents, and
   // admins who switched to 'My view') see the personal claim grid.
@@ -323,12 +336,13 @@ function ClaimView(props) {
         : <AgentGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} me={me} hasIntervalStarted={hasIntervalStarted} onPop={setPopBlock} />}
 
       {popBlock && <IntervalPopover
-        block={popBlock} claims={claims} profiles={profiles} me={me} canClaim={!teamMode}
+        block={popBlock} claims={claims} profiles={profiles} me={me} canClaim={!teamMode} isAdmin={isAdmin}
         hasIntervalStarted={hasIntervalStarted}
         onClose={() => setPopBlock(null)}
         onClaim={(b) => { onClaim(b); setPopBlock(null) }}
         onUnclaim={(b) => { onUnclaim(b); setPopBlock(null) }}
         onCheckIn={(cid, b) => { onCheckIn(cid, b); setPopBlock(null) }}
+        onNoShow={(claim, b) => { onNoShow(claim, b); setPopBlock(null) }}
       />}
     </div>
   )
@@ -507,7 +521,7 @@ function Iv({ block, cls, spots, time, role, onPop }) {
 }
 
 // ---------- INTERVAL POPOVER ----------
-function IntervalPopover({ block, claims, profiles, me, canClaim, hasIntervalStarted, onClose, onClaim, onUnclaim, onCheckIn }) {
+function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIntervalStarted, onClose, onClaim, onUnclaim, onCheckIn, onNoShow }) {
   const cl = claims.filter(c => c.shift_block_id === block.id)
   const mine = cl.find(c => c.profile_id === me.id)
   const left = block.total_spots - cl.length
@@ -527,6 +541,23 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, hasIntervalSta
         {mine?.checked_in_at && <Row k="Status" v="Checked in" />}
         {mine?.status === 'no_show' && <Row k="Status" v="No-show" />}
       </div>
+      {isAdmin && cl.length > 0 && (
+        <div style={{ borderTop: '1px solid var(--line-soft)', paddingTop: 10, marginBottom: 12 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>Claimants</div>
+          {cl.map(c => {
+            const p = profiles.find(x => x.id === c.profile_id)
+            const status = c.status === 'no_show' ? 'No-show' : c.checked_in_at ? 'Checked in' : started ? 'Not checked in' : 'Claimed'
+            return (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12.5 }}>
+                <span style={{ flex: 1 }}>{p?.full_name || 'Unknown'}</span>
+                <span style={{ color: c.status === 'no_show' ? 'var(--failed)' : c.checked_in_at ? 'var(--passed)' : 'var(--ink-soft)' }}>{status}</span>
+                {started && c.status !== 'no_show' && !c.checked_in_at &&
+                  <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 8px', color: 'var(--failed)' }} onClick={() => onNoShow(c, block)}>No-show</button>}
+              </div>
+            )
+          })}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button className="btn btn-ghost" onClick={onClose}>Close</button>
         {mine ? <>
