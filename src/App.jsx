@@ -54,6 +54,7 @@ export default function App() {
     </div>
   )
 }
+<Route path="/chat" element={<Chat />} />
 
 function titleFor(path) {
   const map = {
