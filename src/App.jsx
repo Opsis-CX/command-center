@@ -10,6 +10,7 @@ import CourseBuilder from './modules/CourseBuilder'
 import Schedule from './modules/Schedule'
 import ScheduleBuilder from './modules/ScheduleBuilder'
 import Positions from './modules/Positions'
+import ScheduleInsights from './modules/ScheduleInsights'
 
 export default function App() {
   const { session, loading, isAdmin } = useAuth()
