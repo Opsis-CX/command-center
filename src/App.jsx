@@ -44,6 +44,8 @@ export default function App() {
             {!isAdmin && <Route path="/my-courses" element={<Placeholder title="My courses" note="Work through lessons, then take the quiz." />} />}
 
 <Route path="/schedule" element={<Schedule />} />
+            <Route path="/schedule" element={<Schedule />} />
+<Route path="/chat" element={<Chat />} />
   {isAdmin && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
             {isAdmin && <Route path="/positions" element={<Positions />} />}
             {isAdmin && <Route path="/insights" element={<ScheduleInsights />} />}
@@ -54,7 +56,6 @@ export default function App() {
     </div>
   )
 }
-<Route path="/chat" element={<Chat />} />
 
 function titleFor(path) {
   const map = {
