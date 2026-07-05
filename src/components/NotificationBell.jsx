@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 // ============================================================
-// NOTIFICATION BELL — top bar. Unread badge, dropdown list,
-// mark-read, click-through. Updates live via Realtime.
+// NOTIFICATION BELL — unread badge, dropdown, realtime,
+// plus a soft chime on new notifications and a mute toggle.
 // ============================================================
 
 function timeAgo(iso) {
@@ -16,12 +16,45 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+// Soft two-note chime via Web Audio (no file needed).
+function makeChime() {
+  let ctx = null
+  function prime() {
+    if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)() } catch (e) { ctx = null } }
+    if (ctx && ctx.state === 'suspended') ctx.resume()
+  }
+  function play() {
+    if (!ctx) prime()
+    if (!ctx) return
+    const now = ctx.currentTime
+    const notes = [ [880, 0], [1174.66, 0.11] ] // A5 then D6
+    notes.forEach(([freq, offset]) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'; osc.frequency.value = freq
+      osc.connect(gain); gain.connect(ctx.destination)
+      const t = now + offset
+      gain.gain.setValueAtTime(0, t)
+      gain.gain.linearRampToValueAtTime(0.14, t + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.35)
+      osc.start(t); osc.stop(t + 0.4)
+    })
+  }
+  return { prime, play }
+}
+
 export default function NotificationBell() {
   const [items, setItems] = useState([])
   const [open, setOpen] = useState(false)
   const [meId, setMeId] = useState(null)
+  const [muted, setMuted] = useState(() => {
+    try { return localStorage.getItem('notif_muted') === '1' } catch (e) { return false }
+  })
   const wrapRef = useRef(null)
+  const chimeRef = useRef(null)
   const navigate = useNavigate()
+
+  if (!chimeRef.current) chimeRef.current = makeChime()
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -35,18 +68,31 @@ export default function NotificationBell() {
 
   useEffect(() => { load() }, [load])
 
-  // realtime: new notifications for me
+  // prime audio on first user interaction anywhere (browsers require this)
+  useEffect(() => {
+    const prime = () => { chimeRef.current?.prime() }
+    window.addEventListener('click', prime, { once: true })
+    window.addEventListener('keydown', prime, { once: true })
+    return () => { window.removeEventListener('click', prime); window.removeEventListener('keydown', prime) }
+  }, [])
+
+  // realtime: new notifications for me → add + chime
   useEffect(() => {
     if (!meId) return
     const ch = supabase.channel(`notif:${meId}`)
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${meId}` },
-        (payload) => setItems(prev => prev.some(x => x.id === payload.new.id) ? prev : [payload.new, ...prev]))
+        (payload) => {
+          setItems(prev => {
+            if (prev.some(x => x.id === payload.new.id)) return prev
+            if (!muted) chimeRef.current?.play()
+            return [payload.new, ...prev]
+          })
+        })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [meId])
+  }, [meId, muted])
 
-  // close on outside click
   useEffect(() => {
     function onDoc(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', onDoc)
@@ -54,6 +100,10 @@ export default function NotificationBell() {
   }, [])
 
   const unread = items.filter(n => !n.read_at).length
+
+  function toggleMute() {
+    setMuted(m => { const nv = !m; try { localStorage.setItem('notif_muted', nv ? '1' : '0') } catch (e) {} if (!nv) chimeRef.current?.play(); return nv })
+  }
 
   async function markAllRead() {
     const ids = items.filter(n => !n.read_at).map(n => n.id)
@@ -78,7 +128,11 @@ export default function NotificationBell() {
   }
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative' }}>
+    <div ref={wrapRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 4 }}>
+      <button onClick={toggleMute} aria-label={muted ? 'Unmute notifications' : 'Mute notifications'} title={muted ? 'Unmute' : 'Mute'}
+        style={{ border: 0, background: 'transparent', cursor: 'pointer', padding: 6, fontSize: 15, lineHeight: 1, color: muted ? 'var(--ink-soft)' : 'var(--ink)', opacity: muted ? 0.7 : 1 }}>
+        {muted ? '🔇' : '🔊'}
+      </button>
       <button onClick={() => setOpen(o => !o)} aria-label="Notifications"
         style={{ position: 'relative', border: 0, background: 'transparent', cursor: 'pointer', padding: 6, fontSize: 18, lineHeight: 1, color: 'var(--ink)' }}>
         🔔
