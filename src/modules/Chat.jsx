@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { notifyChatMessage, notifyAckNudge, notifyChannelAdded } from '../lib/notify'
 
 // ============================================================
 // CHAT — Stage 1 + @update acknowledgments + @here
@@ -208,7 +209,12 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
       setMessages(prev => prev.filter(m => m.id !== temp.id)); setText(body)
       return
     }
-    setMessages(prev => prev.filter(m => m.id !== temp.id && m.id !== data.id).concat(data))
+   setMessages(prev => prev.filter(m => m.id !== temp.id && m.id !== data.id).concat(data))
+    notifyChatMessage({
+      channelId, channelName: channel?.name, isDm: channel?.is_dm,
+      actorId: me.id, actorName: me.full_name, isHere, requiresAck: willRequireAck,
+    })
+  }
   }
 
   async function confirmRead(messageId) {
