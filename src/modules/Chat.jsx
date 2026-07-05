@@ -428,6 +428,7 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
   async function nudge(profileId) {
     setNudged(prev => ({ ...prev, [profileId]: 'sending' }))
     const { error } = await supabase.from('ack_nudges').insert({ message_id: messageId, profile_id: profileId, nudged_by: me.id })
+    if (!error) notifyAckNudge({ recipientId: profileId, actorId: me.id, actorName: me.full_name })
     setNudged(prev => ({ ...prev, [profileId]: error ? 'error' : 'sent' }))
   }
   async function nudgeAll() { for (const p of pending) await nudge(p.id) }
