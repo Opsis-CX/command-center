@@ -34,6 +34,8 @@ export default function Chat() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [showDM, setShowDM] = useState(false)
+  const [dmNames, setDmNames] = useState({}) // channelId -> other person's name
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -41,14 +43,33 @@ export default function Chat() {
       const { data: { user } } = await supabase.auth.getUser()
       const [meRes, chRes, profRes] = await Promise.all([
         supabase.from('profiles').select('id, full_name').eq('id', user.id).single(),
-        supabase.from('channels').select('*').eq('is_dm', false).order('name'),
+        supabase.from('channels').select('*').order('name'),
         supabase.from('profiles').select('id, full_name, is_active').eq('is_active', true).order('full_name'),
       ])
       if (chRes.error) throw chRes.error
       setMe(meRes.data)
       setChannels(chRes.data || [])
       setProfiles(profRes.data || [])
-      if (!activeId && (chRes.data || []).length) setActiveId(chRes.data[0].id)
+      const all = chRes.data || []
+      if (!activeId && all.length) setActiveId(all[0].id)
+      // for DMs, find the other member's name
+      const dmChannels = all.filter(c => c.is_dm)
+      if (dmChannels.length) {
+        const { data: mem } = await supabase.from('channel_members')
+          .select('channel_id, profile_id').in('channel_id', dmChannels.map(c => c.id))
+        const otherIds = {}
+        dmChannels.forEach(c => {
+          const others = (mem || []).filter(m => m.channel_id === c.id && m.profile_id !== meRes.data.id)
+          if (others[0]) otherIds[c.id] = others[0].profile_id
+        })
+        const ids = [...new Set(Object.values(otherIds))]
+        if (ids.length) {
+          const { data: profs } = await supabase.from('profiles').select('id, full_name').in('id', ids)
+          const nameById = {}; (profs || []).forEach(p => nameById[p.id] = p.full_name)
+          const map = {}; Object.entries(otherIds).forEach(([cid, pid]) => map[cid] = nameById[pid] || 'Unknown')
+          setDmNames(map)
+        }
+      }
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }, [activeId])
 
@@ -64,28 +85,44 @@ export default function Chat() {
           {isAdmin && <button className="btn btn-ghost" style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => setShowCreate(true)}>+ New</button>}
         </div>
         <div style={{ overflowY: 'auto', flex: 1, padding: 8 }}>
-          {channels.length === 0 && <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{isAdmin ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>}
-          {channels.map(c => (
+          {channels.filter(c => !c.is_dm).length === 0 && <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{isAdmin ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>}
+          {channels.filter(c => !c.is_dm).map(c => (
             <button key={c.id} onClick={() => setActiveId(c.id)}
               style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, background: c.id === activeId ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId ? 'var(--accent)' : 'var(--ink)', padding: '9px 11px', borderRadius: 8, fontSize: 13.5, fontWeight: 500, cursor: 'pointer', marginBottom: 2, fontFamily: 'inherit' }}>
               # {c.name}
+            </button>
+          ))}
+
+          {(channels.some(c => c.is_dm) || isAdmin) && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 11px 6px' }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-soft)' }}>Direct messages</span>
+              {isAdmin && <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button>}
+            </div>
+          )}
+          {channels.filter(c => c.is_dm).map(c => (
+            <button key={c.id} onClick={() => setActiveId(c.id)}
+              style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, background: c.id === activeId ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId ? 'var(--accent)' : 'var(--ink)', padding: '9px 11px', borderRadius: 8, fontSize: 13.5, fontWeight: 500, cursor: 'pointer', marginBottom: 2, fontFamily: 'inherit' }}>
+              {dmNames[c.id] || c.name || 'Direct message'}
             </button>
           ))}
         </div>
       </div>
 
       {activeId
-        ? <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} channel={channels.find(c => c.id === activeId)} profiles={profiles} />
+        ? <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} />
         : <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-soft)' }}>Select a channel</div>}
 
       {showCreate && <CreateChannelModal me={me} profiles={profiles}
         onClose={() => setShowCreate(false)}
         onCreated={(id) => { setShowCreate(false); load(); setActiveId(id) }} />}
+      {showDM && <CreateDMModal me={me} profiles={profiles}
+        onClose={() => setShowDM(false)}
+        onCreated={(id) => { setShowDM(false); load(); setActiveId(id) }} />}
     </div>
   )
 }
 
-function ChannelPane({ channelId, me, isAdmin, channel, profiles }) {
+function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
   const [messages, setMessages] = useState([])
   const [senders, setSenders] = useState({})
   const [acks, setAcks] = useState([])           // all acknowledgments for messages in view
@@ -193,8 +230,9 @@ function ChannelPane({ channelId, me, isAdmin, channel, profiles }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
       <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)' }}>
-        <b style={{ fontSize: 15 }}># {channel?.name}</b>
-        {channel?.description && <div className="page-sub" style={{ fontSize: 12.5 }}>{channel.description}</div>}
+        <b style={{ fontSize: 15 }}>{channel?.is_dm ? (dmName || 'Direct message') : `# ${channel?.name}`}</b>
+        {channel?.description && !channel?.is_dm && <div className="page-sub" style={{ fontSize: 12.5 }}>{channel.description}</div>}
+        {channel?.is_dm && <div className="page-sub" style={{ fontSize: 12 }}>Direct message</div>}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
@@ -430,6 +468,55 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line-soft)' }}>
           <div className="hint" style={{ marginBottom: 10 }}>Nudges appear in-app for now. Push/email arrives with notifications.</div>
           <button className="btn btn-ghost" style={{ width: '100%' }} onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CreateDMModal({ me, profiles, onClose, onCreated }) {
+  // Admin/owner provisions a DM between exactly two people.
+  const [a, setA] = React.useState('')
+  const [b, setB] = React.useState('')
+  const [saving, setSaving] = React.useState(false)
+  const [err, setErr] = React.useState('')
+
+  async function create() {
+    if (!a || !b) { setErr('Pick two people.'); return }
+    if (a === b) { setErr('Pick two different people.'); return }
+    setSaving(true); setErr('')
+    try {
+      const nameA = profiles.find(p => p.id === a)?.full_name?.split(' ')[0] || 'A'
+      const nameB = profiles.find(p => p.id === b)?.full_name?.split(' ')[0] || 'B'
+      const { data: ch, error: ce } = await supabase.from('channels')
+        .insert({ name: `${nameA} / ${nameB}`, is_dm: true, created_by: me.id }).select().single()
+      if (ce) throw ce
+      const { error: me2 } = await supabase.from('channel_members')
+        .insert([{ channel_id: ch.id, profile_id: a }, { channel_id: ch.id, profile_id: b }])
+      if (me2) throw me2
+      onCreated(ch.id)
+    } catch (e) { setErr(e.message); setSaving(false) }
+  }
+
+  return (
+    <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
+      <div className="modal" style={{ width: 420 }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>New direct message</h3>
+        <p className="page-sub" style={{ marginBottom: 18 }}>Set up a private conversation between two people.</p>
+        {err && <div className="login-err" style={{ marginBottom: 14 }}>{err}</div>}
+        <div className="field"><label>Person 1</label>
+          <select value={a} onChange={e => setA(e.target.value)}>
+            <option value="">— Select —</option>
+            {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}{p.id === me.id ? ' (you)' : ''}</option>)}
+          </select></div>
+        <div className="field"><label>Person 2</label>
+          <select value={b} onChange={e => setB(e.target.value)}>
+            <option value="">— Select —</option>
+            {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}{p.id === me.id ? ' (you)' : ''}</option>)}
+          </select></div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={create} disabled={saving}>{saving ? 'Creating…' : 'Create DM'}</button>
         </div>
       </div>
     </div>
