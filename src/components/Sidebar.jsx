@@ -31,9 +31,8 @@ export default function Sidebar({ open }) {
 
   return (
     <aside className={'sidebar' + (open ? ' open' : '')}>
-      <div className="brand">
-        <div className="brand-mark">C</div>
-        <div className="brand-name">Command Center</div>
+   <div className="brand">
+        <img src="/opsis-logo.png" alt="Opsis" style={{ width: '100%', height: 'auto', maxHeight: 64, objectFit: 'contain' }} />
       </div>
 
       {NAV.map(group => {
