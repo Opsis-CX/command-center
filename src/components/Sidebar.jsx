@@ -2,10 +2,10 @@ import { NavLink } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 
 const NAV = [
-  { group: 'Overview', items: [
+ { group: 'Overview', items: [
     { to: '/', label: 'Dashboard', ic: '▦', end: true, roles: ['admin', 'agent'] },
+    { to: '/chat', label: 'Chat', ic: '💬', roles: ['admin', 'agent'] },
   ]},
-  { to: '/chat', label: 'Chat', ic: '💬', roles: ['admin', 'agent'] },
   { group: 'Certifications', items: [
     { to: '/certifications', label: 'Certifications', ic: '✦', roles: ['admin'] },
     { to: '/my-certifications', label: 'My certifications', ic: '✦', roles: ['agent'] },
