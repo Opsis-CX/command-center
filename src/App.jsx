@@ -1,3 +1,4 @@
+import NotificationBell from './components/NotificationBell'
 import { useState } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { useAuth } from './lib/auth'
