@@ -209,12 +209,11 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
       setMessages(prev => prev.filter(m => m.id !== temp.id)); setText(body)
       return
     }
-   setMessages(prev => prev.filter(m => m.id !== temp.id && m.id !== data.id).concat(data))
+    setMessages(prev => prev.filter(m => m.id !== temp.id && m.id !== data.id).concat(data))
     notifyChatMessage({
       channelId, channelName: channel?.name, isDm: channel?.is_dm,
       actorId: me.id, actorName: me.full_name, isHere, requiresAck: willRequireAck,
     })
-  }
   }
 
   async function confirmRead(messageId) {
@@ -501,6 +500,7 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
       const { error: me2 } = await supabase.from('channel_members')
         .insert([{ channel_id: ch.id, profile_id: a }, { channel_id: ch.id, profile_id: b }])
       if (me2) throw me2
+      notifyChannelAdded({ recipientIds: [a, b], actorId: me.id, actorName: me.full_name, channelName: 'Direct message', isDm: true })
       onCreated(ch.id)
     } catch (e) { setErr(e.message); setSaving(false) }
   }
@@ -551,6 +551,7 @@ function CreateChannelModal({ me, profiles, onClose, onCreated }) {
       const rows = [...members].map(pid => ({ channel_id: ch.id, profile_id: pid }))
       const { error: me2 } = await supabase.from('channel_members').insert(rows)
       if (me2) throw me2
+      notifyChannelAdded({ recipientIds: [...members], actorId: me.id, actorName: me.full_name, channelName: nm, isDm: false })
       onCreated(ch.id)
     } catch (e) { setErr(e.message); setSaving(false) }
   }
