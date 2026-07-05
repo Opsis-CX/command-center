@@ -24,9 +24,8 @@ const NAV = [
 ]
 
 export default function Sidebar({ open }) {
-const { isAdmin, user, signOut } = useAuth()
-  const isOwner = user?.app_metadata?.app_level >= 100 ||
-    (user?.app_metadata?.app_roles || []).includes('owner')
+const { isAdmin, level, roles, user, signOut } = useAuth()
+  const isOwner = level >= 100 || (roles || []).includes('owner')
   const viewRole = isAdmin ? 'admin' : 'agent'
   const name = user?.email?.split('@')[0] ?? 'User'
   const initial = (name[0] || 'U').toUpperCase()
