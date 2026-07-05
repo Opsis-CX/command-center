@@ -58,7 +58,7 @@ const { isAdmin, user, signOut } = useAuth()
         <div className="user-av">{initial}</div>
         <div>
           <div className="user-name">{name}</div>
-          <div className="user-role">{isAdmin ? 'Admin' : 'Agent'}</div>
+<div className="user-role">{isOwner ? 'Owner' : isAdmin ? 'Admin' : 'Agent'}</div>
         </div>
       </div>
       <button className="signout" onClick={signOut}>Sign out</button>
