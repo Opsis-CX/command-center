@@ -26,11 +26,14 @@ export default function App() {
     <div className="app">
       <Sidebar open={navOpen} />
       <main className="main">
-        <div className="topbar">
-          <div className="crumb"><b>{titleFor(location.pathname)}</b></div>
-          <button className="btn btn-ghost" onClick={() => setNavOpen(o => !o)}
-            style={{ display: 'none' }} aria-label="Menu">☰</button>
-        </div>
+    <div className="topbar">
+  <div className="crumb"><b>{titleFor(location.pathname)}</b></div>
+  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+    <NotificationBell />
+    <button className="btn btn-ghost" onClick={() => setNavOpen(o => !o)}
+      style={{ display: 'none' }} aria-label="Menu">☰</button>
+  </div>
+</div>
         <div className="content">
           <Routes>
             <Route path="/" element={<Dashboard />} />
