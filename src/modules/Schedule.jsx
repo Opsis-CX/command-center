@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { notifyIntervalReleased } from '../lib/notify'
 
 // ============================================================
 // SCHEDULE — Stage 1
