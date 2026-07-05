@@ -203,7 +203,19 @@ export default function Schedule() {
     })
     const { error } = await supabase.from('shift_claims').delete().eq('shift_block_id', block.id).eq('profile_id', me.id)
     if (error) { flash('Could not release'); return }
-    logActivity(wasLate ? 'released_late' : 'released', block)
+logActivity(wasLate ? 'released_late' : 'released', block)
+    // notify the schedule's audience that an interval opened up
+    try {
+      const { data: aud } = await supabase.from('schedule_audience').select('profile_id').eq('schedule_id', block.schedule_id)
+      const sched = schedules.find(s => s.id === block.schedule_id)
+      const pos = callTypes?.find?.(c => c.id === sched?.call_type_id)?.name
+      notifyIntervalReleased({
+        eligibleIds: (aud || []).map(a => a.profile_id),
+        actorId: me.id, actorName: me.full_name,
+        when: `${formatTime(block.start_time)}–${formatTime(block.end_time)} on ${block.block_date}`,
+        position: pos,
+      })
+    } catch (e) { /* non-blocking */ }
     flash(wasLate ? 'Released (late cancellation)' : 'Interval released'); load()
   }
 
