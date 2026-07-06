@@ -202,7 +202,10 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
                 })}
             </div>
             <RichTextEditor ref={commentRef} profiles={profiles} placeholder="Write a comment… use @ to mention someone" minHeight={60} onEnter={postComment} />
-            <button className="btn btn-primary" style={{ marginTop: 7, fontSize: 12 }} onClick={postComment}>Post comment</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 7 }}>
+              <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={postComment}>Post comment</button>
+              <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>Ctrl/⌘ + Enter to post</span>
+            </div>
           </Section>
         </div>
       </aside>
