@@ -45,7 +45,7 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
     if (field === 'status' && oldValue !== v) {
       if (v === 'done') {
         logActivity('completed', taskId, task.name, task.project_id, proj?.name)
-        if (task.created_by) notifyTaskCompleted({ recipientId: task.created_by, actorId: userId, actorName: me?.full_name, taskName: task.name, projectName: proj?.name })
+        if (task.created_by) notifyTaskCompleted({ recipientId: task.created_by, actorId: userId, actorName: me?.full_name, taskName: task.name, projectName: proj?.name, taskId })
       } else logActivity('status_changed', taskId, task.name, task.project_id, proj?.name, `Moved to ${statusLabel(v)}`)
     }
   }
@@ -60,7 +60,7 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
       setTaskAssignees(prev => [...prev, { task_id: taskId, profile_id: pid }])
       const person = profiles.find(p => p.id === pid)
       logActivity('assigned', taskId, task.name, task.project_id, proj?.name, `Assigned to ${person?.full_name || ''}`)
-      notifyTaskAssigned({ recipientIds: [pid], actorId: userId, actorName: me?.full_name, taskName: task.name, projectName: proj?.name })
+      notifyTaskAssigned({ recipientIds: [pid], actorId: userId, actorName: me?.full_name, taskName: task.name, projectName: proj?.name, taskId })
     }
   }
 
@@ -81,7 +81,7 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
       await supabase.from('task_assignees').insert(toAdd.map(pid => ({ task_id: taskId, profile_id: pid })))
       setTaskAssignees(prev => [...prev, ...toAdd.map(pid => ({ task_id: taskId, profile_id: pid }))])
     }
-    notifyTaskMention({ recipientIds: ids, actorId: userId, actorName: me?.full_name, taskName: task.name, where })
+    notifyTaskMention({ recipientIds: ids, actorId: userId, actorName: me?.full_name, taskName: task.name, where, taskId })
   }
 
   async function postComment() {
