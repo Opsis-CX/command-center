@@ -4,6 +4,7 @@ import { useProjectsData } from './projectsData'
 import { StatusBadge, PriorityBadge, Avatar } from './projectBits'
 import { esc, stripHtml, statusLabel, initials, formatCommentTime, AVATAR_COLORS, STATUSES, PRIORITIES } from './projectHelpers'
 import TimeTracking from './TimeTracking'
+import Attachments from './Attachments'
 
 // ============================================================
 // TASK DETAIL PANEL — slides in from the right.
@@ -168,6 +169,9 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
 
           {/* time tracking */}
           <TimeTracking taskId={taskId} />
+
+          {/* attachments + drive link */}
+          <Attachments taskId={taskId} />
 
           {/* notes */}
           <Section label="Notes">
