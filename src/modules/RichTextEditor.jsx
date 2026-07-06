@@ -72,7 +72,8 @@ const RichTextEditor = forwardRef(function RichTextEditor(
       if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickMention(dropdown.matches[dropdown.index]); return }
       if (e.key === 'Escape') { setDropdown(d => ({ ...d, open: false })); return }
     }
-    if (e.key === 'Enter' && !e.shiftKey && onEnter && !dropdown.open) {
+    // Ctrl/Cmd+Enter sends; plain Enter behaves normally (new line / new bullet)
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && onEnter && !dropdown.open) {
       e.preventDefault(); onEnter()
     }
   }
