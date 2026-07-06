@@ -69,3 +69,36 @@ export async function notifyNoShow({ recipientId, when }) {
     link: '/schedule', actor_id: null, actor_name: null,
   }])
 }
+
+// ─── PROJECTS MODULE ──────────────────────────────────────────────────────────
+// Task events routed to the notification bell (replaces Connecteam).
+
+export async function notifyTaskAssigned({ recipientIds, actorId, actorName, taskName, projectName }) {
+  const ids = (recipientIds || []).filter(id => id && id !== actorId)
+  await insertMany(ids.map(rid => ({
+    recipient_id: rid, type: 'task_assigned',
+    title: `You were assigned a task`,
+    body: `"${taskName}"${projectName ? ' in ' + projectName : ''}${actorName ? ' — by ' + actorName : ''}.`,
+    link: '/projects', actor_id: actorId, actor_name: actorName,
+  })))
+}
+
+export async function notifyTaskCompleted({ recipientId, actorId, actorName, taskName, projectName }) {
+  if (!recipientId || recipientId === actorId) return
+  await insertMany([{
+    recipient_id: recipientId, type: 'task_completed',
+    title: `A task you created was completed`,
+    body: `${actorName || 'Someone'} marked "${taskName}"${projectName ? ' in ' + projectName : ''} as Done.`,
+    link: '/projects', actor_id: actorId, actor_name: actorName,
+  }])
+}
+
+export async function notifyTaskMention({ recipientIds, actorId, actorName, taskName, where }) {
+  const ids = (recipientIds || []).filter(id => id && id !== actorId)
+  await insertMany(ids.map(rid => ({
+    recipient_id: rid, type: 'task_mention',
+    title: `${actorName || 'Someone'} mentioned you`,
+    body: `In ${where || 'a note'} on "${taskName}".`,
+    link: '/projects', actor_id: actorId, actor_name: actorName,
+  })))
+}
