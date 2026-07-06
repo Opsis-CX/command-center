@@ -7,6 +7,7 @@ import ProjectKanban from './ProjectKanban'
 import ProjectGrid from './ProjectGrid'
 import ProjectMyDay from './ProjectMyDay'
 import ProjectActivity from './ProjectActivity'
+import ProjectRecurring from './ProjectRecurring'
 
 // ============================================================
 // PROJECTS MODULE — shell + sub-view navigation
@@ -71,7 +72,7 @@ function ProjectsInner() {
       {view === 'dashboard' && <ProjectDashboard onOpenTask={setOpenTaskId} onEditTask={openEdit} onAddTask={openAdd} />}
       {view === 'kanban' && <ProjectKanban activeProject={kanbanProject} setActiveProject={setKanbanProject} onOpenTask={setOpenTaskId} onAddTask={openAdd} />}
       {view === 'projects' && <ProjectGrid onOpenProject={jumpToProjectKanban} />}
-      {view === 'recurring' && <SubViewStub name="Recurring" />}
+      {view === 'recurring' && <ProjectRecurring />}
       {view === 'activity' && <ProjectActivity />}
       {view === 'people' && <SubViewStub name="People" />}
 
