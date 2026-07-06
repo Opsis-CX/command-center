@@ -73,32 +73,35 @@ export async function notifyNoShow({ recipientId, when }) {
 // ─── PROJECTS MODULE ──────────────────────────────────────────────────────────
 // Task events routed to the notification bell (replaces Connecteam).
 
-export async function notifyTaskAssigned({ recipientIds, actorId, actorName, taskName, projectName }) {
+export async function notifyTaskAssigned({ recipientIds, actorId, actorName, taskName, projectName, taskId }) {
   const ids = (recipientIds || []).filter(id => id && id !== actorId)
+  const link = taskId ? `/projects?task=${taskId}` : '/projects'
   await insertMany(ids.map(rid => ({
     recipient_id: rid, type: 'task_assigned',
     title: `You were assigned a task`,
     body: `"${taskName}"${projectName ? ' in ' + projectName : ''}${actorName ? ' — by ' + actorName : ''}.`,
-    link: '/projects', actor_id: actorId, actor_name: actorName,
+    link, actor_id: actorId, actor_name: actorName,
   })))
 }
 
-export async function notifyTaskCompleted({ recipientId, actorId, actorName, taskName, projectName }) {
+export async function notifyTaskCompleted({ recipientId, actorId, actorName, taskName, projectName, taskId }) {
   if (!recipientId || recipientId === actorId) return
+  const link = taskId ? `/projects?task=${taskId}` : '/projects'
   await insertMany([{
     recipient_id: recipientId, type: 'task_completed',
     title: `A task you created was completed`,
     body: `${actorName || 'Someone'} marked "${taskName}"${projectName ? ' in ' + projectName : ''} as Done.`,
-    link: '/projects', actor_id: actorId, actor_name: actorName,
+    link, actor_id: actorId, actor_name: actorName,
   }])
 }
 
-export async function notifyTaskMention({ recipientIds, actorId, actorName, taskName, where }) {
+export async function notifyTaskMention({ recipientIds, actorId, actorName, taskName, where, taskId }) {
   const ids = (recipientIds || []).filter(id => id && id !== actorId)
+  const link = taskId ? `/projects?task=${taskId}` : '/projects'
   await insertMany(ids.map(rid => ({
     recipient_id: rid, type: 'task_mention',
     title: `${actorName || 'Someone'} mentioned you`,
     body: `In ${where || 'a note'} on "${taskName}".`,
-    link: '/projects', actor_id: actorId, actor_name: actorName,
+    link, actor_id: actorId, actor_name: actorName,
   })))
 }
