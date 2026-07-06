@@ -2,6 +2,7 @@ import React from 'react'
 import { useProjectsData } from './projectsData'
 import { StatusBadge, PriorityBadge, DueLabel } from './projectBits'
 import { dueCls } from './projectHelpers'
+import { exportMyDay } from './projectCsv'
 
 // ============================================================
 // MY DAY sub-view — the current user's assigned, open tasks,
@@ -9,7 +10,7 @@ import { dueCls } from './projectHelpers'
 // ============================================================
 
 export default function ProjectMyDay({ onOpenTask }) {
-  const { me, userId, myVisibleTasks, taskAssignees, projects } = useProjectsData()
+  const { me, userId, myVisibleTasks, taskAssignees, projects, clients, profiles, timeEntries } = useProjectsData()
 
   const firstName = (me?.full_name || '').split(' ')[0]
   const hour = new Date().getHours()
@@ -41,9 +42,14 @@ export default function ProjectMyDay({ onOpenTask }) {
 
   return (
     <div>
-      <div style={{ marginBottom: 22 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600 }}>{firstName ? `${greeting}, ${firstName}` : 'My Day'}</h2>
-        <p className="page-sub" style={{ marginTop: 2 }}>{dateStr}</p>
+      <div style={{ marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h2 style={{ fontSize: 18, fontWeight: 600 }}>{firstName ? `${greeting}, ${firstName}` : 'My Day'}</h2>
+          <p className="page-sub" style={{ marginTop: 2 }}>{dateStr}</p>
+        </div>
+        {open.length > 0 && (
+          <button className="btn btn-ghost" onClick={() => exportMyDay(open, me?.full_name, { projects, clients, profiles, taskAssignees, timeEntries })}>Export CSV</button>
+        )}
       </div>
 
       {myTasks.length === 0 ? (
