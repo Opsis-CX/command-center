@@ -56,6 +56,7 @@ export default function App() {
   {isAdmin && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
             {isAdmin && <Route path="/positions" element={<Positions />} />}
             {isAdmin && <Route path="/insights" element={<ScheduleInsights />} />}
+            {isAdmin && <Route path="/clients" element={<Clients />} />}
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </div>
