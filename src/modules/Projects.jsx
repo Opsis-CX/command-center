@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ProjectsDataProvider, useProjectsData } from './projectsData'
 import ProjectDashboard from './ProjectDashboard'
 import TaskDetail from './TaskDetail'
@@ -35,9 +36,21 @@ export default function Projects() {
 }
 
 function ProjectsInner() {
-  const { loading, error, isAdmin, refresh } = useProjectsData()
+  const { loading, error, isAdmin, refresh, tasks } = useProjectsData()
   const [view, setView] = useState('myday')
   const [openTaskId, setOpenTaskId] = useState(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // deep-link: /projects?task=<id> opens that task's detail panel
+  useEffect(() => {
+    const tid = searchParams.get('task')
+    if (tid && !loading && tasks.some(t => t.id === tid)) {
+      setOpenTaskId(tid)
+      // clear the param so refreshing/closing doesn't re-trigger
+      searchParams.delete('task')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [searchParams, loading, tasks]) // eslint-disable-line
   // modal: null = closed; object = { taskId, defaultStatus, defaultProject }
   const [modal, setModal] = useState(null)
   const [kanbanProject, setKanbanProject] = useState('all')
