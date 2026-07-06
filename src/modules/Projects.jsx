@@ -5,6 +5,8 @@ import TaskDetail from './TaskDetail'
 import TaskModal from './TaskModal'
 import ProjectKanban from './ProjectKanban'
 import ProjectGrid from './ProjectGrid'
+import ProjectMyDay from './ProjectMyDay'
+import ProjectActivity from './ProjectActivity'
 
 // ============================================================
 // PROJECTS MODULE — shell + sub-view navigation
@@ -65,12 +67,12 @@ function ProjectsInner() {
         ))}
       </div>
 
-      {view === 'myday' && <SubViewStub name="My Day" />}
+      {view === 'myday' && <ProjectMyDay onOpenTask={setOpenTaskId} />}
       {view === 'dashboard' && <ProjectDashboard onOpenTask={setOpenTaskId} onEditTask={openEdit} onAddTask={openAdd} />}
       {view === 'kanban' && <ProjectKanban activeProject={kanbanProject} setActiveProject={setKanbanProject} onOpenTask={setOpenTaskId} onAddTask={openAdd} />}
       {view === 'projects' && <ProjectGrid onOpenProject={jumpToProjectKanban} />}
       {view === 'recurring' && <SubViewStub name="Recurring" />}
-      {view === 'activity' && <SubViewStub name="Activity" />}
+      {view === 'activity' && <ProjectActivity />}
       {view === 'people' && <SubViewStub name="People" />}
 
       {openTaskId && <TaskDetail taskId={openTaskId} onClose={() => setOpenTaskId(null)} onEdit={openEdit} />}
