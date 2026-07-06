@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useProjectsData } from './projectsData'
 import { StatusBadge, PriorityBadge, Avatar } from './projectBits'
 import { esc, stripHtml, statusLabel, initials, formatCommentTime, AVATAR_COLORS, STATUSES, PRIORITIES } from './projectHelpers'
 import TimeTracking from './TimeTracking'
 import Attachments from './Attachments'
+import RichTextEditor from './RichTextEditor'
 
 // ============================================================
 // TASK DETAIL PANEL — slides in from the right.
@@ -20,12 +21,12 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
   } = useProjectsData()
 
   const task = tasks.find(t => t.id === taskId)
-  const [notesDraft, setNotesDraft] = useState('')
-  const [commentDraft, setCommentDraft] = useState('')
+  const notesRef = useRef(null)
+  const commentRef = useRef(null)
   const [assigneeEditorOpen, setAssigneeEditorOpen] = useState(false)
 
   useEffect(() => {
-    if (task) setNotesDraft(stripHtml(task.notes) || '')
+    if (task && notesRef.current) notesRef.current.setHtml(task.notes || '')
   }, [taskId]) // eslint-disable-line
 
   if (!task) return null
@@ -60,21 +61,21 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
   }
 
   async function saveNotes() {
-    const html = notesDraft.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
+    const html = notesRef.current?.getHtml() || ''
     await supabase.from('tasks').update({ notes: html }).eq('id', taskId)
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, notes: html } : t))
   }
 
   async function postComment() {
-    const text = commentDraft.trim()
+    const text = commentRef.current?.getText().trim() || ''
     if (!text) return
-    const safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const html = commentRef.current?.getHtml() || ''
     const { data, error } = await supabase.from('task_comments').insert({
-      task_id: taskId, author_id: userId, text: safe,
+      task_id: taskId, author_id: userId, text: html,
     }).select().single()
     if (error) return
     setComments(prev => [...prev, data])
-    setCommentDraft('')
+    commentRef.current?.clear()
     logActivity('commented', taskId, task.name, task.project_id, proj?.name, text.slice(0, 80))
   }
 
@@ -175,8 +176,7 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
 
           {/* notes */}
           <Section label="Notes">
-            <textarea value={notesDraft} onChange={e => setNotesDraft(e.target.value)} placeholder="Add notes, context, links…"
-              style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', minHeight: 90, background: 'var(--bg-soft, #f7f7f5)' }} />
+            <RichTextEditor ref={notesRef} profiles={profiles} placeholder="Add notes, context, links… use @ to mention someone" minHeight={90} />
             <button className="btn btn-ghost" style={{ marginTop: 7, fontSize: 12 }} onClick={saveNotes}>Save notes</button>
           </Section>
 
@@ -201,10 +201,7 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
                   )
                 })}
             </div>
-            <textarea value={commentDraft} onChange={e => setCommentDraft(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); postComment() } }}
-              placeholder="Write a comment…"
-              style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', minHeight: 60, background: 'var(--bg-soft, #f7f7f5)' }} />
+            <RichTextEditor ref={commentRef} profiles={profiles} placeholder="Write a comment… use @ to mention someone" minHeight={60} onEnter={postComment} />
             <button className="btn btn-primary" style={{ marginTop: 7, fontSize: 12 }} onClick={postComment}>Post comment</button>
           </Section>
         </div>
