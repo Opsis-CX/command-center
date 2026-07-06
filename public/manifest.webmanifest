@@ -9,7 +9,7 @@
   "theme_color": "#00E6E6",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "/opsis-logo.png",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
