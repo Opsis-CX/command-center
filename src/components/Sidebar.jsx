@@ -20,6 +20,7 @@ const NAV = [
     { to: '/projects', label: 'Project Management', ic: '❏', roles: ['admin'] },
     { to: '/people', label: 'People & tags', ic: '☺', roles: ['admin'] },
     { to: '/insights', label: 'Schedule insights', ic: '📊', roles: ['admin'] },
+    { to: '/reporting', label: 'Reporting', ic: '📈', roles: ['admin'] },
   ]},
 ]
 export default function Sidebar({ open, onNavigate }) {
