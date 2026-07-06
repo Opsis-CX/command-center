@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { ProjectsDataProvider, useProjectsData } from './projectsData'
+import ProjectDashboard from './ProjectDashboard'
 
 // ============================================================
 // PROJECTS MODULE — shell + sub-view navigation
@@ -54,7 +55,7 @@ function ProjectsInner() {
       </div>
 
       {view === 'myday' && <SubViewStub name="My Day" />}
-      {view === 'dashboard' && <SubViewStub name="Dashboard" />}
+      {view === 'dashboard' && <ProjectDashboard />}
       {view === 'kanban' && <SubViewStub name="Kanban" />}
       {view === 'projects' && <SubViewStub name="Projects" />}
       {view === 'recurring' && <SubViewStub name="Recurring" />}
