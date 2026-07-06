@@ -100,34 +100,71 @@ export default function Reporting() {
 
   const grandTotal = useMemo(() => hoursFromMinutes(entries.reduce((s, e) => s + (e.duration_minutes || 0), 0)), [entries])
 
+  // task name lookup
+  const taskName = useCallback((taskId) => {
+    const t = tasks.find(x => x.id === taskId)
+    return t ? t.name : '(deleted task)'
+  }, [tasks])
+
+  // Build task-level line items for exports: one row per person+task
+  // (client derived from the task), with summed hours.
+  const lineItems = useMemo(() => {
+    // key: personId||taskId -> { personId, taskId, clientKey, minutes }
+    const map = {}
+    for (const e of entries) {
+      const min = e.duration_minutes || 0
+      if (!min) continue
+      const cl = clientOfTask(e.task_id)
+      const clientKey = cl ? cl.id : '__none__'
+      const key = e.user_id + '||' + e.task_id
+      if (!map[key]) map[key] = { personId: e.user_id, taskId: e.task_id, clientKey, minutes: 0 }
+      map[key].minutes += min
+    }
+    return Object.values(map)
+  }, [entries, clientOfTask])
+
   function exportPersonCSV() {
-    const header = ['Person', 'Client', 'Hours']
+    const header = ['Person', 'Client', 'Task', 'Hours']
     const rows = [header]
-    Object.entries(grouped.byPerson)
-      .sort((a, b) => nameOf(a[0], profiles).localeCompare(nameOf(b[0], profiles)))
-      .forEach(([pid, data]) => {
-        Object.entries(data.clients)
-          .sort((a, b) => (grouped.clientLabel[a[0]] || '').localeCompare(grouped.clientLabel[b[0]] || ''))
-          .forEach(([ck, min]) => {
-            rows.push([nameOf(pid, profiles), grouped.clientLabel[ck], hoursFromMinutes(min)])
-          })
-        rows.push([nameOf(pid, profiles), 'TOTAL', hoursFromMinutes(data.total)])
+    // group line items by person, then client, then task
+    const byPerson = {}
+    lineItems.forEach(li => {
+      ;(byPerson[li.personId] = byPerson[li.personId] || []).push(li)
+    })
+    Object.keys(byPerson)
+      .sort((a, b) => nameOf(a, profiles).localeCompare(nameOf(b, profiles)))
+      .forEach(pid => {
+        const items = byPerson[pid].sort((a, b) => {
+          const ca = grouped.clientLabel[a.clientKey] || '', cb = grouped.clientLabel[b.clientKey] || ''
+          return ca.localeCompare(cb) || taskName(a.taskId).localeCompare(taskName(b.taskId))
+        })
+        items.forEach(li => {
+          rows.push([nameOf(pid, profiles), grouped.clientLabel[li.clientKey], taskName(li.taskId), hoursFromMinutes(li.minutes)])
+        })
+        rows.push([nameOf(pid, profiles), 'TOTAL', '', hoursFromMinutes(grouped.byPerson[pid].total)])
       })
     downloadCSV(`payroll-hours-${range.from}_to_${range.to}.csv`, rows)
   }
 
   function exportClientCSV() {
-    const header = ['Client', 'Person', 'Hours']
+    const header = ['Client', 'Person', 'Task', 'Hours']
     const rows = [header]
-    Object.entries(grouped.byClient)
-      .sort((a, b) => (grouped.clientLabel[a[0]] || '').localeCompare(grouped.clientLabel[b[0]] || ''))
-      .forEach(([ck, data]) => {
-        Object.entries(data.people)
-          .sort((a, b) => nameOf(a[0], profiles).localeCompare(nameOf(b[0], profiles)))
-          .forEach(([pid, min]) => {
-            rows.push([grouped.clientLabel[ck], nameOf(pid, profiles), hoursFromMinutes(min)])
-          })
-        rows.push([grouped.clientLabel[ck], 'TOTAL', hoursFromMinutes(data.total)])
+    // group line items by client, then person, then task
+    const byClient = {}
+    lineItems.forEach(li => {
+      ;(byClient[li.clientKey] = byClient[li.clientKey] || []).push(li)
+    })
+    Object.keys(byClient)
+      .sort((a, b) => (grouped.clientLabel[a] || '').localeCompare(grouped.clientLabel[b] || ''))
+      .forEach(ck => {
+        const items = byClient[ck].sort((a, b) => {
+          const pa = nameOf(a.personId, profiles), pb = nameOf(b.personId, profiles)
+          return pa.localeCompare(pb) || taskName(a.taskId).localeCompare(taskName(b.taskId))
+        })
+        items.forEach(li => {
+          rows.push([grouped.clientLabel[ck], nameOf(li.personId, profiles), taskName(li.taskId), hoursFromMinutes(li.minutes)])
+        })
+        rows.push([grouped.clientLabel[ck], 'TOTAL', '', hoursFromMinutes(grouped.byClient[ck].total)])
       })
     downloadCSV(`invoicing-hours-${range.from}_to_${range.to}.csv`, rows)
   }
@@ -191,10 +228,20 @@ export default function Reporting() {
                       {Object.entries(data.clients)
                         .sort((a, b) => (grouped.clientLabel[a[0]] || '').localeCompare(grouped.clientLabel[b[0]] || ''))
                         .map(([ck, min]) => (
-                          <tr key={ck}>
-                            <td style={cellL}>{grouped.clientLabel[ck]}</td>
-                            <td style={cellR}>{hoursFromMinutes(min)} hrs</td>
-                          </tr>
+                          <React.Fragment key={ck}>
+                            <tr>
+                              <td style={{ ...cellL, fontWeight: 600 }}>{grouped.clientLabel[ck]}</td>
+                              <td style={cellR}>{hoursFromMinutes(min)} hrs</td>
+                            </tr>
+                            {lineItems.filter(li => li.personId === pid && li.clientKey === ck)
+                              .sort((a, b) => taskName(a.taskId).localeCompare(taskName(b.taskId)))
+                              .map(li => (
+                                <tr key={li.taskId}>
+                                  <td style={{ ...cellL, paddingLeft: 32, color: 'var(--ink-soft)', fontSize: 12 }}>{taskName(li.taskId)}</td>
+                                  <td style={{ ...cellR, color: 'var(--ink-soft)', fontWeight: 500, fontSize: 12 }}>{hoursFromMinutes(li.minutes)} hrs</td>
+                                </tr>
+                              ))}
+                          </React.Fragment>
                         ))}
                     </tbody>
                   </table>
@@ -214,10 +261,20 @@ export default function Reporting() {
                       {Object.entries(data.people)
                         .sort((a, b) => nameOf(a[0], profiles).localeCompare(nameOf(b[0], profiles)))
                         .map(([pid, min]) => (
-                          <tr key={pid}>
-                            <td style={cellL}>{nameOf(pid, profiles)}</td>
-                            <td style={cellR}>{hoursFromMinutes(min)} hrs</td>
-                          </tr>
+                          <React.Fragment key={pid}>
+                            <tr>
+                              <td style={{ ...cellL, fontWeight: 600 }}>{nameOf(pid, profiles)}</td>
+                              <td style={cellR}>{hoursFromMinutes(min)} hrs</td>
+                            </tr>
+                            {lineItems.filter(li => li.clientKey === ck && li.personId === pid)
+                              .sort((a, b) => taskName(a.taskId).localeCompare(taskName(b.taskId)))
+                              .map(li => (
+                                <tr key={li.taskId}>
+                                  <td style={{ ...cellL, paddingLeft: 32, color: 'var(--ink-soft)', fontSize: 12 }}>{taskName(li.taskId)}</td>
+                                  <td style={{ ...cellR, color: 'var(--ink-soft)', fontWeight: 500, fontSize: 12 }}>{hoursFromMinutes(li.minutes)} hrs</td>
+                                </tr>
+                              ))}
+                          </React.Fragment>
                         ))}
                     </tbody>
                   </table>
