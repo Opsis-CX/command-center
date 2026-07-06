@@ -146,3 +146,21 @@ a{color:inherit;text-decoration:none;}
 .iv.checkedin::after{content:"";position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--passed);}
 .iv.noshow{background:var(--failed-bg);border-color:var(--failed);}
 .iv.noshow .iv-time{color:var(--failed);}
+/* ── Projects rich text editor ── add to your global stylesheet (e.g. index.css) ── */
+
+.pm-rte:empty:before {
+  content: attr(data-placeholder);
+  color: var(--ink-soft);
+}
+.pm-rte ul { margin: 4px 0 4px 20px; padding: 0; }
+.pm-rte ol { margin: 4px 0 4px 20px; padding: 0; }
+.pm-rte li { margin-bottom: 2px; }
+.pm-rte b, .pm-rte strong { font-weight: 700; }
+.pm-rte i, .pm-rte em { font-style: italic; }
+.pm-mention { color: var(--accent); font-weight: 600; }
+
+/* rendered notes/comments (read views) */
+.pm-rich ul { margin: 4px 0 4px 18px; padding: 0; }
+.pm-rich ol { margin: 4px 0 4px 18px; padding: 0; }
+.pm-rich li { margin-bottom: 2px; }
+.pm-rich .pm-mention { color: var(--accent); font-weight: 600; }
