@@ -14,6 +14,7 @@ import ScheduleBuilder from './modules/ScheduleBuilder'
 import Positions from './modules/Positions'
 import ScheduleInsights from './modules/ScheduleInsights'
 import Chat from './modules/Chat'
+import Projects from './modules/Projects'
 
 export default function App() {
   const { session, loading, isAdmin } = useAuth()
@@ -42,7 +43,7 @@ export default function App() {
             {isAdmin && <Route path="/certifications" element={<Certifications />} />}
             {isAdmin && <Route path="/matrix" element={<Placeholder title="Certification matrix" note="The agents × call-types grid mounts here." />} />}
             {isAdmin && <Route path="/courses" element={<CourseBuilder />} />}
-            {isAdmin && <Route path="/projects" element={<Projects />} /> />}
+{isAdmin && <Route path="/projects" element={<Projects />} />}  
             
 {isAdmin && <Route path="/people" element={<PeopleTags />} />}
             {!isAdmin && <Route path="/my-certifications" element={<Placeholder title="My certifications" note="These unlock the schedules you can claim." />} />}
