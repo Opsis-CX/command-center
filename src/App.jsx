@@ -65,7 +65,7 @@ export default function App() {
 function titleFor(path) {
   const map = {
     '/': 'Dashboard', '/certifications': 'Certifications', '/matrix': 'Certification matrix',
-    '/courses': 'Course builder', '/projects': 'Projects', '/clients': 'Clients', '/people': 'People & tags',
+    '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights',
   }
