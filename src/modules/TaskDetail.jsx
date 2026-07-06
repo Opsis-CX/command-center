@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useProjectsData } from './projectsData'
 import { StatusBadge, PriorityBadge, Avatar } from './projectBits'
 import { esc, stripHtml, statusLabel, initials, formatCommentTime, AVATAR_COLORS, STATUSES, PRIORITIES } from './projectHelpers'
+import TimeTracking from './TimeTracking'
 
 // ============================================================
 // TASK DETAIL PANEL — slides in from the right.
@@ -164,6 +165,9 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
               </div>
             )}
           </Section>
+
+          {/* time tracking */}
+          <TimeTracking taskId={taskId} />
 
           {/* notes */}
           <Section label="Notes">
