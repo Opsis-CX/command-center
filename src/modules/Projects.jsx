@@ -24,7 +24,6 @@ const SUBVIEWS = [
   { key: 'projects', label: 'Projects' },
   { key: 'recurring', label: 'Recurring' },
   { key: 'activity', label: 'Activity' },
-  { key: 'people', label: 'People', adminOnly: true },
 ]
 
 export default function Projects() {
@@ -74,7 +73,6 @@ function ProjectsInner() {
       {view === 'projects' && <ProjectGrid onOpenProject={jumpToProjectKanban} />}
       {view === 'recurring' && <ProjectRecurring />}
       {view === 'activity' && <ProjectActivity />}
-      {view === 'people' && <SubViewStub name="People" />}
 
       {openTaskId && <TaskDetail taskId={openTaskId} onClose={() => setOpenTaskId(null)} onEdit={openEdit} />}
       {modal && (
