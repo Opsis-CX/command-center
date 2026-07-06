@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useProjectsData } from './projectsData'
 import { StatusSelect, PriorityBadge, DueLabel, AvatarStack } from './projectBits'
@@ -20,6 +20,17 @@ export default function ProjectDashboard({ onOpenTask, onEditTask, onAddTask }) 
   const [client, setClient] = useState('')
   const [collapsed, setCollapsed] = useState({})
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false)
+  const statusRef = useRef(null)
+
+  // close the status dropdown when clicking anywhere outside it
+  useEffect(() => {
+    if (!statusDropdownOpen) return
+    function onDoc(e) {
+      if (statusRef.current && !statusRef.current.contains(e.target)) setStatusDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [statusDropdownOpen])
 
   const visible = myVisibleTasks()
 
@@ -88,7 +99,7 @@ export default function ProjectDashboard({ onOpenTask, onEditTask, onAddTask }) 
           style={{ minWidth: 180, padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} />
 
         {/* status multi-filter */}
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative' }} ref={statusRef}>
           <button onClick={() => setStatusDropdownOpen(o => !o)}
             style={{ padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, background: 'var(--surface)', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
             {statusFilter.length === 0 ? 'All statuses' : statusFilter.length === 1 ? statusLabel(statusFilter[0]) : `${statusFilter.length} statuses`} ▾
