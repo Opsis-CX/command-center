@@ -15,6 +15,7 @@ import Positions from './modules/Positions'
 import ScheduleInsights from './modules/ScheduleInsights'
 import Chat from './modules/Chat'
 import Projects from './modules/Projects'
+import Clients from './modules/Clients'
 
 export default function App() {
   const { session, loading, isAdmin } = useAuth()
