@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { ProjectsDataProvider, useProjectsData } from './projectsData'
 import ProjectDashboard from './ProjectDashboard'
+import TaskDetail from './TaskDetail'
 
 // ============================================================
 // PROJECTS MODULE — shell + sub-view navigation
@@ -31,6 +32,7 @@ export default function Projects() {
 function ProjectsInner() {
   const { loading, error, isAdmin } = useProjectsData()
   const [view, setView] = useState('myday')
+  const [openTaskId, setOpenTaskId] = useState(null)
 
   if (loading) return <p className="page-sub">Loading projects…</p>
   if (error) return <p className="page-sub" style={{ color: 'var(--failed)' }}>Couldn't load projects: {error}</p>
@@ -55,12 +57,14 @@ function ProjectsInner() {
       </div>
 
       {view === 'myday' && <SubViewStub name="My Day" />}
-      {view === 'dashboard' && <ProjectDashboard />}
+      {view === 'dashboard' && <ProjectDashboard onOpenTask={setOpenTaskId} />}
       {view === 'kanban' && <SubViewStub name="Kanban" />}
       {view === 'projects' && <SubViewStub name="Projects" />}
       {view === 'recurring' && <SubViewStub name="Recurring" />}
       {view === 'activity' && <SubViewStub name="Activity" />}
       {view === 'people' && <SubViewStub name="People" />}
+
+      {openTaskId && <TaskDetail taskId={openTaskId} onClose={() => setOpenTaskId(null)} />}
     </div>
   )
 }
