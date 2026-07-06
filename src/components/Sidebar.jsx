@@ -17,6 +17,7 @@ const NAV = [
     { to: '/schedule', label: 'Schedule', ic: '◷', roles: ['admin', 'agent'] },
 { to: '/schedule-builder', label: 'Schedule builder', ic: '🛠', roles: ['admin'] },
     { to: '/positions', label: 'Positions', ic: '🏷', roles: ['admin'] },
+   { to: '/clients', label: 'Clients', ic: '🏢', roles: ['admin'] },
     { to: '/projects', label: 'Projects', ic: '❏', roles: ['admin'] },
     { to: '/people', label: 'People & tags', ic: '☺', roles: ['admin'] },
     { to: '/insights', label: 'Schedule insights', ic: '📊', roles: ['admin'] },
