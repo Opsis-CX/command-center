@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useProjectsData } from './projectsData'
 import { StatusSelect, PriorityBadge, DueLabel, AvatarStack } from './projectBits'
 import { esc, stripHtml, statusLabel, STATUSES } from './projectHelpers'
+import { exportTasks } from './projectCsv'
 
 // ============================================================
 // DASHBOARD sub-view — stat cards, filters, grouped/table task lists.
@@ -11,7 +12,7 @@ import { esc, stripHtml, statusLabel, STATUSES } from './projectHelpers'
 // ============================================================
 
 export default function ProjectDashboard({ onOpenTask, onEditTask, onAddTask }) {
-  const { myVisibleTasks, projects, clients, profiles, taskAssignees, tasks, setTasks, logActivity, refresh } = useProjectsData()
+  const { myVisibleTasks, projects, clients, profiles, taskAssignees, tasks, setTasks, timeEntries, logActivity, refresh } = useProjectsData()
   const [mode, setMode] = useState('grouped')            // 'grouped' | 'table'
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState([])    // empty = all
@@ -135,6 +136,8 @@ export default function ProjectDashboard({ onOpenTask, onEditTask, onAddTask }) 
         {onAddTask && (
           <button onClick={() => onAddTask()} className="btn btn-primary" style={{ marginLeft: 'auto' }}>+ Add task</button>
         )}
+        <button onClick={() => exportTasks(filtered, { projects, clients, profiles, taskAssignees, timeEntries })}
+          className="btn btn-ghost" style={{ marginLeft: onAddTask ? 0 : 'auto' }}>Export CSV</button>
       </div>
 
       {/* body */}
