@@ -6,7 +6,7 @@ import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 import Certifications from './modules/Certifications'
 import Dashboard from './modules/Dashboard'
-  import { Placeholder } from './modules/Placeholders'
+import { Placeholder } from './modules/Placeholders'
 import PeopleTags from './modules/PeopleTags'
 import CourseBuilder from './modules/CourseBuilder'
 import Schedule from './modules/Schedule'
@@ -21,42 +21,39 @@ export default function App() {
   const { session, loading, isAdmin } = useAuth()
   const [navOpen, setNavOpen] = useState(false)
   const location = useLocation()
-
   if (loading) return <div className="loading-screen">Loading…</div>
   if (!session) return <Login />
-
   return (
     <div className="app">
-      <Sidebar open={navOpen} />
+      <Sidebar open={navOpen} onNavigate={() => setNavOpen(false)} />
+      {/* tap-to-close backdrop, only visible on mobile when the nav is open */}
+      {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
       <main className="main">
-    <div className="topbar">
-  <div className="crumb"><b>{titleFor(location.pathname)}</b></div>
-  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-    <NotificationBell />
-    <button className="btn btn-ghost" onClick={() => setNavOpen(o => !o)}
-      style={{ display: 'none' }} aria-label="Menu">☰</button>
-  </div>
-</div>
+        <div className="topbar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button className="nav-toggle" onClick={() => setNavOpen(o => !o)} aria-label="Menu">☰</button>
+            <div className="crumb"><b>{titleFor(location.pathname)}</b></div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <NotificationBell />
+          </div>
+        </div>
         <div className="content">
           <Routes>
             <Route path="/" element={<Dashboard />} />
-
             {isAdmin && <Route path="/certifications" element={<Certifications />} />}
             {isAdmin && <Route path="/matrix" element={<Placeholder title="Certification matrix" note="The agents × call-types grid mounts here." />} />}
             {isAdmin && <Route path="/courses" element={<CourseBuilder />} />}
-{isAdmin && <Route path="/projects" element={<Projects />} />}  
-            
-{isAdmin && <Route path="/people" element={<PeopleTags />} />}
+            {isAdmin && <Route path="/projects" element={<Projects />} />}
+            {isAdmin && <Route path="/clients" element={<Clients />} />}
+            {isAdmin && <Route path="/people" element={<PeopleTags />} />}
             {!isAdmin && <Route path="/my-certifications" element={<Placeholder title="My certifications" note="These unlock the schedules you can claim." />} />}
             {!isAdmin && <Route path="/my-courses" element={<Placeholder title="My courses" note="Work through lessons, then take the quiz." />} />}
-
-<Route path="/schedule" element={<Schedule />} />
             <Route path="/schedule" element={<Schedule />} />
-<Route path="/chat" element={<Chat />} />
-  {isAdmin && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
+            <Route path="/chat" element={<Chat />} />
+            {isAdmin && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
             {isAdmin && <Route path="/positions" element={<Positions />} />}
             {isAdmin && <Route path="/insights" element={<ScheduleInsights />} />}
-            {isAdmin && <Route path="/clients" element={<Clients />} />}
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </div>
@@ -68,8 +65,9 @@ export default function App() {
 function titleFor(path) {
   const map = {
     '/': 'Dashboard', '/certifications': 'Certifications', '/matrix': 'Certification matrix',
-    '/courses': 'Course builder', '/projects': 'Projects', '/people': 'People & tags',
+    '/courses': 'Course builder', '/projects': 'Projects', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
+    '/chat': 'Chat', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights',
   }
   return map[path] || 'Command Center'
 }
