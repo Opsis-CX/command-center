@@ -104,3 +104,21 @@ export const PRIORITY_COLORS = {
 export const DUE_COLORS = {
   ok: '#16A34A', soon: '#D97706', overdue: '#DC2626', none: '#A09D96',
 }
+
+// Extract @mentioned profiles from HTML (mention spans) or plain text.
+// Returns array of profile ids that match names found after '@'.
+export function extractMentionedIds(htmlOrText, profiles) {
+  if (!htmlOrText) return []
+  const text = stripHtml(htmlOrText)
+  const matches = text.match(/@([A-Za-z]+(?:\s[A-Za-z]+)?)/g) || []
+  const names = matches.map(m => m.slice(1).trim().toLowerCase())
+  const ids = []
+  for (const name of names) {
+    const p = profiles.find(x => {
+      const full = x.full_name.toLowerCase()
+      return full === name || full.startsWith(name) || full.split(' ')[0] === name
+    })
+    if (p && !ids.includes(p.id)) ids.push(p.id)
+  }
+  return ids
+}
