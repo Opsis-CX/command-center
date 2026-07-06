@@ -16,6 +16,7 @@ import ScheduleInsights from './modules/ScheduleInsights'
 import Chat from './modules/Chat'
 import Projects from './modules/Projects'
 import Clients from './modules/Clients'
+import Reporting from './modules/Reporting'
 
 export default function App() {
   const { session, loading, isAdmin } = useAuth()
@@ -46,6 +47,7 @@ export default function App() {
             {isAdmin && <Route path="/courses" element={<CourseBuilder />} />}
             {isAdmin && <Route path="/projects" element={<Projects />} />}
             {isAdmin && <Route path="/clients" element={<Clients />} />}
+            {isAdmin && <Route path="/reporting" element={<Reporting />} />}
             {isAdmin && <Route path="/people" element={<PeopleTags />} />}
             {!isAdmin && <Route path="/my-certifications" element={<Placeholder title="My certifications" note="These unlock the schedules you can claim." />} />}
             {!isAdmin && <Route path="/my-courses" element={<Placeholder title="My courses" note="Work through lessons, then take the quiz." />} />}
@@ -67,7 +69,7 @@ function titleFor(path) {
     '/': 'Dashboard', '/certifications': 'Certifications', '/matrix': 'Certification matrix',
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
-    '/chat': 'Chat', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights',
+    '/chat': 'Chat', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting',
   }
   return map[path] || 'Command Center'
 }
