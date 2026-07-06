@@ -35,6 +35,7 @@ export default function ScheduleBuilder() {
   const [editSchedule, setEditSchedule] = useState(null) // schedule obj or {} for new
   const [editBlock, setEditBlock] = useState(null)         // {scheduleId, block?}
   const [importFor, setImportFor] = useState(null)         // scheduleId
+  const [copyFor, setCopyFor] = useState(null)             // schedule obj for copy modal
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -115,6 +116,7 @@ export default function ScheduleBuilder() {
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button className="btn btn-ghost" onClick={() => setEditBlock({ scheduleId: s.id })}>+ Add interval</button>
                 <button className="btn btn-ghost" onClick={() => setImportFor(s.id)}>Import CSV</button>
+                <button className="btn btn-ghost" onClick={() => setCopyFor(s)}>Copy</button>
                 <button className="btn btn-ghost" onClick={() => setEditSchedule(s)}>Edit</button>
                 <button className="btn btn-ghost" style={{ color: 'var(--failed)' }} onClick={() => deleteSchedule(s)}>Delete</button>
               </div>
@@ -144,6 +146,8 @@ export default function ScheduleBuilder() {
         onClose={() => setEditBlock(null)} onSaved={() => { setEditBlock(null); load(); flash('Interval saved') }} />}
       {importFor && <ImportModal scheduleId={importFor}
         onClose={() => setImportFor(null)} onDone={(n) => { setImportFor(null); load(); flash(`Imported ${n} interval${n !== 1 ? 's' : ''}`) }} />}
+      {copyFor && <CopyModal schedule={copyFor} schedules={schedules} blocks={blocks}
+        onClose={() => setCopyFor(null)} onDone={(msg) => { setCopyFor(null); load(); flash(msg) }} />}
     </div>
   )
 }
@@ -409,6 +413,164 @@ function ImportModal({ scheduleId, onClose, onDone }) {
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={doImport} disabled={saving || !rows.length}>{saving ? 'Importing…' : `Import ${rows.length || ''} interval${rows.length !== 1 ? 's' : ''}`}</button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------- COPY DAY / COPY WEEK ----------
+function fmtDate(iso) {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+function addDaysISO(iso, days) {
+  const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+function CopyModal({ schedule, schedules, blocks, onClose, onDone }) {
+  const [mode, setMode] = useState('day') // 'day' | 'week'
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const myBlocks = blocks.filter(b => b.schedule_id === schedule.id)
+
+  // distinct source days present in this schedule
+  const days = [...new Set(myBlocks.map(b => b.block_date))].sort()
+
+  // ---- Copy Day state ----
+  const [srcDay, setSrcDay] = useState(days[0] || '')
+  const [tgtDay, setTgtDay] = useState('')
+  const [dayReplace, setDayReplace] = useState(false)
+
+  // ---- Copy Week state ----
+  // target: another schedule to receive the copied week (defaults to same schedule)
+  const [tgtScheduleId, setTgtScheduleId] = useState(schedule.id)
+  const [weekOffset, setWeekOffset] = useState(1) // shift dates by N weeks
+  const [weekReplace, setWeekReplace] = useState(false)
+
+  const srcDayBlocks = myBlocks.filter(b => b.block_date === srcDay)
+
+  async function copyDay() {
+    setErr('')
+    if (!srcDay || !tgtDay) { setErr('Pick both a source day and a target day.'); return }
+    if (srcDay === tgtDay) { setErr('Source and target days are the same.'); return }
+    setSaving(true)
+    try {
+      // optionally clear existing blocks on target day first
+      if (dayReplace) {
+        const existing = myBlocks.filter(b => b.block_date === tgtDay).map(b => b.id)
+        if (existing.length) await supabase.from('shift_blocks').delete().in('id', existing)
+      }
+      const payload = srcDayBlocks.map(b => ({
+        schedule_id: schedule.id, block_date: tgtDay,
+        start_time: b.start_time, end_time: b.end_time,
+        role: b.role, total_spots: b.total_spots, notes: b.notes,
+      }))
+      if (!payload.length) { setErr('That day has no intervals to copy.'); setSaving(false); return }
+      const { error } = await supabase.from('shift_blocks').insert(payload)
+      if (error) throw error
+      onDone(`Copied ${payload.length} interval${payload.length !== 1 ? 's' : ''} to ${fmtDate(tgtDay)}`)
+    } catch (e) { setErr(e.message); setSaving(false) }
+  }
+
+  async function copyWeek() {
+    setErr('')
+    const shiftDays = weekOffset * 7
+    if (!shiftDays) { setErr('Choose how many weeks forward to copy.'); return }
+    setSaving(true)
+    try {
+      const tgt = schedules.find(s => s.id === tgtScheduleId) || schedule
+      // new dates = source dates shifted by N weeks
+      const payload = myBlocks.map(b => ({
+        schedule_id: tgt.id, block_date: addDaysISO(b.block_date, shiftDays),
+        start_time: b.start_time, end_time: b.end_time,
+        role: b.role, total_spots: b.total_spots, notes: b.notes,
+      }))
+      if (!payload.length) { setErr('This schedule has no intervals to copy.'); setSaving(false); return }
+      // optionally clear the target schedule's blocks in the destination date range first
+      if (weekReplace) {
+        const newDates = [...new Set(payload.map(p => p.block_date))]
+        const existing = blocks.filter(b => b.schedule_id === tgt.id && newDates.includes(b.block_date)).map(b => b.id)
+        if (existing.length) await supabase.from('shift_blocks').delete().in('id', existing)
+      }
+      const { error } = await supabase.from('shift_blocks').insert(payload)
+      if (error) throw error
+      const label = tgt.id === schedule.id ? `${weekOffset} week${weekOffset !== 1 ? 's' : ''} forward` : `"${tgt.title}"`
+      onDone(`Copied ${payload.length} interval${payload.length !== 1 ? 's' : ''} to ${label}`)
+    } catch (e) { setErr(e.message); setSaving(false) }
+  }
+
+  return (
+    <div className="modal-back open" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 700 }}>Copy intervals</h3>
+        <div className="page-sub" style={{ marginBottom: 14 }}>From <b>{schedule.title}</b>. Copies time slots only — claims are never copied, so everything lands open.</div>
+
+        <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+          <button className="btn" style={{ flex: 1, borderRadius: 0, background: mode === 'day' ? 'var(--accent)' : 'var(--surface)', color: mode === 'day' ? '#fff' : 'var(--ink-soft)' }} onClick={() => setMode('day')}>Copy a day</button>
+          <button className="btn" style={{ flex: 1, borderRadius: 0, background: mode === 'week' ? 'var(--accent)' : 'var(--surface)', color: mode === 'week' ? '#fff' : 'var(--ink-soft)' }} onClick={() => setMode('week')}>Copy the week</button>
+        </div>
+
+        {err && <div className="login-err" style={{ marginBottom: 12 }}>{err}</div>}
+
+        {mode === 'day' ? (
+          <>
+            {days.length === 0 ? <div className="page-sub">This schedule has no intervals yet.</div> : (
+              <>
+                <div className="field">
+                  <label>Copy from (source day)</label>
+                  <select value={srcDay} onChange={e => setSrcDay(e.target.value)}>
+                    {days.map(d => <option key={d} value={d}>{fmtDate(d)} — {myBlocks.filter(b => b.block_date === d).length} interval(s)</option>)}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Copy to (target day)</label>
+                  <input type="date" value={tgtDay} onChange={e => setTgtDay(e.target.value)} />
+                  <div className="hint">The {srcDayBlocks.length} interval(s) from the source day will be added to this date, open for claiming.</div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 8, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={dayReplace} onChange={e => setDayReplace(e.target.checked)} />
+                  Replace any existing intervals on the target day first
+                </label>
+                <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                  <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
+                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={copyDay} disabled={saving}>{saving ? 'Copying…' : 'Copy day'}</button>
+                </div>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            {myBlocks.length === 0 ? <div className="page-sub">This schedule has no intervals yet.</div> : (
+              <>
+                <div className="field">
+                  <label>Copy this schedule\u2019s {myBlocks.length} interval(s) into</label>
+                  <select value={tgtScheduleId} onChange={e => setTgtScheduleId(e.target.value)}>
+                    <option value={schedule.id}>Same schedule (shift dates forward)</option>
+                    {schedules.filter(s => s.id !== schedule.id).map(s => (
+                      <option key={s.id} value={s.id}>{s.title} — week of {fmtDate(s.week_start_date)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Shift dates forward by</label>
+                  <select value={weekOffset} onChange={e => setWeekOffset(Number(e.target.value))}>
+                    {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n} week{n !== 1 ? 's' : ''}</option>)}
+                  </select>
+                  <div className="hint">Each interval\u2019s date moves forward this many weeks (same weekday). Claims are not copied.</div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 8, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={weekReplace} onChange={e => setWeekReplace(e.target.checked)} />
+                  Replace existing intervals on those target dates first
+                </label>
+                <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                  <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
+                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={copyWeek} disabled={saving}>{saving ? 'Copying…' : 'Copy week'}</button>
+                </div>
+              </>
+            )}
+          </>
+        )}
       </div>
     </div>
   )
