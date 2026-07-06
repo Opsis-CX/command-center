@@ -19,8 +19,7 @@ export default function Login() {
     <div className="login-wrap">
       <div className="login-card">
 <div className="login-brand" style={{ justifyContent: 'center', marginBottom: 8 }}>
-          <img src="/opsis-logo.png" alt="Opsis" style={{ maxWidth: 220, width: '100%', height: 'auto', objectFit: 'contain' }} />
-        </div>
+<img src="/opsis-command-center.png" alt="Opsis Command Center" style={{ maxWidth: 280, width: '100%', height: 'auto', objectFit: 'contain' }} />        </div>
         {err && <div className="login-err">{err}</div>}
         <form onSubmit={submit}>
           <div className="field">
