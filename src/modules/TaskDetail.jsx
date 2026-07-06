@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useProjectsData } from './projectsData'
 import { StatusBadge, PriorityBadge, Avatar } from './projectBits'
-import { esc, stripHtml, statusLabel, initials, formatCommentTime, AVATAR_COLORS, STATUSES, PRIORITIES } from './projectHelpers'
+import { esc, stripHtml, statusLabel, initials, formatCommentTime, AVATAR_COLORS, STATUSES, PRIORITIES, extractMentionedIds } from './projectHelpers'
+import { notifyTaskAssigned, notifyTaskCompleted, notifyTaskMention } from '../lib/notify'
 import TimeTracking from './TimeTracking'
 import Attachments from './Attachments'
 import RichTextEditor from './RichTextEditor'
@@ -16,7 +17,7 @@ import RichTextEditor from './RichTextEditor'
 
 export default function TaskDetail({ taskId, onClose, onEdit }) {
   const {
-    tasks, projects, clients, profiles, taskAssignees, comments, userId,
+    tasks, projects, clients, profiles, taskAssignees, comments, userId, me,
     setTasks, setTaskAssignees, setComments, logActivity, refresh,
   } = useProjectsData()
 
@@ -42,8 +43,10 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
     if (error) return
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, [field]: v } : t))
     if (field === 'status' && oldValue !== v) {
-      if (v === 'done') logActivity('completed', taskId, task.name, task.project_id, proj?.name)
-      else logActivity('status_changed', taskId, task.name, task.project_id, proj?.name, `Moved to ${statusLabel(v)}`)
+      if (v === 'done') {
+        logActivity('completed', taskId, task.name, task.project_id, proj?.name)
+        if (task.created_by) notifyTaskCompleted({ recipientId: task.created_by, actorId: userId, actorName: me?.full_name, taskName: task.name, projectName: proj?.name })
+      } else logActivity('status_changed', taskId, task.name, task.project_id, proj?.name, `Moved to ${statusLabel(v)}`)
     }
   }
 
@@ -57,6 +60,7 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
       setTaskAssignees(prev => [...prev, { task_id: taskId, profile_id: pid }])
       const person = profiles.find(p => p.id === pid)
       logActivity('assigned', taskId, task.name, task.project_id, proj?.name, `Assigned to ${person?.full_name || ''}`)
+      notifyTaskAssigned({ recipientIds: [pid], actorId: userId, actorName: me?.full_name, taskName: task.name, projectName: proj?.name })
     }
   }
 
@@ -64,6 +68,20 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
     const html = notesRef.current?.getHtml() || ''
     await supabase.from('tasks').update({ notes: html }).eq('id', taskId)
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, notes: html } : t))
+    await handleMentions(html, 'notes')
+  }
+
+  // notify mentioned people + auto-add them as collaborators
+  async function handleMentions(html, where) {
+    const ids = extractMentionedIds(html, profiles).filter(id => id !== userId)
+    if (!ids.length) return
+    const already = taskAssignees.filter(a => a.task_id === taskId).map(a => a.profile_id)
+    const toAdd = ids.filter(id => !already.includes(id))
+    if (toAdd.length) {
+      await supabase.from('task_assignees').insert(toAdd.map(pid => ({ task_id: taskId, profile_id: pid })))
+      setTaskAssignees(prev => [...prev, ...toAdd.map(pid => ({ task_id: taskId, profile_id: pid }))])
+    }
+    notifyTaskMention({ recipientIds: ids, actorId: userId, actorName: me?.full_name, taskName: task.name, where })
   }
 
   async function postComment() {
@@ -77,6 +95,7 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
     setComments(prev => [...prev, data])
     commentRef.current?.clear()
     logActivity('commented', taskId, task.name, task.project_id, proj?.name, text.slice(0, 80))
+    await handleMentions(html, 'a comment')
   }
 
   async function deleteComment(id) {
