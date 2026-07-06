@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { ProjectsDataProvider, useProjectsData } from './projectsData'
 import ProjectDashboard from './ProjectDashboard'
 import TaskDetail from './TaskDetail'
+import TaskModal from './TaskModal'
 
 // ============================================================
 // PROJECTS MODULE — shell + sub-view navigation
@@ -30,14 +31,18 @@ export default function Projects() {
 }
 
 function ProjectsInner() {
-  const { loading, error, isAdmin } = useProjectsData()
+  const { loading, error, isAdmin, refresh } = useProjectsData()
   const [view, setView] = useState('myday')
   const [openTaskId, setOpenTaskId] = useState(null)
+  // modal: null = closed; object = { taskId, defaultStatus, defaultProject }
+  const [modal, setModal] = useState(null)
 
   if (loading) return <p className="page-sub">Loading projects…</p>
   if (error) return <p className="page-sub" style={{ color: 'var(--failed)' }}>Couldn't load projects: {error}</p>
 
   const tabs = SUBVIEWS.filter(v => !v.adminOnly || isAdmin)
+  const openAdd = (defaultStatus, defaultProject) => setModal({ taskId: null, defaultStatus, defaultProject })
+  const openEdit = (id) => { setOpenTaskId(null); setModal({ taskId: id }) }
 
   return (
     <div>
@@ -57,14 +62,22 @@ function ProjectsInner() {
       </div>
 
       {view === 'myday' && <SubViewStub name="My Day" />}
-      {view === 'dashboard' && <ProjectDashboard onOpenTask={setOpenTaskId} />}
+      {view === 'dashboard' && <ProjectDashboard onOpenTask={setOpenTaskId} onEditTask={openEdit} onAddTask={openAdd} />}
       {view === 'kanban' && <SubViewStub name="Kanban" />}
       {view === 'projects' && <SubViewStub name="Projects" />}
       {view === 'recurring' && <SubViewStub name="Recurring" />}
       {view === 'activity' && <SubViewStub name="Activity" />}
       {view === 'people' && <SubViewStub name="People" />}
 
-      {openTaskId && <TaskDetail taskId={openTaskId} onClose={() => setOpenTaskId(null)} />}
+      {openTaskId && <TaskDetail taskId={openTaskId} onClose={() => setOpenTaskId(null)} onEdit={openEdit} />}
+      {modal && (
+        <TaskModal
+          taskId={modal.taskId}
+          defaultStatus={modal.defaultStatus}
+          defaultProject={modal.defaultProject}
+          onClose={() => setModal(null)}
+        />
+      )}
     </div>
   )
 }
