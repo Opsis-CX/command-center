@@ -1,6 +1,7 @@
 import React from 'react'
 import { useProjectsData } from './projectsData'
 import { AvatarStack } from './projectBits'
+import { exportProject } from './projectCsv'
 
 // ============================================================
 // PROJECTS GRID sub-view — cards with progress bars + members.
@@ -9,7 +10,7 @@ import { AvatarStack } from './projectBits'
 // ============================================================
 
 export default function ProjectGrid({ onOpenProject, onNewProject, onEditProject }) {
-  const { myVisibleProjects, tasks, projectMembers, profiles } = useProjectsData()
+  const { myVisibleProjects, tasks, projectMembers, profiles, clients, taskAssignees, timeEntries } = useProjectsData()
   const myProjects = myVisibleProjects()
   const now = new Date(); now.setHours(0, 0, 0, 0)
 
@@ -44,6 +45,8 @@ export default function ProjectGrid({ onOpenProject, onNewProject, onEditProject
                 <button onClick={e => { e.stopPropagation(); onEditProject(p.id) }} title="Edit"
                   style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, flexShrink: 0 }}>✎</button>
               )}
+              <button onClick={e => { e.stopPropagation(); exportProject(p, tasks, { clients, profiles, taskAssignees, timeEntries }) }} title="Export CSV"
+                style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, flexShrink: 0 }}>⬇</button>
             </div>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>
