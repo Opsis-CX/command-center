@@ -18,13 +18,19 @@ export default function ProjectGrid({ onOpenProject, onNewProject, onEditProject
     return (
       <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
         <h3 style={{ fontSize: 14, marginBottom: 4 }}>No projects yet</h3>
-        <p style={{ fontSize: 13 }}>Projects you can see will appear here.</p>
+        <p style={{ fontSize: 13, marginBottom: 16 }}>Create your first project to start organizing tasks.</p>
+        {onNewProject && <button className="btn btn-primary" onClick={() => onNewProject()}>+ New Project</button>}
       </div>
     )
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>{myProjects.length} project{myProjects.length !== 1 ? 's' : ''}</div>
+        {onNewProject && <button className="btn btn-primary" onClick={() => onNewProject()}>+ New Project</button>}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
       {myProjects.map(p => {
         const pt = tasks.filter(t => t.project_id === p.id)
         const done = pt.filter(t => t.status === 'done').length
@@ -75,6 +81,7 @@ export default function ProjectGrid({ onOpenProject, onNewProject, onEditProject
           + New project
         </button>
       )}
+      </div>
     </div>
   )
 }
