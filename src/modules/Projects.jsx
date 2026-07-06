@@ -6,6 +6,7 @@ import TaskDetail from './TaskDetail'
 import TaskModal from './TaskModal'
 import ProjectKanban from './ProjectKanban'
 import ProjectGrid from './ProjectGrid'
+import ProjectModal from './ProjectModal'
 import ProjectMyDay from './ProjectMyDay'
 import ProjectActivity from './ProjectActivity'
 import ProjectRecurring from './ProjectRecurring'
@@ -54,6 +55,8 @@ function ProjectsInner() {
   // modal: null = closed; object = { taskId, defaultStatus, defaultProject }
   const [modal, setModal] = useState(null)
   const [kanbanProject, setKanbanProject] = useState('all')
+  // project modal: undefined = closed, null = new, id = edit
+  const [projectModal, setProjectModal] = useState(undefined)
 
   if (loading) return <p className="page-sub">Loading projects…</p>
   if (error) return <p className="page-sub" style={{ color: 'var(--failed)' }}>Couldn't load projects: {error}</p>
@@ -83,7 +86,7 @@ function ProjectsInner() {
       {view === 'myday' && <ProjectMyDay onOpenTask={setOpenTaskId} />}
       {view === 'dashboard' && <ProjectDashboard onOpenTask={setOpenTaskId} onEditTask={openEdit} onAddTask={openAdd} />}
       {view === 'kanban' && <ProjectKanban activeProject={kanbanProject} setActiveProject={setKanbanProject} onOpenTask={setOpenTaskId} onAddTask={openAdd} />}
-      {view === 'projects' && <ProjectGrid onOpenProject={jumpToProjectKanban} />}
+      {view === 'projects' && <ProjectGrid onOpenProject={jumpToProjectKanban} onNewProject={() => setProjectModal(null)} onEditProject={(id) => setProjectModal(id)} />}
       {view === 'recurring' && <ProjectRecurring />}
       {view === 'activity' && <ProjectActivity />}
 
@@ -95,6 +98,9 @@ function ProjectsInner() {
           defaultProject={modal.defaultProject}
           onClose={() => setModal(null)}
         />
+      )}
+      {projectModal !== undefined && (
+        <ProjectModal projectId={projectModal} onClose={() => setProjectModal(undefined)} />
       )}
     </div>
   )
