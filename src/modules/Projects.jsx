@@ -3,6 +3,8 @@ import { ProjectsDataProvider, useProjectsData } from './projectsData'
 import ProjectDashboard from './ProjectDashboard'
 import TaskDetail from './TaskDetail'
 import TaskModal from './TaskModal'
+import ProjectKanban from './ProjectKanban'
+import ProjectGrid from './ProjectGrid'
 
 // ============================================================
 // PROJECTS MODULE — shell + sub-view navigation
@@ -36,6 +38,7 @@ function ProjectsInner() {
   const [openTaskId, setOpenTaskId] = useState(null)
   // modal: null = closed; object = { taskId, defaultStatus, defaultProject }
   const [modal, setModal] = useState(null)
+  const [kanbanProject, setKanbanProject] = useState('all')
 
   if (loading) return <p className="page-sub">Loading projects…</p>
   if (error) return <p className="page-sub" style={{ color: 'var(--failed)' }}>Couldn't load projects: {error}</p>
@@ -43,6 +46,7 @@ function ProjectsInner() {
   const tabs = SUBVIEWS.filter(v => !v.adminOnly || isAdmin)
   const openAdd = (defaultStatus, defaultProject) => setModal({ taskId: null, defaultStatus, defaultProject })
   const openEdit = (id) => { setOpenTaskId(null); setModal({ taskId: id }) }
+  const jumpToProjectKanban = (projectId) => { setKanbanProject(projectId); setView('kanban') }
 
   return (
     <div>
@@ -63,8 +67,8 @@ function ProjectsInner() {
 
       {view === 'myday' && <SubViewStub name="My Day" />}
       {view === 'dashboard' && <ProjectDashboard onOpenTask={setOpenTaskId} onEditTask={openEdit} onAddTask={openAdd} />}
-      {view === 'kanban' && <SubViewStub name="Kanban" />}
-      {view === 'projects' && <SubViewStub name="Projects" />}
+      {view === 'kanban' && <ProjectKanban activeProject={kanbanProject} setActiveProject={setKanbanProject} onOpenTask={setOpenTaskId} onAddTask={openAdd} />}
+      {view === 'projects' && <ProjectGrid onOpenProject={jumpToProjectKanban} />}
       {view === 'recurring' && <SubViewStub name="Recurring" />}
       {view === 'activity' && <SubViewStub name="Activity" />}
       {view === 'people' && <SubViewStub name="People" />}
