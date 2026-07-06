@@ -1,6 +1,5 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-
 const NAV = [
  { group: 'Overview', items: [
     { to: '/', label: 'Dashboard', ic: '▦', end: true, roles: ['admin', 'agent'] },
@@ -15,28 +14,25 @@ const NAV = [
   ]},
   { group: 'Operations', items: [
     { to: '/schedule', label: 'Schedule', ic: '◷', roles: ['admin', 'agent'] },
-{ to: '/schedule-builder', label: 'Schedule builder', ic: '🛠', roles: ['admin'] },
+    { to: '/schedule-builder', label: 'Schedule builder', ic: '🛠', roles: ['admin'] },
     { to: '/positions', label: 'Positions', ic: '🏷', roles: ['admin'] },
-   { to: '/clients', label: 'Clients', ic: '🏢', roles: ['admin'] },
+    { to: '/clients', label: 'Clients', ic: '🏢', roles: ['admin'] },
     { to: '/projects', label: 'Projects', ic: '❏', roles: ['admin'] },
     { to: '/people', label: 'People & tags', ic: '☺', roles: ['admin'] },
     { to: '/insights', label: 'Schedule insights', ic: '📊', roles: ['admin'] },
   ]},
 ]
-
-export default function Sidebar({ open }) {
-const { isAdmin, level, roles, user, signOut } = useAuth()
+export default function Sidebar({ open, onNavigate }) {
+  const { isAdmin, level, roles, user, signOut } = useAuth()
   const isOwner = level >= 100 || (roles || []).includes('owner')
   const viewRole = isAdmin ? 'admin' : 'agent'
   const name = user?.email?.split('@')[0] ?? 'User'
   const initial = (name[0] || 'U').toUpperCase()
-
   return (
     <aside className={'sidebar' + (open ? ' open' : '')}>
-   <div className="brand">
+      <div className="brand">
         <img src="/opsis-logo.png" alt="Opsis" style={{ width: '100%', height: 'auto', maxHeight: 64, objectFit: 'contain' }} />
       </div>
-
       {NAV.map(group => {
         const items = group.items.filter(it => it.roles.includes(viewRole))
         if (!items.length) return null
@@ -45,6 +41,7 @@ const { isAdmin, level, roles, user, signOut } = useAuth()
             <div className="nav-label">{group.group}</div>
             {items.map(it => (
               <NavLink key={it.to} to={it.to} end={it.end}
+                onClick={() => onNavigate && onNavigate()}
                 className={({ isActive }) => 'nav-item' + (isActive ? ' on' : '')}>
                 <span className="ic">{it.ic}</span> {it.label}
               </NavLink>
@@ -52,13 +49,12 @@ const { isAdmin, level, roles, user, signOut } = useAuth()
           </div>
         )
       })}
-
       <div className="nav-spacer" />
       <div className="user-chip">
         <div className="user-av">{initial}</div>
         <div>
           <div className="user-name">{name}</div>
-<div className="user-role">{isOwner ? 'Owner' : isAdmin ? 'Admin' : 'Agent'}</div>
+          <div className="user-role">{isOwner ? 'Owner' : isAdmin ? 'Admin' : 'Agent'}</div>
         </div>
       </div>
       <button className="signout" onClick={signOut}>Sign out</button>
