@@ -63,6 +63,21 @@ async function uploadResume(file) {
   return path
 }
 
+// Shared styles + Section defined at MODULE level (not inside the component),
+// so React doesn't re-create them on every keystroke — that re-creation was
+// what stole focus and limited typing to one character at a time.
+const labelStyle = { display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 5 }
+const inputStyle = { width: '100%', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface)' }
+const reqMark = <span style={{ color: '#DC2626' }}> *</span>
+function Section({ title, children }) {
+  return (
+    <div style={{ marginBottom: 26 }}>
+      <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, paddingBottom: 6, borderBottom: '1px solid var(--line)' }}>{title}</h2>
+      <div style={{ display: 'grid', gap: 16 }}>{children}</div>
+    </div>
+  )
+}
+
 export default function ApplicationForm() {
   const [f, setF] = useState({
     full_name: '', email: '', phone: '', city: '', state: '',
@@ -167,18 +182,11 @@ export default function ApplicationForm() {
     )
   }
 
-  const label = { display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 5 }
-  const input = { width: '100%', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface)' }
-  const req = <span style={{ color: '#DC2626' }}> *</span>
-  const Section = ({ title, children }) => (
-    <div style={{ marginBottom: 26 }}>
-      <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, paddingBottom: 6, borderBottom: '1px solid var(--line)' }}>{title}</h2>
-      <div style={{ display: 'grid', gap: 16 }}>{children}</div>
-    </div>
-  )
-
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 20px 80px' }}>
+      <div style={{ textAlign: 'center', marginBottom: 24 }}>
+        <img src="/opsis-logo.png" alt="Opsis" style={{ maxHeight: 56, width: 'auto', objectFit: 'contain' }} />
+      </div>
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ fontSize: 26, fontWeight: 800, marginBottom: 6 }}>Join the Opsis team</h1>
         <p style={{ fontSize: 14.5, color: 'var(--ink-soft)', lineHeight: 1.6 }}>
@@ -189,13 +197,13 @@ export default function ApplicationForm() {
       {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '10px 14px', fontSize: 13.5, marginBottom: 20 }}>{err}</div>}
 
       <Section title="About you">
-        <div><label style={label}>Full name{req}</label><input style={input} value={f.full_name} onChange={set('full_name')} placeholder="First and last name" /></div>
-        <div><label style={label}>Email address{req}</label><input style={input} type="email" value={f.email} onChange={set('email')} placeholder="you@example.com" /></div>
-        <div><label style={label}>Phone number</label><input style={input} value={f.phone} onChange={set('phone')} placeholder="(555) 555-5555" /></div>
+        <div><label style={labelStyle}>Full name{reqMark}</label><input style={inputStyle} value={f.full_name} onChange={set('full_name')} placeholder="First and last name" /></div>
+        <div><label style={labelStyle}>Email address{reqMark}</label><input style={inputStyle} type="email" value={f.email} onChange={set('email')} placeholder="you@example.com" /></div>
+        <div><label style={labelStyle}>Phone number</label><input style={inputStyle} value={f.phone} onChange={set('phone')} placeholder="(555) 555-5555" /></div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div><label style={label}>City</label><input style={input} value={f.city} onChange={set('city')} placeholder="City" /></div>
-          <div><label style={label}>State of residence{req}</label>
-            <select style={input} value={f.state} onChange={set('state')}>
+          <div><label style={labelStyle}>City</label><input style={inputStyle} value={f.city} onChange={set('city')} placeholder="City" /></div>
+          <div><label style={labelStyle}>State of residence{reqMark}</label>
+            <select style={inputStyle} value={f.state} onChange={set('state')}>
               <option value="">Select your state…</option>
               {US_STATES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
             </select>
@@ -204,24 +212,24 @@ export default function ApplicationForm() {
       </Section>
 
       <Section title="Eligibility & role">
-        <div><label style={label}>Are you legally authorized to work in the United States?{req}</label>
-          <select style={input} value={f.work_authorized} onChange={set('work_authorized')}>
+        <div><label style={labelStyle}>Are you legally authorized to work in the United States?{reqMark}</label>
+          <select style={inputStyle} value={f.work_authorized} onChange={set('work_authorized')}>
             <option value="">Select…</option><option value="yes">Yes</option><option value="no">No</option>
           </select>
         </div>
-        <div><label style={label}>Which role are you applying for?{req}</label>
-          <select style={input} value={f.role_applying} onChange={set('role_applying')}>
+        <div><label style={labelStyle}>Which role are you applying for?{reqMark}</label>
+          <select style={inputStyle} value={f.role_applying} onChange={set('role_applying')}>
             <option value="">Select a role…</option>
             {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
-        <div><label style={label}>Open to being considered for other roles if a better fit comes up?</label>
-          <select style={input} value={f.open_to_other_roles} onChange={set('open_to_other_roles')}>
+        <div><label style={labelStyle}>Open to being considered for other roles if a better fit comes up?</label>
+          <select style={inputStyle} value={f.open_to_other_roles} onChange={set('open_to_other_roles')}>
             <option value="">Select…</option><option value="yes">Yes</option><option value="no">No</option>
           </select>
         </div>
-        <div><label style={label}>Employment type preference</label>
-          <select style={input} value={f.employment_type} onChange={set('employment_type')}>
+        <div><label style={labelStyle}>Employment type preference</label>
+          <select style={inputStyle} value={f.employment_type} onChange={set('employment_type')}>
             <option value="">Select…</option>
             {EMPLOYMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
@@ -229,44 +237,44 @@ export default function ApplicationForm() {
       </Section>
 
       <Section title="Experience">
-        <div><label style={label}>How many years of relevant work experience do you have?</label>
-          <select style={input} value={f.years_experience} onChange={set('years_experience')}>
+        <div><label style={labelStyle}>How many years of relevant work experience do you have?</label>
+          <select style={inputStyle} value={f.years_experience} onChange={set('years_experience')}>
             <option value="">Select…</option>
             {['Less than 1 year', '1–2 years', '3–5 years', '5–10 years', '10+ years'].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
-        <div><label style={label}>Tools and platforms you've used in previous roles</label>
+        <div><label style={labelStyle}>Tools and platforms you've used in previous roles</label>
           <textarea style={{ ...input, minHeight: 70, resize: 'vertical' }} value={f.tools_platforms} onChange={set('tools_platforms')} placeholder="CRMs, dialers, help desks, etc." /></div>
-        <div><label style={label}>How do you stay organized managing multiple tasks or deadlines?</label>
+        <div><label style={labelStyle}>How do you stay organized managing multiple tasks or deadlines?</label>
           <textarea style={{ ...input, minHeight: 70, resize: 'vertical' }} value={f.organization_answer} onChange={set('organization_answer')} /></div>
-        <div><label style={label}>This is a fully remote role. How do you stay productive and communicate well remotely?</label>
+        <div><label style={labelStyle}>This is a fully remote role. How do you stay productive and communicate well remotely?</label>
           <textarea style={{ ...input, minHeight: 70, resize: 'vertical' }} value={f.remote_answer} onChange={set('remote_answer')} /></div>
-        <div><label style={label}>Tell us about a time you solved a problem or improved a process at work.</label>
+        <div><label style={labelStyle}>Tell us about a time you solved a problem or improved a process at work.</label>
           <textarea style={{ ...input, minHeight: 70, resize: 'vertical' }} value={f.problem_answer} onChange={set('problem_answer')} /></div>
       </Section>
 
       <Section title="Availability & logistics">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div><label style={label}>When could you start?</label><input style={input} value={f.available_start} onChange={set('available_start')} placeholder="e.g. Immediately, or a date" /></div>
-          <div><label style={label}>What time zone are you in?</label><input style={input} value={f.time_zone} onChange={set('time_zone')} placeholder="e.g. Eastern (ET)" /></div>
+          <div><label style={labelStyle}>When could you start?</label><input style={inputStyle} value={f.available_start} onChange={set('available_start')} placeholder="e.g. Immediately, or a date" /></div>
+          <div><label style={labelStyle}>What time zone are you in?</label><input style={inputStyle} value={f.time_zone} onChange={set('time_zone')} placeholder="e.g. Eastern (ET)" /></div>
         </div>
-        <div><label style={label}>Your typical working hours</label><input style={input} value={f.working_hours} onChange={set('working_hours')} placeholder="e.g. 9am–5pm weekdays" /></div>
-        <div><label style={label}>Compensation expectations</label><input style={input} value={f.compensation} onChange={set('compensation')} placeholder="Hourly or per-project" /></div>
+        <div><label style={labelStyle}>Your typical working hours</label><input style={inputStyle} value={f.working_hours} onChange={set('working_hours')} placeholder="e.g. 9am–5pm weekdays" /></div>
+        <div><label style={labelStyle}>Compensation expectations</label><input style={inputStyle} value={f.compensation} onChange={set('compensation')} placeholder="Hourly or per-project" /></div>
       </Section>
 
       <Section title="Wrap-up">
         <div>
-          <label style={label}>Upload your resume</label>
+          <label style={labelStyle}>Upload your resume</label>
           <input ref={resumeRef} type="file" accept=".pdf,.doc,.docx" onChange={e => setResume(e.target.files?.[0] || null)}
             style={{ ...input, padding: '8px 11px' }} />
           <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>PDF or Word, up to 15MB.</div>
         </div>
-        <div><label style={label}>LinkedIn profile</label><input style={input} value={f.linkedin_url} onChange={set('linkedin_url')} placeholder="linkedin.com/in/you" /></div>
-        <div><label style={label}>Why are you interested in working with Opsis?</label>
+        <div><label style={labelStyle}>LinkedIn profile</label><input style={inputStyle} value={f.linkedin_url} onChange={set('linkedin_url')} placeholder="linkedin.com/in/you" /></div>
+        <div><label style={labelStyle}>Why are you interested in working with Opsis?</label>
           <textarea style={{ ...input, minHeight: 80, resize: 'vertical' }} value={f.why_opsis} onChange={set('why_opsis')} /></div>
         <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, fontSize: 13.5, lineHeight: 1.5, cursor: 'pointer' }}>
           <input type="checkbox" checked={f.info_confirmed} onChange={e => setF(prev => ({ ...prev, info_confirmed: e.target.checked }))} style={{ marginTop: 3 }} />
-          <span>I confirm the information in this application is accurate to the best of my knowledge.{req}</span>
+          <span>I confirm the information in this application is accurate to the best of my knowledge.{reqMark}</span>
         </label>
       </Section>
 
