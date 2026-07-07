@@ -776,8 +776,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
               onPasteFiles={(files) => addFiles(files)}
               placeholder={requireAck ? 'Write your update… (@name to mention)' : `Message #${channel?.name || ''}  (@name, @here, or paste/attach a file)`}
               accent={requireAck ? 'var(--accent)' : 'var(--line)'}
-              minHeight={isMobile ? 42 : 76} maxHeight={200} toolbarCollapsible={isMobile} />
-          </div>
+              minHeight={isMobile ? 42 : 76} maxHeight={200} toolbarCollapsible={isMobile} profiles={profiles} />          </div>
           {/* Mobile: attach + emoji + send in a tidy row BELOW the input */}
           {isMobile ? (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
@@ -805,11 +804,18 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 // strikethrough, bullet + numbered lists). Enter sends; Shift+Enter = newline.
 // Exposes formatted HTML via onChange. Supports paste (files bubble up via onPaste).
 // On mobile the toolbar is collapsed behind an "Aa" toggle to save space.
-function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, minHeight = 76, maxHeight = 200, accent, toolbarCollapsible = false }) {
+function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, minHeight = 76, maxHeight = 200, accent, toolbarCollapsible = false, profiles = [] }) {
   const ref = useRef(null)
   const savedRange = useRef(null)   // remembers where the cursor was
   const [empty, setEmpty] = useState(true)
   const [toolbarOpen, setToolbarOpen] = useState(!toolbarCollapsible)
+  // @mention autocomplete state
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionHi, setMentionHi] = useState(0)
+  const mentionMatches = mentionOpen
+    ? profiles.filter(p => p.full_name?.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 6)
+    : []
   // Save the current caret/selection, but only if it's inside our editor.
   function saveSelection() {
     const sel = window.getSelection()
@@ -835,6 +841,45 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
     }
   }
   function exec(cmd) { document.execCommand(cmd, false, null); ref.current?.focus(); handleInput() }
+  // Read the plain text between the caret and the start of its text node, and
+  // detect a trailing "@word" so we can offer mention suggestions.
+  function detectMention() {
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0) { setMentionOpen(false); return }
+    const range = sel.getRangeAt(0)
+    if (!ref.current || !ref.current.contains(range.startContainer)) { setMentionOpen(false); return }
+    const node = range.startContainer
+    const textBefore = (node.textContent || '').slice(0, range.startOffset)
+    const m = textBefore.match(/(?:^|\s)@([\w]*)$/)
+    if (m) { setMentionOpen(true); setMentionQuery(m[1]); setMentionHi(0) }
+    else { setMentionOpen(false); setMentionQuery('') }
+  }
+  // Replace the active "@query" immediately left of the caret with "@Full Name ".
+  function pickMention(p) {
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0) return
+    const range = sel.getRangeAt(0)
+    const node = range.startContainer
+    if (node.nodeType !== Node.TEXT_NODE) { setMentionOpen(false); return }
+    const offset = range.startOffset
+    const text = node.textContent || ''
+    const before = text.slice(0, offset)
+    const after = text.slice(offset)
+    const m = before.match(/@([\w]*)$/)
+    if (!m) { setMentionOpen(false); return }
+    const start = before.length - m[0].length
+    const replacement = '@' + p.full_name + ' '
+    node.textContent = before.slice(0, start) + replacement + after
+    // move caret to just after the inserted name
+    const newRange = document.createRange()
+    const caretPos = start + replacement.length
+    newRange.setStart(node, Math.min(caretPos, node.textContent.length))
+    newRange.collapse(true)
+    sel.removeAllRanges(); sel.addRange(newRange)
+    savedRange.current = newRange.cloneRange()
+    setMentionOpen(false); setMentionQuery('')
+    handleInput()
+  }
   function handleInput() {
     const html = ref.current?.innerHTML || ''
     const text = ref.current?.innerText || ''
@@ -842,6 +887,13 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
     onInput?.(html, text)
   }
   function handleKey(e) {
+    // when the mention popup is open, arrows/enter/tab drive it
+    if (mentionOpen && mentionMatches.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setMentionHi(h => (h + 1) % mentionMatches.length); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setMentionHi(h => (h - 1 + mentionMatches.length) % mentionMatches.length); return }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickMention(mentionMatches[mentionHi]); return }
+      if (e.key === 'Escape') { e.preventDefault(); setMentionOpen(false); return }
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEnter?.() }
   }
   function handlePaste(e) {
@@ -878,6 +930,17 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
         </div>
       )}
       <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start' }}>
+        {mentionOpen && mentionMatches.length > 0 && (
+          <div style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 6, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.12)', zIndex: 60, width: 240, overflow: 'hidden' }}>
+            {mentionMatches.map((p, i) => (
+              <button key={p.id} type="button" onMouseDown={(ev) => { ev.preventDefault(); pickMention(p) }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', border: 0, cursor: 'pointer', padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', background: i === mentionHi ? 'var(--accent-bg)' : 'transparent', color: 'var(--ink)' }}>
+                <span style={{ width: 22, height: 22, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 700 }}>{initials(p.full_name)}</span>
+                {p.full_name}
+              </button>
+            ))}
+          </div>
+        )}
         {toolbarCollapsible && (
           <button type="button" title={toolbarOpen ? 'Hide formatting' : 'Formatting'}
             onMouseDown={e => { e.preventDefault(); setToolbarOpen(o => !o) }}
@@ -885,8 +948,8 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
         )}
         {empty && <div style={{ position: 'absolute', top: 10, left: toolbarCollapsible ? 40 : 12, right: 12, color: 'var(--ink-soft)', fontSize: 14, pointerEvents: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{placeholder}</div>}
         <div ref={ref} contentEditable suppressContentEditableWarning
-          onInput={() => { saveSelection(); handleInput() }} onKeyDown={handleKey} onPaste={handlePaste}
-          onKeyUp={saveSelection} onMouseUp={saveSelection} onBlur={saveSelection}
+          onInput={() => { saveSelection(); detectMention(); handleInput() }} onKeyDown={handleKey} onPaste={handlePaste}
+          onKeyUp={() => { saveSelection(); detectMention() }} onMouseUp={saveSelection} onBlur={saveSelection}
           style={{ outline: 'none', fontSize: 14, lineHeight: 1.5, padding: '10px 12px', minHeight, maxHeight, overflowY: 'auto', flex: 1 }} />
       </div>
     </div>
@@ -1019,7 +1082,10 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
   const [parent, setParent] = React.useState(null)
   const [replies, setReplies] = React.useState([])
   const [names, setNames] = React.useState(senders || {})
-  const [text, setText] = React.useState('')
+  const replyComposerRef = React.useRef(null)   // controls the reply RichComposer
+  const replyHtmlRef = React.useRef('')          // latest HTML from the reply composer
+  const [replyHasText, setReplyHasText] = React.useState(false)
+  const [showReplyPicker, setShowReplyPicker] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const endRef = React.useRef(null)
   const { typerNames, notifyTyping, stopTyping } = useTyping(`typing:thread:${parentId}`, me.id, me.full_name)
@@ -1050,15 +1116,19 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
   }, [parentId])
   React.useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [replies])
   async function sendReply() {
-    const body = text.trim(); if (!body) return
-    setText(''); stopTyping()
+    const html = replyHtmlRef.current || ''
+    const plain = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
+    const body = html.trim()
+    if (!plain) return
+    replyComposerRef.current?.clear(); replyHtmlRef.current = ''
+    setReplyHasText(false); stopTyping()
     const temp = { id: 'temp-' + Date.now(), channel_id: channelId, sender_id: me.id, body, parent_id: parentId, created_at: new Date().toISOString(), _optimistic: true }
     setReplies(prev => [...prev, temp])
     const { data, error } = await supabase.from('messages').insert({ channel_id: channelId, sender_id: me.id, body, parent_id: parentId }).select().single()
-    if (error) { setReplies(prev => prev.filter(m => m.id !== temp.id)); setText(body); return }
+    if (error) { setReplies(prev => prev.filter(m => m.id !== temp.id)); return }
     setReplies(prev => prev.filter(m => m.id !== temp.id && m.id !== data.id).concat(data))
-    // mentions in thread replies
-    const mentionedIds = extractMentions(body, profiles).filter(id => id !== me.id)
+    // mentions in thread replies (detected from the plain text)
+    const mentionedIds = extractMentions(plain, profiles).filter(id => id !== me.id)
     if (mentionedIds.length) {
       const addedIds = mentionedIds.filter(id => !members.includes(id))
       if (addedIds.length && !channel?.is_dm) {
@@ -1102,11 +1172,25 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
         )}
       </div>
       <TypingLine names={typerNames} />
-      <div style={{ borderTop: '1px solid var(--line)', padding: 12, display: 'flex', gap: 8, flex: 'none' }}>
-        <MentionTextarea value={text} onChange={(v) => { setText(v); notifyTyping() }} onEnter={sendReply} profiles={profiles}
-          placeholder="Reply… (@name to mention)"
-          style={{ resize: 'none', padding: '9px 11px', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', outline: 'none', maxHeight: 100 }} />
-        <button className="btn btn-primary" onClick={sendReply} disabled={!text.trim()}>Reply</button>
+      <div style={{ borderTop: '1px solid var(--line)', padding: 12, flex: 'none' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', position: 'relative' }}>
+          {showReplyPicker && (
+            <div style={{ position: 'absolute', bottom: 48, left: 0, zIndex: 50 }}>
+              <EmojiPicker onEmojiClick={(e) => { replyComposerRef.current?.insertText(e.emoji); setShowReplyPicker(false) }}
+                width={300} height={360} previewConfig={{ showPreview: false }} />
+            </div>
+          )}
+          <button type="button" onClick={() => setShowReplyPicker(p => !p)} title="Emoji"
+            style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, padding: '0 9px', flex: 'none', alignSelf: 'stretch' }}>😀</button>
+          <div style={{ flex: 1 }}>
+            <RichComposer valueRef={replyComposerRef}
+              onInput={(html, text) => { replyHtmlRef.current = html; setReplyHasText((text || '').trim().length > 0); notifyTyping() }}
+              onEnter={sendReply}
+              placeholder="Reply… (@name to mention)"
+              accent="var(--line)" minHeight={44} maxHeight={140} toolbarCollapsible={true} profiles={profiles} />
+          </div>
+          <button className="btn btn-primary" style={{ flex: 'none' }} onClick={sendReply} disabled={!replyHasText}>Reply</button>
+        </div>
       </div>
     </div>
   )
@@ -1114,9 +1198,12 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
 // Render @here / @update mentions with a highlight
 function renderBody(body) {
   let html = String(body || '')
-  // If it looks like plain text (no tags), escape angle brackets and keep newlines.
-  const looksHtml = /<\/?[a-z][\s\S]*>/i.test(html)
-  if (!looksHtml) {
+  // Messages from the rich composer are ALREADY html-escaped (e.g. "->" is
+  // stored as "-&gt;") and may contain tags like <br>, <b>, <div>, <ul>.
+  // Older plain-text messages are raw. We only escape the raw ones — escaping
+  // already-escaped content is what produced the "-&gt;" display bug.
+  const alreadyProcessed = /<(br|b|i|s|strong|em|div|p|ul|ol|li|span)\b|&(amp|lt|gt|nbsp|#\d+);/i.test(html)
+  if (!alreadyProcessed) {
     html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
   }
   // Highlight @here / @update
