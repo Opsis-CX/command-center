@@ -46,8 +46,10 @@ const MAX_RESUME_BYTES = 15 * 1024 * 1024 // 15MB
 // --- STUB: replace with a real email send (Edge Function) later ---
 async function sendHiringEmail(kind, to, data) {
   // kind: 'out_of_area' | 'auto_denied' | 'received'
-  console.log(`[stub] would email "${kind}" to ${to}`, data)
-  // TODO: call supabase.functions.invoke('send-hiring-email', { body: {...} })
+  try {
+    const { error } = await supabase.functions.invoke('send-hiring-email', { body: { kind, to, data } })
+    if (error) console.error('email send failed:', error)
+  } catch (e) { console.error('email send failed:', e) }
 }
 
 async function uploadResume(file) {
