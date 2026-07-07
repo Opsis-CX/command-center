@@ -1,14 +1,13 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { notifyChatMessage, notifyAckNudge, notifyChannelAdded } from '../lib/notify'
+import { notifyChatMessage, notifyAckNudge, notifyChannelAdded, notifyChatMention } from '../lib/notify'
 import EmojiPicker from 'emoji-picker-react'
 // ============================================================
 // CHAT — Stage 1 + @update acknowledgments + @here
 // Admins can post @update messages that require confirmation.
 // Everyone sees a Confirm button; admins track who has/hasn't
 // and can nudge non-confirmers.
-// + Channel info (member roster), mute, archive DMs, dedup DMs
 // ============================================================
 function initials(name) {
   const p = (name || '?').trim().split(/\s+/); return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase() || '?'
@@ -25,6 +24,86 @@ function timeLabel(iso) {
     ? d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
+// ---- @mention helpers ----
+// Extract profile ids for names mentioned as "@Full Name" in body.
+function extractMentions(body, profiles) {
+  const found = []
+  for (const p of profiles) {
+    if (!p.full_name) continue
+    // match @Full Name (word-boundary, case-insensitive)
+    const re = new RegExp('@' + p.full_name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=\\s|$|[^\\w])', 'i')
+    if (re.test(body)) found.push(p.id)
+  }
+  return found
+}
+
+// A textarea with @mention autocomplete. Shows ALL provided people.
+function MentionTextarea({ value, onChange, onEnter, profiles, placeholder, rows = 1, style, accent }) {
+  const ref = useRef(null)
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [anchor, setAnchor] = useState(0)  // index of the '@'
+  const [hi, setHi] = useState(0)
+
+  const matches = open
+    ? profiles.filter(p => p.full_name?.toLowerCase().includes(query.toLowerCase())).slice(0, 6)
+    : []
+
+  function handleChange(e) {
+    const val = e.target.value
+    onChange(val)
+    // detect an active @token immediately left of the caret
+    const caret = e.target.selectionStart
+    const upto = val.slice(0, caret)
+    const m = upto.match(/@([\w]*)$/)
+    if (m) {
+      setOpen(true); setQuery(m[1]); setAnchor(caret - m[1].length - 1); setHi(0)
+    } else {
+      setOpen(false); setQuery('')
+    }
+  }
+
+  function pick(p) {
+    // replace "@query" (from anchor to caret) with "@Full Name "
+    const caret = ref.current.selectionStart
+    const before = value.slice(0, anchor)
+    const after = value.slice(caret)
+    const next = before + '@' + p.full_name + ' ' + after
+    onChange(next)
+    setOpen(false); setQuery('')
+    setTimeout(() => { ref.current?.focus() }, 0)
+  }
+
+  function handleKey(e) {
+    if (open && matches.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => (h + 1) % matches.length); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => (h - 1 + matches.length) % matches.length); return }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(matches[hi]); return }
+      if (e.key === 'Escape') { setOpen(false); return }
+    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEnter?.() }
+  }
+
+  return (
+    <div style={{ position: 'relative', flex: 1 }}>
+      {open && matches.length > 0 && (
+        <div style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 6, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.12)', zIndex: 60, width: 240, overflow: 'hidden' }}>
+          {matches.map((p, i) => (
+            <button key={p.id} type="button" onMouseDown={(ev) => { ev.preventDefault(); pick(p) }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', border: 0, cursor: 'pointer', padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', background: i === hi ? 'var(--accent-bg)' : 'transparent', color: 'var(--ink)' }}>
+              <span style={{ width: 22, height: 22, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 700 }}>{initials(p.full_name)}</span>
+              {p.full_name}
+            </button>
+          ))}
+        </div>
+      )}
+      <textarea ref={ref} value={value} onChange={handleChange} onKeyDown={handleKey}
+        placeholder={placeholder} rows={rows}
+        style={{ ...style, width: '100%', border: '1px solid ' + (accent || 'var(--line)'), boxSizing: 'border-box' }} />
+    </div>
+  )
+}
+
 export default function Chat() {
   const { isAdmin } = useAuth()
   const [me, setMe] = useState(null)
@@ -36,29 +115,21 @@ export default function Chat() {
   const [showCreate, setShowCreate] = useState(false)
   const [showDM, setShowDM] = useState(false)
   const [dmNames, setDmNames] = useState({}) // channelId -> other person's name
-  const [prefs, setPrefs] = useState({})     // channelId -> { muted, archived }
-  const [showArchived, setShowArchived] = useState(false)
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      const [meRes, chRes, profRes, prefRes] = await Promise.all([
+      const [meRes, chRes, profRes] = await Promise.all([
         supabase.from('profiles').select('id, full_name').eq('id', user.id).single(),
         supabase.from('channels').select('*').order('name'),
         supabase.from('profiles').select('id, full_name, is_active').eq('is_active', true).order('full_name'),
-        supabase.from('channel_prefs').select('channel_id, muted, archived').eq('profile_id', user.id),
       ])
       if (chRes.error) throw chRes.error
       setMe(meRes.data)
       setChannels(chRes.data || [])
       setProfiles(profRes.data || [])
-      const prefMap = {}; (prefRes.data || []).forEach(p => { prefMap[p.channel_id] = { muted: p.muted, archived: p.archived } })
-      setPrefs(prefMap)
       const all = chRes.data || []
-      if (!activeId && all.length) {
-        const firstVisible = all.find(c => !prefMap[c.id]?.archived)
-        if (firstVisible) setActiveId(firstVisible.id)
-      }
+      if (!activeId && all.length) setActiveId(all[0].id)
       // for DMs, find the other member's name
       const dmChannels = all.filter(c => c.is_dm)
       if (dmChannels.length) {
@@ -80,23 +151,7 @@ export default function Chat() {
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }, [activeId])
   useEffect(() => { load() }, [])
-  async function setPref(channelId, patch) {
-    const next = { ...(prefs[channelId] || { muted: false, archived: false }), ...patch }
-    setPrefs(prev => ({ ...prev, [channelId]: next }))
-    await supabase.from('channel_prefs')
-      .upsert({ profile_id: me.id, channel_id: channelId, muted: next.muted, archived: next.archived },
-        { onConflict: 'profile_id,channel_id' })
-    // if we just archived the active channel, move selection to the next visible one
-    if (patch.archived && channelId === activeId) {
-      const firstVisible = channels.find(c => c.id !== channelId && !(c.id === channelId ? next : prefs[c.id])?.archived)
-      setActiveId(firstVisible ? firstVisible.id : null)
-    }
-  }
   if (loading) return <p className="page-sub">Loading chat…</p>
-  const regularChannels = channels.filter(c => !c.is_dm)
-  const dmChannels = channels.filter(c => c.is_dm)
-  const visibleDMs = dmChannels.filter(c => showArchived ? true : !prefs[c.id]?.archived)
-  const archivedCount = dmChannels.filter(c => prefs[c.id]?.archived).length
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 0, height: 'calc(100dvh - 150px)', maxHeight: 'calc(100dvh - 150px)', minHeight: 420, border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
       <div style={{ borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--canvas)', minHeight: 0 }}>
@@ -105,50 +160,40 @@ export default function Chat() {
           {isAdmin && <button className="btn btn-ghost" style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => setShowCreate(true)}>+ New</button>}
         </div>
         <div style={{ overflowY: 'auto', flex: 1, padding: 8, minHeight: 0 }}>
-          {regularChannels.length === 0 && <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{isAdmin ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>}
-          {regularChannels.map(c => (
+          {channels.filter(c => !c.is_dm).length === 0 && <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{isAdmin ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>}
+          {channels.filter(c => !c.is_dm).map(c => (
             <button key={c.id} onClick={() => setActiveId(c.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left', border: 0, background: c.id === activeId ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId ? 'var(--accent)' : 'var(--ink)', padding: '9px 11px', borderRadius: 8, fontSize: 13.5, fontWeight: 500, cursor: 'pointer', marginBottom: 2, fontFamily: 'inherit' }}>
-              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}># {c.name}</span>
-              {prefs[c.id]?.muted && <span title="Muted" style={{ fontSize: 11, opacity: .55 }}>🔕</span>}
+              style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, background: c.id === activeId ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId ? 'var(--accent)' : 'var(--ink)', padding: '9px 11px', borderRadius: 8, fontSize: 13.5, fontWeight: 500, cursor: 'pointer', marginBottom: 2, fontFamily: 'inherit' }}>
+              # {c.name}
             </button>
           ))}
-          {(dmChannels.length > 0 || isAdmin) && (
+          {(channels.some(c => c.is_dm) || isAdmin) && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 11px 6px' }}>
               <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-soft)' }}>Direct messages</span>
               {isAdmin && <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button>}
             </div>
           )}
-          {visibleDMs.map(c => (
+          {channels.filter(c => c.is_dm).map(c => (
             <button key={c.id} onClick={() => setActiveId(c.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left', border: 0, background: c.id === activeId ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId ? 'var(--accent)' : 'var(--ink)', padding: '9px 11px', borderRadius: 8, fontSize: 13.5, fontWeight: 500, cursor: 'pointer', marginBottom: 2, fontFamily: 'inherit', opacity: prefs[c.id]?.archived ? 0.55 : 1 }}>
-              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dmNames[c.id] || c.name || 'Direct message'}</span>
-              {prefs[c.id]?.muted && <span title="Muted" style={{ fontSize: 11, opacity: .55 }}>🔕</span>}
-              {prefs[c.id]?.archived && <span title="Archived" style={{ fontSize: 10, opacity: .55 }}>📁</span>}
+              style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, background: c.id === activeId ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId ? 'var(--accent)' : 'var(--ink)', padding: '9px 11px', borderRadius: 8, fontSize: 13.5, fontWeight: 500, cursor: 'pointer', marginBottom: 2, fontFamily: 'inherit' }}>
+              {dmNames[c.id] || c.name || 'Direct message'}
             </button>
           ))}
-          {archivedCount > 0 && (
-            <button onClick={() => setShowArchived(s => !s)}
-              style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, background: 'transparent', color: 'var(--ink-soft)', padding: '8px 11px', borderRadius: 8, fontSize: 12, cursor: 'pointer', marginTop: 2, fontFamily: 'inherit' }}>
-              {showArchived ? '▾ Hide' : '▸ Show'} archived ({archivedCount})
-            </button>
-          )}
         </div>
       </div>
       {activeId
-        ? <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles}
-            pref={prefs[activeId] || { muted: false, archived: false }} onSetPref={(patch) => setPref(activeId, patch)} />
+        ? <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} />
         : <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-soft)' }}>Select a channel</div>}
       {showCreate && <CreateChannelModal me={me} profiles={profiles}
         onClose={() => setShowCreate(false)}
         onCreated={(id) => { setShowCreate(false); load(); setActiveId(id) }} />}
-      {showDM && <CreateDMModal me={me} profiles={profiles} channels={channels}
+      {showDM && <CreateDMModal me={me} profiles={profiles}
         onClose={() => setShowDM(false)}
         onCreated={(id) => { setShowDM(false); load(); setActiveId(id) }} />}
     </div>
   )
 }
-function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, pref, onSetPref }) {
+function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
   const [messages, setMessages] = useState([])
   const [senders, setSenders] = useState({})
   const [acks, setAcks] = useState([])           // all acknowledgments for messages in view
@@ -162,7 +207,6 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, pref, 
   const [reactions, setReactions] = useState([])   // all reactions for messages in view
   const [showPicker, setShowPicker] = useState(false)      // input emoji picker
   const [reactFor, setReactFor] = useState(null)   // message id whose react-picker is open
-  const [showInfo, setShowInfo] = useState(false)  // channel info / roster panel
   const bottomRef = useRef(null)
   useEffect(() => {
     let active = true
@@ -262,6 +306,22 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, pref, 
       channelId, channelName: channel?.name, isDm: channel?.is_dm,
       actorId: me.id, actorName: me.full_name, isHere, requiresAck: willRequireAck,
     })
+    await handleMentions(body)
+  }
+  // Detect @mentions, auto-add non-members to the channel, and notify them.
+  async function handleMentions(body) {
+    const mentionedIds = extractMentions(body, profiles).filter(id => id !== me.id)
+    if (!mentionedIds.length) return
+    // who's not already a member?
+    const addedIds = mentionedIds.filter(id => !members.includes(id))
+    if (addedIds.length && !channel?.is_dm) {
+      await supabase.from('channel_members').insert(addedIds.map(pid => ({ channel_id: channelId, profile_id: pid })))
+      setMembers(prev => [...new Set([...prev, ...addedIds])])
+    }
+    notifyChatMention({
+      recipientIds: mentionedIds, actorId: me.id, actorName: me.full_name,
+      channelName: channel?.name, isDm: channel?.is_dm, addedIds,
+    })
   }
   async function confirmRead(messageId) {
     // optimistic
@@ -278,28 +338,10 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, pref, 
   if (loading) return <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}><span className="page-sub">Loading messages…</span></div>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, position: 'relative' }}>
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ minWidth: 0 }}>
-          <b style={{ fontSize: 15 }}>{channel?.is_dm ? (dmName || 'Direct message') : `# ${channel?.name}`}</b>
-          {channel?.description && !channel?.is_dm && <div className="page-sub" style={{ fontSize: 12.5 }}>{channel.description}</div>}
-          {channel?.is_dm && <div className="page-sub" style={{ fontSize: 12 }}>Direct message</div>}
-        </div>
-        <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
-          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px' }}
-            title={pref.muted ? 'Unmute notifications' : 'Mute notifications'}
-            onClick={() => onSetPref({ muted: !pref.muted })}>
-            {pref.muted ? '🔕 Muted' : '🔔 Notify'}
-          </button>
-          {channel?.is_dm && (
-            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px' }}
-              title={pref.archived ? 'Unarchive this DM' : 'Archive this DM'}
-              onClick={() => onSetPref({ archived: !pref.archived })}>
-              {pref.archived ? 'Unarchive' : 'Archive'}
-            </button>
-          )}
-          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px' }}
-            title="Channel info" onClick={() => setShowInfo(true)}>ⓘ Info</button>
-        </div>
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', flex: 'none' }}>
+        <b style={{ fontSize: 15 }}>{channel?.is_dm ? (dmName || 'Direct message') : `# ${channel?.name}`}</b>
+        {channel?.description && !channel?.is_dm && <div className="page-sub" style={{ fontSize: 12.5 }}>{channel.description}</div>}
+        {channel?.is_dm && <div className="page-sub" style={{ fontSize: 12 }}>Direct message</div>}
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', minHeight: 0 }}>
         {err && <div style={{ color: 'var(--failed)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
@@ -365,57 +407,15 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, pref, 
           )}
           <button type="button" onClick={() => setShowPicker(p => !p)} title="Emoji"
             style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '0 10px', flex: 'none' }}>😀</button>
-          <textarea value={text} onChange={e => setText(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-            placeholder={requireAck ? 'Write your update…' : `Message #${channel?.name || ''}  (type @here to flag everyone)`}
-            rows={1}
-            style={{ flex: 1, resize: 'none', padding: '10px 12px', border: '1px solid ' + (requireAck ? 'var(--accent)' : 'var(--line)'), borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', maxHeight: 120 }} />
+          <MentionTextarea value={text} onChange={setText} onEnter={send} profiles={profiles}
+            placeholder={requireAck ? 'Write your update… (@name to mention)' : `Message #${channel?.name || ''}  (@name to mention, @here for everyone)`}
+            accent={requireAck ? 'var(--accent)' : 'var(--line)'}
+            style={{ resize: 'none', padding: '10px 12px', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', maxHeight: 120 }} />
           <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={!text.trim()}>{requireAck ? 'Post update' : 'Send'}</button>
         </div>
       </div>
       {trackFor && <TrackPanel messageId={trackFor} me={me} members={members} profiles={profiles} acks={acks} onClose={() => setTrackFor(null)} />}
-      {threadFor && <ThreadPanel parentId={threadFor} channelId={channelId} me={me} senders={senders} onClose={() => setThreadFor(null)} />}
-      {showInfo && <ChannelInfoPanel channel={channel} dmName={dmName} members={members} profiles={profiles} me={me}
-        pref={pref} onSetPref={onSetPref} onClose={() => setShowInfo(false)} />}
-    </div>
-  )
-}
-function ChannelInfoPanel({ channel, dmName, members, profiles, me, pref, onSetPref, onClose }) {
-  // Resolve member profiles; fall back to a stub for any id not in the active roster.
-  const memberProfiles = members.map(id => profiles.find(p => p.id === id) || { id, full_name: 'Unknown member' })
-  return (
-    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 320, maxWidth: '90%', background: 'var(--surface)', borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 24px rgba(0,0,0,.08)', zIndex: 20 }}>
-      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 'none' }}>
-        <b style={{ fontSize: 14 }}>{channel?.is_dm ? 'Conversation info' : 'Channel info'}</b>
-        <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 9px' }} onClick={onClose}>Close</button>
-      </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: 16, minHeight: 0 }}>
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>{channel?.is_dm ? (dmName || 'Direct message') : `# ${channel?.name}`}</div>
-          {channel?.description && !channel?.is_dm && <div className="page-sub" style={{ fontSize: 12.5, marginTop: 3 }}>{channel.description}</div>}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
-            <input type="checkbox" checked={!!pref.muted} onChange={e => onSetPref({ muted: e.target.checked })} />
-            Mute notifications
-          </label>
-          {channel?.is_dm && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={!!pref.archived} onChange={e => onSetPref({ archived: e.target.checked })} />
-              Archive this conversation
-            </label>
-          )}
-        </div>
-        <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-soft)', marginBottom: 8 }}>
-          {memberProfiles.length} {memberProfiles.length === 1 ? 'member' : 'members'}
-        </div>
-        {memberProfiles.map(p => (
-          <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0' }}>
-            <span style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11.5, fontWeight: 700, flex: 'none' }}>{initials(p.full_name)}</span>
-            <span style={{ fontSize: 13.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.full_name}{p.id === me.id ? ' (you)' : ''}</span>
-          </div>
-        ))}
-      </div>
+      {threadFor && <ThreadPanel parentId={threadFor} channelId={channelId} me={me} senders={senders} profiles={profiles} channel={channel} members={members} onClose={() => setThreadFor(null)} />}
     </div>
   )
 }
@@ -462,7 +462,7 @@ function ReplyAffordance({ count, onOpen }) {
     </button>
   )
 }
-function ThreadPanel({ parentId, channelId, me, senders, onClose }) {
+function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel, members = [], onClose }) {
   const [parent, setParent] = React.useState(null)
   const [replies, setReplies] = React.useState([])
   const [names, setNames] = React.useState(senders || {})
@@ -503,6 +503,18 @@ function ThreadPanel({ parentId, channelId, me, senders, onClose }) {
     const { data, error } = await supabase.from('messages').insert({ channel_id: channelId, sender_id: me.id, body, parent_id: parentId }).select().single()
     if (error) { setReplies(prev => prev.filter(m => m.id !== temp.id)); setText(body); return }
     setReplies(prev => prev.filter(m => m.id !== temp.id && m.id !== data.id).concat(data))
+    // mentions in thread replies
+    const mentionedIds = extractMentions(body, profiles).filter(id => id !== me.id)
+    if (mentionedIds.length) {
+      const addedIds = mentionedIds.filter(id => !members.includes(id))
+      if (addedIds.length && !channel?.is_dm) {
+        await supabase.from('channel_members').insert(addedIds.map(pid => ({ channel_id: channelId, profile_id: pid })))
+      }
+      notifyChatMention({
+        recipientIds: mentionedIds, actorId: me.id, actorName: me.full_name,
+        channelName: channel?.name, isDm: channel?.is_dm, addedIds,
+      })
+    }
   }
   const nameFor = (id) => id === me.id ? 'You' : (names[id] || 'Someone')
   return (
@@ -536,10 +548,9 @@ function ThreadPanel({ parentId, channelId, me, senders, onClose }) {
         )}
       </div>
       <div style={{ borderTop: '1px solid var(--line)', padding: 12, display: 'flex', gap: 8, flex: 'none' }}>
-        <textarea value={text} onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply() } }}
-          placeholder="Reply…" rows={1}
-          style={{ flex: 1, resize: 'none', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', outline: 'none', maxHeight: 100 }} />
+        <MentionTextarea value={text} onChange={setText} onEnter={sendReply} profiles={profiles}
+          placeholder="Reply… (@name to mention)"
+          style={{ resize: 'none', padding: '9px 11px', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', outline: 'none', maxHeight: 100 }} />
         <button className="btn btn-primary" onClick={sendReply} disabled={!text.trim()}>Reply</button>
       </div>
     </div>
@@ -612,7 +623,7 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
     </div>
   )
 }
-function CreateDMModal({ me, profiles, channels, onClose, onCreated }) {
+function CreateDMModal({ me, profiles, onClose, onCreated }) {
   // Admin/owner provisions a DM between exactly two people.
   const [a, setA] = React.useState('')
   const [b, setB] = React.useState('')
@@ -623,19 +634,6 @@ function CreateDMModal({ me, profiles, channels, onClose, onCreated }) {
     if (a === b) { setErr('Pick two different people.'); return }
     setSaving(true); setErr('')
     try {
-      // Guard against duplicate DMs: look for an existing 1:1 DM that already
-      // contains exactly these two people, and reuse it if found.
-      const dmIds = (channels || []).filter(c => c.is_dm).map(c => c.id)
-      if (dmIds.length) {
-        const { data: allMem, error: memErr } = await supabase.from('channel_members')
-          .select('channel_id, profile_id').in('channel_id', dmIds)
-        if (memErr) throw memErr
-        const byChannel = {}
-        ;(allMem || []).forEach(m => { (byChannel[m.channel_id] ||= new Set()).add(m.profile_id) })
-        const existing = Object.entries(byChannel).find(([, set]) =>
-          set.size === 2 && set.has(a) && set.has(b))
-        if (existing) { onCreated(existing[0]); return }
-      }
       const nameA = profiles.find(p => p.id === a)?.full_name?.split(' ')[0] || 'A'
       const nameB = profiles.find(p => p.id === b)?.full_name?.split(' ')[0] || 'B'
       const { data: ch, error: ce } = await supabase.from('channels')
@@ -652,7 +650,7 @@ function CreateDMModal({ me, profiles, channels, onClose, onCreated }) {
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal" style={{ width: 420 }}>
         <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>New direct message</h3>
-        <p className="page-sub" style={{ marginBottom: 18 }}>Set up a private conversation between two people. If a conversation between them already exists, we'll open that one.</p>
+        <p className="page-sub" style={{ marginBottom: 18 }}>Set up a private conversation between two people.</p>
         {err && <div className="login-err" style={{ marginBottom: 14 }}>{err}</div>}
         <div className="field"><label>Person 1</label>
           <select value={a} onChange={e => setA(e.target.value)}>
