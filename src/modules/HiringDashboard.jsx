@@ -10,8 +10,10 @@ import { useAuth } from '../lib/auth'
 // ============================================================
 
 async function sendHiringEmail(kind, to, data) {
-  console.log(`[stub] would email "${kind}" to ${to}`, data)
-  // TODO: supabase.functions.invoke('send-hiring-email', { body: { kind, to, data } })
+  try {
+    const { error } = await supabase.functions.invoke('send-hiring-email', { body: { kind, to, data } })
+    if (error) console.error('email send failed:', error)
+  } catch (e) { console.error('email send failed:', e) }
 }
 
 // The board columns, in pipeline order. Each maps to one status.
@@ -112,7 +114,7 @@ export default function HiringDashboard() {
     await supabase.from('hiring_stage_events').insert({
       application_id: app.id, from_status: from, to_status: toStatus, actor_id: user?.id, note: note || null,
     })
-    if (email) await sendHiringEmail(email, app.email, { name: app.full_name })
+    if (email) await sendHiringEmail(email, app.email, { name: app.full_name, appId: app.id, state: app.state })
     setApps(prev => prev.map(a => a.id === app.id ? { ...a, ...patch } : a))
     setSelected(prev => prev && prev.id === app.id ? { ...prev, ...patch } : prev)
     setBusy(false)
