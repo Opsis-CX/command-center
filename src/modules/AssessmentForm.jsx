@@ -216,11 +216,11 @@ export default function AssessmentForm({ applicationId }) {
           </div>
         </div>
         <div><label style={labelStyle}>Tools and platforms you've used in previous roles</label>
-          <textarea style={{ ...input, minHeight: 60, resize: 'vertical' }} value={f.tools_platforms} onChange={set('tools_platforms')} /></div>
+          <textarea style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} value={f.tools_platforms} onChange={set('tools_platforms')} /></div>
         <div><label style={labelStyle}>What systems, dialers, or CRMs have you used?</label>
-          <textarea style={{ ...input, minHeight: 60, resize: 'vertical' }} value={f.systems_dialers} onChange={set('systems_dialers')} /></div>
+          <textarea style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} value={f.systems_dialers} onChange={set('systems_dialers')} /></div>
         <div><label style={labelStyle}>What performance metrics were you responsible for meeting?</label>
-          <textarea style={{ ...input, minHeight: 60, resize: 'vertical' }} value={f.performance_metrics} onChange={set('performance_metrics')} /></div>
+          <textarea style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} value={f.performance_metrics} onChange={set('performance_metrics')} /></div>
       </Section>
 
       <Section title="Availability" sub="Check every time block you can consistently work.">
