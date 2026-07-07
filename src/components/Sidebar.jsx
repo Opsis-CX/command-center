@@ -3,6 +3,7 @@ import { useAuth } from '../lib/auth'
 const NAV = [
  { group: 'Overview', items: [
     { to: '/', label: 'Dashboard', ic: '▦', end: true, roles: ['admin', 'agent'] },
+    { to: '/weekly-sync', label: 'Weekly Sync', ic: '🗓', roles: ['admin'] },
     { to: '/chat', label: 'Chat', ic: '💬', roles: ['admin', 'agent'] },
   ]},
   { group: 'Certifications', items: [
