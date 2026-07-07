@@ -473,11 +473,15 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [channelId, senders])
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => {
+    if (!messages.length) return
+    const el = bottomRef.current
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [messages.length])
   async function send() {
-    const html = htmlRef.current || ''
-    const plain = (html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim())
-    const body = html.trim()
+    const rawHtml = htmlRef.current || ''
+    const plain = (rawHtml.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim())
+    const body = cleanChatHtml(rawHtml)
     if (!plain && pending.length === 0) return
     const isHere = /(^|\s)@here(\s|$)/i.test(plain)
     const willRequireAck = isAdmin && requireAck
@@ -645,6 +649,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '0 10px', flex: 'none' }}>😀</button>
           <div style={{ flex: 1 }}>
             <RichComposer valueRef={composerRef}
+              profiles={profiles}
               onInput={(html) => { htmlRef.current = html; notifyTyping() }}
               onEnter={send}
               onPasteFiles={(files) => addFiles(files)}
@@ -667,9 +672,16 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 // Rich text composer: contentEditable + Slack-style toolbar (bold, italic,
 // strikethrough, bullet + numbered lists). Enter sends; Shift+Enter = newline.
 // Exposes formatted HTML via onChange. Supports paste (files bubble up via onPaste).
-function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, minHeight = 76, maxHeight = 200, accent }) {
+function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, minHeight = 76, maxHeight = 200, accent, profiles = [] }) {
   const ref = useRef(null)
   const [empty, setEmpty] = useState(true)
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [hi, setHi] = useState(0)
+
+  const matches = mentionOpen
+    ? profiles.filter(p => p.full_name?.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 6)
+    : []
 
   function exec(cmd) { document.execCommand(cmd, false, null); ref.current?.focus(); handleInput() }
   function handleInput() {
@@ -677,20 +689,61 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
     const text = ref.current?.innerText || ''
     setEmpty(text.trim().length === 0)
     onInput?.(html, text)
+    // detect @token immediately left of caret
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount) {
+      const node = sel.anchorNode
+      const offset = sel.anchorOffset
+      if (node && node.nodeType === 3) {
+        const upto = node.textContent.slice(0, offset)
+        const m = upto.match(/@([\w]*)$/)
+        if (m) { setMentionOpen(true); setMentionQuery(m[1]); setHi(0); return }
+      }
+    }
+    setMentionOpen(false); setMentionQuery('')
+  }
+  function insertMention(p) {
+    // replace the trailing "@query" with "@Full Name "
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount) {
+      const node = sel.anchorNode
+      const offset = sel.anchorOffset
+      if (node && node.nodeType === 3) {
+        const before = node.textContent.slice(0, offset)
+        const at = before.lastIndexOf('@')
+        if (at >= 0) {
+          const range = document.createRange()
+          range.setStart(node, at)
+          range.setEnd(node, offset)
+          range.deleteContents()
+          const textNode = document.createTextNode('@' + p.full_name + ' ')
+          range.insertNode(textNode)
+          // move caret after inserted text
+          range.setStartAfter(textNode); range.collapse(true)
+          sel.removeAllRanges(); sel.addRange(range)
+        }
+      }
+    }
+    setMentionOpen(false); setMentionQuery('')
+    handleInput()
   }
   function handleKey(e) {
+    if (mentionOpen && matches.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => (h + 1) % matches.length); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => (h - 1 + matches.length) % matches.length); return }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); insertMention(matches[hi]); return }
+      if (e.key === 'Escape') { setMentionOpen(false); return }
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEnter?.() }
   }
   function handlePaste(e) {
     const files = Array.from(e.clipboardData?.files || [])
     if (files.length) { e.preventDefault(); onPasteFiles?.(files); return }
-    // paste as plain text so we don't inherit outside fonts/colors
     e.preventDefault()
     const text = e.clipboardData.getData('text/plain')
     document.execCommand('insertText', false, text)
     handleInput()
   }
-  // allow parent to clear the editor
   useEffect(() => {
     if (valueRef) valueRef.current = {
       clear: () => { if (ref.current) { ref.current.innerHTML = ''; setEmpty(true) } },
@@ -705,7 +758,18 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
   )
 
   return (
-    <div style={{ flex: 1, border: '1px solid ' + (accent || 'var(--line)'), borderRadius: 8, overflow: 'hidden', background: 'var(--surface)' }}>
+    <div style={{ flex: 1, border: '1px solid ' + (accent || 'var(--line)'), borderRadius: 8, overflow: 'visible', background: 'var(--surface)', position: 'relative' }}>
+      {mentionOpen && matches.length > 0 && (
+        <div style={{ position: 'absolute', bottom: '100%', left: 8, marginBottom: 6, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.14)', zIndex: 70, width: 240, overflow: 'hidden' }}>
+          {matches.map((p, i) => (
+            <button key={p.id} type="button" onMouseDown={ev => { ev.preventDefault(); insertMention(p) }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', border: 0, cursor: 'pointer', padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', background: i === hi ? 'var(--accent-bg)' : 'transparent', color: 'var(--ink)' }}>
+              <span style={{ width: 22, height: 22, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 700 }}>{initials(p.full_name)}</span>
+              {p.full_name}
+            </button>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 1, padding: '3px 6px', borderBottom: '1px solid var(--line-soft)', background: '#fbfcfd' }}>
         <TBtn cmd="bold" label={<b>B</b>} title="Bold" />
         <TBtn cmd="italic" label={<i>I</i>} title="Italic" />
@@ -950,8 +1014,21 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
   )
 }
 // Render @here / @update mentions with a highlight
+// Clean up contentEditable HTML before saving: convert &nbsp; to spaces,
+// strip trailing whitespace/breaks, and drop empty trailing tags.
+function cleanChatHtml(html) {
+  let h = String(html || '')
+  h = h.replace(/&nbsp;/gi, ' ')            // nbsp -> normal space
+  h = h.replace(/(\s*<br\s*\/?>\s*)+$/gi, '') // trailing <br>
+  h = h.replace(/(<div>\s*<\/div>)+$/gi, '')  // empty trailing divs
+  h = h.replace(/\s+$/g, '')                 // trailing whitespace
+  h = h.replace(/^(\s|<br\s*\/?>)+/gi, '')   // leading breaks/space
+  return h.trim()
+}
 function renderBody(body) {
   let html = String(body || '')
+  // Clean up nbsp and trailing breaks (covers older messages already saved)
+  html = html.replace(/&nbsp;/gi, ' ').replace(/(\s*<br\s*\/?>\s*)+$/gi, '').replace(/\s+$/g, '')
   // If it looks like plain text (no tags), escape angle brackets and keep newlines.
   const looksHtml = /<\/?[a-z][\s\S]*>/i.test(html)
   if (!looksHtml) {
