@@ -387,6 +387,8 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   const htmlRef = useRef('')
   const bottomRef = useRef(null)
   const scrollRef = useRef(null)   // the scrollable message-list container
+  const sendersRef = useRef(senders)   // mirror of senders for the realtime handler
+  useEffect(() => { sendersRef.current = senders }, [senders])
   const { typerNames, notifyTyping, stopTyping } = useTyping(`typing:${channelId}`, me.id, me.full_name)
   useEffect(() => {
     let active = true
@@ -460,7 +462,9 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       else if (data) setReactions(prev => prev.map(r => r === optimistic ? data : r))
     }
   }
-  // realtime: new messages + new acknowledgments
+  // realtime: new messages + acknowledgments + edits/deletes. Subscribe ONCE
+  // per channel — putting `senders` in the deps used to tear down and rebuild
+  // this subscription on every new sender, causing missed messages.
   useEffect(() => {
     const ch = supabase
       .channel(`chan:${channelId}`)
@@ -470,7 +474,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
           setMessages(prev => prev.some(x => x.id === m.id) ? prev : [...prev, m])
           // I'm looking at this channel, so keep it marked read
           if (m.sender_id !== me.id) markRead?.(channelId)
-          if (m.sender_id && !(m.sender_id in senders)) {
+          if (m.sender_id && !(m.sender_id in sendersRef.current)) {
             const { data } = await supabase.from('profiles').select('id, full_name').eq('id', m.sender_id).single()
             if (data) setSenders(prev => ({ ...prev, [data.id]: data.full_name }))
           }
@@ -492,7 +496,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         (payload) => { setAttachments(prev => prev.some(a => a.id === payload.new.id) ? prev : [...prev, payload.new]) })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [channelId, senders])
+  }, [channelId])
   // Scroll the message list (not the page) to the newest message.
   const pinToBottom = useCallback(() => {
     const el = scrollRef.current
@@ -1198,6 +1202,9 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
 // Render @here / @update mentions with a highlight
 function renderBody(body) {
   let html = String(body || '')
+  // Repair legacy messages that an earlier bug double-escaped and SAVED that
+  // way (e.g. "&amp;nbsp;" or "&amp;gt;"). Collapse that first layer back.
+  html = html.replace(/&amp;(amp|lt|gt|nbsp|#\d+);/gi, '&$1;')
   // Messages from the rich composer are ALREADY html-escaped (e.g. "->" is
   // stored as "-&gt;") and may contain tags like <br>, <b>, <div>, <ul>.
   // Older plain-text messages are raw. We only escape the raw ones — escaping
@@ -1206,6 +1213,8 @@ function renderBody(body) {
   if (!alreadyProcessed) {
     html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
   }
+  // Normalize non-breaking spaces to regular spaces so they never show literally
+  html = html.replace(/&nbsp;/gi, ' ')
   // Highlight @here / @update
   html = html.replace(/(@here|@update)\b/gi,
     '<span style="color:var(--accent);font-weight:700;background:var(--accent-bg);border-radius:4px;padding:0 3px">$1</span>')
