@@ -17,6 +17,7 @@ import Chat from './modules/Chat'
 import Projects from './modules/Projects'
 import Clients from './modules/Clients'
 import Reporting from './modules/Reporting'
+import WeeklySync from './modules/WeeklySync'
 
 export default function App() {
   const { session, loading, isAdmin } = useAuth()
@@ -53,6 +54,7 @@ export default function App() {
             {!isAdmin && <Route path="/my-courses" element={<Placeholder title="My courses" note="Work through lessons, then take the quiz." />} />}
             <Route path="/schedule" element={<Schedule />} />
             <Route path="/chat" element={<Chat />} />
+            {isAdmin && <Route path="/weekly-sync" element={<WeeklySync />} />}
             {isAdmin && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
             {isAdmin && <Route path="/positions" element={<Positions />} />}
             {isAdmin && <Route path="/insights" element={<ScheduleInsights />} />}
@@ -69,7 +71,7 @@ function titleFor(path) {
     '/': 'Dashboard', '/certifications': 'Certifications', '/matrix': 'Certification matrix',
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
-    '/chat': 'Chat', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting',
+    '/chat': 'Chat', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/weekly-sync': 'Weekly Sync',
   }
   return map[path] || 'Command Center'
 }
