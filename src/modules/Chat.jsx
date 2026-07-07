@@ -115,7 +115,8 @@ function MentionTextarea({ value, onChange, onEnter, profiles, placeholder, rows
 }
 
 export default function Chat() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, level } = useAuth()
+  const isOwner = (level || 0) >= 100
   const isMobile = useIsMobile()
   const [me, setMe] = useState(null)
   const [channels, setChannels] = useState([])
@@ -163,6 +164,15 @@ export default function Chat() {
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }, [activeId])
   useEffect(() => { load() }, [])
+
+  async function deleteChannel(ch) {
+    const label = ch.is_dm ? (dmNames[ch.id] || 'this direct message') : `#${ch.name}`
+    if (!window.confirm(`Delete ${label}? This permanently removes the conversation and all its messages for everyone. This cannot be undone.`)) return
+    const { error } = await supabase.from('channels').delete().eq('id', ch.id)
+    if (error) { window.alert('Could not delete: ' + error.message); return }
+    if (activeId === ch.id) { setActiveId(null); setMobileView('list') }
+    load()
+  }
   if (loading) return <p className="page-sub">Loading chat…</p>
 
   const openChannel = (id) => { setActiveId(id); setMobileView('convo') }
@@ -181,10 +191,16 @@ export default function Chat() {
           <div style={{ overflowY: 'auto', flex: 1, padding: 8, minHeight: 0 }}>
             {channels.filter(c => !c.is_dm).length === 0 && <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{isAdmin ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>}
             {channels.filter(c => !c.is_dm).map(c => (
-              <button key={c.id} onClick={() => openChannel(c.id)}
-                style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: 500, cursor: 'pointer', marginBottom: 2, fontFamily: 'inherit' }}>
-                # {c.name}
-              </button>
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
+                <button onClick={() => openChannel(c.id)}
+                  style={{ display: 'block', flex: 1, textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  # {c.name}
+                </button>
+                {isOwner && (
+                  <button onClick={() => deleteChannel(c)} title="Delete channel"
+                    style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, padding: '6px 8px', flex: 'none', borderRadius: 6 }}>🗑</button>
+                )}
+              </div>
             ))}
             {(channels.some(c => c.is_dm) || isAdmin) && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 11px 6px' }}>
@@ -193,10 +209,16 @@ export default function Chat() {
               </div>
             )}
             {channels.filter(c => c.is_dm).map(c => (
-              <button key={c.id} onClick={() => openChannel(c.id)}
-                style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: 500, cursor: 'pointer', marginBottom: 2, fontFamily: 'inherit' }}>
-                {dmNames[c.id] || c.name || 'Direct message'}
-              </button>
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
+                <button onClick={() => openChannel(c.id)}
+                  style={{ display: 'block', flex: 1, textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {dmNames[c.id] || c.name || 'Direct message'}
+                </button>
+                {isOwner && (
+                  <button onClick={() => deleteChannel(c)} title="Delete conversation"
+                    style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, padding: '6px 8px', flex: 'none', borderRadius: 6 }}>🗑</button>
+                )}
+              </div>
             ))}
           </div>
         </div>
