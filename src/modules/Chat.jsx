@@ -652,47 +652,70 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
   )
 }
 function CreateDMModal({ me, profiles, onClose, onCreated }) {
-  // Admin/owner provisions a DM between exactly two people.
-  const [a, setA] = React.useState('')
-  const [b, setB] = React.useState('')
+  // Start a DM with ONE other person — you're always the other side.
+  // Reuses an existing DM with that person if one already exists.
+  const [search, setSearch] = React.useState('')
   const [saving, setSaving] = React.useState(false)
   const [err, setErr] = React.useState('')
-  async function create() {
-    if (!a || !b) { setErr('Pick two people.'); return }
-    if (a === b) { setErr('Pick two different people.'); return }
+
+  const others = profiles.filter(p => p.id !== me.id)
+  const matches = search.trim()
+    ? others.filter(p => p.full_name?.toLowerCase().includes(search.toLowerCase()))
+    : others
+
+  async function startDM(personId) {
     setSaving(true); setErr('')
     try {
-      const nameA = profiles.find(p => p.id === a)?.full_name?.split(' ')[0] || 'A'
-      const nameB = profiles.find(p => p.id === b)?.full_name?.split(' ')[0] || 'B'
+      // first: look for an existing DM between me and this person
+      const { data: myDms } = await supabase.from('channel_members')
+        .select('channel_id, channels!inner(is_dm)')
+        .eq('profile_id', me.id)
+      const myDmIds = (myDms || []).filter(r => r.channels?.is_dm).map(r => r.channel_id)
+      if (myDmIds.length) {
+        const { data: theirs } = await supabase.from('channel_members')
+          .select('channel_id')
+          .eq('profile_id', personId)
+          .in('channel_id', myDmIds)
+        if (theirs && theirs.length) {
+          // existing DM found — just open it
+          onCreated(theirs[0].channel_id)
+          return
+        }
+      }
+      // otherwise: none exists — create a new DM with both of us
+      const myFirst = me.full_name?.split(' ')[0] || 'Me'
+      const theirFirst = profiles.find(p => p.id === personId)?.full_name?.split(' ')[0] || 'DM'
       const { data: ch, error: ce } = await supabase.from('channels')
-        .insert({ name: `${nameA} / ${nameB}`, is_dm: true, created_by: me.id }).select().single()
+        .insert({ name: `${myFirst} / ${theirFirst}`, is_dm: true, created_by: me.id }).select().single()
       if (ce) throw ce
       const { error: me2 } = await supabase.from('channel_members')
-        .insert([{ channel_id: ch.id, profile_id: a }, { channel_id: ch.id, profile_id: b }])
+        .insert([{ channel_id: ch.id, profile_id: me.id }, { channel_id: ch.id, profile_id: personId }])
       if (me2) throw me2
-      notifyChannelAdded({ recipientIds: [a, b], actorId: me.id, actorName: me.full_name, channelName: 'Direct message', isDm: true })
+      notifyChannelAdded({ recipientIds: [personId], actorId: me.id, actorName: me.full_name, channelName: 'Direct message', isDm: true })
       onCreated(ch.id)
     } catch (e) { setErr(e.message); setSaving(false) }
   }
+
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal" style={{ width: 420 }}>
         <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>New direct message</h3>
-        <p className="page-sub" style={{ marginBottom: 18 }}>Set up a private conversation between two people.</p>
+        <p className="page-sub" style={{ marginBottom: 16 }}>Search for someone to start a conversation.</p>
         {err && <div className="login-err" style={{ marginBottom: 14 }}>{err}</div>}
-        <div className="field"><label>Person 1</label>
-          <select value={a} onChange={e => setA(e.target.value)}>
-            <option value="">— Select —</option>
-            {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}{p.id === me.id ? ' (you)' : ''}</option>)}
-          </select></div>
-        <div className="field"><label>Person 2</label>
-          <select value={b} onChange={e => setB(e.target.value)}>
-            <option value="">— Select —</option>
-            {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}{p.id === me.id ? ' (you)' : ''}</option>)}
-          </select></div>
-        <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search people…" autoFocus
+          style={{ width: '100%', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', marginBottom: 10, boxSizing: 'border-box' }} />
+        <div style={{ border: '1px solid var(--line)', borderRadius: 8, maxHeight: 300, overflowY: 'auto' }}>
+          {matches.length === 0 && <div className="page-sub" style={{ padding: 14, fontSize: 13 }}>No people found.</div>}
+          {matches.map(p => (
+            <button key={p.id} type="button" disabled={saving} onClick={() => startDM(p.id)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', border: 0, borderBottom: '1px solid var(--line-soft)', background: 'transparent', cursor: 'pointer', padding: '10px 12px', fontFamily: 'inherit' }}>
+              <span style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flex: 'none' }}>{initials(p.full_name)}</span>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>{p.full_name}</span>
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', marginTop: 16 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
-          <button className="btn btn-primary" style={{ flex: 1 }} onClick={create} disabled={saving}>{saving ? 'Creating…' : 'Create DM'}</button>
         </div>
       </div>
     </div>
