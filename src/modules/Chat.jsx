@@ -24,6 +24,16 @@ function timeLabel(iso) {
     ? d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
+// True when the viewport is phone-width. Updates on resize.
+function useIsMobile(breakpoint = 700) {
+  const [mobile, setMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= breakpoint : false)
+  useEffect(() => {
+    const onResize = () => setMobile(window.innerWidth <= breakpoint)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [breakpoint])
+  return mobile
+}
 // ---- @mention helpers ----
 // Extract profile ids for names mentioned as "@Full Name" in body.
 function extractMentions(body, profiles) {
@@ -106,6 +116,7 @@ function MentionTextarea({ value, onChange, onEnter, profiles, placeholder, rows
 
 export default function Chat() {
   const { isAdmin } = useAuth()
+  const isMobile = useIsMobile()
   const [me, setMe] = useState(null)
   const [channels, setChannels] = useState([])
   const [activeId, setActiveId] = useState(null)
@@ -115,6 +126,7 @@ export default function Chat() {
   const [showCreate, setShowCreate] = useState(false)
   const [showDM, setShowDM] = useState(false)
   const [dmNames, setDmNames] = useState({}) // channelId -> other person's name
+  const [mobileView, setMobileView] = useState('list') // 'list' | 'convo' (mobile only)
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     try {
@@ -129,7 +141,7 @@ export default function Chat() {
       setChannels(chRes.data || [])
       setProfiles(profRes.data || [])
       const all = chRes.data || []
-      if (!activeId && all.length) setActiveId(all[0].id)
+      if (!activeId && all.length && window.innerWidth > 700) setActiveId(all[0].id)
       // for DMs, find the other member's name
       const dmChannels = all.filter(c => c.is_dm)
       if (dmChannels.length) {
@@ -152,48 +164,58 @@ export default function Chat() {
   }, [activeId])
   useEffect(() => { load() }, [])
   if (loading) return <p className="page-sub">Loading chat…</p>
+
+  const openChannel = (id) => { setActiveId(id); setMobileView('convo') }
+  // On mobile, show either the list or the conversation. On desktop, both.
+  const showList = !isMobile || mobileView === 'list'
+  const showConvo = !isMobile || mobileView === 'convo'
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 0, height: 'calc(100dvh - 150px)', maxHeight: 'calc(100dvh - 150px)', minHeight: 420, border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
-      <div style={{ borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--canvas)', minHeight: 0 }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <b style={{ fontSize: 14 }}>Channels</b>
-          {isAdmin && <button className="btn btn-ghost" style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => setShowCreate(true)}>+ New</button>}
+    <div style={{ display: isMobile ? 'block' : 'grid', gridTemplateColumns: '240px 1fr', gap: 0, height: 'calc(100dvh - 150px)', maxHeight: 'calc(100dvh - 150px)', minHeight: 420, border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
+      {showList && (
+        <div style={{ borderRight: isMobile ? 'none' : '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--canvas)', minHeight: 0, height: isMobile ? '100%' : 'auto' }}>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 'none' }}>
+            <b style={{ fontSize: 14 }}>Channels</b>
+            {isAdmin && <button className="btn btn-ghost" style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => setShowCreate(true)}>+ New</button>}
+          </div>
+          <div style={{ overflowY: 'auto', flex: 1, padding: 8, minHeight: 0 }}>
+            {channels.filter(c => !c.is_dm).length === 0 && <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{isAdmin ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>}
+            {channels.filter(c => !c.is_dm).map(c => (
+              <button key={c.id} onClick={() => openChannel(c.id)}
+                style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: 500, cursor: 'pointer', marginBottom: 2, fontFamily: 'inherit' }}>
+                # {c.name}
+              </button>
+            ))}
+            {(channels.some(c => c.is_dm) || isAdmin) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 11px 6px' }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-soft)' }}>Direct messages</span>
+                {isAdmin && <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button>}
+              </div>
+            )}
+            {channels.filter(c => c.is_dm).map(c => (
+              <button key={c.id} onClick={() => openChannel(c.id)}
+                style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: 500, cursor: 'pointer', marginBottom: 2, fontFamily: 'inherit' }}>
+                {dmNames[c.id] || c.name || 'Direct message'}
+              </button>
+            ))}
+          </div>
         </div>
-        <div style={{ overflowY: 'auto', flex: 1, padding: 8, minHeight: 0 }}>
-          {channels.filter(c => !c.is_dm).length === 0 && <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{isAdmin ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>}
-          {channels.filter(c => !c.is_dm).map(c => (
-            <button key={c.id} onClick={() => setActiveId(c.id)}
-              style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, background: c.id === activeId ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId ? 'var(--accent)' : 'var(--ink)', padding: '9px 11px', borderRadius: 8, fontSize: 13.5, fontWeight: 500, cursor: 'pointer', marginBottom: 2, fontFamily: 'inherit' }}>
-              # {c.name}
-            </button>
-          ))}
-          {(channels.some(c => c.is_dm) || isAdmin) && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 11px 6px' }}>
-              <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-soft)' }}>Direct messages</span>
-              {isAdmin && <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button>}
-            </div>
-          )}
-          {channels.filter(c => c.is_dm).map(c => (
-            <button key={c.id} onClick={() => setActiveId(c.id)}
-              style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, background: c.id === activeId ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId ? 'var(--accent)' : 'var(--ink)', padding: '9px 11px', borderRadius: 8, fontSize: 13.5, fontWeight: 500, cursor: 'pointer', marginBottom: 2, fontFamily: 'inherit' }}>
-              {dmNames[c.id] || c.name || 'Direct message'}
-            </button>
-          ))}
-        </div>
-      </div>
-      {activeId
-        ? <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} />
-        : <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-soft)' }}>Select a channel</div>}
+      )}
+      {showConvo && (
+        activeId
+          ? <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} />
+          : <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-soft)', height: '100%' }}>Select a channel</div>
+      )}
       {showCreate && <CreateChannelModal me={me} profiles={profiles}
         onClose={() => setShowCreate(false)}
-        onCreated={(id) => { setShowCreate(false); load(); setActiveId(id) }} />}
+        onCreated={(id) => { setShowCreate(false); load(); openChannel(id) }} />}
       {showDM && <CreateDMModal me={me} profiles={profiles}
         onClose={() => setShowDM(false)}
-        onCreated={(id) => { setShowDM(false); load(); setActiveId(id) }} />}
+        onCreated={(id) => { setShowDM(false); load(); openChannel(id) }} />}
     </div>
   )
 }
-function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
+function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobile, onBack }) {
   const [messages, setMessages] = useState([])
   const [senders, setSenders] = useState({})
   const [acks, setAcks] = useState([])           // all acknowledgments for messages in view
@@ -338,10 +360,16 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
   if (loading) return <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}><span className="page-sub">Loading messages…</span></div>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, position: 'relative' }}>
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', flex: 'none' }}>
-        <b style={{ fontSize: 15 }}>{channel?.is_dm ? (dmName || 'Direct message') : `# ${channel?.name}`}</b>
-        {channel?.description && !channel?.is_dm && <div className="page-sub" style={{ fontSize: 12.5 }}>{channel.description}</div>}
-        {channel?.is_dm && <div className="page-sub" style={{ fontSize: 12 }}>Direct message</div>}
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', flex: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
+        {isMobile && (
+          <button onClick={onBack} title="Back to channels"
+            style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 20, color: 'var(--accent)', padding: '0 4px 0 0', fontFamily: 'inherit', flex: 'none' }}>‹</button>
+        )}
+        <div style={{ minWidth: 0 }}>
+          <b style={{ fontSize: 15 }}>{channel?.is_dm ? (dmName || 'Direct message') : `# ${channel?.name}`}</b>
+          {channel?.description && !channel?.is_dm && <div className="page-sub" style={{ fontSize: 12.5 }}>{channel.description}</div>}
+          {channel?.is_dm && <div className="page-sub" style={{ fontSize: 12 }}>Direct message</div>}
+        </div>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', minHeight: 0 }}>
         {err && <div style={{ color: 'var(--failed)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
