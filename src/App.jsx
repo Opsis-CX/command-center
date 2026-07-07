@@ -1,4 +1,5 @@
 import NotificationBell from './components/NotificationBell'
+import NotificationToggle from './components/NotificationToggle'
 import { useState } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { useAuth } from './lib/auth'
@@ -39,6 +40,7 @@ export default function App() {
             <div className="crumb"><b>{titleFor(location.pathname)}</b></div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <NotificationToggle />
             <NotificationBell />
           </div>
         </div>
