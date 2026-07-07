@@ -1,6 +1,17 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
+// Detect phone-width viewport; updates on resize.
+function useIsMobile(breakpoint = 700) {
+  const [mobile, setMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= breakpoint : false)
+  useEffect(() => {
+    const onResize = () => setMobile(window.innerWidth <= breakpoint)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [breakpoint])
+  return mobile
+}
+
 // ============ COURSE BUILDER ============
 export default function CourseBuilder() {
   const [courses, setCourses] = useState([])
@@ -9,9 +20,7 @@ export default function CourseBuilder() {
   const [err, setErr] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [creating, setCreating] = useState(false)
-
   useEffect(() => { load() }, [])
-
   async function load() {
     setLoading(true); setErr('')
     try {
@@ -24,7 +33,6 @@ export default function CourseBuilder() {
       setCerts(certRes.data || [])
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }
-
   async function deleteCourse(id, title) {
     if (!window.confirm(`Delete the course "${title}"? Its lessons and quiz will be removed. This cannot be undone.`)) return
     try {
@@ -33,11 +41,9 @@ export default function CourseBuilder() {
       load()
     } catch (e) { setErr(e.message) }
   }
-
   if (editingId) {
     return <LessonEditor courseId={editingId} onBack={() => { setEditingId(null); load() }} />
   }
-
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, marginBottom: 22, flexWrap: 'wrap' }}>
@@ -47,10 +53,8 @@ export default function CourseBuilder() {
         </div>
         <button className="btn btn-primary" onClick={() => setCreating(true)}>+ New course</button>
       </div>
-
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}>
         <b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
-
       {loading ? <p className="page-sub">Loading…</p> : (
         <div className="cards">
           {courses.length === 0 && <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 20 }}>No courses yet. Create one to start building content.</div></div>}
@@ -71,13 +75,11 @@ export default function CourseBuilder() {
           ))}
         </div>
       )}
-
       {creating && <NewCourseModal certs={certs} onClose={() => setCreating(false)}
         onCreated={(id) => { setCreating(false); load(); setEditingId(id) }} />}
     </div>
   )
 }
-
 function NewCourseModal({ certs, onClose, onCreated }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -85,7 +87,6 @@ function NewCourseModal({ certs, onClose, onCreated }) {
   const [passThreshold, setPassThreshold] = useState(80)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
-
   async function save() {
     if (!title.trim()) { setErr('Give the course a title.'); return }
     setSaving(true); setErr('')
@@ -103,7 +104,6 @@ function NewCourseModal({ certs, onClose, onCreated }) {
       onCreated(data.id)
     } catch (e) { setErr(e.message); setSaving(false) }
   }
-
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal">
@@ -129,7 +129,6 @@ function NewCourseModal({ certs, onClose, onCreated }) {
     </div>
   )
 }
-
 // ============ LESSON EDITOR ============
 function LessonEditor({ courseId, onBack }) {
   const [course, setCourse] = useState(null)
@@ -140,9 +139,8 @@ function LessonEditor({ courseId, onBack }) {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [saveMsg, setSaveMsg] = useState('')
-
+  const isMobile = useIsMobile()
   useEffect(() => { load() }, [courseId])
-
   async function load() {
     setLoading(true); setErr('')
     try {
@@ -156,7 +154,6 @@ function LessonEditor({ courseId, onBack }) {
       if ((leRes.data || []).length && !activeLesson) setActiveLesson(leRes.data[0].id)
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }
-
   async function addLesson() {
     try {
       const { data, error } = await supabase.from('lessons').insert({
@@ -167,7 +164,6 @@ function LessonEditor({ courseId, onBack }) {
       setLessons(l => [...l, data]); setActiveLesson(data.id); setTab('lessons')
     } catch (e) { setErr(e.message) }
   }
-
   async function saveLesson(lesson) {
     try {
       const { error } = await supabase.from('lessons')
@@ -178,7 +174,6 @@ function LessonEditor({ courseId, onBack }) {
       flash('Lesson saved')
     } catch (e) { setErr(e.message) }
   }
-
   async function publish() {
     try {
       const next = course.status === 'published' ? 'draft' : 'published'
@@ -188,12 +183,9 @@ function LessonEditor({ courseId, onBack }) {
       flash(next === 'published' ? 'Published' : 'Unpublished')
     } catch (e) { setErr(e.message) }
   }
-
   function flash(m) { setSaveMsg(m); setTimeout(() => setSaveMsg(''), 2000) }
-
   if (loading) return <p className="page-sub">Loading course…</p>
   const lesson = lessons.find(l => l.id === activeLesson)
-
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
@@ -207,18 +199,14 @@ function LessonEditor({ courseId, onBack }) {
           <button className="btn btn-cta" onClick={publish}>{course?.status === 'published' ? 'Unpublish' : 'Publish'}</button>
         </div>
       </div>
-
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
-
       {previewing && <CoursePreview course={course} lessons={lessons} onClose={() => setPreviewing(false)} />}
-
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={'btn ' + (tab === 'lessons' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('lessons')}>Lessons</button>
         <button className={'btn ' + (tab === 'quiz' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('quiz')}>Quiz &amp; scoring</button>
       </div>
-
       {tab === 'lessons' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '220px 1fr', gap: 16 }}>
           <div className="card" style={{ padding: 12, height: 'fit-content' }}>
             {lessons.map((l, i) => (
               <button key={l.id} onClick={() => setActiveLesson(l.id)}
@@ -237,14 +225,12 @@ function LessonEditor({ courseId, onBack }) {
     </div>
   )
 }
-
 // ============ LESSON BODY (block editor) ============
 // Keeps all editing state LOCAL so typing never re-renders the parent
 // (that's what caused the cursor to jump). Reports up only on Save.
 function LessonBody({ lesson, onSave }) {
   const [title, setTitle] = useState(lesson.title)
   const [blocks, setBlocks] = useState(lesson.content_blocks || [])
-
   function addBlock(type) {
     const b = type === 'text' ? { type: 'text', html: '' }
       : type === 'image' ? { type: 'image', url: '' }
@@ -254,14 +240,12 @@ function LessonBody({ lesson, onSave }) {
   }
   function setBlock(i, patch) { setBlocks(bs => bs.map((b, j) => j === i ? { ...b, ...patch } : b)) }
   function delBlock(i) { setBlocks(bs => bs.filter((_, j) => j !== i)) }
-
   function toEmbed(url) {
     const yt = url.match(/(?:youtu\.be\/|v=)([\w-]{11})/); if (yt) return `https://www.youtube.com/embed/${yt[1]}`
     const vm = url.match(/vimeo\.com\/(\d+)/); if (vm) return `https://player.vimeo.com/video/${vm[1]}`
     return url
   }
   function exec(cmd, val) { document.execCommand(cmd, false, val || null) }
-
   async function uploadImage(file, i) {
     try {
       const ext = file.name.split('.').pop()
@@ -272,7 +256,6 @@ function LessonBody({ lesson, onSave }) {
       setBlock(i, { url: data.publicUrl })
     } catch (e) { alert('Upload failed: ' + e.message) }
   }
-
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
       <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -280,7 +263,6 @@ function LessonBody({ lesson, onSave }) {
           style={{ border: 0, fontSize: 17, fontWeight: 600, outline: 'none', flex: 1, fontFamily: 'inherit', color: 'var(--ink)' }} />
         <button className="btn btn-primary" onClick={() => onSave({ ...lesson, title, content_blocks: blocks })}>Save lesson</button>
       </div>
-
       <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--line-soft)', display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'center', background: '#fbfcfd' }}>
         <TB onClick={() => exec('bold')}><b>B</b></TB>
         <TB onClick={() => exec('italic')}><i>I</i></TB>
@@ -299,7 +281,6 @@ function LessonBody({ lesson, onSave }) {
         <AddBtn onClick={() => addBlock('video')}>▶ Video</AddBtn>
         <AddBtn onClick={() => addBlock('callout')}>💡 Callout</AddBtn>
       </div>
-
       <div style={{ padding: '20px 22px', minHeight: 260 }}>
         {blocks.map((b, i) => (
           <div key={i} style={{ position: 'relative', margin: '6px 0' }}>
@@ -328,7 +309,6 @@ function LessonBody({ lesson, onSave }) {
     </div>
   )
 }
-
 // Editable rich-text block. Sets its HTML ONCE on mount, then lets the browser
 // own the DOM while typing — so the cursor never jumps.
 function EditableBlock({ initialHtml, isCallout, onChange }) {
@@ -346,7 +326,6 @@ function EditableBlock({ initialHtml, isCallout, onChange }) {
     />
   )
 }
-
 function ImageBlock({ block, onChange }) {
   const widths = { small: '30%', medium: '55%', large: '80%', full: '100%' }
   const w = block.width || 'full'
@@ -375,10 +354,7 @@ function ImageBlock({ block, onChange }) {
     </div>
   )
 }
-
 // ============ COURSE PREVIEW (reusable lesson renderer) ============
-// LessonView renders a lesson's blocks read-only — reused by the agent
-// learning view later. CoursePreview wraps it with lesson-by-lesson paging.
 export function LessonView({ blocks }) {
   const widths = { small: '30%', medium: '55%', large: '80%', full: '100%' }
   return (
@@ -405,7 +381,6 @@ export function LessonView({ blocks }) {
     </div>
   )
 }
-
 function CoursePreview({ course, lessons, onClose }) {
   const [idx, setIdx] = React.useState(0)
   const scrollRef = React.useRef(null)
@@ -447,7 +422,6 @@ function CoursePreview({ course, lessons, onClose }) {
     </div>
   )
 }
-
 const TB = ({ children, onClick }) => (
   <button onMouseDown={e => e.preventDefault()} onClick={onClick}
     style={{ border: 0, background: 'transparent', width: 30, height: 30, borderRadius: 6, cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 14 }}>{children}</button>
@@ -456,16 +430,13 @@ const Divider = () => <span style={{ width: 1, alignSelf: 'stretch', background:
 const AddBtn = ({ children, onClick }) => (
   <button onClick={onClick} style={{ border: 0, background: 'transparent', color: 'var(--ink-soft)', fontSize: 12.5, fontWeight: 600, padding: '6px 9px', borderRadius: 6, cursor: 'pointer' }}>{children}</button>
 )
-
 // ============ QUIZ EDITOR ============
 function QuizEditor({ courseId }) {
   const [questions, setQuestions] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
-
   useEffect(() => { load() }, [courseId])
-
   async function load() {
     setLoading(true)
     try {
@@ -480,7 +451,6 @@ function QuizEditor({ courseId }) {
       setQuestions(withOpts)
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }
-
   async function addQuestion() {
     try {
       const { data, error } = await supabase.from('quiz_questions')
@@ -494,7 +464,6 @@ function QuizEditor({ courseId }) {
       setQuestions(q => [...q, { ...data, options: opts || [] }])
     } catch (e) { setErr(e.message) }
   }
-
   async function saveQuestion(q) {
     try {
       await supabase.from('quiz_questions').update({ prompt: q.prompt }).eq('id', q.id)
@@ -504,7 +473,6 @@ function QuizEditor({ courseId }) {
       flash('Saved')
     } catch (e) { setErr(e.message) }
   }
-
   async function addOption(q) {
     const { data } = await supabase.from('quiz_options')
       .insert({ question_id: q.id, label: '', is_correct: false, sort_order: q.options.length }).select().single()
@@ -521,9 +489,7 @@ function QuizEditor({ courseId }) {
     setQuestions(qs => qs.map(q => q.id === qid ? { ...q, options: q.options.map(o => ({ ...o, is_correct: o.id === oid })) } : q))
   }
   function flash(m) { setMsg(m); setTimeout(() => setMsg(''), 1800) }
-
   if (loading) return <p className="page-sub">Loading quiz…</p>
-
   return (
     <div>
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 12 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
