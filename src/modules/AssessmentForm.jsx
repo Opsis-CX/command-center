@@ -14,8 +14,10 @@ import { supabase } from '../lib/supabase'
 // ============================================================
 
 async function sendHiringEmail(kind, to, data) {
-  console.log(`[stub] would email "${kind}" to ${to}`, data)
-  // TODO: supabase.functions.invoke('send-hiring-email', { body: { kind, to, data } })
+  try {
+    const { error } = await supabase.functions.invoke('send-hiring-email', { body: { kind, to, data } })
+    if (error) console.error('email send failed:', error)
+  } catch (e) { console.error('email send failed:', e) }
 }
 
 const MAX_RESUME_BYTES = 15 * 1024 * 1024   // 15MB
