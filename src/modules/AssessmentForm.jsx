@@ -38,6 +38,21 @@ async function uploadFile(file, folder, maxBytes) {
   return path
 }
 
+// Module-level styles + Section so React keeps input focus while typing
+// (defining these inside the component remounts inputs on every keystroke).
+const labelStyle = { display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 5 }
+const inputStyle = { width: '100%', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface)' }
+const reqMark = <span style={{ color: '#DC2626' }}> *</span>
+function Section({ title, sub, children }) {
+  return (
+    <div style={{ marginBottom: 26 }}>
+      <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: sub ? 3 : 14, paddingBottom: 6, borderBottom: '1px solid var(--line)' }}>{title}</h2>
+      {sub && <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: '0 0 14px' }}>{sub}</p>}
+      <div style={{ display: 'grid', gap: 16 }}>{children}</div>
+    </div>
+  )
+}
+
 export default function AssessmentForm({ applicationId }) {
   const [f, setF] = useState({
     email: '', phone: '', city: '', state: '',
@@ -143,24 +158,14 @@ export default function AssessmentForm({ applicationId }) {
     )
   }
 
-  const label = { display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 5 }
-  const input = { width: '100%', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface)' }
-  const req = <span style={{ color: '#DC2626' }}> *</span>
-  const Section = ({ title, sub, children }) => (
-    <div style={{ marginBottom: 26 }}>
-      <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: sub ? 3 : 14, paddingBottom: 6, borderBottom: '1px solid var(--line)' }}>{title}</h2>
-      {sub && <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: '0 0 14px' }}>{sub}</p>}
-      <div style={{ display: 'grid', gap: 16 }}>{children}</div>
-    </div>
-  )
-  const YesNo = ({ k }) => (
-    <select style={input} value={f[k]} onChange={set(k)}>
+  const yesNo = (k) => (
+    <select style={inputStyle} value={f[k]} onChange={set(k)}>
       <option value="">Select…</option><option value="yes">Yes</option><option value="no">No</option>
     </select>
   )
-  const FileField = ({ k, accept, hint }) => (
+  const fileField = (k, accept, hint) => (
     <div>
-      <input type="file" accept={accept} onChange={setFile(k)} style={{ ...input, padding: '8px 11px' }} />
+      <input type="file" accept={accept} onChange={setFile(k)} style={{ ...inputStyle, padding: '8px 11px' }} />
       {files[k] && <div style={{ fontSize: 12, color: '#16A34A', marginTop: 4 }}>✓ {files[k].name}</div>}
       {hint && !files[k] && <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>{hint}</div>}
     </div>
@@ -168,6 +173,9 @@ export default function AssessmentForm({ applicationId }) {
 
   return (
     <div style={{ maxWidth: 660, margin: '0 auto', padding: '32px 20px 80px' }}>
+      <div style={{ textAlign: 'center', marginBottom: 24 }}>
+        <img src="/opsis-logo.png" alt="Opsis" style={{ maxHeight: 56, width: 'auto', objectFit: 'contain' }} />
+      </div>
       <div style={{ marginBottom: 26 }}>
         <h1 style={{ fontSize: 26, fontWeight: 800, marginBottom: 6 }}>OpsisCX Assessment</h1>
         <p style={{ fontSize: 14.5, color: 'var(--ink-soft)', lineHeight: 1.6 }}>
@@ -178,27 +186,27 @@ export default function AssessmentForm({ applicationId }) {
       {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '10px 14px', fontSize: 13.5, marginBottom: 20 }}>{err}</div>}
 
       <Section title="Contact">
-        <div><label style={label}>Email address{req}</label><input style={input} type="email" value={f.email} onChange={set('email')} /></div>
-        <div><label style={label}>Phone number{req}</label><input style={input} value={f.phone} onChange={set('phone')} /></div>
+        <div><label style={labelStyle}>Email address{reqMark}</label><input style={inputStyle} type="email" value={f.email} onChange={set('email')} /></div>
+        <div><label style={labelStyle}>Phone number{reqMark}</label><input style={inputStyle} value={f.phone} onChange={set('phone')} /></div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div><label style={label}>City</label><input style={input} value={f.city} onChange={set('city')} /></div>
-          <div><label style={label}>State</label><input style={input} value={f.state} onChange={set('state')} placeholder="e.g. TX" /></div>
+          <div><label style={labelStyle}>City</label><input style={inputStyle} value={f.city} onChange={set('city')} /></div>
+          <div><label style={labelStyle}>State</label><input style={inputStyle} value={f.state} onChange={set('state')} placeholder="e.g. TX" /></div>
         </div>
       </Section>
 
       <Section title="Experience">
-        <div><label style={label}>Years of relevant work experience{req}</label>
-          <select style={input} value={f.years_experience} onChange={set('years_experience')}>
+        <div><label style={labelStyle}>Years of relevant work experience{reqMark}</label>
+          <select style={inputStyle} value={f.years_experience} onChange={set('years_experience')}>
             <option value="">Select…</option>{YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
-        <div><label style={label}>Years of outbound sales or call center experience{req}</label>
-          <select style={input} value={f.years_outbound} onChange={set('years_outbound')}>
+        <div><label style={labelStyle}>Years of outbound sales or call center experience{reqMark}</label>
+          <select style={inputStyle} value={f.years_outbound} onChange={set('years_outbound')}>
             <option value="">Select…</option>{YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
         <div>
-          <label style={label}>What type of outbound calls have you handled?</label>
+          <label style={labelStyle}>What type of outbound calls have you handled?</label>
           <div style={{ display: 'grid', gap: 6 }}>
             {CALL_TYPES.map(t => (
               <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, cursor: 'pointer' }}>
@@ -207,11 +215,11 @@ export default function AssessmentForm({ applicationId }) {
             ))}
           </div>
         </div>
-        <div><label style={label}>Tools and platforms you've used in previous roles</label>
+        <div><label style={labelStyle}>Tools and platforms you've used in previous roles</label>
           <textarea style={{ ...input, minHeight: 60, resize: 'vertical' }} value={f.tools_platforms} onChange={set('tools_platforms')} /></div>
-        <div><label style={label}>What systems, dialers, or CRMs have you used?</label>
+        <div><label style={labelStyle}>What systems, dialers, or CRMs have you used?</label>
           <textarea style={{ ...input, minHeight: 60, resize: 'vertical' }} value={f.systems_dialers} onChange={set('systems_dialers')} /></div>
-        <div><label style={label}>What performance metrics were you responsible for meeting?</label>
+        <div><label style={labelStyle}>What performance metrics were you responsible for meeting?</label>
           <textarea style={{ ...input, minHeight: 60, resize: 'vertical' }} value={f.performance_metrics} onChange={set('performance_metrics')} /></div>
       </Section>
 
@@ -239,50 +247,50 @@ export default function AssessmentForm({ applicationId }) {
           </table>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div><label style={label}>Hours per week you can commit</label><input style={input} value={f.hours_per_week} onChange={set('hours_per_week')} placeholder="e.g. 30" /></div>
-          <div><label style={label}>When can you start?</label><input style={input} value={f.available_start} onChange={set('available_start')} placeholder="Month, day, year" /></div>
+          <div><label style={labelStyle}>Hours per week you can commit</label><input style={inputStyle} value={f.hours_per_week} onChange={set('hours_per_week')} placeholder="e.g. 30" /></div>
+          <div><label style={labelStyle}>When can you start?</label><input style={inputStyle} value={f.available_start} onChange={set('available_start')} placeholder="Month, day, year" /></div>
         </div>
       </Section>
 
       <Section title="Work setup">
-        <div><label style={label}>Do you have a quiet workspace and reliable internet for handling calls?{req}</label><YesNo k="quiet_workspace" /></div>
-        <div><label style={label}>Do you have your own computer and headset?{req}</label><YesNo k="own_equipment" /></div>
-        <div><label style={label}>Are you comfortable working as a 1099 independent contractor?{req}</label><YesNo k="comfortable_1099" /></div>
-        <div><label style={label}>Your desired hourly or performance-based rate</label><input style={input} value={f.desired_rate} onChange={set('desired_rate')} /></div>
+        <div><label style={labelStyle}>Do you have a quiet workspace and reliable internet for handling calls?{reqMark}</label>{yesNo('quiet_workspace')}</div>
+        <div><label style={labelStyle}>Do you have your own computer and headset?{reqMark}</label>{yesNo('own_equipment')}</div>
+        <div><label style={labelStyle}>Are you comfortable working as a 1099 independent contractor?{reqMark}</label>{yesNo('comfortable_1099')}</div>
+        <div><label style={labelStyle}>Your desired hourly or performance-based rate</label><input style={inputStyle} value={f.desired_rate} onChange={set('desired_rate')} /></div>
       </Section>
 
       <Section title="Resume">
-        <div><label style={label}>Upload your resume{req}</label><FileField k="resume" accept=".pdf,.doc,.docx" hint="PDF or Word, up to 15MB." /></div>
+        <div><label style={labelStyle}>Upload your resume{reqMark}</label>{fileField('resume', '.pdf,.doc,.docx', 'PDF or Word, up to 15MB.')}</div>
       </Section>
 
       <Section title="Voice recordings" sub="Record each in your customer-service voice, then upload the audio file (MP3 or WAV). Read the script exactly as written.">
         <div>
-          <label style={label}>1. Outbound greeting{req}</label>
+          <label style={labelStyle}>1. Outbound greeting{reqMark}</label>
           <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 8, lineHeight: 1.5 }}>
             "Hi Becky, this is [Your Name] with OpsisCX. I'm calling about your request for a [home improvement project of your choice]. I just want to get a quick idea of what you're looking for so we can get you set up properly."
           </div>
-          <FileField k="rec_outbound" accept="audio/*,.mp3,.wav,.m4a" hint="MP3, WAV, or M4A." />
+          {fileField('rec_outbound', 'audio/*,.mp3,.wav,.m4a', 'MP3, WAV, or M4A.')}
         </div>
         <div>
-          <label style={label}>2. Inbound greeting{req}</label>
+          <label style={labelStyle}>2. Inbound greeting{reqMark}</label>
           <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 8, lineHeight: 1.5 }}>
             "Thank you for calling OpsisCX. This is [Your Name]. How can I help you today?"
           </div>
-          <FileField k="rec_inbound" accept="audio/*,.mp3,.wav,.m4a" hint="MP3, WAV, or M4A." />
+          {fileField('rec_inbound', 'audio/*,.mp3,.wav,.m4a', 'MP3, WAV, or M4A.')}
         </div>
         <div>
-          <label style={label}>3. Rebuttal — "I'm not interested"{req}</label>
+          <label style={labelStyle}>3. Rebuttal — "I'm not interested"{reqMark}</label>
           <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 8, lineHeight: 1.5 }}>
             If someone on the phone says "I'm not interested," what's a good response to try to regain their interest? Record your answer.
           </div>
-          <FileField k="rec_rebuttal1" accept="audio/*,.mp3,.wav,.m4a" hint="MP3, WAV, or M4A." />
+          {fileField('rec_rebuttal1', 'audio/*,.mp3,.wav,.m4a', 'MP3, WAV, or M4A.')}
         </div>
         <div>
-          <label style={label}>4. Rebuttal — "How much does it cost?"{req}</label>
+          <label style={labelStyle}>4. Rebuttal — "How much does it cost?"{reqMark}</label>
           <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 8, lineHeight: 1.5 }}>
             We can't give quotes over the phone — someone needs to inspect the area (for free) to give an exact quote. If someone asks "How much does it cost?", how would you respond? Record your answer.
           </div>
-          <FileField k="rec_rebuttal2" accept="audio/*,.mp3,.wav,.m4a" hint="MP3, WAV, or M4A." />
+          {fileField('rec_rebuttal2', 'audio/*,.mp3,.wav,.m4a', 'MP3, WAV, or M4A.')}
         </div>
       </Section>
 
