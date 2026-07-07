@@ -81,8 +81,9 @@ export function UnreadProvider({ children }) {
     setCounts(prev => { if (!prev[channelId]) return prev; const n = { ...prev }; delete n[channelId]; return n })
     const nowIso = new Date().toISOString()
     lastRead.current[channelId] = nowIso
-    await supabase.from('channel_prefs')
+    const { error } = await supabase.from('channel_prefs')
       .upsert({ profile_id: meId, channel_id: channelId, last_read_at: nowIso }, { onConflict: 'profile_id,channel_id' })
+    if (error) console.error('markRead upsert failed:', error.message, error)
   }, [meId])
 
   const total = Object.values(counts).reduce((s, n) => s + n, 0)
