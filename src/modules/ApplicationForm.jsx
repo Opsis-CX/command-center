@@ -244,13 +244,13 @@ export default function ApplicationForm() {
           </select>
         </div>
         <div><label style={labelStyle}>Tools and platforms you've used in previous roles</label>
-          <textarea style={{ ...input, minHeight: 70, resize: 'vertical' }} value={f.tools_platforms} onChange={set('tools_platforms')} placeholder="CRMs, dialers, help desks, etc." /></div>
+          <textarea style={{ ...inputStyle, minHeight: 70, resize: 'vertical' }} value={f.tools_platforms} onChange={set('tools_platforms')} placeholder="CRMs, dialers, help desks, etc." /></div>
         <div><label style={labelStyle}>How do you stay organized managing multiple tasks or deadlines?</label>
-          <textarea style={{ ...input, minHeight: 70, resize: 'vertical' }} value={f.organization_answer} onChange={set('organization_answer')} /></div>
+          <textarea style={{ ...inputStyle, minHeight: 70, resize: 'vertical' }} value={f.organization_answer} onChange={set('organization_answer')} /></div>
         <div><label style={labelStyle}>This is a fully remote role. How do you stay productive and communicate well remotely?</label>
-          <textarea style={{ ...input, minHeight: 70, resize: 'vertical' }} value={f.remote_answer} onChange={set('remote_answer')} /></div>
+          <textarea style={{ ...inputStyle, minHeight: 70, resize: 'vertical' }} value={f.remote_answer} onChange={set('remote_answer')} /></div>
         <div><label style={labelStyle}>Tell us about a time you solved a problem or improved a process at work.</label>
-          <textarea style={{ ...input, minHeight: 70, resize: 'vertical' }} value={f.problem_answer} onChange={set('problem_answer')} /></div>
+          <textarea style={{ ...inputStyle, minHeight: 70, resize: 'vertical' }} value={f.problem_answer} onChange={set('problem_answer')} /></div>
       </Section>
 
       <Section title="Availability & logistics">
@@ -266,12 +266,12 @@ export default function ApplicationForm() {
         <div>
           <label style={labelStyle}>Upload your resume</label>
           <input ref={resumeRef} type="file" accept=".pdf,.doc,.docx" onChange={e => setResume(e.target.files?.[0] || null)}
-            style={{ ...input, padding: '8px 11px' }} />
+            style={{ ...inputStyle, padding: '8px 11px' }} />
           <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>PDF or Word, up to 15MB.</div>
         </div>
         <div><label style={labelStyle}>LinkedIn profile</label><input style={inputStyle} value={f.linkedin_url} onChange={set('linkedin_url')} placeholder="linkedin.com/in/you" /></div>
         <div><label style={labelStyle}>Why are you interested in working with Opsis?</label>
-          <textarea style={{ ...input, minHeight: 80, resize: 'vertical' }} value={f.why_opsis} onChange={set('why_opsis')} /></div>
+          <textarea style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }} value={f.why_opsis} onChange={set('why_opsis')} /></div>
         <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, fontSize: 13.5, lineHeight: 1.5, cursor: 'pointer' }}>
           <input type="checkbox" checked={f.info_confirmed} onChange={e => setF(prev => ({ ...prev, info_confirmed: e.target.checked }))} style={{ marginTop: 3 }} />
           <span>I confirm the information in this application is accurate to the best of my knowledge.{reqMark}</span>
