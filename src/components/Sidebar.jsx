@@ -11,6 +11,7 @@ const NAV = [
   { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, roles: ['admin', 'agent'] },
   { type: 'link', to: '/weekly-sync', label: 'Weekly Sync', ic: '🗓', roles: ['admin'] },
   { type: 'link', to: '/chat', label: 'Chat', ic: '💬', roles: ['admin', 'agent'] },
+  { type: 'link', to: '/hiring', label: 'Hiring', ic: '👥', roles: ['admin'] },
   {
     type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
     children: [
