@@ -18,6 +18,7 @@ import Projects from './modules/Projects'
 import Clients from './modules/Clients'
 import Reporting from './modules/Reporting'
 import WeeklySync from './modules/WeeklySync'
+import { UnreadProvider } from './lib/unread'
 
 export default function App() {
   const { session, loading, isAdmin } = useAuth()
@@ -26,6 +27,7 @@ export default function App() {
   if (loading) return <div className="loading-screen">Loading…</div>
   if (!session) return <Login />
   return (
+    <UnreadProvider>
     <div className="app">
       <Sidebar open={navOpen} onNavigate={() => setNavOpen(false)} />
       {/* tap-to-close backdrop, only visible on mobile when the nav is open */}
@@ -63,6 +65,7 @@ export default function App() {
         </div>
       </main>
     </div>
+    </UnreadProvider>
   )
 }
 
