@@ -371,6 +371,8 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   const [showPicker, setShowPicker] = useState(false)      // input emoji picker
   const [reactFor, setReactFor] = useState(null)   // message id whose react-picker is open
   const [showMembers, setShowMembers] = useState(false)
+  const composerRef = useRef(null)
+  const htmlRef = useRef('')
   const bottomRef = useRef(null)
   const { typerNames, notifyTyping, stopTyping } = useTyping(`typing:${channelId}`, me.id, me.full_name)
   useEffect(() => {
@@ -473,12 +475,15 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   }, [channelId, senders])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   async function send() {
-    const body = text.trim()
-    if (!body && pending.length === 0) return
-    const isHere = /(^|\s)@here(\s|$)/i.test(body)
+    const html = htmlRef.current || ''
+    const plain = (html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim())
+    const body = html.trim()
+    if (!plain && pending.length === 0) return
+    const isHere = /(^|\s)@here(\s|$)/i.test(plain)
     const willRequireAck = isAdmin && requireAck
     const filesToSend = pending
-    setText(''); setRequireAck(false); setPending([])
+    composerRef.current?.clear(); htmlRef.current = ''
+    setRequireAck(false); setPending([])
     stopTyping()
     if (filesToSend.length) setUploading(true)
     const temp = { id: 'temp-' + Date.now(), channel_id: channelId, sender_id: me.id, body: body || '', created_at: new Date().toISOString(), requires_ack: willRequireAck, is_here: isHere, _optimistic: true }
@@ -488,10 +493,9 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       .select().single()
     if (error) {
       setErr(error.message)
-      setMessages(prev => prev.filter(m => m.id !== temp.id)); setText(body); setPending(filesToSend); setUploading(false)
+      setMessages(prev => prev.filter(m => m.id !== temp.id)); setPending(filesToSend); setUploading(false)
       return
     }
-    // upload + attach files
     if (filesToSend.length) {
       try {
         const rows = []
@@ -511,7 +515,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       channelId, channelName: channel?.name, isDm: channel?.is_dm,
       actorId: me.id, actorName: me.full_name, isHere, requiresAck: willRequireAck,
     })
-    await handleMentions(body)
+    await handleMentions(plain)
   }
   // Detect @mentions, auto-add non-members to the channel, and notify them.
   async function handleMentions(body) {
@@ -629,7 +633,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
           {showPicker && (
             <div style={{ position: 'absolute', bottom: 52, left: 0, zIndex: 50 }}>
-              <EmojiPicker onEmojiClick={(e) => { setText(t => t + e.emoji); setShowPicker(false) }}
+              <EmojiPicker onEmojiClick={(e) => { composerRef.current?.insertText(e.emoji); setShowPicker(false) }}
                 width={320} height={380} previewConfig={{ showPreview: false }} />
             </div>
           )}
@@ -639,14 +643,16 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, padding: '0 10px', flex: 'none' }}>📎</button>
           <button type="button" onClick={() => setShowPicker(p => !p)} title="Emoji"
             style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '0 10px', flex: 'none' }}>😀</button>
-          <div style={{ flex: 1 }} onPaste={onPaste}>
-            <MentionTextarea value={text} onChange={(v) => { setText(v); notifyTyping() }} onEnter={send} profiles={profiles}
-              rows={3}
+          <div style={{ flex: 1 }}>
+            <RichComposer valueRef={composerRef}
+              onInput={(html) => { htmlRef.current = html; notifyTyping() }}
+              onEnter={send}
+              onPasteFiles={(files) => addFiles(files)}
               placeholder={requireAck ? 'Write your update… (@name to mention)' : `Message #${channel?.name || ''}  (@name, @here, or paste/attach a file)`}
               accent={requireAck ? 'var(--accent)' : 'var(--line)'}
-              style={{ resize: 'none', padding: '10px 12px', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', minHeight: 76, maxHeight: 200 }} />
+              minHeight={76} maxHeight={200} />
           </div>
-          <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={(!text.trim() && pending.length === 0) || uploading}>{requireAck ? 'Post update' : 'Send'}</button>
+          <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={uploading}>{requireAck ? 'Post update' : 'Send'}</button>
         </div>
       </div>
       {trackFor && <TrackPanel messageId={trackFor} me={me} members={members} profiles={profiles} acks={acks} onClose={() => setTrackFor(null)} />}
@@ -658,6 +664,66 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     </div>
   )
 }
+// Rich text composer: contentEditable + Slack-style toolbar (bold, italic,
+// strikethrough, bullet + numbered lists). Enter sends; Shift+Enter = newline.
+// Exposes formatted HTML via onChange. Supports paste (files bubble up via onPaste).
+function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, minHeight = 76, maxHeight = 200, accent }) {
+  const ref = useRef(null)
+  const [empty, setEmpty] = useState(true)
+
+  function exec(cmd) { document.execCommand(cmd, false, null); ref.current?.focus(); handleInput() }
+  function handleInput() {
+    const html = ref.current?.innerHTML || ''
+    const text = ref.current?.innerText || ''
+    setEmpty(text.trim().length === 0)
+    onInput?.(html, text)
+  }
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEnter?.() }
+  }
+  function handlePaste(e) {
+    const files = Array.from(e.clipboardData?.files || [])
+    if (files.length) { e.preventDefault(); onPasteFiles?.(files); return }
+    // paste as plain text so we don't inherit outside fonts/colors
+    e.preventDefault()
+    const text = e.clipboardData.getData('text/plain')
+    document.execCommand('insertText', false, text)
+    handleInput()
+  }
+  // allow parent to clear the editor
+  useEffect(() => {
+    if (valueRef) valueRef.current = {
+      clear: () => { if (ref.current) { ref.current.innerHTML = ''; setEmpty(true) } },
+      focus: () => ref.current?.focus(),
+      insertText: (t) => { ref.current?.focus(); document.execCommand('insertText', false, t); handleInput() },
+    }
+  }, [valueRef])
+
+  const TBtn = ({ cmd, label, title }) => (
+    <button type="button" title={title} onMouseDown={e => { e.preventDefault(); exec(cmd) }}
+      style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, width: 28, height: 26, borderRadius: 5 }}>{label}</button>
+  )
+
+  return (
+    <div style={{ flex: 1, border: '1px solid ' + (accent || 'var(--line)'), borderRadius: 8, overflow: 'hidden', background: 'var(--surface)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 1, padding: '3px 6px', borderBottom: '1px solid var(--line-soft)', background: '#fbfcfd' }}>
+        <TBtn cmd="bold" label={<b>B</b>} title="Bold" />
+        <TBtn cmd="italic" label={<i>I</i>} title="Italic" />
+        <TBtn cmd="strikeThrough" label={<s>S</s>} title="Strikethrough" />
+        <span style={{ width: 1, height: 16, background: 'var(--line)', margin: '0 3px' }} />
+        <TBtn cmd="insertUnorderedList" label="•" title="Bulleted list" />
+        <TBtn cmd="insertOrderedList" label="1." title="Numbered list" />
+      </div>
+      <div style={{ position: 'relative' }}>
+        {empty && <div style={{ position: 'absolute', top: 10, left: 12, color: 'var(--ink-soft)', fontSize: 14, pointerEvents: 'none' }}>{placeholder}</div>}
+        <div ref={ref} contentEditable suppressContentEditableWarning
+          onInput={handleInput} onKeyDown={handleKey} onPaste={handlePaste}
+          style={{ outline: 'none', fontSize: 14, lineHeight: 1.5, padding: '10px 12px', minHeight, maxHeight, overflowY: 'auto' }} />
+      </div>
+    </div>
+  )
+}
+
 // Channel members panel: lists everyone in the channel; owners can remove.
 function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, onClose, onChanged }) {
   const [memberIds, setMemberIds] = useState([])
@@ -885,12 +951,16 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
 }
 // Render @here / @update mentions with a highlight
 function renderBody(body) {
-  const parts = String(body).split(/(@here|@update)/gi)
-  return parts.map((p, i) =>
-    /^@here$/i.test(p) || /^@update$/i.test(p)
-      ? <span key={i} style={{ color: 'var(--accent)', fontWeight: 700, background: 'var(--accent-bg)', borderRadius: 4, padding: '0 3px' }}>{p}</span>
-      : <React.Fragment key={i}>{p}</React.Fragment>
-  )
+  let html = String(body || '')
+  // If it looks like plain text (no tags), escape angle brackets and keep newlines.
+  const looksHtml = /<\/?[a-z][\s\S]*>/i.test(html)
+  if (!looksHtml) {
+    html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
+  }
+  // Highlight @here / @update
+  html = html.replace(/(@here|@update)\b/gi,
+    '<span style="color:var(--accent);font-weight:700;background:var(--accent-bg);border-radius:4px;padding:0 3px">$1</span>')
+  return <div className="chat-rich" style={{ fontSize: 14, lineHeight: 1.5, wordBreak: 'break-word' }} dangerouslySetInnerHTML={{ __html: html }} />
 }
 // Admin tracking panel: who confirmed, who hasn't, nudge
 function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
