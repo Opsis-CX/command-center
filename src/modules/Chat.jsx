@@ -340,7 +340,7 @@ export default function Chat() {
       )}
       {showConvo && (
         activeId
-          ? <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead} />
+          ? <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} isOwner={isOwner} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead} />
           : <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-soft)', height: '100%' }}>Select a channel</div>
       )}
       {showCreate && <CreateChannelModal me={me} profiles={profiles}
@@ -352,7 +352,7 @@ export default function Chat() {
     </div>
   )
 }
-function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobile, onBack, markRead }) {
+function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profiles, isMobile, onBack, markRead }) {
   const [messages, setMessages] = useState([])
   const [senders, setSenders] = useState({})
   const [acks, setAcks] = useState([])           // all acknowledgments for messages in view
@@ -370,6 +370,7 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
   const fileInputRef = useRef(null)
   const [showPicker, setShowPicker] = useState(false)      // input emoji picker
   const [reactFor, setReactFor] = useState(null)   // message id whose react-picker is open
+  const [showMembers, setShowMembers] = useState(false)
   const bottomRef = useRef(null)
   const { typerNames, notifyTyping, stopTyping } = useTyping(`typing:${channelId}`, me.id, me.full_name)
   useEffect(() => {
@@ -547,11 +548,14 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
           <button onClick={onBack} title="Back to channels"
             style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 20, color: 'var(--accent)', padding: '0 4px 0 0', fontFamily: 'inherit', flex: 'none' }}>‹</button>
         )}
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <b style={{ fontSize: 15 }}>{channel?.is_dm ? (dmName || 'Direct message') : `# ${channel?.name}`}</b>
           {channel?.description && !channel?.is_dm && <div className="page-sub" style={{ fontSize: 12.5 }}>{channel.description}</div>}
           {channel?.is_dm && <div className="page-sub" style={{ fontSize: 12 }}>Direct message</div>}
         </div>
+        {!channel?.is_dm && (
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', flex: 'none' }} onClick={() => setShowMembers(true)}>👥 Members</button>
+        )}
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', minHeight: 0 }}>
         {err && <div style={{ color: 'var(--failed)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
@@ -646,6 +650,96 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
       </div>
       {trackFor && <TrackPanel messageId={trackFor} me={me} members={members} profiles={profiles} acks={acks} onClose={() => setTrackFor(null)} />}
       {threadFor && <ThreadPanel parentId={threadFor} channelId={channelId} me={me} senders={senders} profiles={profiles} channel={channel} members={members} onClose={() => setThreadFor(null)} />}
+      {showMembers && <ChannelMembersPanel channelId={channelId} channelName={channel?.name} profiles={profiles} meId={me.id} isOwner={isOwner} onClose={() => setShowMembers(false)} onChanged={async () => {
+        const { data } = await supabase.from('channel_members').select('profile_id').eq('channel_id', channelId)
+        setMembers((data || []).map(m => m.profile_id))
+      }} />}
+    </div>
+  )
+}
+// Channel members panel: lists everyone in the channel; owners can remove.
+function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, onClose, onChanged }) {
+  const [memberIds, setMemberIds] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  const [search, setSearch] = useState('')
+
+  const loadMembers = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase.from('channel_members').select('profile_id').eq('channel_id', channelId)
+    setMemberIds((data || []).map(m => m.profile_id))
+    setLoading(false)
+  }, [channelId])
+  useEffect(() => { loadMembers() }, [loadMembers])
+
+  const members = memberIds.map(id => profiles.find(p => p.id === id)).filter(Boolean)
+    .sort((a, b) => a.full_name.localeCompare(b.full_name))
+  const nonMembers = profiles.filter(p => !memberIds.includes(p.id) && p.full_name?.toLowerCase().includes(search.toLowerCase()))
+
+  async function removeMember(pid) {
+    const p = profiles.find(x => x.id === pid)
+    if (!window.confirm(`Remove ${p?.full_name || 'this person'} from #${channelName}? They'll lose access to the channel and stop seeing new messages. Their past messages stay.`)) return
+    const { error } = await supabase.from('channel_members').delete().eq('channel_id', channelId).eq('profile_id', pid)
+    if (error) { window.alert('Could not remove: ' + error.message); return }
+    setMemberIds(prev => prev.filter(id => id !== pid))
+    onChanged && onChanged()
+  }
+  async function addMember(pid) {
+    const { error } = await supabase.from('channel_members').insert({ channel_id: channelId, profile_id: pid })
+    if (error) { window.alert('Could not add: ' + error.message); return }
+    setMemberIds(prev => [...prev, pid])
+    notifyChannelAdded({ recipientIds: [pid], actorId: meId, actorName: profiles.find(p => p.id === meId)?.full_name, channelName, isDm: false })
+    onChanged && onChanged()
+  }
+
+  return (
+    <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
+      <div className="modal" style={{ width: 420, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}># {channelName}</h3>
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 9px' }} onClick={onClose}>Close</button>
+        </div>
+        <p className="page-sub" style={{ marginBottom: 14 }}>{members.length} member{members.length !== 1 ? 's' : ''}{isOwner ? ' · you can add or remove people' : ''}</p>
+
+        {loading ? <p className="page-sub">Loading…</p> : (
+          <div style={{ overflowY: 'auto', flex: 1 }}>
+            {members.map(p => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0' }}>
+                <span style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flex: 'none' }}>{initials(p.full_name)}</span>
+                <span style={{ flex: 1, fontSize: 14 }}>{p.full_name}{p.id === meId ? ' (you)' : ''}</span>
+                {isOwner && p.id !== meId && (
+                  <button onClick={() => removeMember(p.id)} title="Remove from channel"
+                    style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--failed)', fontSize: 12, fontWeight: 600, padding: '4px 8px' }}>Remove</button>
+                )}
+              </div>
+            ))}
+
+            {isOwner && (
+              <div style={{ marginTop: 14, borderTop: '1px solid var(--line-soft)', paddingTop: 12 }}>
+                {!adding ? (
+                  <button className="btn btn-ghost" onClick={() => setAdding(true)}>+ Add people</button>
+                ) : (
+                  <>
+                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search people to add…" autoFocus
+                      style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', marginBottom: 8, boxSizing: 'border-box' }} />
+                    <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                      {nonMembers.length === 0 && <div className="page-sub" style={{ fontSize: 12, padding: 8 }}>Everyone's already in, or no match.</div>}
+                      {nonMembers.map(p => (
+                        <button key={p.id} onClick={() => addMember(p.id)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', border: 0, background: 'transparent', cursor: 'pointer', padding: '7px 6px', fontFamily: 'inherit' }}>
+                          <span style={{ width: 26, height: 26, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>{initials(p.full_name)}</span>
+                          <span style={{ fontSize: 13.5, flex: 1 }}>{p.full_name}</span>
+                          <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>Add</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
