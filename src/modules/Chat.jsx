@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { notifyChatMessage, notifyAckNudge, notifyChannelAdded, notifyChatMention } from '../lib/notify'
+import { useUnread } from '../lib/unread'
 import EmojiPicker from 'emoji-picker-react'
 // ============================================================
 // CHAT — Stage 1 + @update acknowledgments + @here
@@ -175,6 +176,7 @@ export default function Chat() {
   const { isAdmin, level } = useAuth()
   const isOwner = (level || 0) >= 100
   const isMobile = useIsMobile()
+  const { counts: unreadCounts, markRead } = useUnread()
   const [me, setMe] = useState(null)
   const [channels, setChannels] = useState([])
   const [activeId, setActiveId] = useState(null)
@@ -232,7 +234,7 @@ export default function Chat() {
   }
   if (loading) return <p className="page-sub">Loading chat…</p>
 
-  const openChannel = (id) => { setActiveId(id); setMobileView('convo') }
+  const openChannel = (id) => { setActiveId(id); setMobileView('convo'); markRead(id) }
   // On mobile, show either the list or the conversation. On desktop, both.
   const showList = !isMobile || mobileView === 'list'
   const showConvo = !isMobile || mobileView === 'convo'
@@ -250,8 +252,11 @@ export default function Chat() {
             {channels.filter(c => !c.is_dm).map(c => (
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
                 <button onClick={() => openChannel(c.id)}
-                  style={{ display: 'block', flex: 1, textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  # {c.name}
+                  style={{ display: 'flex', alignItems: 'center', flex: 1, textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: unreadCounts[c.id] ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <span style={{ flex: 1 }}># {c.name}</span>
+                  {unreadCounts[c.id] > 0 && (
+                    <span style={{ background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', flex: 'none' }}>{unreadCounts[c.id] > 99 ? '99+' : unreadCounts[c.id]}</span>
+                  )}
                 </button>
                 {isOwner && (
                   <button onClick={() => deleteChannel(c)} title="Delete channel"
@@ -268,8 +273,11 @@ export default function Chat() {
             {channels.filter(c => c.is_dm).map(c => (
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
                 <button onClick={() => openChannel(c.id)}
-                  style={{ display: 'block', flex: 1, textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  {dmNames[c.id] || c.name || 'Direct message'}
+                  style={{ display: 'flex', alignItems: 'center', flex: 1, textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: unreadCounts[c.id] ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <span style={{ flex: 1 }}>{dmNames[c.id] || c.name || 'Direct message'}</span>
+                  {unreadCounts[c.id] > 0 && (
+                    <span style={{ background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', flex: 'none' }}>{unreadCounts[c.id] > 99 ? '99+' : unreadCounts[c.id]}</span>
+                  )}
                 </button>
                 {isOwner && (
                   <button onClick={() => deleteChannel(c)} title="Delete conversation"
@@ -282,7 +290,7 @@ export default function Chat() {
       )}
       {showConvo && (
         activeId
-          ? <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} />
+          ? <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead} />
           : <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-soft)', height: '100%' }}>Select a channel</div>
       )}
       {showCreate && <CreateChannelModal me={me} profiles={profiles}
@@ -294,7 +302,7 @@ export default function Chat() {
     </div>
   )
 }
-function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobile, onBack }) {
+function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobile, onBack, markRead }) {
   const [messages, setMessages] = useState([])
   const [senders, setSenders] = useState({})
   const [acks, setAcks] = useState([])           // all acknowledgments for messages in view
@@ -372,6 +380,8 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
         async (payload) => {
           const m = payload.new
           setMessages(prev => prev.some(x => x.id === m.id) ? prev : [...prev, m])
+          // I'm looking at this channel, so keep it marked read
+          if (m.sender_id !== me.id) markRead?.(channelId)
           if (m.sender_id && !(m.sender_id in senders)) {
             const { data } = await supabase.from('profiles').select('id, full_name').eq('id', m.sender_id).single()
             if (data) setSenders(prev => ({ ...prev, [data.id]: data.full_name }))
