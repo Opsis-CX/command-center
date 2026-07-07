@@ -2,14 +2,12 @@ import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { notifyChatMessage, notifyAckNudge, notifyChannelAdded } from '../lib/notify'
-
 // ============================================================
 // CHAT — Stage 1 + @update acknowledgments + @here
 // Admins can post @update messages that require confirmation.
 // Everyone sees a Confirm button; admins track who has/hasn't
 // and can nudge non-confirmers.
 // ============================================================
-
 function initials(name) {
   const p = (name || '?').trim().split(/\s+/); return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase() || '?'
 }
@@ -25,7 +23,6 @@ function timeLabel(iso) {
     ? d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
-
 export default function Chat() {
   const { isAdmin } = useAuth()
   const [me, setMe] = useState(null)
@@ -37,7 +34,6 @@ export default function Chat() {
   const [showCreate, setShowCreate] = useState(false)
   const [showDM, setShowDM] = useState(false)
   const [dmNames, setDmNames] = useState({}) // channelId -> other person's name
-
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     try {
@@ -73,19 +69,16 @@ export default function Chat() {
       }
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }, [activeId])
-
   useEffect(() => { load() }, [])
-
   if (loading) return <p className="page-sub">Loading chat…</p>
-
   return (
-  <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 0, height: 'calc(100vh - 160px)', maxHeight: 'calc(100vh - 160px)', minHeight: 400, border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
-      <div style={{ borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--canvas)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 0, height: 'calc(100dvh - 150px)', maxHeight: 'calc(100dvh - 150px)', minHeight: 420, border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
+      <div style={{ borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--canvas)', minHeight: 0 }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <b style={{ fontSize: 14 }}>Channels</b>
           {isAdmin && <button className="btn btn-ghost" style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => setShowCreate(true)}>+ New</button>}
         </div>
-        <div style={{ overflowY: 'auto', flex: 1, padding: 8 }}>
+        <div style={{ overflowY: 'auto', flex: 1, padding: 8, minHeight: 0 }}>
           {channels.filter(c => !c.is_dm).length === 0 && <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{isAdmin ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>}
           {channels.filter(c => !c.is_dm).map(c => (
             <button key={c.id} onClick={() => setActiveId(c.id)}
@@ -93,7 +86,6 @@ export default function Chat() {
               # {c.name}
             </button>
           ))}
-
           {(channels.some(c => c.is_dm) || isAdmin) && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 11px 6px' }}>
               <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-soft)' }}>Direct messages</span>
@@ -108,11 +100,9 @@ export default function Chat() {
           ))}
         </div>
       </div>
-
       {activeId
         ? <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} />
         : <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-soft)' }}>Select a channel</div>}
-
       {showCreate && <CreateChannelModal me={me} profiles={profiles}
         onClose={() => setShowCreate(false)}
         onCreated={(id) => { setShowCreate(false); load(); setActiveId(id) }} />}
@@ -122,7 +112,6 @@ export default function Chat() {
     </div>
   )
 }
-
 function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
   const [messages, setMessages] = useState([])
   const [senders, setSenders] = useState({})
@@ -135,7 +124,6 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
   const [trackFor, setTrackFor] = useState(null)  // message id to show tracking panel
   const [threadFor, setThreadFor] = useState(null) // parent message id for the thread panel
   const bottomRef = useRef(null)
-
   useEffect(() => {
     let active = true
     ;(async () => {
@@ -156,7 +144,6 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
     })()
     return () => { active = false }
   }, [channelId])
-
   async function hydrateSenders(msgs) {
     const ids = [...new Set(msgs.map(m => m.sender_id).filter(Boolean))]
     const missing = ids.filter(id => !(id in senders))
@@ -164,14 +151,12 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
     const { data } = await supabase.from('profiles').select('id, full_name').in('id', missing)
     if (data) setSenders(prev => { const n = { ...prev }; data.forEach(p => n[p.id] = p.full_name); return n })
   }
-
   async function loadAcks(msgs) {
     const ackMsgIds = msgs.filter(m => m.requires_ack).map(m => m.id)
     if (!ackMsgIds.length) { setAcks([]); return }
     const { data } = await supabase.from('message_acknowledgments').select('*').in('message_id', ackMsgIds)
     setAcks(data || [])
   }
-
   // realtime: new messages + new acknowledgments
   useEffect(() => {
     const ch = supabase
@@ -190,9 +175,7 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [channelId, senders])
-
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
-
   async function send() {
     const body = text.trim()
     if (!body) return
@@ -215,7 +198,6 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
       actorId: me.id, actorName: me.full_name, isHere, requiresAck: willRequireAck,
     })
   }
-
   async function confirmRead(messageId) {
     // optimistic
     const optimistic = { id: 'temp-ack-' + Date.now(), message_id: messageId, profile_id: me.id, confirmed_at: new Date().toISOString() }
@@ -226,21 +208,17 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
       setErr(error.message)
     }
   }
-
   const iConfirmed = (messageId) => acks.some(a => a.message_id === messageId && a.profile_id === me.id)
   const confirmCount = (messageId) => acks.filter(a => a.message_id === messageId).length
-
   if (loading) return <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}><span className="page-sub">Loading messages…</span></div>
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, position: 'relative' }}>
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', flex: 'none' }}>
         <b style={{ fontSize: 15 }}>{channel?.is_dm ? (dmName || 'Direct message') : `# ${channel?.name}`}</b>
         {channel?.description && !channel?.is_dm && <div className="page-sub" style={{ fontSize: 12.5 }}>{channel.description}</div>}
         {channel?.is_dm && <div className="page-sub" style={{ fontSize: 12 }}>Direct message</div>}
       </div>
-
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', minHeight: 0 }}>
         {err && <div style={{ color: 'var(--failed)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
         {(() => { const top = messages.filter(x => !x.parent_id); return top.length === 0 ? <div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>No messages yet. Say hello 👋</div>
           : top.map((m, i) => {
@@ -259,7 +237,6 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
                     <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{timeLabel(m.created_at)}</span>
                     {m.is_here && <span className="badge" style={{ background: 'var(--accent-bg)', color: 'var(--accent)', fontSize: 10 }}>@here</span>}
                   </div>}
-
                   {m.requires_ack ? (
                     <div style={{ border: '1px solid var(--accent)', borderRadius: 10, padding: '12px 14px', background: 'var(--accent-bg)', marginTop: 2 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
@@ -284,8 +261,7 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
           }) })()}
         <div ref={bottomRef} />
       </div>
-
-      <div style={{ borderTop: '1px solid var(--line)', padding: '10px 16px' }}>
+      <div style={{ borderTop: '1px solid var(--line)', padding: '10px 16px', flex: 'none', background: 'var(--surface)' }}>
         {isAdmin && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, fontSize: 12.5, color: requireAck ? 'var(--accent)' : 'var(--ink-soft)', cursor: 'pointer', fontWeight: requireAck ? 600 : 400 }}>
             <input type="checkbox" checked={requireAck} onChange={e => setRequireAck(e.target.checked)} />
@@ -301,13 +277,11 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
           <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={!text.trim()}>{requireAck ? 'Post update' : 'Send'}</button>
         </div>
       </div>
-
       {trackFor && <TrackPanel messageId={trackFor} me={me} members={members} profiles={profiles} acks={acks} onClose={() => setTrackFor(null)} />}
       {threadFor && <ThreadPanel parentId={threadFor} channelId={channelId} me={me} senders={senders} onClose={() => setThreadFor(null)} />}
     </div>
   )
 }
-
 function ReplyAffordance({ count, onOpen }) {
   return (
     <button onClick={onOpen} style={{ border: 0, background: 'transparent', color: count ? 'var(--accent)' : 'var(--ink-soft)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '3px 0', marginTop: 3, fontFamily: 'inherit' }}>
@@ -315,7 +289,6 @@ function ReplyAffordance({ count, onOpen }) {
     </button>
   )
 }
-
 function ThreadPanel({ parentId, channelId, me, senders, onClose }) {
   const [parent, setParent] = React.useState(null)
   const [replies, setReplies] = React.useState([])
@@ -323,7 +296,6 @@ function ThreadPanel({ parentId, channelId, me, senders, onClose }) {
   const [text, setText] = React.useState('')
   const [loading, setLoading] = React.useState(true)
   const endRef = React.useRef(null)
-
   React.useEffect(() => {
     let active = true
     ;(async () => {
@@ -342,7 +314,6 @@ function ThreadPanel({ parentId, channelId, me, senders, onClose }) {
     })()
     return () => { active = false }
   }, [parentId])
-
   React.useEffect(() => {
     const ch = supabase.channel(`thread:${parentId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `parent_id=eq.${parentId}` },
@@ -350,9 +321,7 @@ function ThreadPanel({ parentId, channelId, me, senders, onClose }) {
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [parentId])
-
   React.useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [replies])
-
   async function sendReply() {
     const body = text.trim(); if (!body) return
     setText('')
@@ -362,16 +331,14 @@ function ThreadPanel({ parentId, channelId, me, senders, onClose }) {
     if (error) { setReplies(prev => prev.filter(m => m.id !== temp.id)); setText(body); return }
     setReplies(prev => prev.filter(m => m.id !== temp.id && m.id !== data.id).concat(data))
   }
-
   const nameFor = (id) => id === me.id ? 'You' : (names[id] || 'Someone')
-
   return (
     <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 380, maxWidth: '90%', background: 'var(--surface)', borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 24px rgba(0,0,0,.08)', zIndex: 20 }}>
-      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 'none' }}>
         <b style={{ fontSize: 14 }}>Thread</b>
         <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 9px' }} onClick={onClose}>Close</button>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: 16, minHeight: 0 }}>
         {loading ? <span className="page-sub">Loading…</span> : (
           <>
             {parent && <div style={{ paddingBottom: 12, borderBottom: '1px solid var(--line-soft)', marginBottom: 12 }}>
@@ -395,7 +362,7 @@ function ThreadPanel({ parentId, channelId, me, senders, onClose }) {
           </>
         )}
       </div>
-      <div style={{ borderTop: '1px solid var(--line)', padding: 12, display: 'flex', gap: 8 }}>
+      <div style={{ borderTop: '1px solid var(--line)', padding: 12, display: 'flex', gap: 8, flex: 'none' }}>
         <textarea value={text} onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply() } }}
           placeholder="Reply…" rows={1}
@@ -405,7 +372,6 @@ function ThreadPanel({ parentId, channelId, me, senders, onClose }) {
     </div>
   )
 }
-
 // Render @here / @update mentions with a highlight
 function renderBody(body) {
   const parts = String(body).split(/(@here|@update)/gi)
@@ -415,7 +381,6 @@ function renderBody(body) {
       : <React.Fragment key={i}>{p}</React.Fragment>
   )
 }
-
 // Admin tracking panel: who confirmed, who hasn't, nudge
 function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
   const [nudged, setNudged] = useState({})
@@ -423,7 +388,6 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
   const memberProfiles = members.map(id => profiles.find(p => p.id === id)).filter(Boolean)
   const confirmed = memberProfiles.filter(p => confirmedIds.has(p.id))
   const pending = memberProfiles.filter(p => !confirmedIds.has(p.id))
-
   async function nudge(profileId) {
     setNudged(prev => ({ ...prev, [profileId]: 'sending' }))
     const { error } = await supabase.from('ack_nudges').insert({ message_id: messageId, profile_id: profileId, nudged_by: me.id })
@@ -431,13 +395,11 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
     setNudged(prev => ({ ...prev, [profileId]: error ? 'error' : 'sent' }))
   }
   async function nudgeAll() { for (const p of pending) await nudge(p.id) }
-
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal" style={{ width: 440 }}>
         <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>Read confirmations</h3>
         <p className="page-sub" style={{ marginBottom: 16 }}>{confirmed.length} of {memberProfiles.length} confirmed</p>
-
         {pending.length > 0 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -457,7 +419,6 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
             ))}
           </div>
         )}
-
         {confirmed.length > 0 && (
           <div>
             <b style={{ fontSize: 13, color: 'var(--passed)' }}>Confirmed ({confirmed.length})</b>
@@ -470,7 +431,6 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
             ))}
           </div>
         )}
-
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line-soft)' }}>
           <div className="hint" style={{ marginBottom: 10 }}>Nudges appear in-app for now. Push/email arrives with notifications.</div>
           <button className="btn btn-ghost" style={{ width: '100%' }} onClick={onClose}>Close</button>
@@ -479,14 +439,12 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
     </div>
   )
 }
-
 function CreateDMModal({ me, profiles, onClose, onCreated }) {
   // Admin/owner provisions a DM between exactly two people.
   const [a, setA] = React.useState('')
   const [b, setB] = React.useState('')
   const [saving, setSaving] = React.useState(false)
   const [err, setErr] = React.useState('')
-
   async function create() {
     if (!a || !b) { setErr('Pick two people.'); return }
     if (a === b) { setErr('Pick two different people.'); return }
@@ -504,7 +462,6 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
       onCreated(ch.id)
     } catch (e) { setErr(e.message); setSaving(false) }
   }
-
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal" style={{ width: 420 }}>
@@ -529,16 +486,13 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
     </div>
   )
 }
-
 function CreateChannelModal({ me, profiles, onClose, onCreated }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [picked, setPicked] = useState(() => new Set([me.id]))
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
-
   function toggle(id) { setPicked(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n }) }
-
   async function create() {
     const nm = name.trim()
     if (!nm) { setErr('Name the channel.'); return }
@@ -555,7 +509,6 @@ function CreateChannelModal({ me, profiles, onClose, onCreated }) {
       onCreated(ch.id)
     } catch (e) { setErr(e.message); setSaving(false) }
   }
-
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal">
