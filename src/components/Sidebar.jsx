@@ -1,60 +1,115 @@
-import { NavLink } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useUnread } from '../lib/unread'
+// Sidebar navigation.
+// - `type: 'link'`  → a single top-level link.
+// - `type: 'section'` → a clickable header that expands/collapses its children.
+// Each item keeps a `roles` list; a person only sees items for their role, and
+// a section with no visible children is hidden entirely.
 const NAV = [
- { group: 'Overview', items: [
-    { to: '/', label: 'Dashboard', ic: '▦', end: true, roles: ['admin', 'agent'] },
-    { to: '/weekly-sync', label: 'Weekly Sync', ic: '🗓', roles: ['admin'] },
-    { to: '/chat', label: 'Chat', ic: '💬', roles: ['admin', 'agent'] },
-  ]},
-  { group: 'Certifications', items: [
-    { to: '/certifications', label: 'Certifications', ic: '✦', roles: ['admin'] },
-    { to: '/my-certifications', label: 'My certifications', ic: '✦', roles: ['agent'] },
-    { to: '/matrix', label: 'Certification matrix', ic: '▤', roles: ['admin'] },
-    { to: '/courses', label: 'Course builder', ic: '✎', roles: ['admin'] },
-    { to: '/my-courses', label: 'My courses', ic: '✎', roles: ['agent'] },
-  ]},
-  { group: 'Operations', items: [
-    { to: '/schedule', label: 'Schedule', ic: '◷', roles: ['admin', 'agent'] },
-    { to: '/schedule-builder', label: 'Schedule builder', ic: '🛠', roles: ['admin'] },
-    { to: '/positions', label: 'Positions', ic: '🏷', roles: ['admin'] },
-    { to: '/clients', label: 'Clients', ic: '🏢', roles: ['admin'] },
-    { to: '/projects', label: 'Project Management', ic: '❏', roles: ['admin'] },
-    { to: '/people', label: 'People & tags', ic: '☺', roles: ['admin'] },
-    { to: '/insights', label: 'Schedule insights', ic: '📊', roles: ['admin'] },
-    { to: '/reporting', label: 'Reporting', ic: '📈', roles: ['admin'] },
-  ]},
+  { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, roles: ['admin', 'agent'] },
+  { type: 'link', to: '/weekly-sync', label: 'Weekly Sync', ic: '🗓', roles: ['admin'] },
+  { type: 'link', to: '/chat', label: 'Chat', ic: '💬', roles: ['admin', 'agent'] },
+  {
+    type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
+    children: [
+      { to: '/certifications', label: 'Certifications', roles: ['admin'] },
+      { to: '/my-certifications', label: 'My certifications', roles: ['agent'] },
+      { to: '/matrix', label: 'Certification matrix', roles: ['admin'] },
+      { to: '/courses', label: 'Course builder', roles: ['admin'] },
+      { to: '/my-courses', label: 'My courses', roles: ['agent'] },
+    ],
+  },
+  {
+    type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
+    children: [
+      { to: '/schedule', label: 'Schedule', roles: ['admin', 'agent'] },
+      { to: '/schedule-builder', label: 'Schedule builder', roles: ['admin'] },
+      { to: '/insights', label: 'Schedule insights', roles: ['admin'] },
+    ],
+  },
+  { type: 'link', to: '/reporting', label: 'Reporting', ic: '📈', roles: ['admin'] },
+  {
+    type: 'section', key: 'backend', label: 'Backend', ic: '⚙',
+    children: [
+      { to: '/people', label: 'People & tags', roles: ['admin'] },
+      { to: '/clients', label: 'Clients', roles: ['admin'] },
+      { to: '/positions', label: 'Positions', roles: ['admin'] },
+      { to: '/projects', label: 'Project Management', roles: ['admin'] },
+    ],
+  },
 ]
 export default function Sidebar({ open, onNavigate }) {
   const { isAdmin, level, roles, user, signOut } = useAuth()
   const { total: unreadTotal } = useUnread()
+  const location = useLocation()
   const isOwner = level >= 100 || (roles || []).includes('owner')
   const viewRole = isAdmin ? 'admin' : 'agent'
   const name = user?.email?.split('@')[0] ?? 'User'
   const initial = (name[0] || 'U').toUpperCase()
+  // Which collapsible sections are open. Several can be open at once.
+  const [openSections, setOpenSections] = useState({})
+  const toggleSection = (key) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }))
+  // Auto-open whichever section contains the current page, so you're never
+  // sitting on a page whose section is collapsed.
+  useEffect(() => {
+    const path = location.pathname
+    setOpenSections(prev => {
+      let next = prev
+      for (const entry of NAV) {
+        if (entry.type !== 'section') continue
+        const hit = entry.children.some(c => c.to === path)
+        if (hit && !prev[entry.key]) next = { ...next, [entry.key]: true }
+      }
+      return next
+    })
+  }, [location.pathname])
   return (
     <aside className={'sidebar' + (open ? ' open' : '')}>
       <div className="brand">
         <img src="/opsis-logo.png" alt="Opsis" style={{ width: '100%', height: 'auto', maxHeight: 64, objectFit: 'contain' }} />
       </div>
-      {NAV.map(group => {
-        const items = group.items.filter(it => it.roles.includes(viewRole))
-        if (!items.length) return null
+      {NAV.map(entry => {
+        // --- single top-level link ---
+        if (entry.type === 'link') {
+          if (!entry.roles.includes(viewRole)) return null
+          return (
+            <NavLink key={entry.to} to={entry.to} end={entry.end}
+              onClick={() => onNavigate && onNavigate()}
+              className={({ isActive }) => 'nav-item' + (isActive ? ' on' : '')}>
+              <span className="ic">{entry.ic}</span> {entry.label}
+              {entry.to === '/chat' && unreadTotal > 0 && (
+                <span style={{ marginLeft: 'auto', background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
+                  {unreadTotal > 99 ? '99+' : unreadTotal}
+                </span>
+              )}
+            </NavLink>
+          )
+        }
+        // --- collapsible section ---
+        const children = entry.children.filter(c => c.roles.includes(viewRole))
+        if (!children.length) return null
+        const isOpen = !!openSections[entry.key]
         return (
-          <div key={group.group}>
-            <div className="nav-label">{group.group}</div>
-            {items.map(it => (
-              <NavLink key={it.to} to={it.to} end={it.end}
-                onClick={() => onNavigate && onNavigate()}
-                className={({ isActive }) => 'nav-item' + (isActive ? ' on' : '')}>
-                <span className="ic">{it.ic}</span> {it.label}
-                {it.to === '/chat' && unreadTotal > 0 && (
-                  <span style={{ marginLeft: 'auto', background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
-                    {unreadTotal > 99 ? '99+' : unreadTotal}
-                  </span>
-                )}
-              </NavLink>
-            ))}
+          <div key={entry.key} className="nav-section">
+            <button type="button" className="nav-item nav-section-head" onClick={() => toggleSection(entry.key)}
+              aria-expanded={isOpen}>
+              <span className="ic">{entry.ic}</span> {entry.label}
+              <span className="nav-caret" style={{ marginLeft: 'auto', transition: 'transform .15s ease', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
+            </button>
+            {isOpen && (
+              <div className="nav-section-body">
+                {children.map(c => (
+                  <NavLink key={c.to} to={c.to}
+                    onClick={() => onNavigate && onNavigate()}
+                    className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
+                    style={{ paddingLeft: 34 }}>
+                    {c.label}
+                  </NavLink>
+                ))}
+              </div>
+            )}
           </div>
         )
       })}
