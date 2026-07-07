@@ -256,6 +256,35 @@ export default function Chat() {
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }, [activeId])
   useEffect(() => { load() }, [])
+  // Keep a stable reference to the latest load()/activeId for the realtime
+  // handler below, so we can subscribe ONCE and never miss updates.
+  const loadRef = useRef(load); useEffect(() => { loadRef.current = load }, [load])
+  const activeRef = useRef(activeId); useEffect(() => { activeRef.current = activeId }, [activeId])
+  const meRef = useRef(me); useEffect(() => { meRef.current = me }, [me])
+  // App-level realtime: refresh the channel list (unread badges, new DMs,
+  // new channels) when anything relevant changes — no manual refresh needed.
+  useEffect(() => {
+    const ch = supabase
+      .channel('chat-list')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          const m = payload.new
+          // a new message somewhere: refresh so unread counts update. Skip if
+          // it's in the channel I'm already viewing (that pane handles itself).
+          if (m.channel_id !== activeRef.current) loadRef.current?.()
+        })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'channels' },
+        () => { loadRef.current?.() })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'channels' },
+        () => { loadRef.current?.() })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'channel_members' },
+        (payload) => {
+          // if I was just added to a channel/DM, refresh so it shows up
+          if (payload.new?.profile_id === meRef.current?.id) loadRef.current?.()
+        })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [])
   async function deleteChannel(ch) {
     const label = ch.is_dm ? (dmNames[ch.id] || 'this direct message') : `#${ch.name}`
     if (!window.confirm(`Delete ${label}? This permanently removes the conversation and all its messages for everyone. This cannot be undone.`)) return
@@ -351,9 +380,13 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   const [showPicker, setShowPicker] = useState(false)      // input emoji picker
   const [reactFor, setReactFor] = useState(null)   // message id whose react-picker is open
   const [showMembers, setShowMembers] = useState(false)
+  const [editingId, setEditingId] = useState(null)     // message id being edited inline
+  const [editText, setEditText] = useState('')          // working text while editing
+  const [menuFor, setMenuFor] = useState(null)          // message id whose ⋯ menu is open
   const composerRef = useRef(null)
   const htmlRef = useRef('')
   const bottomRef = useRef(null)
+  const scrollRef = useRef(null)   // the scrollable message-list container
   const { typerNames, notifyTyping, stopTyping } = useTyping(`typing:${channelId}`, me.id, me.full_name)
   useEffect(() => {
     let active = true
@@ -442,6 +475,13 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             if (data) setSenders(prev => ({ ...prev, [data.id]: data.full_name }))
           }
         })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `channel_id=eq.${channelId}` },
+        (payload) => {
+          const m = payload.new
+          // a soft-deleted message drops out of the list; an edited one updates in place
+          if (m.deleted_at) setMessages(prev => prev.filter(x => x.id !== m.id))
+          else setMessages(prev => prev.map(x => x.id === m.id ? { ...x, ...m } : x))
+        })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_acknowledgments' },
         (payload) => { setAcks(prev => prev.some(a => a.id === payload.new.id) ? prev : [...prev, payload.new]) })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions' },
@@ -453,7 +493,15 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [channelId, senders])
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  // Keep the message list pinned to the newest message WITHOUT scrolling the
+  // whole page. We scroll the list container itself, and only when there's
+  // actually something to scroll to (avoids yanking the page on empty channels).
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    if (messages.filter(x => !x.parent_id).length === 0) return
+    el.scrollTop = el.scrollHeight
+  }, [messages])
   async function send() {
     const html = htmlRef.current || ''
     const plain = (html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim())
@@ -524,9 +572,51 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   }
   const iConfirmed = (messageId) => acks.some(a => a.message_id === messageId && a.profile_id === me.id)
   const confirmCount = (messageId) => acks.filter(a => a.message_id === messageId).length
+  // ---- edit / delete your own messages ----
+  function startEdit(m) {
+    setMenuFor(null)
+    // Edit as plain text. Convert simple HTML (<br>, block tags) back to newlines.
+    const asText = String(m.body || '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(div|p|li)>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/\n{3,}/g, '\n\n').trim()
+    setEditText(asText)
+    setEditingId(m.id)
+  }
+  function cancelEdit() { setEditingId(null); setEditText('') }
+  async function saveEdit(messageId) {
+    const next = editText.trim()
+    if (!next) return
+    // store as escaped text (so it renders safely, same as a freshly typed plain message)
+    const safe = next.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
+    const prevMsg = messages.find(m => m.id === messageId)
+    const nowIso = new Date().toISOString()
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, body: safe, edited_at: nowIso } : m))
+    setEditingId(null); setEditText('')
+    const { error } = await supabase.from('messages').update({ body: safe, edited_at: nowIso }).eq('id', messageId).eq('sender_id', me.id)
+    if (error) {
+      setErr('Could not save edit: ' + error.message)
+      if (prevMsg) setMessages(prev => prev.map(m => m.id === messageId ? prevMsg : m))
+    }
+  }
+  async function deleteMessage(messageId) {
+    setMenuFor(null)
+    if (!window.confirm('Delete this message? This removes it for everyone.')) return
+    const prevMsgs = messages
+    setMessages(prev => prev.filter(m => m.id !== messageId))
+    const { error } = await supabase.from('messages').update({ deleted_at: new Date().toISOString() }).eq('id', messageId).eq('sender_id', me.id)
+    if (error) { setErr('Could not delete: ' + error.message); setMessages(prevMsgs) }
+  }
   if (loading) return <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}><span className="page-sub">Loading messages…</span></div>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, position: 'relative' }}>
+      <style>{`
+        .chat-msg-actions { opacity: 0; transition: opacity .12s ease; }
+        .chat-msg-row:hover .chat-msg-actions { opacity: 1; }
+        @media (hover: none) { .chat-msg-actions { opacity: 1; } }
+      `}</style>
       <div style={{ padding: isMobile ? '10px 12px' : '14px 18px', borderBottom: '1px solid var(--line)', flex: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
         {isMobile && (
           <button onClick={onBack} title="Back to channels"
@@ -541,7 +631,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
           <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', flex: 'none' }} onClick={() => setShowMembers(true)}>👥 Members</button>
         )}
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '14px 14px' : '16px 18px', minHeight: 0 }}>
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '14px 14px' : '16px 18px', minHeight: 0 }}>
         {err && <div style={{ color: 'var(--failed)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
         {(() => { const top = messages.filter(x => !x.parent_id); return top.length === 0 ? <div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>No messages yet. Say hello 👋</div>
           : top.map((m, i) => {
@@ -549,8 +639,10 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             const top2 = messages.filter(x => !x.parent_id); const prev = top2[i - 1]
             const grouped = prev && prev.sender_id === m.sender_id && !m.requires_ack && !prev.requires_ack && (new Date(m.created_at) - new Date(prev.created_at) < 5 * 60000)
             const name = m.sender_id === me.id ? 'You' : (senders[m.sender_id] || 'Someone')
+            const mine = m.sender_id === me.id && !m._optimistic
+            const isEditing = editingId === m.id
             return (
-              <div key={m.id} style={{ display: 'flex', gap: 10, marginTop: grouped ? 2 : 12, opacity: m._optimistic ? 0.6 : 1 }}>
+              <div key={m.id} className="chat-msg-row" style={{ display: 'flex', gap: 10, marginTop: grouped ? 2 : 12, opacity: m._optimistic ? 0.6 : 1, position: 'relative' }}>
                 <div style={{ width: 32, flex: 'none' }}>
                   {!grouped && <div style={{ width: 32, height: 32, borderRadius: '50%', background: avatarColor(name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>{initials(name)}</div>}
                 </div>
@@ -559,8 +651,40 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                     <b style={{ fontSize: 13.5 }}>{name}</b>
                     <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{timeLabel(m.created_at)}</span>
                     {m.is_here && <span className="badge" style={{ background: 'var(--accent-bg)', color: 'var(--accent)', fontSize: 10 }}>@here</span>}
+                    {m.edited_at && <span style={{ fontSize: 10.5, color: 'var(--ink-soft)', fontStyle: 'italic' }}>(edited)</span>}
                   </div>}
-                  {m.requires_ack ? (
+                  {/* own-message actions: edit / delete */}
+                  {mine && !isEditing && (
+                    <div className="chat-msg-actions" style={{ position: 'absolute', top: 0, right: 0 }}>
+                      <button title="Message actions" onClick={() => setMenuFor(menuFor === m.id ? null : m.id)}
+                        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 6, cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: '2px 7px', color: 'var(--ink-soft)' }}>⋯</button>
+                      {menuFor === m.id && (
+                        <>
+                          <div onClick={() => setMenuFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
+                          <div style={{ position: 'absolute', top: 24, right: 0, zIndex: 31, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.12)', overflow: 'hidden', width: 130 }}>
+                            <button onClick={() => startEdit(m)} style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, background: 'transparent', cursor: 'pointer', padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)' }}>Edit</button>
+                            <button onClick={() => deleteMessage(m.id)} style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, borderTop: '1px solid var(--line-soft)', background: 'transparent', cursor: 'pointer', padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', color: 'var(--failed)' }}>Delete</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {isEditing ? (
+                    <div style={{ marginTop: 2 }}>
+                      <textarea value={editText} autoFocus
+                        onChange={e => setEditText(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(m.id) }
+                          if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
+                        }}
+                        style={{ width: '100%', minHeight: 60, border: '1px solid var(--accent)', borderRadius: 8, padding: '9px 11px', fontSize: 14, lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
+                      <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center' }}>
+                        <button className="btn btn-primary" style={{ fontSize: 12.5, padding: '5px 12px' }} onClick={() => saveEdit(m.id)}>Save</button>
+                        <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '5px 12px' }} onClick={cancelEdit}>Cancel</button>
+                        <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>Enter to save · Esc to cancel</span>
+                      </div>
+                    </div>
+                  ) : m.requires_ack ? (
                     <div style={{ border: '1px solid var(--accent)', borderRadius: 10, padding: '12px 14px', background: 'var(--accent-bg)', marginTop: 2 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                         <span className="badge" style={{ background: 'var(--accent)', color: '#fff', fontSize: 10 }}>UPDATE — please confirm</span>
@@ -668,8 +792,33 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 // On mobile the toolbar is collapsed behind an "Aa" toggle to save space.
 function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, minHeight = 76, maxHeight = 200, accent, toolbarCollapsible = false }) {
   const ref = useRef(null)
+  const savedRange = useRef(null)   // remembers where the cursor was
   const [empty, setEmpty] = useState(true)
   const [toolbarOpen, setToolbarOpen] = useState(!toolbarCollapsible)
+  // Save the current caret/selection, but only if it's inside our editor.
+  function saveSelection() {
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0) return
+    const range = sel.getRangeAt(0)
+    if (ref.current && ref.current.contains(range.commonAncestorContainer)) {
+      savedRange.current = range.cloneRange()
+    }
+  }
+  // Put the caret back where it was (used before inserting an emoji, since
+  // clicking the picker moves focus out of the editor and loses the caret).
+  function restoreSelection() {
+    const el = ref.current; if (!el) return
+    el.focus()
+    const sel = window.getSelection()
+    if (savedRange.current) {
+      sel.removeAllRanges(); sel.addRange(savedRange.current)
+    } else {
+      // no saved caret: place it at the very end
+      const range = document.createRange()
+      range.selectNodeContents(el); range.collapse(false)
+      sel.removeAllRanges(); sel.addRange(range)
+    }
+  }
   function exec(cmd) { document.execCommand(cmd, false, null); ref.current?.focus(); handleInput() }
   function handleInput() {
     const html = ref.current?.innerHTML || ''
@@ -694,7 +843,7 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
     if (valueRef) valueRef.current = {
       clear: () => { if (ref.current) { ref.current.innerHTML = ''; setEmpty(true) } },
       focus: () => ref.current?.focus(),
-      insertText: (t) => { ref.current?.focus(); document.execCommand('insertText', false, t); handleInput() },
+      insertText: (t) => { restoreSelection(); document.execCommand('insertText', false, t); saveSelection(); handleInput() },
     }
   }, [valueRef])
   const TBtn = ({ cmd, label, title }) => (
@@ -721,7 +870,8 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
         )}
         {empty && <div style={{ position: 'absolute', top: 10, left: toolbarCollapsible ? 40 : 12, right: 12, color: 'var(--ink-soft)', fontSize: 14, pointerEvents: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{placeholder}</div>}
         <div ref={ref} contentEditable suppressContentEditableWarning
-          onInput={handleInput} onKeyDown={handleKey} onPaste={handlePaste}
+          onInput={() => { saveSelection(); handleInput() }} onKeyDown={handleKey} onPaste={handlePaste}
+          onKeyUp={saveSelection} onMouseUp={saveSelection} onBlur={saveSelection}
           style={{ outline: 'none', fontSize: 14, lineHeight: 1.5, padding: '10px 12px', minHeight, maxHeight, overflowY: 'auto', flex: 1 }} />
       </div>
     </div>
