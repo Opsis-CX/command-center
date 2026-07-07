@@ -1131,6 +1131,12 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
     const { data, error } = await supabase.from('messages').insert({ channel_id: channelId, sender_id: me.id, body, parent_id: parentId }).select().single()
     if (error) { setReplies(prev => prev.filter(m => m.id !== temp.id)); return }
     setReplies(prev => prev.filter(m => m.id !== temp.id && m.id !== data.id).concat(data))
+    // notify the channel of the reply (same as a top-level message)
+    notifyChatMessage({
+      channelId, channelName: channel?.name, isDm: channel?.is_dm,
+      actorId: me.id, actorName: me.full_name, isHere: false, requiresAck: false,
+      isReply: true, parentId,
+    })
     // mentions in thread replies (detected from the plain text)
     const mentionedIds = extractMentions(plain, profiles).filter(id => id !== me.id)
     if (mentionedIds.length) {
