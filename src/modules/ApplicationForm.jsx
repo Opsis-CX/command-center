@@ -122,7 +122,9 @@ export default function ApplicationForm() {
       if (!authorized) { status = 'auto_denied'; screen_reason = 'not_authorized' }
       else if (excluded) { status = 'out_of_area'; screen_reason = 'state:' + f.state }
 
+      const newId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random())
       const row = {
+        id: newId,
         status, screen_reason,
         full_name: f.full_name.trim(),
         email: f.email.trim(),
@@ -147,12 +149,15 @@ export default function ApplicationForm() {
         why_opsis: f.why_opsis.trim() || null,
         info_confirmed: true,
       }
-      const { data, error } = await supabase.from('hiring_applications').insert(row).select().single()
+      // NOTE: no .select() here — anonymous applicants can insert but cannot
+      // read the table back (reads are admin-only), so selecting the new row
+      // would fail RLS. We generated the id ourselves instead.
+      const { error } = await supabase.from('hiring_applications').insert(row)
       if (error) throw error
 
       // record the first stage event (system actor)
       await supabase.from('hiring_stage_events').insert({
-        application_id: data.id, from_status: 'applied', to_status: status, note: screen_reason,
+        application_id: newId, from_status: 'applied', to_status: status, note: screen_reason,
       })
 
       // fire the right stubbed email
