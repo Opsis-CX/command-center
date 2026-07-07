@@ -93,14 +93,14 @@ function humanSize(bytes) {
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++ }
   return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${u[i]}`
 }
-function AttachmentView({ att }) {
+function AttachmentView({ att, onMediaLoad }) {
   const type = att.file_type || ''
   const isImg = type.startsWith('image/')
   const isVid = type.startsWith('video/')
   if (isImg) {
     return (
       <a href={att.public_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6 }}>
-        <img src={att.public_url} alt={att.file_name} style={{ maxWidth: 280, maxHeight: 240, borderRadius: 8, border: '1px solid var(--line)', display: 'block' }} />
+        <img src={att.public_url} alt={att.file_name} onLoad={onMediaLoad} style={{ maxWidth: 280, maxHeight: 240, borderRadius: 8, border: '1px solid var(--line)', display: 'block' }} />
       </a>
     )
   }
@@ -493,15 +493,30 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [channelId, senders])
-  // Keep the message list pinned to the newest message WITHOUT scrolling the
-  // whole page. We scroll the list container itself, and only when there's
-  // actually something to scroll to (avoids yanking the page on empty channels).
-  useEffect(() => {
+  // Scroll the message list (not the page) to the newest message.
+  const pinToBottom = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
-    if (messages.filter(x => !x.parent_id).length === 0) return
     el.scrollTop = el.scrollHeight
-  }, [messages])
+  }, [])
+  // Re-pin after an image loads, but ONLY if the user is already near the
+  // bottom — don't yank them down if they've scrolled up to read older messages.
+  const pinIfAtBottom = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 250
+    if (nearBottom) el.scrollTop = el.scrollHeight
+  }, [])
+  // Keep the message list pinned to the newest message WITHOUT scrolling the
+  // whole page. On first entry the message heights aren't laid out yet, so a
+  // single scroll lands too high — we wait for the browser to paint (rAF) and
+  // nudge again on the next frame to be safe.
+  useEffect(() => {
+    if (messages.filter(x => !x.parent_id).length === 0) return
+    let raf2 = 0
+    const raf1 = requestAnimationFrame(() => { pinToBottom(); raf2 = requestAnimationFrame(pinToBottom) })
+    return () => { cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2) }
+  }, [messages, loading, pinToBottom])
   async function send() {
     const html = htmlRef.current || ''
     const plain = (html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim())
@@ -701,7 +716,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                   ) : (
                     <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{renderBody(m.body)}</div>
                   )}
-                  {attachments.filter(a => a.message_id === m.id).map(a => <AttachmentView key={a.id} att={a} />)}
+                  {attachments.filter(a => a.message_id === m.id).map(a => <AttachmentView key={a.id} att={a} onMediaLoad={pinIfAtBottom} />)}
                   <ReactionBar messageId={m.id} reactions={reactions} meId={me.id}
                     onToggle={toggleReaction}
                     pickerOpen={reactFor === m.id}
