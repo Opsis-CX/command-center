@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { notifyChatMessage, notifyAckNudge, notifyChannelAdded } from '../lib/notify'
+import EmojiPicker from 'emoji-picker-react'
 // ============================================================
 // CHAT — Stage 1 + @update acknowledgments + @here
 // Admins can post @update messages that require confirmation.
@@ -123,6 +124,9 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
   const [err, setErr] = useState('')
   const [trackFor, setTrackFor] = useState(null)  // message id to show tracking panel
   const [threadFor, setThreadFor] = useState(null) // parent message id for the thread panel
+  const [reactions, setReactions] = useState([])   // all reactions for messages in view
+  const [showPicker, setShowPicker] = useState(false)      // input emoji picker
+  const [reactFor, setReactFor] = useState(null)   // message id whose react-picker is open
   const bottomRef = useRef(null)
   useEffect(() => {
     let active = true
@@ -140,6 +144,7 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
         setMembers((memRes.data || []).map(m => m.profile_id))
         await hydrateSenders(msgs)
         await loadAcks(msgs)
+        await loadReactions(msgs)
       } catch (e) { if (active) setErr(e.message) } finally { if (active) setLoading(false) }
     })()
     return () => { active = false }
@@ -157,6 +162,26 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
     const { data } = await supabase.from('message_acknowledgments').select('*').in('message_id', ackMsgIds)
     setAcks(data || [])
   }
+  async function loadReactions(msgs) {
+    const ids = msgs.map(m => m.id)
+    if (!ids.length) { setReactions([]); return }
+    const { data } = await supabase.from('message_reactions').select('*').in('message_id', ids)
+    setReactions(data || [])
+  }
+  async function toggleReaction(messageId, emoji) {
+    const mine = reactions.find(r => r.message_id === messageId && r.profile_id === me.id && r.emoji === emoji)
+    setReactFor(null)
+    if (mine) {
+      setReactions(prev => prev.filter(r => r !== mine))
+      await supabase.from('message_reactions').delete().eq('message_id', messageId).eq('profile_id', me.id).eq('emoji', emoji)
+    } else {
+      const optimistic = { id: 'temp-' + Date.now(), message_id: messageId, profile_id: me.id, emoji }
+      setReactions(prev => [...prev, optimistic])
+      const { data, error } = await supabase.from('message_reactions').insert({ message_id: messageId, profile_id: me.id, emoji }).select().single()
+      if (error && error.code !== '23505') setReactions(prev => prev.filter(r => r !== optimistic))
+      else if (data) setReactions(prev => prev.map(r => r === optimistic ? data : r))
+    }
+  }
   // realtime: new messages + new acknowledgments
   useEffect(() => {
     const ch = supabase
@@ -172,6 +197,10 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
         })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_acknowledgments' },
         (payload) => { setAcks(prev => prev.some(a => a.id === payload.new.id) ? prev : [...prev, payload.new]) })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions' },
+        (payload) => { setReactions(prev => prev.some(r => r.id === payload.new.id) ? prev : [...prev, payload.new]) })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' },
+        (payload) => { setReactions(prev => prev.filter(r => r.id !== payload.old.id)) })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [channelId, senders])
@@ -254,6 +283,11 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
                   ) : (
                     <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{renderBody(m.body)}</div>
                   )}
+                  <ReactionBar messageId={m.id} reactions={reactions} meId={me.id}
+                    onToggle={toggleReaction}
+                    pickerOpen={reactFor === m.id}
+                    onOpenPicker={() => setReactFor(reactFor === m.id ? null : m.id)}
+                    onClosePicker={() => setReactFor(null)} />
                   <ReplyAffordance count={replyCount} onOpen={() => setThreadFor(m.id)} />
                 </div>
               </div>
@@ -268,7 +302,15 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
             Post as <b>@update</b> — require everyone to confirm they've read it
           </label>
         )}
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
+          {showPicker && (
+            <div style={{ position: 'absolute', bottom: 52, left: 0, zIndex: 50 }}>
+              <EmojiPicker onEmojiClick={(e) => { setText(t => t + e.emoji); setShowPicker(false) }}
+                width={320} height={380} previewConfig={{ showPreview: false }} />
+            </div>
+          )}
+          <button type="button" onClick={() => setShowPicker(p => !p)} title="Emoji"
+            style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '0 10px', flex: 'none' }}>😀</button>
           <textarea value={text} onChange={e => setText(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
             placeholder={requireAck ? 'Write your update…' : `Message #${channel?.name || ''}  (type @here to flag everyone)`}
@@ -279,6 +321,42 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles }) {
       </div>
       {trackFor && <TrackPanel messageId={trackFor} me={me} members={members} profiles={profiles} acks={acks} onClose={() => setTrackFor(null)} />}
       {threadFor && <ThreadPanel parentId={threadFor} channelId={channelId} me={me} senders={senders} onClose={() => setThreadFor(null)} />}
+    </div>
+  )
+}
+function ReactionBar({ messageId, reactions, meId, onToggle, pickerOpen, onOpenPicker, onClosePicker }) {
+  const mine = reactions.filter(r => r.message_id === messageId)
+  // group by emoji -> count + whether I reacted
+  const groups = {}
+  mine.forEach(r => {
+    if (!groups[r.emoji]) groups[r.emoji] = { count: 0, byMe: false }
+    groups[r.emoji].count++
+    if (r.profile_id === meId) groups[r.emoji].byMe = true
+  })
+  const entries = Object.entries(groups)
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4, position: 'relative' }}>
+      {entries.map(([emoji, g]) => (
+        <button key={emoji} onClick={() => onToggle(messageId, emoji)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+            border: '1px solid ' + (g.byMe ? 'var(--accent)' : 'var(--line)'),
+            background: g.byMe ? 'var(--accent-bg)' : 'var(--surface)', color: g.byMe ? 'var(--accent)' : 'var(--ink)' }}>
+          <span style={{ fontSize: 14 }}>{emoji}</span> {g.count}
+        </button>
+      ))}
+      <button onClick={onOpenPicker} title="Add reaction"
+        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 12, cursor: 'pointer', fontSize: 12, padding: '2px 7px', color: 'var(--ink-soft)', lineHeight: 1.4 }}>
+        ☺+
+      </button>
+      {pickerOpen && (
+        <>
+          <div onClick={onClosePicker} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+          <div style={{ position: 'absolute', top: 26, left: 0, zIndex: 41 }}>
+            <EmojiPicker onEmojiClick={(e) => onToggle(messageId, e.emoji)}
+              width={300} height={360} previewConfig={{ showPreview: false }} reactionsDefaultOpen={true} />
+          </div>
+        </>
+      )}
     </div>
   )
 }
