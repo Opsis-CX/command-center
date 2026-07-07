@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import { useUnread } from '../lib/unread'
 const NAV = [
  { group: 'Overview', items: [
     { to: '/', label: 'Dashboard', ic: '▦', end: true, roles: ['admin', 'agent'] },
@@ -26,6 +27,7 @@ const NAV = [
 ]
 export default function Sidebar({ open, onNavigate }) {
   const { isAdmin, level, roles, user, signOut } = useAuth()
+  const { total: unreadTotal } = useUnread()
   const isOwner = level >= 100 || (roles || []).includes('owner')
   const viewRole = isAdmin ? 'admin' : 'agent'
   const name = user?.email?.split('@')[0] ?? 'User'
@@ -46,6 +48,11 @@ export default function Sidebar({ open, onNavigate }) {
                 onClick={() => onNavigate && onNavigate()}
                 className={({ isActive }) => 'nav-item' + (isActive ? ' on' : '')}>
                 <span className="ic">{it.ic}</span> {it.label}
+                {it.to === '/chat' && unreadTotal > 0 && (
+                  <span style={{ marginLeft: 'auto', background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
+                    {unreadTotal > 99 ? '99+' : unreadTotal}
+                  </span>
+                )}
               </NavLink>
             ))}
           </div>
