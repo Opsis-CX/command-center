@@ -641,9 +641,10 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '0 10px', flex: 'none' }}>😀</button>
           <div style={{ flex: 1 }} onPaste={onPaste}>
             <MentionTextarea value={text} onChange={(v) => { setText(v); notifyTyping() }} onEnter={send} profiles={profiles}
+              rows={3}
               placeholder={requireAck ? 'Write your update… (@name to mention)' : `Message #${channel?.name || ''}  (@name, @here, or paste/attach a file)`}
               accent={requireAck ? 'var(--accent)' : 'var(--line)'}
-              style={{ resize: 'none', padding: '10px 12px', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', maxHeight: 120 }} />
+              style={{ resize: 'none', padding: '10px 12px', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', minHeight: 76, maxHeight: 200 }} />
           </div>
           <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={(!text.trim() && pending.length === 0) || uploading}>{requireAck ? 'Post update' : 'Send'}</button>
         </div>
