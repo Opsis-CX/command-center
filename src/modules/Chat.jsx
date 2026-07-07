@@ -34,6 +34,63 @@ function useIsMobile(breakpoint = 700) {
   }, [breakpoint])
   return mobile
 }
+
+// Ephemeral typing indicator over Supabase Realtime broadcast.
+// topic: unique channel key (e.g. `typing:<channelId>` or `typing:thread:<id>`)
+// Returns { typers: [names], notifyTyping() }
+function useTyping(topic, meId, meName) {
+  const [typers, setTypers] = useState({})   // id -> { name, at }
+  const chanRef = useRef(null)
+  const lastSent = useRef(0)
+
+  useEffect(() => {
+    const ch = supabase.channel(topic, { config: { broadcast: { self: false } } })
+    ch.on('broadcast', { event: 'typing' }, ({ payload }) => {
+      if (!payload || payload.id === meId) return
+      setTypers(prev => ({ ...prev, [payload.id]: { name: payload.name, at: Date.now() } }))
+    }).on('broadcast', { event: 'stop' }, ({ payload }) => {
+      if (!payload) return
+      setTypers(prev => { const n = { ...prev }; delete n[payload.id]; return n })
+    }).subscribe()
+    chanRef.current = ch
+    // sweep out stale typers every second (in case a "stop" was missed)
+    const sweep = setInterval(() => {
+      setTypers(prev => {
+        const now = Date.now(); let changed = false; const n = {}
+        for (const [id, v] of Object.entries(prev)) { if (now - v.at < 4000) n[id] = v; else changed = true }
+        return changed ? n : prev
+      })
+    }, 1000)
+    return () => { clearInterval(sweep); supabase.removeChannel(ch) }
+  }, [topic, meId])
+
+  const notifyTyping = useCallback(() => {
+    const now = Date.now()
+    if (now - lastSent.current < 1500) return   // throttle broadcasts
+    lastSent.current = now
+    chanRef.current?.send({ type: 'broadcast', event: 'typing', payload: { id: meId, name: meName } })
+  }, [meId, meName])
+
+  const stopTyping = useCallback(() => {
+    lastSent.current = 0
+    chanRef.current?.send({ type: 'broadcast', event: 'stop', payload: { id: meId } })
+  }, [meId])
+
+  const names = Object.values(typers).map(t => t.name)
+  return { typerNames: names, notifyTyping, stopTyping }
+}
+
+// Renders "X is typing…" / "X and Y are typing…"
+function TypingLine({ names }) {
+  if (!names.length) return null
+  let text
+  if (names.length === 1) text = `${names[0]} is typing…`
+  else if (names.length === 2) text = `${names[0]} and ${names[1]} are typing…`
+  else text = `${names[0]}, ${names[1]} and ${names.length - 2} more are typing…`
+  return (
+    <div style={{ padding: '2px 18px 4px', fontSize: 12, color: 'var(--ink-soft)', fontStyle: 'italic', minHeight: 18 }}>{text}</div>
+  )
+}
 // ---- @mention helpers ----
 // Extract profile ids for names mentioned as "@Full Name" in body.
 function extractMentions(body, profiles) {
@@ -252,6 +309,7 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
   const [showPicker, setShowPicker] = useState(false)      // input emoji picker
   const [reactFor, setReactFor] = useState(null)   // message id whose react-picker is open
   const bottomRef = useRef(null)
+  const { typerNames, notifyTyping, stopTyping } = useTyping(`typing:${channelId}`, me.id, me.full_name)
   useEffect(() => {
     let active = true
     ;(async () => {
@@ -335,6 +393,7 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
     const isHere = /(^|\s)@here(\s|$)/i.test(body)
     const willRequireAck = isAdmin && requireAck
     setText(''); setRequireAck(false)
+    stopTyping()
     const temp = { id: 'temp-' + Date.now(), channel_id: channelId, sender_id: me.id, body, created_at: new Date().toISOString(), requires_ack: willRequireAck, is_here: isHere, _optimistic: true }
     setMessages(prev => [...prev, temp])
     const { data, error } = await supabase.from('messages')
@@ -441,6 +500,7 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
           }) })()}
         <div ref={bottomRef} />
       </div>
+      <TypingLine names={typerNames} />
       <div style={{ borderTop: '1px solid var(--line)', padding: '10px 16px', flex: 'none', background: 'var(--surface)' }}>
         {isAdmin && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, fontSize: 12.5, color: requireAck ? 'var(--accent)' : 'var(--ink-soft)', cursor: 'pointer', fontWeight: requireAck ? 600 : 400 }}>
@@ -457,7 +517,7 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
           )}
           <button type="button" onClick={() => setShowPicker(p => !p)} title="Emoji"
             style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '0 10px', flex: 'none' }}>😀</button>
-          <MentionTextarea value={text} onChange={setText} onEnter={send} profiles={profiles}
+          <MentionTextarea value={text} onChange={(v) => { setText(v); notifyTyping() }} onEnter={send} profiles={profiles}
             placeholder={requireAck ? 'Write your update… (@name to mention)' : `Message #${channel?.name || ''}  (@name to mention, @here for everyone)`}
             accent={requireAck ? 'var(--accent)' : 'var(--line)'}
             style={{ resize: 'none', padding: '10px 12px', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', maxHeight: 120 }} />
@@ -519,6 +579,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
   const [text, setText] = React.useState('')
   const [loading, setLoading] = React.useState(true)
   const endRef = React.useRef(null)
+  const { typerNames, notifyTyping, stopTyping } = useTyping(`typing:thread:${parentId}`, me.id, me.full_name)
   React.useEffect(() => {
     let active = true
     ;(async () => {
@@ -547,7 +608,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
   React.useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [replies])
   async function sendReply() {
     const body = text.trim(); if (!body) return
-    setText('')
+    setText(''); stopTyping()
     const temp = { id: 'temp-' + Date.now(), channel_id: channelId, sender_id: me.id, body, parent_id: parentId, created_at: new Date().toISOString(), _optimistic: true }
     setReplies(prev => [...prev, temp])
     const { data, error } = await supabase.from('messages').insert({ channel_id: channelId, sender_id: me.id, body, parent_id: parentId }).select().single()
@@ -597,8 +658,9 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
           </>
         )}
       </div>
+      <TypingLine names={typerNames} />
       <div style={{ borderTop: '1px solid var(--line)', padding: 12, display: 'flex', gap: 8, flex: 'none' }}>
-        <MentionTextarea value={text} onChange={setText} onEnter={sendReply} profiles={profiles}
+        <MentionTextarea value={text} onChange={(v) => { setText(v); notifyTyping() }} onEnter={sendReply} profiles={profiles}
           placeholder="Reply… (@name to mention)"
           style={{ resize: 'none', padding: '9px 11px', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', outline: 'none', maxHeight: 100 }} />
         <button className="btn btn-primary" onClick={sendReply} disabled={!text.trim()}>Reply</button>
