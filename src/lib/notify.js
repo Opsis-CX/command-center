@@ -33,6 +33,18 @@ export async function notifyChatMessage({ channelId, channelName, isDm, actorId,
   })))
 }
 
+export async function notifyChatMention({ recipientIds, actorId, actorName, channelName, isDm, addedIds }) {
+  const ids = (recipientIds || []).filter(id => id && id !== actorId)
+  const where = isDm ? 'a direct message' : `#${channelName}`
+  const added = addedIds || []
+  await insertMany(ids.map(rid => ({
+    recipient_id: rid, type: 'chat_mention',
+    title: `${actorName} mentioned you in ${where}`,
+    body: added.includes(rid) ? `You were mentioned and added to ${where}.` : null,
+    link: '/chat', actor_id: actorId, actor_name: actorName,
+  })))
+}
+
 export async function notifyAckNudge({ recipientId, actorId, actorName, channelName }) {
   await insertMany([{
     recipient_id: recipientId, type: 'ack_nudge',
