@@ -81,6 +81,56 @@ function useTyping(topic, meId, meName) {
   return { typerNames: names, notifyTyping, stopTyping }
 }
 
+// ---- file attachments ----
+const MAX_FILE_BYTES = 50 * 1024 * 1024 // 50MB
+
+async function uploadChatFile(file, channelId, meId) {
+  if (file.size > MAX_FILE_BYTES) throw new Error(`"${file.name}" is over 50MB.`)
+  const ext = file.name.includes('.') ? file.name.split('.').pop() : 'bin'
+  const rand = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()))
+  const path = `${channelId}/${rand}.${ext}`
+  const { error: upErr } = await supabase.storage.from('chat-attachments').upload(path, file, { contentType: file.type || undefined, upsert: false })
+  if (upErr) throw upErr
+  const { data: pub } = supabase.storage.from('chat-attachments').getPublicUrl(path)
+  return { file_name: file.name, file_type: file.type || '', file_size: file.size, storage_path: path, public_url: pub.publicUrl }
+}
+
+function humanSize(bytes) {
+  if (!bytes) return ''
+  const u = ['B', 'KB', 'MB', 'GB']; let i = 0; let n = bytes
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++ }
+  return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${u[i]}`
+}
+
+function AttachmentView({ att }) {
+  const type = att.file_type || ''
+  const isImg = type.startsWith('image/')
+  const isVid = type.startsWith('video/')
+  if (isImg) {
+    return (
+      <a href={att.public_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6 }}>
+        <img src={att.public_url} alt={att.file_name} style={{ maxWidth: 280, maxHeight: 240, borderRadius: 8, border: '1px solid var(--line)', display: 'block' }} />
+      </a>
+    )
+  }
+  if (isVid) {
+    return (
+      <video src={att.public_url} controls style={{ maxWidth: 320, maxHeight: 260, borderRadius: 8, border: '1px solid var(--line)', marginTop: 6, display: 'block' }} />
+    )
+  }
+  // generic file card
+  return (
+    <a href={att.public_url} target="_blank" rel="noreferrer"
+      style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--canvas)', textDecoration: 'none', color: 'var(--ink)', maxWidth: 300 }}>
+      <span style={{ fontSize: 22 }}>📄</span>
+      <span style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{att.file_name}</div>
+        <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{humanSize(att.file_size)} · Download</div>
+      </span>
+    </a>
+  )
+}
+
 // Renders "X is typing…" / "X and Y are typing…"
 function TypingLine({ names }) {
   if (!names.length) return null
@@ -314,6 +364,10 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
   const [trackFor, setTrackFor] = useState(null)  // message id to show tracking panel
   const [threadFor, setThreadFor] = useState(null) // parent message id for the thread panel
   const [reactions, setReactions] = useState([])   // all reactions for messages in view
+  const [attachments, setAttachments] = useState([]) // attachments for messages in view
+  const [pending, setPending] = useState([])         // files staged to send: {file, name, uploading}
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef(null)
   const [showPicker, setShowPicker] = useState(false)      // input emoji picker
   const [reactFor, setReactFor] = useState(null)   // message id whose react-picker is open
   const bottomRef = useRef(null)
@@ -335,6 +389,7 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
         await hydrateSenders(msgs)
         await loadAcks(msgs)
         await loadReactions(msgs)
+        await loadAttachments(msgs)
       } catch (e) { if (active) setErr(e.message) } finally { if (active) setLoading(false) }
     })()
     return () => { active = false }
@@ -357,6 +412,23 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
     if (!ids.length) { setReactions([]); return }
     const { data } = await supabase.from('message_reactions').select('*').in('message_id', ids)
     setReactions(data || [])
+  }
+  async function loadAttachments(msgs) {
+    const ids = msgs.map(m => m.id)
+    if (!ids.length) { setAttachments([]); return }
+    const { data } = await supabase.from('message_attachments').select('*').in('message_id', ids)
+    setAttachments(data || [])
+  }
+  function addFiles(fileList) {
+    const arr = Array.from(fileList || [])
+    const tooBig = arr.find(f => f.size > MAX_FILE_BYTES)
+    if (tooBig) { setErr(`"${tooBig.name}" is over 50MB.`); return }
+    setPending(prev => [...prev, ...arr.map(f => ({ file: f, name: f.name, type: f.type }))])
+  }
+  function removePending(idx) { setPending(prev => prev.filter((_, i) => i !== idx)) }
+  function onPaste(e) {
+    const files = Array.from(e.clipboardData?.files || [])
+    if (files.length) { e.preventDefault(); addFiles(files) }
   }
   async function toggleReaction(messageId, emoji) {
     const mine = reactions.find(r => r.message_id === messageId && r.profile_id === me.id && r.emoji === emoji)
@@ -393,26 +465,45 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
         (payload) => { setReactions(prev => prev.some(r => r.id === payload.new.id) ? prev : [...prev, payload.new]) })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' },
         (payload) => { setReactions(prev => prev.filter(r => r.id !== payload.old.id)) })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_attachments', filter: `channel_id=eq.${channelId}` },
+        (payload) => { setAttachments(prev => prev.some(a => a.id === payload.new.id) ? prev : [...prev, payload.new]) })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [channelId, senders])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   async function send() {
     const body = text.trim()
-    if (!body) return
+    if (!body && pending.length === 0) return
     const isHere = /(^|\s)@here(\s|$)/i.test(body)
     const willRequireAck = isAdmin && requireAck
-    setText(''); setRequireAck(false)
+    const filesToSend = pending
+    setText(''); setRequireAck(false); setPending([])
     stopTyping()
-    const temp = { id: 'temp-' + Date.now(), channel_id: channelId, sender_id: me.id, body, created_at: new Date().toISOString(), requires_ack: willRequireAck, is_here: isHere, _optimistic: true }
+    if (filesToSend.length) setUploading(true)
+    const temp = { id: 'temp-' + Date.now(), channel_id: channelId, sender_id: me.id, body: body || '', created_at: new Date().toISOString(), requires_ack: willRequireAck, is_here: isHere, _optimistic: true }
     setMessages(prev => [...prev, temp])
     const { data, error } = await supabase.from('messages')
-      .insert({ channel_id: channelId, sender_id: me.id, body, requires_ack: willRequireAck, is_here: isHere })
+      .insert({ channel_id: channelId, sender_id: me.id, body: body || '', requires_ack: willRequireAck, is_here: isHere })
       .select().single()
     if (error) {
       setErr(error.message)
-      setMessages(prev => prev.filter(m => m.id !== temp.id)); setText(body)
+      setMessages(prev => prev.filter(m => m.id !== temp.id)); setText(body); setPending(filesToSend); setUploading(false)
       return
+    }
+    // upload + attach files
+    if (filesToSend.length) {
+      try {
+        const rows = []
+        for (const p of filesToSend) {
+          const meta = await uploadChatFile(p.file, channelId, me.id)
+          rows.push({ message_id: data.id, channel_id: channelId, uploader_id: me.id, ...meta })
+        }
+        if (rows.length) {
+          const { data: attData } = await supabase.from('message_attachments').insert(rows).select()
+          if (attData) setAttachments(prev => [...prev, ...attData])
+        }
+      } catch (e) { setErr('Upload failed: ' + e.message) }
+      setUploading(false)
     }
     setMessages(prev => prev.filter(m => m.id !== temp.id && m.id !== data.id).concat(data))
     notifyChatMessage({
@@ -498,6 +589,7 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
                   ) : (
                     <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{renderBody(m.body)}</div>
                   )}
+                  {attachments.filter(a => a.message_id === m.id).map(a => <AttachmentView key={a.id} att={a} />)}
                   <ReactionBar messageId={m.id} reactions={reactions} meId={me.id}
                     onToggle={toggleReaction}
                     pickerOpen={reactFor === m.id}
@@ -518,6 +610,18 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
             Post as <b>@update</b> — require everyone to confirm they've read it
           </label>
         )}
+        {pending.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+            {pending.map((p, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, fontSize: 12 }}>
+                <span>{p.type?.startsWith('image/') ? '🖼' : p.type?.startsWith('video/') ? '🎬' : '📄'}</span>
+                <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                <button onClick={() => removePending(i)} style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 14 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {uploading && <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 6 }}>Uploading…</div>}
         <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
           {showPicker && (
             <div style={{ position: 'absolute', bottom: 52, left: 0, zIndex: 50 }}>
@@ -525,13 +629,19 @@ function ChannelPane({ channelId, me, isAdmin, channel, dmName, profiles, isMobi
                 width={320} height={380} previewConfig={{ showPreview: false }} />
             </div>
           )}
+          <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }}
+            onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
+          <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach file"
+            style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, padding: '0 10px', flex: 'none' }}>📎</button>
           <button type="button" onClick={() => setShowPicker(p => !p)} title="Emoji"
             style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '0 10px', flex: 'none' }}>😀</button>
-          <MentionTextarea value={text} onChange={(v) => { setText(v); notifyTyping() }} onEnter={send} profiles={profiles}
-            placeholder={requireAck ? 'Write your update… (@name to mention)' : `Message #${channel?.name || ''}  (@name to mention, @here for everyone)`}
-            accent={requireAck ? 'var(--accent)' : 'var(--line)'}
-            style={{ resize: 'none', padding: '10px 12px', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', maxHeight: 120 }} />
-          <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={!text.trim()}>{requireAck ? 'Post update' : 'Send'}</button>
+          <div style={{ flex: 1 }} onPaste={onPaste}>
+            <MentionTextarea value={text} onChange={(v) => { setText(v); notifyTyping() }} onEnter={send} profiles={profiles}
+              placeholder={requireAck ? 'Write your update… (@name to mention)' : `Message #${channel?.name || ''}  (@name, @here, or paste/attach a file)`}
+              accent={requireAck ? 'var(--accent)' : 'var(--line)'}
+              style={{ resize: 'none', padding: '10px 12px', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', maxHeight: 120 }} />
+          </div>
+          <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={(!text.trim() && pending.length === 0) || uploading}>{requireAck ? 'Post update' : 'Send'}</button>
         </div>
       </div>
       {trackFor && <TrackPanel messageId={trackFor} me={me} members={members} profiles={profiles} acks={acks} onClose={() => setTrackFor(null)} />}
