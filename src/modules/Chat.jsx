@@ -466,11 +466,14 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   // per channel — putting `senders` in the deps used to tear down and rebuild
   // this subscription on every new sender, causing missed messages.
   useEffect(() => {
+    console.log('[chat] subscribing to channel', channelId)
     const ch = supabase
       .channel(`chan:${channelId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${channelId}` },
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
         async (payload) => {
           const m = payload.new
+          console.log('[chat] message INSERT received', m?.id, 'ch', m?.channel_id, 'viewing', channelId)
+          if (m.channel_id !== channelId) return   // filter in JS (server-side filter silently fails without REPLICA IDENTITY)
           setMessages(prev => prev.some(x => x.id === m.id) ? prev : [...prev, m])
           // I'm looking at this channel, so keep it marked read
           if (m.sender_id !== me.id) markRead?.(channelId)
@@ -479,9 +482,10 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             if (data) setSenders(prev => ({ ...prev, [data.id]: data.full_name }))
           }
         })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `channel_id=eq.${channelId}` },
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' },
         (payload) => {
           const m = payload.new
+          if (m.channel_id !== channelId) return
           // a soft-deleted message drops out of the list; an edited one updates in place
           if (m.deleted_at) setMessages(prev => prev.filter(x => x.id !== m.id))
           else setMessages(prev => prev.map(x => x.id === m.id ? { ...x, ...m } : x))
@@ -492,9 +496,12 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         (payload) => { setReactions(prev => prev.some(r => r.id === payload.new.id) ? prev : [...prev, payload.new]) })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' },
         (payload) => { setReactions(prev => prev.filter(r => r.id !== payload.old.id)) })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_attachments', filter: `channel_id=eq.${channelId}` },
-        (payload) => { setAttachments(prev => prev.some(a => a.id === payload.new.id) ? prev : [...prev, payload.new]) })
-      .subscribe()
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_attachments' },
+        (payload) => {
+          if (payload.new?.channel_id !== channelId) return
+          setAttachments(prev => prev.some(a => a.id === payload.new.id) ? prev : [...prev, payload.new])
+        })
+      .subscribe((status) => { console.log('[chat] channel status:', status) })
     return () => { supabase.removeChannel(ch) }
   }, [channelId])
   // Scroll the message list (not the page) to the newest message.
@@ -1113,8 +1120,11 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
   }, [parentId])
   React.useEffect(() => {
     const ch = supabase.channel(`thread:${parentId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `parent_id=eq.${parentId}` },
-        (payload) => setReplies(prev => prev.some(x => x.id === payload.new.id) ? prev : [...prev, payload.new]))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          if (payload.new?.parent_id !== parentId) return
+          setReplies(prev => prev.some(x => x.id === payload.new.id) ? prev : [...prev, payload.new])
+        })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [parentId])
