@@ -1,6 +1,17 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
+// TODO: replace with your real mock-call scheduling link (Calendly, Google
+// appointment page, etc.) when you have it.
+const MOCK_CALL_SCHEDULE_LINK = 'https://REPLACE-WITH-YOUR-SCHEDULING-LINK'
+
+async function sendHiringEmail(kind, to, data) {
+  try {
+    const { error } = await supabase.functions.invoke('send-hiring-email', { body: { kind, to, data } })
+    if (error) console.error('email send failed:', error)
+  } catch (e) { console.error('email send failed:', e) }
+}
+
 export default function PeopleTags() {
   const [tags, setTags] = useState([])
   const [people, setPeople] = useState([])
@@ -9,15 +20,19 @@ export default function PeopleTags() {
   const [err, setErr] = useState('')
   const [newTagName, setNewTagName] = useState('')
   const [busyTag, setBusyTag] = useState(false)
-
+  // Five9 setup: which person's form is open, and its field values
+  const [five9Open, setFive9Open] = useState(null)   // person id
+  const [five9User, setFive9User] = useState('')
+  const [five9Pass, setFive9Pass] = useState('')
+  const [five9Busy, setFive9Busy] = useState(false)
+  const [five9Msg, setFive9Msg] = useState('')
   useEffect(() => { load() }, [])
-
   async function load() {
     setLoading(true); setErr('')
     try {
       const [tagsRes, peopleRes, tgRes] = await Promise.all([
         supabase.from('tags').select('*').order('name'),
-        supabase.from('profiles').select('id, full_name, email, color, is_active')
+        supabase.from('profiles').select('id, full_name, email, color, is_active, five9_username, five9_sent_at')
           .eq('is_active', true).order('full_name'),
         supabase.from('taggables').select('*').eq('entity_type', 'profile'),
       ])
@@ -33,7 +48,6 @@ export default function PeopleTags() {
       setLoading(false)
     }
   }
-
   async function createTag() {
     const name = newTagName.trim()
     if (!name) return
@@ -50,11 +64,9 @@ export default function PeopleTags() {
       setBusyTag(false)
     }
   }
-
   function personHasTag(personId, tagId) {
     return taggables.some(t => t.entity_id === personId && t.tag_id === tagId)
   }
-
   async function toggleTag(personId, tagId) {
     const existing = taggables.find(t => t.entity_id === personId && t.tag_id === tagId)
     try {
@@ -74,23 +86,71 @@ export default function PeopleTags() {
       load()
     }
   }
+  // Send Five9 credentials to a person, then clear the temp password from the
+  // database (it's single-use — they reset on first login) and advance their
+  // hiring record to the mock-call stage.
+  function openFive9(person) {
+    setFive9Open(person.id)
+    setFive9User(person.five9_username || '')
+    setFive9Pass('')
+    setFive9Msg('')
+  }
+  async function sendFive9(person) {
+    if (!five9User.trim() || !five9Pass.trim()) { setFive9Msg('Enter both a username and a temporary password.'); return }
+    setFive9Busy(true); setFive9Msg('')
+    try {
+      // store username + temp password briefly
+      await supabase.from('profiles').update({
+        five9_username: five9User.trim(),
+        five9_temp_password: five9Pass.trim(),
+        five9_sent_at: new Date().toISOString(),
+      }).eq('id', person.id)
 
+      // email the agent their credentials + scheduling link
+      await sendHiringEmail('five9_credentials', person.email, {
+        name: person.full_name,
+        username: five9User.trim(),
+        tempPassword: five9Pass.trim(),
+        scheduleLink: MOCK_CALL_SCHEDULE_LINK,
+      })
+
+      // clear the temp password now that it's been sent (single-use)
+      await supabase.from('profiles').update({ five9_temp_password: null }).eq('id', person.id)
+
+      // advance their hiring record (matched by email) to mock-call requested
+      const { data: apps } = await supabase.from('hiring_applications')
+        .select('id, status').eq('email', person.email).order('created_at', { ascending: false }).limit(1)
+      const app = apps && apps[0]
+      if (app) {
+        await supabase.from('hiring_applications').update({ status: 'mock_requested' }).eq('id', app.id)
+        await supabase.from('hiring_stage_events').insert({
+          application_id: app.id, from_status: app.status, to_status: 'mock_requested',
+          note: 'Five9 credentials sent; mock call requested',
+        })
+      }
+
+      setFive9Msg('✓ Credentials sent. The temporary password was cleared from the database.')
+      setFive9Pass('')
+      await load()
+    } catch (e) {
+      setFive9Msg(e.message || 'Could not send credentials.')
+    } finally {
+      setFive9Busy(false)
+    }
+  }
   const initials = (n) => (n || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()
-
   return (
     <div>
       <div className="page-head">
         <h1 className="page-title">People &amp; tags</h1>
         <p className="page-sub">Create tags, then tag people. Certifications assigned to a tag reach everyone who has it.</p>
       </div>
-
       {err && (
         <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}>
           <b style={{ color: 'var(--failed)' }}>Something went wrong.</b>
           <p className="page-sub" style={{ marginTop: 6 }}>{err}</p>
         </div>
       )}
-
       {loading ? <p className="page-sub">Loading…</p> : (
         <>
           <div className="card" style={{ marginBottom: 20 }}>
@@ -118,7 +178,6 @@ export default function PeopleTags() {
               </div>
             )}
           </div>
-
           <div className="card">
             <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600 }}>People</h3>
             <p className="page-sub" style={{ marginBottom: 14 }}>Click a tag under each person to add or remove it.</p>
@@ -130,11 +189,38 @@ export default function PeopleTags() {
                   <span style={{ width: 30, height: 30, borderRadius: '50%', background: p.color || 'var(--blue)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flex: 'none' }}>
                     {initials(p.full_name)}
                   </span>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{p.full_name}</div>
                     <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{p.email}</div>
                   </div>
+                  <button type="button" className="btn btn-ghost" style={{ fontSize: 12.5 }}
+                    onClick={() => five9Open === p.id ? setFive9Open(null) : openFive9(p)}>
+                    {p.five9_sent_at ? 'Five9 ✓' : 'Five9 setup'}
+                  </button>
                 </div>
+
+                {five9Open === p.id && (
+                  <div style={{ background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: 14, margin: '4px 0 12px' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Send Five9 login to {p.full_name}</div>
+                    <p style={{ fontSize: 12, color: 'var(--ink-soft)', margin: '0 0 12px', lineHeight: 1.5 }}>
+                      Enter the temporary Five9 username and password. We'll email them to {p.email}, ask them to reset the password on first login, and include the mock-call scheduling link. The temporary password is cleared from the database right after sending.
+                    </p>
+                    <div style={{ display: 'grid', gap: 10, maxWidth: 360 }}>
+                      <input value={five9User} onChange={e => setFive9User(e.target.value)} placeholder="Five9 username"
+                        style={{ padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit' }} />
+                      <input value={five9Pass} onChange={e => setFive9Pass(e.target.value)} placeholder="Temporary password"
+                        style={{ padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit' }} />
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <button className="btn btn-primary" onClick={() => sendFive9(p)} disabled={five9Busy}>
+                          {five9Busy ? 'Sending…' : 'Send credentials'}
+                        </button>
+                        <button className="btn btn-ghost" onClick={() => setFive9Open(null)}>Cancel</button>
+                      </div>
+                      {five9Msg && <div style={{ fontSize: 12.5, color: five9Msg.startsWith('✓') ? '#16A34A' : 'var(--failed)' }}>{five9Msg}</div>}
+                    </div>
+                  </div>
+                )}
+
                 {tags.length === 0 ? (
                   <div className="page-sub" style={{ fontSize: 12.5 }}>Create tags above first.</div>
                 ) : (
