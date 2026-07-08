@@ -160,3 +160,74 @@ a{color:inherit;text-decoration:none;}
 .pm-rich ol { margin: 4px 0 4px 18px; padding: 0; }
 .pm-rich li { margin-bottom: 2px; }
 .pm-rich .pm-mention { color: var(--accent); font-weight: 600; }
+/* ============================================================
+   ADD-ONS: tighter content padding + dark mode
+   Paste this block at the END of your CSS file.
+   It overrides a few earlier rules (later CSS wins).
+   ============================================================ */
+
+/* ---- Tighter layout: content uses more of the screen ---- */
+.content { padding: 16px 18px; }
+.topbar  { padding: 0 18px; }
+@media (min-width: 1400px) {
+  /* on big screens, give a little more breathing room but still tight */
+  .content { padding: 18px 24px; }
+}
+
+/* ============================================================
+   DARK MODE
+   Two ways it activates:
+   1. Automatically, if the user's device is set to dark
+      (the @media prefers-color-scheme block), UNLESS they've
+      chosen an explicit theme.
+   2. Manually, when <html data-theme="dark"> is set by the
+      toggle (this wins over the system setting).
+   The toggle sets data-theme = "light" | "dark" | (removes it
+   for "system").
+   ============================================================ */
+
+/* Shared dark palette, used by both the manual and auto triggers */
+:root[data-theme="dark"] {
+  --ink:        #e8eef0;
+  --ink-soft:   #9fb4bb;
+  --line:       #2a3439;
+  --line-soft:  #212a2e;
+  --surface:    #161d21;
+  --canvas:     #0d1417;
+  --accent:     #2b9fd6;
+  --accent-bg:  #16333f;
+  --accent-ink: #ffffff;
+  --passed:     #3fbf77; --passed-bg:#12301f;
+  --failed:     #e15c4d; --failed-bg:#3a1a15;
+  --needed:     #7fa6b2; --needed-bg:#1a2c31;
+  --sidebar:    #0a0f11;
+  --sidebar-soft:#6b7f86;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.45);
+}
+
+/* Follow the system setting automatically — but only when the user
+   hasn't explicitly picked light or dark. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --ink:        #e8eef0;
+    --ink-soft:   #9fb4bb;
+    --line:       #2a3439;
+    --line-soft:  #212a2e;
+    --surface:    #161d21;
+    --canvas:     #0d1417;
+    --accent:     #2b9fd6;
+    --accent-bg:  #16333f;
+    --accent-ink: #ffffff;
+    --passed:     #3fbf77; --passed-bg:#12301f;
+    --failed:     #e15c4d; --failed-bg:#3a1a15;
+    --needed:     #7fa6b2; --needed-bg:#1a2c31;
+    --sidebar:    #0a0f11;
+    --sidebar-soft:#6b7f86;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.45);
+  }
+}
+
+/* A couple of spots that were pure white/black and need nudging in dark */
+:root[data-theme="dark"] .tag-opt.on,
+:root[data-theme="dark"] .badge.passed,
+:root[data-theme="dark"] .badge.failed { color: #fff; }
