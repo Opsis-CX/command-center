@@ -114,6 +114,17 @@ export default function HiringDashboard() {
   // sitting in assessment_passed with a linked task that's now done gets
   // advanced to certification automatically. We check on load, on a light
   // interval, and whenever the tasks table changes.
+  // Create the agent's login account (email invite → they set a password).
+  // Runs server-side via the invite-agent Edge Function.
+  async function inviteAgentAccount(app) {
+    try {
+      const { error } = await supabase.functions.invoke('invite-agent', {
+        body: { email: app.email, fullName: app.full_name, phone: app.phone || null },
+      })
+      if (error) console.error('invite-agent failed:', error)
+    } catch (e) { console.error('invite-agent failed:', e) }
+  }
+
   const checkRipplingTasks = useCallback(async () => {
     const waiting = apps.filter(a => a.status === 'assessment_passed' && a.rippling_task_id)
     if (!waiting.length) return
@@ -124,11 +135,13 @@ export default function HiringDashboard() {
     const doneIds = new Set(doneTasks.map(t => t.id))
     for (const app of waiting) {
       if (doneIds.has(app.rippling_task_id)) {
+        // create their login account so they can access certification
+        await inviteAgentAccount(app)
         const patch = { status: 'certifying', reviewed_at: new Date().toISOString() }
         await supabase.from('hiring_applications').update(patch).eq('id', app.id)
         await supabase.from('hiring_stage_events').insert({
           application_id: app.id, from_status: 'assessment_passed', to_status: 'certifying',
-          note: 'Rippling setup task completed by Corinne',
+          note: 'Rippling setup task completed by Corinne; login account invited',
         })
       }
     }
@@ -212,6 +225,12 @@ export default function HiringDashboard() {
     // When certification completes, alert the support channel for Five9 setup.
     if (toStatus === 'cert_complete') {
       await postFive9Alert(app)
+    }
+
+    // If advancing to certifying manually (override), make sure the agent has
+    // a login account — they need it to see certification.
+    if (toStatus === 'certifying') {
+      await inviteAgentAccount(app)
     }
 
     const { error } = await supabase.from('hiring_applications').update(patch).eq('id', app.id)
