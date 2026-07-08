@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useUnread } from '../lib/unread'
+import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
 // Sidebar navigation.
 // - `type: 'link'`  → a single top-level link.
 // - `type: 'section'` → a clickable header that expands/collapses its children.
@@ -49,6 +50,10 @@ export default function Sidebar({ open, onNavigate }) {
   const viewRole = isAdmin ? 'admin' : 'agent'
   const name = user?.email?.split('@')[0] ?? 'User'
   const initial = (name[0] || 'U').toUpperCase()
+  // Theme toggle (System → Light → Dark)
+  const [theme, setThemeState] = useState(getTheme())
+  const cycleTheme = () => { const t = nextTheme(theme); setTheme(t); setThemeState(t) }
+
   // Which collapsible sections are open. Several can be open at once.
   const [openSections, setOpenSections] = useState({})
   const toggleSection = (key) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }))
@@ -122,6 +127,7 @@ export default function Sidebar({ open, onNavigate }) {
           <div className="user-role">{isOwner ? 'Owner' : isAdmin ? 'Admin' : 'Agent'}</div>
         </div>
       </div>
+      <button className="signout" onClick={cycleTheme}>{themeLabel(theme)}</button>
       <button className="signout" onClick={signOut}>Sign out</button>
     </aside>
   )
