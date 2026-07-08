@@ -235,12 +235,41 @@ function ApplicantCard({ app, onClick, onApprove, onDeny, busy }) {
 
 function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, busy }) {
   const [resumeUrl, setResumeUrl] = useState(null)
+  const [assessment, setAssessment] = useState(null)
+  const [assessLoading, setAssessLoading] = useState(false)
   useEffect(() => {
     if (app.resume_path) {
       const { data } = supabase.storage.from('hiring-files').getPublicUrl(app.resume_path)
       setResumeUrl(data?.publicUrl || null)
     } else setResumeUrl(null)
   }, [app.resume_path])
+  // Load this applicant's assessment (if they've submitted one) so we can
+  // show their answers and play their voice recordings.
+  useEffect(() => {
+    let active = true
+    setAssessment(null)
+    ;(async () => {
+      setAssessLoading(true)
+      const { data } = await supabase.from('hiring_assessments')
+        .select('*').eq('application_id', app.id).order('created_at', { ascending: false }).limit(1)
+      if (!active) return
+      const a = (data && data[0]) || null
+      if (a) {
+        // turn each recording's storage path into a playable URL
+        const paths = ['rec_outbound_path', 'rec_inbound_path', 'rec_rebuttal1_path', 'rec_rebuttal2_path']
+        a._urls = {}
+        for (const p of paths) {
+          if (a[p]) {
+            const { data: pub } = supabase.storage.from('hiring-files').getPublicUrl(a[p])
+            a._urls[p] = pub?.publicUrl || null
+          }
+        }
+      }
+      setAssessment(a)
+      setAssessLoading(false)
+    })()
+    return () => { active = false }
+  }, [app.id])
 
   const Row = ({ label, value }) => value ? (
     <div style={{ marginBottom: 10 }}>
@@ -248,6 +277,15 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, busy }) {
       <div style={{ fontSize: 13.5, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{value}</div>
     </div>
   ) : null
+
+  const Recording = ({ label, url }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>{label}</div>
+      {url
+        ? <audio controls src={url} style={{ width: '100%', height: 38 }} />
+        : <div style={{ fontSize: 12, color: 'var(--ink-soft)', fontStyle: 'italic' }}>Not submitted</div>}
+    </div>
+  )
 
   // "advance" options for stages past first review (simple move-forward controls)
   const advanceMap = {
@@ -323,6 +361,41 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, busy }) {
               </a>
             </div>
           )}
+
+          {/* ---- Assessment (answers + voice recordings) ---- */}
+          {assessLoading && <div style={{ marginTop: 20, fontSize: 12.5, color: 'var(--ink-soft)' }}>Loading assessment…</div>}
+          {assessment && (
+            <div style={{ marginTop: 24, paddingTop: 18, borderTop: '2px solid var(--line)' }}>
+              <h3 style={{ fontSize: 15, fontWeight: 800, margin: '0 0 14px' }}>Assessment</h3>
+              <Row label="Outbound / call-center experience" value={assessment.years_outbound} />
+              <Row label="Call types handled" value={assessment.call_types} />
+              <Row label="Systems / dialers / CRMs" value={assessment.systems_dialers} />
+              <Row label="Performance metrics" value={assessment.performance_metrics} />
+              <Row label="Hours per week" value={assessment.hours_per_week} />
+              <Row label="Quiet workspace" value={assessment.quiet_workspace ? 'Yes' : 'No'} />
+              <Row label="Own computer & headset" value={assessment.own_equipment ? 'Yes' : 'No'} />
+              <Row label="Comfortable as 1099" value={assessment.comfortable_1099 ? 'Yes' : 'No'} />
+              <Row label="Desired rate" value={assessment.desired_rate} />
+              {assessment.availability && (
+                <Row label="Availability" value={
+                  ['Morning', 'Afternoon', 'Evening']
+                    .map(s => (assessment.availability[s]?.length ? `${s}: ${assessment.availability[s].join(', ')}` : null))
+                    .filter(Boolean).join('\n') || '—'
+                } />
+              )}
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', marginBottom: 10 }}>Voice recordings</div>
+                <Recording label="1. Outbound greeting" url={assessment._urls?.rec_outbound_path} />
+                <Recording label="2. Inbound greeting" url={assessment._urls?.rec_inbound_path} />
+                <Recording label='3. Rebuttal — "I&apos;m not interested"' url={assessment._urls?.rec_rebuttal1_path} />
+                <Recording label='4. Rebuttal — "How much does it cost?"' url={assessment._urls?.rec_rebuttal2_path} />
+              </div>
+            </div>
+          )}
+          {!assessLoading && !assessment && ['assessment_review', 'assessment_passed', 'assessment_denied'].includes(app.status) && (
+            <div style={{ marginTop: 20, fontSize: 12.5, color: 'var(--ink-soft)', fontStyle: 'italic' }}>No assessment record found for this applicant.</div>
+          )}
+
           {app.screen_reason && (
             <div style={{ marginTop: 16, fontSize: 12, color: 'var(--ink-soft)', fontStyle: 'italic' }}>Auto-screen note: {app.screen_reason}</div>
           )}
