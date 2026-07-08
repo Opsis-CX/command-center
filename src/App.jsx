@@ -1,7 +1,8 @@
 import NotificationBell from './components/NotificationBell'
 import NotificationToggle from './components/NotificationToggle'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
+import { initTheme } from './lib/theme'
 import { useAuth } from './lib/auth'
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
@@ -35,6 +36,8 @@ export default function App() {
   const { session, loading, isAdmin } = useAuth()
   const [navOpen, setNavOpen] = useState(false)
   const location = useLocation()
+  // apply the saved light/dark/system theme as early as possible
+  useEffect(() => { initTheme() }, [])
   if (loading) return <div className="loading-screen">Loading…</div>
   // ---- PUBLIC routes (no login required) ----
   // These must be checked BEFORE the login gate so job applicants who aren't
