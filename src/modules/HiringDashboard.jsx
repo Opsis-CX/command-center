@@ -30,6 +30,12 @@ const COLUMNS = [
 // Statuses considered "screened out" — hidden unless the toggle is on.
 const SCREENED_OUT = ['out_of_area', 'auto_denied', 'denied', 'assessment_denied', 'mock_failed', 'withdrawn']
 
+// If you have a dedicated "Onboarding" (or "New Hires") project in the
+// Projects module, paste its id here and the Rippling setup tasks will be
+// filed under it. Leave as null to create the tasks with no project.
+// To find a project's id: open it in Projects, or check the projects table.
+const ONBOARDING_PROJECT_ID = null
+
 // Some statuses live under a column even though the column key differs
 // (e.g. assessment_sent belongs under "Approved" until it comes back).
 const STATUS_TO_COLUMN = {
@@ -104,11 +110,85 @@ export default function HiringDashboard() {
     return () => { supabase.removeChannel(ch) }
   }, [load])
 
+  // Watch for Corinne completing the "set up in Rippling" task. Any applicant
+  // sitting in assessment_passed with a linked task that's now done gets
+  // advanced to certification automatically. We check on load, on a light
+  // interval, and whenever the tasks table changes.
+  const checkRipplingTasks = useCallback(async () => {
+    const waiting = apps.filter(a => a.status === 'assessment_passed' && a.rippling_task_id)
+    if (!waiting.length) return
+    const ids = waiting.map(a => a.rippling_task_id)
+    const { data: doneTasks } = await supabase.from('tasks')
+      .select('id, status').in('id', ids).eq('status', 'done')
+    if (!doneTasks || !doneTasks.length) return
+    const doneIds = new Set(doneTasks.map(t => t.id))
+    for (const app of waiting) {
+      if (doneIds.has(app.rippling_task_id)) {
+        const patch = { status: 'certifying', reviewed_at: new Date().toISOString() }
+        await supabase.from('hiring_applications').update(patch).eq('id', app.id)
+        await supabase.from('hiring_stage_events').insert({
+          application_id: app.id, from_status: 'assessment_passed', to_status: 'certifying',
+          note: 'Rippling setup task completed by Corinne',
+        })
+      }
+    }
+    load()
+  }, [apps, load])
+
+  useEffect(() => { checkRipplingTasks() }, [checkRipplingTasks])
+  useEffect(() => {
+    const ch = supabase.channel('hiring-tasks-watch')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, () => checkRipplingTasks())
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [checkRipplingTasks])
+
   // move an application to a new status, log the event, fire the stubbed email
+  // Corinne's profile id — the "set up in Rippling" task is assigned to her.
+  const CORINNE_ID = '6d73d6ff-b70f-4180-880b-1b791bb03bde'
+
+  // Create a task in the Projects module telling Corinne to set this new
+  // hire up in Rippling. Returns the new task id (or null on failure).
+  async function createRipplingTask(app) {
+    try {
+      const taskId = crypto.randomUUID()
+      const { error: tErr } = await supabase.from('tasks').insert({
+        id: taskId,
+        name: `Set up ${app.full_name} in Rippling`,
+        status: 'todo',
+        priority: 'high',
+        project_id: ONBOARDING_PROJECT_ID || null,
+        notes: `New hire cleared assessment. Create their Rippling onboarding, then mark this task done to advance them to certification.`,
+        created_by: user?.id || null,
+      })
+      if (tErr) { console.error('could not create Rippling task:', tErr); return null }
+      await supabase.from('task_assignees').insert({ task_id: taskId, profile_id: CORINNE_ID })
+      // notify Corinne if the notify helper exists in this app
+      try {
+        const notify = await import('../lib/notify')
+        if (notify.notifyTaskAssigned) {
+          notify.notifyTaskAssigned({
+            recipientIds: [CORINNE_ID], actorId: user?.id, actorName: 'Hiring',
+            taskName: `Set up ${app.full_name} in Rippling`, projectName: null, taskId,
+          })
+        }
+      } catch (e) { /* notify is optional */ }
+      return taskId
+    } catch (e) { console.error('createRipplingTask failed:', e); return null }
+  }
+
   async function transition(app, toStatus, { email, note } = {}) {
     setBusy(true)
     const from = app.status
     const patch = { status: toStatus, reviewer_id: user?.id, reviewed_at: new Date().toISOString() }
+
+    // When an assessment is passed, create the Corinne "set up in Rippling"
+    // task and remember its id so we can watch for its completion.
+    if (toStatus === 'assessment_passed') {
+      const newTaskId = await createRipplingTask(app)
+      if (newTaskId) patch.rippling_task_id = newTaskId
+    }
+
     const { error } = await supabase.from('hiring_applications').update(patch).eq('id', app.id)
     if (error) { setErr(error.message); setBusy(false); return }
     await supabase.from('hiring_stage_events').insert({
@@ -289,13 +369,12 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, busy }) {
 
   // "advance" options for stages past first review (simple move-forward controls)
   const advanceMap = {
-    approved: { to: 'assessment_sent', label: 'Mark assessment sent', email: 'assessment_link' },
+    approved: { to: 'assessment_sent', label: 'Send assessment link', email: 'approved', hint: 'Emails the applicant their assessment link.' },
     assessment_review: { to: 'assessment_passed', label: 'Pass assessment', email: 'assessment_passed', deny: { to: 'assessment_denied', label: 'Reject assessment', email: 'assessment_denied' } },
-    assessment_passed: { to: 'rippling_invited', label: 'Mark Rippling invited', email: null },
-    rippling_invited: { to: 'onboarding', label: 'Mark onboarding started', email: null },
-    onboarding: { to: 'certifying', label: 'Start certification', email: null },
-    certifying: { to: 'cert_complete', label: 'Mark certification complete', email: null },
-    cert_complete: { to: 'five9_pending', label: 'Begin Five9 setup', email: null },
+    assessment_passed: { to: 'certifying', label: '✋ Force to certification', email: null, hint: 'Normally automatic: a task was created for Corinne to set up Rippling. When she marks it done, this advances on its own. Use this only to override.' },
+    certifying: { to: 'cert_complete', label: '✋ Mark: certification complete', email: null, hint: 'Manual — mark when they finish certification in Projects.' },
+    cert_complete: { to: 'five9_pending', label: '✋ Mark: creating Five9 account', email: null, hint: 'Manual — create their Five9 account, then enter it in People & Tags.' },
+    five9_pending: { to: 'mock_requested', label: '✋ Mark: request mock call', email: null, hint: 'Manual — once Five9 is set up, ask them to schedule their mock call.' },
     mock_requested: { to: 'mock_passed', label: 'Pass mock call', email: 'mock_passed', deny: { to: 'mock_failed', label: 'Fail mock call', email: 'mock_failed' } },
     mock_scheduled: { to: 'mock_passed', label: 'Pass mock call', email: 'mock_passed', deny: { to: 'mock_failed', label: 'Fail mock call', email: 'mock_failed' } },
   }
@@ -323,13 +402,16 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, busy }) {
             </div>
           )}
           {adv && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-              <button disabled={busy} onClick={() => onTransition(app, adv.to, { email: adv.email, note: adv.label })}
-                style={{ flex: 1, border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 160 }}>{adv.label}</button>
-              {adv.deny && (
-                <button disabled={busy} onClick={() => onTransition(app, adv.deny.to, { email: adv.deny.email, note: adv.deny.label })}
-                  style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#DC2626', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 140 }}>{adv.deny.label}</button>
-              )}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button disabled={busy} onClick={() => onTransition(app, adv.to, { email: adv.email, note: adv.label })}
+                  style={{ flex: 1, border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 160 }}>{adv.label}</button>
+                {adv.deny && (
+                  <button disabled={busy} onClick={() => onTransition(app, adv.deny.to, { email: adv.deny.email, note: adv.deny.label })}
+                    style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#DC2626', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 140 }}>{adv.deny.label}</button>
+                )}
+              </div>
+              {adv.hint && <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 7, lineHeight: 1.4 }}>{adv.hint}</div>}
             </div>
           )}
 
