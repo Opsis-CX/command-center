@@ -147,6 +147,26 @@ export default function HiringDashboard() {
   // Corinne's profile id — the "set up in Rippling" task is assigned to her.
   const CORINNE_ID = '6d73d6ff-b70f-4180-880b-1b791bb03bde'
 
+  // The Chat channel to alert when someone finishes certification.
+  const SUPPORT_CHANNEL_NAME = '# Call Center Support Team'
+
+  // Post a message into the support channel saying an agent is ready for
+  // their Five9 login. Posts as the current admin (a real person triggered it).
+  async function postFive9Alert(app) {
+    try {
+      const { data: chans } = await supabase.from('channels')
+        .select('id, name').eq('name', SUPPORT_CHANNEL_NAME).limit(1)
+      const channel = chans && chans[0]
+      if (!channel) { console.error('support channel not found:', SUPPORT_CHANNEL_NAME); return }
+      const body = `🎧 ${app.full_name} has completed certification and is ready for their Five9 login. Please create their Five9 account and enter the username and password in People & Tags.`
+      await supabase.from('messages').insert({
+        channel_id: channel.id,
+        sender_id: user?.id || CORINNE_ID,
+        body,
+      })
+    } catch (e) { console.error('postFive9Alert failed:', e) }
+  }
+
   // Create a task in the Projects module telling Corinne to set this new
   // hire up in Rippling. Returns the new task id (or null on failure).
   async function createRipplingTask(app) {
@@ -187,6 +207,11 @@ export default function HiringDashboard() {
     if (toStatus === 'assessment_passed') {
       const newTaskId = await createRipplingTask(app)
       if (newTaskId) patch.rippling_task_id = newTaskId
+    }
+
+    // When certification completes, alert the support channel for Five9 setup.
+    if (toStatus === 'cert_complete') {
+      await postFive9Alert(app)
     }
 
     const { error } = await supabase.from('hiring_applications').update(patch).eq('id', app.id)
@@ -373,7 +398,7 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, busy }) {
     assessment_review: { to: 'assessment_passed', label: 'Pass assessment', email: 'assessment_passed', deny: { to: 'assessment_denied', label: 'Reject assessment', email: 'assessment_denied' } },
     assessment_passed: { to: 'certifying', label: '✋ Force to certification', email: null, hint: 'Normally automatic: a task was created for Corinne to set up Rippling. When she marks it done, this advances on its own. Use this only to override.' },
     certifying: { to: 'cert_complete', label: '✋ Mark: certification complete', email: null, hint: 'Manual — mark when they finish certification in Projects.' },
-    cert_complete: { to: 'five9_pending', label: '✋ Mark: creating Five9 account', email: null, hint: 'Manual — create their Five9 account, then enter it in People & Tags.' },
+    cert_complete: { to: 'five9_pending', label: '✋ Mark: creating Five9 account', email: null, hint: 'The support channel was alerted to create their Five9 account. Mark this once someone is on it.' },
     five9_pending: { to: 'mock_requested', label: '✋ Mark: request mock call', email: null, hint: 'Manual — once Five9 is set up, ask them to schedule their mock call.' },
     mock_requested: { to: 'mock_passed', label: 'Pass mock call', email: 'mock_passed', deny: { to: 'mock_failed', label: 'Fail mock call', email: 'mock_failed' } },
     mock_scheduled: { to: 'mock_passed', label: 'Pass mock call', email: 'mock_passed', deny: { to: 'mock_failed', label: 'Fail mock call', email: 'mock_failed' } },
