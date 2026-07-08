@@ -1,16 +1,12 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 // ============================================================
-//  ASSESSMENT FORM  (Stage 4)
-//  Shown to APPROVED applicants. Rebuilds the OpsisCX assessment
-//  in-app: experience, availability grid, equipment, desired rate,
-//  resume upload, and 4 voice-recording uploads.
+//  ASSESSMENT FORM  (trimmed)
+//  Shown to APPROVED applicants. Only asks things the application
+//  did NOT already collect, plus the 4 voice recordings.
 //  On submit: inserts into hiring_assessments and moves the
-//  application to 'assessment_review'. Emails are STUBBED.
-//
-//  How the applicant reaches this: they arrive with their
-//  application id (e.g. /assessment/:appId). This component takes
-//  `applicationId` as a prop — wire the route to pass it in.
+//  application to 'assessment_review'.
+//  Reaches this page with the application id (/assessment/:appId).
 // ============================================================
 
 async function sendHiringEmail(kind, to, data) {
@@ -20,7 +16,6 @@ async function sendHiringEmail(kind, to, data) {
   } catch (e) { console.error('email send failed:', e) }
 }
 
-const MAX_RESUME_BYTES = 15 * 1024 * 1024   // 15MB
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024    // 25MB per recording
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const SLOTS = ['Morning', 'Afternoon', 'Evening']
@@ -40,8 +35,7 @@ async function uploadFile(file, folder, maxBytes) {
   return path
 }
 
-// Module-level styles + Section so React keeps input focus while typing
-// (defining these inside the component remounts inputs on every keystroke).
+// Module-level styles + Section so React keeps input focus while typing.
 const labelStyle = { display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 5 }
 const inputStyle = { width: '100%', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface)' }
 const reqMark = <span style={{ color: '#DC2626' }}> *</span>
@@ -57,15 +51,15 @@ function Section({ title, sub, children }) {
 
 export default function AssessmentForm({ applicationId }) {
   const [f, setF] = useState({
-    email: '', phone: '', city: '', state: '',
-    years_experience: '', years_outbound: '',
-    tools_platforms: '', systems_dialers: '', performance_metrics: '',
-    hours_per_week: '', available_start: '',
+    full_name: '',
+    years_outbound: '',
+    systems_dialers: '', performance_metrics: '',
+    hours_per_week: '',
     quiet_workspace: '', own_equipment: '', comfortable_1099: '', desired_rate: '',
   })
   const [callTypes, setCallTypes] = useState([])
   const [availability, setAvailability] = useState({})  // "Morning-Mon": true
-  const [files, setFiles] = useState({ resume: null, rec_outbound: null, rec_inbound: null, rec_rebuttal1: null, rec_rebuttal2: null })
+  const [files, setFiles] = useState({ rec_outbound: null, rec_inbound: null, rec_rebuttal1: null, rec_rebuttal2: null })
   const [saving, setSaving] = useState(false)
   const [progress, setProgress] = useState('')
   const [err, setErr] = useState('')
@@ -80,13 +74,11 @@ export default function AssessmentForm({ applicationId }) {
   }
 
   function validate() {
-    if (!f.email.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email)) return 'Please enter a valid email address.'
-    if (!f.years_experience) return 'Please select your years of experience.'
+    if (!f.full_name.trim()) return 'Please enter your full name.'
     if (!f.years_outbound) return 'Please select your outbound/call-center experience.'
     if (!f.quiet_workspace) return 'Please answer the quiet workspace question.'
     if (!f.own_equipment) return 'Please answer the equipment question.'
     if (!f.comfortable_1099) return 'Please answer the 1099 question.'
-    if (!files.resume) return 'Please upload your resume.'
     if (!files.rec_outbound || !files.rec_inbound || !files.rec_rebuttal1 || !files.rec_rebuttal2)
       return 'Please upload all four voice recordings.'
     return ''
@@ -97,8 +89,6 @@ export default function AssessmentForm({ applicationId }) {
     if (v) { setErr(v); return }
     setSaving(true); setErr('')
     try {
-      setProgress('Uploading resume…')
-      const resume_path = await uploadFile(files.resume, 'assess-resumes', MAX_RESUME_BYTES)
       setProgress('Uploading recording 1 of 4…')
       const rec_outbound_path = await uploadFile(files.rec_outbound, 'assess-audio', MAX_AUDIO_BYTES)
       setProgress('Uploading recording 2 of 4…')
@@ -108,39 +98,34 @@ export default function AssessmentForm({ applicationId }) {
       setProgress('Uploading recording 4 of 4…')
       const rec_rebuttal2_path = await uploadFile(files.rec_rebuttal2, 'assess-audio', MAX_AUDIO_BYTES)
 
-      // build the availability object grouped by slot
+      // availability grouped by slot
       const avail = { Morning: [], Afternoon: [], Evening: [] }
       SLOTS.forEach(slot => DAYS.forEach(day => { if (availability[`${slot}-${day}`]) avail[slot].push(day) }))
 
       setProgress('Saving your assessment…')
       const row = {
         application_id: applicationId || null,
-        email: f.email.trim(), phone: f.phone.trim() || null,
-        city: f.city.trim() || null, state: f.state.trim() || null,
-        years_experience: f.years_experience, years_outbound: f.years_outbound,
+        full_name: f.full_name.trim(),
+        years_outbound: f.years_outbound,
         call_types: callTypes.join(', ') || null,
-        tools_platforms: f.tools_platforms.trim() || null,
         systems_dialers: f.systems_dialers.trim() || null,
         performance_metrics: f.performance_metrics.trim() || null,
         hours_per_week: f.hours_per_week.trim() || null,
         availability: avail,
-        available_start: f.available_start.trim() || null,
         quiet_workspace: f.quiet_workspace === 'yes',
         own_equipment: f.own_equipment === 'yes',
         comfortable_1099: f.comfortable_1099 === 'yes',
         desired_rate: f.desired_rate.trim() || null,
-        resume_path, rec_outbound_path, rec_inbound_path, rec_rebuttal1_path, rec_rebuttal2_path,
+        rec_outbound_path, rec_inbound_path, rec_rebuttal1_path, rec_rebuttal2_path,
       }
       const { error: aErr } = await supabase.from('hiring_assessments').insert(row)
       if (aErr) throw aErr
 
-      // move the application forward, if we know which one
       if (applicationId) {
         await supabase.from('hiring_applications').update({ status: 'assessment_review' }).eq('id', applicationId)
         await supabase.from('hiring_stage_events').insert({
           application_id: applicationId, from_status: 'assessment_sent', to_status: 'assessment_review', note: 'assessment submitted',
         })
-        await sendHiringEmail('assessment_received', f.email, { })
       }
       setDone(true)
     } catch (e) {
@@ -181,27 +166,17 @@ export default function AssessmentForm({ applicationId }) {
       <div style={{ marginBottom: 26 }}>
         <h1 style={{ fontSize: 26, fontWeight: 800, marginBottom: 6 }}>OpsisCX Assessment</h1>
         <p style={{ fontSize: 14.5, color: 'var(--ink-soft)', lineHeight: 1.6 }}>
-          We're excited about your interest in partnering with us. This assessment helps us understand your experience, skills, and fit for current and future contractor engagements.
+          Thanks for moving forward! This short assessment covers a few role-specific questions and four quick voice recordings. It takes about 15–20 minutes.
         </p>
       </div>
 
       {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '10px 14px', fontSize: 13.5, marginBottom: 20 }}>{err}</div>}
 
-      <Section title="Contact">
-        <div><label style={labelStyle}>Email address{reqMark}</label><input style={inputStyle} type="email" value={f.email} onChange={set('email')} /></div>
-        <div><label style={labelStyle}>Phone number{reqMark}</label><input style={inputStyle} value={f.phone} onChange={set('phone')} /></div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div><label style={labelStyle}>City</label><input style={inputStyle} value={f.city} onChange={set('city')} /></div>
-          <div><label style={labelStyle}>State</label><input style={inputStyle} value={f.state} onChange={set('state')} placeholder="e.g. TX" /></div>
-        </div>
+      <Section title="Your name">
+        <div><label style={labelStyle}>Full name{reqMark}</label><input style={inputStyle} value={f.full_name} onChange={set('full_name')} placeholder="First and last name" /></div>
       </Section>
 
-      <Section title="Experience">
-        <div><label style={labelStyle}>Years of relevant work experience{reqMark}</label>
-          <select style={inputStyle} value={f.years_experience} onChange={set('years_experience')}>
-            <option value="">Select…</option>{YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
+      <Section title="Call experience">
         <div><label style={labelStyle}>Years of outbound sales or call center experience{reqMark}</label>
           <select style={inputStyle} value={f.years_outbound} onChange={set('years_outbound')}>
             <option value="">Select…</option>{YEARS.map(y => <option key={y} value={y}>{y}</option>)}
@@ -217,8 +192,6 @@ export default function AssessmentForm({ applicationId }) {
             ))}
           </div>
         </div>
-        <div><label style={labelStyle}>Tools and platforms you've used in previous roles</label>
-          <textarea style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} value={f.tools_platforms} onChange={set('tools_platforms')} /></div>
         <div><label style={labelStyle}>What systems, dialers, or CRMs have you used?</label>
           <textarea style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} value={f.systems_dialers} onChange={set('systems_dialers')} /></div>
         <div><label style={labelStyle}>What performance metrics were you responsible for meeting?</label>
@@ -248,10 +221,7 @@ export default function AssessmentForm({ applicationId }) {
             </tbody>
           </table>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div><label style={labelStyle}>Hours per week you can commit</label><input style={inputStyle} value={f.hours_per_week} onChange={set('hours_per_week')} placeholder="e.g. 30" /></div>
-          <div><label style={labelStyle}>When can you start?</label><input style={inputStyle} value={f.available_start} onChange={set('available_start')} placeholder="Month, day, year" /></div>
-        </div>
+        <div><label style={labelStyle}>Hours per week you can commit</label><input style={inputStyle} value={f.hours_per_week} onChange={set('hours_per_week')} placeholder="e.g. 30" /></div>
       </Section>
 
       <Section title="Work setup">
@@ -259,10 +229,6 @@ export default function AssessmentForm({ applicationId }) {
         <div><label style={labelStyle}>Do you have your own computer and headset?{reqMark}</label>{yesNo('own_equipment')}</div>
         <div><label style={labelStyle}>Are you comfortable working as a 1099 independent contractor?{reqMark}</label>{yesNo('comfortable_1099')}</div>
         <div><label style={labelStyle}>Your desired hourly or performance-based rate</label><input style={inputStyle} value={f.desired_rate} onChange={set('desired_rate')} /></div>
-      </Section>
-
-      <Section title="Resume">
-        <div><label style={labelStyle}>Upload your resume{reqMark}</label>{fileField('resume', '.pdf,.doc,.docx', 'PDF or Word, up to 15MB.')}</div>
       </Section>
 
       <Section title="Voice recordings" sub="Record each in your customer-service voice, then upload the audio file (MP3 or WAV). Read the script exactly as written.">
