@@ -139,7 +139,7 @@ export default function AssessmentForm({ applicationId }) {
         <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
         <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 10 }}>Assessment received</h1>
         <p style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--ink-soft)' }}>
-          Thanks for completing the OpsisCX assessment. Our team will review your responses and recordings, and we'll be in touch by email with next steps.
+          Thanks for completing the Opsis assessment. Our team will review your responses and recordings, and we'll be in touch by email with next steps.
         </p>
       </div>
     )
@@ -164,7 +164,7 @@ export default function AssessmentForm({ applicationId }) {
         <img src="/opsis-logo.png" alt="Opsis" style={{ maxHeight: 56, width: 'auto', objectFit: 'contain' }} />
       </div>
       <div style={{ marginBottom: 26 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 800, marginBottom: 6 }}>OpsisCX Assessment</h1>
+        <h1 style={{ fontSize: 26, fontWeight: 800, marginBottom: 6 }}>Opsis Assessment</h1>
         <p style={{ fontSize: 14.5, color: 'var(--ink-soft)', lineHeight: 1.6 }}>
           Thanks for moving forward! This short assessment covers a few role-specific questions and four quick voice recordings. It takes about 15–20 minutes.
         </p>
@@ -235,14 +235,14 @@ export default function AssessmentForm({ applicationId }) {
         <div>
           <label style={labelStyle}>1. Outbound greeting{reqMark}</label>
           <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 8, lineHeight: 1.5 }}>
-            "Hi Becky, this is [Your Name] with OpsisCX. I'm calling about your request for a [home improvement project of your choice]. I just want to get a quick idea of what you're looking for so we can get you set up properly."
+            "Hi Becky, this is [Your Name] with Opsis. I'm calling about your request for a [home improvement project of your choice]. I just want to get a quick idea of what you're looking for so we can get you set up properly."
           </div>
           {fileField('rec_outbound', 'audio/*,.mp3,.wav,.m4a', 'MP3, WAV, or M4A.')}
         </div>
         <div>
           <label style={labelStyle}>2. Inbound greeting{reqMark}</label>
           <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 8, lineHeight: 1.5 }}>
-            "Thank you for calling OpsisCX. This is [Your Name]. How can I help you today?"
+            "Thank you for calling Opsis. This is [Your Name]. How can I help you today?"
           </div>
           {fileField('rec_inbound', 'audio/*,.mp3,.wav,.m4a', 'MP3, WAV, or M4A.')}
         </div>
