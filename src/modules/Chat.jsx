@@ -799,9 +799,11 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 
   const topLevel = messages.filter(x => !x.parent_id)
 
-  // Mirrors can_moderate_messages() in the DB. The DB is the real gate — this
-  // only decides whether to render the button. Keep the two in sync.
-  const canModerate = isAdmin || isOwner
+  // Mirrors can_moderate_messages() in the DB, which checks profiles.is_admin.
+  // The DB is the real gate — this only decides whether to draw the button.
+  // Do NOT add isOwner here: `level` is not a column on profiles, so the DB
+  // would reject a delete that this let the user attempt.
+  const canModerate = isAdmin
 
   // Read receipts render on the newest message only; a line under every one is noise.
   const newestId = topLevel.length
