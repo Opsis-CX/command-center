@@ -10,8 +10,10 @@ import { TextStyle } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
 import Highlight from '@tiptap/extension-highlight'
 import Placeholder from '@tiptap/extension-placeholder'
+import Mention from '@tiptap/extension-mention'
 
 import { sanitizeHtml, htmlToText, isEmptyHtml } from './sanitize'
+import { mentionSuggestion } from './mentionSuggestion'
 
 // ============================================================
 // RichEditor / RichContent — one editor, used by Chat and Certification.
@@ -173,10 +175,15 @@ export function RichEditor({
   value = '', onChange, onSubmit, onPasteFiles,
   placeholder = 'Write something…', variant = 'full',
   editorRef, submitOnEnter = false, minHeight = 120, maxHeight = 400,
-  autofocus = false, disabled = false,
+  autofocus = false, disabled = false, profiles,
 }) {
   const submitRef = useRef(onSubmit)
   useEffect(() => { submitRef.current = onSubmit }, [onSubmit])
+
+  // The suggestion config is built once, so it must read profiles through a ref.
+  // Passing the array directly would freeze it at whatever loaded first.
+  const profilesRef = useRef(profiles)
+  useEffect(() => { profilesRef.current = profiles }, [profiles])
 
   const editor = useEditor({
     editable: !disabled,
@@ -198,6 +205,12 @@ export function RichEditor({
       Highlight.configure({ multicolor: true }),
       TableKit.configure({ table: { resizable: true } }),
       Placeholder.configure({ placeholder }),
+      // Only when a profiles list is supplied. Certification has no @mentions.
+      ...(profiles ? [Mention.configure({
+        // Insert plain text, not a mention node — see mentionSuggestion.jsx.
+        renderText: ({ node }) => `@${node.attrs.label ?? node.attrs.id}`,
+        suggestion: mentionSuggestion(() => profilesRef.current),
+      })] : []),
     ],
     content: value || '',
     editorProps: {
