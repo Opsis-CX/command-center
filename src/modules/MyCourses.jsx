@@ -185,7 +185,7 @@ function QuizRunner({ course, onDone, onBack }) {
       if (error) throw error
       // Deliberately does not select is_correct — the answer key stays server-side.
       const withOpts = await Promise.all((qs || []).map(async q => {
-        const { data: opts } = await supabase.from('quiz_options')
+   const { data: opts } = await supabase.from('quiz_options_public')
           .select('id, label, sort_order').eq('question_id', q.id).order('sort_order')
         return { ...q, options: opts || [] }
       }))
