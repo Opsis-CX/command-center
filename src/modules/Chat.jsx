@@ -153,6 +153,28 @@ function TypingLine({ names }) {
   )
 }
 
+// ---- read receipts ----
+// Given the collapsed read state (one row per person per channel, holding the
+// timestamp of the newest message they've seen), work out who has seen a
+// given message. See migration.sql for why it's stored this way.
+function readersOf(message, readState, members, meId) {
+  const t = new Date(message.created_at).getTime()
+  return members
+    .filter(pid => pid !== message.sender_id)      // the sender always "read" it
+    .filter(pid => {
+      const rs = readState[pid]
+      return rs && new Date(rs).getTime() >= t
+    })
+}
+
+// "Read by Ann" / "Read by Ann and Bo" / "Read by Ann, Bo and 3 others"
+function readByLabel(names) {
+  if (!names.length) return null
+  if (names.length === 1) return `Read by ${names[0]}`
+  if (names.length === 2) return `Read by ${names[0]} and ${names[1]}`
+  return `Read by ${names[0]}, ${names[1]} and ${names.length - 2} other${names.length - 2 === 1 ? '' : 's'}`
+}
+
 // ---- @mention helpers ----
 // Extract profile ids for names mentioned as "@Full Name" in body.
 function extractMentions(body, profiles) {
@@ -400,6 +422,9 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   const [reactFor, setReactFor] = useState(null)   // message id whose react-picker is open
   const [showMembers, setShowMembers] = useState(false)
   const [showPrefs, setShowPrefs] = useState(false)        // notification settings panel
+  const [readState, setReadState] = useState({})    // profile_id -> last_read_at iso
+  const [readersFor, setReadersFor] = useState(null) // message id whose reader list is open
+  const [reactorsFor, setReactorsFor] = useState(null) // {messageId, emoji} whose reactor list is open
 
   const composerRef = useRef(null)
   const htmlRef = useRef('')
@@ -435,10 +460,44 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         await loadAcks(msgs)
         await loadReactions(msgs)
         await loadAttachments(msgs)
+        await loadReadState()
       } catch (e) { if (active) setErr(e.message) } finally { if (active) setLoading(false) }
     })()
     return () => { active = false }
   }, [channelId])
+
+  async function loadReadState() {
+    const { data } = await supabase.from('channel_read_state')
+      .select('profile_id, last_read_at').eq('channel_id', channelId)
+    const map = {}
+    ;(data || []).forEach(r => { map[r.profile_id] = r.last_read_at })
+    setReadState(map)
+  }
+
+  // Tell the server we've seen everything up to the newest message. The RPC
+  // uses greatest(), so a slow request landing after a newer one can't move
+  // our read pointer backwards.
+  const markChannelRead = useCallback(async (upTo) => {
+    if (!upTo) return
+    await supabase.rpc('mark_channel_read', { p_channel_id: channelId, p_at: upTo })
+    setReadState(prev => {
+      const cur = prev[me.id]
+      if (cur && new Date(cur) >= new Date(upTo)) return prev
+      return { ...prev, [me.id]: upTo }
+    })
+  }, [channelId, me.id])
+
+  // Whenever the newest message changes and we're looking at the bottom of the
+  // channel, mark it read. Guarding on stickToBottom means scrolling up through
+  // history doesn't mark things read that you haven't actually reached.
+  useEffect(() => {
+    if (loading || !messages.length) return
+    if (!stickToBottom.current) return
+    const newest = messages.reduce((a, b) =>
+      new Date(b.created_at) > new Date(a.created_at) ? b : a)
+    if (newest._optimistic) return
+    markChannelRead(newest.created_at)
+  }, [messages, loading, markChannelRead])
 
   async function hydrateSenders(msgs) {
     const ids = [...new Set(msgs.map(m => m.sender_id).filter(Boolean))]
@@ -516,9 +575,48 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         (payload) => { setReactions(prev => prev.filter(r => r.id !== payload.old.id)) })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_attachments', filter: `channel_id=eq.${channelId}` },
         (payload) => { setAttachments(prev => prev.some(a => a.id === payload.new.id) ? prev : [...prev, payload.new]) })
+      // A soft-delete arrives as an UPDATE with deleted_at set. Drop it from view.
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `channel_id=eq.${channelId}` },
+        (payload) => {
+          const m = payload.new
+          if (m.deleted_at) setMessages(prev => prev.filter(x => x.id !== m.id))
+          else setMessages(prev => prev.map(x => x.id === m.id ? m : x))
+        })
+      // Someone else read the channel — update their receipt live.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'channel_read_state', filter: `channel_id=eq.${channelId}` },
+        (payload) => {
+          const r = payload.new
+          if (!r?.profile_id) return
+          setReadState(prev => ({ ...prev, [r.profile_id]: r.last_read_at }))
+        })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [channelId, me.id, markRead])
+
+  // Soft-delete. The row stays; deleted_at hides it. Moderators keep the
+  // evidence of whatever got someone moderated.
+  async function deleteMessage(m) {
+    const isMine = m.sender_id === me.id
+    const who = isMine ? 'your message' : `${senders[m.sender_id] || 'this person'}'s message`
+    if (!window.confirm(`Delete ${who}? It disappears for everyone. This can't be undone from the app.`)) return
+
+    let reason = null
+    if (!isMine) {
+      reason = window.prompt('Reason for removing this message? (optional, saved to the audit trail)')
+      if (reason === null) return   // cancelled
+    }
+
+    const prev = messages
+    setMessages(cur => cur.filter(x => x.id !== m.id))   // optimistic
+
+    const { error } = await supabase.from('messages').update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: me.id,
+      deleted_reason: reason || null,
+    }).eq('id', m.id)
+
+    if (error) { setMessages(prev); setErr('Could not delete: ' + error.message) }
+  }
 
   // ---- SCROLL ----
   //
@@ -701,6 +799,15 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 
   const topLevel = messages.filter(x => !x.parent_id)
 
+  // Mirrors can_moderate_messages() in the DB. The DB is the real gate — this
+  // only decides whether to render the button. Keep the two in sync.
+  const canModerate = isAdmin || isOwner
+
+  // Read receipts render on the newest message only; a line under every one is noise.
+  const newestId = topLevel.length
+    ? topLevel.reduce((a, b) => new Date(b.created_at) > new Date(a.created_at) ? b : a).id
+    : null
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, position: 'relative' }}>
       <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', flex: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -731,8 +838,14 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             const prev = topLevel[i - 1]
             const grouped = prev && prev.sender_id === m.sender_id && !m.requires_ack && !prev.requires_ack && (new Date(m.created_at) - new Date(prev.created_at) < 5 * 60000)
             const name = m.sender_id === me.id ? 'You' : (senders[m.sender_id] || 'Someone')
+            const canDelete = !m._optimistic && (m.sender_id === me.id || canModerate)
+            const readerIds = m._optimistic ? [] : readersOf(m, readState, members, me.id)
+            const readerNames = readerIds.map(pid => senders[pid] || profiles.find(p => p.id === pid)?.full_name).filter(Boolean)
+            const isNewest = m.id === newestId
+
             return (
-              <div key={m.id} style={{ display: 'flex', gap: 10, marginTop: grouped ? 2 : 12, opacity: m._optimistic ? 0.6 : 1 }}>
+              <div key={m.id} className="chat-msg-row"
+                style={{ display: 'flex', gap: 10, marginTop: grouped ? 2 : 12, opacity: m._optimistic ? 0.6 : 1, position: 'relative' }}>
                 <div style={{ width: 32, flex: 'none' }}>
                   {!grouped && <div style={{ width: 32, height: 32, borderRadius: '50%', background: avatarColor(name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>{initials(name)}</div>}
                 </div>
@@ -766,12 +879,37 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                   ))}
 
                   <ReactionBar messageId={m.id} reactions={reactions} meId={me.id}
+                    profiles={profiles} senders={senders}
                     onToggle={toggleReaction}
                     pickerOpen={reactFor === m.id}
                     onOpenPicker={() => setReactFor(reactFor === m.id ? null : m.id)}
-                    onClosePicker={() => setReactFor(null)} />
+                    onClosePicker={() => setReactFor(null)}
+                    reactorsFor={reactorsFor} setReactorsFor={setReactorsFor} />
+
                   <ReplyAffordance count={replyCount} onOpen={() => setThreadFor(m.id)} />
+
+                  {/* Read receipts. Only on the newest message by default — a
+                      line under every message is noise. Click to see who. */}
+                  {isNewest && readerNames.length > 0 && (
+                    <button onClick={() => setReadersFor(readersFor === m.id ? null : m.id)}
+                      style={{ border: 0, background: 'transparent', padding: '2px 0', marginTop: 2, cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, color: 'var(--ink-soft)', display: 'block', textAlign: 'left' }}>
+                      ✓✓ {readByLabel(readerNames)}
+                    </button>
+                  )}
+                  {readersFor === m.id && (
+                    <ReadByPanel names={readerNames} unread={members.filter(pid => pid !== m.sender_id && !readerIds.includes(pid)).map(pid => senders[pid] || profiles.find(p => p.id === pid)?.full_name).filter(Boolean)}
+                      onClose={() => setReadersFor(null)} />
+                  )}
                 </div>
+
+                {/* Hover-revealed delete. Own message, or moderator. */}
+                {canDelete && (
+                  <button className="chat-msg-delete" title={m.sender_id === me.id ? 'Delete your message' : 'Remove this message'}
+                    onClick={() => deleteMessage(m)}
+                    style={{ position: 'absolute', top: 0, right: 0, border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '4px 6px', color: 'var(--failed)' }}>
+                    🗑
+                  </button>
+                )}
               </div>
             )
           })}
@@ -1307,30 +1445,107 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
   )
 }
 
-function ReactionBar({ messageId, reactions, meId, onToggle, pickerOpen, onOpenPicker, onClosePicker }) {
+// Who has read a message. Renders inline under the newest one.
+function ReadByPanel({ names, unread, onClose }) {
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
+      <div style={{ position: 'relative', zIndex: 31, marginTop: 4, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', boxShadow: '0 6px 20px rgba(0,0,0,.12)', padding: '8px 10px', maxWidth: 260 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', marginBottom: 5 }}>
+          Read by {names.length}
+        </div>
+        {names.map(n => (
+          <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '2px 0', fontSize: 12.5 }}>
+            <span style={{ width: 20, height: 20, borderRadius: '50%', background: avatarColor(n), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 700, flex: 'none' }}>{initials(n)}</span>
+            {n}
+          </div>
+        ))}
+        {unread.length > 0 && (
+          <>
+            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', margin: '8px 0 5px', borderTop: '1px solid var(--line-soft)', paddingTop: 7 }}>
+              Not yet {unread.length}
+            </div>
+            {unread.map(n => (
+              <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '2px 0', fontSize: 12.5, opacity: .6 }}>
+                <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--ink-soft)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 700, flex: 'none' }}>{initials(n)}</span>
+                {n}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </>
+  )
+}
+
+function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, pickerOpen, onOpenPicker, onClosePicker, reactorsFor, setReactorsFor }) {
   const mine = reactions.filter(r => r.message_id === messageId)
+
+  // group by emoji: count, whether I reacted, and WHO reacted
   const groups = {}
   mine.forEach(r => {
-    if (!groups[r.emoji]) groups[r.emoji] = { count: 0, byMe: false }
+    if (!groups[r.emoji]) groups[r.emoji] = { count: 0, byMe: false, who: [] }
     groups[r.emoji].count++
     if (r.profile_id === meId) groups[r.emoji].byMe = true
+    groups[r.emoji].who.push(r.profile_id)
   })
   const entries = Object.entries(groups)
+
+  const nameOf = (pid) =>
+    pid === meId ? 'You' : (senders?.[pid] || profiles?.find(p => p.id === pid)?.full_name || 'Someone')
+
+  // "You, Ann and Bo reacted with 👍" — the native tooltip, free on hover.
+  const titleFor = (g, emoji) => {
+    const names = g.who.map(nameOf)
+    const list = names.length === 1 ? names[0]
+      : names.length === 2 ? `${names[0]} and ${names[1]}`
+      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+    return `${list} reacted with ${emoji}`
+  }
+
+  const open = reactorsFor && reactorsFor.messageId === messageId ? reactorsFor.emoji : null
 
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4, position: 'relative' }}>
       {entries.map(([emoji, g]) => (
-        <button key={emoji} onClick={() => onToggle(messageId, emoji)}
+        <button key={emoji}
+          title={titleFor(g, emoji)}
+          onClick={() => onToggle(messageId, emoji)}
+          onContextMenu={(e) => { e.preventDefault(); setReactorsFor(open === emoji ? null : { messageId, emoji }) }}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
             border: '1px solid ' + (g.byMe ? 'var(--accent)' : 'var(--line)'),
             background: g.byMe ? 'var(--accent-bg)' : 'var(--surface)', color: g.byMe ? 'var(--accent)' : 'var(--ink)' }}>
           <span className="chat-emoji" style={{ fontSize: 14 }}>{emoji}</span> {g.count}
         </button>
       ))}
+
       <button onClick={onOpenPicker} title="Add reaction"
         style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 12, cursor: 'pointer', fontSize: 12, padding: '2px 7px', color: 'var(--ink-soft)', lineHeight: 1.4 }}>
         ☺+
       </button>
+
+      {/* Right-click / long-press a pill for the full list. The hover tooltip
+          covers the common case; this covers touch, where hover doesn't exist. */}
+      {open && (
+        <>
+          <div onClick={() => setReactorsFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+          <div style={{ position: 'absolute', top: 26, left: 0, zIndex: 41, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', boxShadow: '0 6px 20px rgba(0,0,0,.14)', padding: '8px 10px', minWidth: 170 }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 5 }}>
+              <span className="chat-emoji" style={{ fontSize: 14 }}>{open}</span> · {groups[open].count}
+            </div>
+            {groups[open].who.map(pid => {
+              const n = nameOf(pid)
+              return (
+                <div key={pid} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '2px 0', fontSize: 12.5 }}>
+                  <span style={{ width: 20, height: 20, borderRadius: '50%', background: avatarColor(n), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 700, flex: 'none' }}>{initials(n)}</span>
+                  {n}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
       {pickerOpen && (
         <>
           <div onClick={onClosePicker} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
