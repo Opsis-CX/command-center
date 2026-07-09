@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth'
 import { useUnread } from '../lib/unread'
 import { supabase } from '../lib/supabase'
 import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
+import ChangePassword from './ChangePassword'
 // Sidebar navigation.
 // - `type: 'link'`  → a single top-level link.
 // - `type: 'section'` → a clickable header that expands/collapses its children.
@@ -64,6 +65,7 @@ export default function Sidebar({ open, onNavigate }) {
   const initial = (name.trim()[0] || 'U').toUpperCase()
   // Theme toggle (System → Light → Dark)
   const [theme, setThemeState] = useState(getTheme())
+  const [pwOpen, setPwOpen] = useState(false)
   const cycleTheme = () => { const t = nextTheme(theme); setTheme(t); setThemeState(t) }
 
   // Which collapsible sections are open. Several can be open at once.
@@ -139,8 +141,10 @@ export default function Sidebar({ open, onNavigate }) {
           <div className="user-role">{isOwner ? 'Owner' : isAdmin ? 'Admin' : 'Agent'}</div>
         </div>
       </div>
+      <button className="signout" onClick={() => setPwOpen(true)}>🔑 Change password</button>
       <button className="signout" onClick={cycleTheme}>{themeLabel(theme)}</button>
       <button className="signout" onClick={signOut}>Sign out</button>
+      {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} onDone={() => setPwOpen(false)} />}
     </aside>
   )
 }
