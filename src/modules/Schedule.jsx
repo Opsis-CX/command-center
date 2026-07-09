@@ -2,16 +2,21 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { notifyIntervalReleased, notifyNoShow } from '../lib/notify'
-
 // ============================================================
-// SCHEDULE — Stage 1
+// SCHEDULE
 // Agent claim grid + My Schedule + release locking + 40h cap
 // + overlap prevention + check-in. Admin sees full team grid.
-// Ported from the standalone Opsis Schedule app into React.
+//
+// SAFETY NOTE: the checks in this file give agents instant
+// feedback, but the DATABASE is the real authority. A trigger
+// (schedule_guards.sql) enforces capacity, same-day overlap, and
+// the 40-hour cap inside Postgres, so a stale page can't sneak a
+// bad claim through. claimBlock() surfaces those errors clearly.
 // ============================================================
-
 const WEEKLY_HOUR_CAP = 40
-
+// While realtime postgres_changes delivery is unreliable, poll so the
+// grid doesn't go stale and agents rarely collide. Remove once realtime works.
+const POLL_MS = 20000
 // ---------- date helpers (Eastern Time) ----------
 function etNow() { return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })) }
 function mondayOf(d) {
@@ -50,7 +55,6 @@ function blockHours(b) {
   return Math.max(0, ((eh * 60 + em) - (sh * 60 + sm)) / 60)
 }
 function toMin(t) { const [h, m] = t.slice(0, 5).split(':').map(Number); return h * 60 + m }
-
 export default function Schedule() {
   const { isAdmin } = useAuth()
   const [me, setMe] = useState(null)
@@ -68,9 +72,10 @@ export default function Schedule() {
   const [weekStart, setWeekStart] = useState(mondayOf(etNow()))
   const [toast, setToast] = useState('')
   const [adminView, setAdminView] = useState('team') // team | mine (admins only)
-
-  const load = useCallback(async () => {
-    setLoading(true); setErr('')
+  // `silent` skips the loading spinner, so background polling doesn't flicker
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    setErr('')
     try {
       const { data: { user } } = await supabase.auth.getUser()
       const [meRes, profRes, tierRes, schRes, blkRes, clmRes, audRes, recRes, certRes] = await Promise.all([
@@ -94,13 +99,21 @@ export default function Schedule() {
       setAudience(audRes.data || [])
       setCertRecords(recRes.data || [])
       setCertifications(certRes.data || [])
-    } catch (e) { setErr(e.message) } finally { setLoading(false) }
+    } catch (e) { setErr(e.message) } finally { if (!silent) setLoading(false) }
   }, [])
-
   useEffect(() => { load() }, [load])
-
+  // Keep the grid fresh: realtime + a polling fallback. Whichever fires first
+  // wins; both just call load(). Polling covers us while realtime is unreliable.
+  useEffect(() => {
+    const ch = supabase.channel('schedule-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_claims' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_blocks' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedules' }, () => load(true))
+      .subscribe()
+    const t = setInterval(() => load(true), POLL_MS)
+    return () => { supabase.removeChannel(ch); clearInterval(t) }
+  }, [load])
   function flash(m) { setToast(m); setTimeout(() => setToast(''), 3000) }
-
   // ---------- visibility: audience AND passed-cert (admin bypass) ----------
   function hasPassedCertForCallType(callTypeId) {
     // Graceful gating: if NO active certification gates this call type,
@@ -120,7 +133,6 @@ export default function Schedule() {
     // applies to non-admins; admins in my-view can claim any they're certified for.
     return published.filter(s => hasPassedCertForCallType(s.call_type_id) && (isAdmin || inAudience(s.id)))
   }
-
   // ---------- release status ----------
   function getMyReleaseStatus() {
     const tier = tiers.find(t => t.id === me?.tier_id)
@@ -145,7 +157,6 @@ export default function Schedule() {
     const unlocked = isWed && now >= todayRelease
     return { unlocked, tier, releaseDate: isWed && !unlocked ? todayRelease : nextWed }
   }
-
   // ---------- claim helpers ----------
   function hasIntervalStarted(block) {
     const now = etNow(); const todayStr = isoDate(now)
@@ -171,35 +182,34 @@ export default function Schedule() {
       return cs < be && bs < ce
     })
   }
-
-async function claimBlock(block) {
-    // These client-side checks give instant feedback, but the DATABASE is the
-    // real authority — the trigger enforces the same rules and can't be raced.
+  async function claimBlock(block) {
+    // Fast client-side checks: instant feedback, no round trip. These can be
+    // wrong if the page is stale — the database trigger is the real guard.
     const existing = claims.filter(c => c.shift_block_id === block.id)
-    if (existing.length >= block.total_spots) { flash('That interval just filled up'); load(); return }
-    if (hasIntervalStarted(block)) { flash('That interval already started'); load(); return }
+    if (existing.length >= block.total_spots) { flash('That interval just filled up'); load(true); return }
+    if (hasIntervalStarted(block)) { flash('That interval already started'); load(true); return }
     if (overlapsExisting(me.id, block)) { flash('Overlaps an interval you already have that day'); return }
     const weekMonday = mondayOf(new Date(block.block_date + 'T00:00:00'))
     if (claimedHoursInWeek(me.id, weekMonday) + blockHours(block) > WEEKLY_HOUR_CAP) {
       flash(`No more than ${WEEKLY_HOUR_CAP} hours per week`); return
     }
-
     const { error } = await supabase.from('shift_claims').insert({ shift_block_id: block.id, profile_id: me.id, status: 'claimed' })
     if (error) {
-      // Surface the database's own reason — it knows the truth even when this
-      // page's data is stale (e.g. someone else just took the last spot).
+      // The database rejected it — it knows the truth even when this page
+      // doesn't (e.g. someone took the last spot a second ago). Show why.
+      const msg = error.message || ''
       if (error.code === '23505') flash('You already claimed this')
-      else if (error.message?.includes('already full')) flash('That interval just filled up')
-      else if (error.message?.includes('overlaps')) flash('That overlaps an interval you already claimed')
-      else if (error.message?.includes('40 hours')) flash('That would put you over 40 hours this week')
-      else flash(error.message || 'Could not claim that interval')
-      load()
+      else if (msg.includes('already full')) flash('That interval just filled up')
+      else if (msg.includes('overlaps')) flash('That overlaps an interval you already claimed')
+      else if (msg.includes('40 hours')) flash('That would put you over 40 hours this week')
+      else if (msg.includes('no longer exists')) flash('That interval was removed')
+      else flash('Could not claim that interval')
+      load(true)
       return
     }
     logActivity('claimed', block)
-    flash('Interval claimed'); load()
+    flash('Interval claimed'); load(true)
   }
-
   async function unclaimBlock(block) {
     if (hasIntervalStarted(block)) { flash("That interval already started — can't release"); return }
     const startsAt = new Date(`${block.block_date}T${block.start_time.slice(0, 5)}:00`)
@@ -226,9 +236,8 @@ async function claimBlock(block) {
         position: block.role || null,
       })
     } catch (e) { /* non-blocking */ }
-    flash(wasLate ? 'Released (late cancellation)' : 'Interval released'); load()
+    flash(wasLate ? 'Released (late cancellation)' : 'Interval released'); load(true)
   }
-
   async function markNoShow(claim, block) {
     if (!window.confirm('Mark this person as a no-show for this interval?')) return
     const { error } = await supabase.from('shift_claims').update({ status: 'no_show' }).eq('id', claim.id)
@@ -240,16 +249,14 @@ async function claimBlock(block) {
         when: `${formatTime(block.start_time)}–${formatTime(block.end_time)} on ${block.block_date}`,
       })
     } catch (e) { /* non-blocking */ }
-    flash('Marked as no-show'); load()
+    flash('Marked as no-show'); load(true)
   }
-
   async function checkIn(claimId, block) {
     const { error } = await supabase.from('shift_claims').update({ checked_in_at: new Date().toISOString(), status: 'checked_in' }).eq('id', claimId)
     if (error) { flash('Error checking in'); return }
     if (block) logActivity('checked_in', block)
-    flash("You're checked in!"); load()
+    flash("You're checked in!"); load(true)
   }
-
   async function logActivity(action, block) {
     try {
       const schedule = block ? schedules.find(s => s.id === block.schedule_id) : null
@@ -261,9 +268,7 @@ async function claimBlock(block) {
       })
     } catch (e) { /* non-blocking */ }
   }
-
   if (loading) return <p className="page-sub">Loading schedule…</p>
-
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, marginBottom: 18, flexWrap: 'wrap' }}>
@@ -276,10 +281,8 @@ async function claimBlock(block) {
           <button className={'btn ' + (tab === 'myshifts' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('myshifts')}>My schedule</button>
         </div>
       </div>
-
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
       {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, background: 'var(--ink)', color: '#fff', padding: '11px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, zIndex: 2000, boxShadow: '0 8px 24px rgba(0,0,0,.3)' }}>{toast}</div>}
-
       {tab === 'claim' ? (
         <ClaimView
           isAdmin={isAdmin} adminView={adminView} setAdminView={setAdminView}
@@ -296,8 +299,6 @@ async function claimBlock(block) {
     </div>
   )
 }
-
-// Sub-components live in the same file (Stage 1). Placeholder imports resolved below.
 function ClaimView(props) {
   const { isAdmin, adminView, setAdminView, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
     claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn, onNoShow } = props
@@ -305,24 +306,20 @@ function ClaimView(props) {
   // Admins in 'team' view see the team grid; everyone else (agents, and
   // admins who switched to 'My view') see the personal claim grid.
   const teamMode = isAdmin && adminView === 'team'
-
   if (!schedules.length) {
     return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>
-      {isAdmin ? 'No published schedules yet. Create one in the Schedule Builder (coming in the next stage).' : "No schedule published for you yet. Check back once your admin publishes one you're part of."}
+      {isAdmin ? 'No published schedules yet. Create one in the Schedule Builder.' : "No schedule published for you yet. Check back once your admin publishes one you're part of."}
     </div></div>
   }
   if (!isAdmin && !releaseStatus.unlocked) {
     return <ReleaseLocked status={releaseStatus} />
   }
-
   const monday = weekStart
   const days = weekDates(monday)
   const todayStr = isoDate(etNow())
   const scheduleIds = new Set(schedules.map(s => s.id))
   const weekBlocks = blocks.filter(b => scheduleIds.has(b.schedule_id))
-
   function shiftWeek(dir) { const d = new Date(monday); d.setDate(monday.getDate() + dir * 7); setWeekStart(d) }
-
   return (
     <div>
       {!teamMode && !isAdmin && <ReleaseBanner status={releaseStatus} />}
@@ -343,11 +340,9 @@ function ClaimView(props) {
         <button className="btn btn-ghost" onClick={() => setWeekStart(mondayOf(etNow()))}>Today</button>
         {!teamMode && <HoursCap hours={claimedHoursInWeek(me.id, monday)} />}
       </div>
-
       {teamMode
         ? <AdminGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} profiles={profiles} onPop={setPopBlock} />
         : <AgentGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} me={me} hasIntervalStarted={hasIntervalStarted} onPop={setPopBlock} />}
-
       {popBlock && <IntervalPopover
         block={popBlock} claims={claims} profiles={profiles} me={me} canClaim={!teamMode} isAdmin={isAdmin}
         hasIntervalStarted={hasIntervalStarted}
@@ -360,7 +355,6 @@ function ClaimView(props) {
     </div>
   )
 }
-
 function HoursCap({ hours }) {
   const pct = Math.min(100, Math.round((hours / WEEKLY_HOUR_CAP) * 100))
   const over = hours >= WEEKLY_HOUR_CAP
@@ -373,7 +367,6 @@ function HoursCap({ hours }) {
     </div>
   )
 }
-
 function ReleaseBanner({ status }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
@@ -399,7 +392,6 @@ function ReleaseBanner({ status }) {
     <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--accent)' }}>{h}:{m}:{s}</div>
   </div>
 }
-
 function ReleaseLocked({ status }) {
   return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>
     <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--ink)', marginBottom: 6 }}>Schedule locks until your release time</div>
@@ -408,7 +400,6 @@ function ReleaseLocked({ status }) {
       : 'No tier is assigned to your account yet — contact your admin.'}
   </div></div>
 }
-
 // ---------- AGENT GRID ----------
 function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted, onPop }) {
   const dayHeads = days.map(d => {
@@ -420,7 +411,6 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
       <div className="wg-daymeta">{mine.length} interval{mine.length !== 1 ? 's' : ''}</div>
     </div>
   })
-
   const myCells = days.map(d => {
     const ds = isoDate(d)
     const items = weekBlocks.filter(b => b.block_date === ds && claims.some(c => c.shift_block_id === b.id && c.profile_id === me.id))
@@ -432,7 +422,6 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
       })
     return <div key={ds} className={'wg-cell' + (ds === todayStr ? ' today' : '') + (items.length ? '' : ' dim')}>{items}</div>
   })
-
   const openCells = days.map(d => {
     const ds = isoDate(d)
     const items = weekBlocks.filter(b => {
@@ -449,7 +438,6 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
       })
     return <div key={ds} className={'wg-cell' + (ds === todayStr ? ' today' : '') + (items.length ? '' : ' dim')}>{items}</div>
   })
-
   return <div className="grid-scroll">
     <div className="week-grid">
       <div className="wg-corner">Schedule</div>
@@ -467,14 +455,12 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
     </div>
   </div>
 }
-
 // ---------- ADMIN GRID ----------
 function AdminGrid({ days, todayStr, weekBlocks, claims, profiles, onPop }) {
   const wkStart = isoDate(days[0]); const wkEnd = isoDate(days[6])
   const inWeek = weekBlocks.filter(b => b.block_date >= wkStart && b.block_date <= wkEnd)
   const claimantIds = new Set(inWeek.flatMap(b => claims.filter(c => c.shift_block_id === b.id).map(c => c.profile_id)))
   const rows = [{ id: '__open__', full_name: 'Open intervals', __open: true }, ...profiles.filter(p => claimantIds.has(p.id))]
-
   const dayHeads = days.map(d => {
     const ds = isoDate(d); const db = inWeek.filter(b => b.block_date === ds)
     const spots = db.reduce((s, b) => s + b.total_spots, 0)
@@ -485,7 +471,6 @@ function AdminGrid({ days, todayStr, weekBlocks, claims, profiles, onPop }) {
       <div className="wg-daymeta">{claimed}/{spots} claimed</div>
     </div>
   })
-
   const body = rows.map(person => {
     const label = person.__open
       ? <div className="wg-rowlabel" style={{ background: 'var(--canvas)' }}>
@@ -515,7 +500,6 @@ function AdminGrid({ days, todayStr, weekBlocks, claims, profiles, onPop }) {
     })
     return <React.Fragment key={person.id}>{label}{cells}</React.Fragment>
   })
-
   return <div className="grid-scroll">
     <div className="week-grid">
       <div className="wg-corner">Team</div>
@@ -524,7 +508,6 @@ function AdminGrid({ days, todayStr, weekBlocks, claims, profiles, onPop }) {
     </div>
   </div>
 }
-
 function Iv({ block, cls, spots, time, role, onPop }) {
   return <div className={'iv ' + cls} onClick={() => onPop(block)}>
     <div className="iv-time">{time}</div>
@@ -532,7 +515,6 @@ function Iv({ block, cls, spots, time, role, onPop }) {
     {spots && <div className="iv-spots">{spots}</div>}
   </div>
 }
-
 // ---------- INTERVAL POPOVER ----------
 function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIntervalStarted, onClose, onClaim, onUnclaim, onCheckIn, onNoShow }) {
   const cl = claims.filter(c => c.shift_block_id === block.id)
@@ -541,7 +523,6 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIn
   const isFull = left <= 0
   const started = hasIntervalStarted(block)
   const names = cl.map(c => profiles.find(p => p.id === c.profile_id)?.full_name?.split(' ')[0] || '').filter(Boolean).join(', ')
-
   return <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
     <div className="modal" style={{ width: 380 }}>
       <div style={{ fontSize: 18, fontWeight: 700 }}>{formatTime(block.start_time)} – {formatTime(block.end_time)}</div>
@@ -582,7 +563,6 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIn
   </div>
 }
 function Row({ k, v }) { return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: 'var(--ink-soft)' }}>{k}</span><span>{v}</span></div> }
-
 // ---------- MY SCHEDULE ----------
 function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onCheckIn }) {
   const myClaims = claims.filter(c => c.profile_id === me.id)
@@ -591,10 +571,8 @@ function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onC
   const todayStr = isoDate(etNow())
   const upcoming = entries.filter(e => e.block.block_date >= todayStr).sort((a, b) => (a.block.block_date + a.block.start_time).localeCompare(b.block.block_date + b.block.start_time))
   const past = entries.filter(e => e.block.block_date < todayStr).sort((a, b) => (b.block.block_date + b.block.start_time).localeCompare(a.block.block_date + a.block.start_time))
-
   const byDate = {}
   upcoming.forEach(e => { (byDate[e.block.block_date] = byDate[e.block.block_date] || []).push(e) })
-
   return <div>
     {Object.keys(byDate).length ? Object.keys(byDate).sort().map(date => (
       <div key={date} style={{ marginBottom: 22 }}>
@@ -606,7 +584,6 @@ function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onC
         </div>
       </div>
     )) : <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 20 }}>No upcoming intervals.</div></div>}
-
     {past.length > 0 && <div style={{ marginBottom: 22 }}>
       <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', marginBottom: 10, opacity: .6 }}>Past intervals</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 12 }}>
@@ -615,7 +592,6 @@ function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onC
     </div>}
   </div>
 }
-
 function ShiftCard({ block, claim, isPast, started, onUnclaim, onCheckIn }) {
   const checkedIn = claim?.checked_in_at; const noShow = claim?.status === 'no_show'
   return <div className="iv mine" style={{ cursor: 'default', padding: '14px 16px' }}>
