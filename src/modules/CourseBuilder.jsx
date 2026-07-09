@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { RichEditor, RichContent } from '../lib/RichEditor'
 
+// Blocks live in a JSONB array with no ids of their own. Assign a client-side
+// id on load so React can key by identity — otherwise deleting block 0 makes
+// block 1 inherit its editor instance, and its content.
 let blockSeq = 0
 const nextBlockId = () => `b${Date.now().toString(36)}${(blockSeq++).toString(36)}`
 const withIds = (blocks) => (blocks || []).map(b => b._id ? b : { ...b, _id: nextBlockId() })
@@ -26,7 +29,9 @@ export default function CourseBuilder() {
   const [err, setErr] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [creating, setCreating] = useState(false)
+
   useEffect(() => { load() }, [])
+
   async function load() {
     setLoading(true); setErr('')
     try {
@@ -39,6 +44,7 @@ export default function CourseBuilder() {
       setCerts(certRes.data || [])
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }
+
   async function deleteCourse(id, title) {
     if (!window.confirm(`Delete the course "${title}"? Its lessons and quiz will be removed. This cannot be undone.`)) return
     try {
@@ -47,9 +53,11 @@ export default function CourseBuilder() {
       load()
     } catch (e) { setErr(e.message) }
   }
+
   if (editingId) {
     return <LessonEditor courseId={editingId} onBack={() => { setEditingId(null); load() }} />
   }
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, marginBottom: 22, flexWrap: 'wrap' }}>
@@ -59,8 +67,10 @@ export default function CourseBuilder() {
         </div>
         <button className="btn btn-primary" onClick={() => setCreating(true)}>+ New course</button>
       </div>
+
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}>
         <b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
+
       {loading ? <p className="page-sub">Loading…</p> : (
         <div className="cards">
           {courses.length === 0 && <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 20 }}>No courses yet. Create one to start building content.</div></div>}
@@ -81,11 +91,13 @@ export default function CourseBuilder() {
           ))}
         </div>
       )}
+
       {creating && <NewCourseModal certs={certs} onClose={() => setCreating(false)}
         onCreated={(id) => { setCreating(false); load(); setEditingId(id) }} />}
     </div>
   )
 }
+
 function NewCourseModal({ certs, onClose, onCreated }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -93,6 +105,7 @@ function NewCourseModal({ certs, onClose, onCreated }) {
   const [passThreshold, setPassThreshold] = useState(80)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+
   async function save() {
     if (!title.trim()) { setErr('Give the course a title.'); return }
     setSaving(true); setErr('')
@@ -110,6 +123,7 @@ function NewCourseModal({ certs, onClose, onCreated }) {
       onCreated(data.id)
     } catch (e) { setErr(e.message); setSaving(false) }
   }
+
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal">
@@ -135,6 +149,7 @@ function NewCourseModal({ certs, onClose, onCreated }) {
     </div>
   )
 }
+
 // ============ LESSON EDITOR ============
 function LessonEditor({ courseId, onBack }) {
   const [course, setCourse] = useState(null)
@@ -146,7 +161,9 @@ function LessonEditor({ courseId, onBack }) {
   const [err, setErr] = useState('')
   const [saveMsg, setSaveMsg] = useState('')
   const isMobile = useIsMobile()
+
   useEffect(() => { load() }, [courseId])
+
   async function load() {
     setLoading(true); setErr('')
     try {
@@ -160,6 +177,7 @@ function LessonEditor({ courseId, onBack }) {
       if ((leRes.data || []).length && !activeLesson) setActiveLesson(leRes.data[0].id)
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }
+
   async function addLesson() {
     try {
       const { data, error } = await supabase.from('lessons').insert({
@@ -170,6 +188,7 @@ function LessonEditor({ courseId, onBack }) {
       setLessons(l => [...l, data]); setActiveLesson(data.id); setTab('lessons')
     } catch (e) { setErr(e.message) }
   }
+
   async function saveLesson(lesson) {
     try {
       const { error } = await supabase.from('lessons')
@@ -180,6 +199,7 @@ function LessonEditor({ courseId, onBack }) {
       flash('Lesson saved')
     } catch (e) { setErr(e.message) }
   }
+
   async function publish() {
     try {
       const next = course.status === 'published' ? 'draft' : 'published'
@@ -189,9 +209,12 @@ function LessonEditor({ courseId, onBack }) {
       flash(next === 'published' ? 'Published' : 'Unpublished')
     } catch (e) { setErr(e.message) }
   }
+
   function flash(m) { setSaveMsg(m); setTimeout(() => setSaveMsg(''), 2000) }
+
   if (loading) return <p className="page-sub">Loading course…</p>
   const lesson = lessons.find(l => l.id === activeLesson)
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
@@ -205,12 +228,15 @@ function LessonEditor({ courseId, onBack }) {
           <button className="btn btn-cta" onClick={publish}>{course?.status === 'published' ? 'Unpublish' : 'Publish'}</button>
         </div>
       </div>
+
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
       {previewing && <CoursePreview course={course} lessons={lessons} onClose={() => setPreviewing(false)} />}
+
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={'btn ' + (tab === 'lessons' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('lessons')}>Lessons</button>
         <button className={'btn ' + (tab === 'quiz' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('quiz')}>Quiz &amp; scoring</button>
       </div>
+
       {tab === 'lessons' ? (
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '220px 1fr', gap: 16 }}>
           <div className="card" style={{ padding: 12, height: 'fit-content' }}>
@@ -231,83 +257,98 @@ function LessonEditor({ courseId, onBack }) {
     </div>
   )
 }
+
 // ============ LESSON BODY (block editor) ============
-// Keeps all editing state LOCAL so typing never re-renders the parent
-// (that's what caused the cursor to jump). Reports up only on Save.
+// Each text/callout block owns a RichEditor instance. Editing state stays
+// local; the parent hears about it only on Save.
 function LessonBody({ lesson, onSave }) {
   const [title, setTitle] = useState(lesson.title)
-  const [blocks, setBlocks] = useState(lesson.content_blocks || [])
+  const [blocks, setBlocks] = useState(() => withIds(lesson.content_blocks))
+
   function addBlock(type) {
-    const b = type === 'text' ? { type: 'text', html: '' }
+    const base = type === 'text' ? { type: 'text', html: '' }
       : type === 'image' ? { type: 'image', url: '' }
       : type === 'video' ? { type: 'video', embed: '' }
       : { type: 'callout', tone: 'info', html: '' }
-    setBlocks(bs => [...bs, b])
+    setBlocks(bs => [...bs, { ...base, _id: nextBlockId() }])
   }
-  function setBlock(i, patch) { setBlocks(bs => bs.map((b, j) => j === i ? { ...b, ...patch } : b)) }
-  function delBlock(i) { setBlocks(bs => bs.filter((_, j) => j !== i)) }
+
+  const setBlock = (id, patch) => setBlocks(bs => bs.map(b => b._id === id ? { ...b, ...patch } : b))
+  const delBlock = (id) => setBlocks(bs => bs.filter(b => b._id !== id))
+
   function toEmbed(url) {
     const yt = url.match(/(?:youtu\.be\/|v=)([\w-]{11})/); if (yt) return `https://www.youtube.com/embed/${yt[1]}`
     const vm = url.match(/vimeo\.com\/(\d+)/); if (vm) return `https://player.vimeo.com/video/${vm[1]}`
     return url
   }
-  function exec(cmd, val) { document.execCommand(cmd, false, val || null) }
-  async function uploadImage(file, i) {
+
+  async function uploadImage(file, id) {
     try {
       const ext = file.name.split('.').pop()
       const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
       const { error: upErr } = await supabase.storage.from('course-media').upload(path, file)
       if (upErr) throw upErr
       const { data } = supabase.storage.from('course-media').getPublicUrl(path)
-      setBlock(i, { url: data.publicUrl })
+      setBlock(id, { url: data.publicUrl })
     } catch (e) { alert('Upload failed: ' + e.message) }
   }
+
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
       <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 10, alignItems: 'center' }}>
         <input value={title} onChange={e => setTitle(e.target.value)}
           style={{ border: 0, fontSize: 17, fontWeight: 600, outline: 'none', flex: 1, fontFamily: 'inherit', color: 'var(--ink)' }} />
-        <button className="btn btn-primary" onClick={() => onSave({ ...lesson, title, content_blocks: blocks })}>Save lesson</button>
+        <button className="btn btn-primary"
+          onClick={() => onSave({ ...lesson, title, content_blocks: stripIds(blocks) })}>Save lesson</button>
       </div>
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--line-soft)', display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'center', background: '#fbfcfd' }}>
-        <TB onClick={() => exec('bold')}><b>B</b></TB>
-        <TB onClick={() => exec('italic')}><i>I</i></TB>
-        <TB onClick={() => exec('underline')}><u>U</u></TB>
-        <Divider />
-        <TB onClick={() => exec('insertUnorderedList')}>• ≡</TB>
-        <TB onClick={() => exec('outdent')}>⇤</TB>
-        <TB onClick={() => exec('indent')}>⇥</TB>
-        <Divider />
-        {['#0d1518', '#0077B6', '#00E6E6', '#1f8a53', '#c0392b', '#245866'].map(c =>
-          <span key={c} onMouseDown={e => e.preventDefault()} onClick={() => exec('foreColor', c)}
-            style={{ width: 18, height: 18, borderRadius: 4, background: c, cursor: 'pointer', border: '1px solid rgba(0,0,0,.1)' }} />)}
-        <Divider />
+
+      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: 3, alignItems: 'center', background: '#fbfcfd' }}>
         <AddBtn onClick={() => addBlock('text')}>¶ Text</AddBtn>
         <AddBtn onClick={() => addBlock('image')}>🖼 Image</AddBtn>
         <AddBtn onClick={() => addBlock('video')}>▶ Video</AddBtn>
         <AddBtn onClick={() => addBlock('callout')}>💡 Callout</AddBtn>
       </div>
+
       <div style={{ padding: '20px 22px', minHeight: 260 }}>
-        {blocks.map((b, i) => (
-          <div key={i} style={{ position: 'relative', margin: '6px 0' }}>
-            <button onClick={() => delBlock(i)} title="Delete"
-              style={{ position: 'absolute', right: -6, top: 2, border: 0, background: 'transparent', color: 'var(--ink-soft)', cursor: 'pointer', fontSize: 13 }}>✕</button>
+        {blocks.map(b => (
+          <div key={b._id} style={{ position: 'relative', margin: '14px 0' }}>
+            <button onClick={() => delBlock(b._id)} title="Delete"
+              style={{ position: 'absolute', right: -6, top: 2, zIndex: 2, border: 0, background: 'transparent', color: 'var(--ink-soft)', cursor: 'pointer', fontSize: 13 }}>✕</button>
+
             {(b.type === 'text' || b.type === 'callout') && (
-              <EditableBlock initialHtml={b.html || ''} isCallout={b.type === 'callout'}
-                onChange={html => setBlock(i, { html })} />
+              <div style={{
+                padding: b.type === 'callout' ? '12px 14px' : 0,
+                borderRadius: b.type === 'callout' ? 8 : 0,
+                background: b.type === 'callout' ? 'var(--accent-bg)' : 'transparent',
+              }}>
+                <RichEditor
+                  variant="full"
+                  value={b.html || ''}
+                  onChange={html => setBlock(b._id, { html })}
+                  placeholder={b.type === 'callout' ? 'Callout text…' : 'Write the lesson…'}
+                  minHeight={80}
+                  maxHeight={2000}
+                />
+              </div>
             )}
+
             {b.type === 'image' && (b.url
-              ? <ImageBlock block={b} onChange={patch => setBlock(i, patch)} />
+              ? <ImageBlock block={b} onChange={patch => setBlock(b._id, patch)} />
               : <div style={{ border: '1px dashed var(--line)', borderRadius: 8, padding: 20, textAlign: 'center', background: 'var(--canvas)' }}>
                   <div className="page-sub" style={{ marginBottom: 8 }}>Upload an image from your computer</div>
                   <input type="file" accept="image/*"
-                    onChange={e => { if (e.target.files[0]) uploadImage(e.target.files[0], i) }} />
+                    onChange={e => { if (e.target.files[0]) uploadImage(e.target.files[0], b._id) }} />
                 </div>)}
+
             {b.type === 'video' && (b.embed
               ? <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0 }}>
-                <iframe src={b.embed} allowFullScreen style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, borderRadius: 8 }} /></div>
-              : <input placeholder="Paste video link (YouTube, Vimeo)" onChange={e => setBlock(i, { embed: toEmbed(e.target.value) })}
-                style={{ width: '100%', padding: 9, border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit' }} />)}
+                  <iframe src={b.embed} allowFullScreen
+                    sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+                    referrerPolicy="no-referrer"
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, borderRadius: 8 }} />
+                </div>
+              : <input placeholder="Paste video link (YouTube, Vimeo)" onChange={e => setBlock(b._id, { embed: toEmbed(e.target.value) })}
+                  style={{ width: '100%', padding: 9, border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit' }} />)}
           </div>
         ))}
         {blocks.length === 0 && <p className="page-sub">Use the toolbar to add text, images, or video.</p>}
@@ -315,23 +356,7 @@ function LessonBody({ lesson, onSave }) {
     </div>
   )
 }
-// Editable rich-text block. Sets its HTML ONCE on mount, then lets the browser
-// own the DOM while typing — so the cursor never jumps.
-function EditableBlock({ initialHtml, isCallout, onChange }) {
-  const ref = React.useRef(null)
-  React.useEffect(() => {
-    if (ref.current) ref.current.innerHTML = initialHtml
-  }, [])
-  return (
-    <div
-      ref={ref}
-      contentEditable
-      suppressContentEditableWarning
-      onInput={e => onChange(e.currentTarget.innerHTML)}
-      style={{ outline: 'none', fontSize: 15, lineHeight: 1.65, padding: isCallout ? '12px 14px' : '4px 2px', borderRadius: isCallout ? 8 : 0, background: isCallout ? 'var(--accent-bg)' : 'transparent', minHeight: 26 }}
-    />
-  )
-}
+
 function ImageBlock({ block, onChange }) {
   const widths = { small: '30%', medium: '55%', large: '80%', full: '100%' }
   const w = block.width || 'full'
@@ -360,13 +385,14 @@ function ImageBlock({ block, onChange }) {
     </div>
   )
 }
+
 // ============ COURSE PREVIEW (reusable lesson renderer) ============
 export function LessonView({ blocks }) {
   const widths = { small: '30%', medium: '55%', large: '80%', full: '100%' }
   return (
     <div>
       {(blocks || []).map((b, i) => {
- if (b.type === 'text' || b.type === 'callout') {
+        if (b.type === 'text' || b.type === 'callout') {
           return <RichContent key={i} html={b.html}
             style={{ fontSize: 15.5, lineHeight: 1.7, margin: '12px 0', padding: b.type === 'callout' ? '13px 15px' : 0, borderRadius: b.type === 'callout' ? 8 : 0, background: b.type === 'callout' ? 'var(--accent-bg)' : 'transparent' }} />
         }
@@ -378,7 +404,10 @@ export function LessonView({ blocks }) {
         }
         if (b.type === 'video' && b.embed) {
           return <div key={i} style={{ position: 'relative', paddingBottom: '56.25%', height: 0, margin: '14px 0' }}>
-            <iframe src={b.embed} allowFullScreen style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, borderRadius: 10 }} />
+            <iframe src={b.embed} allowFullScreen
+              sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+              referrerPolicy="no-referrer"
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, borderRadius: 10 }} />
           </div>
         }
         return null
@@ -386,6 +415,7 @@ export function LessonView({ blocks }) {
     </div>
   )
 }
+
 function CoursePreview({ course, lessons, onClose }) {
   const [idx, setIdx] = React.useState(0)
   const scrollRef = React.useRef(null)
@@ -427,21 +457,20 @@ function CoursePreview({ course, lessons, onClose }) {
     </div>
   )
 }
-const TB = ({ children, onClick }) => (
-  <button onMouseDown={e => e.preventDefault()} onClick={onClick}
-    style={{ border: 0, background: 'transparent', width: 30, height: 30, borderRadius: 6, cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 14 }}>{children}</button>
-)
-const Divider = () => <span style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)', margin: '4px 4px' }} />
+
 const AddBtn = ({ children, onClick }) => (
   <button onClick={onClick} style={{ border: 0, background: 'transparent', color: 'var(--ink-soft)', fontSize: 12.5, fontWeight: 600, padding: '6px 9px', borderRadius: 6, cursor: 'pointer' }}>{children}</button>
 )
+
 // ============ QUIZ EDITOR ============
 function QuizEditor({ courseId }) {
   const [questions, setQuestions] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
+
   useEffect(() => { load() }, [courseId])
+
   async function load() {
     setLoading(true)
     try {
@@ -456,6 +485,7 @@ function QuizEditor({ courseId }) {
       setQuestions(withOpts)
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }
+
   async function addQuestion() {
     try {
       const { data, error } = await supabase.from('quiz_questions')
@@ -469,6 +499,7 @@ function QuizEditor({ courseId }) {
       setQuestions(q => [...q, { ...data, options: opts || [] }])
     } catch (e) { setErr(e.message) }
   }
+
   async function saveQuestion(q) {
     try {
       await supabase.from('quiz_questions').update({ prompt: q.prompt }).eq('id', q.id)
@@ -478,23 +509,30 @@ function QuizEditor({ courseId }) {
       flash('Saved')
     } catch (e) { setErr(e.message) }
   }
+
   async function addOption(q) {
     const { data } = await supabase.from('quiz_options')
       .insert({ question_id: q.id, label: '', is_correct: false, sort_order: q.options.length }).select().single()
     setQuestions(qs => qs.map(x => x.id === q.id ? { ...x, options: [...x.options, data] } : x))
   }
+
   async function delOption(q, oid) {
     await supabase.from('quiz_options').delete().eq('id', oid)
     setQuestions(qs => qs.map(x => x.id === q.id ? { ...x, options: x.options.filter(o => o.id !== oid) } : x))
   }
+
   function setOpt(qid, oid, patch) {
     setQuestions(qs => qs.map(q => q.id === qid ? { ...q, options: q.options.map(o => o.id === oid ? { ...o, ...patch } : o) } : q))
   }
+
   function markCorrect(qid, oid) {
     setQuestions(qs => qs.map(q => q.id === qid ? { ...q, options: q.options.map(o => ({ ...o, is_correct: o.id === oid })) } : q))
   }
+
   function flash(m) { setMsg(m); setTimeout(() => setMsg(''), 1800) }
+
   if (loading) return <p className="page-sub">Loading quiz…</p>
+
   return (
     <div>
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 12 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
