@@ -705,6 +705,14 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     if (stickToBottom.current) pinToBottom()
   }, [])
 
+  // Opening the read-by panel grows the last row. If we were parked at the
+  // bottom, follow it down — otherwise the panel expands below the fold and
+  // there is nothing to scroll to.
+  useEffect(() => {
+    if (!readersFor || !stickToBottom.current) return
+    pinToBottomSettled(4)
+  }, [readersFor])
+
   async function send() {
     const rawHtml = htmlRef.current || ''
     const plain = (rawHtml.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim())
@@ -830,7 +838,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       </div>
 
       <div ref={scrollerRef} onScroll={onScroll}
-        style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', minHeight: 0 }}>
+        style={{ flex: 1, overflowY: 'auto', padding: '16px 18px 28px', minHeight: 0 }}>
         {err && <div style={{ color: 'var(--failed)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
 
         {topLevel.length === 0
