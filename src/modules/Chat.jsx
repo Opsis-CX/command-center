@@ -1,23 +1,30 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react'
+import DOMPurify from 'dompurify'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { notifyChatMessage, notifyAckNudge, notifyChannelAdded, notifyChatMention } from '../lib/notify'
+import { notifyChatMessage, notifyAckNudge, notifyChannelAdded } from '../lib/notify'
 import { useUnread } from '../lib/unread'
 import EmojiPicker from 'emoji-picker-react'
+
 // ============================================================
 // CHAT — Stage 1 + @update acknowledgments + @here
 // Admins can post @update messages that require confirmation.
 // Everyone sees a Confirm button; admins track who has/hasn't
 // and can nudge non-confirmers.
+//
+// Per-channel notification preferences live in the 🔔 panel.
 // ============================================================
+
 function initials(name) {
   const p = (name || '?').trim().split(/\s+/); return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase() || '?'
 }
+
 function avatarColor(name) {
   const colors = ['#0077B6', '#16A34A', '#D97706', '#7C3AED', '#DC2626', '#0891B2', '#DB2777', '#65A30D']
   let h = 0; for (const c of (name || '?')) h = (h * 31 + c.charCodeAt(0)) >>> 0
   return colors[h % colors.length]
 }
+
 function timeLabel(iso) {
   const d = new Date(iso); const now = new Date()
   const sameDay = d.toDateString() === now.toDateString()
@@ -25,6 +32,7 @@ function timeLabel(iso) {
     ? d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
+
 // True when the viewport is phone-width. Updates on resize.
 function useIsMobile(breakpoint = 700) {
   const [mobile, setMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= breakpoint : false)
@@ -37,8 +45,6 @@ function useIsMobile(breakpoint = 700) {
 }
 
 // Ephemeral typing indicator over Supabase Realtime broadcast.
-// topic: unique channel key (e.g. `typing:<channelId>` or `typing:thread:<id>`)
-// Returns { typers: [names], notifyTyping() }
 function useTyping(topic, meId, meName) {
   const [typers, setTypers] = useState({})   // id -> { name, at }
   const chanRef = useRef(null)
@@ -54,6 +60,7 @@ function useTyping(topic, meId, meName) {
       setTypers(prev => { const n = { ...prev }; delete n[payload.id]; return n })
     }).subscribe()
     chanRef.current = ch
+
     // sweep out stale typers every second (in case a "stop" was missed)
     const sweep = setInterval(() => {
       setTypers(prev => {
@@ -102,20 +109,24 @@ function humanSize(bytes) {
   return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${u[i]}`
 }
 
-function AttachmentView({ att }) {
+// onLoad → re-pin the scroller, since images change list height after paint.
+function AttachmentView({ att, onMediaLoad }) {
   const type = att.file_type || ''
   const isImg = type.startsWith('image/')
   const isVid = type.startsWith('video/')
+
   if (isImg) {
     return (
       <a href={att.public_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6 }}>
-        <img src={att.public_url} alt={att.file_name} style={{ maxWidth: 280, maxHeight: 240, borderRadius: 8, border: '1px solid var(--line)', display: 'block' }} />
+        <img src={att.public_url} alt={att.file_name} onLoad={onMediaLoad}
+          style={{ maxWidth: 280, maxHeight: 240, borderRadius: 8, border: '1px solid var(--line)', display: 'block' }} />
       </a>
     )
   }
   if (isVid) {
     return (
-      <video src={att.public_url} controls style={{ maxWidth: 320, maxHeight: 260, borderRadius: 8, border: '1px solid var(--line)', marginTop: 6, display: 'block' }} />
+      <video src={att.public_url} controls onLoadedMetadata={onMediaLoad}
+        style={{ maxWidth: 320, maxHeight: 260, borderRadius: 8, border: '1px solid var(--line)', marginTop: 6, display: 'block' }} />
     )
   }
   // generic file card
@@ -142,13 +153,13 @@ function TypingLine({ names }) {
     <div style={{ padding: '2px 18px 4px', fontSize: 12, color: 'var(--ink-soft)', fontStyle: 'italic', minHeight: 18 }}>{text}</div>
   )
 }
+
 // ---- @mention helpers ----
 // Extract profile ids for names mentioned as "@Full Name" in body.
 function extractMentions(body, profiles) {
   const found = []
   for (const p of profiles) {
     if (!p.full_name) continue
-    // match @Full Name (word-boundary, case-insensitive)
     const re = new RegExp('@' + p.full_name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=\\s|$|[^\\w])', 'i')
     if (re.test(body)) found.push(p.id)
   }
@@ -170,7 +181,6 @@ function MentionTextarea({ value, onChange, onEnter, profiles, placeholder, rows
   function handleChange(e) {
     const val = e.target.value
     onChange(val)
-    // detect an active @token immediately left of the caret
     const caret = e.target.selectionStart
     const upto = val.slice(0, caret)
     const m = upto.match(/@([\w]*)$/)
@@ -182,7 +192,6 @@ function MentionTextarea({ value, onChange, onEnter, profiles, placeholder, rows
   }
 
   function pick(p) {
-    // replace "@query" (from anchor to caret) with "@Full Name "
     const caret = ref.current.selectionStart
     const before = value.slice(0, anchor)
     const after = value.slice(caret)
@@ -237,6 +246,11 @@ export default function Chat() {
   const [showDM, setShowDM] = useState(false)
   const [dmNames, setDmNames] = useState({}) // channelId -> other person's name
   const [mobileView, setMobileView] = useState('list') // 'list' | 'convo' (mobile only)
+
+  // Read activeId inside load() without making load() depend on it (stale-closure fix).
+  const activeIdRef = useRef(activeId)
+  useEffect(() => { activeIdRef.current = activeId }, [activeId])
+
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     try {
@@ -254,11 +268,14 @@ export default function Chat() {
         supabase.from('profiles').select('id, full_name, is_active').eq('is_active', true).order('full_name'),
       ])
       if (chRes.error) throw chRes.error
+
       setMe(meRes.data)
       setChannels(chRes.data || [])
       setProfiles(profRes.data || [])
+
       const all = chRes.data || []
-      if (!activeId && all.length && window.innerWidth > 700) setActiveId(all[0].id)
+      if (!activeIdRef.current && all.length && window.innerWidth > 700) setActiveId(all[0].id)
+
       // for DMs, find the other member's name
       const dmChannels = all.filter(c => c.is_dm)
       if (dmChannels.length) {
@@ -278,8 +295,9 @@ export default function Chat() {
         }
       }
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
-  }, [activeId])
-  useEffect(() => { load() }, [])
+  }, [])
+
+  useEffect(() => { load() }, [load])
 
   async function deleteChannel(ch) {
     const label = ch.is_dm ? (dmNames[ch.id] || 'this direct message') : `#${ch.name}`
@@ -289,9 +307,11 @@ export default function Chat() {
     if (activeId === ch.id) { setActiveId(null); setMobileView('list') }
     load()
   }
+
   if (loading) return <p className="page-sub">Loading chat…</p>
 
   const openChannel = (id) => { setActiveId(id); setMobileView('convo'); markRead(id) }
+
   // On mobile, show either the list or the conversation. On desktop, both.
   const showList = !isMobile || mobileView === 'list'
   const showConvo = !isMobile || mobileView === 'convo'
@@ -345,11 +365,13 @@ export default function Chat() {
           </div>
         </div>
       )}
+
       {showConvo && (
         activeId
           ? <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} isOwner={isOwner} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead} />
           : <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-soft)', height: '100%' }}>Select a channel</div>
       )}
+
       {showCreate && <CreateChannelModal me={me} profiles={profiles}
         onClose={() => setShowCreate(false)}
         onCreated={(id) => { setShowCreate(false); load(); openChannel(id) }} />}
@@ -359,12 +381,12 @@ export default function Chat() {
     </div>
   )
 }
+
 function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profiles, isMobile, onBack, markRead }) {
   const [messages, setMessages] = useState([])
   const [senders, setSenders] = useState({})
   const [acks, setAcks] = useState([])           // all acknowledgments for messages in view
   const [members, setMembers] = useState([])      // channel member profile_ids
-  const [text, setText] = useState('')
   const [requireAck, setRequireAck] = useState(false)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
@@ -372,16 +394,30 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   const [threadFor, setThreadFor] = useState(null) // parent message id for the thread panel
   const [reactions, setReactions] = useState([])   // all reactions for messages in view
   const [attachments, setAttachments] = useState([]) // attachments for messages in view
-  const [pending, setPending] = useState([])         // files staged to send: {file, name, uploading}
+  const [pending, setPending] = useState([])         // files staged to send
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef(null)
   const [showPicker, setShowPicker] = useState(false)      // input emoji picker
   const [reactFor, setReactFor] = useState(null)   // message id whose react-picker is open
   const [showMembers, setShowMembers] = useState(false)
+  const [showPrefs, setShowPrefs] = useState(false)        // notification settings panel
+
   const composerRef = useRef(null)
   const htmlRef = useRef('')
+
+  // ---- scroll management ----
+  const scrollerRef = useRef(null)
   const bottomRef = useRef(null)
+  const didInitialScroll = useRef(false)
+  const stickToBottom = useRef(true)
+
+  // Keep the realtime subscription stable — reading senders via a ref instead of
+  // a dep means we don't tear down and rebuild the channel on every new sender.
+  const sendersRef = useRef(senders)
+  useEffect(() => { sendersRef.current = senders }, [senders])
+
   const { typerNames, notifyTyping, stopTyping } = useTyping(`typing:${channelId}`, me.id, me.full_name)
+
   useEffect(() => {
     let active = true
     ;(async () => {
@@ -404,42 +440,45 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     })()
     return () => { active = false }
   }, [channelId])
+
   async function hydrateSenders(msgs) {
     const ids = [...new Set(msgs.map(m => m.sender_id).filter(Boolean))]
-    const missing = ids.filter(id => !(id in senders))
+    const missing = ids.filter(id => !(id in sendersRef.current))
     if (!missing.length) return
     const { data } = await supabase.from('profiles').select('id, full_name').in('id', missing)
     if (data) setSenders(prev => { const n = { ...prev }; data.forEach(p => n[p.id] = p.full_name); return n })
   }
+
   async function loadAcks(msgs) {
     const ackMsgIds = msgs.filter(m => m.requires_ack).map(m => m.id)
     if (!ackMsgIds.length) { setAcks([]); return }
     const { data } = await supabase.from('message_acknowledgments').select('*').in('message_id', ackMsgIds)
     setAcks(data || [])
   }
+
   async function loadReactions(msgs) {
     const ids = msgs.map(m => m.id)
     if (!ids.length) { setReactions([]); return }
     const { data } = await supabase.from('message_reactions').select('*').in('message_id', ids)
     setReactions(data || [])
   }
+
   async function loadAttachments(msgs) {
     const ids = msgs.map(m => m.id)
     if (!ids.length) { setAttachments([]); return }
     const { data } = await supabase.from('message_attachments').select('*').in('message_id', ids)
     setAttachments(data || [])
   }
+
   function addFiles(fileList) {
     const arr = Array.from(fileList || [])
     const tooBig = arr.find(f => f.size > MAX_FILE_BYTES)
     if (tooBig) { setErr(`"${tooBig.name}" is over 50MB.`); return }
     setPending(prev => [...prev, ...arr.map(f => ({ file: f, name: f.name, type: f.type }))])
   }
+
   function removePending(idx) { setPending(prev => prev.filter((_, i) => i !== idx)) }
-  function onPaste(e) {
-    const files = Array.from(e.clipboardData?.files || [])
-    if (files.length) { e.preventDefault(); addFiles(files) }
-  }
+
   async function toggleReaction(messageId, emoji) {
     const mine = reactions.find(r => r.message_id === messageId && r.profile_id === me.id && r.emoji === emoji)
     setReactFor(null)
@@ -454,7 +493,8 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       else if (data) setReactions(prev => prev.map(r => r === optimistic ? data : r))
     }
   }
-  // realtime: new messages + new acknowledgments
+
+  // realtime: new messages + acknowledgments + reactions + attachments
   useEffect(() => {
     const ch = supabase
       .channel(`chan:${channelId}`)
@@ -464,7 +504,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
           setMessages(prev => prev.some(x => x.id === m.id) ? prev : [...prev, m])
           // I'm looking at this channel, so keep it marked read
           if (m.sender_id !== me.id) markRead?.(channelId)
-          if (m.sender_id && !(m.sender_id in senders)) {
+          if (m.sender_id && !(m.sender_id in sendersRef.current)) {
             const { data } = await supabase.from('profiles').select('id, full_name').eq('id', m.sender_id).single()
             if (data) setSenders(prev => ({ ...prev, [data.id]: data.full_name }))
           }
@@ -479,34 +519,81 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         (payload) => { setAttachments(prev => prev.some(a => a.id === payload.new.id) ? prev : [...prev, payload.new]) })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [channelId, senders])
+  }, [channelId, me.id, markRead])
+
+  // ---- SCROLL ----
+  // Track whether the user is parked at the bottom. If they scrolled up to read
+  // history, we must not yank them back down when a new message lands.
+  function onScroll() {
+    const el = scrollerRef.current
+    if (!el) return
+    stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }
+
+  function pinToBottom() {
+    const el = scrollerRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }
+
+  // First paint of this channel: jump (no animation) to the newest message.
+  // Runs after `loading` flips false, so the list actually exists in the DOM.
+  useLayoutEffect(() => {
+    if (loading || didInitialScroll.current) return
+    const el = scrollerRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+    didInitialScroll.current = true
+  }, [loading])
+
+  // New message: follow only if the user was already at the bottom.
   useEffect(() => {
-    if (!messages.length) return
-    const el = bottomRef.current
-    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    if (!didInitialScroll.current || !stickToBottom.current) return
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages.length])
+
+  // Attachments arrive after the message and change list height. Re-pin.
+  useEffect(() => {
+    if (!didInitialScroll.current || !stickToBottom.current) return
+    pinToBottom()
+  }, [attachments.length])
+
+  // Called by <img onLoad> — media loads after paint and shifts everything.
+  const onMediaLoad = useCallback(() => {
+    if (stickToBottom.current) pinToBottom()
+  }, [])
+
   async function send() {
     const rawHtml = htmlRef.current || ''
     const plain = (rawHtml.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim())
     const body = cleanChatHtml(rawHtml)
     if (!plain && pending.length === 0) return
+
     const isHere = /(^|\s)@here(\s|$)/i.test(plain)
     const willRequireAck = isAdmin && requireAck
     const filesToSend = pending
+
+    // Compute mentions once — used for both membership and notification routing.
+    const mentionedIds = extractMentions(plain, profiles).filter(id => id !== me.id)
+
     composerRef.current?.clear(); htmlRef.current = ''
     setRequireAck(false); setPending([])
     stopTyping()
+    stickToBottom.current = true    // sending always scrolls you down
     if (filesToSend.length) setUploading(true)
+
     const temp = { id: 'temp-' + Date.now(), channel_id: channelId, sender_id: me.id, body: body || '', created_at: new Date().toISOString(), requires_ack: willRequireAck, is_here: isHere, _optimistic: true }
     setMessages(prev => [...prev, temp])
+
     const { data, error } = await supabase.from('messages')
       .insert({ channel_id: channelId, sender_id: me.id, body: body || '', requires_ack: willRequireAck, is_here: isHere })
       .select().single()
+
     if (error) {
       setErr(error.message)
       setMessages(prev => prev.filter(m => m.id !== temp.id)); setPending(filesToSend); setUploading(false)
       return
     }
+
     if (filesToSend.length) {
       try {
         const rows = []
@@ -521,30 +608,38 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       } catch (e) { setErr('Upload failed: ' + e.message) }
       setUploading(false)
     }
+
     setMessages(prev => prev.filter(m => m.id !== temp.id && m.id !== data.id).concat(data))
+
+    // Auto-add mentioned non-members to the channel first, so they exist in
+    // channel_members by the time notifyChatMessage reads prefs.
+    await addMentionedMembers(mentionedIds)
+
+    // One call. It reads every member's prefs and decides who to notify.
+    // `plain` (not HTML) — keywords must not match tag names like "div".
     notifyChatMessage({
       channelId, channelName: channel?.name, isDm: channel?.is_dm,
-      actorId: me.id, actorName: me.full_name, isHere, requiresAck: willRequireAck,
+      actorId: me.id, actorName: me.full_name,
+      isHere, requiresAck: willRequireAck,
+      body: plain,
+      mentionedIds,
     })
-    await handleMentions(plain)
   }
-  // Detect @mentions, auto-add non-members to the channel, and notify them.
-  async function handleMentions(body) {
-    const mentionedIds = extractMentions(body, profiles).filter(id => id !== me.id)
-    if (!mentionedIds.length) return
-    // who's not already a member?
+
+  // Mentioning a non-member adds them to the channel and tells them so.
+  async function addMentionedMembers(mentionedIds) {
+    if (!mentionedIds.length || channel?.is_dm) return
     const addedIds = mentionedIds.filter(id => !members.includes(id))
-    if (addedIds.length && !channel?.is_dm) {
-      await supabase.from('channel_members').insert(addedIds.map(pid => ({ channel_id: channelId, profile_id: pid })))
-      setMembers(prev => [...new Set([...prev, ...addedIds])])
-    }
-    notifyChatMention({
-      recipientIds: mentionedIds, actorId: me.id, actorName: me.full_name,
-      channelName: channel?.name, isDm: channel?.is_dm, addedIds,
+    if (!addedIds.length) return
+    await supabase.from('channel_members').insert(addedIds.map(pid => ({ channel_id: channelId, profile_id: pid })))
+    setMembers(prev => [...new Set([...prev, ...addedIds])])
+    notifyChannelAdded({
+      recipientIds: addedIds, actorId: me.id, actorName: me.full_name,
+      channelName: channel?.name, isDm: false,
     })
   }
+
   async function confirmRead(messageId) {
-    // optimistic
     const optimistic = { id: 'temp-ack-' + Date.now(), message_id: messageId, profile_id: me.id, confirmed_at: new Date().toISOString() }
     setAcks(prev => [...prev, optimistic])
     const { error } = await supabase.from('message_acknowledgments').insert({ message_id: messageId, profile_id: me.id })
@@ -553,9 +648,14 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       setErr(error.message)
     }
   }
+
   const iConfirmed = (messageId) => acks.some(a => a.message_id === messageId && a.profile_id === me.id)
   const confirmCount = (messageId) => acks.filter(a => a.message_id === messageId).length
+
   if (loading) return <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}><span className="page-sub">Loading messages…</span></div>
+
+  const topLevel = messages.filter(x => !x.parent_id)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, position: 'relative' }}>
       <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', flex: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -568,16 +668,22 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
           {channel?.description && !channel?.is_dm && <div className="page-sub" style={{ fontSize: 12.5 }}>{channel.description}</div>}
           {channel?.is_dm && <div className="page-sub" style={{ fontSize: 12 }}>Direct message</div>}
         </div>
+        <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', flex: 'none' }}
+          onClick={() => setShowPrefs(true)} title="Notification settings">🔔</button>
         {!channel?.is_dm && (
           <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', flex: 'none' }} onClick={() => setShowMembers(true)}>👥 Members</button>
         )}
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', minHeight: 0 }}>
+
+      <div ref={scrollerRef} onScroll={onScroll}
+        style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', minHeight: 0 }}>
         {err && <div style={{ color: 'var(--failed)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
-        {(() => { const top = messages.filter(x => !x.parent_id); return top.length === 0 ? <div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>No messages yet. Say hello 👋</div>
-          : top.map((m, i) => {
+
+        {topLevel.length === 0
+          ? <div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>No messages yet. Say hello 👋</div>
+          : topLevel.map((m, i) => {
             const replyCount = messages.filter(x => x.parent_id === m.id).length
-            const top2 = messages.filter(x => !x.parent_id); const prev = top2[i - 1]
+            const prev = topLevel[i - 1]
             const grouped = prev && prev.sender_id === m.sender_id && !m.requires_ack && !prev.requires_ack && (new Date(m.created_at) - new Date(prev.created_at) < 5 * 60000)
             const name = m.sender_id === me.id ? 'You' : (senders[m.sender_id] || 'Someone')
             return (
@@ -591,12 +697,13 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                     <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{timeLabel(m.created_at)}</span>
                     {m.is_here && <span className="badge" style={{ background: 'var(--accent-bg)', color: 'var(--accent)', fontSize: 10 }}>@here</span>}
                   </div>}
+
                   {m.requires_ack ? (
                     <div style={{ border: '1px solid var(--accent)', borderRadius: 10, padding: '12px 14px', background: 'var(--accent-bg)', marginTop: 2 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                         <span className="badge" style={{ background: 'var(--accent)', color: '#fff', fontSize: 10 }}>UPDATE — please confirm</span>
                       </div>
-                      <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginBottom: 10 }}>{renderBody(m.body)}</div>
+                      <div style={{ marginBottom: 10 }}>{renderBody(m.body)}</div>
                       {iConfirmed(m.id)
                         ? <span style={{ fontSize: 12.5, color: 'var(--passed)', fontWeight: 600 }}>✓ You confirmed</span>
                         : <button className="btn btn-cta" style={{ fontSize: 12.5 }} onClick={() => confirmRead(m.id)}>Confirm you've read this</button>}
@@ -606,9 +713,13 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                       </div>
                     </div>
                   ) : (
-                    <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{renderBody(m.body)}</div>
+                    renderBody(m.body)
                   )}
-                  {attachments.filter(a => a.message_id === m.id).map(a => <AttachmentView key={a.id} att={a} />)}
+
+                  {attachments.filter(a => a.message_id === m.id).map(a => (
+                    <AttachmentView key={a.id} att={a} onMediaLoad={onMediaLoad} />
+                  ))}
+
                   <ReactionBar messageId={m.id} reactions={reactions} meId={me.id}
                     onToggle={toggleReaction}
                     pickerOpen={reactFor === m.id}
@@ -618,10 +729,12 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                 </div>
               </div>
             )
-          }) })()}
+          })}
         <div ref={bottomRef} />
       </div>
+
       <TypingLine names={typerNames} />
+
       <div style={{ borderTop: '1px solid var(--line)', padding: '10px 16px', flex: 'none', background: 'var(--surface)' }}>
         {isAdmin && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, fontSize: 12.5, color: requireAck ? 'var(--accent)' : 'var(--ink-soft)', cursor: 'pointer', fontWeight: requireAck ? 600 : 400 }}>
@@ -629,6 +742,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             Post as <b>@update</b> — require everyone to confirm they've read it
           </label>
         )}
+
         {pending.length > 0 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
             {pending.map((p, i) => (
@@ -640,35 +754,49 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             ))}
           </div>
         )}
+
         {uploading && <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 6 }}>Uploading…</div>}
+
         <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
           {showPicker && (
-            <div style={{ position: 'absolute', bottom: 52, left: 0, zIndex: 50 }}>
+            // onMouseDown/preventDefault everywhere: clicking the picker must NOT
+            // blur the composer, or we lose the caret and the emoji goes nowhere.
+            <div onMouseDown={e => e.preventDefault()}
+              style={{ position: 'absolute', bottom: 52, left: 0, zIndex: 50 }}>
               <EmojiPicker onEmojiClick={(e) => { composerRef.current?.insertText(e.emoji); setShowPicker(false) }}
                 width={320} height={380} previewConfig={{ showPreview: false }} />
             </div>
           )}
+
           <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }}
             onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
+
           <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach file"
             style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, padding: '0 10px', flex: 'none' }}>📎</button>
-          <button type="button" onClick={() => setShowPicker(p => !p)} title="Emoji"
+
+          <button type="button" onMouseDown={e => { e.preventDefault(); setShowPicker(p => !p) }} title="Emoji"
             style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '0 10px', flex: 'none' }}>😀</button>
+
           <div style={{ flex: 1 }}>
             <RichComposer valueRef={composerRef}
               profiles={profiles}
               onInput={(html) => { htmlRef.current = html; notifyTyping() }}
               onEnter={send}
               onPasteFiles={(files) => addFiles(files)}
-              placeholder={requireAck ? 'Write your update… (@name to mention)' : `Message #${channel?.name || ''}  (@name, @here, or paste/attach a file)`}
+              placeholder={requireAck ? 'Write your update… (@name to mention)' : `Message ${channel?.is_dm ? (dmName || '') : '#' + (channel?.name || '')}  (@name, @here, or paste/attach a file)`}
               accent={requireAck ? 'var(--accent)' : 'var(--line)'}
               minHeight={76} maxHeight={200} />
           </div>
+
           <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={uploading}>{requireAck ? 'Post update' : 'Send'}</button>
         </div>
       </div>
+
       {trackFor && <TrackPanel messageId={trackFor} me={me} members={members} profiles={profiles} acks={acks} onClose={() => setTrackFor(null)} />}
       {threadFor && <ThreadPanel parentId={threadFor} channelId={channelId} me={me} senders={senders} profiles={profiles} channel={channel} members={members} onClose={() => setThreadFor(null)} />}
+      {showPrefs && <NotificationPrefsPanel channelId={channelId} channelName={channel?.name}
+        isDm={channel?.is_dm} dmName={dmName} meId={me.id} profiles={profiles}
+        onClose={() => setShowPrefs(false)} />}
       {showMembers && <ChannelMembersPanel channelId={channelId} channelName={channel?.name} profiles={profiles} meId={me.id} isOwner={isOwner} onClose={() => setShowMembers(false)} onChanged={async () => {
         const { data } = await supabase.from('channel_members').select('profile_id').eq('channel_id', channelId)
         setMembers((data || []).map(m => m.profile_id))
@@ -676,11 +804,209 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     </div>
   )
 }
-// Rich text composer: contentEditable + Slack-style toolbar (bold, italic,
-// strikethrough, bullet + numbered lists). Enter sends; Shift+Enter = newline.
-// Exposes formatted HTML via onChange. Supports paste (files bubble up via onPaste).
+
+// ============================================================
+// NOTIFICATION PREFERENCES — per channel, per DM
+// notify_all | notify_mentions | notify_from[] | notify_keywords[]
+// "None" = all four off/empty.
+// ============================================================
+function NotificationPrefsPanel({ channelId, channelName, isDm, dmName, meId, profiles, onClose }) {
+  const [prefs, setPrefs] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [kw, setKw] = useState('')
+  const [personSearch, setPersonSearch] = useState('')
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      const { data } = await supabase.from('channel_notification_prefs')
+        .select('*').eq('channel_id', channelId).eq('profile_id', meId).maybeSingle()
+      if (!active) return
+      setPrefs(data
+        ? {
+            notify_all: !!data.notify_all,
+            notify_mentions: !!data.notify_mentions,
+            notify_from: data.notify_from || [],
+            notify_keywords: data.notify_keywords || [],
+          }
+        : { notify_all: false, notify_mentions: true, notify_from: [], notify_keywords: [] })
+    })()
+    return () => { active = false }
+  }, [channelId, meId])
+
+  const set = (patch) => setPrefs(p => ({ ...p, ...patch }))
+
+  async function save() {
+    setSaving(true)
+    const { error } = await supabase.from('channel_notification_prefs').upsert({
+      profile_id: meId,
+      channel_id: channelId,
+      notify_all: prefs.notify_all,
+      notify_mentions: prefs.notify_mentions,
+      notify_from: prefs.notify_from,
+      notify_keywords: prefs.notify_keywords,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'profile_id,channel_id' })
+    setSaving(false)
+    if (error) window.alert('Could not save: ' + error.message)
+    else onClose()
+  }
+
+  function addKeyword() {
+    const k = kw.trim()
+    if (!k) { setKw(''); return }
+    if (prefs.notify_keywords.some(x => x.toLowerCase() === k.toLowerCase())) { setKw(''); return }
+    set({ notify_keywords: [...prefs.notify_keywords, k] })
+    setKw('')
+  }
+
+  function togglePerson(pid) {
+    set({
+      notify_from: prefs.notify_from.includes(pid)
+        ? prefs.notify_from.filter(x => x !== pid)
+        : [...prefs.notify_from, pid],
+    })
+  }
+
+  if (!prefs) return null
+
+  const isNone = !prefs.notify_all && !prefs.notify_mentions
+    && !prefs.notify_from.length && !prefs.notify_keywords.length
+
+  const others = profiles.filter(p =>
+    p.id !== meId && p.full_name?.toLowerCase().includes(personSearch.toLowerCase()))
+
+  const label = isDm ? (dmName || 'this conversation') : `#${channelName}`
+  const dim = prefs.notify_all ? 0.45 : 1   // notify_all supersedes the rest
+
+  return (
+    <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
+      <div className="modal" style={{ width: 440, maxWidth: '94vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Notifications</h3>
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 9px' }} onClick={onClose}>Close</button>
+        </div>
+        <p className="page-sub" style={{ marginBottom: 10 }}>
+          For {label}.{' '}
+          {isNone && <b style={{ color: 'var(--ink-soft)' }}>Currently muted — you'll get nothing here.</b>}
+        </p>
+
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          <label style={NP.row}>
+            <input type="checkbox" checked={prefs.notify_all}
+              onChange={e => set({ notify_all: e.target.checked })} />
+            <span>
+              <b style={{ fontSize: 13.5 }}>Every message</b>
+              <div style={NP.sub}>Notify me for all activity in {label}.</div>
+            </span>
+          </label>
+
+          <label style={{ ...NP.row, ...NP.block, opacity: dim }}>
+            <input type="checkbox" checked={prefs.notify_mentions} disabled={prefs.notify_all}
+              onChange={e => set({ notify_mentions: e.target.checked })} />
+            <span>
+              <b style={{ fontSize: 13.5 }}>Mentions</b>
+              <div style={NP.sub}>@me, @here, and @update.{isDm ? ' Also every DM.' : ''}</div>
+            </span>
+          </label>
+
+          <div style={{ ...NP.block, opacity: dim }}>
+            <b style={{ fontSize: 13.5 }}>Messages from specific people</b>
+            <div style={NP.sub}>
+              {prefs.notify_from.length
+                ? `${prefs.notify_from.length} selected`
+                : 'Nobody selected.'}
+            </div>
+            {prefs.notify_from.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '8px 0' }}>
+                {prefs.notify_from.map(pid => {
+                  const p = profiles.find(x => x.id === pid)
+                  return (
+                    <span key={pid} style={NP.chip}>
+                      {p?.full_name || 'Unknown'}
+                      <button onClick={() => togglePerson(pid)} disabled={prefs.notify_all} style={NP.chipX} title="Remove">✕</button>
+                    </span>
+                  )
+                })}
+              </div>
+            )}
+            <input value={personSearch} onChange={e => setPersonSearch(e.target.value)}
+              placeholder="Search people to add…" disabled={prefs.notify_all}
+              style={{ ...NP.input, marginTop: 8 }} />
+            {personSearch && (
+              <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8, marginTop: 6 }}>
+                {others.length === 0 && <div className="page-sub" style={{ fontSize: 12, padding: 10 }}>No match.</div>}
+                {others.map(p => (
+                  <button key={p.id} type="button" onClick={() => { togglePerson(p.id); setPersonSearch('') }}
+                    style={NP.listBtn}>
+                    <span style={{ width: 24, height: 24, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 700, flex: 'none' }}>{initials(p.full_name)}</span>
+                    <span style={{ flex: 1, fontSize: 13.5 }}>{p.full_name}</span>
+                    {prefs.notify_from.includes(p.id) && <span style={{ color: 'var(--accent)', fontWeight: 700 }}>✓</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ ...NP.block, opacity: dim }}>
+            <b style={{ fontSize: 13.5 }}>Messages containing keywords</b>
+            <div style={NP.sub}>Case-insensitive, whole words only — "cat" won't match "concatenate".</div>
+            {prefs.notify_keywords.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '8px 0' }}>
+                {prefs.notify_keywords.map(k => (
+                  <span key={k} style={NP.chip}>
+                    {k}
+                    <button onClick={() => set({ notify_keywords: prefs.notify_keywords.filter(x => x !== k) })}
+                      disabled={prefs.notify_all} style={NP.chipX} title="Remove">✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              <input value={kw} onChange={e => setKw(e.target.value)} disabled={prefs.notify_all}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addKeyword() } }}
+                placeholder="Add a keyword, press Enter" style={{ ...NP.input, flex: 1 }} />
+              <button className="btn btn-ghost" onClick={addKeyword} disabled={prefs.notify_all || !kw.trim()}>Add</button>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--line-soft)' }}>
+          <button className="btn btn-ghost" style={{ flex: 1 }}
+            onClick={() => set({ notify_all: false, notify_mentions: false, notify_from: [], notify_keywords: [] })}>
+            Mute (None)
+          </button>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const NP = {
+  row: { display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0', cursor: 'pointer' },
+  sub: { fontSize: 12, color: 'var(--ink-soft)', marginTop: 2, fontWeight: 400 },
+  block: { paddingTop: 12, marginTop: 4, borderTop: '1px solid var(--line-soft)' },
+  chip: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', background: 'var(--accent-bg)', color: 'var(--accent)', borderRadius: 12, fontSize: 12, fontWeight: 600 },
+  chipX: { border: 0, background: 'transparent', cursor: 'pointer', color: 'inherit', fontSize: 12, padding: 0, lineHeight: 1 },
+  input: { width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' },
+  listBtn: { display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', border: 0, background: 'transparent', cursor: 'pointer', padding: '7px 8px', fontFamily: 'inherit' },
+}
+
+// ============================================================
+// Rich text composer: contentEditable + Slack-style toolbar.
+// Enter sends; Shift+Enter = newline.
+//
+// EMOJI FIX: we save the caret range on every interaction and restore it
+// before inserting. document.execCommand('insertText') is gone — it drops
+// or misplaces astral-plane characters (most emoji) in several browsers.
+// We insert a real text node at the saved range instead.
+// ============================================================
 function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, minHeight = 76, maxHeight = 200, accent, profiles = [] }) {
   const ref = useRef(null)
+  const savedRange = useRef(null)
   const [empty, setEmpty] = useState(true)
   const [mentionOpen, setMentionOpen] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
@@ -690,12 +1016,57 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
     ? profiles.filter(p => p.full_name?.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 6)
     : []
 
+  // Remember where the caret is, so a picker click can't lose it.
+  function saveRange() {
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount && ref.current?.contains(sel.anchorNode)) {
+      savedRange.current = sel.getRangeAt(0).cloneRange()
+    }
+  }
+
+  function restoreRange() {
+    const el = ref.current
+    if (!el) return
+    el.focus()
+    const sel = window.getSelection()
+    sel.removeAllRanges()
+    if (savedRange.current && el.contains(savedRange.current.startContainer)) {
+      sel.addRange(savedRange.current)
+    } else {
+      const r = document.createRange()
+      r.selectNodeContents(el)
+      r.collapse(false)   // caret to end
+      sel.addRange(r)
+    }
+  }
+
+  // Insert plain text at the caret without execCommand.
+  function insertAtCaret(txt) {
+    if (!txt) return
+    restoreRange()
+    const sel = window.getSelection()
+    if (!sel.rangeCount) return
+    const range = sel.getRangeAt(0)
+    range.deleteContents()
+    const node = document.createTextNode(txt)
+    range.insertNode(node)
+    range.setStartAfter(node)
+    range.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(range)
+    savedRange.current = range.cloneRange()
+    handleInput()
+  }
+
   function exec(cmd) { document.execCommand(cmd, false, null); ref.current?.focus(); handleInput() }
+
   function handleInput() {
     const html = ref.current?.innerHTML || ''
     const text = ref.current?.innerText || ''
     setEmpty(text.trim().length === 0)
     onInput?.(html, text)
+    saveRange()
+
     // detect @token immediately left of caret
     const sel = window.getSelection()
     if (sel && sel.rangeCount) {
@@ -709,8 +1080,8 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
     }
     setMentionOpen(false); setMentionQuery('')
   }
+
   function insertMention(p) {
-    // replace the trailing "@query" with "@Full Name "
     const sel = window.getSelection()
     if (sel && sel.rangeCount) {
       const node = sel.anchorNode
@@ -725,7 +1096,6 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
           range.deleteContents()
           const textNode = document.createTextNode('@' + p.full_name + ' ')
           range.insertNode(textNode)
-          // move caret after inserted text
           range.setStartAfter(textNode); range.collapse(true)
           sel.removeAllRanges(); sel.addRange(range)
         }
@@ -734,6 +1104,7 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
     setMentionOpen(false); setMentionQuery('')
     handleInput()
   }
+
   function handleKey(e) {
     if (mentionOpen && matches.length) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => (h + 1) % matches.length); return }
@@ -743,19 +1114,20 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
     }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEnter?.() }
   }
+
   function handlePaste(e) {
     const files = Array.from(e.clipboardData?.files || [])
     if (files.length) { e.preventDefault(); onPasteFiles?.(files); return }
     e.preventDefault()
     const text = e.clipboardData.getData('text/plain')
-    document.execCommand('insertText', false, text)
-    handleInput()
+    insertAtCaret(text)   // was execCommand — same emoji bug on paste
   }
+
   useEffect(() => {
     if (valueRef) valueRef.current = {
-      clear: () => { if (ref.current) { ref.current.innerHTML = ''; setEmpty(true) } },
+      clear: () => { if (ref.current) { ref.current.innerHTML = ''; savedRange.current = null; setEmpty(true) } },
       focus: () => ref.current?.focus(),
-      insertText: (t) => { ref.current?.focus(); document.execCommand('insertText', false, t); handleInput() },
+      insertText: insertAtCaret,
     }
   }, [valueRef])
 
@@ -777,6 +1149,7 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
           ))}
         </div>
       )}
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 1, padding: '3px 6px', borderBottom: '1px solid var(--line-soft)', background: '#fbfcfd' }}>
         <TBtn cmd="bold" label={<b>B</b>} title="Bold" />
         <TBtn cmd="italic" label={<i>I</i>} title="Italic" />
@@ -785,10 +1158,17 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
         <TBtn cmd="insertUnorderedList" label="•" title="Bulleted list" />
         <TBtn cmd="insertOrderedList" label="1." title="Numbered list" />
       </div>
+
       <div style={{ position: 'relative' }}>
         {empty && <div style={{ position: 'absolute', top: 10, left: 12, color: 'var(--ink-soft)', fontSize: 14, pointerEvents: 'none' }}>{placeholder}</div>}
         <div ref={ref} contentEditable suppressContentEditableWarning
-          onInput={handleInput} onKeyDown={handleKey} onPaste={handlePaste}
+          className="chat-composer"
+          onInput={handleInput}
+          onKeyDown={handleKey}
+          onKeyUp={saveRange}
+          onMouseUp={saveRange}
+          onBlur={saveRange}
+          onPaste={handlePaste}
           style={{ outline: 'none', fontSize: 14, lineHeight: 1.5, padding: '10px 12px', minHeight, maxHeight, overflowY: 'auto' }} />
       </div>
     </div>
@@ -808,6 +1188,7 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
     setMemberIds((data || []).map(m => m.profile_id))
     setLoading(false)
   }, [channelId])
+
   useEffect(() => { loadMembers() }, [loadMembers])
 
   const members = memberIds.map(id => profiles.find(p => p.id === id)).filter(Boolean)
@@ -822,6 +1203,7 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
     setMemberIds(prev => prev.filter(id => id !== pid))
     onChanged && onChanged()
   }
+
   async function addMember(pid) {
     const { error } = await supabase.from('channel_members').insert({ channel_id: channelId, profile_id: pid })
     if (error) { window.alert('Could not add: ' + error.message); return }
@@ -838,7 +1220,6 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
           <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 9px' }} onClick={onClose}>Close</button>
         </div>
         <p className="page-sub" style={{ marginBottom: 14 }}>{members.length} member{members.length !== 1 ? 's' : ''}{isOwner ? ' · you can add or remove people' : ''}</p>
-
         {loading ? <p className="page-sub">Loading…</p> : (
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {members.map(p => (
@@ -851,7 +1232,6 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
                 )}
               </div>
             ))}
-
             {isOwner && (
               <div style={{ marginTop: 14, borderTop: '1px solid var(--line-soft)', paddingTop: 12 }}>
                 {!adding ? (
@@ -881,9 +1261,9 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
     </div>
   )
 }
+
 function ReactionBar({ messageId, reactions, meId, onToggle, pickerOpen, onOpenPicker, onClosePicker }) {
   const mine = reactions.filter(r => r.message_id === messageId)
-  // group by emoji -> count + whether I reacted
   const groups = {}
   mine.forEach(r => {
     if (!groups[r.emoji]) groups[r.emoji] = { count: 0, byMe: false }
@@ -891,6 +1271,7 @@ function ReactionBar({ messageId, reactions, meId, onToggle, pickerOpen, onOpenP
     if (r.profile_id === meId) groups[r.emoji].byMe = true
   })
   const entries = Object.entries(groups)
+
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4, position: 'relative' }}>
       {entries.map(([emoji, g]) => (
@@ -898,7 +1279,7 @@ function ReactionBar({ messageId, reactions, meId, onToggle, pickerOpen, onOpenP
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
             border: '1px solid ' + (g.byMe ? 'var(--accent)' : 'var(--line)'),
             background: g.byMe ? 'var(--accent-bg)' : 'var(--surface)', color: g.byMe ? 'var(--accent)' : 'var(--ink)' }}>
-          <span style={{ fontSize: 14 }}>{emoji}</span> {g.count}
+          <span className="chat-emoji" style={{ fontSize: 14 }}>{emoji}</span> {g.count}
         </button>
       ))}
       <button onClick={onOpenPicker} title="Add reaction"
@@ -917,22 +1298,25 @@ function ReactionBar({ messageId, reactions, meId, onToggle, pickerOpen, onOpenP
     </div>
   )
 }
+
 function ReplyAffordance({ count, onOpen }) {
   return (
     <button onClick={onOpen} style={{ border: 0, background: 'transparent', color: count ? 'var(--accent)' : 'var(--ink-soft)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '3px 0', marginTop: 3, fontFamily: 'inherit' }}>
-      {count ? `\uD83D\uDCAC ${count} repl${count === 1 ? 'y' : 'ies'}` : '\u21B3 Reply'}
+      {count ? `💬 ${count} repl${count === 1 ? 'y' : 'ies'}` : '↳ Reply'}
     </button>
   )
 }
+
 function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel, members = [], onClose }) {
-  const [parent, setParent] = React.useState(null)
-  const [replies, setReplies] = React.useState([])
-  const [names, setNames] = React.useState(senders || {})
-  const [text, setText] = React.useState('')
-  const [loading, setLoading] = React.useState(true)
-  const endRef = React.useRef(null)
+  const [parent, setParent] = useState(null)
+  const [replies, setReplies] = useState([])
+  const [names, setNames] = useState(senders || {})
+  const [text, setText] = useState('')
+  const [loading, setLoading] = useState(true)
+  const endRef = useRef(null)
   const { typerNames, notifyTyping, stopTyping } = useTyping(`typing:thread:${parentId}`, me.id, me.full_name)
-  React.useEffect(() => {
+
+  useEffect(() => {
     let active = true
     ;(async () => {
       setLoading(true)
@@ -945,41 +1329,60 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
       setReplies(rRes.data || [])
       const ids = [...new Set([pRes.data?.sender_id, ...(rRes.data || []).map(r => r.sender_id)].filter(Boolean))]
       const miss = ids.filter(id => !(id in names))
-      if (miss.length) { const { data } = await supabase.from('profiles').select('id, full_name').in('id', miss); if (data) setNames(prev => { const n = { ...prev }; data.forEach(p => n[p.id] = p.full_name); return n }) }
+      if (miss.length) {
+        const { data } = await supabase.from('profiles').select('id, full_name').in('id', miss)
+        if (data) setNames(prev => { const n = { ...prev }; data.forEach(p => n[p.id] = p.full_name); return n })
+      }
       setLoading(false)
     })()
     return () => { active = false }
   }, [parentId])
-  React.useEffect(() => {
+
+  useEffect(() => {
     const ch = supabase.channel(`thread:${parentId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `parent_id=eq.${parentId}` },
         (payload) => setReplies(prev => prev.some(x => x.id === payload.new.id) ? prev : [...prev, payload.new]))
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [parentId])
-  React.useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [replies])
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }) }, [replies.length])
+
   async function sendReply() {
     const body = text.trim(); if (!body) return
     setText(''); stopTyping()
+
+    const mentionedIds = extractMentions(body, profiles).filter(id => id !== me.id)
+
     const temp = { id: 'temp-' + Date.now(), channel_id: channelId, sender_id: me.id, body, parent_id: parentId, created_at: new Date().toISOString(), _optimistic: true }
     setReplies(prev => [...prev, temp])
+
     const { data, error } = await supabase.from('messages').insert({ channel_id: channelId, sender_id: me.id, body, parent_id: parentId }).select().single()
     if (error) { setReplies(prev => prev.filter(m => m.id !== temp.id)); setText(body); return }
     setReplies(prev => prev.filter(m => m.id !== temp.id && m.id !== data.id).concat(data))
-    // mentions in thread replies
-    const mentionedIds = extractMentions(body, profiles).filter(id => id !== me.id)
+
+    // Add mentioned non-members, then route notifications through prefs.
     if (mentionedIds.length) {
       const addedIds = mentionedIds.filter(id => !members.includes(id))
       if (addedIds.length && !channel?.is_dm) {
         await supabase.from('channel_members').insert(addedIds.map(pid => ({ channel_id: channelId, profile_id: pid })))
+        notifyChannelAdded({
+          recipientIds: addedIds, actorId: me.id, actorName: me.full_name,
+          channelName: channel?.name, isDm: false,
+        })
       }
-      notifyChatMention({
-        recipientIds: mentionedIds, actorId: me.id, actorName: me.full_name,
-        channelName: channel?.name, isDm: channel?.is_dm, addedIds,
-      })
     }
+
+    notifyChatMessage({
+      channelId, channelName: channel?.name, isDm: channel?.is_dm,
+      actorId: me.id, actorName: me.full_name,
+      isHere: false, requiresAck: false,
+      body, mentionedIds,
+    })
   }
+
   const nameFor = (id) => id === me.id ? 'You' : (names[id] || 'Someone')
+
   return (
     <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 380, maxWidth: '90%', background: 'var(--surface)', borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 24px rgba(0,0,0,.08)', zIndex: 20 }}>
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 'none' }}>
@@ -994,7 +1397,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
                 <b style={{ fontSize: 13 }}>{nameFor(parent.sender_id)}</b>
                 <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{timeLabel(parent.created_at)}</span>
               </div>
-              <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{renderBody(parent.body)}</div>
+              {renderBody(parent.body)}
             </div>}
             <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginBottom: 8 }}>{replies.length} repl{replies.length === 1 ? 'y' : 'ies'}</div>
             {replies.map(r => (
@@ -1002,7 +1405,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
                 <span style={{ width: 28, height: 28, borderRadius: '50%', background: avatarColor(nameFor(r.sender_id)), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>{initials(nameFor(r.sender_id))}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}><b style={{ fontSize: 12.5 }}>{nameFor(r.sender_id)}</b><span style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>{timeLabel(r.created_at)}</span></div>
-                  <div style={{ fontSize: 13.5, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{renderBody(r.body)}</div>
+                  {renderBody(r.body, 13.5)}
                 </div>
               </div>
             ))}
@@ -1020,32 +1423,61 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
     </div>
   )
 }
-// Render @here / @update mentions with a highlight
+
+// ============================================================
+// Message body: clean on save, sanitize + highlight on render.
+// ============================================================
+
 // Clean up contentEditable HTML before saving: convert &nbsp; to spaces,
-// strip trailing whitespace/breaks, and drop empty trailing tags.
+// strip trailing whitespace/breaks, drop empty trailing tags, and sanitize.
 function cleanChatHtml(html) {
   let h = String(html || '')
-  h = h.replace(/&nbsp;/gi, ' ')            // nbsp -> normal space
-  h = h.replace(/(\s*<br\s*\/?>\s*)+$/gi, '') // trailing <br>
-  h = h.replace(/(<div>\s*<\/div>)+$/gi, '')  // empty trailing divs
-  h = h.replace(/\s+$/g, '')                 // trailing whitespace
-  h = h.replace(/^(\s|<br\s*\/?>)+/gi, '')   // leading breaks/space
-  return h.trim()
+  h = h.replace(/&nbsp;/gi, ' ')               // nbsp -> normal space
+  h = h.replace(/(\s*<br\s*\/?>\s*)+$/gi, '')  // trailing <br>
+  h = h.replace(/(<div>\s*<\/div>)+$/gi, '')   // empty trailing divs
+  h = h.replace(/\s+$/g, '')                   // trailing whitespace
+  h = h.replace(/^(\s|<br\s*\/?>)+/gi, '')     // leading breaks/space
+  h = h.trim()
+  // Sanitize on the way in as well as on the way out. Never trust the DOM.
+  return DOMPurify.sanitize(h, SANITIZE_CONFIG)
 }
-function renderBody(body) {
+
+// Only the tags the composer toolbar can actually produce. No attributes at all,
+// so `<img src=x onerror=...>` and friends are impossible.
+const SANITIZE_CONFIG = {
+  ALLOWED_TAGS: ['b', 'strong', 'i', 'em', 's', 'strike', 'del', 'u', 'br', 'div', 'p', 'ul', 'ol', 'li', 'span'],
+  ALLOWED_ATTR: [],
+  KEEP_CONTENT: true,
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function renderBody(body, fontSize = 14) {
   let html = String(body || '')
-  // Clean up nbsp and trailing breaks (covers older messages already saved)
+
+  // Clean nbsp / trailing breaks (covers older messages already saved).
   html = html.replace(/&nbsp;/gi, ' ').replace(/(\s*<br\s*\/?>\s*)+$/gi, '').replace(/\s+$/g, '')
-  // If it looks like plain text (no tags), escape angle brackets and keep newlines.
+
+  // Plain text (no tags) → escape and keep newlines.
   const looksHtml = /<\/?[a-z][\s\S]*>/i.test(html)
-  if (!looksHtml) {
-    html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
-  }
-  // Highlight @here / @update
+  if (!looksHtml) html = escapeHtml(html).replace(/\n/g, '<br>')
+
+  // Sanitize BEFORE we inject our own markup, so a user can't smuggle tags in.
+  html = DOMPurify.sanitize(html, SANITIZE_CONFIG)
+
+  // Highlight @here / @update. Our span carries no user-controlled content.
   html = html.replace(/(@here|@update)\b/gi,
-    '<span style="color:var(--accent);font-weight:700;background:var(--accent-bg);border-radius:4px;padding:0 3px">$1</span>')
-  return <div className="chat-rich" style={{ fontSize: 14, lineHeight: 1.5, wordBreak: 'break-word' }} dangerouslySetInnerHTML={{ __html: html }} />
+    '<span class="chat-mention">$1</span>')
+
+  return (
+    <div className="chat-rich"
+      style={{ fontSize, lineHeight: 1.5, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}
+      dangerouslySetInnerHTML={{ __html: html }} />
+  )
 }
+
 // Admin tracking panel: who confirmed, who hasn't, nudge
 function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
   const [nudged, setNudged] = useState({})
@@ -1053,13 +1485,16 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
   const memberProfiles = members.map(id => profiles.find(p => p.id === id)).filter(Boolean)
   const confirmed = memberProfiles.filter(p => confirmedIds.has(p.id))
   const pending = memberProfiles.filter(p => !confirmedIds.has(p.id))
+
   async function nudge(profileId) {
     setNudged(prev => ({ ...prev, [profileId]: 'sending' }))
     const { error } = await supabase.from('ack_nudges').insert({ message_id: messageId, profile_id: profileId, nudged_by: me.id })
     if (!error) notifyAckNudge({ recipientId: profileId, actorId: me.id, actorName: me.full_name })
     setNudged(prev => ({ ...prev, [profileId]: error ? 'error' : 'sent' }))
   }
+
   async function nudgeAll() { for (const p of pending) await nudge(p.id) }
+
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal" style={{ width: 440 }}>
@@ -1104,12 +1539,13 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
     </div>
   )
 }
+
 function CreateDMModal({ me, profiles, onClose, onCreated }) {
   // Start a DM with ONE other person — you're always the other side.
   // Reuses an existing DM with that person if one already exists.
-  const [search, setSearch] = React.useState('')
-  const [saving, setSaving] = React.useState(false)
-  const [err, setErr] = React.useState('')
+  const [search, setSearch] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
 
   const others = profiles.filter(p => p.id !== me.id)
   const matches = search.trim()
@@ -1130,8 +1566,7 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
           .eq('profile_id', personId)
           .in('channel_id', myDmIds)
         if (theirs && theirs.length) {
-          // existing DM found — just open it
-          onCreated(theirs[0].channel_id)
+          onCreated(theirs[0].channel_id)   // existing DM found — just open it
           return
         }
       }
@@ -1174,13 +1609,16 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
     </div>
   )
 }
+
 function CreateChannelModal({ me, profiles, onClose, onCreated }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [picked, setPicked] = useState(() => new Set([me.id]))
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+
   function toggle(id) { setPicked(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n }) }
+
   async function create() {
     const nm = name.trim()
     if (!nm) { setErr('Name the channel.'); return }
@@ -1197,6 +1635,7 @@ function CreateChannelModal({ me, profiles, onClose, onCreated }) {
       onCreated(ch.id)
     } catch (e) { setErr(e.message); setSaving(false) }
   }
+
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal">
