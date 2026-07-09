@@ -172,7 +172,9 @@ export default function Schedule() {
     })
   }
 
-  async function claimBlock(block) {
+async function claimBlock(block) {
+    // These client-side checks give instant feedback, but the DATABASE is the
+    // real authority — the trigger enforces the same rules and can't be raced.
     const existing = claims.filter(c => c.shift_block_id === block.id)
     if (existing.length >= block.total_spots) { flash('That interval just filled up'); load(); return }
     if (hasIntervalStarted(block)) { flash('That interval already started'); load(); return }
@@ -181,8 +183,19 @@ export default function Schedule() {
     if (claimedHoursInWeek(me.id, weekMonday) + blockHours(block) > WEEKLY_HOUR_CAP) {
       flash(`No more than ${WEEKLY_HOUR_CAP} hours per week`); return
     }
+
     const { error } = await supabase.from('shift_claims').insert({ shift_block_id: block.id, profile_id: me.id, status: 'claimed' })
-    if (error) { flash(error.code === '23505' ? 'You already claimed this' : 'That interval is full'); load(); return }
+    if (error) {
+      // Surface the database's own reason — it knows the truth even when this
+      // page's data is stale (e.g. someone else just took the last spot).
+      if (error.code === '23505') flash('You already claimed this')
+      else if (error.message?.includes('already full')) flash('That interval just filled up')
+      else if (error.message?.includes('overlaps')) flash('That overlaps an interval you already claimed')
+      else if (error.message?.includes('40 hours')) flash('That would put you over 40 hours this week')
+      else flash(error.message || 'Could not claim that interval')
+      load()
+      return
+    }
     logActivity('claimed', block)
     flash('Interval claimed'); load()
   }
