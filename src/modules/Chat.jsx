@@ -954,41 +954,62 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 
         {uploading && <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 6 }}>Uploading…</div>}
 
-        <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
-          {showPicker && (
-            // onMouseDown/preventDefault everywhere: clicking the picker must NOT
-            // blur the composer, or we lose the caret and the emoji goes nowhere.
-            <div onMouseDown={e => e.preventDefault()}
-              style={{ position: 'absolute', bottom: 52, left: 0, zIndex: 50 }}>
-              <EmojiPicker onEmojiClick={(e) => { composerRef.current?.insertText(e.emoji); setShowPicker(false) }}
-                width={320} height={380} previewConfig={{ showPreview: false }} />
-            </div>
-          )}
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 8, position: 'relative' }}>
+  {showPicker && (
+    <div onMouseDown={e => e.preventDefault()}
+      style={{ position: 'absolute', bottom: 52, left: 0, zIndex: 50 }}>
+      <EmojiPicker onEmojiClick={(e) => { composerRef.current?.insertText(e.emoji); setShowPicker(false) }}
+        width={isMobile ? 280 : 320} height={isMobile ? 320 : 380} previewConfig={{ showPreview: false }} />
+    </div>
+  )}
 
-          <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }}
-            onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
+  <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }}
+    onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
 
-          <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach file"
-            style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, padding: '0 10px', flex: 'none' }}>📎</button>
+  {/* Desktop: icons sit left of the editor. Mobile: they move below it. */}
+  {!isMobile && (
+    <>
+      <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach file"
+        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, padding: '0 10px', flex: 'none' }}>📎</button>
+      <button type="button" onMouseDown={e => { e.preventDefault(); setShowPicker(p => !p) }} title="Emoji"
+        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '0 10px', flex: 'none' }}>😀</button>
+    </>
+  )}
 
-          <button type="button" onMouseDown={e => { e.preventDefault(); setShowPicker(p => !p) }} title="Emoji"
-            style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '0 10px', flex: 'none' }}>😀</button>
+  <div style={{ flex: 1, minWidth: 0 }}>
+    <RichEditor
+      variant="chat"
+      editorRef={composerRef}
+      profiles={profiles}
+      submitOnEnter
+      onChange={(html) => { htmlRef.current = html; notifyTyping() }}
+      onSubmit={send}
+      onPasteFiles={(files) => addFiles(files)}
+      placeholder={requireAck
+        ? 'Write your update…'
+        : isMobile
+          ? `Message ${channel?.is_dm ? (dmName || '') : '#' + (channel?.name || '')}`
+          : `Message ${channel?.is_dm ? (dmName || '') : '#' + (channel?.name || '')}  (@name, @here, or paste/attach a file)`}
+      minHeight={isMobile ? 44 : 76} maxHeight={isMobile ? 140 : 200} />
+  </div>
 
-          <div style={{ flex: 1 }}>
-            <RichEditor
-              variant="chat"
-              editorRef={composerRef}
-              profiles={profiles}
-              submitOnEnter
-              onChange={(html) => { htmlRef.current = html; notifyTyping() }}
-              onSubmit={send}
-              onPasteFiles={(files) => addFiles(files)}
-              placeholder={requireAck ? 'Write your update… (@name to mention)' : `Message ${channel?.is_dm ? (dmName || '') : '#' + (channel?.name || '')}  (@name, @here, or paste/attach a file)`}
-              minHeight={76} maxHeight={200} />
-          </div>
-
-          <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={uploading}>{requireAck ? 'Post update' : 'Send'}</button>
-        </div>
+  {isMobile ? (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach file"
+        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, padding: '8px 12px', flex: 'none' }}>📎</button>
+      <button type="button" onMouseDown={e => { e.preventDefault(); setShowPicker(p => !p) }} title="Emoji"
+        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '8px 12px', flex: 'none' }}>😀</button>
+      <div style={{ flex: 1 }} />
+      <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={uploading}>
+        {requireAck ? 'Post update' : 'Send'}
+      </button>
+    </div>
+  ) : (
+    <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={uploading}>
+      {requireAck ? 'Post update' : 'Send'}
+    </button>
+  )}
+</div>
       </div>
 
       {trackFor && <TrackPanel messageId={trackFor} me={me} members={members} profiles={profiles} acks={acks} onClose={() => setTrackFor(null)} />}
