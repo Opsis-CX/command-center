@@ -77,6 +77,10 @@ export default function Schedule() {
   const [err, setErr] = useState('')
   const [tab, setTab] = useState('claim') // claim | myshifts
   const [weekStart, setWeekStart] = useState(mondayOf(etNow()))
+  // Once the data loads, jump to the first week that actually has intervals the
+  // person can claim, so nobody opens to an empty grid. Only fires once — after
+  // that the agent's own ‹ › navigation is left alone.
+  const didAutoJump = React.useRef(false)
   const [toast, setToast] = useState('')
   const [adminView, setAdminView] = useState('team') // team | mine (admins only)
   // `silent` skips the loading spinner, so background polling doesn't flicker
@@ -140,6 +144,25 @@ export default function Schedule() {
     // applies to non-admins; admins in my-view can claim any they're certified for.
     return published.filter(s => hasPassedCertForCallType(s.call_type_id) && (isAdmin || inAudience(s.id)))
   }
+  // ---------- open on the first week that has intervals ----------
+  // Agents shouldn't land on an empty grid just because this week's shifts are
+  // over and next week's haven't been reached yet. Find the soonest interval
+  // (today or later) in a schedule they can see, and open that week instead.
+  // Runs once, after the first load — manual ‹ › navigation is never overridden.
+  useEffect(() => {
+    if (didAutoJump.current) return
+    if (loading || !me || !schedules.length || !blocks.length) return
+    didAutoJump.current = true
+    const visibleIds = new Set(myVisibleSchedules(isAdmin && adminView === 'mine').map(s => s.id))
+    if (!visibleIds.size) return
+    const todayStr = isoDate(etNow())
+    const upcoming = blocks
+      .filter(b => visibleIds.has(b.schedule_id) && b.block_date >= todayStr)
+      .sort((a, b) => (a.block_date + a.start_time).localeCompare(b.block_date + b.start_time))
+    if (!upcoming.length) return   // nothing ahead; stay on the current week
+    const firstWeek = mondayOf(new Date(upcoming[0].block_date + 'T00:00:00'))
+    if (isoDate(firstWeek) !== isoDate(weekStart)) setWeekStart(firstWeek)
+  }, [loading, me, schedules, blocks, audience, certRecords, certifications, isAdmin, adminView]) // eslint-disable-line
   // ---------- release status ----------
   function getMyReleaseStatus() {
     const tier = tiers.find(t => t.id === me?.tier_id)
