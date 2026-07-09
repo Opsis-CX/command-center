@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useUnread } from '../lib/unread'
+import { supabase } from '../lib/supabase'
 import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
 // Sidebar navigation.
 // - `type: 'link'`  → a single top-level link.
@@ -48,8 +49,19 @@ export default function Sidebar({ open, onNavigate }) {
   const location = useLocation()
   const isOwner = level >= 100 || (roles || []).includes('owner')
   const viewRole = isAdmin ? 'admin' : 'agent'
-  const name = user?.email?.split('@')[0] ?? 'User'
-  const initial = (name[0] || 'U').toUpperCase()
+  // Show the person's real name. useAuth only gives us the auth user (email),
+  // so pull full_name from their profile. Fall back to the email prefix only
+  // if the profile has no name yet.
+  const [fullName, setFullName] = useState(null)
+  useEffect(() => {
+    if (!user?.id) return
+    let active = true
+    supabase.from('profiles').select('full_name').eq('id', user.id).single()
+      .then(({ data }) => { if (active && data?.full_name) setFullName(data.full_name) })
+    return () => { active = false }
+  }, [user?.id])
+  const name = fullName || user?.email?.split('@')[0] || 'User'
+  const initial = (name.trim()[0] || 'U').toUpperCase()
   // Theme toggle (System → Light → Dark)
   const [theme, setThemeState] = useState(getTheme())
   const cycleTheme = () => { const t = nextTheme(theme); setTheme(t); setThemeState(t) }
