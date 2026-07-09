@@ -21,6 +21,30 @@ function useIsMobile(breakpoint = 700) {
   return mobile
 }
 
+// Tracks whether a scrollable element has been scrolled to (near) its bottom.
+// Re-arms whenever `resetKey` changes. If the content doesn't overflow, it
+// counts as read immediately. A ResizeObserver re-checks after images and
+// video iframes settle, since those change height well after mount.
+export function useScrolledToBottom(ref, resetKey, slack = 24) {
+  const [atBottom, setAtBottom] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    setAtBottom(false)
+    const check = () => {
+      const { scrollTop, scrollHeight, clientHeight } = el
+      if (scrollHeight - clientHeight <= slack) { setAtBottom(true); return }
+      if (scrollTop + clientHeight >= scrollHeight - slack) setAtBottom(true)
+    }
+    const t = setTimeout(check, 50)
+    el.addEventListener('scroll', check, { passive: true })
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => { clearTimeout(t); el.removeEventListener('scroll', check); ro.disconnect() }
+  }, [ref, resetKey, slack])
+  return atBottom
+}
+
 // ============ COURSE BUILDER ============
 export default function CourseBuilder() {
   const [courses, setCourses] = useState([])
@@ -213,6 +237,7 @@ function LessonEditor({ courseId, onBack }) {
   function flash(m) { setSaveMsg(m); setTimeout(() => setSaveMsg(''), 2000) }
 
   if (loading) return <p className="page-sub">Loading course…</p>
+
   const lesson = lessons.find(l => l.id === activeLesson)
 
   return (
@@ -230,6 +255,7 @@ function LessonEditor({ courseId, onBack }) {
       </div>
 
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
+
       {previewing && <CoursePreview course={course} lessons={lessons} onClose={() => setPreviewing(false)} />}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -362,9 +388,11 @@ function ImageBlock({ block, onChange }) {
   const w = block.width || 'full'
   const align = block.align || 'left'
   const justify = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start'
+
   const Btn = ({ label, active, onClick }) => (
     <button onClick={onClick} style={{ border: '1px solid var(--line)', background: active ? 'var(--accent)' : 'var(--surface)', color: active ? '#fff' : 'var(--ink-soft)', fontSize: 11.5, fontWeight: 600, padding: '4px 9px', borderRadius: 6, cursor: 'pointer' }}>{label}</button>
   )
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: justify }}>
@@ -420,9 +448,14 @@ function CoursePreview({ course, lessons, onClose }) {
   const [idx, setIdx] = React.useState(0)
   const scrollRef = React.useRef(null)
   React.useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0 }, [idx])
+
+  // Gate: Next stays disabled until the lesson has been scrolled to the bottom.
+  const readToEnd = useScrolledToBottom(scrollRef, idx)
+
   const total = lessons.length
   const lesson = lessons[idx]
   const pct = total ? Math.round(((idx + 1) / total) * 100) : 0
+
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal" style={{ width: 720, maxWidth: '100%', padding: 0, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
@@ -433,9 +466,11 @@ function CoursePreview({ course, lessons, onClose }) {
           </div>
           <button className="btn btn-ghost" onClick={onClose}>Close preview</button>
         </div>
+
         <div style={{ height: 5, background: 'var(--line-soft)' }}>
           <div style={{ height: '100%', width: pct + '%', background: 'var(--cta)', transition: 'width .2s' }} />
         </div>
+
         <div ref={scrollRef} style={{ padding: '22px 26px', overflow: 'auto', flex: 1 }}>
           {total === 0 ? <p className="page-sub">No lessons yet.</p> : (
             <>
@@ -445,11 +480,17 @@ function CoursePreview({ course, lessons, onClose }) {
             </>
           )}
         </div>
+
         {total > 0 && (
-          <div style={{ padding: '14px 22px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ padding: '14px 22px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
             <button className="btn btn-ghost" disabled={idx === 0} onClick={() => setIdx(i => Math.max(0, i - 1))}>← Back</button>
+            {!readToEnd && idx < total - 1 && (
+              <span className="page-sub" style={{ fontSize: 12.5 }}>Scroll to the bottom to continue</span>
+            )}
             {idx < total - 1
-              ? <button className="btn btn-primary" onClick={() => setIdx(i => Math.min(total - 1, i + 1))}>Next →</button>
+              ? <button className="btn btn-primary" disabled={!readToEnd}
+                  style={!readToEnd ? { opacity: .45, cursor: 'not-allowed' } : undefined}
+                  onClick={() => setIdx(i => Math.min(total - 1, i + 1))}>Next →</button>
               : <span className="page-sub" style={{ alignSelf: 'center' }}>End of lessons — quiz comes next for agents</span>}
           </div>
         )}
