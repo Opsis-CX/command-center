@@ -934,12 +934,15 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 
       <div style={{ borderTop: '1px solid var(--line)', padding: '10px 16px', flex: 'none', background: 'var(--surface)' }}>
         {isAdmin && (
+       {isAdmin && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, fontSize: 12.5, color: requireAck ? 'var(--accent)' : 'var(--ink-soft)', cursor: 'pointer', fontWeight: requireAck ? 600 : 400 }}>
-            <input type="checkbox" checked={requireAck} onChange={e => setRequireAck(e.target.checked)} />
-            Post as <b>@update</b> — require everyone to confirm they've read it
+            <input type="checkbox" checked={requireAck} onChange={e => setRequireAck(e.target.checked)} style={{ flex: 'none' }} />
+            <span>
+              Post as <b>@update</b>
+              {!isMobile && ' — require everyone to confirm they\'ve read it'}
+            </span>
           </label>
         )}
-
         {pending.length > 0 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
             {pending.map((p, i) => (
