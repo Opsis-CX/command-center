@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { notifyIntervalReleased, notifyNoShow } from '../lib/notify'
+
 // ============================================================
 // SCHEDULE
 // Agent claim grid + My Schedule + release locking + 40h cap
@@ -13,48 +14,75 @@ import { notifyIntervalReleased, notifyNoShow } from '../lib/notify'
 // the 40-hour cap inside Postgres, so a stale page can't sneak a
 // bad claim through. claimBlock() surfaces those errors clearly.
 // ============================================================
+
 const WEEKLY_HOUR_CAP = 40
+
 // While realtime postgres_changes delivery is unreliable, poll so the
 // grid doesn't go stale and agents rarely collide. Remove once realtime works.
 const POLL_MS = 20000
+
 // ---------- date helpers (Eastern Time) ----------
 function etNow() { return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })) }
+
 function mondayOf(d) {
   const x = new Date(d); const day = x.getDay(); const diff = (day === 0 ? -6 : 1 - day)
   x.setDate(x.getDate() + diff); x.setHours(0, 0, 0, 0); return x
 }
+
 function isoDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+
 function weekDates(monday) {
   return Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d })
 }
+
 function formatTime(t) {
   if (!t) return ''
   const [h, m] = t.split(':').map(Number)
   const period = h >= 12 ? 'PM' : 'AM'; const h12 = h % 12 === 0 ? 12 : h % 12
   return `${h12}:${String(m).padStart(2, '0')} ${period}`
 }
+
 function formatReleaseTime(date) {
   if (!date) return ''
   const isToday = date.toDateString() === etNow().toDateString()
   const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })
   return isToday ? `today at ${timeStr} ET` : `${date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })} at ${timeStr} ET`
 }
+
 function initials(name) {
   const p = (name || '?').trim().split(/\s+/); return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase() || '?'
 }
+
 function avatarColor(name) {
   const colors = ['#0077B6', '#16A34A', '#D97706', '#7C3AED', '#DC2626', '#0891B2', '#DB2777', '#65A30D']
   let h = 0; for (const c of (name || '?')) h = (h * 31 + c.charCodeAt(0)) >>> 0
   return colors[h % colors.length]
 }
+
 function blockHours(b) {
   const [sh, sm] = b.start_time.split(':').map(Number)
   const [eh, em] = b.end_time.split(':').map(Number)
   return Math.max(0, ((eh * 60 + em) - (sh * 60 + sm)) / 60)
 }
+
 function toMin(t) { const [h, m] = t.slice(0, 5).split(':').map(Number); return h * 60 + m }
+
+// Hours a person has claimed inside one Mon–Sun window.
+// Counts every claim status: claimed, checked_in, and no_show. A no-show still
+// occupied the seat, so it still counts against their week.
+function personWeekHours(profileId, weekBlocks, claims, mondayIso, sundayIso) {
+  return weekBlocks
+    .filter(b => b.block_date >= mondayIso && b.block_date <= sundayIso)
+    .filter(b => claims.some(c => c.shift_block_id === b.id && c.profile_id === profileId))
+    .reduce((s, b) => s + blockHours(b), 0)
+}
+
+// 40 -> "40", 7.5 -> "7.5", 7.25 -> "7.25". The rounding also scrubs float
+// drift, so 39.999999999 renders as "40" rather than "40.00".
+function fmtHours(h) { return (Math.round(h * 100) / 100).toString() }
+
 // Map a tier's release_day text ('wednesday') to JS getDay() (0=Sun … 6=Sat).
 // Falls back to Wednesday if the value is missing or unrecognized.
 const DAY_INDEX = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 }
@@ -62,6 +90,7 @@ function releaseDayIndex(tier) {
   const key = (tier?.release_day || '').trim().toLowerCase()
   return key in DAY_INDEX ? DAY_INDEX[key] : 3
 }
+
 export default function Schedule() {
   const { isAdmin } = useAuth()
   const [me, setMe] = useState(null)
@@ -77,12 +106,14 @@ export default function Schedule() {
   const [err, setErr] = useState('')
   const [tab, setTab] = useState('claim') // claim | myshifts
   const [weekStart, setWeekStart] = useState(mondayOf(etNow()))
+
   // Once the data loads, jump to the first week that actually has intervals the
   // person can claim, so nobody opens to an empty grid. Only fires once — after
   // that the agent's own ‹ › navigation is left alone.
   const didAutoJump = React.useRef(false)
   const [toast, setToast] = useState('')
   const [adminView, setAdminView] = useState('team') // team | mine (admins only)
+
   // `silent` skips the loading spinner, so background polling doesn't flicker
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -112,7 +143,9 @@ export default function Schedule() {
       setCertifications(certRes.data || [])
     } catch (e) { setErr(e.message) } finally { if (!silent) setLoading(false) }
   }, [])
+
   useEffect(() => { load() }, [load])
+
   // Keep the grid fresh: realtime + a polling fallback. Whichever fires first
   // wins; both just call load(). Polling covers us while realtime is unreliable.
   useEffect(() => {
@@ -124,7 +157,9 @@ export default function Schedule() {
     const t = setInterval(() => load(true), POLL_MS)
     return () => { supabase.removeChannel(ch); clearInterval(t) }
   }, [load])
+
   function flash(m) { setToast(m); setTimeout(() => setToast(''), 3000) }
+
   // ---------- visibility: audience AND passed-cert (admin bypass) ----------
   function hasPassedCertForCallType(callTypeId) {
     // Graceful gating: if NO active certification gates this call type,
@@ -134,9 +169,11 @@ export default function Schedule() {
     if (!gatingCertIds.length) return true
     return certRecords.some(r => r.profile_id === me?.id && gatingCertIds.includes(r.certification_id) && r.status === 'passed')
   }
+
   function inAudience(scheduleId) {
     return audience.some(a => a.schedule_id === scheduleId && a.profile_id === me?.id)
   }
+
   function myVisibleSchedules(forceMine) {
     const published = schedules.filter(s => s.status === 'published')
     if (isAdmin && !forceMine) return published
@@ -144,6 +181,7 @@ export default function Schedule() {
     // applies to non-admins; admins in my-view can claim any they're certified for.
     return published.filter(s => hasPassedCertForCallType(s.call_type_id) && (isAdmin || inAudience(s.id)))
   }
+
   // ---------- open on the first week that has intervals ----------
   // Agents shouldn't land on an empty grid just because this week's shifts are
   // over and next week's haven't been reached yet. Find the soonest interval
@@ -163,6 +201,7 @@ export default function Schedule() {
     const firstWeek = mondayOf(new Date(upcoming[0].block_date + 'T00:00:00'))
     if (isoDate(firstWeek) !== isoDate(weekStart)) setWeekStart(firstWeek)
   }, [loading, me, schedules, blocks, audience, certRecords, certifications, isAdmin, adminView]) // eslint-disable-line
+
   // ---------- release status ----------
   function getMyReleaseStatus() {
     const tier = tiers.find(t => t.id === me?.tier_id)
@@ -170,6 +209,7 @@ export default function Schedule() {
     if (!tier) return { unlocked: false, tier: null, releaseDate: null }
     const now = etNow(); const day = now.getDay()
     const penalized = me?.release_penalty_until_thu === true
+
     if (penalized) {
       const [ph, pm] = [11, 0]
       let daysUntilThu = (4 - day + 7) % 7
@@ -177,6 +217,7 @@ export default function Schedule() {
       const unlocked = day === 4 && now >= thu
       return { unlocked, tier, releaseDate: unlocked ? null : thu, penalized: true }
     }
+
     const [h, m] = (tier.release_time || '00:00').split(':').map(Number)
     // The tier says which day it unlocks (release_day). No more hardcoded Wednesday.
     const relDay = releaseDayIndex(tier)
@@ -189,6 +230,7 @@ export default function Schedule() {
     const unlocked = isReleaseDay && now >= todayRelease
     return { unlocked, tier, releaseDate: isReleaseDay && !unlocked ? todayRelease : nextRelease }
   }
+
   // ---------- claim helpers ----------
   function hasIntervalStarted(block) {
     const now = etNow(); const todayStr = isoDate(now)
@@ -198,12 +240,12 @@ export default function Schedule() {
     const [h, m] = block.start_time.slice(0, 5).split(':').map(Number)
     return (h * 60 + m) <= nowMinutes
   }
+
   function claimedHoursInWeek(profileId, monday) {
     const wkStart = isoDate(monday); const sun = new Date(monday); sun.setDate(monday.getDate() + 6); const wkEnd = isoDate(sun)
-    return blocks.filter(b => b.block_date >= wkStart && b.block_date <= wkEnd)
-      .filter(b => claims.some(c => c.shift_block_id === b.id && c.profile_id === profileId))
-      .reduce((s, b) => s + blockHours(b), 0)
+    return personWeekHours(profileId, blocks, claims, wkStart, wkEnd)
   }
+
   function overlapsExisting(profileId, candidate) {
     const cs = toMin(candidate.start_time), ce = toMin(candidate.end_time)
     return blocks.some(b => {
@@ -214,6 +256,7 @@ export default function Schedule() {
       return cs < be && bs < ce
     })
   }
+
   async function claimBlock(block) {
     // Fast client-side checks: instant feedback, no round trip. These can be
     // wrong if the page is stale — the database trigger is the real guard.
@@ -225,6 +268,7 @@ export default function Schedule() {
     if (claimedHoursInWeek(me.id, weekMonday) + blockHours(block) > WEEKLY_HOUR_CAP) {
       flash(`No more than ${WEEKLY_HOUR_CAP} hours per week`); return
     }
+
     const { error } = await supabase.from('shift_claims').insert({ shift_block_id: block.id, profile_id: me.id, status: 'claimed' })
     if (error) {
       // The database rejected it — it knows the truth even when this page
@@ -242,6 +286,7 @@ export default function Schedule() {
     logActivity('claimed', block)
     flash('Interval claimed'); load(true)
   }
+
   async function unclaimBlock(block) {
     if (hasIntervalStarted(block)) { flash("That interval already started — can't release"); return }
     const startsAt = new Date(`${block.block_date}T${block.start_time.slice(0, 5)}:00`)
@@ -251,14 +296,19 @@ export default function Schedule() {
       ? 'This is within 12 hours of start, so it counts as a late cancellation. Release anyway?'
       : 'Release this interval? Someone else may claim it.'
     if (!window.confirm(msg)) return
+
     await supabase.from('shift_cancellations').insert({
       shift_block_id: block.id, profile_id: me.id, schedule_id: block.schedule_id,
       block_date: block.block_date, start_time: block.start_time,
       released_at: new Date().toISOString(), was_late: wasLate,
     })
+
+    // Deleting the claim frees the seat. The block reappears in "Open intervals"
+    // for everyone whose tier has already unlocked — first come, first served.
     const { error } = await supabase.from('shift_claims').delete().eq('shift_block_id', block.id).eq('profile_id', me.id)
     if (error) { flash('Could not release'); return }
     logActivity(wasLate ? 'released_late' : 'released', block)
+
     try {
       const { data: aud } = await supabase.from('schedule_audience').select('profile_id').eq('schedule_id', block.schedule_id)
       notifyIntervalReleased({
@@ -268,8 +318,10 @@ export default function Schedule() {
         position: block.role || null,
       })
     } catch (e) { /* non-blocking */ }
+
     flash(wasLate ? 'Released (late cancellation)' : 'Interval released'); load(true)
   }
+
   async function markNoShow(claim, block) {
     if (!window.confirm('Mark this person as a no-show for this interval?')) return
     const { error } = await supabase.from('shift_claims').update({ status: 'no_show' }).eq('id', claim.id)
@@ -283,12 +335,14 @@ export default function Schedule() {
     } catch (e) { /* non-blocking */ }
     flash('Marked as no-show'); load(true)
   }
+
   async function checkIn(claimId, block) {
     const { error } = await supabase.from('shift_claims').update({ checked_in_at: new Date().toISOString(), status: 'checked_in' }).eq('id', claimId)
     if (error) { flash('Error checking in'); return }
     if (block) logActivity('checked_in', block)
     flash("You're checked in!"); load(true)
   }
+
   async function logActivity(action, block) {
     try {
       const schedule = block ? schedules.find(s => s.id === block.schedule_id) : null
@@ -300,7 +354,9 @@ export default function Schedule() {
       })
     } catch (e) { /* non-blocking */ }
   }
+
   if (loading) return <p className="page-sub">Loading schedule…</p>
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, marginBottom: 18, flexWrap: 'wrap' }}>
@@ -313,8 +369,10 @@ export default function Schedule() {
           <button className={'btn ' + (tab === 'myshifts' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('myshifts')}>My schedule</button>
         </div>
       </div>
+
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
       {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, background: 'var(--ink)', color: '#fff', padding: '11px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, zIndex: 2000, boxShadow: '0 8px 24px rgba(0,0,0,.3)' }}>{toast}</div>}
+
       {tab === 'claim' ? (
         <ClaimView
           isAdmin={isAdmin} adminView={adminView} setAdminView={setAdminView}
@@ -331,36 +389,45 @@ export default function Schedule() {
     </div>
   )
 }
+
 function ClaimView(props) {
   const { isAdmin, adminView, setAdminView, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
     claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn, onNoShow } = props
   const [popBlock, setPopBlock] = useState(null)
+
   // Admins in 'team' view see the team grid; everyone else (agents, and
   // admins who switched to 'My view') see the personal claim grid.
   const teamMode = isAdmin && adminView === 'team'
+
   if (!schedules.length) {
     return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>
       {isAdmin ? 'No published schedules yet. Create one in the Schedule Builder.' : "No schedule published for you yet. Check back once your admin publishes one you're part of."}
     </div></div>
   }
+
   if (!isAdmin && !releaseStatus.unlocked) {
     return <ReleaseLocked status={releaseStatus} />
   }
+
   const monday = weekStart
   const days = weekDates(monday)
   const todayStr = isoDate(etNow())
   const scheduleIds = new Set(schedules.map(s => s.id))
   const weekBlocks = blocks.filter(b => scheduleIds.has(b.schedule_id))
+
   function shiftWeek(dir) { const d = new Date(monday); d.setDate(monday.getDate() + dir * 7); setWeekStart(d) }
+
   return (
     <div>
       {!teamMode && !isAdmin && <ReleaseBanner status={releaseStatus} />}
+
       {isAdmin && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
           <button className={'btn ' + (adminView === 'team' ? 'btn-primary' : 'btn-ghost')} onClick={() => setAdminView('team')}>Team view</button>
           <button className={'btn ' + (adminView === 'mine' ? 'btn-primary' : 'btn-ghost')} onClick={() => setAdminView('mine')}>My view</button>
         </div>
       )}
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <button className="btn btn-ghost" onClick={() => shiftWeek(-1)}>‹</button>
@@ -372,9 +439,11 @@ function ClaimView(props) {
         <button className="btn btn-ghost" onClick={() => setWeekStart(mondayOf(etNow()))}>Today</button>
         {!teamMode && <HoursCap hours={claimedHoursInWeek(me.id, monday)} />}
       </div>
+
       {teamMode
         ? <AdminGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} profiles={profiles} onPop={setPopBlock} />
         : <AgentGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} me={me} hasIntervalStarted={hasIntervalStarted} onPop={setPopBlock} />}
+
       {popBlock && <IntervalPopover
         block={popBlock} claims={claims} profiles={profiles} me={me} canClaim={!teamMode} isAdmin={isAdmin}
         hasIntervalStarted={hasIntervalStarted}
@@ -387,24 +456,27 @@ function ClaimView(props) {
     </div>
   )
 }
+
 function HoursCap({ hours }) {
   const pct = Math.min(100, Math.round((hours / WEEKLY_HOUR_CAP) * 100))
   const over = hours >= WEEKLY_HOUR_CAP
   return (
     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ fontSize: 12, fontWeight: 600, color: over ? 'var(--failed)' : 'var(--ink-soft)' }}>{hours.toFixed(2) * 1} / {WEEKLY_HOUR_CAP} h</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: over ? 'var(--failed)' : 'var(--ink-soft)' }}>{fmtHours(hours)} / {WEEKLY_HOUR_CAP} h</span>
       <div style={{ width: 120, height: 6, background: 'var(--line)', borderRadius: 3, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: pct + '%', background: over ? 'var(--failed)' : 'var(--accent)', borderRadius: 3 }} />
       </div>
     </div>
   )
 }
+
 function ReleaseBanner({ status }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     if (status.unlocked || !status.releaseDate) return
     const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t)
   }, [status])
+
   if (status.unlocked) {
     return <div style={{ background: 'var(--passed-bg)', border: '1px solid var(--passed)', borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
       <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--passed)' }}>Schedule is open</div>
@@ -412,10 +484,12 @@ function ReleaseBanner({ status }) {
     </div>
   }
   if (!status.releaseDate) return null
+
   const diff = status.releaseDate.getTime() - now
   const h = String(Math.max(0, Math.floor(diff / 3600000))).padStart(2, '0')
   const m = String(Math.max(0, Math.floor((diff % 3600000) / 60000))).padStart(2, '0')
   const s = String(Math.max(0, Math.floor((diff % 60000) / 1000))).padStart(2, '0')
+
   return <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent)', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
     <div style={{ fontSize: 13, color: 'var(--accent)' }}>
       <div style={{ fontWeight: 700, fontSize: 14 }}>Schedule unlocks soon</div>
@@ -424,6 +498,7 @@ function ReleaseBanner({ status }) {
     <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--accent)' }}>{h}:{m}:{s}</div>
   </div>
 }
+
 function ReleaseLocked({ status }) {
   return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>
     <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--ink)', marginBottom: 6 }}>Schedule locks until your release time</div>
@@ -432,8 +507,13 @@ function ReleaseLocked({ status }) {
       : 'No tier is assigned to your account yet — contact your admin.'}
   </div></div>
 }
+
 // ---------- AGENT GRID ----------
 function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted, onPop }) {
+  // Mon–Sun total for the week on screen. Shown under "Your intervals".
+  const myHours = personWeekHours(me.id, weekBlocks, claims, isoDate(days[0]), isoDate(days[6]))
+  const myOver = myHours > WEEKLY_HOUR_CAP
+
   const dayHeads = days.map(d => {
     const ds = isoDate(d)
     const mine = weekBlocks.filter(b => b.block_date === ds && claims.some(c => c.shift_block_id === b.id && c.profile_id === me.id))
@@ -443,6 +523,7 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
       <div className="wg-daymeta">{mine.length} interval{mine.length !== 1 ? 's' : ''}</div>
     </div>
   })
+
   const myCells = days.map(d => {
     const ds = isoDate(d)
     const items = weekBlocks.filter(b => b.block_date === ds && claims.some(c => c.shift_block_id === b.id && c.profile_id === me.id))
@@ -454,6 +535,7 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
       })
     return <div key={ds} className={'wg-cell' + (ds === todayStr ? ' today' : '') + (items.length ? '' : ' dim')}>{items}</div>
   })
+
   const openCells = days.map(d => {
     const ds = isoDate(d)
     const items = weekBlocks.filter(b => {
@@ -470,15 +552,23 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
       })
     return <div key={ds} className={'wg-cell' + (ds === todayStr ? ' today' : '') + (items.length ? '' : ' dim')}>{items}</div>
   })
+
   return <div className="grid-scroll">
     <div className="week-grid">
       <div className="wg-corner">Schedule</div>
       {dayHeads}
+
       <div className="wg-rowlabel">
         <div className="wg-avatar" style={{ background: avatarColor(me.full_name || 'You') }}>{initials(me.full_name || 'You')}</div>
-        <div><div className="wg-person-name">Your intervals</div></div>
+        <div style={{ minWidth: 0 }}>
+          <div className="wg-person-name">Your intervals</div>
+          <div className="wg-person-sub" style={{ color: myOver ? 'var(--failed)' : undefined, fontWeight: myOver ? 700 : undefined }}>
+            {fmtHours(myHours)} / {WEEKLY_HOUR_CAP} h
+          </div>
+        </div>
       </div>
       {myCells}
+
       <div className="wg-rowlabel" style={{ background: 'var(--canvas)' }}>
         <div className="wg-avatar" style={{ background: 'var(--ink-soft)' }}>+</div>
         <div><div className="wg-person-name">Open intervals</div><div className="wg-person-sub">Available to claim</div></div>
@@ -487,12 +577,14 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
     </div>
   </div>
 }
+
 // ---------- ADMIN GRID ----------
 function AdminGrid({ days, todayStr, weekBlocks, claims, profiles, onPop }) {
   const wkStart = isoDate(days[0]); const wkEnd = isoDate(days[6])
   const inWeek = weekBlocks.filter(b => b.block_date >= wkStart && b.block_date <= wkEnd)
   const claimantIds = new Set(inWeek.flatMap(b => claims.filter(c => c.shift_block_id === b.id).map(c => c.profile_id)))
   const rows = [{ id: '__open__', full_name: 'Open intervals', __open: true }, ...profiles.filter(p => claimantIds.has(p.id))]
+
   const dayHeads = days.map(d => {
     const ds = isoDate(d); const db = inWeek.filter(b => b.block_date === ds)
     const spots = db.reduce((s, b) => s + b.total_spots, 0)
@@ -503,7 +595,13 @@ function AdminGrid({ days, todayStr, weekBlocks, claims, profiles, onPop }) {
       <div className="wg-daymeta">{claimed}/{spots} claimed</div>
     </div>
   })
+
   const body = rows.map(person => {
+    // Mon–Sun total for this person, in the week currently on screen.
+    // Counts claimed + checked_in + no_show: a no-show still held the seat.
+    const hrs = person.__open ? 0 : personWeekHours(person.id, inWeek, claims, wkStart, wkEnd)
+    const over = hrs > WEEKLY_HOUR_CAP
+
     const label = person.__open
       ? <div className="wg-rowlabel" style={{ background: 'var(--canvas)' }}>
           <div className="wg-avatar" style={{ background: 'var(--ink-soft)' }}>+</div>
@@ -511,8 +609,14 @@ function AdminGrid({ days, todayStr, weekBlocks, claims, profiles, onPop }) {
         </div>
       : <div className="wg-rowlabel">
           <div className="wg-avatar" style={{ background: avatarColor(person.full_name) }}>{initials(person.full_name)}</div>
-          <div><div className="wg-person-name">{person.full_name}</div></div>
+          <div style={{ minWidth: 0 }}>
+            <div className="wg-person-name">{person.full_name}</div>
+            <div className="wg-person-sub" style={{ color: over ? 'var(--failed)' : undefined, fontWeight: over ? 700 : undefined }}>
+              {fmtHours(hrs)} / {WEEKLY_HOUR_CAP} h
+            </div>
+          </div>
         </div>
+
     const cells = days.map(d => {
       const ds = isoDate(d)
       const cellBlocks = inWeek.filter(b => b.block_date === ds).sort((a, b) => a.start_time.localeCompare(b.start_time))
@@ -530,8 +634,10 @@ function AdminGrid({ days, todayStr, weekBlocks, claims, profiles, onPop }) {
       })
       return <div key={ds} className={'wg-cell' + (ds === todayStr ? ' today' : '') + (items.some(Boolean) ? '' : ' dim')}>{items}</div>
     })
+
     return <React.Fragment key={person.id}>{label}{cells}</React.Fragment>
   })
+
   return <div className="grid-scroll">
     <div className="week-grid">
       <div className="wg-corner">Team</div>
@@ -540,6 +646,7 @@ function AdminGrid({ days, todayStr, weekBlocks, claims, profiles, onPop }) {
     </div>
   </div>
 }
+
 function Iv({ block, cls, spots, time, role, onPop }) {
   return <div className={'iv ' + cls} onClick={() => onPop(block)}>
     <div className="iv-time">{time}</div>
@@ -547,6 +654,7 @@ function Iv({ block, cls, spots, time, role, onPop }) {
     {spots && <div className="iv-spots">{spots}</div>}
   </div>
 }
+
 // ---------- INTERVAL POPOVER ----------
 function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIntervalStarted, onClose, onClaim, onUnclaim, onCheckIn, onNoShow }) {
   const cl = claims.filter(c => c.shift_block_id === block.id)
@@ -555,10 +663,12 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIn
   const isFull = left <= 0
   const started = hasIntervalStarted(block)
   const names = cl.map(c => profiles.find(p => p.id === c.profile_id)?.full_name?.split(' ')[0] || '').filter(Boolean).join(', ')
+
   return <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
     <div className="modal" style={{ width: 380 }}>
       <div style={{ fontSize: 18, fontWeight: 700 }}>{formatTime(block.start_time)} – {formatTime(block.end_time)}</div>
       <div className="page-sub" style={{ marginBottom: 14 }}>{new Date(block.block_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, marginBottom: 16 }}>
         {block.role && <Row k="Role" v={block.role} />}
         <Row k="Spots" v={`${left > 0 ? left : 0} of ${block.total_spots} open`} />
@@ -567,6 +677,7 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIn
         {mine?.checked_in_at && <Row k="Status" v="Checked in" />}
         {mine?.status === 'no_show' && <Row k="Status" v="No-show" />}
       </div>
+
       {isAdmin && cl.length > 0 && (
         <div style={{ borderTop: '1px solid var(--line-soft)', paddingTop: 10, marginBottom: 12 }}>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>Claimants</div>
@@ -584,6 +695,7 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIn
           })}
         </div>
       )}
+
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button className="btn btn-ghost" onClick={onClose}>Close</button>
         {mine ? <>
@@ -594,17 +706,22 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIn
     </div>
   </div>
 }
+
 function Row({ k, v }) { return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: 'var(--ink-soft)' }}>{k}</span><span>{v}</span></div> }
+
 // ---------- MY SCHEDULE ----------
 function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onCheckIn }) {
   const myClaims = claims.filter(c => c.profile_id === me.id)
   if (!myClaims.length) return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>No intervals claimed yet. Head to Schedule to pick up some time.</div></div>
+
   const entries = myClaims.map(c => ({ claim: c, block: blocks.find(b => b.id === c.shift_block_id) })).filter(e => e.block)
   const todayStr = isoDate(etNow())
   const upcoming = entries.filter(e => e.block.block_date >= todayStr).sort((a, b) => (a.block.block_date + a.block.start_time).localeCompare(b.block.block_date + b.block.start_time))
   const past = entries.filter(e => e.block.block_date < todayStr).sort((a, b) => (b.block.block_date + b.block.start_time).localeCompare(a.block.block_date + a.block.start_time))
+
   const byDate = {}
   upcoming.forEach(e => { (byDate[e.block.block_date] = byDate[e.block.block_date] || []).push(e) })
+
   return <div>
     {Object.keys(byDate).length ? Object.keys(byDate).sort().map(date => (
       <div key={date} style={{ marginBottom: 22 }}>
@@ -616,6 +733,7 @@ function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onC
         </div>
       </div>
     )) : <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 20 }}>No upcoming intervals.</div></div>}
+
     {past.length > 0 && <div style={{ marginBottom: 22 }}>
       <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', marginBottom: 10, opacity: .6 }}>Past intervals</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 12 }}>
@@ -624,6 +742,7 @@ function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onC
     </div>}
   </div>
 }
+
 function ShiftCard({ block, claim, isPast, started, onUnclaim, onCheckIn }) {
   const checkedIn = claim?.checked_in_at; const noShow = claim?.status === 'no_show'
   return <div className="iv mine" style={{ cursor: 'default', padding: '14px 16px' }}>
