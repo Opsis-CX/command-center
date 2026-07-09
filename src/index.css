@@ -22,11 +22,21 @@
   --sidebar-soft:#7f9299;
   --radius:12px; --radius-sm:8px;
   --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.06);
+
+  /* Emoji font fallbacks. Without these the browser renders a tofu box or a
+     flat monochrome glyph. Appended to every font stack that shows user text. */
+  --font-emoji: "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";
+
+  /* The app's base stack, defined once so chat surfaces can reuse it. */
+  --font-body: 'Poppins',ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+
+  /* Toolbar strip above the chat composer. Overridden in dark mode below. */
+  --composer-toolbar-bg: #fbfcfd;
 }
 *{box-sizing:border-box;}
 html,body,#root{height:100%;margin:0;}
 body{
-  font-family:'Poppins',ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-family: var(--font-body), var(--font-emoji);
   color:var(--ink); background:var(--canvas);
   -webkit-font-smoothing:antialiased;
 }
@@ -88,7 +98,6 @@ a{color:inherit;text-decoration:none;}
 .tag-picker{display:flex;flex-wrap:wrap;gap:7px;}
 .tag-opt{font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);cursor:pointer;}
 .tag-opt.on{background:var(--accent);color:var(--white);border-color:var(--accent);}
-
 /* ===== Mobile navigation — hamburger toggle + slide-out sidebar ===== */
 .nav-toggle{
   display:none;
@@ -109,7 +118,6 @@ a{color:inherit;text-decoration:none;}
   .nav-toggle{display:inline-flex;align-items:center;}
   .nav-backdrop{display:block;}
 }
-
 /* ===== Schedule week grid ===== */
 .grid-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);}
 .week-grid{display:grid;grid-template-columns:180px repeat(7,minmax(150px,1fr));min-width:1180px;}
@@ -144,7 +152,6 @@ a{color:inherit;text-decoration:none;}
 .iv.checkedin::after{content:"";position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--passed);}
 .iv.noshow{background:var(--failed-bg);border-color:var(--failed);}
 .iv.noshow .iv-time{color:var(--failed);}
-
 /* ===== Projects rich text editor ===== */
 .pm-rte:empty:before {
   content: attr(data-placeholder);
@@ -160,12 +167,75 @@ a{color:inherit;text-decoration:none;}
 .pm-rich ol { margin: 4px 0 4px 18px; padding: 0; }
 .pm-rich li { margin-bottom: 2px; }
 .pm-rich .pm-mention { color: var(--accent); font-weight: 600; }
+
+/* ============================================================
+   CHAT
+   .chat-rich     — a rendered message body (renderBody)
+   .chat-composer — the contentEditable input (RichComposer)
+   .chat-emoji    — a reaction pill's emoji glyph
+   ============================================================ */
+
+/* Emoji rendering. body already carries --font-emoji, but the composer and
+   message bodies set their own font-size/inherit chains, and reaction pills
+   sit inside buttons — so restate it here rather than trust inheritance. */
+.chat-rich,
+.chat-composer,
+.chat-emoji {
+  font-family: var(--font-body), var(--font-emoji);
+}
+
+/* Reaction pill glyphs and the picker need color emoji at a legible size. */
+.chat-emoji { line-height: 1; }
+
+/* @here / @update highlight.
+   This lives in a class, not an inline style, because renderBody() sanitizes
+   user HTML with ALLOWED_ATTR: [] — every attribute is stripped, including
+   any style="" we might have injected. The class survives. */
+.chat-rich .chat-mention {
+  color: var(--accent);
+  font-weight: 700;
+  background: var(--accent-bg);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+/* The composer toolbar can emit <ul>/<ol>. A CSS reset strips the markers,
+   so put them back — in the composer AND in the rendered message. */
+.chat-rich ul,
+.chat-composer ul { list-style: disc; margin: 4px 0 4px 20px; padding: 0; }
+.chat-rich ol,
+.chat-composer ol { list-style: decimal; margin: 4px 0 4px 20px; padding: 0; }
+.chat-rich li,
+.chat-composer li { margin-bottom: 2px; }
+
+.chat-rich b, .chat-rich strong,
+.chat-composer b, .chat-composer strong { font-weight: 700; }
+.chat-rich i, .chat-rich em,
+.chat-composer i, .chat-composer em { font-style: italic; }
+.chat-rich s, .chat-rich strike, .chat-rich del,
+.chat-composer s, .chat-composer strike, .chat-composer del { text-decoration: line-through; }
+
+/* renderBody sets white-space: pre-wrap, so <p> margins would double the
+   apparent line spacing. Collapse them, and hide the stray empty <div>s
+   contentEditable leaves behind. */
+.chat-rich p { margin: 0; }
+.chat-rich div:empty { display: none; }
+
+/* Links pasted into a message. */
+.chat-rich a { color: var(--accent); text-decoration: underline; }
+
+/* The emoji picker library renders its own surface. Round it off and make it
+   sit on our shadow so it doesn't look bolted on. */
+.EmojiPickerReact {
+  border-radius: var(--radius-sm) !important;
+  box-shadow: var(--shadow);
+}
+
 /* ============================================================
    ADD-ONS: tighter content padding + dark mode
    Paste this block at the END of your CSS file.
    It overrides a few earlier rules (later CSS wins).
    ============================================================ */
-
 /* ---- Tighter layout: content uses more of the screen ---- */
 .content { padding: 16px 18px; }
 .topbar  { padding: 0 18px; }
@@ -173,7 +243,6 @@ a{color:inherit;text-decoration:none;}
   /* on big screens, give a little more breathing room but still tight */
   .content { padding: 18px 24px; }
 }
-
 /* ============================================================
    DARK MODE
    Two ways it activates:
@@ -185,7 +254,6 @@ a{color:inherit;text-decoration:none;}
    The toggle sets data-theme = "light" | "dark" | (removes it
    for "system").
    ============================================================ */
-
 /* Shared dark palette, used by both the manual and auto triggers */
 :root[data-theme="dark"] {
   --ink:        #e8eef0;
@@ -203,8 +271,8 @@ a{color:inherit;text-decoration:none;}
   --sidebar:    #0a0f11;
   --sidebar-soft:#6b7f86;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.45);
+  --composer-toolbar-bg: #1b2327;
 }
-
 /* Follow the system setting automatically — but only when the user
    hasn't explicitly picked light or dark. */
 @media (prefers-color-scheme: dark) {
@@ -224,10 +292,30 @@ a{color:inherit;text-decoration:none;}
     --sidebar:    #0a0f11;
     --sidebar-soft:#6b7f86;
     --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.45);
+    --composer-toolbar-bg: #1b2327;
   }
 }
-
 /* A couple of spots that were pure white/black and need nudging in dark */
 :root[data-theme="dark"] .tag-opt.on,
 :root[data-theme="dark"] .badge.passed,
 :root[data-theme="dark"] .badge.failed { color: #fff; }
+
+/* The emoji picker ships a light theme by default. Ask it for dark. */
+:root[data-theme="dark"] .EmojiPickerReact {
+  --epr-bg-color: var(--surface);
+  --epr-category-label-bg-color: var(--surface);
+  --epr-text-color: var(--ink);
+  --epr-search-input-bg-color: var(--canvas);
+  --epr-picker-border-color: var(--line);
+  --epr-hover-bg-color: var(--accent-bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .EmojiPickerReact {
+    --epr-bg-color: var(--surface);
+    --epr-category-label-bg-color: var(--surface);
+    --epr-text-color: var(--ink);
+    --epr-search-input-bg-color: var(--canvas);
+    --epr-picker-border-color: var(--line);
+    --epr-hover-bg-color: var(--accent-bg);
+  }
+}
