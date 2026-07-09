@@ -55,6 +55,13 @@ function blockHours(b) {
   return Math.max(0, ((eh * 60 + em) - (sh * 60 + sm)) / 60)
 }
 function toMin(t) { const [h, m] = t.slice(0, 5).split(':').map(Number); return h * 60 + m }
+// Map a tier's release_day text ('wednesday') to JS getDay() (0=Sun … 6=Sat).
+// Falls back to Wednesday if the value is missing or unrecognized.
+const DAY_INDEX = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 }
+function releaseDayIndex(tier) {
+  const key = (tier?.release_day || '').trim().toLowerCase()
+  return key in DAY_INDEX ? DAY_INDEX[key] : 3
+}
 export default function Schedule() {
   const { isAdmin } = useAuth()
   const [me, setMe] = useState(null)
@@ -148,14 +155,16 @@ export default function Schedule() {
       return { unlocked, tier, releaseDate: unlocked ? null : thu, penalized: true }
     }
     const [h, m] = (tier.release_time || '00:00').split(':').map(Number)
-    const isWed = day === 3
+    // The tier says which day it unlocks (release_day). No more hardcoded Wednesday.
+    const relDay = releaseDayIndex(tier)
+    const isReleaseDay = day === relDay
     const todayRelease = new Date(now); todayRelease.setHours(h, m, 0, 0)
-    // next Wednesday release
-    let daysUntilWed = (3 - day + 7) % 7
-    const nextWed = new Date(now); nextWed.setDate(now.getDate() + daysUntilWed); nextWed.setHours(h, m, 0, 0)
-    if (daysUntilWed === 0 && nextWed < now) nextWed.setDate(nextWed.getDate() + 7)
-    const unlocked = isWed && now >= todayRelease
-    return { unlocked, tier, releaseDate: isWed && !unlocked ? todayRelease : nextWed }
+    // next occurrence of the tier's release day
+    let daysUntil = (relDay - day + 7) % 7
+    const nextRelease = new Date(now); nextRelease.setDate(now.getDate() + daysUntil); nextRelease.setHours(h, m, 0, 0)
+    if (daysUntil === 0 && nextRelease < now) nextRelease.setDate(nextRelease.getDate() + 7)
+    const unlocked = isReleaseDay && now >= todayRelease
+    return { unlocked, tier, releaseDate: isReleaseDay && !unlocked ? todayRelease : nextRelease }
   }
   // ---------- claim helpers ----------
   function hasIntervalStarted(block) {
