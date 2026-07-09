@@ -361,7 +361,7 @@ export function LessonView({ blocks }) {
   return (
     <div>
       {(blocks || []).map((b, i) => {
-    if (b.type === 'text' || b.type === 'callout') {
+ if (b.type === 'text' || b.type === 'callout') {
           return <RichContent key={i} html={b.html}
             style={{ fontSize: 15.5, lineHeight: 1.7, margin: '12px 0', padding: b.type === 'callout' ? '13px 15px' : 0, borderRadius: b.type === 'callout' ? 8 : 0, background: b.type === 'callout' ? 'var(--accent-bg)' : 'transparent' }} />
         }
