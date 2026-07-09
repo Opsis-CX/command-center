@@ -1,5 +1,4 @@
 import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react'
-import DOMPurify from 'dompurify'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { notifyChatMessage, notifyAckNudge, notifyChannelAdded } from '../lib/notify'
@@ -522,27 +521,73 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   }, [channelId, me.id, markRead])
 
   // ---- SCROLL ----
-  // Track whether the user is parked at the bottom. If they scrolled up to read
-  // history, we must not yank them back down when a new message lands.
+  //
+  // Goal: land on the newest message when a channel opens, follow new messages
+  // while the user is at the bottom, and never yank them down mid-read.
+  //
+  // The tricky part is the initial jump. When `loading` is true this component
+  // returns only a spinner, so the scroller doesn't exist yet. Once it flips
+  // false the list mounts, but its final height isn't known for several frames:
+  // message bodies are injected via dangerouslySetInnerHTML, avatars are grid
+  // items, and attachments haven't loaded. Reading scrollHeight too early gives
+  // a value far smaller than the real one — you scroll to that number and land
+  // near the top. So we pin repeatedly across a few frames until the height
+  // stops growing.
+
+  // True while WE are moving the scroller. Without this, our own programmatic
+  // scroll fires onScroll, which can flip stickToBottom off mid-jump.
+  const programmatic = useRef(false)
+
+  function pinToBottom() {
+    const el = scrollerRef.current
+    if (!el) return
+    programmatic.current = true
+    el.scrollTop = el.scrollHeight
+    // release on the next frame, after the scroll event has fired
+    requestAnimationFrame(() => { programmatic.current = false })
+  }
+
+  // Pin now, then again on the next few frames, stopping early once the
+  // scroll height has settled. Cheap: at most `tries` frames.
+  function pinToBottomSettled(tries = 8) {
+    let last = -1
+    let n = 0
+    const step = () => {
+      const el = scrollerRef.current
+      if (!el) return
+      programmatic.current = true
+      el.scrollTop = el.scrollHeight
+      const h = el.scrollHeight
+      n++
+      if (h !== last && n < tries) {
+        last = h
+        requestAnimationFrame(step)
+      } else {
+        requestAnimationFrame(() => { programmatic.current = false })
+      }
+    }
+    requestAnimationFrame(step)
+  }
+
+  // Track whether the user is parked at the bottom. Ignore scroll events we
+  // caused ourselves.
   function onScroll() {
+    if (programmatic.current) return
     const el = scrollerRef.current
     if (!el) return
     stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
   }
 
-  function pinToBottom() {
-    const el = scrollerRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }
-
-  // First paint of this channel: jump (no animation) to the newest message.
-  // Runs after `loading` flips false, so the list actually exists in the DOM.
+  // Channel opened (or finished loading): jump to the newest message, no
+  // animation. `key={activeId}` remounts this component per channel, so
+  // didInitialScroll resets naturally.
   useLayoutEffect(() => {
     if (loading || didInitialScroll.current) return
-    const el = scrollerRef.current
-    if (!el) return
-    el.scrollTop = el.scrollHeight
+    if (!scrollerRef.current) return
     didInitialScroll.current = true
+    stickToBottom.current = true
+    pinToBottom()          // synchronous first pass, before paint
+    pinToBottomSettled()   // then chase the settling height
   }, [loading])
 
   // New message: follow only if the user was already at the bottom.
@@ -1428,6 +1473,73 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
 // Message body: clean on save, sanitize + highlight on render.
 // ============================================================
 
+// Only the tags the composer toolbar can actually produce.
+// Everything else is unwrapped (its text is kept, the tag is dropped).
+const ALLOWED_TAGS = new Set([
+  'B', 'STRONG', 'I', 'EM', 'S', 'STRIKE', 'DEL', 'U',
+  'BR', 'DIV', 'P', 'UL', 'OL', 'LI', 'SPAN',
+])
+
+// Tags whose *contents* are also dropped, not just the tag. Keeping the text
+// of a <script> or <style> would dump code into the message body.
+const DROP_CONTENT_TAGS = new Set([
+  'SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'MATH',
+])
+
+// Strip every attribute from an element. We allow no attributes at all, which
+// makes `onerror=`, `href="javascript:"`, `style="..."`, and friends impossible.
+// (The @here/@update highlight uses a class we add AFTER sanitizing.)
+function stripAttributes(el) {
+  for (const attr of [...el.attributes]) el.removeAttribute(attr.name)
+}
+
+// Recursively walk a node's children, removing anything not allowed.
+// Disallowed-but-harmless tags are "unwrapped": <a href=x>hi</a> becomes hi.
+function scrubNode(node) {
+  for (const child of [...node.childNodes]) {
+    if (child.nodeType === Node.TEXT_NODE) continue          // text is always fine
+
+    if (child.nodeType !== Node.ELEMENT_NODE) {              // comments, CDATA, etc.
+      child.remove()
+      continue
+    }
+
+    const tag = child.tagName.toUpperCase()
+
+    if (DROP_CONTENT_TAGS.has(tag)) { child.remove(); continue }
+
+    if (!ALLOWED_TAGS.has(tag)) {
+      // Unwrap: move the children up, then delete the tag itself.
+      scrubNode(child)
+      while (child.firstChild) node.insertBefore(child.firstChild, child)
+      child.remove()
+      continue
+    }
+
+    stripAttributes(child)
+    scrubNode(child)
+  }
+}
+
+// Sanitize a chunk of HTML using an allowlist.
+//
+// We parse with DOMParser into a brand-new, *inert* document. Inert means the
+// browser builds the node tree but never runs scripts, never loads images, and
+// never fires event handlers — so an `<img src=x onerror=alert(1)>` in the
+// input is just a dead node we delete. This is why we do NOT use
+// `innerHTML` on a live element for this: that would execute.
+function sanitizeHtml(dirty) {
+  const src = String(dirty || '')
+  if (!src) return ''
+  if (typeof window === 'undefined' || !window.DOMParser) {
+    // SSR / no DOM available: fail closed, return plain text.
+    return escapeHtml(src.replace(/<[^>]*>/g, ''))
+  }
+  const doc = new DOMParser().parseFromString(`<body>${src}</body>`, 'text/html')
+  scrubNode(doc.body)
+  return doc.body.innerHTML
+}
+
 // Clean up contentEditable HTML before saving: convert &nbsp; to spaces,
 // strip trailing whitespace/breaks, drop empty trailing tags, and sanitize.
 function cleanChatHtml(html) {
@@ -1439,19 +1551,11 @@ function cleanChatHtml(html) {
   h = h.replace(/^(\s|<br\s*\/?>)+/gi, '')     // leading breaks/space
   h = h.trim()
   // Sanitize on the way in as well as on the way out. Never trust the DOM.
-  return DOMPurify.sanitize(h, SANITIZE_CONFIG)
-}
-
-// Only the tags the composer toolbar can actually produce. No attributes at all,
-// so `<img src=x onerror=...>` and friends are impossible.
-const SANITIZE_CONFIG = {
-  ALLOWED_TAGS: ['b', 'strong', 'i', 'em', 's', 'strike', 'del', 'u', 'br', 'div', 'p', 'ul', 'ol', 'li', 'span'],
-  ALLOWED_ATTR: [],
-  KEEP_CONTENT: true,
+  return sanitizeHtml(h)
 }
 
 function escapeHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 function renderBody(body, fontSize = 14) {
@@ -1465,9 +1569,10 @@ function renderBody(body, fontSize = 14) {
   if (!looksHtml) html = escapeHtml(html).replace(/\n/g, '<br>')
 
   // Sanitize BEFORE we inject our own markup, so a user can't smuggle tags in.
-  html = DOMPurify.sanitize(html, SANITIZE_CONFIG)
+  html = sanitizeHtml(html)
 
-  // Highlight @here / @update. Our span carries no user-controlled content.
+  // Highlight @here / @update. Safe: our span carries no user-controlled
+  // content, and everything around it has already been sanitized.
   html = html.replace(/(@here|@update)\b/gi,
     '<span class="chat-mention">$1</span>')
 
