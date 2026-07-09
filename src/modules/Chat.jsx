@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth'
 import { notifyChatMessage, notifyAckNudge, notifyChannelAdded } from '../lib/notify'
 import { useUnread } from '../lib/unread'
 import EmojiPicker from 'emoji-picker-react'
+import { RichEditor, RichContent, sanitizeHtml, htmlToText } from '../lib/RichEditor'
 
 // ============================================================
 // CHAT — Stage 1 + @update acknowledgments + @here
@@ -715,8 +716,11 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 
   async function send() {
     const rawHtml = htmlRef.current || ''
-    const plain = (rawHtml.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim())
-    const body = cleanChatHtml(rawHtml)
+    // htmlToText walks the parsed DOM. The old regex stripped tags with
+    // /<[^>]+>/ , which mangles any attribute value containing '>'. Now that
+    // links and tables carry attributes, that matters.
+    const plain = htmlToText(rawHtml)
+    const body = sanitizeHtml(rawHtml)
     if (!plain && pending.length === 0) return
 
     const isHere = /(^|\s)@here(\s|$)/i.test(plain)
@@ -871,7 +875,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                         <span className="badge" style={{ background: 'var(--accent)', color: '#fff', fontSize: 10 }}>UPDATE — please confirm</span>
                       </div>
-                      <div style={{ marginBottom: 10 }}>{renderBody(m.body)}</div>
+                      <div style={{ marginBottom: 10 }}><RichContent html={m.body} highlightMentions /></div>
                       {iConfirmed(m.id)
                         ? <span style={{ fontSize: 12.5, color: 'var(--passed)', fontWeight: 600 }}>✓ You confirmed</span>
                         : <button className="btn btn-cta" style={{ fontSize: 12.5 }} onClick={() => confirmRead(m.id)}>Confirm you've read this</button>}
@@ -881,7 +885,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                       </div>
                     </div>
                   ) : (
-                    renderBody(m.body)
+                    <RichContent html={m.body} highlightMentions />
                   )}
 
                   {attachments.filter(a => a.message_id === m.id).map(a => (
@@ -971,13 +975,15 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '0 10px', flex: 'none' }}>😀</button>
 
           <div style={{ flex: 1 }}>
-            <RichComposer valueRef={composerRef}
+            <RichEditor
+              variant="chat"
+              editorRef={composerRef}
               profiles={profiles}
-              onInput={(html) => { htmlRef.current = html; notifyTyping() }}
-              onEnter={send}
+              submitOnEnter
+              onChange={(html) => { htmlRef.current = html; notifyTyping() }}
+              onSubmit={send}
               onPasteFiles={(files) => addFiles(files)}
               placeholder={requireAck ? 'Write your update… (@name to mention)' : `Message ${channel?.is_dm ? (dmName || '') : '#' + (channel?.name || '')}  (@name, @here, or paste/attach a file)`}
-              accent={requireAck ? 'var(--accent)' : 'var(--line)'}
               minHeight={76} maxHeight={200} />
           </div>
 
@@ -1186,186 +1192,6 @@ const NP = {
   chipX: { border: 0, background: 'transparent', cursor: 'pointer', color: 'inherit', fontSize: 12, padding: 0, lineHeight: 1 },
   input: { width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' },
   listBtn: { display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', border: 0, background: 'transparent', cursor: 'pointer', padding: '7px 8px', fontFamily: 'inherit' },
-}
-
-// ============================================================
-// Rich text composer: contentEditable + Slack-style toolbar.
-// Enter sends; Shift+Enter = newline.
-//
-// EMOJI FIX: we save the caret range on every interaction and restore it
-// before inserting. document.execCommand('insertText') is gone — it drops
-// or misplaces astral-plane characters (most emoji) in several browsers.
-// We insert a real text node at the saved range instead.
-// ============================================================
-function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, minHeight = 76, maxHeight = 200, accent, profiles = [] }) {
-  const ref = useRef(null)
-  const savedRange = useRef(null)
-  const [empty, setEmpty] = useState(true)
-  const [mentionOpen, setMentionOpen] = useState(false)
-  const [mentionQuery, setMentionQuery] = useState('')
-  const [hi, setHi] = useState(0)
-
-  const matches = mentionOpen
-    ? profiles.filter(p => p.full_name?.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 6)
-    : []
-
-  // Remember where the caret is, so a picker click can't lose it.
-  function saveRange() {
-    const sel = window.getSelection()
-    if (sel && sel.rangeCount && ref.current?.contains(sel.anchorNode)) {
-      savedRange.current = sel.getRangeAt(0).cloneRange()
-    }
-  }
-
-  function restoreRange() {
-    const el = ref.current
-    if (!el) return
-    el.focus()
-    const sel = window.getSelection()
-    sel.removeAllRanges()
-    if (savedRange.current && el.contains(savedRange.current.startContainer)) {
-      sel.addRange(savedRange.current)
-    } else {
-      const r = document.createRange()
-      r.selectNodeContents(el)
-      r.collapse(false)   // caret to end
-      sel.addRange(r)
-    }
-  }
-
-  // Insert plain text at the caret without execCommand.
-  function insertAtCaret(txt) {
-    if (!txt) return
-    restoreRange()
-    const sel = window.getSelection()
-    if (!sel.rangeCount) return
-    const range = sel.getRangeAt(0)
-    range.deleteContents()
-    const node = document.createTextNode(txt)
-    range.insertNode(node)
-    range.setStartAfter(node)
-    range.collapse(true)
-    sel.removeAllRanges()
-    sel.addRange(range)
-    savedRange.current = range.cloneRange()
-    handleInput()
-  }
-
-  function exec(cmd) { document.execCommand(cmd, false, null); ref.current?.focus(); handleInput() }
-
-  function handleInput() {
-    const html = ref.current?.innerHTML || ''
-    const text = ref.current?.innerText || ''
-    setEmpty(text.trim().length === 0)
-    onInput?.(html, text)
-    saveRange()
-
-    // detect @token immediately left of caret
-    const sel = window.getSelection()
-    if (sel && sel.rangeCount) {
-      const node = sel.anchorNode
-      const offset = sel.anchorOffset
-      if (node && node.nodeType === 3) {
-        const upto = node.textContent.slice(0, offset)
-        const m = upto.match(/@([\w]*)$/)
-        if (m) { setMentionOpen(true); setMentionQuery(m[1]); setHi(0); return }
-      }
-    }
-    setMentionOpen(false); setMentionQuery('')
-  }
-
-  function insertMention(p) {
-    const sel = window.getSelection()
-    if (sel && sel.rangeCount) {
-      const node = sel.anchorNode
-      const offset = sel.anchorOffset
-      if (node && node.nodeType === 3) {
-        const before = node.textContent.slice(0, offset)
-        const at = before.lastIndexOf('@')
-        if (at >= 0) {
-          const range = document.createRange()
-          range.setStart(node, at)
-          range.setEnd(node, offset)
-          range.deleteContents()
-          const textNode = document.createTextNode('@' + p.full_name + ' ')
-          range.insertNode(textNode)
-          range.setStartAfter(textNode); range.collapse(true)
-          sel.removeAllRanges(); sel.addRange(range)
-        }
-      }
-    }
-    setMentionOpen(false); setMentionQuery('')
-    handleInput()
-  }
-
-  function handleKey(e) {
-    if (mentionOpen && matches.length) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => (h + 1) % matches.length); return }
-      if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => (h - 1 + matches.length) % matches.length); return }
-      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); insertMention(matches[hi]); return }
-      if (e.key === 'Escape') { setMentionOpen(false); return }
-    }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEnter?.() }
-  }
-
-  function handlePaste(e) {
-    const files = Array.from(e.clipboardData?.files || [])
-    if (files.length) { e.preventDefault(); onPasteFiles?.(files); return }
-    e.preventDefault()
-    const text = e.clipboardData.getData('text/plain')
-    insertAtCaret(text)   // was execCommand — same emoji bug on paste
-  }
-
-  useEffect(() => {
-    if (valueRef) valueRef.current = {
-      clear: () => { if (ref.current) { ref.current.innerHTML = ''; savedRange.current = null; setEmpty(true) } },
-      focus: () => ref.current?.focus(),
-      insertText: insertAtCaret,
-    }
-  }, [valueRef])
-
-  const TBtn = ({ cmd, label, title }) => (
-    <button type="button" title={title} onMouseDown={e => { e.preventDefault(); exec(cmd) }}
-      style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, width: 28, height: 26, borderRadius: 5 }}>{label}</button>
-  )
-
-  return (
-    <div style={{ flex: 1, border: '1px solid ' + (accent || 'var(--line)'), borderRadius: 8, overflow: 'visible', background: 'var(--surface)', position: 'relative' }}>
-      {mentionOpen && matches.length > 0 && (
-        <div style={{ position: 'absolute', bottom: '100%', left: 8, marginBottom: 6, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.14)', zIndex: 70, width: 240, overflow: 'hidden' }}>
-          {matches.map((p, i) => (
-            <button key={p.id} type="button" onMouseDown={ev => { ev.preventDefault(); insertMention(p) }}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', border: 0, cursor: 'pointer', padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', background: i === hi ? 'var(--accent-bg)' : 'transparent', color: 'var(--ink)' }}>
-              <span style={{ width: 22, height: 22, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 700 }}>{initials(p.full_name)}</span>
-              {p.full_name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 1, padding: '3px 6px', borderBottom: '1px solid var(--line-soft)', background: 'var(--composer-toolbar-bg)' }}>
-        <TBtn cmd="bold" label={<b>B</b>} title="Bold" />
-        <TBtn cmd="italic" label={<i>I</i>} title="Italic" />
-        <TBtn cmd="strikeThrough" label={<s>S</s>} title="Strikethrough" />
-        <span style={{ width: 1, height: 16, background: 'var(--line)', margin: '0 3px' }} />
-        <TBtn cmd="insertUnorderedList" label="•" title="Bulleted list" />
-        <TBtn cmd="insertOrderedList" label="1." title="Numbered list" />
-      </div>
-
-      <div style={{ position: 'relative' }}>
-        {empty && <div style={{ position: 'absolute', top: 10, left: 12, color: 'var(--ink-soft)', fontSize: 14, pointerEvents: 'none' }}>{placeholder}</div>}
-        <div ref={ref} contentEditable suppressContentEditableWarning
-          className="chat-composer"
-          onInput={handleInput}
-          onKeyDown={handleKey}
-          onKeyUp={saveRange}
-          onMouseUp={saveRange}
-          onBlur={saveRange}
-          onPaste={handlePaste}
-          style={{ outline: 'none', fontSize: 14, lineHeight: 1.5, padding: '10px 12px', minHeight, maxHeight, overflowY: 'auto' }} />
-      </div>
-    </div>
-  )
 }
 
 // Channel members panel: lists everyone in the channel; owners can remove.
@@ -1667,7 +1493,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
                 <b style={{ fontSize: 13 }}>{nameFor(parent.sender_id)}</b>
                 <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{timeLabel(parent.created_at)}</span>
               </div>
-              {renderBody(parent.body)}
+              <RichContent html={parent.body} highlightMentions />
             </div>}
             <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginBottom: 8 }}>{replies.length} repl{replies.length === 1 ? 'y' : 'ies'}</div>
             {replies.map(r => (
@@ -1675,7 +1501,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
                 <span style={{ width: 28, height: 28, borderRadius: '50%', background: avatarColor(nameFor(r.sender_id)), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>{initials(nameFor(r.sender_id))}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}><b style={{ fontSize: 12.5 }}>{nameFor(r.sender_id)}</b><span style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>{timeLabel(r.created_at)}</span></div>
-                  {renderBody(r.body, 13.5)}
+                  <RichContent html={r.body} highlightMentions style={{ fontSize: 13.5 }} />
                 </div>
               </div>
             ))}
@@ -1691,120 +1517,6 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
         <button className="btn btn-primary" onClick={sendReply} disabled={!text.trim()}>Reply</button>
       </div>
     </div>
-  )
-}
-
-// ============================================================
-// Message body: clean on save, sanitize + highlight on render.
-// ============================================================
-
-// Only the tags the composer toolbar can actually produce.
-// Everything else is unwrapped (its text is kept, the tag is dropped).
-const ALLOWED_TAGS = new Set([
-  'B', 'STRONG', 'I', 'EM', 'S', 'STRIKE', 'DEL', 'U',
-  'BR', 'DIV', 'P', 'UL', 'OL', 'LI', 'SPAN',
-])
-
-// Tags whose *contents* are also dropped, not just the tag. Keeping the text
-// of a <script> or <style> would dump code into the message body.
-const DROP_CONTENT_TAGS = new Set([
-  'SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'MATH',
-])
-
-// Strip every attribute from an element. We allow no attributes at all, which
-// makes `onerror=`, `href="javascript:"`, `style="..."`, and friends impossible.
-// (The @here/@update highlight uses a class we add AFTER sanitizing.)
-function stripAttributes(el) {
-  for (const attr of [...el.attributes]) el.removeAttribute(attr.name)
-}
-
-// Recursively walk a node's children, removing anything not allowed.
-// Disallowed-but-harmless tags are "unwrapped": <a href=x>hi</a> becomes hi.
-function scrubNode(node) {
-  for (const child of [...node.childNodes]) {
-    if (child.nodeType === Node.TEXT_NODE) continue          // text is always fine
-
-    if (child.nodeType !== Node.ELEMENT_NODE) {              // comments, CDATA, etc.
-      child.remove()
-      continue
-    }
-
-    const tag = child.tagName.toUpperCase()
-
-    if (DROP_CONTENT_TAGS.has(tag)) { child.remove(); continue }
-
-    if (!ALLOWED_TAGS.has(tag)) {
-      // Unwrap: move the children up, then delete the tag itself.
-      scrubNode(child)
-      while (child.firstChild) node.insertBefore(child.firstChild, child)
-      child.remove()
-      continue
-    }
-
-    stripAttributes(child)
-    scrubNode(child)
-  }
-}
-
-// Sanitize a chunk of HTML using an allowlist.
-//
-// We parse with DOMParser into a brand-new, *inert* document. Inert means the
-// browser builds the node tree but never runs scripts, never loads images, and
-// never fires event handlers — so an `<img src=x onerror=alert(1)>` in the
-// input is just a dead node we delete. This is why we do NOT use
-// `innerHTML` on a live element for this: that would execute.
-function sanitizeHtml(dirty) {
-  const src = String(dirty || '')
-  if (!src) return ''
-  if (typeof window === 'undefined' || !window.DOMParser) {
-    // SSR / no DOM available: fail closed, return plain text.
-    return escapeHtml(src.replace(/<[^>]*>/g, ''))
-  }
-  const doc = new DOMParser().parseFromString(`<body>${src}</body>`, 'text/html')
-  scrubNode(doc.body)
-  return doc.body.innerHTML
-}
-
-// Clean up contentEditable HTML before saving: convert &nbsp; to spaces,
-// strip trailing whitespace/breaks, drop empty trailing tags, and sanitize.
-function cleanChatHtml(html) {
-  let h = String(html || '')
-  h = h.replace(/&nbsp;/gi, ' ')               // nbsp -> normal space
-  h = h.replace(/(\s*<br\s*\/?>\s*)+$/gi, '')  // trailing <br>
-  h = h.replace(/(<div>\s*<\/div>)+$/gi, '')   // empty trailing divs
-  h = h.replace(/\s+$/g, '')                   // trailing whitespace
-  h = h.replace(/^(\s|<br\s*\/?>)+/gi, '')     // leading breaks/space
-  h = h.trim()
-  // Sanitize on the way in as well as on the way out. Never trust the DOM.
-  return sanitizeHtml(h)
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-}
-
-function renderBody(body, fontSize = 14) {
-  let html = String(body || '')
-
-  // Clean nbsp / trailing breaks (covers older messages already saved).
-  html = html.replace(/&nbsp;/gi, ' ').replace(/(\s*<br\s*\/?>\s*)+$/gi, '').replace(/\s+$/g, '')
-
-  // Plain text (no tags) → escape and keep newlines.
-  const looksHtml = /<\/?[a-z][\s\S]*>/i.test(html)
-  if (!looksHtml) html = escapeHtml(html).replace(/\n/g, '<br>')
-
-  // Sanitize BEFORE we inject our own markup, so a user can't smuggle tags in.
-  html = sanitizeHtml(html)
-
-  // Highlight @here / @update. Safe: our span carries no user-controlled
-  // content, and everything around it has already been sanitized.
-  html = html.replace(/(@here|@update)\b/gi,
-    '<span class="chat-mention">$1</span>')
-
-  return (
-    <div className="chat-rich"
-      style={{ fontSize, lineHeight: 1.5, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}
-      dangerouslySetInnerHTML={{ __html: html }} />
   )
 }
 
