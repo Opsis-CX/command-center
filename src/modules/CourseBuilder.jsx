@@ -2,6 +2,11 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { RichEditor, RichContent } from '../lib/RichEditor'
 
+let blockSeq = 0
+const nextBlockId = () => `b${Date.now().toString(36)}${(blockSeq++).toString(36)}`
+const withIds = (blocks) => (blocks || []).map(b => b._id ? b : { ...b, _id: nextBlockId() })
+const stripIds = (blocks) => (blocks || []).map(({ _id, ...rest }) => rest)
+
 // Detect phone-width viewport; updates on resize.
 function useIsMobile(breakpoint = 700) {
   const [mobile, setMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= breakpoint : false)
