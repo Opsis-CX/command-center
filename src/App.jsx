@@ -9,6 +9,7 @@ import { useAuth } from './lib/auth'
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 import Certifications from './modules/Certifications'
+import MyCourses from './modules/MyCourses'
 import Dashboard from './modules/Dashboard'
 import { Placeholder } from './modules/Placeholders'
 import PeopleTags from './modules/PeopleTags'
@@ -105,8 +106,7 @@ function AuthedApp({ session, isAdmin, navOpen, setNavOpen, location }) {
             {isAdmin && <Route path="/people" element={<PeopleTags />} />}
             {isAdmin && <Route path="/hiring" element={<HiringDashboard />} />}
             {!isAdmin && <Route path="/my-certifications" element={<Placeholder title="My certifications" note="These unlock the schedules you can claim." />} />}
-            {!isAdmin && <Route path="/my-courses" element={<Placeholder title="My courses" note="Work through lessons, then take the quiz." />} />}
-            <Route path="/schedule" element={<Schedule />} />
+{!isAdmin && <Route path="/my-courses" element={<MyCourses />} />}            <Route path="/schedule" element={<Schedule />} />
             <Route path="/chat" element={<Chat />} />
             {isAdmin && <Route path="/weekly-sync" element={<WeeklySync />} />}
             {isAdmin && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
