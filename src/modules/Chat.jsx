@@ -1150,7 +1150,7 @@ function RichComposer({ valueRef, onInput, onEnter, onPasteFiles, placeholder, m
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 1, padding: '3px 6px', borderBottom: '1px solid var(--line-soft)', background: '#fbfcfd' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 1, padding: '3px 6px', borderBottom: '1px solid var(--line-soft)', background: 'var(--composer-toolbar-bg)' }}>
         <TBtn cmd="bold" label={<b>B</b>} title="Bold" />
         <TBtn cmd="italic" label={<i>I</i>} title="Italic" />
         <TBtn cmd="strikeThrough" label={<s>S</s>} title="Strikethrough" />
