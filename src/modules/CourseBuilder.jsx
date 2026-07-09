@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import RichContent from './RichContent'
+import { RichEditor, RichContent } from '../lib/RichEditor'
 
 // Detect phone-width viewport; updates on resize.
 function useIsMobile(breakpoint = 700) {
