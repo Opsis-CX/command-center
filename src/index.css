@@ -369,3 +369,229 @@ a{color:inherit;text-decoration:none;}
 @media (hover: none) {
   .chat-msg-delete { opacity: .45; pointer-events: auto; }
 }
+/* ============================================================
+   RICH EDITOR — append to index.css
+   Used by both Chat and Certification via <RichEditor> / <RichContent>.
+
+   TipTap ships NO styles. Without these, tables render as unstyled inline
+   text with no borders and no visible cells.
+   ============================================================ */
+
+.re-wrap {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: visible;
+  position: relative;
+}
+.re-wrap.disabled { opacity: .6; pointer-events: none; }
+.re-wrap:focus-within { border-color: var(--accent); }
+
+/* ---- toolbar ---- */
+.re-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-wrap: wrap;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--composer-toolbar-bg);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.re-btn {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-family: inherit;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 5px;
+  border-radius: 5px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.re-btn:hover:not(:disabled) { background: var(--accent-bg); color: var(--accent); }
+.re-btn.on { background: var(--accent); color: var(--accent-ink); }
+.re-btn:disabled { opacity: .35; cursor: default; }
+.re-sep { width: 1px; height: 16px; background: var(--line); margin: 0 4px; flex: none; }
+
+/* ---- colour popover ---- */
+.re-popover {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  z-index: 61;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 8px;
+}
+.re-swatch {
+  width: 20px; height: 20px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  padding: 0;
+}
+.re-swatch:hover { transform: scale(1.12); }
+.re-clear {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--canvas);
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  font-family: inherit;
+  padding: 4px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+/* ---- the editable surface ---- */
+.re-content {
+  outline: none;
+  padding: 10px 12px;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* TipTap's Placeholder extension marks the first empty node. Without this rule
+   the placeholder text never appears. */
+.re-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--ink-soft);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* ============================================================
+   SHARED CONTENT STYLES
+   Apply to BOTH the editor surface and the rendered output, so what you type
+   is what you see. Any rule that only lands on one of them is a bug waiting.
+   ============================================================ */
+
+.re-content, .re-rendered {
+  font-family: var(--font-body), var(--font-emoji);
+  word-break: break-word;
+}
+
+.re-content p, .re-rendered p { margin: 0 0 6px; }
+.re-content p:last-child, .re-rendered p:last-child { margin-bottom: 0; }
+
+.re-content h1, .re-rendered h1 { font-size: 21px; font-weight: 700; margin: 14px 0 6px; letter-spacing: -.01em; }
+.re-content h2, .re-rendered h2 { font-size: 17px; font-weight: 700; margin: 12px 0 5px; }
+.re-content h3, .re-rendered h3 { font-size: 15px; font-weight: 600; margin: 10px 0 4px; }
+.re-content h1:first-child, .re-rendered h1:first-child,
+.re-content h2:first-child, .re-rendered h2:first-child,
+.re-content h3:first-child, .re-rendered h3:first-child { margin-top: 0; }
+
+.re-content ul, .re-rendered ul { list-style: disc;    margin: 4px 0 6px 20px; padding: 0; }
+.re-content ol, .re-rendered ol { list-style: decimal; margin: 4px 0 6px 20px; padding: 0; }
+.re-content li, .re-rendered li { margin: 2px 0; }
+.re-content li p, .re-rendered li p { margin: 0; }
+
+.re-content blockquote, .re-rendered blockquote {
+  border-left: 3px solid var(--line);
+  margin: 6px 0;
+  padding: 2px 0 2px 12px;
+  color: var(--ink-soft);
+}
+
+.re-content code, .re-rendered code {
+  background: var(--canvas);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .9em;
+}
+.re-content pre, .re-rendered pre {
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 6px 0;
+}
+.re-content pre code, .re-rendered pre code { background: none; border: 0; padding: 0; }
+
+.re-content a, .re-rendered a { color: var(--accent); text-decoration: underline; cursor: pointer; }
+
+.re-content hr, .re-rendered hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+
+/* ---- tables ----
+   `border-collapse: collapse` plus `table-layout: fixed` is what makes
+   ProseMirror's column resizing behave. Without fixed layout, dragging a
+   column border does nothing visible. */
+.re-content table, .re-rendered table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 8px 0;
+  overflow: hidden;
+}
+.re-content td, .re-content th,
+.re-rendered td, .re-rendered th {
+  border: 1px solid var(--line);
+  padding: 6px 9px;
+  vertical-align: top;
+  position: relative;
+  min-width: 1em;
+  font-size: 13.5px;
+}
+.re-content th, .re-rendered th {
+  background: var(--canvas);
+  font-weight: 700;
+  text-align: left;
+}
+.re-content .selectedCell:after {
+  /* ProseMirror marks selected cells with this class. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent-bg);
+  opacity: .5;
+  pointer-events: none;
+}
+.re-content .column-resize-handle {
+  position: absolute;
+  right: -2px; top: 0; bottom: 0;
+  width: 4px;
+  background: var(--accent);
+  cursor: col-resize;
+}
+.re-content.resize-cursor { cursor: col-resize; }
+
+/* ProseMirror's gap cursor: the blinking line shown when the caret sits
+   between two block nodes (e.g. just after a table). Invisible without this. */
+.ProseMirror-gapcursor { display: none; pointer-events: none; position: absolute; }
+.ProseMirror-gapcursor:after {
+  content: '';
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 1px solid var(--ink);
+  animation: re-blink 1.1s steps(2, start) infinite;
+}
+.ProseMirror-focused .ProseMirror-gapcursor { display: block; }
+@keyframes re-blink { to { visibility: hidden; } }
+
+/* Rendered output is not editable, so it needs no min-height or padding. */
+.re-rendered { font-size: 14px; line-height: 1.55; }
+
+/* @here / @update, set by RichContent after sanitizing. */
+.re-rendered .chat-mention {
+  color: var(--accent);
+  font-weight: 700;
+  background: var(--accent-bg);
+  border-radius: 4px;
+  padding: 0 3px;
+}
