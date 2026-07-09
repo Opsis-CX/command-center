@@ -3,6 +3,8 @@ import NotificationToggle from './components/NotificationToggle'
 import { useState, useEffect } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { initTheme } from './lib/theme'
+import { supabase } from './lib/supabase'
+import ChangePassword from './components/ChangePassword'
 import { useAuth } from './lib/auth'
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
@@ -54,6 +56,26 @@ export default function App() {
     )
   }
   if (!session) return <Login />
+  return <AuthedApp session={session} isAdmin={isAdmin} navOpen={navOpen} setNavOpen={setNavOpen} location={location} />
+}
+
+// Everything behind the login gate. Split out so the must-change-password
+// check can run with a session guaranteed to exist.
+function AuthedApp({ session, isAdmin, navOpen, setNavOpen, location }) {
+  // Agents handed the shared temporary password must set their own before
+  // they can use the app. Checked once, on load.
+  const [mustChange, setMustChange] = useState(null)   // null = still checking
+  useEffect(() => {
+    let active = true
+    supabase.from('profiles').select('must_change_password').eq('id', session.user.id).single()
+      .then(({ data }) => { if (active) setMustChange(!!data?.must_change_password) })
+      .catch(() => { if (active) setMustChange(false) })   // never lock someone out on an error
+    return () => { active = false }
+  }, [session.user.id])
+
+  if (mustChange === null) return <div className="loading-screen">Loading…</div>
+  if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
+
   return (
     <UnreadProvider>
     <div className="app">
