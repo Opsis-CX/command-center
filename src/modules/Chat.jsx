@@ -1100,7 +1100,12 @@ function NotificationPrefsPanel({ channelId, channelName, isDm, dmName, meId, pr
             notify_from: data.notify_from || [],
             notify_keywords: data.notify_keywords || [],
           }
-        : { notify_all: false, notify_mentions: true, notify_from: [], notify_keywords: [] })
+: {
+    notify_all: true,
+    notify_mentions: true,
+    notify_from: [],
+    notify_keywords: [],
+  }
     })()
     return () => { active = false }
   }, [channelId, meId])
