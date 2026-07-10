@@ -97,6 +97,12 @@ export default function LiveStatus() {
 
   useEffect(() => { load() }, [load])
 
+  const checkOut = useCallback(async (claimId) => {
+    if (!claimId) return
+    await supabase.from('shift_claims').update({ checked_out_at: new Date().toISOString(), status: 'completed' }).eq('id', claimId)
+    load(true)
+  }, [load])
+
   // realtime + polling fallback (matches Schedule.jsx)
   useEffect(() => {
     const ch = supabase.channel('livestatus')
@@ -173,7 +179,8 @@ export default function LiveStatus() {
     }
 
     const interval = checkedIn?.block || scheduledNow?.block || null
-    return { pid, name: profile?.full_name || 'Unknown', state, detail, interval }
+    const claimId = checkedIn?.claim?.id || null
+    return { pid, name: profile?.full_name || 'Unknown', state, detail, interval, claimId }
   })
 
   // Agents only see themselves.
@@ -211,7 +218,7 @@ export default function LiveStatus() {
 
       <div>
         {rows.map((r, i) => (
-          <StatusRow key={r.pid} row={r} last={i === rows.length - 1} />
+          <StatusRow key={r.pid} row={r} last={i === rows.length - 1} isAdmin={isAdmin} onCheckOut={checkOut} />
         ))}
       </div>
 
@@ -222,11 +229,13 @@ export default function LiveStatus() {
   )
 }
 
-function StatusRow({ row, last }) {
+function StatusRow({ row, last, isAdmin, onCheckOut }) {
   const dot = { active: 'var(--passed)', idle: 'var(--needed)', absent: 'var(--failed)' }[row.state]
   const bg = {
     active: 'var(--passed-bg)', idle: 'var(--needed-bg)', absent: 'var(--failed-bg)',
   }[row.state]
+  // admin can check out anyone who's checked in (active or idle) and has a claim
+  const canCheckOut = isAdmin && row.claimId && (row.state === 'active' || row.state === 'idle')
 
   return (
     <div style={{
@@ -267,7 +276,7 @@ function StatusRow({ row, last }) {
       </div>
 
       {/* right: live elapsed or status pill */}
-      <div style={{ flexShrink: 0, textAlign: 'right' }}>
+      <div style={{ flexShrink: 0, textAlign: 'right', display: 'flex', alignItems: 'center', gap: 10 }}>
         {row.state === 'active' ? (
           <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: 14, color: 'var(--passed)' }}>
             {elapsed(row.detail.startedAt)}
@@ -276,6 +285,12 @@ function StatusRow({ row, last }) {
           <span className="badge" style={{ background: bg, color: dot }}>
             {row.state === 'idle' ? 'Idle' : 'Absent'}
           </span>
+        )}
+        {canCheckOut && (
+          <button onClick={() => onCheckOut(row.claimId)} title="Check this person out"
+            style={{ border: '1px solid var(--line)', background: 'var(--canvas)', borderRadius: 6, padding: '4px 9px', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: 'var(--ink-soft)', whiteSpace: 'nowrap' }}>
+            Check out
+          </button>
         )}
       </div>
     </div>
