@@ -74,12 +74,12 @@ export async function channelRecipients(channelId, actorId) {
 
 // ─── NOTIFICATION PREFERENCES ────────────────────────────────
 
-const DEFAULT_PREFS = {
-  notify_all: true,
-  notify_mentions: true,
-  notify_from: [],
-  notify_keywords: [],
-}
+: {
+    notify_all: true,
+    notify_mentions: true,
+    notify_from: [],
+    notify_keywords: [],
+  }
 
 async function channelPrefs(channelId, actorId) {
   const [membersResult, prefsResult] = await Promise.all([
