@@ -575,8 +575,11 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         (payload) => { setReactions(prev => prev.some(r => r.id === payload.new.id) ? prev : [...prev, payload.new]) })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' },
         (payload) => { setReactions(prev => prev.filter(r => r.id !== payload.old.id)) })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_attachments', filter: `channel_id=eq.${channelId}` },
-        (payload) => { setAttachments(prev => prev.some(a => a.id === payload.new.id) ? prev : [...prev, payload.new]) })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_attachments' },
+        (payload) => {
+          if (payload.new.channel_id !== channelId) return
+          setAttachments(prev => prev.some(a => a.id === payload.new.id) ? prev : [...prev, payload.new])
+        })
       // A soft-delete arrives as an UPDATE with deleted_at set. Drop it from view.
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' },
         (payload) => {
