@@ -43,7 +43,20 @@ function useIsMobile(breakpoint = 700) {
   }, [breakpoint])
   return mobile
 }
-
+useEffect(() => {
+    const t = setInterval(async () => {
+      const { data } = await supabase.from('messages')
+        .select('*').eq('channel_id', channelId).is('deleted_at', null)
+        .order('created_at').limit(200)
+      if (!data) return
+      setMessages(prev => {
+        const ids = new Set(prev.map(m => m.id))
+        const added = data.filter(m => !ids.has(m.id))
+        return added.length ? [...prev, ...added] : prev
+      })
+    }, 15000)
+    return () => clearInterval(t)
+  }, [channelId])
 // Ephemeral typing indicator over Supabase Realtime broadcast.
 function useTyping(topic, meId, meName) {
   const [typers, setTypers] = useState({})   // id -> { name, at }
