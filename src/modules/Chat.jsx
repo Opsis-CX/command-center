@@ -578,9 +578,10 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_attachments', filter: `channel_id=eq.${channelId}` },
         (payload) => { setAttachments(prev => prev.some(a => a.id === payload.new.id) ? prev : [...prev, payload.new]) })
       // A soft-delete arrives as an UPDATE with deleted_at set. Drop it from view.
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `channel_id=eq.${channelId}` },
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' },
         (payload) => {
           const m = payload.new
+          if (m.channel_id !== channelId) return
           if (m.deleted_at) setMessages(prev => prev.filter(x => x.id !== m.id))
           else setMessages(prev => prev.map(x => x.id === m.id ? m : x))
         })
