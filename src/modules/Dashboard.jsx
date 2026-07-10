@@ -79,7 +79,8 @@ export default function Dashboard() {
   const firstName = (me?.full_name || 'there').split(' ')[0]
 
   return (
- <div style={{ marginBottom: 22 }}>
+    <div>
+      <div style={{ marginBottom: 22 }}>
         <h1 className="page-title">Welcome back, {firstName}</h1>
         <p className="page-sub">{isAdmin ? "Here's how operations look right now." : "Here's your day at a glance."}</p>
       </div>
