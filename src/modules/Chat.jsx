@@ -804,18 +804,24 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     setMessages(prev => prev.filter(m => m.id !== temp.id && m.id !== data.id).concat(data))
 
     // Auto-add mentioned non-members to the channel first, so they exist in
-    // channel_members by the time notifyChatMessage reads prefs.
-    await addMentionedMembers(mentionedIds)
+    // channel_members by the time notifyChatMessage reads preferences.
+    try {
+      await addMentionedMembers(mentionedIds)
 
-    // One call. It reads every member's prefs and decides who to notify.
-    // `plain` (not HTML) — keywords must not match tag names like "div".
-    notifyChatMessage({
-      channelId, channelName: channel?.name, isDm: channel?.is_dm,
-      actorId: me.id, actorName: me.full_name,
-      isHere, requiresAck: willRequireAck,
-      body: plain,
-      mentionedIds,
-    })
+      // Wait for notification creation. The message remains sent if notification
+      // creation fails, but the failure is now visible and logged.
+      await notifyChatMessage({
+        channelId, channelName: channel?.name, isDm: channel?.is_dm,
+        actorId: me.id, actorName: me.full_name,
+        isHere, requiresAck: willRequireAck,
+        body: plain,
+        mentionedIds,
+        messageId: data.id,
+      })
+    } catch (notificationError) {
+      console.error('Message sent, but notification creation failed', notificationError)
+      setErr(`Message sent, but notification failed: ${notificationError.message || 'Unknown error'}`)
+    }
   }
 
   // Mentioning a non-member adds them to the channel and tells them so.
@@ -823,9 +829,12 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     if (!mentionedIds.length || channel?.is_dm) return
     const addedIds = mentionedIds.filter(id => !members.includes(id))
     if (!addedIds.length) return
-    await supabase.from('channel_members').insert(addedIds.map(pid => ({ channel_id: channelId, profile_id: pid })))
+    const { error: memberError } = await supabase.from('channel_members')
+      .insert(addedIds.map(pid => ({ channel_id: channelId, profile_id: pid })))
+    if (memberError) throw memberError
+
     setMembers(prev => [...new Set([...prev, ...addedIds])])
-    notifyChannelAdded({
+    await notifyChannelAdded({
       recipientIds: addedIds, actorId: me.id, actorName: me.full_name,
       channelName: channel?.name, isDm: false,
     })
@@ -1290,7 +1299,19 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
     const { error } = await supabase.from('channel_members').insert({ channel_id: channelId, profile_id: pid })
     if (error) { window.alert('Could not add: ' + error.message); return }
     setMemberIds(prev => [...prev, pid])
-    notifyChannelAdded({ recipientIds: [pid], actorId: meId, actorName: profiles.find(p => p.id === meId)?.full_name, channelName, isDm: false })
+    try {
+      await notifyChannelAdded({
+        recipientIds: [pid],
+        actorId: meId,
+        actorName: profiles.find(p => p.id === meId)?.full_name,
+        channelName,
+        isDm: false,
+        channelId,
+      })
+    } catch (notificationError) {
+      console.error('Member added, but notification creation failed', notificationError)
+      window.alert(`Member added, but notification failed: ${notificationError.message || 'Unknown error'}`)
+    }
     onChanged && onChanged()
   }
 
@@ -1530,20 +1551,29 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
     if (mentionedIds.length) {
       const addedIds = mentionedIds.filter(id => !members.includes(id))
       if (addedIds.length && !channel?.is_dm) {
-        await supabase.from('channel_members').insert(addedIds.map(pid => ({ channel_id: channelId, profile_id: pid })))
-        notifyChannelAdded({
+        const { error: memberError } = await supabase.from('channel_members')
+          .insert(addedIds.map(pid => ({ channel_id: channelId, profile_id: pid })))
+        if (memberError) throw memberError
+
+        await notifyChannelAdded({
           recipientIds: addedIds, actorId: me.id, actorName: me.full_name,
-          channelName: channel?.name, isDm: false,
+          channelName: channel?.name, isDm: false, channelId,
         })
       }
     }
 
-    notifyChatMessage({
-      channelId, channelName: channel?.name, isDm: channel?.is_dm,
-      actorId: me.id, actorName: me.full_name,
-      isHere: false, requiresAck: false,
-      body, mentionedIds,
-    })
+    try {
+      await notifyChatMessage({
+        channelId, channelName: channel?.name, isDm: channel?.is_dm,
+        actorId: me.id, actorName: me.full_name,
+        isHere: false, requiresAck: false,
+        body, mentionedIds,
+        messageId: data.id,
+      })
+    } catch (notificationError) {
+      console.error('Reply sent, but notification creation failed', notificationError)
+      window.alert(`Reply sent, but notification failed: ${notificationError.message || 'Unknown error'}`)
+    }
   }
 
   const nameFor = (id) => id === me.id ? 'You' : (names[id] || 'Someone')
@@ -1695,7 +1725,14 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
       const { error: me2 } = await supabase.from('channel_members')
         .insert([{ channel_id: ch.id, profile_id: me.id }, { channel_id: ch.id, profile_id: personId }])
       if (me2) throw me2
-      notifyChannelAdded({ recipientIds: [personId], actorId: me.id, actorName: me.full_name, channelName: 'Direct message', isDm: true })
+      await notifyChannelAdded({
+        recipientIds: [personId],
+        actorId: me.id,
+        actorName: me.full_name,
+        channelName: 'Direct message',
+        isDm: true,
+        channelId: ch.id,
+      })
       onCreated(ch.id)
     } catch (e) { setErr(e.message); setSaving(false) }
   }
@@ -1750,7 +1787,14 @@ function CreateChannelModal({ me, profiles, onClose, onCreated }) {
       const rows = [...members].map(pid => ({ channel_id: ch.id, profile_id: pid }))
       const { error: me2 } = await supabase.from('channel_members').insert(rows)
       if (me2) throw me2
-      notifyChannelAdded({ recipientIds: [...members], actorId: me.id, actorName: me.full_name, channelName: nm, isDm: false })
+      await notifyChannelAdded({
+        recipientIds: [...members],
+        actorId: me.id,
+        actorName: me.full_name,
+        channelName: nm,
+        isDm: false,
+        channelId: ch.id,
+      })
       onCreated(ch.id)
     } catch (e) { setErr(e.message); setSaving(false) }
   }
