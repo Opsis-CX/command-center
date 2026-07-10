@@ -13,6 +13,12 @@ import { RichEditor, RichContent, sanitizeHtml, htmlToText } from '../lib/RichEd
 // and can nudge non-confirmers.
 //
 // Per-channel notification preferences live in the 🔔 panel.
+//
+// REALTIME NOTE: postgres_changes subscriptions here are deliberately
+// UNFILTERED, with the channel check done in the handler instead. The
+// server-side `filter: channel_id=eq.<id>` form was silently delivering
+// nothing — the unfiltered `unread-watch` subscription received the same
+// rows fine. A 15s poll below backstops the websocket regardless.
 // ============================================================
 
 function initials(name) {
@@ -43,20 +49,7 @@ function useIsMobile(breakpoint = 700) {
   }, [breakpoint])
   return mobile
 }
-useEffect(() => {
-    const t = setInterval(async () => {
-      const { data } = await supabase.from('messages')
-        .select('*').eq('channel_id', channelId).is('deleted_at', null)
-        .order('created_at').limit(200)
-      if (!data) return
-      setMessages(prev => {
-        const ids = new Set(prev.map(m => m.id))
-        const added = data.filter(m => !ids.has(m.id))
-        return added.length ? [...prev, ...added] : prev
-      })
-    }, 15000)
-    return () => clearInterval(t)
-  }, [channelId])
+
 // Ephemeral typing indicator over Supabase Realtime broadcast.
 function useTyping(topic, meId, meName) {
   const [typers, setTypers] = useState({})   // id -> { name, at }
@@ -82,6 +75,7 @@ function useTyping(topic, meId, meName) {
         return changed ? n : prev
       })
     }, 1000)
+
     return () => { clearInterval(sweep); supabase.removeChannel(ch) }
   }, [topic, meId])
 
@@ -303,7 +297,6 @@ export default function Chat() {
         supabase.from('profiles').select('id, full_name, is_active').eq('is_active', true).order('full_name'),
       ])
       if (chRes.error) throw chRes.error
-
       setMe(meRes.data)
       setChannels(chRes.data || [])
       setProfiles(profRes.data || [])
@@ -376,12 +369,14 @@ export default function Chat() {
                 )}
               </div>
             ))}
+
             {(channels.some(c => c.is_dm) || isAdmin) && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 11px 6px' }}>
                 <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-soft)' }}>Direct messages</span>
                 {isAdmin && <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button>}
               </div>
             )}
+
             {channels.filter(c => c.is_dm).map(c => (
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
                 <button onClick={() => openChannel(c.id)}
@@ -439,7 +434,6 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   const [readState, setReadState] = useState({})    // profile_id -> last_read_at iso
   const [readersFor, setReadersFor] = useState(null) // message id whose reader list is open
   const [reactorsFor, setReactorsFor] = useState(null) // {messageId, emoji} whose reactor list is open
-
   const composerRef = useRef(null)
   const htmlRef = useRef('')
 
@@ -478,6 +472,28 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       } catch (e) { if (active) setErr(e.message) } finally { if (active) setLoading(false) }
     })()
     return () => { active = false }
+  }, [channelId])
+
+  // ---- SAFETY NET ----
+  // Realtime websockets drop: laptops sleep, wifi switches, tabs background.
+  // Reconcile against the database every 15 seconds so the worst case is a
+  // short delay rather than a message nobody ever sees. If realtime is working
+  // this finds nothing new and costs one cheap query.
+  useEffect(() => {
+    const t = setInterval(async () => {
+      const { data } = await supabase.from('messages')
+        .select('*').eq('channel_id', channelId).is('deleted_at', null)
+        .order('created_at').limit(200)
+      if (!data) return
+      setMessages(prev => {
+        const ids = new Set(prev.map(m => m.id))
+        const added = data.filter(m => !ids.has(m.id))
+        if (!added.length) return prev
+        hydrateSenders(added)
+        return [...prev, ...added]
+      })
+    }, 15000)
+    return () => clearInterval(t)
   }, [channelId])
 
   async function loadReadState() {
@@ -567,10 +583,15 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   }
 
   // realtime: new messages + acknowledgments + reactions + attachments
+  //
+  // NOTE: no server-side `filter:` on any of these. The filtered form delivered
+  // nothing while the unfiltered `unread-watch` subscription received the same
+  // rows. We filter in the handler instead. RLS still applies, so we only ever
+  // receive rows we're allowed to see.
   useEffect(() => {
     const ch = supabase
       .channel(`chan:${channelId}`)
-     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
         async (payload) => {
           const m = payload.new
           if (m.channel_id !== channelId) return
@@ -588,7 +609,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         (payload) => { setReactions(prev => prev.some(r => r.id === payload.new.id) ? prev : [...prev, payload.new]) })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' },
         (payload) => { setReactions(prev => prev.filter(r => r.id !== payload.old.id)) })
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_attachments' },
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_attachments' },
         (payload) => {
           if (payload.new.channel_id !== channelId) return
           setAttachments(prev => prev.some(a => a.id === payload.new.id) ? prev : [...prev, payload.new])
@@ -602,10 +623,10 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
           else setMessages(prev => prev.map(x => x.id === m.id ? m : x))
         })
       // Someone else read the channel — update their receipt live.
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'channel_read_state', filter: `channel_id=eq.${channelId}` },
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'channel_read_state' },
         (payload) => {
           const r = payload.new
-          if (!r?.profile_id) return
+          if (!r?.profile_id || r.channel_id !== channelId) return
           setReadState(prev => ({ ...prev, [r.profile_id]: r.last_read_at }))
         })
       .subscribe()
@@ -627,13 +648,11 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 
     const prev = messages
     setMessages(cur => cur.filter(x => x.id !== m.id))   // optimistic
-
     const { error } = await supabase.from('messages').update({
       deleted_at: new Date().toISOString(),
       deleted_by: me.id,
       deleted_reason: reason || null,
     }).eq('id', m.id)
-
     if (error) { setMessages(prev); setErr('Could not delete: ' + error.message) }
   }
 
@@ -862,7 +881,6 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       <div ref={scrollerRef} onScroll={onScroll}
         style={{ flex: 1, overflowY: 'auto', padding: '16px 18px 28px', minHeight: 0 }}>
         {err && <div style={{ color: 'var(--failed)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
-
         {topLevel.length === 0
           ? <div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>No messages yet. Say hello 👋</div>
           : topLevel.map((m, i) => {
@@ -951,7 +969,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       <TypingLine names={typerNames} />
 
       <div style={{ borderTop: '1px solid var(--line)', padding: '10px 16px', flex: 'none', background: 'var(--surface)' }}>
-       {isAdmin && (
+        {isAdmin && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, fontSize: 12.5, color: requireAck ? 'var(--accent)' : 'var(--ink-soft)', cursor: 'pointer', fontWeight: requireAck ? 600 : 400 }}>
             <input type="checkbox" checked={requireAck} onChange={e => setRequireAck(e.target.checked)} style={{ flex: 'none' }} />
             <span>
@@ -960,6 +978,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             </span>
           </label>
         )}
+
         {pending.length > 0 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
             {pending.map((p, i) => (
@@ -974,63 +993,65 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 
         {uploading && <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 6 }}>Uploading…</div>}
 
-      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 8, position: 'relative' }}>
-  {showPicker && (
-    <div onMouseDown={e => e.preventDefault()}
-      style={{ position: 'absolute', bottom: 52, left: 0, zIndex: 50 }}>
-      <EmojiPicker onEmojiClick={(e) => { composerRef.current?.insertText(e.emoji); setShowPicker(false) }}
-        width={isMobile ? 280 : 320} height={isMobile ? 320 : 380} previewConfig={{ showPreview: false }} />
-    </div>
-  )}
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 8, position: 'relative' }}>
+          {showPicker && (
+            // onMouseDown/preventDefault everywhere: clicking the picker must NOT
+            // blur the composer, or we lose the caret and the emoji goes nowhere.
+            <div onMouseDown={e => e.preventDefault()}
+              style={{ position: 'absolute', bottom: 52, left: 0, zIndex: 50 }}>
+              <EmojiPicker onEmojiClick={(e) => { composerRef.current?.insertText(e.emoji); setShowPicker(false) }}
+                width={isMobile ? 280 : 320} height={isMobile ? 320 : 380} previewConfig={{ showPreview: false }} />
+            </div>
+          )}
 
-  <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }}
-    onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
+          <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }}
+            onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
 
-  {/* Desktop: icons sit left of the editor. Mobile: they move below it. */}
-  {!isMobile && (
-    <>
-      <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach file"
-        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, padding: '0 10px', flex: 'none' }}>📎</button>
-      <button type="button" onMouseDown={e => { e.preventDefault(); setShowPicker(p => !p) }} title="Emoji"
-        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '0 10px', flex: 'none' }}>😀</button>
-    </>
-  )}
+          {/* Desktop: icons sit left of the editor. Mobile: they move below it. */}
+          {!isMobile && (
+            <>
+              <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach file"
+                style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, padding: '0 10px', flex: 'none' }}>📎</button>
+              <button type="button" onMouseDown={e => { e.preventDefault(); setShowPicker(p => !p) }} title="Emoji"
+                style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '0 10px', flex: 'none' }}>😀</button>
+            </>
+          )}
 
-  <div style={{ flex: 1, minWidth: 0 }}>
-    <RichEditor
-      variant="chat"
-      editorRef={composerRef}
-      profiles={profiles}
-      submitOnEnter
-      onChange={(html) => { htmlRef.current = html; notifyTyping() }}
-      onSubmit={send}
-      onPasteFiles={(files) => addFiles(files)}
-      placeholder={requireAck
-        ? 'Write your update…'
-        : isMobile
-          ? `Message ${channel?.is_dm ? (dmName || '') : '#' + (channel?.name || '')}`
-          : `Message ${channel?.is_dm ? (dmName || '') : '#' + (channel?.name || '')}  (@name, @here, or paste/attach a file)`}
-      minHeight={isMobile ? 44 : 76} maxHeight={isMobile ? 140 : 200} />
-  </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <RichEditor
+              variant="chat"
+              editorRef={composerRef}
+              profiles={profiles}
+              submitOnEnter
+              onChange={(html) => { htmlRef.current = html; notifyTyping() }}
+              onSubmit={send}
+              onPasteFiles={(files) => addFiles(files)}
+              placeholder={requireAck
+                ? 'Write your update…'
+                : isMobile
+                  ? `Message ${channel?.is_dm ? (dmName || '') : '#' + (channel?.name || '')}`
+                  : `Message ${channel?.is_dm ? (dmName || '') : '#' + (channel?.name || '')}  (@name, @here, or paste/attach a file)`}
+              minHeight={isMobile ? 44 : 76} maxHeight={isMobile ? 140 : 200} />
+          </div>
 
-{isMobile ? (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-      <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach file"
-        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, width: 42, height: 42, padding: 0, flex: 'none', display: 'grid', placeItems: 'center' }}>📎</button>
-      <button type="button" onMouseDown={e => { e.preventDefault(); setShowPicker(p => !p) }} title="Emoji"
-        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, width: 42, height: 42, padding: 0, flex: 'none', display: 'grid', placeItems: 'center' }}>😀</button>
-      <div style={{ flex: 1 }} />
-      <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={uploading}
-        style={{ height: 42 }}>
-        {requireAck ? 'Post update' : 'Send'}
-      </button>
-    </div>
-  ) : (
-    <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={uploading}>
-      {requireAck ? 'Post update' : 'Send'}
-    </button>
-  )}
-</div>
+          {isMobile ? (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach file"
+                style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, width: 42, height: 42, padding: 0, flex: 'none', display: 'grid', placeItems: 'center' }}>📎</button>
+              <button type="button" onMouseDown={e => { e.preventDefault(); setShowPicker(p => !p) }} title="Emoji"
+                style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, width: 42, height: 42, padding: 0, flex: 'none', display: 'grid', placeItems: 'center' }}>😀</button>
+              <div style={{ flex: 1 }} />
+              <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={uploading}
+                style={{ height: 42 }}>
+                {requireAck ? 'Post update' : 'Send'}
+              </button>
+            </div>
+          ) : (
+            <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={uploading}>
+              {requireAck ? 'Post update' : 'Send'}
+            </button>
+          )}
+        </div>
       </div>
 
       {trackFor && <TrackPanel messageId={trackFor} me={me} members={members} profiles={profiles} acks={acks} onClose={() => setTrackFor(null)} />}
@@ -1281,6 +1302,7 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
           <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 9px' }} onClick={onClose}>Close</button>
         </div>
         <p className="page-sub" style={{ marginBottom: 14 }}>{members.length} member{members.length !== 1 ? 's' : ''}{isOwner ? ' · you can add or remove people' : ''}</p>
+
         {loading ? <p className="page-sub">Loading…</p> : (
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {members.map(p => (
@@ -1293,6 +1315,7 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
                 )}
               </div>
             ))}
+
             {isOwner && (
               <div style={{ marginTop: 14, borderTop: '1px solid var(--line-soft)', paddingTop: 12 }}>
                 {!adding ? (
@@ -1396,7 +1419,6 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
           <span className="chat-emoji" style={{ fontSize: 14 }}>{emoji}</span> {g.count}
         </button>
       ))}
-
       <button onClick={onOpenPicker} title="Add reaction"
         style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 12, cursor: 'pointer', fontSize: 12, padding: '2px 7px', color: 'var(--ink-soft)', lineHeight: 1.4 }}>
         ☺+
@@ -1452,6 +1474,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(true)
   const endRef = useRef(null)
+
   const { typerNames, notifyTyping, stopTyping } = useTyping(`typing:thread:${parentId}`, me.id, me.full_name)
 
   useEffect(() => {
@@ -1476,13 +1499,15 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
     return () => { active = false }
   }, [parentId])
 
+  // Unfiltered, same reasoning as ChannelPane. Check parent_id in the handler.
   useEffect(() => {
     const ch = supabase.channel(`thread:${parentId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `parent_id=eq.${parentId}` },
-        (payload) => setReplies(prev => prev.some(x => x.id === payload.new.id) ? prev : [...prev, payload.new]))
-      .subscribe((status, err) => {
-        console.log('[realtime] chan:' + channelId, status, err || '')
-      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          if (payload.new.parent_id !== parentId) return
+          setReplies(prev => prev.some(x => x.id === payload.new.id) ? prev : [...prev, payload.new])
+        })
+      .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [parentId])
 
@@ -1586,6 +1611,7 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
       <div className="modal" style={{ width: 440 }}>
         <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>Read confirmations</h3>
         <p className="page-sub" style={{ marginBottom: 16 }}>{confirmed.length} of {memberProfiles.length} confirmed</p>
+
         {pending.length > 0 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -1605,6 +1631,7 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
             ))}
           </div>
         )}
+
         {confirmed.length > 0 && (
           <div>
             <b style={{ fontSize: 13, color: 'var(--passed)' }}>Confirmed ({confirmed.length})</b>
@@ -1617,6 +1644,7 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
             ))}
           </div>
         )}
+
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line-soft)' }}>
           <div className="hint" style={{ marginBottom: 10 }}>Nudges appear in-app for now. Push/email arrives with notifications.</div>
           <button className="btn btn-ghost" style={{ width: '100%' }} onClick={onClose}>Close</button>
@@ -1646,6 +1674,7 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
         .select('channel_id, channels!inner(is_dm)')
         .eq('profile_id', me.id)
       const myDmIds = (myDms || []).filter(r => r.channels?.is_dm).map(r => r.channel_id)
+
       if (myDmIds.length) {
         const { data: theirs } = await supabase.from('channel_members')
           .select('channel_id')
@@ -1656,6 +1685,7 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
           return
         }
       }
+
       // otherwise: none exists — create a new DM with both of us
       const myFirst = me.full_name?.split(' ')[0] || 'Me'
       const theirFirst = profiles.find(p => p.id === personId)?.full_name?.split(' ')[0] || 'DM'
@@ -1676,8 +1706,10 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
         <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>New direct message</h3>
         <p className="page-sub" style={{ marginBottom: 16 }}>Search for someone to start a conversation.</p>
         {err && <div className="login-err" style={{ marginBottom: 14 }}>{err}</div>}
+
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search people…" autoFocus
           style={{ width: '100%', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', marginBottom: 10, boxSizing: 'border-box' }} />
+
         <div style={{ border: '1px solid var(--line)', borderRadius: 8, maxHeight: 300, overflowY: 'auto' }}>
           {matches.length === 0 && <div className="page-sub" style={{ padding: 14, fontSize: 13 }}>No people found.</div>}
           {matches.map(p => (
@@ -1688,6 +1720,7 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
             </button>
           ))}
         </div>
+
         <div style={{ display: 'flex', marginTop: 16 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
         </div>
@@ -1728,10 +1761,12 @@ function CreateChannelModal({ me, profiles, onClose, onCreated }) {
         <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>New channel</h3>
         <p className="page-sub" style={{ marginBottom: 18 }}>Create a channel and add members.</p>
         {err && <div className="login-err" style={{ marginBottom: 14 }}>{err}</div>}
+
         <div className="field"><label>Channel name</label>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. general, garageco-team" autoFocus /></div>
         <div className="field"><label>Description <span style={{ fontWeight: 400 }}>(optional)</span></label>
           <input value={description} onChange={e => setDescription(e.target.value)} placeholder="What's this channel for?" /></div>
+
         <div className="field">
           <label>Members</label>
           <div style={{ border: '1px solid var(--line)', borderRadius: 8, padding: 8, maxHeight: 220, overflow: 'auto' }}>
@@ -1744,6 +1779,7 @@ function CreateChannelModal({ me, profiles, onClose, onCreated }) {
           </div>
           <div className="hint">{picked.size} member{picked.size !== 1 ? 's' : ''}</div>
         </div>
+
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={create} disabled={saving}>{saving ? 'Creating…' : 'Create channel'}</button>
