@@ -74,12 +74,15 @@ export async function channelRecipients(channelId, actorId) {
 
 // ─── NOTIFICATION PREFERENCES ────────────────────────────────
 
-: {
-    notify_all: true,
-    notify_mentions: true,
-    notify_from: [],
-    notify_keywords: [],
-  }
+// Fallback used when a channel member has no saved preference row.
+// notify_all defaults to true so members are notified until they opt out —
+// this is the default the notification pipeline relies on.
+const DEFAULT_PREFS = {
+  notify_all: true,
+  notify_mentions: true,
+  notify_from: [],
+  notify_keywords: [],
+}
 
 async function channelPrefs(channelId, actorId) {
   const [membersResult, prefsResult] = await Promise.all([
