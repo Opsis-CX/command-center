@@ -1462,7 +1462,9 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
     const ch = supabase.channel(`thread:${parentId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `parent_id=eq.${parentId}` },
         (payload) => setReplies(prev => prev.some(x => x.id === payload.new.id) ? prev : [...prev, payload.new]))
-      .subscribe()
+      .subscribe((status, err) => {
+        console.log('[realtime] chan:' + channelId, status, err || '')
+      })
     return () => { supabase.removeChannel(ch) }
   }, [parentId])
 
