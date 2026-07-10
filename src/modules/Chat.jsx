@@ -995,14 +995,15 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       minHeight={isMobile ? 44 : 76} maxHeight={isMobile ? 140 : 200} />
   </div>
 
-  {isMobile ? (
+{isMobile ? (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
       <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach file"
-        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, padding: '8px 12px', flex: 'none' }}>📎</button>
+        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, width: 42, height: 42, padding: 0, flex: 'none', display: 'grid', placeItems: 'center' }}>📎</button>
       <button type="button" onMouseDown={e => { e.preventDefault(); setShowPicker(p => !p) }} title="Emoji"
-        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '8px 12px', flex: 'none' }}>😀</button>
+        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, width: 42, height: 42, padding: 0, flex: 'none', display: 'grid', placeItems: 'center' }}>😀</button>
       <div style={{ flex: 1 }} />
-      <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={uploading}>
+      <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={uploading}
+        style={{ height: 42 }}>
         {requireAck ? 'Post update' : 'Send'}
       </button>
     </div>
