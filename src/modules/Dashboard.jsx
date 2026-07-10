@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import LiveStatus from './LiveStatus'
 
 // ============================================================
 // DASHBOARD — role-aware command center home.
