@@ -557,9 +557,10 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   useEffect(() => {
     const ch = supabase
       .channel(`chan:${channelId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${channelId}` },
+     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
         async (payload) => {
           const m = payload.new
+          if (m.channel_id !== channelId) return
           setMessages(prev => prev.some(x => x.id === m.id) ? prev : [...prev, m])
           // I'm looking at this channel, so keep it marked read
           if (m.sender_id !== me.id) markRead?.(channelId)
