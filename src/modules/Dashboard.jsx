@@ -79,11 +79,18 @@ export default function Dashboard() {
   const firstName = (me?.full_name || 'there').split(' ')[0]
 
   return (
-    <div>
-      <div style={{ marginBottom: 22 }}>
+ <div style={{ marginBottom: 22 }}>
         <h1 className="page-title">Welcome back, {firstName}</h1>
         <p className="page-sub">{isAdmin ? "Here's how operations look right now." : "Here's your day at a glance."}</p>
       </div>
+
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{isAdmin ? 'On now' : 'My status'}</h2>
+        </div>
+        <LiveStatus />
+      </div>
+
       {isAdmin
         ? <AdminDashboard data={data} navigate={navigate} />
         : <AgentDashboard data={data} me={me} navigate={navigate} />}
