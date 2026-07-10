@@ -75,7 +75,7 @@ export async function channelRecipients(channelId, actorId) {
 // ─── NOTIFICATION PREFERENCES ────────────────────────────────
 
 const DEFAULT_PREFS = {
-  notify_all: false,
+  notify_all: true,
   notify_mentions: true,
   notify_from: [],
   notify_keywords: [],
