@@ -123,8 +123,8 @@ export async function notifyChatMessage({
       : mentioned.has(p.profile_id) ? `${actorName} mentioned you in ${where}`
       : `${actorName} posted in ${where}`
 
-    rows.push({
-      recipient_id: p.profile_id, type, title, body: null, link: '/chat',
+   rows.push({
+      recipient_id: p.profile_id, type, title, body: body?.slice(0, 120) || null, link: '/chat',
       actor_id: actorId, actor_name: actorName,
     })
   }
