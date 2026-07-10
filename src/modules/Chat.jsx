@@ -1104,8 +1104,8 @@ function NotificationPrefsPanel({ channelId, channelName, isDm, dmName, meId, pr
     notify_all: true,
     notify_mentions: true,
     notify_from: [],
-    notify_keywords: [],
-  }
+notify_keywords: [],
+  })
     })()
     return () => { active = false }
   }, [channelId, meId])
