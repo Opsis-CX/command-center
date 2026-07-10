@@ -343,6 +343,13 @@ export default function Schedule() {
     flash("You're checked in!"); load(true)
   }
 
+  async function checkOut(claimId, block) {
+    const { error } = await supabase.from('shift_claims').update({ checked_out_at: new Date().toISOString(), status: 'completed' }).eq('id', claimId)
+    if (error) { flash('Error checking out'); return }
+    if (block) logActivity('checked_out', block)
+    flash("You're checked out — nice work!"); load(true)
+  }
+
   async function logActivity(action, block) {
     try {
       const schedule = block ? schedules.find(s => s.id === block.schedule_id) : null
@@ -381,10 +388,10 @@ export default function Schedule() {
           weekStart={weekStart} setWeekStart={setWeekStart}
           releaseStatus={getMyReleaseStatus()}
           claimedHoursInWeek={claimedHoursInWeek} hasIntervalStarted={hasIntervalStarted}
-          onClaim={claimBlock} onUnclaim={unclaimBlock} onCheckIn={checkIn} onNoShow={markNoShow}
+          onClaim={claimBlock} onUnclaim={unclaimBlock} onCheckIn={checkIn} onCheckOut={checkOut} onNoShow={markNoShow}
         />
       ) : (
-        <MyScheduleView me={me} blocks={blocks} claims={claims} hasIntervalStarted={hasIntervalStarted} onUnclaim={unclaimBlock} onCheckIn={checkIn} />
+        <MyScheduleView me={me} blocks={blocks} claims={claims} hasIntervalStarted={hasIntervalStarted} onUnclaim={unclaimBlock} onCheckIn={checkIn} onCheckOut={checkOut} />
       )}
     </div>
   )
@@ -392,7 +399,7 @@ export default function Schedule() {
 
 function ClaimView(props) {
   const { isAdmin, adminView, setAdminView, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
-    claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn, onNoShow } = props
+    claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow } = props
   const [popBlock, setPopBlock] = useState(null)
 
   // Admins in 'team' view see the team grid; everyone else (agents, and
@@ -451,6 +458,7 @@ function ClaimView(props) {
         onClaim={(b) => { onClaim(b); setPopBlock(null) }}
         onUnclaim={(b) => { onUnclaim(b); setPopBlock(null) }}
         onCheckIn={(cid, b) => { onCheckIn(cid, b); setPopBlock(null) }}
+        onCheckOut={(cid, b) => { onCheckOut(cid, b); setPopBlock(null) }}
         onNoShow={(claim, b) => { onNoShow(claim, b); setPopBlock(null) }}
       />}
     </div>
@@ -656,7 +664,7 @@ function Iv({ block, cls, spots, time, role, onPop }) {
 }
 
 // ---------- INTERVAL POPOVER ----------
-function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIntervalStarted, onClose, onClaim, onUnclaim, onCheckIn, onNoShow }) {
+function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIntervalStarted, onClose, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow }) {
   const cl = claims.filter(c => c.shift_block_id === block.id)
   const mine = cl.find(c => c.profile_id === me.id)
   const left = block.total_spots - cl.length
@@ -701,6 +709,7 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIn
         {mine ? <>
           {!started && !mine.checked_in_at && mine.status !== 'no_show' && <button className="btn btn-ghost" style={{ color: 'var(--failed)' }} onClick={() => onUnclaim(block)}>Release spot</button>}
           {started && !mine.checked_in_at && mine.status !== 'no_show' && <button className="btn btn-primary" onClick={() => onCheckIn(mine.id, block)}>Check in</button>}
+          {mine.checked_in_at && !mine.checked_out_at && mine.status !== 'no_show' && <button className="btn btn-primary" onClick={() => onCheckOut(mine.id, block)}>Check out</button>}
         </> : (!isFull && !started && canClaim && <button className="btn btn-primary" onClick={() => onClaim(block)}>Claim this interval</button>)}
       </div>
     </div>
@@ -710,7 +719,7 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIn
 function Row({ k, v }) { return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: 'var(--ink-soft)' }}>{k}</span><span>{v}</span></div> }
 
 // ---------- MY SCHEDULE ----------
-function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onCheckIn }) {
+function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onCheckIn, onCheckOut }) {
   const myClaims = claims.filter(c => c.profile_id === me.id)
   if (!myClaims.length) return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>No intervals claimed yet. Head to Schedule to pick up some time.</div></div>
 
@@ -729,7 +738,7 @@ function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onC
           {date === todayStr ? 'Today · ' : ''}{new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 12 }}>
-          {byDate[date].map(e => <ShiftCard key={e.claim.id} block={e.block} claim={e.claim} isPast={false} started={hasIntervalStarted(e.block)} onUnclaim={onUnclaim} onCheckIn={onCheckIn} />)}
+          {byDate[date].map(e => <ShiftCard key={e.claim.id} block={e.block} claim={e.claim} isPast={false} started={hasIntervalStarted(e.block)} onUnclaim={onUnclaim} onCheckIn={onCheckIn} onCheckOut={onCheckOut} />)}
         </div>
       </div>
     )) : <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 20 }}>No upcoming intervals.</div></div>}
@@ -737,22 +746,47 @@ function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onC
     {past.length > 0 && <div style={{ marginBottom: 22 }}>
       <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', marginBottom: 10, opacity: .6 }}>Past intervals</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 12 }}>
-        {past.slice(0, 12).map(e => <ShiftCard key={e.claim.id} block={e.block} claim={e.claim} isPast={true} started={true} onUnclaim={onUnclaim} onCheckIn={onCheckIn} />)}
+        {past.slice(0, 12).map(e => <ShiftCard key={e.claim.id} block={e.block} claim={e.claim} isPast={true} started={true} onUnclaim={onUnclaim} onCheckIn={onCheckIn} onCheckOut={onCheckOut} />)}
       </div>
     </div>}
   </div>
 }
 
-function ShiftCard({ block, claim, isPast, started, onUnclaim, onCheckIn }) {
-  const checkedIn = claim?.checked_in_at; const noShow = claim?.status === 'no_show'
+function workedLabel(claim) {
+  if (!claim?.checked_in_at || !claim?.checked_out_at) return null
+  const mins = Math.max(0, Math.round((new Date(claim.checked_out_at) - new Date(claim.checked_in_at)) / 60000))
+  const h = Math.floor(mins / 60), m = mins % 60
+  return h ? `${h}h ${m}m` : `${m}m`
+}
+
+function ShiftCard({ block, claim, isPast, started, onUnclaim, onCheckIn, onCheckOut }) {
+  const checkedIn = claim?.checked_in_at; const checkedOut = claim?.checked_out_at
+  const noShow = claim?.status === 'no_show'; const auto = claim?.status === 'auto_checkout'
+  const worked = workedLabel(claim)
   return <div className="iv mine" style={{ cursor: 'default', padding: '14px 16px' }}>
     <div className="iv-time" style={{ fontSize: 15 }}>{formatTime(block.start_time)} – {formatTime(block.end_time)}</div>
     {block.role && <div className="iv-sub" style={{ fontSize: 12, marginBottom: 4 }}>{block.role}</div>}
-    {!isPast && (checkedIn
-      ? <div style={{ fontSize: 12, color: 'var(--passed)', fontWeight: 600, margin: '8px 0' }}>✓ Checked in</div>
-      : noShow ? <div style={{ fontSize: 12, color: 'var(--failed)', fontWeight: 600, margin: '8px 0' }}>Marked no-show</div>
-        : <button className="btn btn-primary" style={{ width: '100%', fontSize: 12, marginTop: 8 }} onClick={() => onCheckIn(claim.id, block)}>I'm here — check in</button>)}
-    {!isPast && !started && <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, marginTop: 6, color: 'var(--failed)' }} onClick={() => onUnclaim(block)}>Release this spot</button>}
+
+    {checkedOut ? (
+      <div style={{ fontSize: 12, margin: '8px 0', fontWeight: 600, color: auto ? 'var(--needed)' : 'var(--passed)' }}>
+        {auto ? '⏱ Auto-checked out' : '✓ Completed'}{worked ? ` · ${worked}` : ''}
+      </div>
+    ) : !isPast && checkedIn ? (
+      <>
+        <div style={{ fontSize: 12, color: 'var(--passed)', fontWeight: 600, margin: '8px 0 6px' }}>✓ Checked in</div>
+        <button className="btn btn-primary" style={{ width: '100%', fontSize: 12 }} onClick={() => onCheckOut(claim.id, block)}>Check out</button>
+      </>
+    ) : !isPast && noShow ? (
+      <div style={{ fontSize: 12, color: 'var(--failed)', fontWeight: 600, margin: '8px 0' }}>Marked no-show</div>
+    ) : !isPast ? (
+      <button className="btn btn-primary" style={{ width: '100%', fontSize: 12, marginTop: 8 }} onClick={() => onCheckIn(claim.id, block)}>I'm here — check in</button>
+    ) : null}
+
+    {isPast && checkedIn && !checkedOut && (
+      <div style={{ fontSize: 12, color: 'var(--needed)', fontWeight: 600, margin: '8px 0' }}>Never checked out — admin will review</div>
+    )}
+
+    {!isPast && !started && !checkedIn && <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, marginTop: 6, color: 'var(--failed)' }} onClick={() => onUnclaim(block)}>Release this spot</button>}
     {block.notes && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 8 }}>{block.notes}</div>}
   </div>
 }
