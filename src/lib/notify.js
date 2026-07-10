@@ -1,29 +1,79 @@
 import { supabase } from './supabase'
 
 // ============================================================
-// notify.js — helpers to create notifications for events.
-// Call these from chat/schedule code when things happen.
-// Each inserts one row per recipient. Never notify the actor.
+// notify.js — notification-row helpers.
 //
-// Chat messages now respect per-channel notification preferences
-// stored in `channel_notification_prefs`. See notifyChatMessage.
+// Important:
+// - Every Supabase response is checked for `error`.
+// - Every exported helper returns a promise and should be awaited.
+// - The actor is never notified about their own action.
+// - This file creates in-app notification rows. Actual browser push still
+//   requires the server-side push sender and /sw.js.
 // ============================================================
 
+function uniqueIds(ids = []) {
+  return [...new Set(ids.filter(Boolean))]
+}
+
+function safeArray(value) {
+  return Array.isArray(value) ? value : []
+}
+
+function chatLink(channelId, messageId) {
+  const params = new URLSearchParams()
+
+  if (channelId) params.set('channel', channelId)
+  if (messageId) params.set('message', messageId)
+
+  const query = params.toString()
+
+  return query ? `/chat?${query}` : '/chat'
+}
+
 async function insertMany(rows) {
-  if (!rows.length) return
-  try { await supabase.from('notifications').insert(rows) }
-  catch (e) { console.error('notify failed', e) }
+  if (!rows.length) return []
+
+  const { error } = await supabase
+    .from('notifications')
+    .insert(rows)
+
+  if (error) {
+    console.error('Notification insert failed', {
+      error,
+      rows,
+    })
+
+    throw new Error(`Notification insert failed: ${error.message}`)
+  }
+
+  return rows
 }
 
 // Recipients = all channel members except the actor.
-async function channelRecipients(channelId, actorId) {
-  const { data } = await supabase.from('channel_members').select('profile_id').eq('channel_id', channelId)
-  return (data || []).map(m => m.profile_id).filter(id => id && id !== actorId)
+export async function channelRecipients(channelId, actorId) {
+  const { data, error } = await supabase
+    .from('channel_members')
+    .select('profile_id')
+    .eq('channel_id', channelId)
+
+  if (error) {
+    console.error('Could not load channel recipients', {
+      channelId,
+      error,
+    })
+
+    throw new Error(
+      `Could not load channel recipients: ${error.message}`
+    )
+  }
+
+  return uniqueIds(
+    (data || []).map(member => member.profile_id)
+  ).filter(id => id !== actorId)
 }
 
-// ─── NOTIFICATION PREFERENCES ─────────────────────────────────────────────────
+// ─── NOTIFICATION PREFERENCES ────────────────────────────────
 
-// Default when a member has no prefs row for this channel.
 const DEFAULT_PREFS = {
   notify_all: false,
   notify_mentions: true,
@@ -31,194 +81,466 @@ const DEFAULT_PREFS = {
   notify_keywords: [],
 }
 
-// Load every member's prefs for a channel. Missing rows fall back to defaults.
-// Returns [{ profile_id, notify_all, notify_mentions, notify_from, notify_keywords }]
 async function channelPrefs(channelId, actorId) {
-  const [{ data: mem }, { data: prefs }] = await Promise.all([
-    supabase.from('channel_members').select('profile_id').eq('channel_id', channelId),
-    supabase.from('channel_notification_prefs').select('*').eq('channel_id', channelId),
+  const [membersResult, prefsResult] = await Promise.all([
+    supabase
+      .from('channel_members')
+      .select('profile_id')
+      .eq('channel_id', channelId),
+
+    supabase
+      .from('channel_notification_prefs')
+      .select(
+        'profile_id, notify_all, notify_mentions, notify_from, notify_keywords'
+      )
+      .eq('channel_id', channelId),
   ])
-  const byId = {}
-  ;(prefs || []).forEach(p => { byId[p.profile_id] = p })
-  return (mem || [])
-    .map(m => m.profile_id)
-    .filter(id => id && id !== actorId)
-    .map(id => {
-      const p = byId[id]
-      return p
-        ? {
-            profile_id: id,
-            notify_all: !!p.notify_all,
-            notify_mentions: !!p.notify_mentions,
-            notify_from: p.notify_from || [],
-            notify_keywords: p.notify_keywords || [],
-          }
-        : { profile_id: id, ...DEFAULT_PREFS }
+
+  if (membersResult.error) {
+    console.error(
+      'Could not load channel members for notifications',
+      {
+        channelId,
+        error: membersResult.error,
+      }
+    )
+
+    throw new Error(
+      `Could not load channel members: ${membersResult.error.message}`
+    )
+  }
+
+  if (prefsResult.error) {
+    console.error(
+      'Could not load channel notification preferences',
+      {
+        channelId,
+        error: prefsResult.error,
+      }
+    )
+
+    throw new Error(
+      `Could not load notification preferences: ${prefsResult.error.message}`
+    )
+  }
+
+  const savedPrefsByProfile = new Map(
+    (prefsResult.data || []).map(pref => [
+      pref.profile_id,
+      pref,
+    ])
+  )
+
+  return uniqueIds(
+    (membersResult.data || []).map(member => member.profile_id)
+  )
+    .filter(profileId => profileId !== actorId)
+    .map(profileId => {
+      const pref = savedPrefsByProfile.get(profileId)
+
+      if (!pref) {
+        return {
+          profile_id: profileId,
+          ...DEFAULT_PREFS,
+        }
+      }
+
+      return {
+        profile_id: profileId,
+        notify_all: Boolean(pref.notify_all),
+        notify_mentions: Boolean(pref.notify_mentions),
+        notify_from: safeArray(pref.notify_from),
+        notify_keywords: safeArray(pref.notify_keywords),
+      }
     })
 }
 
-// Case-insensitive, whole-word keyword match. "cat" must not fire on "concatenate".
 function matchesKeyword(body, keywords) {
-  if (!keywords || !keywords.length) return false
+  if (!Array.isArray(keywords) || keywords.length === 0) {
+    return false
+  }
+
   const text = String(body || '')
-  return keywords.some(k => {
-    const kw = String(k || '').trim()
-    if (!kw) return false
-    const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+  return keywords.some(keyword => {
+    const trimmed = String(keyword || '').trim()
+
+    if (!trimmed) return false
+
+    const escaped = trimmed.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      '\\$&'
+    )
+
     try {
-      return new RegExp(`(^|[^\\p{L}\\p{N}_])${esc}([^\\p{L}\\p{N}_]|$)`, 'iu').test(text)
+      return new RegExp(
+        `(^|[^\\p{L}\\p{N}_])${escaped}([^\\p{L}\\p{N}_]|$)`,
+        'iu'
+      ).test(text)
     } catch {
-      // fallback for engines without unicode property escapes
-      return new RegExp(`(^|\\W)${esc}(\\W|$)`, 'i').test(text)
+      return new RegExp(
+        `(^|\\W)${escaped}(\\W|$)`,
+        'i'
+      ).test(text)
     }
   })
 }
 
-// ─── CHAT ─────────────────────────────────────────────────────────────────────
+// ─── CHAT ────────────────────────────────────────────────────
 
-// Decide who gets notified about a new message, using each member's prefs.
-//
-// Notify a member if ANY of:
-//   • notify_all
-//   • notify_mentions AND (they were @named, or @here, or @update)
-//   • the sender is in their notify_from[]
-//   • the message body contains one of their notify_keywords[]
-//   • it's a DM and they have notify_mentions on
-//
-// "None" = a prefs row with everything off/empty → never matches.
-//
-// `body` MUST be plain text (not HTML), or keywords will match tag names.
 export async function notifyChatMessage({
-  channelId, channelName, isDm, actorId, actorName,
-  isHere, requiresAck, body, mentionedIds = [],
+  channelId,
+  channelName,
+  isDm,
+  actorId,
+  actorName,
+  isHere,
+  requiresAck,
+  body,
+  mentionedIds = [],
+  messageId = null,
 }) {
-  const prefs = await channelPrefs(channelId, actorId)
-  if (!prefs.length) return
+  if (!channelId) {
+    throw new Error('notifyChatMessage requires channelId.')
+  }
 
-  const mentioned = new Set(mentionedIds || [])
-  const where = isDm ? 'a direct message' : `#${channelName}`
+  if (!actorId) {
+    throw new Error('notifyChatMessage requires actorId.')
+  }
+
+  const preferences = await channelPrefs(
+    channelId,
+    actorId
+  )
+
+  if (!preferences.length) return []
+
+  const mentioned = new Set(uniqueIds(mentionedIds))
+
+  const where = isDm
+    ? 'a direct message'
+    : `#${channelName || 'channel'}`
+
+  const link = chatLink(channelId, messageId)
 
   const rows = []
-  for (const p of prefs) {
-    const isMentioned = mentioned.has(p.profile_id) || !!isHere || !!requiresAck
 
-    const hit =
-      p.notify_all ||
-      (p.notify_mentions && isMentioned) ||
-      p.notify_from.includes(actorId) ||
-      matchesKeyword(body, p.notify_keywords) ||
-      (isDm && p.notify_mentions)
+  for (const pref of preferences) {
+    const directlyMentioned = mentioned.has(
+      pref.profile_id
+    )
 
-    if (!hit) continue
+    const mentionEvent =
+      directlyMentioned ||
+      Boolean(isHere) ||
+      Boolean(requiresAck)
 
-    const type = requiresAck ? 'chat_update'
-      : isHere ? 'chat_here'
-      : isDm ? 'chat_dm'
-      : mentioned.has(p.profile_id) ? 'chat_mention'
-      : 'chat_message'
+    const shouldNotify =
+      pref.notify_all ||
+      (pref.notify_mentions && mentionEvent) ||
+      pref.notify_from.includes(actorId) ||
+      matchesKeyword(body, pref.notify_keywords) ||
+      (Boolean(isDm) && pref.notify_mentions)
 
-    const title = requiresAck ? `New update in ${where} — please confirm`
-      : isHere ? `${actorName} flagged everyone in ${where}`
-      : isDm ? `New message from ${actorName}`
-      : mentioned.has(p.profile_id) ? `${actorName} mentioned you in ${where}`
-      : `${actorName} posted in ${where}`
+    if (!shouldNotify) continue
 
-   rows.push({
-      recipient_id: p.profile_id, type, title, body: body?.slice(0, 120) || null, link: '/chat',
-      actor_id: actorId, actor_name: actorName,
+    const type = requiresAck
+      ? 'chat_update'
+      : isHere
+        ? 'chat_here'
+        : isDm
+          ? 'chat_dm'
+          : directlyMentioned
+            ? 'chat_mention'
+            : 'chat_message'
+
+    const title = requiresAck
+      ? `New update in ${where} — please confirm`
+      : isHere
+        ? `${actorName || 'Someone'} flagged everyone in ${where}`
+        : isDm
+          ? `New message from ${actorName || 'Someone'}`
+          : directlyMentioned
+            ? `${actorName || 'Someone'} mentioned you in ${where}`
+            : `${actorName || 'Someone'} posted in ${where}`
+
+    rows.push({
+      recipient_id: pref.profile_id,
+      type,
+      title,
+      body: String(body || '').slice(0, 120) || null,
+      link,
+      actor_id: actorId,
+      actor_name: actorName || null,
     })
   }
-  await insertMany(rows)
+
+  return insertMany(rows)
 }
 
-// Kept for compatibility. Chat.jsx no longer calls this for normal sends —
-// notifyChatMessage handles mentions now, so calling both would double-notify.
-// Still useful if you ever need to notify a mention outside the send path.
-export async function notifyChatMention({ recipientIds, actorId, actorName, channelName, isDm, addedIds }) {
-  const ids = (recipientIds || []).filter(id => id && id !== actorId)
-  const where = isDm ? 'a direct message' : `#${channelName}`
-  const added = addedIds || []
-  await insertMany(ids.map(rid => ({
-    recipient_id: rid, type: 'chat_mention',
-    title: `${actorName} mentioned you in ${where}`,
-    body: added.includes(rid) ? `You were mentioned and added to ${where}.` : null,
-    link: '/chat', actor_id: actorId, actor_name: actorName,
-  })))
+export async function notifyChatMention({
+  recipientIds,
+  actorId,
+  actorName,
+  channelName,
+  isDm,
+  addedIds,
+  channelId = null,
+  messageId = null,
+}) {
+  const ids = uniqueIds(recipientIds).filter(
+    id => id !== actorId
+  )
+
+  const added = new Set(uniqueIds(addedIds))
+
+  const where = isDm
+    ? 'a direct message'
+    : `#${channelName || 'channel'}`
+
+  return insertMany(
+    ids.map(recipientId => ({
+      recipient_id: recipientId,
+      type: 'chat_mention',
+
+      title:
+        `${actorName || 'Someone'} mentioned you in ${where}`,
+
+      body: added.has(recipientId)
+        ? `You were mentioned and added to ${where}.`
+        : null,
+
+      link: chatLink(channelId, messageId),
+
+      actor_id: actorId,
+      actor_name: actorName || null,
+    }))
+  )
 }
 
-// Nudges bypass prefs on purpose — an admin is directly asking this person.
-export async function notifyAckNudge({ recipientId, actorId, actorName, channelName }) {
-  await insertMany([{
-    recipient_id: recipientId, type: 'ack_nudge',
-    title: `Reminder: please confirm the update${channelName ? ` in #${channelName}` : ''}`,
-    body: `${actorName} nudged you to confirm you've read it.`,
-    link: '/chat', actor_id: actorId, actor_name: actorName,
-  }])
+export async function notifyAckNudge({
+  recipientId,
+  actorId,
+  actorName,
+  channelName,
+  channelId = null,
+  messageId = null,
+}) {
+  if (!recipientId || recipientId === actorId) {
+    return []
+  }
+
+  return insertMany([
+    {
+      recipient_id: recipientId,
+      type: 'ack_nudge',
+
+      title:
+        `Reminder: please confirm the update${
+          channelName ? ` in #${channelName}` : ''
+        }`,
+
+      body:
+        `${actorName || 'Someone'} nudged you to confirm you've read it.`,
+
+      link: chatLink(channelId, messageId),
+
+      actor_id: actorId || null,
+      actor_name: actorName || null,
+    },
+  ])
 }
 
-// Being added to a channel bypasses prefs — you have no prefs there yet.
-export async function notifyChannelAdded({ recipientIds, actorId, actorName, channelName, isDm }) {
-  const ids = (recipientIds || []).filter(id => id && id !== actorId)
-  await insertMany(ids.map(rid => ({
-    recipient_id: rid, type: 'channel_added',
-    title: isDm ? `${actorName} started a direct message with you` : `You were added to #${channelName}`,
-    body: null, link: '/chat', actor_id: actorId, actor_name: actorName,
-  })))
+export async function notifyChannelAdded({
+  recipientIds,
+  actorId,
+  actorName,
+  channelName,
+  isDm,
+  channelId = null,
+}) {
+  const ids = uniqueIds(recipientIds).filter(
+    id => id !== actorId
+  )
+
+  return insertMany(
+    ids.map(recipientId => ({
+      recipient_id: recipientId,
+      type: 'channel_added',
+
+      title: isDm
+        ? `${actorName || 'Someone'} started a direct message with you`
+        : `You were added to #${channelName || 'a channel'}`,
+
+      body: null,
+
+      link: chatLink(channelId, null),
+
+      actor_id: actorId,
+      actor_name: actorName || null,
+    }))
+  )
 }
 
-// ─── SCHEDULE ─────────────────────────────────────────────────────────────────
+// ─── SCHEDULE ────────────────────────────────────────────────
 
-export async function notifyIntervalReleased({ eligibleIds, actorId, actorName, when, position }) {
-  const ids = (eligibleIds || []).filter(id => id && id !== actorId)
-  await insertMany(ids.map(rid => ({
-    recipient_id: rid, type: 'interval_released',
-    title: `An interval just opened up`,
-    body: `${position ? position + ' · ' : ''}${when} — released by ${actorName}. Claim it if you want it.`,
-    link: '/schedule', actor_id: actorId, actor_name: actorName,
-  })))
+export async function notifyIntervalReleased({
+  eligibleIds,
+  actorId,
+  actorName,
+  when,
+  position,
+}) {
+  const ids = uniqueIds(eligibleIds).filter(
+    id => id !== actorId
+  )
+
+  return insertMany(
+    ids.map(recipientId => ({
+      recipient_id: recipientId,
+      type: 'interval_released',
+      title: 'An interval just opened up',
+
+      body:
+        `${position ? `${position} · ` : ''}` +
+        `${when} — released by ${actorName || 'someone'}. ` +
+        'Claim it if you want it.',
+
+      link: '/schedule',
+
+      actor_id: actorId,
+      actor_name: actorName || null,
+    }))
+  )
 }
 
-export async function notifyNoShow({ recipientId, when }) {
-  await insertMany([{
-    recipient_id: recipientId, type: 'no_show',
-    title: `You were marked a no-show`,
-    body: when ? `For your interval ${when}.` : null,
-    link: '/schedule', actor_id: null, actor_name: null,
-  }])
+export async function notifyNoShow({
+  recipientId,
+  when,
+}) {
+  if (!recipientId) return []
+
+  return insertMany([
+    {
+      recipient_id: recipientId,
+      type: 'no_show',
+      title: 'You were marked a no-show',
+
+      body: when
+        ? `For your interval ${when}.`
+        : null,
+
+      link: '/schedule',
+
+      actor_id: null,
+      actor_name: null,
+    },
+  ])
 }
 
-// ─── PROJECTS MODULE ──────────────────────────────────────────────────────────
-// Task events routed to the notification bell (replaces Connecteam).
+// ─── PROJECTS ────────────────────────────────────────────────
 
-export async function notifyTaskAssigned({ recipientIds, actorId, actorName, taskName, projectName, taskId }) {
-  const ids = (recipientIds || []).filter(id => id && id !== actorId)
-  const link = taskId ? `/projects?task=${taskId}` : '/projects'
-  await insertMany(ids.map(rid => ({
-    recipient_id: rid, type: 'task_assigned',
-    title: `You were assigned a task`,
-    body: `"${taskName}"${projectName ? ' in ' + projectName : ''}${actorName ? ' — by ' + actorName : ''}.`,
-    link, actor_id: actorId, actor_name: actorName,
-  })))
+export async function notifyTaskAssigned({
+  recipientIds,
+  actorId,
+  actorName,
+  taskName,
+  projectName,
+  taskId,
+}) {
+  const ids = uniqueIds(recipientIds).filter(
+    id => id !== actorId
+  )
+
+  const link = taskId
+    ? `/projects?task=${encodeURIComponent(taskId)}`
+    : '/projects'
+
+  return insertMany(
+    ids.map(recipientId => ({
+      recipient_id: recipientId,
+      type: 'task_assigned',
+      title: 'You were assigned a task',
+
+      body:
+        `"${taskName}"` +
+        `${projectName ? ` in ${projectName}` : ''}` +
+        `${actorName ? ` — by ${actorName}` : ''}.`,
+
+      link,
+
+      actor_id: actorId,
+      actor_name: actorName || null,
+    }))
+  )
 }
 
-export async function notifyTaskCompleted({ recipientId, actorId, actorName, taskName, projectName, taskId }) {
-  if (!recipientId || recipientId === actorId) return
-  const link = taskId ? `/projects?task=${taskId}` : '/projects'
-  await insertMany([{
-    recipient_id: recipientId, type: 'task_completed',
-    title: `A task you created was completed`,
-    body: `${actorName || 'Someone'} marked "${taskName}"${projectName ? ' in ' + projectName : ''} as Done.`,
-    link, actor_id: actorId, actor_name: actorName,
-  }])
+export async function notifyTaskCompleted({
+  recipientId,
+  actorId,
+  actorName,
+  taskName,
+  projectName,
+  taskId,
+}) {
+  if (!recipientId || recipientId === actorId) {
+    return []
+  }
+
+  const link = taskId
+    ? `/projects?task=${encodeURIComponent(taskId)}`
+    : '/projects'
+
+  return insertMany([
+    {
+      recipient_id: recipientId,
+      type: 'task_completed',
+      title: 'A task you created was completed',
+
+      body:
+        `${actorName || 'Someone'} marked "${taskName}"` +
+        `${projectName ? ` in ${projectName}` : ''}` +
+        ' as Done.',
+
+      link,
+
+      actor_id: actorId,
+      actor_name: actorName || null,
+    },
+  ])
 }
 
-export async function notifyTaskMention({ recipientIds, actorId, actorName, taskName, where, taskId }) {
-  const ids = (recipientIds || []).filter(id => id && id !== actorId)
-  const link = taskId ? `/projects?task=${taskId}` : '/projects'
-  await insertMany(ids.map(rid => ({
-    recipient_id: rid, type: 'task_mention',
-    title: `${actorName || 'Someone'} mentioned you`,
-    body: `In ${where || 'a note'} on "${taskName}".`,
-    link, actor_id: actorId, actor_name: actorName,
-  })))
+export async function notifyTaskMention({
+  recipientIds,
+  actorId,
+  actorName,
+  taskName,
+  where,
+  taskId,
+}) {
+  const ids = uniqueIds(recipientIds).filter(
+    id => id !== actorId
+  )
+
+  const link = taskId
+    ? `/projects?task=${encodeURIComponent(taskId)}`
+    : '/projects'
+
+  return insertMany(
+    ids.map(recipientId => ({
+      recipient_id: recipientId,
+      type: 'task_mention',
+
+      title:
+        `${actorName || 'Someone'} mentioned you`,
+
+      body:
+        `In ${where || 'a note'} on "${taskName}".`,
+
+      link,
+
+      actor_id: actorId,
+      actor_name: actorName || null,
+    }))
+  )
 }
