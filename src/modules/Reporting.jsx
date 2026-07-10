@@ -39,30 +39,40 @@ function defaultRange() {
 export default function Reporting() {
   const { isAdmin } = useAuth()
   const [range, setRange] = useState(defaultRange())
-  const [view, setView] = useState('person') // 'person' | 'client'
+  const [view, setView] = useState('person') // 'person' | 'client' | 'compare'
   const [loading, setLoading] = useState(true)
   const [entries, setEntries] = useState([])
   const [profiles, setProfiles] = useState([])
   const [tasks, setTasks] = useState([])
   const [clients, setClients] = useState([])
+  const [claims, setClaims] = useState([])
+  const [sblocks, setSblocks] = useState([])
 
   const load = useCallback(async () => {
     setLoading(true)
     // inclusive of the whole 'to' day
     const fromISO = new Date(range.from + 'T00:00:00').toISOString()
     const toISO = new Date(range.to + 'T23:59:59').toISOString()
-    const [teRes, profRes, taskRes, cliRes] = await Promise.all([
+    const [teRes, profRes, taskRes, cliRes, clmRes, blkRes] = await Promise.all([
       supabase.from('time_entries').select('*')
         .not('duration_minutes', 'is', null)
         .gte('started_at', fromISO).lte('started_at', toISO),
       supabase.from('profiles').select('id, full_name'),
       supabase.from('tasks').select('id, name, client_id'),
       supabase.from('clients').select('id, name'),
+      supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at, checked_out_at'),
+      supabase.from('shift_blocks').select('id, block_date, start_time, end_time'),
     ])
     setEntries(teRes.data || [])
     setProfiles(profRes.data || [])
     setTasks(taskRes.data || [])
     setClients(cliRes.data || [])
+    // keep only claims whose block falls in range
+    const blocks = blkRes.data || []
+    const inRange = (blocks).filter(b => b.block_date >= range.from && b.block_date <= range.to)
+    const inRangeIds = new Set(inRange.map(b => b.id))
+    setSblocks(inRange)
+    setClaims((clmRes.data || []).filter(c => inRangeIds.has(c.shift_block_id)))
     setLoading(false)
   }, [range.from, range.to])
 
@@ -99,6 +109,31 @@ export default function Reporting() {
   }, [entries, clientOfTask])
 
   const grandTotal = useMemo(() => hoursFromMinutes(entries.reduce((s, e) => s + (e.duration_minutes || 0), 0)), [entries])
+
+  // COMPARE: per-person scheduled vs clock vs task minutes
+  const comparison = useMemo(() => {
+    const blockById = {}
+    for (const b of sblocks) blockById[b.id] = b
+    const mins = (a, b) => Math.max(0, Math.round((new Date(b) - new Date(a)) / 60000))
+    const schedMinsOf = (b) => {
+      if (!b) return 0
+      const [sh, sm] = b.start_time.slice(0, 5).split(':').map(Number)
+      const [eh, em] = b.end_time.slice(0, 5).split(':').map(Number)
+      return Math.max(0, (eh * 60 + em) - (sh * 60 + sm))
+    }
+    const per = {} // personId -> {sched, clock, task}
+    const ensure = (pid) => (per[pid] = per[pid] || { sched: 0, clock: 0, task: 0 })
+    // scheduled + clock from claims
+    for (const c of claims) {
+      if (c.status === 'no_show') continue
+      const b = blockById[c.shift_block_id]
+      ensure(c.profile_id).sched += schedMinsOf(b)
+      if (c.checked_in_at && c.checked_out_at) ensure(c.profile_id).clock += mins(c.checked_in_at, c.checked_out_at)
+    }
+    // task minutes from time_entries
+    for (const e of entries) ensure(e.user_id).task += (e.duration_minutes || 0)
+    return per
+  }, [claims, sblocks, entries])
 
   // task name lookup
   const taskName = useCallback((taskId) => {
@@ -169,12 +204,25 @@ export default function Reporting() {
     downloadCSV(`invoicing-hours-${range.from}_to_${range.to}.csv`, rows)
   }
 
-  if (!isAdmin) return <p className="page-sub">You don't have access to reporting.</p>
+  function exportCompareCSV() {
+    const header = ['Person', 'Scheduled hrs', 'Clock hrs', 'Task hrs', 'Clock − Scheduled', 'Clock − Task']
+    const rows = [header]
+    compareRows.forEach(([pid, d]) => {
+      rows.push([
+        nameOf(pid, profiles),
+        hoursFromMinutes(d.sched), hoursFromMinutes(d.clock), hoursFromMinutes(d.task),
+        hoursFromMinutes(d.clock - d.sched), hoursFromMinutes(d.clock - d.task),
+      ])
+    })
+    downloadCSV(`scheduled-vs-worked-${range.from}_to_${range.to}.csv`, rows)
+  }
 
   const personRows = Object.entries(grouped.byPerson)
     .sort((a, b) => nameOf(a[0], profiles).localeCompare(nameOf(b[0], profiles)))
   const clientRows = Object.entries(grouped.byClient)
     .sort((a, b) => (grouped.clientLabel[a[0]] || '').localeCompare(grouped.clientLabel[b[0]] || ''))
+  const compareRows = Object.entries(comparison)
+    .sort((a, b) => nameOf(a[0], profiles).localeCompare(nameOf(b[0], profiles)))
 
   return (
     <div>
@@ -196,10 +244,11 @@ export default function Reporting() {
         <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
           <button onClick={() => setView('person')} style={tabBtn(view === 'person')}>By Person (Payroll)</button>
           <button onClick={() => setView('client')} style={tabBtn(view === 'client')}>By Client (Invoicing)</button>
+          <button onClick={() => setView('compare')} style={tabBtn(view === 'compare')}>Scheduled vs Worked</button>
         </div>
         <button className="btn btn-primary" style={{ marginLeft: 'auto' }}
-          onClick={view === 'person' ? exportPersonCSV : exportClientCSV}>
-          Export {view === 'person' ? 'Payroll' : 'Invoicing'} CSV
+          onClick={view === 'person' ? exportPersonCSV : view === 'client' ? exportClientCSV : exportCompareCSV}>
+          Export {view === 'person' ? 'Payroll' : view === 'client' ? 'Invoicing' : 'Comparison'} CSV
         </button>
       </div>
 
@@ -210,7 +259,50 @@ export default function Reporting() {
             <div style={{ fontSize: 24, fontWeight: 700 }}>{grandTotal} hrs</div>
           </div>
 
-          {entries.length === 0 ? (
+          {view === 'compare' ? (
+            compareRows.length === 0 ? (
+              <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
+                <h3 style={{ fontSize: 14, marginBottom: 4 }}>No shift or task data in this range</h3>
+                <p style={{ fontSize: 13 }}>Scheduled intervals and checked-in/out shifts between these dates will appear here.</p>
+              </div>
+            ) : (
+              <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                      <th style={{ ...cellL, fontWeight: 700 }}>Person</th>
+                      <th style={{ ...cellR, fontWeight: 700 }}>Scheduled</th>
+                      <th style={{ ...cellR, fontWeight: 700 }}>Clock</th>
+                      <th style={{ ...cellR, fontWeight: 700 }}>Task</th>
+                      <th style={{ ...cellR, fontWeight: 700 }} title="Clock hours minus scheduled hours">vs Sched</th>
+                      <th style={{ ...cellR, fontWeight: 700 }} title="Clock hours minus task-tracked hours">vs Task</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {compareRows.map(([pid, d]) => {
+                      const vsSched = d.clock - d.sched
+                      const vsTask = d.clock - d.task
+                      const vColor = (v) => Math.abs(v) < 6 ? 'var(--ink-soft)' : v < 0 ? 'var(--failed)' : 'var(--needed)'
+                      const fmt = (v) => (v > 0 ? '+' : '') + hoursFromMinutes(v)
+                      return (
+                        <tr key={pid} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                          <td style={{ ...cellL, fontWeight: 600 }}>{nameOf(pid, profiles)}</td>
+                          <td style={cellR}>{hoursFromMinutes(d.sched)}</td>
+                          <td style={cellR}>{hoursFromMinutes(d.clock)}</td>
+                          <td style={cellR}>{hoursFromMinutes(d.task)}</td>
+                          <td style={{ ...cellR, color: vColor(vsSched), fontWeight: 600 }}>{fmt(vsSched)}</td>
+                          <td style={{ ...cellR, color: vColor(vsTask), fontWeight: 600 }}>{fmt(vsTask)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+                <div style={{ padding: '10px 16px', fontSize: 11.5, color: 'var(--ink-soft)', borderTop: '1px solid var(--line)' }}>
+                  <b>Clock</b> = checked-in → checked-out. <b>Task</b> = time tracked to tasks. <b>vs Sched</b> flags attendance gaps; <b>vs Task</b> flags on-the-clock time not tracked to a task. Green = over, red = under.
+                </div>
+              </div>
+            )
+          ) : entries.length === 0 ? (
             <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
               <h3 style={{ fontSize: 14, marginBottom: 4 }}>No tracked time in this range</h3>
               <p style={{ fontSize: 13 }}>Time entries logged on tasks between these dates will appear here.</p>
