@@ -36,6 +36,7 @@ export default function ScheduleBuilder() {
   const [editBlock, setEditBlock] = useState(null)         // {scheduleId, block?}
   const [importFor, setImportFor] = useState(null)         // scheduleId
   const [copyFor, setCopyFor] = useState(null)             // schedule obj for copy modal
+  const [viewBySchedule, setViewBySchedule] = useState({}) // scheduleId -> 'list' | 'grid'
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -113,7 +114,20 @@ export default function ScheduleBuilder() {
                   {clientName} · {callTypeName} · Week of {new Date(s.week_start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · {sBlocks.length} interval{sBlocks.length !== 1 ? 's' : ''} · {totalClaimed}/{totalSpots} claimed · {audienceCount} in audience
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ display: 'inline-flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden', marginRight: 2 }}>
+                  {['grid', 'list'].map(mode => {
+                    const active = (viewBySchedule[s.id] || 'grid') === mode
+                    return (
+                      <button key={mode} onClick={() => setViewBySchedule(v => ({ ...v, [s.id]: mode }))}
+                        title={mode === 'grid' ? 'Calendar view' : 'List view'}
+                        style={{ border: 'none', cursor: 'pointer', padding: '6px 12px', fontSize: 12, fontWeight: 600, textTransform: 'capitalize',
+                          background: active ? 'var(--accent, #0077B6)' : 'transparent', color: active ? '#fff' : 'var(--ink-soft)' }}>
+                        {mode}
+                      </button>
+                    )
+                  })}
+                </div>
                 <button className="btn btn-ghost" onClick={() => setEditBlock({ scheduleId: s.id })}>+ Add interval</button>
                 <button className="btn btn-ghost" onClick={() => setImportFor(s.id)}>Import CSV</button>
                 <button className="btn btn-ghost" onClick={() => setCopyFor(s)}>Copy</button>
@@ -121,7 +135,11 @@ export default function ScheduleBuilder() {
                 <button className="btn btn-ghost" style={{ color: 'var(--failed)' }} onClick={() => deleteSchedule(s)}>Delete</button>
               </div>
             </div>
-            {sBlocks.length ? sBlocks.map(b => {
+            {!sBlocks.length ? (
+              <div className="page-sub" style={{ padding: '6px 0' }}>No intervals yet.</div>
+            ) : (viewBySchedule[s.id] || 'grid') === 'grid' ? (
+              <ScheduleGrid blocks={sBlocks} claims={claims} onEdit={(b) => setEditBlock({ scheduleId: s.id, block: b })} />
+            ) : sBlocks.map(b => {
               const cl = claims.filter(c => c.shift_block_id === b.id)
               return (
                 <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--canvas)', borderRadius: 8, marginBottom: 6, fontSize: 13 }}>
@@ -135,7 +153,7 @@ export default function ScheduleBuilder() {
                   <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', color: 'var(--failed)' }} onClick={() => deleteBlock(b)}>Delete</button>
                 </div>
               )
-            }) : <div className="page-sub" style={{ padding: '6px 0' }}>No intervals yet.</div>}
+            })}
           </div>
         )
       })}
@@ -148,6 +166,71 @@ export default function ScheduleBuilder() {
         onClose={() => setImportFor(null)} onDone={(n) => { setImportFor(null); load(); flash(`Imported ${n} interval${n !== 1 ? 's' : ''}`) }} />}
       {copyFor && <CopyModal schedule={copyFor} schedules={schedules} blocks={blocks}
         onClose={() => setCopyFor(null)} onDone={(msg) => { setCopyFor(null); load(); flash(msg) }} />}
+    </div>
+  )
+}
+
+// ---------- CALENDAR GRID VIEW ----------
+// Days as columns, hour-rows as rows, built from the schedule's own blocks.
+// Cell color = coverage: green full, amber partial, red unfilled.
+// Clicking a cell opens the same edit modal as the list view.
+function ScheduleGrid({ blocks, claims, onEdit }) {
+  const claimCount = (b) => claims.filter(c => c.shift_block_id === b.id).length
+
+  // unique day columns (sorted) and start-time rows (sorted)
+  const dayKeys = [...new Set(blocks.map(b => b.block_date))].sort()
+  const startKeys = [...new Set(blocks.map(b => b.start_time.slice(0, 5)))].sort()
+
+  // index blocks by day+start for quick lookup
+  const byCell = {}
+  for (const b of blocks) byCell[b.block_date + '|' + b.start_time.slice(0, 5)] = b
+
+  const tone = (b) => {
+    if (!b) return null
+    const c = claimCount(b), t = b.total_spots
+    if (c === 0) return { bg: 'var(--failed-bg)', bd: 'var(--failed)', fg: 'var(--failed)' }
+    if (c < t) return { bg: 'var(--needed-bg)', bd: 'var(--needed)', fg: 'var(--needed)' }
+    return { bg: 'var(--passed-bg)', bd: 'var(--passed)', fg: 'var(--passed)' }
+  }
+
+  const dayLabel = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const hourLabel = (hm) => { const [h, m] = hm.split(':').map(Number); const p = h >= 12 ? 'p' : 'a'; const h12 = h % 12 === 0 ? 12 : h % 12; return m === 0 ? `${h12}${p}` : `${h12}:${String(m).padStart(2, '0')}${p}` }
+
+  return (
+    <div style={{ overflowX: 'auto', marginTop: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 10, fontSize: 12, color: 'var(--ink-soft)', flexWrap: 'wrap' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: 'var(--passed-bg)', border: '1px solid var(--passed)' }} />Full</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: 'var(--needed-bg)', border: '1px solid var(--needed)' }} />Partial</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: 'var(--failed-bg)', border: '1px solid var(--failed)' }} />Unfilled</span>
+      </div>
+      <table style={{ borderCollapse: 'separate', borderSpacing: 3, tableLayout: 'fixed', minWidth: Math.max(360, 60 + dayKeys.length * 84) }}>
+        <thead>
+          <tr>
+            <th style={{ width: 52 }} />
+            {dayKeys.map(dk => (
+              <th key={dk} style={{ width: 84, fontSize: 11.5, fontWeight: 600, color: 'var(--ink-soft)', paddingBottom: 4, textAlign: 'center' }}>{dayLabel(dk)}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {startKeys.map(sk => (
+            <tr key={sk}>
+              <td style={{ fontSize: 11, color: 'var(--ink-soft)', textAlign: 'right', paddingRight: 6, whiteSpace: 'nowrap' }}>{hourLabel(sk)}</td>
+              {dayKeys.map(dk => {
+                const b = byCell[dk + '|' + sk]
+                const tn = tone(b)
+                if (!b) return <td key={dk} style={{ height: 34, borderRadius: 5, background: 'var(--canvas)', opacity: .4 }} />
+                return (
+                  <td key={dk} onClick={() => onEdit(b)} title={`${formatTime(b.start_time)}–${formatTime(b.end_time)}${b.role ? ' · ' + b.role : ''} · ${claimCount(b)}/${b.total_spots} claimed · click to edit`}
+                    style={{ height: 34, borderRadius: 5, background: tn.bg, border: '1px solid ' + tn.bd, color: tn.fg, fontSize: 11, fontWeight: 600, textAlign: 'center', cursor: 'pointer', verticalAlign: 'middle' }}>
+                    {claimCount(b)}/{b.total_spots}
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
