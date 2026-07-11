@@ -77,7 +77,8 @@ export function ProjectsDataProvider({ children }) {
   // tasks visible to the current user (admins see all; members see their
   // projects' tasks, tasks assigned to them, or tasks they created)
   const myVisibleTasks = useCallback(() => {
-    if (isAdmin) return tasks
+    // Everyone (incl. admins) sees tasks in projects they're a member of,
+    // tasks assigned to them, or tasks they created. No blanket admin view.
     const myProjectIds = projectMembers.filter(m => m.profile_id === userId).map(m => m.project_id)
     const myAssignedTaskIds = taskAssignees.filter(a => a.profile_id === userId).map(a => a.task_id)
     return tasks.filter(t =>
@@ -85,12 +86,15 @@ export function ProjectsDataProvider({ children }) {
       myAssignedTaskIds.includes(t.id) ||
       t.created_by === userId
     )
-  }, [isAdmin, tasks, projectMembers, taskAssignees, userId])
+  }, [tasks, projectMembers, taskAssignees, userId])
 
   const myVisibleProjects = useCallback(() => {
-    if (isAdmin) return projects
-    return projects.filter(p => projectMembers.some(m => m.project_id === p.id && m.profile_id === userId))
-  }, [isAdmin, projects, projectMembers, userId])
+    // Everyone (incl. admins) sees projects they're a member of, or created.
+    return projects.filter(p =>
+      p.created_by === userId ||
+      projectMembers.some(m => m.project_id === p.id && m.profile_id === userId)
+    )
+  }, [projects, projectMembers, userId])
 
   // activity log helper (fire-and-forget; won't block the calling action)
   const logActivity = useCallback(async (action, taskId, taskName, projectId, projectName, detail) => {
