@@ -13,6 +13,7 @@ import ChangePassword from './ChangePassword'
 const NAV = [
   { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, roles: ['admin', 'agent'] },
   { type: 'link', to: '/weekly-sync', label: 'Weekly Sync', ic: '🗓', roles: ['admin'] },
+  { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', roles: ['admin', 'agent'] },
   { type: 'link', to: '/chat', label: 'Chat', ic: '💬', roles: ['admin', 'agent'] },
   { type: 'link', to: '/hiring', label: 'Hiring', ic: '👥', roles: ['admin'] },
   {
