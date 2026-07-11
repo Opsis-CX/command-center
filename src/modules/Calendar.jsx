@@ -168,71 +168,49 @@ const QUOTES = [
 ]
 function quoteFor(d) { return QUOTES[(d.getFullYear() + d.getMonth() + d.getDate()) % QUOTES.length] }
 
-function MiniMonth({ cursor, setCursor }) {
-  const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
-  const startMon = mondayOf(first)
-  const weeks = []
-  let d = new Date(startMon)
-  for (let w = 0; w < 6; w++) {
-    const row = []
-    for (let i = 0; i < 7; i++) { row.push(new Date(d)); d = addDays(d, 1) }
-    weeks.push(row)
-  }
-  const todayStr = isoDate(etNow())
-  return (
-    <div>
-      <div style={{ textAlign: 'center', marginBottom: 6 }}>
-        <div style={{ fontFamily: 'Georgia, serif', fontSize: 24, color: '#3a3a38', letterSpacing: 1 }}>{MONTHS[cursor.getMonth()]}</div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, color: '#9a968c', fontSize: 13, marginTop: 2 }}>
-          <span style={{ cursor: 'pointer' }} onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}>‹</span>
-          <span style={{ fontFamily: 'Georgia, serif', fontSize: 15 }}>{cursor.getFullYear()}</span>
-          <span style={{ cursor: 'pointer' }} onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}>›</span>
-        </div>
-      </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, color: '#6a665e', margin: '8px 0' }}>
-        <tbody>
-          {weeks.map((row, ri) => (
-            <tr key={ri}>
-              {row.map((dd, ci) => {
-                const inMonth = dd.getMonth() === cursor.getMonth()
-                const isToday = isoDate(dd) === todayStr
-                return (
-                  <td key={ci} style={{ padding: 3, textAlign: 'center', cursor: 'pointer', color: inMonth ? '#6a665e' : '#c3bfb5' }}
-                    onClick={() => setCursor(new Date(dd))}>
-                    {isToday
-                      ? <span style={{ background: '#3a3a38', color: '#fff', borderRadius: '50%', padding: '2px 5px' }}>{dd.getDate()}</span>
-                      : dd.getDate()}
-                  </td>
-                )
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
+function LeftRail({ cursor, setCursor, onAddEvent, itemsOn, tasksOn }) {
+  const today = etNow()
+  const ds = isoDate(today)
+  const items = itemsOn(ds)
+  const { priority, other } = tasksOn(ds)
+  const dueTasks = [...priority, ...other]
+  const dateLabel = today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 
-function LeftRail({ cursor, setCursor, onAddEvent }) {
-  const [q, who] = quoteFor(cursor)
   return (
-    <div style={{ width: 210, flexShrink: 0, padding: '20px 18px', borderRight: '1px solid #ece8e0' }}>
-      <MiniMonth cursor={cursor} setCursor={setCursor} />
-      <div style={{ display: 'flex', gap: 6, justifyContent: 'center', margin: '12px 0' }}>
+    <div style={{ width: 216, flexShrink: 0, padding: '20px 18px', borderRight: '1px solid #ece8e0', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#7a94ab', marginBottom: 2 }}>Today</div>
+      <div style={{ fontFamily: 'Georgia, serif', fontSize: 19, color: '#3a3a38', lineHeight: 1.2, marginBottom: 14 }}>{dateLabel}</div>
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
         <button onClick={() => setCursor(etNow())} style={railBtn}>TODAY</button>
         <button onClick={() => onAddEvent()} style={railBtn}>ADD EVENT</button>
       </div>
-      <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 13, color: '#6a665e', lineHeight: 1.5, marginTop: 16 }}>
-        &ldquo;{q}&rdquo;
-        <div style={{ marginTop: 8, fontStyle: 'normal', fontSize: 12, color: '#9a968c' }}>— {who}</div>
-      </div>
+
+      <div style={{ color: '#c07a5a', fontSize: 11, letterSpacing: 2, marginBottom: 6 }}>ON THE CALENDAR</div>
+      {items.length ? items.map(i => (
+        <div key={i.kind + i.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '5px 0', fontSize: 12.5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: i.color, marginTop: 4, flexShrink: 0 }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: '#4a4640', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</div>
+            <div style={{ color: '#9a968c', fontSize: 11 }}>{i.allDay ? 'All day' : fmtTime(i.start)}</div>
+          </div>
+        </div>
+      )) : <div style={{ fontSize: 12, color: '#c3bfb5', fontStyle: 'italic' }}>Nothing scheduled.</div>}
+
+      <div style={{ color: '#c07a5a', fontSize: 11, letterSpacing: 2, margin: '18px 0 6px' }}>DUE TODAY</div>
+      {dueTasks.length ? dueTasks.map(t => (
+        <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '5px 0', fontSize: 12.5 }}>
+          <span style={{ width: 13, height: 13, borderRadius: '50%', border: '1.5px solid ' + (t.priority === 'high' ? COLORS.priority : '#c3bfb5'), flexShrink: 0 }} />
+          <span style={{ color: '#4a4640', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+        </div>
+      )) : <div style={{ fontSize: 12, color: '#c3bfb5', fontStyle: 'italic' }}>No tasks due.</div>}
     </div>
   )
 }
 const railBtn = { border: '1px solid #c3bfb5', borderRadius: 14, padding: '4px 12px', fontSize: 11, color: '#6a665e', letterSpacing: '.5px', background: 'transparent', cursor: 'pointer' }
 
 // ---------- MONTH VIEW ----------
-function MonthView({ cursor, setCursor, itemsOn, onAddEvent, onEditEvent }) {
+function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent }) {
   const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
   const gridStart = mondayOf(first)
   // only render weeks that actually contain days of this month (5 or 6 rows)
@@ -274,7 +252,7 @@ function MonthView({ cursor, setCursor, itemsOn, onAddEvent, onEditEvent }) {
 
   return (
     <div style={{ display: 'flex' }}>
-      <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} />
+      <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} itemsOn={itemsOn} tasksOn={tasksOn} />
       <div style={{ flex: 1, padding: '16px 18px', minWidth: 0 }}>
         <ViewNav cursor={cursor} setCursor={setCursor}
           label={`${MONTHS[cursor.getMonth()]} ${cursor.getFullYear()}`}
@@ -296,9 +274,9 @@ function MonthView({ cursor, setCursor, itemsOn, onAddEvent, onEditEvent }) {
 // shared nav bar: ‹ label › + Today
 function ViewNav({ cursor, setCursor, label, onPrev, onNext }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
       <button onClick={onPrev} style={navArrow}>‹</button>
-      <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, color: '#3a3a38', minWidth: 180 }}>{label}</div>
+      <div style={{ fontFamily: 'Georgia, "Playfair Display", serif', fontSize: 34, fontStyle: 'italic', color: '#3a3a38', minWidth: 220, letterSpacing: '.5px', lineHeight: 1 }}>{label}</div>
       <button onClick={onNext} style={navArrow}>›</button>
       <button onClick={() => setCursor(etNow())} style={{ ...railBtn, marginLeft: 8 }}>TODAY</button>
     </div>
@@ -352,7 +330,7 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
 
   return (
     <div style={{ display: 'flex' }}>
-      <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} />
+      <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} itemsOn={itemsOn} tasksOn={tasksOn} />
       <div style={{ flex: 1, padding: '12px 12px', minWidth: 0 }}>
         <ViewNav cursor={cursor} setCursor={setCursor}
           label={`${MONTHS[mon.getMonth()].slice(0, 3)} ${mon.getDate()} – ${MONTHS[week[6].getMonth()].slice(0, 3)} ${week[6].getDate()}`}
