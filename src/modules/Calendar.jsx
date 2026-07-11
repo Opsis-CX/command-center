@@ -120,7 +120,7 @@ export default function Calendar() {
   const itemsOn = useCallback((ds) => {
     const evs = myEvents.filter(e => e.event_date === ds).map(e => ({
       kind: 'event', id: e.id, title: e.title, allDay: e.all_day, start: e.start_time, end: e.end_time,
-      color: e.scope === 'team' ? COLORS.team : COLORS.event, scope: e.scope, raw: e,
+      color: e.color || (e.scope === 'team' ? COLORS.team : COLORS.event), scope: e.scope, raw: e,
     }))
     const ivs = myClaims.map(c => ({ c, b: blocks.find(b => b.id === c.shift_block_id) }))
       .filter(x => x.b && x.b.block_date === ds)
@@ -371,7 +371,8 @@ function ViewNav({ cursor, setCursor, label, onPrev, onNext }) {
 const navArrow = { border: '1px solid #c3bfb5', background: 'transparent', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', color: '#6a665e', fontSize: 16, lineHeight: 1 }
 
 // ---------- WEEK VIEW ----------
-function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent }) {
+function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent, onShowDetail }) {
+  const openItem = (i, e) => { e.stopPropagation(); if (i.kind === 'event' && i.raw) onEditEvent(i.raw); else onShowDetail(i) }
   const mon = mondayOf(cursor)
   const week = Array.from({ length: 7 }, (_, i) => addDays(mon, i))
   const START_HOUR = 7, END_HOUR = 22 // 7a–10p window for week grid
@@ -397,8 +398,8 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
             const top = Math.max(0, (startH - START_HOUR) * ROW)
             const h = Math.max(18, ((endH || startH + 1) - startH) * ROW - 2)
             return (
-              <div key={i.id} onClick={(e) => { e.stopPropagation(); i.raw && onEditEvent(i.raw) }}
-                style={{ position: 'absolute', top, left: 2, right: 2, height: h, background: i.color, color: '#fff', fontSize: 10, padding: '2px 4px', borderRadius: 3, overflow: 'hidden' }}>
+              <div key={i.id} onClick={(e) => openItem(i, e)}
+                style={{ position: 'absolute', top, left: 2, right: 2, height: h, background: i.color, color: '#fff', fontSize: 10, padding: '2px 4px', borderRadius: 3, overflow: 'hidden', cursor: 'pointer' }}>
                 {fmtTime(i.start)} {i.title}
               </div>
             )
@@ -449,7 +450,8 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
 }
 
 // ---------- DAY VIEW ----------
-function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent, onEditEvent }) {
+function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent, onEditEvent, onShowDetail }) {
+  const openItem = (i, e) => { if (e) e.stopPropagation(); if (i.kind === 'event' && i.raw) onEditEvent(i.raw); else onShowDetail(i) }
   const ds = isoDate(cursor)
   const items = itemsOn(ds)
   const allDay = items.filter(i => i.allDay)
@@ -475,7 +477,7 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent, onEd
           </div>
         </div>
         {allDay.map(i => (
-          <div key={i.id} onClick={() => i.raw && onEditEvent(i.raw)} style={{ background: i.color, color: '#fff', fontSize: 11, padding: '3px 6px', borderRadius: 3, marginBottom: 4, cursor: 'pointer' }}>{i.title}</div>
+          <div key={i.id} onClick={(e) => openItem(i, e)} style={{ background: i.color, color: '#fff', fontSize: 11, padding: '3px 6px', borderRadius: 3, marginBottom: 4, cursor: 'pointer' }}>{i.title}</div>
         ))}
         <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 760 }}>
           {hours.map(h => (
@@ -483,7 +485,7 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent, onEd
               <div style={{ width: 44, fontSize: 11, color: '#b0aca4', paddingTop: 2 }}>{h === 0 ? '12 am' : h === 12 ? '12 pm' : h > 12 ? `${h - 12} pm` : `${h} am`}</div>
               <div style={{ flex: 1 }} onClick={() => onAddEvent(cursor)}>
                 {timed.filter(i => parseHour(i.start) === h).map(i => (
-                  <div key={i.id} onClick={(e) => { e.stopPropagation(); i.raw && onEditEvent(i.raw) }}
+                  <div key={i.id} onClick={(e) => openItem(i, e)}
                     style={{ background: i.color, color: '#fff', fontSize: 11, padding: '3px 6px', borderRadius: 3, margin: '1px 0', cursor: 'pointer' }}>
                     {fmtTime(i.start)} {i.title}
                   </div>
@@ -767,6 +769,12 @@ function SubscriptionsModal({ subs, userId, gcalConn, onClose, onChanged }) {
             {subs.map(s => (
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
                 <span style={{ width: 12, height: 12, borderRadius: 3, background: s.color, flexShrink: 0 }} />
+                <label title="Change color" style={{ position: 'relative', width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}>
+                  <input type="color" value={s.color || '#7C3AED'}
+                    onChange={async (e) => { await supabase.from('calendar_subscriptions').update({ color: e.target.value }).eq('id', s.id); onChanged() }}
+                    style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+                  <span style={{ fontSize: 10, color: 'var(--ink-soft)' }}>✎</span>
+                </label>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{s.label}</div>
                   <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
@@ -883,6 +891,7 @@ function EventModal({ event, userId, isAdmin, gcalConn, onClose, onSaved }) {
   const [end, setEnd] = useState(event.end_time || '10:00')
   const [notes, setNotes] = useState(event.notes || '')
   const [scope, setScope] = useState(event.scope || 'personal')
+  const [color, setColor] = useState(event.color || '#0077B6')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -892,7 +901,7 @@ function EventModal({ event, userId, isAdmin, gcalConn, onClose, onSaved }) {
     const payload = {
       title: title.trim(), event_date: date, all_day: allDay,
       start_time: allDay ? null : start, end_time: allDay ? null : end,
-      notes: notes.trim() || null, scope, owner_id: userId,
+      notes: notes.trim() || null, scope, color, owner_id: userId,
     }
     let savedId = event.id
     let res
@@ -952,6 +961,20 @@ function EventModal({ event, userId, isAdmin, gcalConn, onClose, onSaved }) {
         )}
         <div className="field"><label>Notes</label>
           <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} />
+        </div>
+        <div className="field"><label>Color</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {['#0077B6', '#16A34A', '#D97706', '#7C3AED', '#DC2626', '#0891B2', '#DB2777', '#65A30D', '#4B5563'].map(c => (
+              <span key={c} onClick={() => setColor(c)} title={c}
+                style={{ width: 26, height: 26, borderRadius: 6, background: c, cursor: 'pointer', border: color === c ? '3px solid var(--ink)' : '3px solid transparent' }} />
+            ))}
+            <label title="Custom color" style={{ position: 'relative', width: 26, height: 26, borderRadius: 6, cursor: 'pointer', border: '2px dashed var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <input type="color" value={color} onChange={e => setColor(e.target.value)}
+                style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+              <span style={{ fontSize: 13, color: 'var(--ink-soft)' }}>+</span>
+            </label>
+            <span style={{ width: 18, height: 18, borderRadius: 4, background: color, marginLeft: 4 }} />
+          </div>
         </div>
         <div className="field"><label>Visibility</label>
           <select value={scope} onChange={e => setScope(e.target.value)} disabled={!isAdmin && scope !== 'team'}>
