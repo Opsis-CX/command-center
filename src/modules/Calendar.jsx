@@ -625,7 +625,7 @@ function SubscriptionsModal({ subs, userId, gcalConn, onClose, onChanged }) {
     const supaUrl = import.meta.env.VITE_SUPABASE_URL
     if (!clientId) { setErr('Google client ID not configured (VITE_GOOGLE_CLIENT_ID).'); return }
     const redirect = `${supaUrl}/functions/v1/google-oauth-callback`
-    const scope = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/userinfo.email'
+    const scope = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.email'
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
     authUrl.searchParams.set('client_id', clientId)
     authUrl.searchParams.set('redirect_uri', redirect)
