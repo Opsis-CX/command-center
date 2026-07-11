@@ -479,53 +479,6 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
 }
 
 // ---------- DAY VIEW ----------
-// Persistent task-timer control on the Day view header. Pick any of your tasks
-// and start/stop its timer, regardless of due date. Shows live elapsed time.
-function TaskTimerBar({ allTasks, runningEntry, onToggleTaskTimer }) {
-  const [picked, setPicked] = React.useState('')
-  const [, tick] = React.useState(0)
-  React.useEffect(() => {
-    if (!runningEntry) return
-    const t = setInterval(() => tick(x => x + 1), 1000)
-    return () => clearInterval(t)
-  }, [runningEntry])
-
-  const openTasks = (allTasks || []).filter(t => t.status !== 'done')
-  const runningTask = runningEntry ? (allTasks || []).find(t => t.id === runningEntry.task_id) : null
-
-  const elapsed = () => {
-    if (!runningEntry) return ''
-    const s = Math.floor((Date.now() - new Date(runningEntry.started_at).getTime()) / 1000)
-    const h = String(Math.floor(s / 3600)).padStart(2, '0')
-    const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0')
-    const sec = String(s % 60).padStart(2, '0')
-    return `${h}:${m}:${sec}`
-  }
-
-  if (runningTask) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(22,163,74,.08)', border: '1px solid #16A34A', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
-        <span style={{ fontSize: 12, color: '#16A34A', fontWeight: 700 }}>● Tracking</span>
-        <span style={{ fontSize: 13, color: '#4a4640', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{runningTask.name}</span>
-        <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#16A34A' }}>{elapsed()}</span>
-        <button onClick={() => onToggleTaskTimer(runningTask)} style={{ border: 'none', background: '#DC2626', color: '#fff', borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>Stop</button>
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-      <select value={picked} onChange={e => setPicked(e.target.value)}
-        style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: '6px 8px', borderRadius: 6, border: '1px solid #ece8e0', color: '#4a4640' }}>
-        <option value="">Start a task timer…</option>
-        {openTasks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-      </select>
-      <button disabled={!picked} onClick={() => { const t = openTasks.find(x => x.id === picked); if (t) { onToggleTaskTimer(t); setPicked('') } }}
-        style={{ border: 'none', background: picked ? '#16A34A' : '#c3bfb5', color: '#fff', borderRadius: 6, padding: '6px 14px', fontSize: 12.5, cursor: picked ? 'pointer' : 'default' }}>▶ Start</button>
-    </div>
-  )
-}
-
 function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddEvent, onEditEvent, onShowDetail, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries }) {
   const openItem = (i, e) => { if (e) e.stopPropagation(); if (i.kind === 'event' && i.raw) onEditEvent(i.raw); else onShowDetail(i) }
   const ds = isoDate(cursor)
@@ -552,7 +505,6 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
             <button onClick={() => onAddEvent(cursor)} style={railBtn}>ADD EVENT</button>
           </div>
         </div>
-        <TaskTimerBar allTasks={allTasks} runningEntry={runningEntry} onToggleTaskTimer={onToggleTaskTimer} />
         {allDay.map(i => (
           <div key={i.id} onClick={(e) => openItem(i, e)} style={{ background: i.color, color: '#fff', fontSize: 11, padding: '3px 6px', borderRadius: 3, marginBottom: 4, cursor: 'pointer' }}>{i.title}</div>
         ))}
