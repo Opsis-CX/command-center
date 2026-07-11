@@ -235,7 +235,10 @@ const railBtn = { border: '1px solid #c3bfb5', borderRadius: 14, padding: '4px 1
 function MonthView({ cursor, setCursor, itemsOn, onAddEvent, onEditEvent }) {
   const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
   const gridStart = mondayOf(first)
-  const days = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
+  // only render weeks that actually contain days of this month (5 or 6 rows)
+  const lastOfMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)
+  const weekCount = Math.ceil((((lastOfMonth - gridStart) / 86400000) + 1) / 7)
+  const days = Array.from({ length: weekCount * 7 }, (_, i) => addDays(gridStart, i))
   const todayStr = isoDate(etNow())
 
   function DayCell({ d }) {
@@ -244,21 +247,21 @@ function MonthView({ cursor, setCursor, itemsOn, onAddEvent, onEditEvent }) {
     const inMonth = d.getMonth() === cursor.getMonth()
     const allDay = items.filter(i => i.allDay)
     const timed = items.filter(i => !i.allDay)
-    const shown = timed.slice(0, 4)
+    const shown = timed.slice(0, 5)
     const more = timed.length - shown.length
     return (
-      <div style={{ background: inMonth ? '#fff' : '#faf8f4', minHeight: 118, padding: '4px 6px', cursor: 'pointer' }}
+      <div style={{ background: inMonth ? '#fff' : '#faf8f4', minHeight: 130, padding: '5px 7px', cursor: 'pointer' }}
         onClick={() => onAddEvent(d)}>
-        <div style={{ fontSize: 11, color: isoDate(d) === todayStr ? '#fff' : '#9a968c', background: isoDate(d) === todayStr ? COLORS.event : 'transparent', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ fontSize: 12, color: isoDate(d) === todayStr ? '#fff' : '#9a968c', background: isoDate(d) === todayStr ? COLORS.event : 'transparent', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {d.getDate()}
         </div>
         {allDay.map(i => (
           <div key={i.id} onClick={(e) => { e.stopPropagation(); i.raw && onEditEvent(i.raw) }}
-            style={{ background: i.color, color: '#fff', fontSize: 10, padding: '2px 4px', borderRadius: 2, margin: '2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</div>
+            style={{ background: i.color, color: '#fff', fontSize: 11, padding: '2px 5px', borderRadius: 2, margin: '2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</div>
         ))}
         {shown.map(i => (
           <div key={i.id} onClick={(e) => { e.stopPropagation(); i.raw && onEditEvent(i.raw) }}
-            style={{ fontSize: 10, color: i.color, padding: '1px 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            style={{ fontSize: 11, color: i.color, padding: '1px 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {i.start ? fmtTime(i.start) + ' ' : ''}{i.title}
           </div>
         ))}
@@ -267,26 +270,41 @@ function MonthView({ cursor, setCursor, itemsOn, onAddEvent, onEditEvent }) {
     )
   }
 
-  const leftDays = [0, 1, 2]   // Mon Tue Wed columns
-  const rightDays = [3, 4, 5, 6]
-  const weeks = [0, 1, 2, 3, 4, 5]
+  const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
   return (
     <div style={{ display: 'flex' }}>
       <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} />
-      <div style={{ flex: 1, padding: '16px 14px', minWidth: 0 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)' }}>
-          {['Thursday', 'Friday', 'Saturday', 'Sunday'].map(d => (
+      <div style={{ flex: 1, padding: '16px 18px', minWidth: 0 }}>
+        <ViewNav cursor={cursor} setCursor={setCursor}
+          label={`${MONTHS[cursor.getMonth()]} ${cursor.getFullYear()}`}
+          onPrev={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}
+          onNext={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>
+          {dayNames.map(d => (
             <div key={d} style={{ textAlign: 'center', color: '#7a94ab', fontSize: 11, letterSpacing: 1.5, paddingBottom: 8 }}>{d.toUpperCase()}</div>
           ))}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: '#ece8e0', border: '1px solid #ece8e0' }}>
-          {weeks.map(w => rightDays.map(di => <DayCell key={`${w}-${di}`} d={days[w * 7 + di]} />))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1, background: '#ece8e0', border: '1px solid #ece8e0' }}>
+          {days.map((d, i) => <DayCell key={i} d={d} />)}
         </div>
       </div>
     </div>
   )
 }
+
+// shared nav bar: ‹ label › + Today
+function ViewNav({ cursor, setCursor, label, onPrev, onNext }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+      <button onClick={onPrev} style={navArrow}>‹</button>
+      <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, color: '#3a3a38', minWidth: 180 }}>{label}</div>
+      <button onClick={onNext} style={navArrow}>›</button>
+      <button onClick={() => setCursor(etNow())} style={{ ...railBtn, marginLeft: 8 }}>TODAY</button>
+    </div>
+  )
+}
+const navArrow = { border: '1px solid #c3bfb5', background: 'transparent', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', color: '#6a665e', fontSize: 16, lineHeight: 1 }
 
 // ---------- WEEK VIEW ----------
 function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent }) {
@@ -294,7 +312,6 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
   const week = Array.from({ length: 7 }, (_, i) => addDays(mon, i))
   const hours = Array.from({ length: 10 }, (_, i) => i + 9)   // 9a–6p
   const todayStr = isoDate(etNow())
-  const rightDays = week.slice(3)
 
   function DayCol({ d }) {
     const ds = isoDate(d)
@@ -336,8 +353,12 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
   return (
     <div style={{ display: 'flex' }}>
       <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} />
-      <div style={{ flex: 1, padding: '12px 8px', minWidth: 0 }}>
-        <div style={{ display: 'flex' }}>{rightDays.map(d => <DayCol key={isoDate(d)} d={d} />)}</div>
+      <div style={{ flex: 1, padding: '12px 12px', minWidth: 0 }}>
+        <ViewNav cursor={cursor} setCursor={setCursor}
+          label={`${MONTHS[mon.getMonth()].slice(0, 3)} ${mon.getDate()} – ${MONTHS[week[6].getMonth()].slice(0, 3)} ${week[6].getDate()}`}
+          onPrev={() => setCursor(addDays(cursor, -7))}
+          onNext={() => setCursor(addDays(cursor, 7))} />
+        <div style={{ display: 'flex' }}>{week.map(d => <DayCol key={isoDate(d)} d={d} />)}</div>
       </div>
     </div>
   )
@@ -362,7 +383,9 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent 
             <span style={{ fontFamily: 'Georgia, serif', fontSize: 24, color: '#3a3a38' }}>{DOW[(cursor.getDay() + 6) % 7]}</span>
             <span style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#7a94ab', marginLeft: 8 }}>{MONTHS[cursor.getMonth()]} {cursor.getDate()}, {cursor.getFullYear()}</span>
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button onClick={() => setCursor(addDays(cursor, -1))} style={navArrow}>‹</button>
+            <button onClick={() => setCursor(addDays(cursor, 1))} style={navArrow}>›</button>
             <button onClick={() => setCursor(etNow())} style={railBtn}>TODAY</button>
             <button onClick={() => onAddEvent(cursor)} style={railBtn}>ADD EVENT</button>
           </div>
