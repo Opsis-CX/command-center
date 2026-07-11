@@ -65,13 +65,14 @@ export default function Calendar() {
   const [showSubs, setShowSubs] = useState(false)
   const [gcalConn, setGcalConn] = useState(null)
   const [gcalEvents, setGcalEvents] = useState([])
+  const [timeEntries, setTimeEntries] = useState([])
 
   const load = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     const uid = user?.id || null
     setUserId(uid)
-    const [evRes, taskRes, taRes, clmRes, blkRes, profRes, subRes, feedRes, gtRes, geRes] = await Promise.all([
+    const [evRes, taskRes, taRes, clmRes, blkRes, profRes, subRes, feedRes, gtRes, geRes, timeRes] = await Promise.all([
       supabase.from('calendar_events').select('*'),
       supabase.from('tasks').select('id, name, due_date, priority, status, project_id').is('deleted_at', null),
       supabase.from('task_assignees').select('task_id, profile_id'),
@@ -82,6 +83,7 @@ export default function Calendar() {
       supabase.from('calendar_feed_events').select('*'),
       supabase.from('google_calendar_tokens').select('google_email, connected_at, color').maybeSingle(),
       supabase.from('google_calendar_events').select('*'),
+      supabase.from('time_entries').select('id, task_id, user_id, started_at, ended_at, duration_minutes'),
     ])
     setEvents(evRes.data || [])
     setTasks(taskRes.data || [])
@@ -93,10 +95,37 @@ export default function Calendar() {
     setFeedEvents(feedRes.data || [])
     setGcalConn(gtRes.data || null)
     setGcalEvents(geRes.data || [])
+    setTimeEntries(timeRes.data || [])
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // --- task actions from the calendar (mirror the project tool) ---
+  const runningEntry = timeEntries.find(e => e.user_id === userId && e.started_at && !e.ended_at)
+  async function toggleTaskDone(task) {
+    const next = task.status === 'done' ? 'todo' : 'done'
+    await supabase.from('tasks').update({ status: next }).eq('id', task.id)
+    load()
+  }
+  async function toggleTaskTimer(task) {
+    const mine = timeEntries.find(e => e.task_id === task.id && e.user_id === userId && e.started_at && !e.ended_at)
+    if (mine) {
+      // stop
+      const endedAt = new Date()
+      const mins = Math.max(1, Math.round((endedAt - new Date(mine.started_at)) / 60000))
+      await supabase.from('time_entries').update({ ended_at: endedAt.toISOString(), duration_minutes: mins }).eq('id', mine.id)
+    } else {
+      // stop any other running timer first (one at a time), then start
+      if (runningEntry) {
+        const endedAt = new Date()
+        const mins = Math.max(1, Math.round((endedAt - new Date(runningEntry.started_at)) / 60000))
+        await supabase.from('time_entries').update({ ended_at: endedAt.toISOString(), duration_minutes: mins }).eq('id', runningEntry.id)
+      }
+      await supabase.from('time_entries').insert({ task_id: task.id, user_id: userId, started_at: new Date().toISOString(), is_manual: false })
+    }
+    load()
+  }
 
   // After Google OAuth redirects back (?gcal=connected), sync once and clean the URL.
   useEffect(() => {
@@ -148,7 +177,7 @@ export default function Calendar() {
   }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn])
 
   const tasksOn = useCallback((ds) => {
-    const due = myTasks.filter(t => t.due_date === ds && t.status !== 'done')
+    const due = myTasks.filter(t => t.due_date === ds)
     return {
       priority: due.filter(t => t.priority === 'high'),
       other: due.filter(t => t.priority !== 'high'),
@@ -157,7 +186,7 @@ export default function Calendar() {
 
   if (loading) return <div className="page-sub" style={{ padding: 30 }}>Loading calendar…</div>
 
-  const shared = { cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent: (d) => setEditEvent({ event_date: isoDate(d || cursor) }), onEditEvent: setEditEvent, onShowDetail: setDetailItem }
+  const shared = { cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent: (d) => setEditEvent({ event_date: isoDate(d || cursor) }), onEditEvent: setEditEvent, onShowDetail: setDetailItem, onToggleTaskDone: toggleTaskDone, onToggleTaskTimer: toggleTaskTimer, runningEntry, timeEntries }
 
   return (
     <div>
@@ -450,7 +479,7 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
 }
 
 // ---------- DAY VIEW ----------
-function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent, onEditEvent, onShowDetail }) {
+function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent, onEditEvent, onShowDetail, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries }) {
   const openItem = (i, e) => { if (e) e.stopPropagation(); if (i.kind === 'event' && i.raw) onEditEvent(i.raw); else onShowDetail(i) }
   const ds = isoDate(cursor)
   const items = itemsOn(ds)
@@ -498,7 +527,8 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent, onEd
 
       {/* right page: panels */}
       <div style={{ flex: 1, padding: '18px 20px', minWidth: 0 }}>
-        <DayPlanner userId={userId} ds={ds} priority={priority} other={other} quote={[q, who]} />
+        <DayPlanner userId={userId} ds={ds} priority={priority} other={other} quote={[q, who]}
+          onToggleTaskDone={onToggleTaskDone} onToggleTaskTimer={onToggleTaskTimer} runningEntry={runningEntry} timeEntries={timeEntries} />
       </div>
     </div>
   )
@@ -508,7 +538,7 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent, onEd
 const MEAL_FIELDS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snack', 'Snack']]
 const WATER_GOAL = 8
 
-function DayPlanner({ userId, ds, priority, other, quote }) {
+function DayPlanner({ userId, ds, priority, other, quote, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries }) {
   const [water, setWater] = useState(0)
   const [meals, setMeals] = useState({})
   const [todos, setTodos] = useState([])   // {id, text, done, priority}
@@ -561,12 +591,14 @@ function DayPlanner({ userId, ds, priority, other, quote }) {
     <div style={{ display: 'flex', gap: 20 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <PanelHead>PRIORITY TASKS</PanelHead>
-        <TaskAndTodoList tasks={priority} todos={myPriorityTodos} onToggle={toggleTodo} onDel={delTodo} emptyBoth="No priority items." />
+        <TaskAndTodoList tasks={priority} todos={myPriorityTodos} onToggle={toggleTodo} onDel={delTodo} emptyBoth="No priority items."
+          onToggleTaskDone={onToggleTaskDone} onToggleTaskTimer={onToggleTaskTimer} runningEntry={runningEntry} />
         <QuickAdd value={newTodo} setValue={setNewTodo} onAdd={() => addTodo('high')} placeholder="Add a priority to-do…" />
 
         <div style={{ height: 22 }} />
         <PanelHead>OTHER TASKS</PanelHead>
-        <TaskAndTodoList tasks={other} todos={myOtherTodos} onToggle={toggleTodo} onDel={delTodo} emptyBoth="Nothing else today." />
+        <TaskAndTodoList tasks={other} todos={myOtherTodos} onToggle={toggleTodo} onDel={delTodo} emptyBoth="Nothing else today."
+          onToggleTaskDone={onToggleTaskDone} onToggleTaskTimer={onToggleTaskTimer} runningEntry={runningEntry} />
         <QuickAdd value={newTodo} setValue={setNewTodo} onAdd={() => addTodo('other')} placeholder="Add a to-do…" />
       </div>
 
@@ -632,17 +664,27 @@ function QuickAdd({ value, setValue, onAdd, placeholder }) {
   )
 }
 
-function TaskAndTodoList({ tasks, todos, onToggle, onDel, emptyBoth }) {
+function TaskAndTodoList({ tasks, todos, onToggle, onDel, emptyBoth, onToggleTaskDone, onToggleTaskTimer, runningEntry }) {
   if (!tasks.length && !todos.length) return <div style={{ fontSize: 12, color: '#c3bfb5', fontStyle: 'italic', margin: '8px 0' }}>{emptyBoth}</div>
   return (
     <div style={{ marginTop: 6 }}>
-      {tasks.map(t => (
-        <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#4a4640', margin: '5px 0' }}>
-          <span style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid #c3bfb5', flexShrink: 0 }} />
-          <span>{t.name}</span>
-          <span style={{ fontSize: 10, color: '#c3bfb5', marginLeft: 'auto' }}>task</span>
-        </div>
-      ))}
+      {tasks.map(t => {
+        const done = t.status === 'done'
+        const isRunning = runningEntry && runningEntry.task_id === t.id
+        return (
+          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: done ? '#b0aca4' : '#4a4640', margin: '5px 0' }}>
+            <span onClick={() => onToggleTaskDone && onToggleTaskDone(t)}
+              style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid ' + (done ? '#16A34A' : '#c3bfb5'), background: done ? '#16A34A' : 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10 }}>{done ? '✓' : ''}</span>
+            <span style={{ textDecoration: done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+            {onToggleTaskTimer && !done && (
+              <button onClick={() => onToggleTaskTimer(t)} title={isRunning ? 'Stop timer' : 'Start timer'}
+                style={{ marginLeft: 'auto', flexShrink: 0, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 13, color: isRunning ? '#DC2626' : '#16A34A' }}>
+                {isRunning ? '■ stop' : '▶ start'}
+              </button>
+            )}
+          </div>
+        )
+      })}
       {todos.map(t => (
         <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: t.done ? '#b0aca4' : '#4a4640', margin: '5px 0' }}>
           <span onClick={() => onToggle(t.id)} style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid ' + (t.done ? COLORS.event : '#c3bfb5'), background: t.done ? COLORS.event : 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10 }}>{t.done ? '✓' : ''}</span>
