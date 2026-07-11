@@ -22,6 +22,7 @@ import Chat from './modules/Chat'
 import Projects from './modules/Projects'
 import Clients from './modules/Clients'
 import Reporting from './modules/Reporting'
+import Calendar from './modules/Calendar'
 import WeeklySync from './modules/WeeklySync'
 import { UnreadProvider } from './lib/unread'
 // --- hiring pipeline ---
@@ -97,6 +98,7 @@ function AuthedApp({ session, isAdmin, navOpen, setNavOpen, location }) {
         <div className="content">
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/calendar" element={<Calendar />} />
             {isAdmin && <Route path="/certifications" element={<Certifications />} />}
             {isAdmin && <Route path="/matrix" element={<Placeholder title="Certification matrix" note="The agents × call-types grid mounts here." />} />}
             {isAdmin && <Route path="/courses" element={<CourseBuilder />} />}
