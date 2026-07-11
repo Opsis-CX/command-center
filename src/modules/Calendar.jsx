@@ -354,7 +354,7 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent 
   const [q, who] = quoteFor(cursor)
 
   return (
-    <div style={{ display: 'flex' }}>
+    <div style={{ display: 'flex', minHeight: 680 }}>
       {/* left page: hourly column */}
       <div style={{ flex: 1, padding: '18px 20px', borderRight: '1px solid #ece8e0', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -372,9 +372,9 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent 
         {allDay.map(i => (
           <div key={i.id} onClick={() => i.raw && onEditEvent(i.raw)} style={{ background: i.color, color: '#fff', fontSize: 11, padding: '3px 6px', borderRadius: 3, marginBottom: 4, cursor: 'pointer' }}>{i.title}</div>
         ))}
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 620 }}>
           {hours.map(h => (
-            <div key={h} style={{ display: 'flex', borderTop: '1px solid #f2efe9', minHeight: 34 }}>
+            <div key={h} style={{ display: 'flex', borderTop: '1px solid #f2efe9', flex: 1, minHeight: 34 }}>
               <div style={{ width: 44, fontSize: 11, color: '#b0aca4', paddingTop: 2 }}>{h === 12 ? '12 pm' : h > 12 ? `${h - 12} pm` : `${h} am`}</div>
               <div style={{ flex: 1 }} onClick={() => onAddEvent(cursor)}>
                 {timed.filter(i => parseHour(i.start) === h).map(i => (
