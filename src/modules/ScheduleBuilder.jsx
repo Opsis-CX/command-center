@@ -232,7 +232,7 @@ function ReviewQueue({ claims, blocks, profiles, meId, onDone }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <p className="page-sub" style={{ marginTop: -4 }}>Shifts checked out well outside their scheduled time, or never checked out. Adjust the times if needed, then approve — approved shifts count toward payroll.</p>
+      <p className="page-sub" style={{ marginTop: -4 }}>Intervals checked out well outside their scheduled time, or never checked out. Adjust the times if needed, then approve — approved intervals count toward payroll.</p>
       {items.map(({ claim, block }) => (
         <ReviewCard key={claim.id} claim={claim} block={block}
           person={profiles.find(p => p.id === claim.profile_id)} meId={meId} onDone={onDone} />
@@ -259,7 +259,7 @@ function ReviewCard({ claim, block, person, meId, onDone }) {
       reviewed_at: new Date().toISOString(),
     }).eq('id', claim.id)
     setSaving(false)
-    onDone(error ? 'Error approving shift' : `Approved ${person?.full_name || 'shift'}`)
+    onDone(error ? 'Error approving interval' : `Approved ${person?.full_name || 'interval'}`)
   }
 
   return (
