@@ -87,7 +87,8 @@ export default function Calendar() {
   // ---- visibility: events (personal to me OR team), tasks (mine or admin), intervals (mine) ----
   const myEvents = useMemo(() => events.filter(e => e.scope === 'team' || e.owner_id === userId), [events, userId])
   const myTaskIds = useMemo(() => new Set(assignees.filter(a => a.profile_id === userId).map(a => a.task_id)), [assignees, userId])
-  const myTasks = useMemo(() => isAdmin ? tasks : tasks.filter(t => myTaskIds.has(t.id)), [tasks, myTaskIds, isAdmin])
+  // Personal calendar: always only the current user's own tasks, even for admins.
+  const myTasks = useMemo(() => tasks.filter(t => myTaskIds.has(t.id)), [tasks, myTaskIds])
   const myClaims = useMemo(() => claims.filter(c => c.profile_id === userId), [claims, userId])
 
   // items on a given ISO date
