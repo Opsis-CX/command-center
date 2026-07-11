@@ -120,7 +120,7 @@ export default function Calendar() {
 
   if (loading) return <div className="page-sub" style={{ padding: 30 }}>Loading calendar…</div>
 
-  const shared = { cursor, setCursor, itemsOn, tasksOn, onAddEvent: (d) => setEditEvent({ event_date: isoDate(d || cursor) }), onEditEvent: setEditEvent }
+  const shared = { cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent: (d) => setEditEvent({ event_date: isoDate(d || cursor) }), onEditEvent: setEditEvent }
 
   return (
     <div>
@@ -344,17 +344,17 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
 }
 
 // ---------- DAY VIEW ----------
-function DayView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent }) {
+function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent, onEditEvent }) {
   const ds = isoDate(cursor)
   const items = itemsOn(ds)
   const allDay = items.filter(i => i.allDay)
   const timed = items.filter(i => !i.allDay && i.start)
   const { priority, other } = tasksOn(ds)
-  const hours = Array.from({ length: 16 }, (_, i) => i + 8) // 8a–11p
+  const hours = Array.from({ length: 24 }, (_, i) => i) // 12a–11p (full day)
   const [q, who] = quoteFor(cursor)
 
   return (
-    <div style={{ display: 'flex', minHeight: 680 }}>
+    <div style={{ display: 'flex', minHeight: 820 }}>
       {/* left page: hourly column */}
       <div style={{ flex: 1, padding: '18px 20px', borderRight: '1px solid #ece8e0', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -372,10 +372,10 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent 
         {allDay.map(i => (
           <div key={i.id} onClick={() => i.raw && onEditEvent(i.raw)} style={{ background: i.color, color: '#fff', fontSize: 11, padding: '3px 6px', borderRadius: 3, marginBottom: 4, cursor: 'pointer' }}>{i.title}</div>
         ))}
-        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 620 }}>
+        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 760 }}>
           {hours.map(h => (
             <div key={h} style={{ display: 'flex', borderTop: '1px solid #f2efe9', flex: 1, minHeight: 34 }}>
-              <div style={{ width: 44, fontSize: 11, color: '#b0aca4', paddingTop: 2 }}>{h === 12 ? '12 pm' : h > 12 ? `${h - 12} pm` : `${h} am`}</div>
+              <div style={{ width: 44, fontSize: 11, color: '#b0aca4', paddingTop: 2 }}>{h === 0 ? '12 am' : h === 12 ? '12 pm' : h > 12 ? `${h - 12} pm` : `${h} am`}</div>
               <div style={{ flex: 1 }} onClick={() => onAddEvent(cursor)}>
                 {timed.filter(i => parseHour(i.start) === h).map(i => (
                   <div key={i.id} onClick={(e) => { e.stopPropagation(); i.raw && onEditEvent(i.raw) }}
@@ -391,48 +391,141 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent 
 
       {/* right page: panels */}
       <div style={{ flex: 1, padding: '18px 20px', minWidth: 0 }}>
-        <div style={{ display: 'flex', gap: 20 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <PanelHead>PRIORITY TASKS</PanelHead>
-            <TaskList tasks={priority} empty="No priority tasks due." />
-            <div style={{ height: 20 }} />
-            <PanelHead>OTHER TASKS</PanelHead>
-            <TaskList tasks={other} empty="Nothing else due today." />
-          </div>
-          <div style={{ width: 150, flexShrink: 0 }}>
-            <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 13, color: '#6a665e', lineHeight: 1.5 }}>
-              &ldquo;{q}&rdquo;
-              <div style={{ marginTop: 6, fontStyle: 'normal', fontSize: 12, color: '#9a968c' }}>— {who}</div>
+        <DayPlanner userId={userId} ds={ds} priority={priority} other={other} quote={[q, who]} />
+      </div>
+    </div>
+  )
+}
+
+// ---------- DAY PLANNER (interactive: tasks + quick todos + meals + water) ----------
+const MEAL_FIELDS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snack', 'Snack']]
+const WATER_GOAL = 8
+
+function DayPlanner({ userId, ds, priority, other, quote }) {
+  const [water, setWater] = useState(0)
+  const [meals, setMeals] = useState({})
+  const [todos, setTodos] = useState([])   // {id, text, done, priority}
+  const [newTodo, setNewTodo] = useState('')
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      setLoaded(false)
+      if (!userId) return
+      const { data } = await supabase.from('day_planner').select('*').eq('owner_id', userId).eq('day', ds).maybeSingle()
+      if (!active) return
+      setWater(data?.water || 0)
+      setMeals(data?.meals || {})
+      setTodos(Array.isArray(data?.quick_todos) ? data.quick_todos : [])
+      setLoaded(true)
+    })()
+    return () => { active = false }
+  }, [userId, ds])
+
+  const save = useCallback(async (patch) => {
+    if (!userId) return
+    await supabase.from('day_planner').upsert({
+      owner_id: userId, day: ds, water, meals, quick_todos: todos, updated_at: new Date().toISOString(), ...patch,
+    }, { onConflict: 'owner_id,day' })
+  }, [userId, ds, water, meals, todos])
+
+  function setWaterTo(n) { const v = water === n ? n - 1 : n; setWater(v); save({ water: v }) }
+  function setMeal(key, val) { const m = { ...meals, [key]: val }; setMeals(m) }
+  function addTodo(pri) {
+    if (!newTodo.trim()) return
+    const next = [...todos, { id: crypto.randomUUID(), text: newTodo.trim(), done: false, priority: pri }]
+    setTodos(next); setNewTodo(''); save({ quick_todos: next })
+  }
+  function toggleTodo(id) { const next = todos.map(t => t.id === id ? { ...t, done: !t.done } : t); setTodos(next); save({ quick_todos: next }) }
+  function delTodo(id) { const next = todos.filter(t => t.id !== id); setTodos(next); save({ quick_todos: next }) }
+
+  const [q, who] = quote
+  const myPriorityTodos = todos.filter(t => t.priority === 'high')
+  const myOtherTodos = todos.filter(t => t.priority !== 'high')
+
+  return (
+    <div style={{ display: 'flex', gap: 20 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <PanelHead>PRIORITY TASKS</PanelHead>
+        <TaskAndTodoList tasks={priority} todos={myPriorityTodos} onToggle={toggleTodo} onDel={delTodo} emptyBoth="No priority items." />
+        <QuickAdd value={newTodo} setValue={setNewTodo} onAdd={() => addTodo('high')} placeholder="Add a priority to-do…" />
+
+        <div style={{ height: 22 }} />
+        <PanelHead>OTHER TASKS</PanelHead>
+        <TaskAndTodoList tasks={other} todos={myOtherTodos} onToggle={toggleTodo} onDel={delTodo} emptyBoth="Nothing else today." />
+        <QuickAdd value={newTodo} setValue={setNewTodo} onAdd={() => addTodo('other')} placeholder="Add a to-do…" />
+      </div>
+
+      <div style={{ width: 170, flexShrink: 0 }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 13, color: '#6a665e', lineHeight: 1.5 }}>
+          &ldquo;{q}&rdquo;
+          <div style={{ marginTop: 6, fontStyle: 'normal', fontSize: 12, color: '#9a968c' }}>— {who}</div>
+        </div>
+
+        <div style={{ marginTop: 22 }}>
+          <PanelHead>MEALS</PanelHead>
+          {MEAL_FIELDS.map(([key, label]) => (
+            <div key={key} style={{ marginTop: 6 }}>
+              <div style={{ fontSize: 10, color: '#b0aca4', letterSpacing: 1 }}>{label.toUpperCase()}</div>
+              <input value={meals[key] || ''} onChange={e => setMeal(key, e.target.value)} onBlur={() => save({ meals })}
+                placeholder="…" style={{ width: '100%', fontSize: 12, border: 'none', borderBottom: '1px solid #ece8e0', background: 'transparent', padding: '2px 0', outline: 'none', color: '#4a4640' }} />
             </div>
-            <div style={{ marginTop: 20 }}><PanelHead>MEALS</PanelHead></div>
-            <div style={{ marginTop: 20 }}>
-              <PanelHead>WATER</PanelHead>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6, marginTop: 6 }}>
-                {Array.from({ length: 8 }).map((_, i) => <span key={i} style={{ fontSize: 18, color: '#dcd8d0' }}>▽</span>)}
-              </div>
-            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 22 }}>
+          <PanelHead>WATER</PanelHead>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginTop: 8 }}>
+            {Array.from({ length: WATER_GOAL }).map((_, i) => {
+              const filled = i < water
+              return (
+                <span key={i} onClick={() => setWaterTo(i + 1)} title={`${i + 1} of ${WATER_GOAL}`}
+                  style={{ cursor: 'pointer', width: 22, height: 26, borderRadius: '3px 3px 8px 8px', border: '2px solid ' + (filled ? COLORS.event : '#c3bfb5'), background: filled ? COLORS.event : 'transparent' }} />
+              )
+            })}
           </div>
+          <div style={{ fontSize: 11, color: '#9a968c', marginTop: 6 }}>{water} of {WATER_GOAL} glasses</div>
         </div>
       </div>
     </div>
   )
 }
 
-function PanelHead({ children }) {
-  return <div style={{ color: '#c07a5a', fontSize: 12, letterSpacing: 2, fontWeight: 500 }}>{children}</div>
+function QuickAdd({ value, setValue, onAdd, placeholder }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+      <input value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') onAdd() }}
+        placeholder={placeholder} style={{ flex: 1, fontSize: 12, border: 'none', borderBottom: '1px solid #ece8e0', background: 'transparent', padding: '3px 0', outline: 'none', color: '#4a4640' }} />
+      <button onClick={onAdd} style={{ border: '1px solid #c3bfb5', borderRadius: 12, background: 'transparent', color: '#6a665e', fontSize: 11, padding: '2px 10px', cursor: 'pointer' }}>Add</button>
+    </div>
+  )
 }
-function TaskList({ tasks, empty }) {
-  if (!tasks.length) return <div style={{ fontSize: 12, color: '#c3bfb5', fontStyle: 'italic', margin: '8px 0' }}>{empty}</div>
+
+function TaskAndTodoList({ tasks, todos, onToggle, onDel, emptyBoth }) {
+  if (!tasks.length && !todos.length) return <div style={{ fontSize: 12, color: '#c3bfb5', fontStyle: 'italic', margin: '8px 0' }}>{emptyBoth}</div>
   return (
     <div style={{ marginTop: 6 }}>
       {tasks.map(t => (
         <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#4a4640', margin: '5px 0' }}>
           <span style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid #c3bfb5', flexShrink: 0 }} />
           <span>{t.name}</span>
+          <span style={{ fontSize: 10, color: '#c3bfb5', marginLeft: 'auto' }}>task</span>
+        </div>
+      ))}
+      {todos.map(t => (
+        <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: t.done ? '#b0aca4' : '#4a4640', margin: '5px 0' }}>
+          <span onClick={() => onToggle(t.id)} style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid ' + (t.done ? COLORS.event : '#c3bfb5'), background: t.done ? COLORS.event : 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10 }}>{t.done ? '✓' : ''}</span>
+          <span style={{ textDecoration: t.done ? 'line-through' : 'none' }}>{t.text}</span>
+          <span onClick={() => onDel(t.id)} style={{ marginLeft: 'auto', color: '#c3bfb5', cursor: 'pointer', fontSize: 14 }}>×</span>
         </div>
       ))}
     </div>
   )
+}
+
+function PanelHead({ children }) {
+  return <div style={{ color: '#c07a5a', fontSize: 12, letterSpacing: 2, fontWeight: 500 }}>{children}</div>
 }
 
 // ---------- EVENT MODAL ----------
