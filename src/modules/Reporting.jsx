@@ -121,14 +121,24 @@ export default function Reporting() {
       const [eh, em] = b.end_time.slice(0, 5).split(':').map(Number)
       return Math.max(0, (eh * 60 + em) - (sh * 60 + sm))
     }
-    const per = {} // personId -> {sched, clock, task}
-    const ensure = (pid) => (per[pid] = per[pid] || { sched: 0, clock: 0, task: 0 })
+    const per = {} // personId -> {sched, clock, task, pending}
+    const ensure = (pid) => (per[pid] = per[pid] || { sched: 0, clock: 0, task: 0, pending: 0 })
     // scheduled + clock from claims
     for (const c of claims) {
       if (c.status === 'no_show') continue
       const b = blockById[c.shift_block_id]
       ensure(c.profile_id).sched += schedMinsOf(b)
-      if (c.checked_in_at && c.checked_out_at) ensure(c.profile_id).clock += mins(c.checked_in_at, c.checked_out_at)
+      // Only 'completed' and 'approved' clock time counts for payroll.
+      // 'pending_review' (out-of-window or never-checked-out) is excluded until an admin approves it.
+      if (c.checked_in_at && c.checked_out_at) {
+        if (c.status === 'completed' || c.status === 'approved') {
+          ensure(c.profile_id).clock += mins(c.checked_in_at, c.checked_out_at)
+        } else if (c.status === 'pending_review') {
+          ensure(c.profile_id).pending += 1
+        }
+      } else if (c.checked_in_at && !c.checked_out_at) {
+        ensure(c.profile_id).pending += 1   // forgot to check out
+      }
     }
     // task minutes from time_entries
     for (const e of entries) ensure(e.user_id).task += (e.duration_minutes || 0)
@@ -286,7 +296,10 @@ export default function Reporting() {
                       const fmt = (v) => (v > 0 ? '+' : '') + hoursFromMinutes(v)
                       return (
                         <tr key={pid} style={{ borderBottom: '1px solid var(--line-soft)' }}>
-                          <td style={{ ...cellL, fontWeight: 600 }}>{nameOf(pid, profiles)}</td>
+                          <td style={{ ...cellL, fontWeight: 600 }}>
+                            {nameOf(pid, profiles)}
+                            {d.pending > 0 && <span title="Shifts awaiting admin review — not counted in Clock hours" style={{ marginLeft: 8, background: 'var(--needed-bg)', color: 'var(--needed)', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>{d.pending} pending</span>}
+                          </td>
                           <td style={cellR}>{hoursFromMinutes(d.sched)}</td>
                           <td style={cellR}>{hoursFromMinutes(d.clock)}</td>
                           <td style={cellR}>{hoursFromMinutes(d.task)}</td>
