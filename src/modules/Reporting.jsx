@@ -272,8 +272,8 @@ export default function Reporting() {
           {view === 'compare' ? (
             compareRows.length === 0 ? (
               <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
-                <h3 style={{ fontSize: 14, marginBottom: 4 }}>No shift or task data in this range</h3>
-                <p style={{ fontSize: 13 }}>Scheduled intervals and checked-in/out shifts between these dates will appear here.</p>
+                <h3 style={{ fontSize: 14, marginBottom: 4 }}>No interval or task data in this range</h3>
+                <p style={{ fontSize: 13 }}>Scheduled intervals and checked-in/out intervals between these dates will appear here.</p>
               </div>
             ) : (
               <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -298,7 +298,7 @@ export default function Reporting() {
                         <tr key={pid} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                           <td style={{ ...cellL, fontWeight: 600 }}>
                             {nameOf(pid, profiles)}
-                            {d.pending > 0 && <span title="Shifts awaiting admin review — not counted in Clock hours" style={{ marginLeft: 8, background: 'var(--needed-bg)', color: 'var(--needed)', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>{d.pending} pending</span>}
+                            {d.pending > 0 && <span title="Intervals awaiting admin review — not counted in Clock hours" style={{ marginLeft: 8, background: 'var(--needed-bg)', color: 'var(--needed)', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>{d.pending} pending</span>}
                           </td>
                           <td style={cellR}>{hoursFromMinutes(d.sched)}</td>
                           <td style={cellR}>{hoursFromMinutes(d.clock)}</td>
