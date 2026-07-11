@@ -1,5 +1,6 @@
 import NotificationBell from './components/NotificationBell'
 import NotificationToggle from './components/NotificationToggle'
+import HeaderTaskBar from './components/HeaderTaskBar'
 import { useState, useEffect } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { initTheme } from './lib/theme'
@@ -91,6 +92,7 @@ function AuthedApp({ session, isAdmin, navOpen, setNavOpen, location }) {
             <div className="crumb"><b>{titleFor(location.pathname)}</b></div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <HeaderTaskBar />
             <NotificationToggle />
             <NotificationBell />
           </div>
