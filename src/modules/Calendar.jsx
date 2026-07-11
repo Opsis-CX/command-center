@@ -80,7 +80,7 @@ export default function Calendar() {
       supabase.from('profiles').select('id, full_name'),
       supabase.from('calendar_subscriptions').select('*'),
       supabase.from('calendar_feed_events').select('*'),
-      supabase.from('google_calendar_tokens').select('google_email, connected_at').maybeSingle(),
+      supabase.from('google_calendar_tokens').select('google_email, connected_at, color').maybeSingle(),
       supabase.from('google_calendar_events').select('*'),
     ])
     setEvents(evRes.data || [])
@@ -137,7 +137,7 @@ export default function Calendar() {
     })
     const gcal = gcalEvents.filter(g => g.event_date === ds).map(g => ({
       kind: 'gcal', id: g.id, title: g.title, allDay: g.all_day,
-      start: g.start_time, end: g.end_time, color: '#EA4335',
+      start: g.start_time, end: g.end_time, color: gcalConn?.color || '#EA4335',
       description: g.description, location: g.location, hangoutLink: g.hangout_link, htmlLink: g.html_link,
     }))
     return [...evs, ...ivs, ...feeds, ...gcal].sort((a, b) => {
@@ -145,7 +145,7 @@ export default function Calendar() {
       if (!a.allDay && b.allDay) return 1
       return (a.start || '').localeCompare(b.start || '')
     })
-  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents])
+  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn])
 
   const tasksOn = useCallback((ds) => {
     const due = myTasks.filter(t => t.due_date === ds && t.status !== 'done')
@@ -737,7 +737,15 @@ function SubscriptionsModal({ subs, userId, gcalConn, onClose, onChanged }) {
         {/* Google Calendar (OAuth) */}
         <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', marginBottom: 16, background: 'var(--canvas)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#EA4335', flexShrink: 0 }} />
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: gcalConn?.color || '#EA4335', flexShrink: 0 }} />
+            {gcalConn && (
+              <label title="Change Google event color" style={{ position: 'relative', width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}>
+                <input type="color" value={gcalConn.color || '#EA4335'}
+                  onChange={async (e) => { await supabase.from('google_calendar_tokens').update({ color: e.target.value }).eq('owner_id', userId); onChanged() }}
+                  style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+                <span style={{ fontSize: 10, color: 'var(--ink-soft)' }}>✎</span>
+              </label>
+            )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 700 }}>Google Calendar</div>
               <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
