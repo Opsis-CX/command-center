@@ -59,6 +59,7 @@ export default function Calendar() {
   const [profiles, setProfiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [editEvent, setEditEvent] = useState(null)   // event obj or {} for new
+  const [detailItem, setDetailItem] = useState(null) // item to show read-only detail
   const [subs, setSubs] = useState([])
   const [feedEvents, setFeedEvents] = useState([])
   const [showSubs, setShowSubs] = useState(false)
@@ -136,7 +137,8 @@ export default function Calendar() {
     })
     const gcal = gcalEvents.filter(g => g.event_date === ds).map(g => ({
       kind: 'gcal', id: g.id, title: g.title, allDay: g.all_day,
-      start: g.start_time, end: g.end_time, color: '#EA4335', // Google red
+      start: g.start_time, end: g.end_time, color: '#EA4335',
+      description: g.description, location: g.location, hangoutLink: g.hangout_link, htmlLink: g.html_link,
     }))
     return [...evs, ...ivs, ...feeds, ...gcal].sort((a, b) => {
       if (a.allDay && !b.allDay) return -1
@@ -155,7 +157,7 @@ export default function Calendar() {
 
   if (loading) return <div className="page-sub" style={{ padding: 30 }}>Loading calendar…</div>
 
-  const shared = { cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent: (d) => setEditEvent({ event_date: isoDate(d || cursor) }), onEditEvent: setEditEvent }
+  const shared = { cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent: (d) => setEditEvent({ event_date: isoDate(d || cursor) }), onEditEvent: setEditEvent, onShowDetail: setDetailItem }
 
   return (
     <div>
@@ -173,6 +175,9 @@ export default function Calendar() {
           onClose={() => setShowSubs(false)}
           onChanged={() => load()} />
       )}
+
+      {detailItem && <EventDetailModal item={detailItem} onClose={() => setDetailItem(null)}
+        onEdit={(raw) => { setDetailItem(null); setEditEvent(raw) }} />}
 
       {editEvent && (
         <EventModal event={editEvent} userId={userId} isAdmin={isAdmin} gcalConn={gcalConn}
@@ -255,40 +260,56 @@ function LeftRail({ cursor, setCursor, onAddEvent, itemsOn, tasksOn }) {
 const railBtn = { border: '1px solid #c3bfb5', borderRadius: 14, padding: '4px 12px', fontSize: 11, color: '#6a665e', letterSpacing: '.5px', background: 'transparent', cursor: 'pointer' }
 
 // ---------- MONTH VIEW ----------
-function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent }) {
+function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent, onShowDetail }) {
   const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
   const gridStart = mondayOf(first)
-  // only render weeks that actually contain days of this month (5 or 6 rows)
   const lastOfMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)
   const weekCount = Math.ceil((((lastOfMonth - gridStart) / 86400000) + 1) / 7)
   const days = Array.from({ length: weekCount * 7 }, (_, i) => addDays(gridStart, i))
   const todayStr = isoDate(etNow())
+  const [dayPopup, setDayPopup] = React.useState(null) // {date, items}
+
+  const CELL_H = 132
+  const MAX_SHOWN = 4
+
+  function openItem(i, e) {
+    e.stopPropagation()
+    if (i.kind === 'event' && i.raw) onEditEvent(i.raw)   // manual event → edit
+    else onShowDetail(i)                                   // gcal/feed/interval → read-only detail
+  }
 
   function DayCell({ d }) {
     const ds = isoDate(d)
     const items = itemsOn(ds)
     const inMonth = d.getMonth() === cursor.getMonth()
-    const allDay = items.filter(i => i.allDay)
-    const timed = items.filter(i => !i.allDay)
-    const shown = timed.slice(0, 5)
-    const more = timed.length - shown.length
+    const isToday = ds === todayStr
+    const shown = items.slice(0, MAX_SHOWN)
+    const more = items.length - shown.length
     return (
-      <div style={{ background: inMonth ? '#fff' : '#faf8f4', minHeight: 130, padding: '5px 7px', cursor: 'pointer' }}
+      <div style={{ background: inMonth ? '#fff' : '#faf8f4', height: CELL_H, padding: '4px 6px', cursor: 'pointer', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
         onClick={() => onAddEvent(d)}>
-        <div style={{ fontSize: 12, color: isoDate(d) === todayStr ? '#fff' : '#9a968c', background: isoDate(d) === todayStr ? COLORS.event : 'transparent', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ fontSize: 12, color: isToday ? '#fff' : '#9a968c', background: isToday ? COLORS.event : 'transparent', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           {d.getDate()}
         </div>
-        {allDay.map(i => (
-          <div key={i.id} onClick={(e) => { e.stopPropagation(); i.raw && onEditEvent(i.raw) }}
-            style={{ background: i.color, color: '#fff', fontSize: 11, padding: '2px 5px', borderRadius: 2, margin: '2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</div>
-        ))}
-        {shown.map(i => (
-          <div key={i.id} onClick={(e) => { e.stopPropagation(); i.raw && onEditEvent(i.raw) }}
-            style={{ fontSize: 11, color: i.color, padding: '1px 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {i.start ? fmtTime(i.start) + ' ' : ''}{i.title}
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          {shown.map(i => (
+            <div key={i.kind + i.id} onClick={(e) => openItem(i, e)}
+              title={i.title}
+              style={{
+                fontSize: 10.5, lineHeight: 1.15, margin: '2px 0', padding: i.allDay ? '2px 4px' : '1px 2px', borderRadius: 2,
+                background: i.allDay ? i.color : 'transparent', color: i.allDay ? '#fff' : i.color,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+              {!i.allDay && i.start ? fmtTime(i.start) + ' ' : ''}{i.title}
+            </div>
+          ))}
+        </div>
+        {more > 0 && (
+          <div onClick={(e) => { e.stopPropagation(); setDayPopup({ date: d, items }) }}
+            style={{ fontSize: 10, color: '#7a94ab', fontWeight: 600, padding: '1px 2px', flexShrink: 0, cursor: 'pointer' }}>
+            + {more} more
           </div>
-        ))}
-        {more > 0 && <div style={{ fontSize: 10, color: '#9a968c', padding: 2, textAlign: 'right' }}>+ {more} MORE</div>}
+        )}
       </div>
     )
   }
@@ -312,6 +333,26 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
           {days.map((d, i) => <DayCell key={i} d={d} />)}
         </div>
       </div>
+
+      {dayPopup && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }} onClick={() => setDayPopup(null)}>
+          <div className="card" style={{ width: 380, maxWidth: '90vw', maxHeight: '80vh', overflowY: 'auto', padding: 18 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, marginBottom: 10 }}>
+              {dayPopup.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </div>
+            {dayPopup.items.map(i => (
+              <div key={i.kind + i.id} onClick={(e) => { setDayPopup(null); openItem(i, e) }}
+                style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '7px 4px', borderBottom: '1px solid var(--line-soft)', cursor: 'pointer', fontSize: 13 }}>
+                <span style={{ width: 9, height: 9, borderRadius: '50%', background: i.color, marginTop: 4, flexShrink: 0 }} />
+                <div>
+                  <div style={{ color: 'var(--ink)' }}>{i.title}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{i.allDay ? 'All day' : (i.start ? fmtTime(i.start) : '')}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -775,6 +816,63 @@ function SubscriptionsModal({ subs, userId, gcalConn, onClose, onChanged }) {
   )
 }
 
+// ---------- EVENT DETAIL (read-only popup) ----------
+function EventDetailModal({ item, onClose, onEdit }) {
+  // linkify a description that may contain a URL (Zoom, Meet, etc.)
+  const urlRe = /(https?:\/\/[^\s]+)/g
+  const desc = item.description || item.raw?.notes || ''
+  const parts = desc ? desc.split(urlRe) : []
+  const zoom = item.hangoutLink || (desc.match(/https?:\/\/[^\s]*(zoom\.us|meet\.google|teams\.microsoft)[^\s]*/) || [])[0]
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3100 }} onClick={onClose}>
+      <div className="card" style={{ width: 440, maxWidth: '92vw', maxHeight: '85vh', overflowY: 'auto', padding: 22 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: item.color, marginTop: 5, flexShrink: 0 }} />
+          <h3 style={{ margin: 0, fontSize: 18, lineHeight: 1.3 }}>{item.title}</h3>
+        </div>
+
+        <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginBottom: 14 }}>
+          {item.allDay ? 'All day' : `${item.start ? fmtTime(item.start) : ''}${item.end ? ' – ' + fmtTime(item.end) : ''}`}
+          {item.kind === 'gcal' && <span> · Google Calendar</span>}
+          {item.kind === 'interval' && <span> · Scheduled interval</span>}
+          {item.kind === 'feed' && <span> · Subscribed calendar</span>}
+        </div>
+
+        {zoom && (
+          <a href={zoom} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'inline-block', background: '#2D8CFF', color: '#fff', padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: 'none', marginBottom: 14 }}>
+            Join video call
+          </a>
+        )}
+
+        {item.location && (
+          <div style={{ fontSize: 13, marginBottom: 12 }}>
+            <span style={{ color: 'var(--ink-soft)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>Location</span>
+            <div>{item.location}</div>
+          </div>
+        )}
+
+        {desc && (
+          <div style={{ fontSize: 13, marginBottom: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }}>
+            <span style={{ color: 'var(--ink-soft)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', display: 'block', marginBottom: 4 }}>Details</span>
+            {parts.map((p, idx) => urlRe.test(p)
+              ? <a key={idx} href={p} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent, #0077B6)', wordBreak: 'break-all' }}>{p}</a>
+              : <span key={idx}>{p}</span>)}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>
+          {item.htmlLink && <a href={item.htmlLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--ink-soft)' }}>Open in Google ↗</a>}
+          {item.kind === 'event' && item.raw && <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => onEdit(item.raw)}>Edit</button>}
+          <button className="btn btn-ghost" style={{ marginLeft: 'auto', fontSize: 12 }} onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------- EVENT DETAIL end ----------
 // ---------- EVENT MODAL ----------
 function EventModal({ event, userId, isAdmin, gcalConn, onClose, onSaved }) {
   const isNew = !event.id
