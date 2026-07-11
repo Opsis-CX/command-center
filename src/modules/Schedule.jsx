@@ -343,11 +343,30 @@ export default function Schedule() {
     flash("You're checked in!"); load(true)
   }
 
-  async function checkOut(claimId, block) {
-    const { error } = await supabase.from('shift_claims').update({ checked_out_at: new Date().toISOString(), status: 'completed' }).eq('id', claimId)
-    if (error) { flash('Error checking out'); return }
+  // Grace window (minutes) on each side of scheduled end. Within → clean 'completed'.
+  // Outside (early or late) → requires a note, lands as 'pending_review' for admin approval.
+  const GRACE_MIN = 15
+
+  async function checkOut(claimId, block, note) {
+    const nowISO = new Date().toISOString()
+    let status = 'completed'
+    if (block) {
+      const end = new Date(`${block.block_date}T${block.end_time.slice(0, 5)}:00`)
+      const diffMin = Math.abs((etNow() - end) / 60000)
+      if (diffMin > GRACE_MIN) status = 'pending_review'
+    }
+    if (status === 'pending_review' && !(note && note.trim())) {
+      flash('A note is required when checking out well outside your scheduled time.')
+      return { needsNote: true }
+    }
+    const payload = { checked_out_at: nowISO, status }
+    if (note && note.trim()) payload.checkout_note = note.trim()
+    const { error } = await supabase.from('shift_claims').update(payload).eq('id', claimId)
+    if (error) { flash('Error checking out'); return {} }
     if (block) logActivity('checked_out', block)
-    flash("You're checked out — nice work!"); load(true)
+    flash(status === 'pending_review' ? "Checked out — sent to admin for review." : "You're checked out — nice work!")
+    load(true)
+    return { ok: true }
   }
 
   async function logActivity(action, block) {
@@ -458,7 +477,7 @@ function ClaimView(props) {
         onClaim={(b) => { onClaim(b); setPopBlock(null) }}
         onUnclaim={(b) => { onUnclaim(b); setPopBlock(null) }}
         onCheckIn={(cid, b) => { onCheckIn(cid, b); setPopBlock(null) }}
-        onCheckOut={(cid, b) => { onCheckOut(cid, b); setPopBlock(null) }}
+        onCheckOut={(cid, b, note) => { onCheckOut(cid, b, note); setPopBlock(null) }}
         onNoShow={(claim, b) => { onNoShow(claim, b); setPopBlock(null) }}
       />}
     </div>
@@ -709,7 +728,13 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIn
         {mine ? <>
           {!started && !mine.checked_in_at && mine.status !== 'no_show' && <button className="btn btn-ghost" style={{ color: 'var(--failed)' }} onClick={() => onUnclaim(block)}>Release spot</button>}
           {started && !mine.checked_in_at && mine.status !== 'no_show' && <button className="btn btn-primary" onClick={() => onCheckIn(mine.id, block)}>Check in</button>}
-          {mine.checked_in_at && !mine.checked_out_at && mine.status !== 'no_show' && <button className="btn btn-primary" onClick={() => onCheckOut(mine.id, block)}>Check out</button>}
+          {mine.checked_in_at && !mine.checked_out_at && mine.status !== 'no_show' && <button className="btn btn-primary" onClick={() => {
+            const end = new Date(`${block.block_date}T${block.end_time.slice(0, 5)}:00`)
+            const out = Math.abs((etNow() - end) / 60000) > 15
+            let note = ''
+            if (out) { note = window.prompt("You're outside your scheduled time. Add a note (required):") || ''; if (!note.trim()) return }
+            onCheckOut(mine.id, block, note)
+          }}>Check out</button>}
         </> : (!isFull && !started && canClaim && <button className="btn btn-primary" onClick={() => onClaim(block)}>Claim this interval</button>)}
       </div>
     </div>
@@ -761,20 +786,47 @@ function workedLabel(claim) {
 
 function ShiftCard({ block, claim, isPast, started, onUnclaim, onCheckIn, onCheckOut }) {
   const checkedIn = claim?.checked_in_at; const checkedOut = claim?.checked_out_at
-  const noShow = claim?.status === 'no_show'; const auto = claim?.status === 'auto_checkout'
+  const noShow = claim?.status === 'no_show'
+  const pending = claim?.status === 'pending_review'
+  const approved = claim?.status === 'approved'
   const worked = workedLabel(claim)
+  const [note, setNote] = React.useState('')
+  const [showNote, setShowNote] = React.useState(false)
+
+  // is now outside the 15-min grace window around scheduled end?
+  const outOfWindow = (() => {
+    const end = new Date(`${block.block_date}T${block.end_time.slice(0, 5)}:00`)
+    return Math.abs((etNow() - end) / 60000) > 15
+  })()
+
+  async function doCheckout() {
+    if (outOfWindow && !showNote) { setShowNote(true); return }   // reveal note field first
+    const res = await onCheckOut(claim.id, block, note)
+    if (res?.ok) { setShowNote(false); setNote('') }
+  }
+
   return <div className="iv mine" style={{ cursor: 'default', padding: '14px 16px' }}>
     <div className="iv-time" style={{ fontSize: 15 }}>{formatTime(block.start_time)} – {formatTime(block.end_time)}</div>
     {block.role && <div className="iv-sub" style={{ fontSize: 12, marginBottom: 4 }}>{block.role}</div>}
 
     {checkedOut ? (
-      <div style={{ fontSize: 12, margin: '8px 0', fontWeight: 600, color: auto ? 'var(--needed)' : 'var(--passed)' }}>
-        {auto ? '⏱ Auto-checked out' : '✓ Completed'}{worked ? ` · ${worked}` : ''}
+      <div style={{ fontSize: 12, margin: '8px 0', fontWeight: 600, color: pending ? 'var(--needed)' : 'var(--passed)' }}>
+        {pending ? '⏳ Pending review' : approved ? '✓ Approved' : '✓ Completed'}{worked ? ` · ${worked}` : ''}
       </div>
     ) : !isPast && checkedIn ? (
       <>
         <div style={{ fontSize: 12, color: 'var(--passed)', fontWeight: 600, margin: '8px 0 6px' }}>✓ Checked in</div>
-        <button className="btn btn-primary" style={{ width: '100%', fontSize: 12 }} onClick={() => onCheckOut(claim.id, block)}>Check out</button>
+        {showNote && (
+          <div style={{ marginBottom: 6 }}>
+            <div style={{ fontSize: 11, color: 'var(--needed)', marginBottom: 4 }}>You're outside your scheduled time — add a note (required):</div>
+            <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
+              placeholder="e.g. Stayed late to finish a call"
+              style={{ width: '100%', fontSize: 12, padding: 6, borderRadius: 6, border: '1px solid var(--line)', resize: 'vertical' }} />
+          </div>
+        )}
+        <button className="btn btn-primary" style={{ width: '100%', fontSize: 12 }} onClick={doCheckout}>
+          {showNote ? 'Submit checkout for review' : 'Check out'}
+        </button>
       </>
     ) : !isPast && noShow ? (
       <div style={{ fontSize: 12, color: 'var(--failed)', fontWeight: 600, margin: '8px 0' }}>Marked no-show</div>
