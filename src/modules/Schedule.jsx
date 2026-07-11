@@ -202,31 +202,29 @@ export default function Schedule() {
     if (isoDate(firstWeek) !== isoDate(weekStart)) setWeekStart(firstWeek)
   }, [loading, me, schedules, blocks, audience, certRecords, certifications, isAdmin, adminView]) // eslint-disable-line
 
-  // ---------- release status ----------
+  // ---------- release status (daily 14-day rolling window) ----------
+  // Each agent sees unfilled intervals from today through today+13 always,
+  // and today+14 once the current time passes their tier release time today.
+  // Tier release_time staggers WHEN each new day unlocks; no more weekly day.
+  // No-tier (new) agents default to 11:45. Times are Eastern.
   function getMyReleaseStatus() {
     const tier = tiers.find(t => t.id === me?.tier_id)
-    if (isAdmin) return { unlocked: true, tier, releaseDate: null }
-    const now = etNow(); const day = now.getDay()
+    if (isAdmin) return { unlocked: true, tier, horizonDays: 14, releaseDate: null, nextUnlock: null }
+    const now = etNow()
 
-    // Release day/time: from the tier, or a default for agents with no tier
-    // (new agents) — Wednesday at 11:45. Times are Eastern, matching the app.
-    let relDay, h, m
-    if (tier) {
-      relDay = releaseDayIndex(tier)
-      ;[h, m] = (tier.release_time || '00:00').split(':').map(Number)
-    } else {
-      relDay = 3          // Wednesday
-      h = 11; m = 45
-    }
+    let h, m
+    if (tier && tier.release_time) { [h, m] = tier.release_time.split(':').map(Number) }
+    else { h = 11; m = 45 }   // no-tier default
 
-    const isReleaseDay = day === relDay
     const todayRelease = new Date(now); todayRelease.setHours(h, m, 0, 0)
-    // next occurrence of the release day
-    let daysUntil = (relDay - day + 7) % 7
-    const nextRelease = new Date(now); nextRelease.setDate(now.getDate() + daysUntil); nextRelease.setHours(h, m, 0, 0)
-    if (daysUntil === 0 && nextRelease < now) nextRelease.setDate(nextRelease.getDate() + 7)
-    const unlocked = isReleaseDay && now >= todayRelease
-    return { unlocked, tier, releaseDate: isReleaseDay && !unlocked ? todayRelease : nextRelease }
+    const passedToday = now >= todayRelease
+    // horizon: +14 once today's release time has passed, else +13
+    const horizonDays = passedToday ? 14 : 13
+    // next unlock moment: today's release if not yet passed, else tomorrow's
+    const nextUnlock = new Date(todayRelease)
+    if (passedToday) nextUnlock.setDate(nextUnlock.getDate() + 1)
+
+    return { unlocked: true, tier, horizonDays, releaseDate: nextUnlock, nextUnlock, releaseTime: { h, m } }
   }
 
   // ---------- claim helpers ----------
@@ -258,6 +256,13 @@ export default function Schedule() {
   async function claimBlock(block) {
     // Fast client-side checks: instant feedback, no round trip. These can be
     // wrong if the page is stale — the database trigger is the real guard.
+    if (!isAdmin) {
+      const rs = getMyReleaseStatus()
+      const horizon = etNow(); horizon.setDate(horizon.getDate() + (rs.horizonDays ?? 13))
+      if (block.block_date > isoDate(horizon)) {
+        flash(`That interval isn't available yet — it unlocks at your release time.`); return
+      }
+    }
     const existing = claims.filter(c => c.shift_block_id === block.id)
     if (existing.length >= block.total_spots) { flash('That interval just filled up'); load(true); return }
     if (hasIntervalStarted(block)) { flash('That interval already started'); load(true); return }
@@ -429,10 +434,6 @@ function ClaimView(props) {
     </div></div>
   }
 
-  if (!isAdmin && !releaseStatus.unlocked) {
-    return <ReleaseLocked status={releaseStatus} />
-  }
-
   const monday = weekStart
   const days = weekDates(monday)
   const todayStr = isoDate(etNow())
@@ -466,7 +467,7 @@ function ClaimView(props) {
 
       {teamMode
         ? <AdminGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} profiles={profiles} onPop={setPopBlock} />
-        : <AgentGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} me={me} hasIntervalStarted={hasIntervalStarted} onPop={setPopBlock} />}
+        : <AgentGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} me={me} hasIntervalStarted={hasIntervalStarted} horizonDays={releaseStatus.horizonDays} onPop={setPopBlock} />}
 
       {popBlock && <IntervalPopover
         block={popBlock} claims={claims} profiles={profiles} me={me} canClaim={!teamMode} isAdmin={isAdmin}
@@ -498,43 +499,43 @@ function HoursCap({ hours }) {
 function ReleaseBanner({ status }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
-    if (status.unlocked || !status.releaseDate) return
     const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t)
-  }, [status])
+  }, [])
 
-  if (status.unlocked) {
-    return <div style={{ background: 'var(--passed-bg)', border: '1px solid var(--passed)', borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
-      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--passed)' }}>Schedule is open</div>
-      <div style={{ fontSize: 13, color: 'var(--passed)' }}>As a {status.tier?.name}, you can claim intervals now.</div>
+  const noTier = !status.tier
+  const relStr = status.releaseDate ? formatReleaseTime(status.releaseDate) : ''
+
+  // New-agent welcome (no tier assigned)
+  if (noTier) {
+    return <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent)', borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--accent)', marginBottom: 3 }}>Welcome to the team!</div>
+      <div style={{ fontSize: 13, color: 'var(--accent)' }}>
+        As a new agent, your schedule releases at 11:45 AM EST each day. Intervals are first come, first served, so be here on time to select your schedule. Your next release is {relStr}.
+      </div>
     </div>
   }
-  if (!status.releaseDate) return null
 
-  const diff = status.releaseDate.getTime() - now
+  // Countdown to the next daily unlock
+  const diff = status.releaseDate ? status.releaseDate.getTime() - now : 0
   const h = String(Math.max(0, Math.floor(diff / 3600000))).padStart(2, '0')
   const m = String(Math.max(0, Math.floor((diff % 3600000) / 60000))).padStart(2, '0')
   const s = String(Math.max(0, Math.floor((diff % 60000) / 1000))).padStart(2, '0')
 
-  return <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent)', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-    <div style={{ fontSize: 13, color: 'var(--accent)' }}>
-      <div style={{ fontWeight: 700, fontSize: 14 }}>Schedule unlocks soon</div>
-      {status.tier?.name ? `As a ${status.tier.name}, your` : 'Your'} release is {formatReleaseTime(status.releaseDate)}.
+  return <div style={{ background: 'var(--passed-bg)', border: '1px solid var(--passed)', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+    <div style={{ fontSize: 13, color: 'var(--passed)' }}>
+      <div style={{ fontWeight: 700, fontSize: 14 }}>Open intervals are available now</div>
+      As a {status.tier?.name}, a new day of intervals unlocks daily at your release time. Next release: {relStr}.
     </div>
-    <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--accent)' }}>{h}:{m}:{s}</div>
+    <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--passed)' }}>{h}:{m}:{s}</div>
   </div>
 }
 
-function ReleaseLocked({ status }) {
-  return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>
-    <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--ink)', marginBottom: 6 }}>Schedule locks until your release time</div>
-    {status.tier
-      ? <>As a {status.tier.name}, you can view and claim intervals starting {formatReleaseTime(status.releaseDate)}.</>
-      : 'No tier is assigned to your account yet — contact your admin.'}
-  </div></div>
-}
-
 // ---------- AGENT GRID ----------
-function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted, onPop }) {
+function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted, horizonDays, onPop }) {
+  // Rolling-window cutoff: open intervals are visible only through today + horizonDays.
+  const horizonStr = (() => {
+    const d = etNow(); d.setDate(d.getDate() + (horizonDays ?? 13)); return isoDate(d)
+  })()
   // Mon–Sun total for the week on screen. Shown under "Your intervals".
   const myHours = personWeekHours(me.id, weekBlocks, claims, isoDate(days[0]), isoDate(days[6]))
   const myOver = myHours > WEEKLY_HOUR_CAP
@@ -565,6 +566,7 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
     const ds = isoDate(d)
     const items = weekBlocks.filter(b => {
       if (b.block_date !== ds) return false
+      if (b.block_date > horizonStr) return false   // beyond the rolling window — not visible yet
       if (hasIntervalStarted(b)) return false
       const cl = claims.filter(c => c.shift_block_id === b.id)
       if (cl.length >= b.total_spots) return false
