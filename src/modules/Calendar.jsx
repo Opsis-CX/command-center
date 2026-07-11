@@ -62,13 +62,15 @@ export default function Calendar() {
   const [subs, setSubs] = useState([])
   const [feedEvents, setFeedEvents] = useState([])
   const [showSubs, setShowSubs] = useState(false)
+  const [gcalConn, setGcalConn] = useState(null)
+  const [gcalEvents, setGcalEvents] = useState([])
 
   const load = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     const uid = user?.id || null
     setUserId(uid)
-    const [evRes, taskRes, taRes, clmRes, blkRes, profRes, subRes, feedRes] = await Promise.all([
+    const [evRes, taskRes, taRes, clmRes, blkRes, profRes, subRes, feedRes, gtRes, geRes] = await Promise.all([
       supabase.from('calendar_events').select('*'),
       supabase.from('tasks').select('id, name, due_date, priority, status, project_id').is('deleted_at', null),
       supabase.from('task_assignees').select('task_id, profile_id'),
@@ -77,6 +79,8 @@ export default function Calendar() {
       supabase.from('profiles').select('id, full_name'),
       supabase.from('calendar_subscriptions').select('*'),
       supabase.from('calendar_feed_events').select('*'),
+      supabase.from('google_calendar_tokens').select('google_email, connected_at').maybeSingle(),
+      supabase.from('google_calendar_events').select('*'),
     ])
     setEvents(evRes.data || [])
     setTasks(taskRes.data || [])
@@ -86,10 +90,23 @@ export default function Calendar() {
     setProfiles(profRes.data || [])
     setSubs(subRes.data || [])
     setFeedEvents(feedRes.data || [])
+    setGcalConn(gtRes.data || null)
+    setGcalEvents(geRes.data || [])
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // After Google OAuth redirects back (?gcal=connected), sync once and clean the URL.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('gcal') === 'connected') {
+      supabase.functions.invoke('google-calendar-sync', { body: {} }).finally(() => {
+        window.history.replaceState({}, '', window.location.pathname)
+        load()
+      })
+    }
+  }, [load])
 
   // ---- visibility: events (personal to me OR team), tasks (mine or admin), intervals (mine) ----
   const myEvents = useMemo(() => events.filter(e => e.scope === 'team' || e.owner_id === userId), [events, userId])
@@ -117,12 +134,16 @@ export default function Calendar() {
         start: f.start_time, end: f.end_time, color: sub?.color || COLORS.team,
       }
     })
-    return [...evs, ...ivs, ...feeds].sort((a, b) => {
+    const gcal = gcalEvents.filter(g => g.event_date === ds).map(g => ({
+      kind: 'gcal', id: g.id, title: g.title, allDay: g.all_day,
+      start: g.start_time, end: g.end_time, color: '#EA4335', // Google red
+    }))
+    return [...evs, ...ivs, ...feeds, ...gcal].sort((a, b) => {
       if (a.allDay && !b.allDay) return -1
       if (!a.allDay && b.allDay) return 1
       return (a.start || '').localeCompare(b.start || '')
     })
-  }, [myEvents, myClaims, blocks, feedEvents, subs])
+  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents])
 
   const tasksOn = useCallback((ds) => {
     const due = myTasks.filter(t => t.due_date === ds && t.status !== 'done')
@@ -148,7 +169,7 @@ export default function Calendar() {
       </BookFrame>
 
       {showSubs && (
-        <SubscriptionsModal subs={subs} userId={userId}
+        <SubscriptionsModal subs={subs} userId={userId} gcalConn={gcalConn}
           onClose={() => setShowSubs(false)}
           onChanged={() => load()} />
       )}
@@ -572,13 +593,48 @@ function PanelHead({ children }) {
 }
 
 // ---------- CONNECTED CALENDARS (external .ics feeds) ----------
-function SubscriptionsModal({ subs, userId, onClose, onChanged }) {
+function SubscriptionsModal({ subs, userId, gcalConn, onClose, onChanged }) {
   const [label, setLabel] = useState('')
   const [url, setUrl] = useState('')
   const [color, setColor] = useState('#7C3AED')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [syncing, setSyncing] = useState(null)
+  const [gcalSyncing, setGcalSyncing] = useState(false)
+
+  // Google OAuth: send the user to Google's consent screen. state = user id so
+  // the callback knows who connected. client id is public (only secret is sensitive).
+  function connectGoogle() {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+    const supaUrl = import.meta.env.VITE_SUPABASE_URL
+    if (!clientId) { setErr('Google client ID not configured (VITE_GOOGLE_CLIENT_ID).'); return }
+    const redirect = `${supaUrl}/functions/v1/google-oauth-callback`
+    const scope = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/userinfo.email'
+    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+    authUrl.searchParams.set('client_id', clientId)
+    authUrl.searchParams.set('redirect_uri', redirect)
+    authUrl.searchParams.set('response_type', 'code')
+    authUrl.searchParams.set('scope', scope)
+    authUrl.searchParams.set('access_type', 'offline')   // get a refresh token
+    authUrl.searchParams.set('prompt', 'consent')
+    authUrl.searchParams.set('state', userId)
+    window.location.href = authUrl.toString()
+  }
+
+  async function syncGoogle() {
+    setGcalSyncing(true); setErr('')
+    const { data, error } = await supabase.functions.invoke('google-calendar-sync', { body: {} })
+    setGcalSyncing(false)
+    if (error) { setErr('Google sync failed: ' + error.message); return }
+    if (data?.error) { setErr('Google sync failed: ' + data.error); return }
+    onChanged()
+  }
+
+  async function disconnectGoogle() {
+    await supabase.from('google_calendar_tokens').delete().eq('owner_id', userId)
+    await supabase.from('google_calendar_events').delete().eq('owner_id', userId)
+    onChanged()
+  }
 
   async function add() {
     setErr('')
@@ -618,6 +674,27 @@ function SubscriptionsModal({ subs, userId, onClose, onChanged }) {
         <p className="page-sub" style={{ marginTop: 0, marginBottom: 16, fontSize: 13 }}>Subscribe to Google, Outlook, or Apple calendars by their secret .ics link. Events show up on your calendar (read-only).</p>
 
         {err && <div style={{ color: 'var(--failed)', fontSize: 12, marginBottom: 10 }}>{err}</div>}
+
+        {/* Google Calendar (OAuth) */}
+        <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', marginBottom: 16, background: 'var(--canvas)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#EA4335', flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Google Calendar</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
+                {gcalConn ? `Connected as ${gcalConn.google_email || 'your Google account'}` : 'Two-way sync via your Google account'}
+              </div>
+            </div>
+            {gcalConn ? (
+              <>
+                <button className="btn btn-ghost" style={{ fontSize: 12 }} disabled={gcalSyncing} onClick={syncGoogle}>{gcalSyncing ? 'Syncing…' : 'Sync'}</button>
+                <button className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--failed)' }} onClick={disconnectGoogle}>Disconnect</button>
+              </>
+            ) : (
+              <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={connectGoogle}>Connect Google</button>
+            )}
+          </div>
+        </div>
 
         {subs.length > 0 && (
           <div style={{ marginBottom: 18 }}>
