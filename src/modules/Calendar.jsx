@@ -186,7 +186,7 @@ export default function Calendar() {
 
   if (loading) return <div className="page-sub" style={{ padding: 30 }}>Loading calendar…</div>
 
-  const shared = { cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent: (d) => setEditEvent({ event_date: isoDate(d || cursor) }), onEditEvent: setEditEvent, onShowDetail: setDetailItem, onToggleTaskDone: toggleTaskDone, onToggleTaskTimer: toggleTaskTimer, runningEntry, timeEntries }
+  const shared = { cursor, setCursor, itemsOn, tasksOn, userId, allTasks: myTasks, onAddEvent: (d) => setEditEvent({ event_date: isoDate(d || cursor) }), onEditEvent: setEditEvent, onShowDetail: setDetailItem, onToggleTaskDone: toggleTaskDone, onToggleTaskTimer: toggleTaskTimer, runningEntry, timeEntries }
 
   return (
     <div>
@@ -479,7 +479,54 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
 }
 
 // ---------- DAY VIEW ----------
-function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent, onEditEvent, onShowDetail, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries }) {
+// Persistent task-timer control on the Day view header. Pick any of your tasks
+// and start/stop its timer, regardless of due date. Shows live elapsed time.
+function TaskTimerBar({ allTasks, runningEntry, onToggleTaskTimer }) {
+  const [picked, setPicked] = React.useState('')
+  const [, tick] = React.useState(0)
+  React.useEffect(() => {
+    if (!runningEntry) return
+    const t = setInterval(() => tick(x => x + 1), 1000)
+    return () => clearInterval(t)
+  }, [runningEntry])
+
+  const openTasks = (allTasks || []).filter(t => t.status !== 'done')
+  const runningTask = runningEntry ? (allTasks || []).find(t => t.id === runningEntry.task_id) : null
+
+  const elapsed = () => {
+    if (!runningEntry) return ''
+    const s = Math.floor((Date.now() - new Date(runningEntry.started_at).getTime()) / 1000)
+    const h = String(Math.floor(s / 3600)).padStart(2, '0')
+    const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0')
+    const sec = String(s % 60).padStart(2, '0')
+    return `${h}:${m}:${sec}`
+  }
+
+  if (runningTask) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(22,163,74,.08)', border: '1px solid #16A34A', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
+        <span style={{ fontSize: 12, color: '#16A34A', fontWeight: 700 }}>● Tracking</span>
+        <span style={{ fontSize: 13, color: '#4a4640', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{runningTask.name}</span>
+        <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#16A34A' }}>{elapsed()}</span>
+        <button onClick={() => onToggleTaskTimer(runningTask)} style={{ border: 'none', background: '#DC2626', color: '#fff', borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>Stop</button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+      <select value={picked} onChange={e => setPicked(e.target.value)}
+        style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: '6px 8px', borderRadius: 6, border: '1px solid #ece8e0', color: '#4a4640' }}>
+        <option value="">Start a task timer…</option>
+        {openTasks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+      <button disabled={!picked} onClick={() => { const t = openTasks.find(x => x.id === picked); if (t) { onToggleTaskTimer(t); setPicked('') } }}
+        style={{ border: 'none', background: picked ? '#16A34A' : '#c3bfb5', color: '#fff', borderRadius: 6, padding: '6px 14px', fontSize: 12.5, cursor: picked ? 'pointer' : 'default' }}>▶ Start</button>
+    </div>
+  )
+}
+
+function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddEvent, onEditEvent, onShowDetail, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries }) {
   const openItem = (i, e) => { if (e) e.stopPropagation(); if (i.kind === 'event' && i.raw) onEditEvent(i.raw); else onShowDetail(i) }
   const ds = isoDate(cursor)
   const items = itemsOn(ds)
@@ -505,6 +552,7 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, onAddEvent, onEd
             <button onClick={() => onAddEvent(cursor)} style={railBtn}>ADD EVENT</button>
           </div>
         </div>
+        <TaskTimerBar allTasks={allTasks} runningEntry={runningEntry} onToggleTaskTimer={onToggleTaskTimer} />
         {allDay.map(i => (
           <div key={i.id} onClick={(e) => openItem(i, e)} style={{ background: i.color, color: '#fff', fontSize: 11, padding: '3px 6px', borderRadius: 3, marginBottom: 4, cursor: 'pointer' }}>{i.title}</div>
         ))}
@@ -543,8 +591,10 @@ function DayPlanner({ userId, ds, priority, other, quote, onToggleTaskDone, onTo
   const [meals, setMeals] = useState({})
   const [todos, setTodos] = useState([])   // {id, text, done, priority}
   const [newTodo, setNewTodo] = useState('')
+  const [newOtherTodo, setNewOtherTodo] = useState('')
   const [walkDone, setWalkDone] = useState(false)
   const [walkNote, setWalkNote] = useState('')
+  const [wellbeing, setWellbeing] = useState({})   // {break, air, connect} check-offs + goodThing note
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
@@ -558,6 +608,7 @@ function DayPlanner({ userId, ds, priority, other, quote, onToggleTaskDone, onTo
       setMeals(data?.meals || {})
       setTodos(Array.isArray(data?.quick_todos) ? data.quick_todos : [])
       setWalkDone(data?.walk_done || false)
+      setWellbeing(data?.wellbeing || {})
       setWalkNote(data?.walk_note || '')
       setLoaded(true)
     })()
@@ -567,18 +618,22 @@ function DayPlanner({ userId, ds, priority, other, quote, onToggleTaskDone, onTo
   const save = useCallback(async (patch) => {
     if (!userId) return
     await supabase.from('day_planner').upsert({
-      owner_id: userId, day: ds, water, meals, quick_todos: todos, walk_done: walkDone, walk_note: walkNote, updated_at: new Date().toISOString(), ...patch,
+      owner_id: userId, day: ds, water, meals, quick_todos: todos, walk_done: walkDone, walk_note: walkNote, wellbeing, updated_at: new Date().toISOString(), ...patch,
     }, { onConflict: 'owner_id,day' })
   }, [userId, ds, water, meals, todos, walkDone, walkNote])
 
   function toggleWalk() { const v = !walkDone; setWalkDone(v); save({ walk_done: v }) }
+  function toggleWell(key) { const w = { ...wellbeing, [key]: !wellbeing[key] }; setWellbeing(w); save({ wellbeing: w }) }
 
   function setWaterTo(n) { const v = water === n ? n - 1 : n; setWater(v); save({ water: v }) }
   function setMeal(key, val) { const m = { ...meals, [key]: val }; setMeals(m) }
   function addTodo(pri) {
-    if (!newTodo.trim()) return
-    const next = [...todos, { id: crypto.randomUUID(), text: newTodo.trim(), done: false, priority: pri }]
-    setTodos(next); setNewTodo(''); save({ quick_todos: next })
+    const val = pri === 'high' ? newTodo : newOtherTodo
+    if (!val.trim()) return
+    const next = [...todos, { id: crypto.randomUUID(), text: val.trim(), done: false, priority: pri }]
+    setTodos(next)
+    if (pri === 'high') setNewTodo(''); else setNewOtherTodo('')
+    save({ quick_todos: next })
   }
   function toggleTodo(id) { const next = todos.map(t => t.id === id ? { ...t, done: !t.done } : t); setTodos(next); save({ quick_todos: next }) }
   function delTodo(id) { const next = todos.filter(t => t.id !== id); setTodos(next); save({ quick_todos: next }) }
@@ -599,7 +654,7 @@ function DayPlanner({ userId, ds, priority, other, quote, onToggleTaskDone, onTo
         <PanelHead>OTHER TASKS</PanelHead>
         <TaskAndTodoList tasks={other} todos={myOtherTodos} onToggle={toggleTodo} onDel={delTodo} emptyBoth="Nothing else today."
           onToggleTaskDone={onToggleTaskDone} onToggleTaskTimer={onToggleTaskTimer} runningEntry={runningEntry} />
-        <QuickAdd value={newTodo} setValue={setNewTodo} onAdd={() => addTodo('other')} placeholder="Add a to-do…" />
+        <QuickAdd value={newOtherTodo} setValue={setNewOtherTodo} onAdd={() => addTodo('other')} placeholder="Add a to-do…" />
       </div>
 
       <div style={{ width: 170, flexShrink: 0 }}>
@@ -648,6 +703,19 @@ function DayPlanner({ userId, ds, priority, other, quote, onToggleTaskDone, onTo
                 style={{ width: '100%', fontSize: 12, border: 'none', borderBottom: '1px solid #ece8e0', background: 'transparent', padding: '3px 0', outline: 'none', color: '#4a4640' }} />
             </div>
           )}
+          {[['break', 'Took a real break'], ['air', 'Got fresh air / sunlight'], ['connect', 'Connected with someone']].map(([key, label]) => (
+            <div key={key} onClick={() => toggleWell(key)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, cursor: 'pointer', padding: '8px 10px', borderRadius: 8, background: wellbeing[key] ? 'rgba(22,163,74,.08)' : 'transparent', border: '1px solid ' + (wellbeing[key] ? '#16A34A' : '#ece8e0') }}>
+              <span style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, border: '2px solid ' + (wellbeing[key] ? '#16A34A' : '#c3bfb5'), background: wellbeing[key] ? '#16A34A' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12 }}>{wellbeing[key] ? '✓' : ''}</span>
+              <span style={{ fontSize: 12.5, color: '#4a4640' }}>{label}</span>
+            </div>
+          ))}
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 10, color: '#b0aca4', letterSpacing: 1 }}>ONE GOOD THING TODAY</div>
+            <input value={wellbeing.goodThing || ''} onChange={e => setWellbeing({ ...wellbeing, goodThing: e.target.value })} onBlur={() => save({ wellbeing })}
+              placeholder="Something that went well…"
+              style={{ width: '100%', fontSize: 12, border: 'none', borderBottom: '1px solid #ece8e0', background: 'transparent', padding: '3px 0', outline: 'none', color: '#4a4640', marginTop: 4 }} />
+          </div>
         </div>
       </div>
     </div>
@@ -806,18 +874,6 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, setSubs, onCl
         <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', marginBottom: 16, background: 'var(--canvas)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: gcalConn?.color || '#EA4335', flexShrink: 0 }} />
-            {gcalConn && (
-              <label title="Change Google event color" style={{ position: 'relative', width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}>
-                <input type="color" value={gcalConn.color || '#EA4335'}
-                  onChange={(e) => {
-                    const c = e.target.value
-                    setGcalConn(prev => ({ ...prev, color: c }))   // instant local update
-                    supabase.from('google_calendar_tokens').update({ color: c }).eq('owner_id', userId)  // background save
-                  }}
-                  style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
-                <span style={{ fontSize: 10, color: 'var(--ink-soft)' }}>✎</span>
-              </label>
-            )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 700 }}>Google Calendar</div>
               <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
@@ -849,16 +905,6 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, setSubs, onCl
             {subs.map(s => (
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
                 <span style={{ width: 12, height: 12, borderRadius: 3, background: s.color, flexShrink: 0 }} />
-                <label title="Change color" style={{ position: 'relative', width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}>
-                  <input type="color" value={s.color || '#7C3AED'}
-                    onChange={(e) => {
-                      const c = e.target.value
-                      setSubs(prev => prev.map(x => x.id === s.id ? { ...x, color: c } : x))  // instant local update
-                      supabase.from('calendar_subscriptions').update({ color: c }).eq('id', s.id)  // background save
-                    }}
-                    style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
-                  <span style={{ fontSize: 10, color: 'var(--ink-soft)' }}>✎</span>
-                </label>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{s.label}</div>
                   <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
