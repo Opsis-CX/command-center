@@ -171,7 +171,7 @@ export default function Calendar() {
       </BookFrame>
 
       {showSubs && (
-        <SubscriptionsModal subs={subs} userId={userId} gcalConn={gcalConn}
+        <SubscriptionsModal subs={subs} userId={userId} gcalConn={gcalConn} setGcalConn={setGcalConn} setSubs={setSubs}
           onClose={() => setShowSubs(false)}
           onChanged={() => load()} />
       )}
@@ -636,7 +636,7 @@ function PanelHead({ children }) {
 }
 
 // ---------- CONNECTED CALENDARS (external .ics feeds) ----------
-function SubscriptionsModal({ subs, userId, gcalConn, onClose, onChanged }) {
+function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, setSubs, onClose, onChanged }) {
   const [label, setLabel] = useState('')
   const [url, setUrl] = useState('')
   const [color, setColor] = useState('#7C3AED')
@@ -740,8 +740,12 @@ function SubscriptionsModal({ subs, userId, gcalConn, onClose, onChanged }) {
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: gcalConn?.color || '#EA4335', flexShrink: 0 }} />
             {gcalConn && (
               <label title="Change Google event color" style={{ position: 'relative', width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}>
-                <input type="color" defaultValue={gcalConn.color || '#EA4335'}
-                  onBlur={async (e) => { await supabase.from('google_calendar_tokens').update({ color: e.target.value }).eq('owner_id', userId); onChanged() }}
+                <input type="color" value={gcalConn.color || '#EA4335'}
+                  onChange={(e) => {
+                    const c = e.target.value
+                    setGcalConn(prev => ({ ...prev, color: c }))   // instant local update
+                    supabase.from('google_calendar_tokens').update({ color: c }).eq('owner_id', userId)  // background save
+                  }}
                   style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
                 <span style={{ fontSize: 10, color: 'var(--ink-soft)' }}>✎</span>
               </label>
@@ -778,8 +782,12 @@ function SubscriptionsModal({ subs, userId, gcalConn, onClose, onChanged }) {
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
                 <span style={{ width: 12, height: 12, borderRadius: 3, background: s.color, flexShrink: 0 }} />
                 <label title="Change color" style={{ position: 'relative', width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}>
-                  <input type="color" defaultValue={s.color || '#7C3AED'}
-                    onBlur={async (e) => { await supabase.from('calendar_subscriptions').update({ color: e.target.value }).eq('id', s.id); onChanged() }}
+                  <input type="color" value={s.color || '#7C3AED'}
+                    onChange={(e) => {
+                      const c = e.target.value
+                      setSubs(prev => prev.map(x => x.id === s.id ? { ...x, color: c } : x))  // instant local update
+                      supabase.from('calendar_subscriptions').update({ color: c }).eq('id', s.id)  // background save
+                    }}
                     style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
                   <span style={{ fontSize: 10, color: 'var(--ink-soft)' }}>✎</span>
                 </label>
