@@ -21,6 +21,31 @@ function nextWednesdayISO() {
   return d.toISOString().slice(0, 10)
 }
 
+// Has this claim's interval already ended (in ET)? Used to flag forgotten checkouts.
+function isPastClaim(claim, blocks) {
+  const b = blocks.find(x => x.id === claim.shift_block_id)
+  if (!b) return false
+  const end = new Date(`${b.block_date}T${b.end_time.slice(0, 5)}:00`)
+  const nowET = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  return nowET > end
+}
+function workedMins(inISO, outISO) {
+  if (!inISO || !outISO) return null
+  return Math.max(0, Math.round((new Date(outISO) - new Date(inISO)) / 60000))
+}
+function hrsMin(mins) {
+  if (mins == null) return '—'
+  const h = Math.floor(mins / 60), m = mins % 60
+  return h ? `${h}h ${m}m` : `${m}m`
+}
+// ISO <-> value for <input type="datetime-local"> (local time, no seconds)
+function isoToLocalInput(iso) {
+  if (!iso) return ''
+  const d = new Date(iso); const pad = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+function localInputToISO(v) { return v ? new Date(v).toISOString() : null }
+
 export default function ScheduleBuilder() {
   const [schedules, setSchedules] = useState([])
   const [blocks, setBlocks] = useState([])
@@ -37,6 +62,8 @@ export default function ScheduleBuilder() {
   const [importFor, setImportFor] = useState(null)         // scheduleId
   const [copyFor, setCopyFor] = useState(null)             // schedule obj for copy modal
   const [viewBySchedule, setViewBySchedule] = useState({}) // scheduleId -> 'list' | 'grid'
+  const [tab, setTab] = useState('schedules')              // 'schedules' | 'review'
+  const [meId, setMeId] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -62,6 +89,7 @@ export default function ScheduleBuilder() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { supabase.auth.getUser().then(({ data }) => setMeId(data?.user?.id || null)) }, [])
   function flash(m) { setToast(m); setTimeout(() => setToast(''), 2800) }
 
   async function deleteSchedule(s) {
@@ -93,7 +121,27 @@ export default function ScheduleBuilder() {
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
       {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, background: 'var(--ink)', color: '#fff', padding: '11px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, zIndex: 2000, boxShadow: '0 8px 24px rgba(0,0,0,.3)' }}>{toast}</div>}
 
-      {schedules.length === 0 ? (
+      <div style={{ display: 'flex', gap: 4, marginBottom: 18, borderBottom: '1px solid var(--line)' }}>
+        {[['schedules', 'Schedules'], ['review', 'Review']].map(([key, label]) => {
+          const pendingCount = key === 'review' ? claims.filter(c => c.status === 'pending_review' || (c.checked_in_at && !c.checked_out_at && isPastClaim(c, blocks))).length : 0
+          const active = tab === key
+          return (
+            <button key={key} onClick={() => setTab(key)}
+              style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '8px 14px', fontSize: 14, fontWeight: 600,
+                color: active ? 'var(--ink)' : 'var(--ink-soft)', borderBottom: active ? '2px solid var(--accent, #0077B6)' : '2px solid transparent', marginBottom: -1 }}>
+              {label}
+              {key === 'review' && pendingCount > 0 && (
+                <span style={{ marginLeft: 6, background: 'var(--needed)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>{pendingCount}</span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {tab === 'review' ? (
+        <ReviewQueue claims={claims} blocks={blocks} profiles={profiles} meId={meId}
+          onDone={(msg) => { setToast(msg); load(); setTimeout(() => setToast(''), 2500) }} />
+      ) : schedules.length === 0 ? (
         <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 24 }}>No schedules yet. Click <b>+ New schedule</b> to create one.</div></div>
       ) : schedules.map(s => {
         const sBlocks = blocks.filter(b => b.schedule_id === s.id).sort((a, b) => (a.block_date + a.start_time).localeCompare(b.block_date + b.start_time))
@@ -166,6 +214,95 @@ export default function ScheduleBuilder() {
         onClose={() => setImportFor(null)} onDone={(n) => { setImportFor(null); load(); flash(`Imported ${n} interval${n !== 1 ? 's' : ''}`) }} />}
       {copyFor && <CopyModal schedule={copyFor} schedules={schedules} blocks={blocks}
         onClose={() => setCopyFor(null)} onDone={(msg) => { setCopyFor(null); load(); flash(msg) }} />}
+    </div>
+  )
+}
+
+// ---------- REVIEW QUEUE (admin time correction + approval) ----------
+function ReviewQueue({ claims, blocks, profiles, meId, onDone }) {
+  const items = claims
+    .filter(c => c.status === 'pending_review' || (c.checked_in_at && !c.checked_out_at && isPastClaim(c, blocks)))
+    .map(c => ({ claim: c, block: blocks.find(b => b.id === c.shift_block_id) }))
+    .filter(x => x.block)
+    .sort((a, b) => (a.block.block_date + a.block.start_time).localeCompare(b.block.block_date + b.block.start_time))
+
+  if (!items.length) {
+    return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>Nothing to review. Clean checkouts don't appear here.</div></div>
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <p className="page-sub" style={{ marginTop: -4 }}>Shifts checked out well outside their scheduled time, or never checked out. Adjust the times if needed, then approve — approved shifts count toward payroll.</p>
+      {items.map(({ claim, block }) => (
+        <ReviewCard key={claim.id} claim={claim} block={block}
+          person={profiles.find(p => p.id === claim.profile_id)} meId={meId} onDone={onDone} />
+      ))}
+    </div>
+  )
+}
+
+function ReviewCard({ claim, block, person, meId, onDone }) {
+  const neverOut = !claim.checked_out_at
+  const [inVal, setInVal] = useState(isoToLocalInput(claim.checked_in_at))
+  const [outVal, setOutVal] = useState(isoToLocalInput(claim.checked_out_at) || isoToLocalInput(`${block.block_date}T${block.end_time.slice(0, 5)}:00`))
+  const [saving, setSaving] = useState(false)
+
+  const worked = workedMins(localInputToISO(inVal), localInputToISO(outVal))
+
+  async function approve() {
+    setSaving(true)
+    const { error } = await supabase.from('shift_claims').update({
+      checked_in_at: localInputToISO(inVal),
+      checked_out_at: localInputToISO(outVal),
+      status: 'approved',
+      reviewed_by: meId,
+      reviewed_at: new Date().toISOString(),
+    }).eq('id', claim.id)
+    setSaving(false)
+    onDone(error ? 'Error approving shift' : `Approved ${person?.full_name || 'shift'}`)
+  }
+
+  return (
+    <div className="card" style={{ padding: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>{person?.full_name || 'Unknown'}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>
+            {new Date(block.block_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+            {' · '}Scheduled {formatTime(block.start_time)}–{formatTime(block.end_time)}{block.role ? ` · ${block.role}` : ''}
+          </div>
+        </div>
+        <span className="badge" style={{ background: 'var(--needed-bg)', color: 'var(--needed)', fontWeight: 600 }}>
+          {neverOut ? 'Never checked out' : 'Out of window'}
+        </span>
+      </div>
+
+      {claim.checkout_note && (
+        <div style={{ fontSize: 13, background: 'var(--canvas)', borderRadius: 8, padding: '8px 10px', marginBottom: 12 }}>
+          <span style={{ color: 'var(--ink-soft)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>Agent's note</span>
+          <div style={{ marginTop: 2 }}>{claim.checkout_note}</div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-soft)' }}>
+          Check-in<br />
+          <input type="datetime-local" value={inVal} onChange={e => setInVal(e.target.value)}
+            style={{ marginTop: 4, fontSize: 13, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--line)' }} />
+        </label>
+        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-soft)' }}>
+          Check-out {neverOut && <span style={{ color: 'var(--needed)' }}>(set this)</span>}<br />
+          <input type="datetime-local" value={outVal} onChange={e => setOutVal(e.target.value)}
+            style={{ marginTop: 4, fontSize: 13, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--line)' }} />
+        </label>
+        <div style={{ fontSize: 13 }}>
+          <div style={{ fontSize: 11, color: 'var(--ink-soft)', fontWeight: 600, textTransform: 'uppercase' }}>Worked</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--passed)' }}>{hrsMin(worked)}</div>
+        </div>
+        <button className="btn btn-primary" style={{ marginLeft: 'auto' }} disabled={saving || !inVal || !outVal} onClick={approve}>
+          {saving ? 'Approving…' : 'Approve'}
+        </button>
+      </div>
     </div>
   )
 }
