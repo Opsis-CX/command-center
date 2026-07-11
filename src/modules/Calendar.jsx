@@ -289,8 +289,11 @@ const navArrow = { border: '1px solid #c3bfb5', background: 'transparent', borde
 function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent }) {
   const mon = mondayOf(cursor)
   const week = Array.from({ length: 7 }, (_, i) => addDays(mon, i))
-  const hours = Array.from({ length: 10 }, (_, i) => i + 9)   // 9a–6p
+  const START_HOUR = 7, END_HOUR = 22 // 7a–10p window for week grid
+  const hours = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => i + START_HOUR)
+  const ROW = 40
   const todayStr = isoDate(etNow())
+  const hourLabel = (h) => h === 0 ? '12a' : h === 12 ? '12p' : h > 12 ? `${h - 12}p` : `${h}a`
 
   function DayCol({ d }) {
     const ds = isoDate(d)
@@ -299,15 +302,15 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
     return (
       <div style={{ flex: 1, borderRight: '1px solid #ece8e0', minWidth: 0 }}>
         <div style={{ textAlign: 'center', fontSize: 11, letterSpacing: 1, color: isoDate(d) === todayStr ? COLORS.event : '#7a94ab', fontWeight: isoDate(d) === todayStr ? 700 : 400, padding: '6px 0' }}>
-          {d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}. {MONTHS[d.getMonth()].slice(0, 3).toUpperCase()} {d.getDate()}
+          {d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()} {d.getDate()}
         </div>
-        <div style={{ position: 'relative', height: hours.length * 42, borderTop: '1px solid #ece8e0' }} onClick={() => onAddEvent(d)}>
-          {hours.map((h, i) => <div key={h} style={{ position: 'absolute', top: i * 42, left: 0, right: 0, height: 42, borderBottom: '1px solid #f2efe9' }} />)}
+        <div style={{ position: 'relative', height: hours.length * ROW, borderTop: '1px solid #ece8e0' }} onClick={() => onAddEvent(d)}>
+          {hours.map((h, i) => <div key={h} style={{ position: 'absolute', top: i * ROW, left: 0, right: 0, height: ROW, borderBottom: '1px solid #f2efe9' }} />)}
           {timed.map(i => {
             const startH = parseHour(i.start)
             const endH = i.end ? parseHour(i.end) : startH + 1
-            const top = Math.max(0, (startH - 9) * 42)
-            const h = Math.max(20, ((endH || startH + 1) - startH) * 42 - 2)
+            const top = Math.max(0, (startH - START_HOUR) * ROW)
+            const h = Math.max(18, ((endH || startH + 1) - startH) * ROW - 2)
             return (
               <div key={i.id} onClick={(e) => { e.stopPropagation(); i.raw && onEditEvent(i.raw) }}
                 style={{ position: 'absolute', top, left: 2, right: 2, height: h, background: i.color, color: '#fff', fontSize: 10, padding: '2px 4px', borderRadius: 3, overflow: 'hidden' }}>
@@ -329,6 +332,20 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
     )
   }
 
+  // left hour-label axis, aligned to the same rows
+  function HourAxis() {
+    return (
+      <div style={{ width: 38, flexShrink: 0 }}>
+        <div style={{ padding: '6px 0', fontSize: 11 }}>&nbsp;</div>
+        <div style={{ position: 'relative', height: hours.length * ROW, borderTop: '1px solid transparent' }}>
+          {hours.map((h, i) => (
+            <div key={h} style={{ position: 'absolute', top: i * ROW - 6, right: 4, fontSize: 10, color: '#b0aca4' }}>{hourLabel(h)}</div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ display: 'flex' }}>
       <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} itemsOn={itemsOn} tasksOn={tasksOn} />
@@ -337,7 +354,10 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
           label={`${MONTHS[mon.getMonth()].slice(0, 3)} ${mon.getDate()} – ${MONTHS[week[6].getMonth()].slice(0, 3)} ${week[6].getDate()}`}
           onPrev={() => setCursor(addDays(cursor, -7))}
           onNext={() => setCursor(addDays(cursor, 7))} />
-        <div style={{ display: 'flex' }}>{week.map(d => <DayCol key={isoDate(d)} d={d} />)}</div>
+        <div style={{ display: 'flex' }}>
+          <HourAxis />
+          {week.map(d => <DayCol key={isoDate(d)} d={d} />)}
+        </div>
       </div>
     </div>
   )
