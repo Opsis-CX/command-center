@@ -206,24 +206,22 @@ export default function Schedule() {
   function getMyReleaseStatus() {
     const tier = tiers.find(t => t.id === me?.tier_id)
     if (isAdmin) return { unlocked: true, tier, releaseDate: null }
-    if (!tier) return { unlocked: false, tier: null, releaseDate: null }
     const now = etNow(); const day = now.getDay()
-    const penalized = me?.release_penalty_until_thu === true
 
-    if (penalized) {
-      const [ph, pm] = [11, 0]
-      let daysUntilThu = (4 - day + 7) % 7
-      const thu = new Date(now); thu.setDate(now.getDate() + daysUntilThu); thu.setHours(ph, pm, 0, 0)
-      const unlocked = day === 4 && now >= thu
-      return { unlocked, tier, releaseDate: unlocked ? null : thu, penalized: true }
+    // Release day/time: from the tier, or a default for agents with no tier
+    // (new agents) — Wednesday at 11:45. Times are Eastern, matching the app.
+    let relDay, h, m
+    if (tier) {
+      relDay = releaseDayIndex(tier)
+      ;[h, m] = (tier.release_time || '00:00').split(':').map(Number)
+    } else {
+      relDay = 3          // Wednesday
+      h = 11; m = 45
     }
 
-    const [h, m] = (tier.release_time || '00:00').split(':').map(Number)
-    // The tier says which day it unlocks (release_day). No more hardcoded Wednesday.
-    const relDay = releaseDayIndex(tier)
     const isReleaseDay = day === relDay
     const todayRelease = new Date(now); todayRelease.setHours(h, m, 0, 0)
-    // next occurrence of the tier's release day
+    // next occurrence of the release day
     let daysUntil = (relDay - day + 7) % 7
     const nextRelease = new Date(now); nextRelease.setDate(now.getDate() + daysUntil); nextRelease.setHours(h, m, 0, 0)
     if (daysUntil === 0 && nextRelease < now) nextRelease.setDate(nextRelease.getDate() + 7)
@@ -520,7 +518,7 @@ function ReleaseBanner({ status }) {
   return <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent)', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
     <div style={{ fontSize: 13, color: 'var(--accent)' }}>
       <div style={{ fontWeight: 700, fontSize: 14 }}>Schedule unlocks soon</div>
-      As a {status.tier?.name}, your release is {formatReleaseTime(status.releaseDate)}.{status.penalized ? ' (Held to Thursday due to recent no-shows.)' : ''}
+      {status.tier?.name ? `As a ${status.tier.name}, your` : 'Your'} release is {formatReleaseTime(status.releaseDate)}.
     </div>
     <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--accent)' }}>{h}:{m}:{s}</div>
   </div>
