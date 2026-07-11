@@ -59,19 +59,24 @@ export default function Calendar() {
   const [profiles, setProfiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [editEvent, setEditEvent] = useState(null)   // event obj or {} for new
+  const [subs, setSubs] = useState([])
+  const [feedEvents, setFeedEvents] = useState([])
+  const [showSubs, setShowSubs] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     const uid = user?.id || null
     setUserId(uid)
-    const [evRes, taskRes, taRes, clmRes, blkRes, profRes] = await Promise.all([
+    const [evRes, taskRes, taRes, clmRes, blkRes, profRes, subRes, feedRes] = await Promise.all([
       supabase.from('calendar_events').select('*'),
       supabase.from('tasks').select('id, name, due_date, priority, status, project_id').is('deleted_at', null),
       supabase.from('task_assignees').select('task_id, profile_id'),
       supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at'),
       supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role'),
       supabase.from('profiles').select('id, full_name'),
+      supabase.from('calendar_subscriptions').select('*'),
+      supabase.from('calendar_feed_events').select('*'),
     ])
     setEvents(evRes.data || [])
     setTasks(taskRes.data || [])
@@ -79,6 +84,8 @@ export default function Calendar() {
     setClaims(clmRes.data || [])
     setBlocks(blkRes.data || [])
     setProfiles(profRes.data || [])
+    setSubs(subRes.data || [])
+    setFeedEvents(feedRes.data || [])
     setLoading(false)
   }, [])
 
@@ -103,12 +110,19 @@ export default function Calendar() {
         kind: 'interval', id: c.id, title: `${b.role || 'Interval'}`, allDay: false,
         start: b.start_time, end: b.end_time, color: COLORS.interval,
       }))
-    return [...evs, ...ivs].sort((a, b) => {
+    const feeds = feedEvents.filter(f => f.event_date === ds).map(f => {
+      const sub = subs.find(s => s.id === f.subscription_id)
+      return {
+        kind: 'feed', id: f.id, title: f.title, allDay: f.all_day,
+        start: f.start_time, end: f.end_time, color: sub?.color || COLORS.team,
+      }
+    })
+    return [...evs, ...ivs, ...feeds].sort((a, b) => {
       if (a.allDay && !b.allDay) return -1
       if (!a.allDay && b.allDay) return 1
       return (a.start || '').localeCompare(b.start || '')
     })
-  }, [myEvents, myClaims, blocks])
+  }, [myEvents, myClaims, blocks, feedEvents, subs])
 
   const tasksOn = useCallback((ds) => {
     const due = myTasks.filter(t => t.due_date === ds && t.status !== 'done')
@@ -124,11 +138,20 @@ export default function Calendar() {
 
   return (
     <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button className="btn btn-ghost" onClick={() => setShowSubs(true)} style={{ fontSize: 13 }}>⚙ Connected calendars</button>
+      </div>
       <BookFrame view={view} setView={setView}>
         {view === 'month' && <MonthView {...shared} />}
         {view === 'week' && <WeekView {...shared} />}
         {view === 'day' && <DayView {...shared} />}
       </BookFrame>
+
+      {showSubs && (
+        <SubscriptionsModal subs={subs} userId={userId}
+          onClose={() => setShowSubs(false)}
+          onChanged={() => load()} />
+      )}
 
       {editEvent && (
         <EventModal event={editEvent} userId={userId} isAdmin={isAdmin}
@@ -546,6 +569,108 @@ function TaskAndTodoList({ tasks, todos, onToggle, onDel, emptyBoth }) {
 
 function PanelHead({ children }) {
   return <div style={{ color: '#c07a5a', fontSize: 12, letterSpacing: 2, fontWeight: 500 }}>{children}</div>
+}
+
+// ---------- CONNECTED CALENDARS (external .ics feeds) ----------
+function SubscriptionsModal({ subs, userId, onClose, onChanged }) {
+  const [label, setLabel] = useState('')
+  const [url, setUrl] = useState('')
+  const [color, setColor] = useState('#7C3AED')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [syncing, setSyncing] = useState(null)
+
+  async function add() {
+    setErr('')
+    if (!label.trim() || !url.trim()) { setErr('Add a name and an .ics URL.'); return }
+    if (!/^https?:\/\/|^webcal:\/\//i.test(url.trim())) { setErr('That doesn\u2019t look like a calendar URL.'); return }
+    setBusy(true)
+    const { data, error } = await supabase.from('calendar_subscriptions')
+      .insert({ owner_id: userId, label: label.trim(), ics_url: url.trim(), color })
+      .select().single()
+    if (error) { setErr(error.message); setBusy(false); return }
+    // immediately sync the new feed
+    await sync(data.id, true)
+    setLabel(''); setUrl(''); setBusy(false)
+    onChanged()
+  }
+
+  async function sync(id, silent) {
+    setSyncing(id); setErr('')
+    const { data, error } = await supabase.functions.invoke('sync-calendar-feed', { body: { subscription_id: id } })
+    setSyncing(null)
+    if (error) { setErr('Sync failed: ' + error.message); return }
+    if (data?.error) { setErr('Sync failed: ' + data.error); return }
+    if (!silent) onChanged()
+  }
+
+  async function remove(id) {
+    await supabase.from('calendar_subscriptions').delete().eq('id', id)
+    onChanged()
+  }
+
+  const PRESET = [['#7C3AED', 'Purple'], ['#0077B6', 'Blue'], ['#16A34A', 'Green'], ['#D97706', 'Amber'], ['#DC2626', 'Red']]
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }} onClick={onClose}>
+      <div className="card" style={{ width: 500, maxWidth: '92vw', padding: 22, maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 17 }}>Connected calendars</h3>
+        <p className="page-sub" style={{ marginTop: 0, marginBottom: 16, fontSize: 13 }}>Subscribe to Google, Outlook, or Apple calendars by their secret .ics link. Events show up on your calendar (read-only).</p>
+
+        {err && <div style={{ color: 'var(--failed)', fontSize: 12, marginBottom: 10 }}>{err}</div>}
+
+        {subs.length > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            {subs.map(s => (
+              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: s.color, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{s.label}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
+                    {s.last_synced_at ? `Synced ${new Date(s.last_synced_at).toLocaleString()}` : 'Not synced yet'}
+                  </div>
+                </div>
+                <button className="btn btn-ghost" style={{ fontSize: 12 }} disabled={syncing === s.id} onClick={() => sync(s.id)}>{syncing === s.id ? 'Syncing…' : 'Sync'}</button>
+                <button className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--failed)' }} onClick={() => remove(s.id)}>Remove</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>Add a calendar</div>
+          <div className="field"><label>Name</label>
+            <input value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. My Google Calendar" />
+          </div>
+          <div className="field"><label>Secret .ics URL</label>
+            <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://calendar.google.com/…/basic.ics" />
+          </div>
+          <div className="field"><label>Color</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {PRESET.map(([c, name]) => (
+                <span key={c} onClick={() => setColor(c)} title={name}
+                  style={{ width: 24, height: 24, borderRadius: 6, background: c, cursor: 'pointer', border: color === c ? '3px solid var(--ink)' : '3px solid transparent' }} />
+              ))}
+            </div>
+          </div>
+          <button className="btn btn-primary" onClick={add} disabled={busy} style={{ marginTop: 6 }}>{busy ? 'Adding…' : 'Add calendar'}</button>
+        </div>
+
+        <details style={{ marginTop: 16, fontSize: 12, color: 'var(--ink-soft)' }}>
+          <summary style={{ cursor: 'pointer' }}>Where do I find my .ics link?</summary>
+          <div style={{ marginTop: 8, lineHeight: 1.6 }}>
+            <b>Google:</b> Settings → click your calendar → &ldquo;Secret address in iCal format.&rdquo;<br />
+            <b>Outlook:</b> Calendar settings → Shared calendars → Publish → copy the ICS link.<br />
+            <b>Apple iCloud:</b> Share the calendar as a Public Calendar, then copy the webcal:// link.
+          </div>
+        </details>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          <button className="btn btn-ghost" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ---------- EVENT MODAL ----------
