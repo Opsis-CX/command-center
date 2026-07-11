@@ -513,6 +513,8 @@ function DayPlanner({ userId, ds, priority, other, quote }) {
   const [meals, setMeals] = useState({})
   const [todos, setTodos] = useState([])   // {id, text, done, priority}
   const [newTodo, setNewTodo] = useState('')
+  const [walkDone, setWalkDone] = useState(false)
+  const [walkNote, setWalkNote] = useState('')
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
@@ -525,6 +527,8 @@ function DayPlanner({ userId, ds, priority, other, quote }) {
       setWater(data?.water || 0)
       setMeals(data?.meals || {})
       setTodos(Array.isArray(data?.quick_todos) ? data.quick_todos : [])
+      setWalkDone(data?.walk_done || false)
+      setWalkNote(data?.walk_note || '')
       setLoaded(true)
     })()
     return () => { active = false }
@@ -533,9 +537,11 @@ function DayPlanner({ userId, ds, priority, other, quote }) {
   const save = useCallback(async (patch) => {
     if (!userId) return
     await supabase.from('day_planner').upsert({
-      owner_id: userId, day: ds, water, meals, quick_todos: todos, updated_at: new Date().toISOString(), ...patch,
+      owner_id: userId, day: ds, water, meals, quick_todos: todos, walk_done: walkDone, walk_note: walkNote, updated_at: new Date().toISOString(), ...patch,
     }, { onConflict: 'owner_id,day' })
-  }, [userId, ds, water, meals, todos])
+  }, [userId, ds, water, meals, todos, walkDone, walkNote])
+
+  function toggleWalk() { const v = !walkDone; setWalkDone(v); save({ walk_done: v }) }
 
   function setWaterTo(n) { const v = water === n ? n - 1 : n; setWater(v); save({ water: v }) }
   function setMeal(key, val) { const m = { ...meals, [key]: val }; setMeals(m) }
@@ -593,6 +599,23 @@ function DayPlanner({ userId, ds, priority, other, quote }) {
             })}
           </div>
           <div style={{ fontSize: 11, color: '#9a968c', marginTop: 6 }}>{water} of {WATER_GOAL} glasses</div>
+        </div>
+
+        <div style={{ marginTop: 22 }}>
+          <PanelHead>WELLBEING</PanelHead>
+          <div onClick={toggleWalk}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, cursor: 'pointer', padding: '8px 10px', borderRadius: 8, background: walkDone ? 'rgba(22,163,74,.08)' : 'transparent', border: '1px solid ' + (walkDone ? '#16A34A' : '#ece8e0') }}>
+            <span style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, border: '2px solid ' + (walkDone ? '#16A34A' : '#c3bfb5'), background: walkDone ? '#16A34A' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12 }}>{walkDone ? '✓' : ''}</span>
+            <span style={{ fontSize: 12.5, color: '#4a4640' }}>15-minute walk today</span>
+          </div>
+          {walkDone && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: '#16A34A', fontStyle: 'italic', marginBottom: 6 }}>Way to go — your body and mind thank you! 🌿</div>
+              <input value={walkNote} onChange={e => setWalkNote(e.target.value)} onBlur={() => save({ walk_note: walkNote })}
+                placeholder="How was it? (optional)"
+                style={{ width: '100%', fontSize: 12, border: 'none', borderBottom: '1px solid #ece8e0', background: 'transparent', padding: '3px 0', outline: 'none', color: '#4a4640' }} />
+            </div>
+          )}
         </div>
       </div>
     </div>
