@@ -175,7 +175,7 @@ export default function Calendar() {
       )}
 
       {editEvent && (
-        <EventModal event={editEvent} userId={userId} isAdmin={isAdmin}
+        <EventModal event={editEvent} userId={userId} isAdmin={isAdmin} gcalConn={gcalConn}
           onClose={() => setEditEvent(null)}
           onSaved={() => { setEditEvent(null); load() }} />
       )}
@@ -601,6 +601,22 @@ function SubscriptionsModal({ subs, userId, gcalConn, onClose, onChanged }) {
   const [err, setErr] = useState('')
   const [syncing, setSyncing] = useState(null)
   const [gcalSyncing, setGcalSyncing] = useState(false)
+  const [gcals, setGcals] = useState(null)   // list of google calendars
+  const [target, setTarget] = useState('primary')
+
+  // load the user's Google calendars (for picking the push target)
+  useEffect(() => {
+    if (!gcalConn) return
+    supabase.functions.invoke('google-calendar-write', { body: { action: 'list-calendars' } }).then(({ data }) => {
+      if (data?.calendars) { setGcals(data.calendars); setTarget(data.current || 'primary') }
+    })
+  }, [gcalConn])
+
+  async function setTargetCalendar(id) {
+    setTarget(id)
+    const cal = (gcals || []).find(c => c.id === id)
+    await supabase.functions.invoke('google-calendar-write', { body: { action: 'set-target', calendar_id: id, calendar_name: cal?.name } })
+  }
 
   // Google OAuth: send the user to Google's consent screen. state = user id so
   // the callback knows who connected. client id is public (only secret is sensitive).
@@ -694,6 +710,15 @@ function SubscriptionsModal({ subs, userId, gcalConn, onClose, onChanged }) {
               <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={connectGoogle}>Connect Google</button>
             )}
           </div>
+          {gcalConn && gcals && (
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line-soft)' }}>
+              <label style={{ fontSize: 11, color: 'var(--ink-soft)', fontWeight: 600 }}>Command Center events sync to:</label>
+              <select value={target} onChange={e => setTargetCalendar(e.target.value)}
+                style={{ display: 'block', marginTop: 4, fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line)', width: '100%' }}>
+                {gcals.map(c => <option key={c.id} value={c.id}>{c.name}{c.primary ? ' (primary)' : ''}</option>)}
+              </select>
+            </div>
+          )}
         </div>
 
         {subs.length > 0 && (
@@ -751,7 +776,7 @@ function SubscriptionsModal({ subs, userId, gcalConn, onClose, onChanged }) {
 }
 
 // ---------- EVENT MODAL ----------
-function EventModal({ event, userId, isAdmin, onClose, onSaved }) {
+function EventModal({ event, userId, isAdmin, gcalConn, onClose, onSaved }) {
   const isNew = !event.id
   const [title, setTitle] = useState(event.title || '')
   const [date, setDate] = useState(event.event_date || isoDate(etNow()))
@@ -771,15 +796,38 @@ function EventModal({ event, userId, isAdmin, onClose, onSaved }) {
       start_time: allDay ? null : start, end_time: allDay ? null : end,
       notes: notes.trim() || null, scope, owner_id: userId,
     }
-    const res = isNew
-      ? await supabase.from('calendar_events').insert(payload)
-      : await supabase.from('calendar_events').update(payload).eq('id', event.id)
+    let savedId = event.id
+    let res
+    if (isNew) {
+      res = await supabase.from('calendar_events').insert(payload).select().single()
+      savedId = res.data?.id
+    } else {
+      res = await supabase.from('calendar_events').update(payload).eq('id', event.id).select().single()
+    }
+    if (res.error) { setSaving(false); setErr(res.error.message); return }
+
+    // push to Google if connected
+    if (gcalConn && savedId) {
+      try {
+        const { data: pushed } = await supabase.functions.invoke('google-calendar-write', {
+          body: { action: 'push', op: isNew ? 'create' : 'update', event: { ...res.data, google_event_id: event.google_event_id } },
+        })
+        if (pushed?.google_event_id) {
+          await supabase.from('calendar_events').update({
+            google_event_id: pushed.google_event_id, google_calendar_id: pushed.google_calendar_id,
+          }).eq('id', savedId)
+        }
+      } catch { /* non-fatal: local save already succeeded */ }
+    }
     setSaving(false)
-    if (res.error) { setErr(res.error.message); return }
     onSaved()
   }
   async function del() {
     if (!event.id) return
+    // push delete to Google first (while we still have the id), then remove locally
+    if (gcalConn && event.google_event_id) {
+      try { await supabase.functions.invoke('google-calendar-write', { body: { action: 'push', op: 'delete', event } }) } catch { /* non-fatal */ }
+    }
     await supabase.from('calendar_events').delete().eq('id', event.id)
     onSaved()
   }
