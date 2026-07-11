@@ -740,8 +740,8 @@ function SubscriptionsModal({ subs, userId, gcalConn, onClose, onChanged }) {
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: gcalConn?.color || '#EA4335', flexShrink: 0 }} />
             {gcalConn && (
               <label title="Change Google event color" style={{ position: 'relative', width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}>
-                <input type="color" value={gcalConn.color || '#EA4335'}
-                  onChange={async (e) => { await supabase.from('google_calendar_tokens').update({ color: e.target.value }).eq('owner_id', userId); onChanged() }}
+                <input type="color" defaultValue={gcalConn.color || '#EA4335'}
+                  onBlur={async (e) => { await supabase.from('google_calendar_tokens').update({ color: e.target.value }).eq('owner_id', userId); onChanged() }}
                   style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
                 <span style={{ fontSize: 10, color: 'var(--ink-soft)' }}>✎</span>
               </label>
@@ -778,8 +778,8 @@ function SubscriptionsModal({ subs, userId, gcalConn, onClose, onChanged }) {
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
                 <span style={{ width: 12, height: 12, borderRadius: 3, background: s.color, flexShrink: 0 }} />
                 <label title="Change color" style={{ position: 'relative', width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}>
-                  <input type="color" value={s.color || '#7C3AED'}
-                    onChange={async (e) => { await supabase.from('calendar_subscriptions').update({ color: e.target.value }).eq('id', s.id); onChanged() }}
+                  <input type="color" defaultValue={s.color || '#7C3AED'}
+                    onBlur={async (e) => { await supabase.from('calendar_subscriptions').update({ color: e.target.value }).eq('id', s.id); onChanged() }}
                     style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
                   <span style={{ fontSize: 10, color: 'var(--ink-soft)' }}>✎</span>
                 </label>
