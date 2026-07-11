@@ -1,144 +1,130 @@
-import React, { useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { useProjectsData } from './projectsData'
-import { Avatar } from './projectBits'
-import { PROJECT_COLORS } from './projectHelpers'
 
 // ============================================================
-// PROJECT MODAL — create or edit a project.
-// Fields: name, description, color, members.
-// Props: projectId (null = new), onClose(saved)
+// PROJECTS DATA LAYER
+// Loads every project-management table once and shares it across
+// all the Projects sub-views (Dashboard, Kanban, My Day, etc.),
+// mirroring the original app's fetchAll() + global arrays.
 // ============================================================
 
-export default function ProjectModal({ projectId, onClose }) {
-  const { projects, projectMembers, profiles, userId, refresh } = useProjectsData()
-  const existing = projectId ? projects.find(p => p.id === projectId) : null
+const ProjectsDataContext = createContext(null)
 
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [color, setColor] = useState(PROJECT_COLORS[0])
-  const [members, setMembers] = useState([])
-  const [busy, setBusy] = useState(false)
-  const [nameError, setNameError] = useState(false)
+export function ProjectsDataProvider({ children }) {
+  const [me, setMe] = useState(null)          // current profile row
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [userId, setUserId] = useState(null)
 
-  useEffect(() => {
-    if (existing) {
-      setName(existing.name || '')
-      setDescription(existing.description || '')
-      setColor(existing.color || PROJECT_COLORS[0])
-      setMembers(projectMembers.filter(m => m.project_id === projectId).map(m => m.profile_id))
-    } else {
-      // default: creator is a member
-      setMembers(userId ? [userId] : [])
+  const [profiles, setProfiles] = useState([])
+  const [projects, setProjects] = useState([])
+  const [clients, setClients] = useState([])
+  const [recurring, setRecurring] = useState([])
+  const [projectMembers, setProjectMembers] = useState([])
+  const [tasks, setTasks] = useState([])
+  const [taskAssignees, setTaskAssignees] = useState([])
+  const [comments, setComments] = useState([])
+  const [activity, setActivity] = useState([])
+  const [attachments, setAttachments] = useState([])
+  const [timeEntries, setTimeEntries] = useState([])
+
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  const fetchAll = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setLoading(false); return }
+      setUserId(user.id)
+
+      const [profRes, profilesRes, projRes, cliRes, recRes, pmRes, taskRes, taRes, comRes, actRes, attRes, timeRes] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', user.id).single(),
+        supabase.from('profiles').select('*').order('full_name'),
+        supabase.from('projects').select('*').order('created_at'),
+        supabase.from('clients').select('*').order('name'),
+        supabase.from('recurring_tasks').select('*').order('created_at', { ascending: false }),
+        supabase.from('project_members').select('*'),
+        supabase.from('tasks').select('*').is('deleted_at', null).order('created_at'),
+        supabase.from('task_assignees').select('*'),
+        supabase.from('task_comments').select('*').order('created_at', { ascending: true }),
+        supabase.from('activity_log').select('*').order('created_at', { ascending: false }).limit(100),
+        supabase.from('task_attachments').select('*').order('created_at', { ascending: false }),
+        supabase.from('time_entries').select('*').order('created_at', { ascending: false }),
+      ])
+
+      setMe(profRes.data)
+      setIsAdmin(profRes.data?.is_admin || false)
+      setProfiles(profilesRes.data || [])
+      setProjects(projRes.data || [])
+      setClients(cliRes.data || [])
+      setRecurring(recRes.data || [])
+      setProjectMembers(pmRes.data || [])
+      setTasks(taskRes.data || [])
+      setTaskAssignees(taRes.data || [])
+      setComments(comRes.data || [])
+      setActivity(actRes.data || [])
+      setAttachments(attRes.data || [])
+      setTimeEntries(timeRes.data || [])
+      setError(null)
+    } catch (e) {
+      setError(e.message || 'Failed to load project data')
+    } finally {
+      setLoading(false)
     }
-  }, [projectId]) // eslint-disable-line
+  }, [])
 
-  function toggleMember(pid) {
-    setMembers(prev => prev.includes(pid) ? prev.filter(x => x !== pid) : [...prev, pid])
+  useEffect(() => { fetchAll() }, [fetchAll])
+
+  // tasks visible to the current user (admins see all; members see their
+  // projects' tasks, tasks assigned to them, or tasks they created)
+  const myVisibleTasks = useCallback(() => {
+    // Everyone (incl. admins) sees tasks in projects they're a member of,
+    // tasks assigned to them, or tasks they created. No blanket admin view.
+    const myProjectIds = projectMembers.filter(m => m.profile_id === userId).map(m => m.project_id)
+    const myAssignedTaskIds = taskAssignees.filter(a => a.profile_id === userId).map(a => a.task_id)
+    return tasks.filter(t =>
+      myProjectIds.includes(t.project_id) ||
+      myAssignedTaskIds.includes(t.id) ||
+      t.created_by === userId
+    )
+  }, [tasks, projectMembers, taskAssignees, userId])
+
+  const myVisibleProjects = useCallback(() => {
+    // Everyone (incl. admins) sees projects they're a member of, or created.
+    return projects.filter(p =>
+      p.created_by === userId ||
+      projectMembers.some(m => m.project_id === p.id && m.profile_id === userId)
+    )
+  }, [projects, projectMembers, userId])
+
+  // activity log helper (fire-and-forget; won't block the calling action)
+  const logActivity = useCallback(async (action, taskId, taskName, projectId, projectName, detail) => {
+    try {
+      await supabase.from('activity_log').insert({
+        actor_id: userId, action,
+        task_id: taskId || null, task_name: taskName || null,
+        project_id: projectId || null, project_name: projectName || null,
+        detail: detail || null,
+      })
+    } catch (e) { /* non-blocking */ }
+  }, [userId])
+
+  const value = {
+    me, isAdmin, userId,
+    profiles, projects, clients, recurring, projectMembers,
+    tasks, taskAssignees, comments, activity, attachments, timeEntries,
+    loading, error,
+    refresh: fetchAll,
+    myVisibleTasks, myVisibleProjects,
+    logActivity,
+    // setters exposed for optimistic in-memory updates where useful
+    setTasks, setTaskAssignees, setComments, setAttachments, setTimeEntries,
   }
 
-  async function save() {
-    if (!name.trim()) { setNameError(true); return }
-    setBusy(true)
-    const data = { name: name.trim(), description: description.trim() || null, color }
-
-    let id = projectId
-    if (projectId) {
-      const { error } = await supabase.from('projects').update(data).eq('id', projectId)
-      if (error) { window.alert('Error: ' + error.message); setBusy(false); return }
-    } else {
-      id = crypto.randomUUID()
-      const { error } = await supabase.from('projects').insert({ id, ...data, created_by: userId })
-      if (error) { window.alert('Error: ' + error.message); setBusy(false); return }
-    }
-
-    // sync members
-    await supabase.from('project_members').delete().eq('project_id', id)
-    if (members.length) {
-      await supabase.from('project_members').insert(members.map(pid => ({ project_id: id, profile_id: pid })))
-    }
-
-    setBusy(false)
-    await refresh()
-    onClose(true)
-  }
-
-  async function del() {
-    if (!projectId) return
-    const warn = 'Delete this project? Tasks in it will be kept but no longer grouped under a project. This cannot be undone.'
-    if (!window.confirm(warn)) return
-    setBusy(true)
-    // detach tasks, then remove members + project
-    await supabase.from('tasks').update({ project_id: null }).eq('project_id', projectId)
-    await supabase.from('project_members').delete().eq('project_id', projectId)
-    const { error } = await supabase.from('projects').delete().eq('id', projectId)
-    if (error) { window.alert('Error: ' + error.message); setBusy(false); return }
-    setBusy(false); await refresh(); onClose(true)
-  }
-
-  return (
-    <>
-      <div onClick={() => onClose(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000 }} />
-      <div style={{ position: 'fixed', inset: 0, zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, pointerEvents: 'none' }}>
-        <div style={{ background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 520, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 12px 40px rgba(0,0,0,.2)', pointerEvents: 'auto' }}>
-          <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: 16, fontWeight: 600 }}>{projectId ? 'Edit project' : 'New project'}</div>
-            <button onClick={() => onClose(false)} style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--ink-soft)' }}>✕</button>
-          </div>
-
-          <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <label style={lbl}>Project name *</label>
-              <input value={name} onChange={e => { setName(e.target.value); setNameError(false) }} placeholder="e.g. Website Redesign" autoFocus
-                style={{ ...inp, borderColor: nameError ? 'var(--failed)' : 'var(--line)' }} />
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <label style={lbl}>Description</label>
-              <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="What is this project about? (optional)"
-                style={{ ...inp, minHeight: 64, resize: 'vertical' }} />
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              <label style={lbl}>Color</label>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {PROJECT_COLORS.map(c => (
-                  <button key={c} type="button" onClick={() => setColor(c)}
-                    style={{ width: 30, height: 30, borderRadius: '50%', background: c, cursor: 'pointer',
-                      border: color === c ? '3px solid var(--ink)' : '2px solid var(--line)', outline: 'none' }} />
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <label style={lbl}>Members</label>
-              <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 4 }}>Members can see and work on this project\u2019s tasks.</div>
-              <div style={{ border: '1px solid var(--line)', borderRadius: 8, padding: 6, maxHeight: 220, overflowY: 'auto' }}>
-                {profiles.map(p => {
-                  const sel = members.includes(p.id)
-                  return (
-                    <div key={p.id} onClick={() => toggleMember(p.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', borderRadius: 6, cursor: 'pointer', background: sel ? 'var(--accent-bg)' : 'transparent' }}>
-                      <span style={{ width: 18, height: 18, borderRadius: 4, border: '1.5px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: sel ? 'var(--accent)' : 'transparent', color: '#fff', fontSize: 11 }}>{sel ? '✓' : ''}</span>
-                      <Avatar profile={p} size={26} />
-                      <span style={{ fontSize: 13, fontWeight: 500 }}>{p.full_name}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ padding: '14px 24px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
-            {projectId && <button onClick={del} className="btn btn-ghost" style={{ marginRight: 'auto', color: 'var(--failed)' }}>Delete project</button>}
-            <button onClick={() => onClose(false)} className="btn btn-ghost">Cancel</button>
-            <button onClick={save} disabled={busy} className="btn btn-primary">{busy ? 'Saving…' : 'Save project'}</button>
-          </div>
-        </div>
-      </div>
-    </>
-  )
+  return <ProjectsDataContext.Provider value={value}>{children}</ProjectsDataContext.Provider>
 }
 
-const inp = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', width: '100%', background: 'var(--surface)', color: 'var(--ink)' }
-const lbl = { fontSize: 12, fontWeight: 600, color: 'var(--ink-soft)' }
+export function useProjectsData() {
+  const ctx = useContext(ProjectsDataContext)
+  if (!ctx) throw new Error('useProjectsData must be used within ProjectsDataProvider')
+  return ctx
+}
