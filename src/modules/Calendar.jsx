@@ -172,14 +172,14 @@ export default function Calendar() {
         start: f.start_time, end: f.end_time, color: sub?.color || COLORS.team,
       }
     })
-    const gcal = gcalEvents.filter(g => g.event_date === ds).map(g => ({
+    const gcal = gcalEvents.filter(g => g.event_date === ds && (!g.owner_id || g.owner_id === userId)).map(g => ({
       kind: 'gcal', id: g.id, title: g.title, allDay: g.all_day,
       start: g.start_time, end: g.end_time, color: gcalConn?.color || '#EA4335',
       description: g.description, location: g.location, hangoutLink: g.hangout_link, htmlLink: g.html_link,
     }))
 
-    // Shared calendars: other people's manual events + intervals, when they've
-    // shared with me and I haven't toggled them off. Colored per share, labeled by name.
+    // Shared calendars: other people's manual events + intervals + Google events,
+    // when they've shared with me and I haven't toggled them off.
     const shareByOwner = {}; sharedWithMe.forEach(s => { shareByOwner[s.owner_id] = s })
     const activeShareOwners = new Set(sharedWithMe.filter(s => !hiddenShares[s.owner_id]).map(s => s.owner_id))
     const nameOf = (pid) => (profiles.find(p => p.id === pid) || {}).full_name || 'Someone'
@@ -190,6 +190,14 @@ export default function Calendar() {
         start: e.start_time, end: e.end_time, color: shareByOwner[e.owner_id]?.color || '#0891B2',
         description: e.notes, sharedFrom: nameOf(e.owner_id),
       }))
+    const sharedGcal = gcalEvents
+      .filter(g => g.event_date === ds && g.owner_id && activeShareOwners.has(g.owner_id) && g.owner_id !== userId)
+      .map(g => ({
+        kind: 'shared', id: 'sg-' + g.id, title: `${g.title} · ${nameOf(g.owner_id)}`, allDay: g.all_day,
+        start: g.start_time, end: g.end_time, color: shareByOwner[g.owner_id]?.color || '#0891B2',
+        description: g.description, location: g.location, hangoutLink: g.hangout_link, htmlLink: g.html_link,
+        sharedFrom: nameOf(g.owner_id),
+      }))
     const sharedIvs = claims
       .filter(c => c.profile_id && activeShareOwners.has(c.profile_id) && c.profile_id !== userId)
       .map(c => ({ c, b: blocks.find(b => b.id === c.shift_block_id) }))
@@ -199,7 +207,7 @@ export default function Calendar() {
         start: b.start_time, end: b.end_time, color: shareByOwner[c.profile_id]?.color || '#0891B2',
       }))
 
-    return [...evs, ...ivs, ...feeds, ...gcal, ...sharedEvs, ...sharedIvs].sort((a, b) => {
+    return [...evs, ...ivs, ...feeds, ...gcal, ...sharedEvs, ...sharedGcal, ...sharedIvs].sort((a, b) => {
       if (a.allDay && !b.allDay) return -1
       if (!a.allDay && b.allDay) return 1
       return (a.start || '').localeCompare(b.start || '')
