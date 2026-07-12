@@ -154,6 +154,10 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
                 {task.created_at
                   ? new Date(task.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
                   : '—'}
+                {task.created_by && (() => {
+                  const creator = profiles.find(p => p.id === task.created_by)
+                  return creator ? <> · by {creator.full_name}</> : null
+                })()}
               </span>
             </Field>
           </div>
