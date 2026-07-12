@@ -2,20 +2,13 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { notifyIntervalReleased, notifyNoShow } from '../lib/notify'
-import { COMPANY_TZ } from '../lib/tz'
+import { COMPANY_TZ, wallTimeToViewer } from '../lib/tz'
 
 // Convert a company-zone wall time on a given date to the viewer's local "h:mm AM".
 function blockTimeInViewer(dateStr, timeStr, viewerTZ) {
   if (!timeStr) return ''
   if (!viewerTZ || viewerTZ === COMPANY_TZ) return formatTime(timeStr)
-  try {
-    const [y, mo, d] = dateStr.split('-').map(Number)
-    const [h, mi] = timeStr.slice(0, 5).split(':').map(Number)
-    const guess = Date.UTC(y, mo - 1, d, h, mi)
-    const asZoned = new Date(guess).toLocaleString('en-US', { timeZone: COMPANY_TZ })
-    const inst = new Date(guess + (guess - new Date(asZoned).getTime()))
-    return inst.toLocaleTimeString('en-US', { timeZone: viewerTZ, hour: 'numeric', minute: '2-digit' })
-  } catch { return formatTime(timeStr) }
+  return wallTimeToViewer(dateStr, timeStr, COMPANY_TZ, viewerTZ)
 }
 
 // ============================================================
