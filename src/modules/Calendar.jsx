@@ -1,6 +1,29 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { COMPANY_TZ, companyTimeToInstant, formatInTZ, detectedTZ } from '../lib/tz'
+
+// Convert a wall-clock time stored in `srcTZ` on `dateStr` into "HH:MM" as seen
+// in `viewerTZ`. Used to translate shifts (company tz) and manual events
+// (creator tz) into the viewer's local clock before display.
+function toViewerHHMM(dateStr, timeStr, srcTZ, viewerTZ) {
+  if (!timeStr || !dateStr) return timeStr
+  try {
+    const inst = zonedToInstant(dateStr, timeStr, srcTZ)
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: viewerTZ, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(inst)
+    const h = parts.find(p => p.type === 'hour').value
+    const m = parts.find(p => p.type === 'minute').value
+    return `${h}:${m}`
+  } catch { return timeStr }
+}
+function zonedToInstant(dateStr, timeStr, tz) {
+  const [y, mo, d] = dateStr.split('-').map(Number)
+  const [h, mi] = (timeStr || '00:00').split(':').map(Number)
+  const guess = Date.UTC(y, mo - 1, d, h, mi)
+  const asZoned = new Date(guess).toLocaleString('en-US', { timeZone: tz })
+  const diff = guess - new Date(asZoned).getTime()
+  return new Date(guess + diff)
+}
 
 // ============================================================
 // CALENDAR — Phase 1 (Artful Agenda-style planner)
@@ -70,12 +93,18 @@ export default function Calendar() {
   const [mySharedOut, setMySharedOut] = useState([])     // shares I've granted
   const [hiddenShares, setHiddenShares] = useState({})   // ownerId -> true (toggled off in my view)
   const [showShares, setShowShares] = useState(false)
+  const [viewerTZ, setViewerTZ] = useState(COMPANY_TZ)
 
   const load = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     const uid = user?.id || null
     setUserId(uid)
+    // viewer's timezone (for converting shift/event times to their local clock)
+    if (uid) {
+      const { data: prof } = await supabase.from('profiles').select('timezone').eq('id', uid).maybeSingle()
+      setViewerTZ(prof?.timezone || COMPANY_TZ)
+    }
     const [evRes, taskRes, taRes, clmRes, blkRes, profRes, subRes, feedRes, gtRes, geRes, timeRes, shareInRes, shareOutRes] = await Promise.all([
       supabase.from('calendar_events').select('*'),
       supabase.from('tasks').select('id, name, due_date, priority, status, project_id').is('deleted_at', null),
@@ -156,14 +185,18 @@ export default function Calendar() {
   // items on a given ISO date
   const itemsOn = useCallback((ds) => {
     const evs = myEvents.filter(e => e.event_date === ds).map(e => ({
-      kind: 'event', id: e.id, title: e.title, allDay: e.all_day, start: e.start_time, end: e.end_time,
+      kind: 'event', id: e.id, title: e.title, allDay: e.all_day,
+      start: e.all_day ? e.start_time : toViewerHHMM(e.event_date, e.start_time, e.tz || COMPANY_TZ, viewerTZ),
+      end: e.all_day ? e.end_time : toViewerHHMM(e.event_date, e.end_time, e.tz || COMPANY_TZ, viewerTZ),
       color: e.color || (e.scope === 'team' ? COLORS.team : COLORS.event), scope: e.scope, raw: e,
     }))
     const ivs = myClaims.map(c => ({ c, b: blocks.find(b => b.id === c.shift_block_id) }))
       .filter(x => x.b && x.b.block_date === ds)
       .map(({ c, b }) => ({
         kind: 'interval', id: c.id, title: `${b.role || 'Interval'}`, allDay: false,
-        start: b.start_time, end: b.end_time, color: COLORS.interval,
+        start: toViewerHHMM(b.block_date, b.start_time, COMPANY_TZ, viewerTZ),
+        end: toViewerHHMM(b.block_date, b.end_time, COMPANY_TZ, viewerTZ),
+        color: COLORS.interval,
       }))
     const feeds = feedEvents.filter(f => f.event_date === ds).map(f => {
       const sub = subs.find(s => s.id === f.subscription_id)
@@ -187,7 +220,9 @@ export default function Calendar() {
       .filter(e => e.event_date === ds && e.owner_id && activeShareOwners.has(e.owner_id) && e.owner_id !== userId)
       .map(e => ({
         kind: 'shared', id: 'se-' + e.id, title: `${e.title} · ${nameOf(e.owner_id)}`, allDay: e.all_day,
-        start: e.start_time, end: e.end_time, color: shareByOwner[e.owner_id]?.color || '#0891B2',
+        start: e.all_day ? e.start_time : toViewerHHMM(e.event_date, e.start_time, e.tz || COMPANY_TZ, viewerTZ),
+        end: e.all_day ? e.end_time : toViewerHHMM(e.event_date, e.end_time, e.tz || COMPANY_TZ, viewerTZ),
+        color: shareByOwner[e.owner_id]?.color || '#0891B2',
         description: e.notes, sharedFrom: nameOf(e.owner_id),
       }))
     const sharedGcal = gcalEvents
@@ -204,7 +239,9 @@ export default function Calendar() {
       .filter(x => x.b && x.b.block_date === ds)
       .map(({ c, b }) => ({
         kind: 'shared', id: 'si-' + c.id, title: `${nameOf(c.profile_id)} working`, allDay: false,
-        start: b.start_time, end: b.end_time, color: shareByOwner[c.profile_id]?.color || '#0891B2',
+        start: toViewerHHMM(b.block_date, b.start_time, COMPANY_TZ, viewerTZ),
+        end: toViewerHHMM(b.block_date, b.end_time, COMPANY_TZ, viewerTZ),
+        color: shareByOwner[c.profile_id]?.color || '#0891B2',
       }))
 
     return [...evs, ...ivs, ...feeds, ...gcal, ...sharedEvs, ...sharedGcal, ...sharedIvs].sort((a, b) => {
@@ -212,7 +249,7 @@ export default function Calendar() {
       if (!a.allDay && b.allDay) return 1
       return (a.start || '').localeCompare(b.start || '')
     })
-  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn, events, claims, sharedWithMe, hiddenShares, profiles, userId])
+  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn, events, claims, sharedWithMe, hiddenShares, profiles, userId, viewerTZ])
 
   const tasksOn = useCallback((ds) => {
     const due = myTasks.filter(t => t.due_date === ds)
@@ -1087,7 +1124,7 @@ function EventModal({ event, userId, isAdmin, gcalConn, onClose, onSaved }) {
     const payload = {
       title: title.trim(), event_date: date, all_day: allDay,
       start_time: allDay ? null : start, end_time: allDay ? null : end,
-      notes: notes.trim() || null, scope, color, owner_id: userId,
+      notes: notes.trim() || null, scope, color, owner_id: userId, tz: detectedTZ(),
     }
     let savedId = event.id
     let res
