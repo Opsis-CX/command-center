@@ -481,7 +481,7 @@ function ClaimView(props) {
       </div>
 
       {teamMode
-        ? <AdminGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} profiles={profiles} onPop={setPopBlock} />
+        ? <AdminGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} profiles={profiles} me={me} onPop={setPopBlock} />
         : <AgentGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} me={me} hasIntervalStarted={hasIntervalStarted} horizonDays={releaseStatus.horizonDays} onPop={setPopBlock} />}
 
       {popBlock && <IntervalPopover
@@ -621,7 +621,7 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
 }
 
 // ---------- ADMIN GRID ----------
-function AdminGrid({ days, todayStr, weekBlocks, claims, profiles, onPop }) {
+function AdminGrid({ days, todayStr, weekBlocks, claims, profiles, me, onPop }) {
   const wkStart = isoDate(days[0]); const wkEnd = isoDate(days[6])
   const inWeek = weekBlocks.filter(b => b.block_date >= wkStart && b.block_date <= wkEnd)
   const claimantIds = new Set(inWeek.flatMap(b => claims.filter(c => c.shift_block_id === b.id).map(c => c.profile_id)))
