@@ -550,6 +550,31 @@ function parseCSVLine(line) {
   out.push(cur); return out.map(s => s.trim())
 }
 
+// Parse a whole CSV document into rows of fields. Correctly handles quoted
+// fields that contain commas and newlines (e.g. multi-line Notes), which a
+// naive line-by-line split would break apart into bogus rows.
+function parseCSV(text) {
+  const rows = []; let row = []; let cur = ''; let q = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i], next = text[i + 1]
+    if (q) {
+      if (ch === '"' && next === '"') { cur += '"'; i++ }
+      else if (ch === '"') { q = false }
+      else { cur += ch }
+    } else {
+      if (ch === '"') { q = true }
+      else if (ch === ',') { row.push(cur); cur = '' }
+      else if (ch === '\r') { /* ignore, handled by \n */ }
+      else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = '' }
+      else { cur += ch }
+    }
+  }
+  // last field / row (if the file doesn't end in a newline)
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row) }
+  // trim fields, drop fully-empty rows
+  return rows.map(r => r.map(s => s.trim())).filter(r => r.some(f => f !== ''))
+}
+
 function ImportModal({ scheduleId, onClose, onDone }) {
   const [rows, setRows] = useState([])
   const [errors, setErrors] = useState([])
@@ -564,9 +589,9 @@ function ImportModal({ scheduleId, onClose, onDone }) {
     reader.readAsText(file)
   }
   function parse(text) {
-    const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim() !== '')
-    if (lines.length < 2) { setErrors(['File looks empty — needs a header row plus data.']); setRows([]); return }
-    const header = parseCSVLine(lines[0]).map(h => h.toLowerCase())
+    const all = parseCSV(text)
+    if (all.length < 2) { setErrors(['File looks empty — needs a header row plus data.']); setRows([]); return }
+    const header = all[0].map(h => h.toLowerCase())
     const di = header.findIndex(h => h.includes('date'))
     const si = header.findIndex(h => h.includes('start'))
     const ei = header.findIndex(h => h.includes('end'))
@@ -575,8 +600,10 @@ function ImportModal({ scheduleId, onClose, onDone }) {
     const ni = header.findIndex(h => h.includes('note'))
     if (di < 0 || si < 0 || ei < 0 || spi < 0) { setErrors(['Missing required columns: Date, Start Time, End Time, Spots.']); setRows([]); return }
     const good = []; const bad = []
-    for (let i = 1; i < lines.length; i++) {
-      const c = parseCSVLine(lines[i]); const rn = i + 1
+    for (let i = 1; i < all.length; i++) {
+      const c = all[i]; const rn = i + 1
+      // skip rows with no date at all (blank separator rows)
+      if (!(c[di] || '').trim()) continue
       const date = normalizeDate(c[di] || ''), start = normalizeTime(c[si] || ''), end = normalizeTime(c[ei] || ''), spots = parseInt(c[spi], 10)
       const re = []
       if (!date) re.push(`row ${rn}: bad date "${c[di]}"`)
