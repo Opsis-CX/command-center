@@ -50,6 +50,7 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false)
   const [meId, setMeId] = useState(null)
   const [prefs, setPrefs] = useState(null)
+  const prefsRef = useRef(null)   // always holds latest prefs for the realtime chime
   const wrapRef = useRef(null)
   const chimeRef = useRef(null)
   const navigate = useNavigate()
@@ -60,7 +61,7 @@ export default function NotificationBell() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     setMeId(user.id)
-    loadNotifPrefs(user.id).then(setPrefs)
+    loadNotifPrefs(user.id).then(p => { setPrefs(p); prefsRef.current = p })
     const { data } = await supabase.from('notifications')
       .select('*').eq('recipient_id', user.id)
       .order('created_at', { ascending: false }).limit(50)
@@ -68,6 +69,19 @@ export default function NotificationBell() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Re-read prefs when the tab regains focus, so a change made on the
+  // Settings page takes effect here without needing a full reload.
+  useEffect(() => {
+    async function refresh() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const p = await loadNotifPrefs(user.id)
+      setPrefs(p); prefsRef.current = p
+    }
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [])
 
   // prime audio on first user interaction anywhere (browsers require this)
   useEffect(() => {
@@ -86,13 +100,13 @@ export default function NotificationBell() {
         (payload) => {
           setItems(prev => {
             if (prev.some(x => x.id === payload.new.id)) return prev
-            if (allowsSound(prefs, categoryForType(payload.new.type))) chimeRef.current?.play()
+            if (allowsSound(prefsRef.current, categoryForType(payload.new.type))) chimeRef.current?.play()
             return [payload.new, ...prev]
           })
         })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [meId, prefs])
+  }, [meId])
 
   useEffect(() => {
     function onDoc(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
