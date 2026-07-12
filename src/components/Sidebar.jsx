@@ -162,6 +162,11 @@ export default function Sidebar({ open, onNavigate }) {
               style={{ paddingLeft: 34 }}>
               Timezone
             </NavLink>
+            <NavLink to="/settings" onClick={() => onNavigate && onNavigate()}
+              className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
+              style={{ paddingLeft: 34 }}>
+              Notifications
+            </NavLink>
             <button className="nav-item nav-subitem" onClick={cycleTheme}
               style={{ paddingLeft: 34, width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
               {themeLabel(theme)}
