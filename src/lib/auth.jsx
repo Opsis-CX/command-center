@@ -2,13 +2,13 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase, readRoleFromSession } from './supabase'
 
 const AuthContext = createContext(null)
- 
+
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [role, setRole] = useState({ isAdmin: false, level: 0, roles: [] })
   const [appRole, setAppRole] = useState('agent')   // the 6-role permission role from profiles
   const [loading, setLoading] = useState(true)
- 
+
   async function loadAppRole(sess) {
     const uid = sess?.user?.id
     if (!uid) { setAppRole('agent'); return }
