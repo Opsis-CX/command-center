@@ -17,7 +17,6 @@ const NAV = [
   { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
   { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂', perm: 'project_management' },
   { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },  // everyone gets calendar
-  { type: 'link', to: '/notifications', label: 'Notifications', ic: '🔔', perm: null },  // everyone
   { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
   { type: 'link', to: '/hiring', label: 'Hiring', ic: '👥', perm: 'hiring' },
   {
