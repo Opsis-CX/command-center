@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { categoryForType } from '../lib/notify'
+import { loadNotifPrefs, allowsSound } from '../lib/notif_prefs'
 
 // ============================================================
 // NOTIFICATION BELL — unread badge, dropdown, realtime,
@@ -47,6 +49,7 @@ export default function NotificationBell() {
   const [items, setItems] = useState([])
   const [open, setOpen] = useState(false)
   const [meId, setMeId] = useState(null)
+  const [prefs, setPrefs] = useState(null)
   const [muted, setMuted] = useState(() => {
     try { return localStorage.getItem('notif_muted') === '1' } catch (e) { return false }
   })
@@ -60,6 +63,7 @@ export default function NotificationBell() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     setMeId(user.id)
+    loadNotifPrefs(user.id).then(setPrefs)
     const { data } = await supabase.from('notifications')
       .select('*').eq('recipient_id', user.id)
       .order('created_at', { ascending: false }).limit(50)
@@ -85,13 +89,13 @@ export default function NotificationBell() {
         (payload) => {
           setItems(prev => {
             if (prev.some(x => x.id === payload.new.id)) return prev
-            if (!muted) chimeRef.current?.play()
+            if (!muted && allowsSound(prefs, categoryForType(payload.new.type))) chimeRef.current?.play()
             return [payload.new, ...prev]
           })
         })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [meId, muted])
+  }, [meId, muted, prefs])
 
   useEffect(() => {
     function onDoc(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
@@ -165,6 +169,10 @@ export default function NotificationBell() {
               </button>
             ))}
           </div>
+          <button onClick={() => { setOpen(false); navigate('/notifications') }}
+            style={{ border: 0, borderTop: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--accent)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: '10px 14px', fontFamily: 'inherit', textAlign: 'center' }}>
+            See all notifications
+          </button>
         </div>
       )}
     </div>
