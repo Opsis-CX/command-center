@@ -16,7 +16,6 @@ const NAV = [
   { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂', roles: ['admin'] },
   { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', roles: ['admin', 'agent'] },
   { type: 'link', to: '/chat', label: 'Chat', ic: '💬', roles: ['admin', 'agent'] },
-  { type: 'link', to: '/settings', label: 'Settings', ic: '⚙️', roles: ['admin', 'agent'] },
   { type: 'link', to: '/hiring', label: 'Hiring', ic: '👥', roles: ['admin'] },
   {
     type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
@@ -68,6 +67,7 @@ export default function Sidebar({ open, onNavigate }) {
   // Theme toggle (System → Light → Dark)
   const [theme, setThemeState] = useState(getTheme())
   const [pwOpen, setPwOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const cycleTheme = () => { const t = nextTheme(theme); setTheme(t); setThemeState(t) }
 
   // Which collapsible sections are open. Several can be open at once.
@@ -143,8 +143,33 @@ export default function Sidebar({ open, onNavigate }) {
           <div className="user-role">{isOwner ? 'Owner' : isAdmin ? 'Admin' : 'Agent'}</div>
         </div>
       </div>
-      <button className="signout" onClick={() => setPwOpen(true)}>🔑 Change password</button>
-      <button className="signout" onClick={cycleTheme}>{themeLabel(theme)}</button>
+
+      {/* Settings dropdown (below the name) */}
+      <div className="nav-section">
+        <button className="nav-item nav-section-head" onClick={() => setSettingsOpen(o => !o)}
+          style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+          <span className="ic">⚙️</span> Settings
+          <span className="nav-caret" style={{ marginLeft: 'auto', transition: 'transform .15s ease', transform: settingsOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
+        </button>
+        {settingsOpen && (
+          <div className="nav-section-body">
+            <NavLink to="/settings" onClick={() => onNavigate && onNavigate()}
+              className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
+              style={{ paddingLeft: 34 }}>
+              Timezone
+            </NavLink>
+            <button className="nav-item nav-subitem" onClick={cycleTheme}
+              style={{ paddingLeft: 34, width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+              {themeLabel(theme)}
+            </button>
+            <button className="nav-item nav-subitem" onClick={() => setPwOpen(true)}
+              style={{ paddingLeft: 34, width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+              Change password
+            </button>
+          </div>
+        )}
+      </div>
+
       <button className="signout" onClick={signOut}>Sign out</button>
       {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} onDone={() => setPwOpen(false)} />}
     </aside>
