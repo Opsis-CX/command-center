@@ -40,18 +40,29 @@ function weekLabel(iso) {
 
 // The instant this week locks: the Sunday that ends the week, 8:00pm America/New_York.
 // Returns a Date (a true instant). After this moment, the week is read-only.
+//
+// Converting "8pm New York" to a UTC instant must respect DST. We use
+// Intl.DateTimeFormat (which browsers implement consistently) to read what a
+// candidate instant looks like in New York, then correct toward the target.
+function zonedTimeToUtc(y, m, d, hour, minute, timeZone) {
+  let ts = Date.UTC(y, m, d, hour, minute, 0)
+  for (let i = 0; i < 2; i++) {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    })
+    const p = Object.fromEntries(
+      dtf.formatToParts(new Date(ts)).filter(x => x.type !== 'literal').map(x => [x.type, parseInt(x.value)])
+    )
+    const shown = Date.UTC(p.year, p.month - 1, p.day, p.hour === 24 ? 0 : p.hour, p.minute, p.second)
+    ts += Date.UTC(y, m, d, hour, minute, 0) - shown
+  }
+  return new Date(ts)
+}
 function lockInstant(weekMondayIso) {
   const mon = new Date(weekMondayIso + 'T00:00:00')
   const sun = new Date(mon); sun.setDate(sun.getDate() + 6)
-  const y = sun.getFullYear(), m = sun.getMonth(), d = sun.getDate()
-  // We want the UTC instant whose America/New_York wall clock reads y-m-d 20:00.
-  // 1) Take 20:00 as if it were UTC.
-  // 2) Ask what New York's wall clock reads at that instant.
-  // 3) The difference between that reading and 20:00 is ET's offset; subtract it.
-  const asUtc = Date.UTC(y, m, d, 20, 0, 0)
-  const etReading = new Date(new Date(asUtc).toLocaleString('en-US', { timeZone: 'America/New_York' }))
-  const offsetMs = etReading.getTime() - asUtc         // ET is behind UTC → negative
-  return new Date(asUtc - offsetMs)
+  return zonedTimeToUtc(sun.getFullYear(), sun.getMonth(), sun.getDate(), 20, 0, 'America/New_York')
 }
 function isWeekLocked(weekMondayIso) {
   return Date.now() >= lockInstant(weekMondayIso).getTime()
