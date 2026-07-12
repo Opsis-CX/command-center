@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { RichEditor, RichContent, htmlToText, isEmptyHtml } from '../lib/RichEditor'
 
 // ============================================================
 // WEEKLY SYNC — each person submits a weekly update (7 sections);
@@ -129,13 +130,16 @@ function TabBtn({ active, onClick, children }) {
 }
 
 function MyUpdate({ week, userId, existing, locked, lockLabelText, onSaved }) {
-  const [form, setForm] = useState({})
   const [busy, setBusy] = useState(false)
-
+  // One HTML value per section; htmlRefs holds the latest for each.
+  const htmlRefs = useRef({})
+  // Seed the current HTML values whenever the loaded update or week changes.
+  const [seed, setSeed] = useState({})
   useEffect(() => {
     const init = {}
     SECTIONS.forEach(s => { init[s.key] = existing?.[s.key] || '' })
-    setForm(init)
+    htmlRefs.current = { ...init }
+    setSeed(init)
   }, [existing, week])
 
   const submitted = !!existing?.submitted_at
@@ -145,7 +149,10 @@ function MyUpdate({ week, userId, existing, locked, lockLabelText, onSaved }) {
     setBusy(true)
     const row = {
       profile_id: userId, week_start_date: week,
-      ...Object.fromEntries(SECTIONS.map(s => [s.key, form[s.key]?.trim() || null])),
+      ...Object.fromEntries(SECTIONS.map(s => {
+        const html = htmlRefs.current[s.key] || ''
+        return [s.key, isEmptyHtml(html) ? null : html]
+      })),
       updated_at: new Date().toISOString(),
     }
     if (markSubmitted) row.submitted_at = new Date().toISOString()
@@ -177,10 +184,20 @@ function MyUpdate({ week, userId, existing, locked, lockLabelText, onSaved }) {
               <span>{s.icon}</span> {s.label}
             </label>
             <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 8 }}>{s.hint}</div>
-            <textarea value={form[s.key] || ''} onChange={e => setForm(f => ({ ...f, [s.key]: e.target.value }))}
-              disabled={locked}
-              placeholder={`\u2022 ${s.hint}…`}
-              style={{ width: '100%', minHeight: 70, border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', background: locked ? 'var(--line-soft)' : 'var(--canvas)', opacity: locked ? 0.7 : 1, cursor: locked ? 'not-allowed' : 'text' }} />
+            {locked ? (
+              (seed[s.key] && !isEmptyHtml(seed[s.key]))
+                ? <div style={{ fontSize: 13, lineHeight: 1.6 }}><RichContent html={seed[s.key]} /></div>
+                : <div style={{ fontSize: 13, color: 'var(--ink-soft)', fontStyle: 'italic' }}>—</div>
+            ) : (
+              <RichEditor
+                key={s.key + ':' + week}
+                value={seed[s.key] || ''}
+                variant="chat"
+                minHeight={70}
+                placeholder={`${s.hint}…`}
+                onChange={(html) => { htmlRefs.current[s.key] = html }}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -239,7 +256,7 @@ function Presentation({ week, updates, profiles, nameOf }) {
                     <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--accent)', marginBottom: 6 }}>
                       {s.icon} {s.label}
                     </div>
-                    <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{u[s.key]}</div>
+                    <div style={{ fontSize: 13, lineHeight: 1.6 }}><RichContent html={u[s.key]} /></div>
                   </div>
                 ))}
               </div>
