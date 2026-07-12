@@ -16,6 +16,7 @@ const NAV = [
   { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂', roles: ['admin'] },
   { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', roles: ['admin', 'agent'] },
   { type: 'link', to: '/chat', label: 'Chat', ic: '💬', roles: ['admin', 'agent'] },
+  { type: 'link', to: '/settings', label: 'Settings', ic: '⚙️', roles: ['admin', 'agent'] },
   { type: 'link', to: '/hiring', label: 'Hiring', ic: '👥', roles: ['admin'] },
   {
     type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
