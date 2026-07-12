@@ -1,5 +1,4 @@
 import NotificationBell from './components/NotificationBell'
-import NotificationToggle from './components/NotificationToggle'
 import HeaderTaskBar from './components/HeaderTaskBar'
 import { useState, useEffect } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
@@ -103,7 +102,6 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <HeaderTaskBar />
-              <NotificationToggle />
               <NotificationBell />
             </div>
           </div>
