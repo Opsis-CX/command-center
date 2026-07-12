@@ -15,15 +15,25 @@ export function detectedTZ() {
 }
 
 // Given a wall-clock time in a named zone, return the true UTC instant (Date).
-// Works by asking what that zone's local time is for a guessed UTC and correcting.
+// Browser-safe: uses formatToParts (never Date string parsing, which is
+// locale/zone dependent). Computes the zone's offset at that moment and applies it.
 function zonedWallTimeToInstant(dateStr, timeStr, tz) {
   const [y, mo, d] = dateStr.split('-').map(Number)
   const [h, mi] = (timeStr || '00:00').split(':').map(Number)
-  // start from UTC guess, then find the offset that zone had at that moment
-  const guess = Date.UTC(y, mo - 1, d, h, mi)
-  const asZoned = new Date(guess).toLocaleString('en-US', { timeZone: tz })
-  const diff = guess - new Date(asZoned).getTime()
-  return new Date(guess + diff)
+  // Start with the naive UTC value for these wall numbers.
+  const naiveUTC = Date.UTC(y, mo - 1, d, h, mi)
+  // Ask what wall-clock time that instant shows as IN the target zone.
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+  const parts = dtf.formatToParts(new Date(naiveUTC)).reduce((a, p) => (a[p.type] = p.value, a), {})
+  // The zone rendered naiveUTC as this wall time; the gap is the zone's offset.
+  let zonedAsUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour % 24, +parts.minute, +parts.second)
+  const offset = zonedAsUTC - naiveUTC
+  // Subtract the offset so the wall numbers land in the target zone.
+  return new Date(naiveUTC - offset)
 }
 
 // Company-authored date+time → real instant (Date).
@@ -45,6 +55,27 @@ export function formatInTZ(instant, tz, opts = {}) {
 export function companyTimeToViewer(dateStr, timeStr, viewerTZ) {
   const inst = companyTimeToInstant(dateStr, timeStr)
   return formatInTZ(inst, viewerTZ || COMPANY_TZ)
+}
+
+// Wall time authored in `srcTZ` on `dateStr` → "h:mm AM" shown in `viewerTZ`.
+// Robust/browser-safe. Used for manual events (creator tz) and shifts (company tz).
+export function wallTimeToViewer(dateStr, timeStr, srcTZ, viewerTZ) {
+  if (!timeStr) return ''
+  try {
+    const inst = zonedWallTimeToInstant(dateStr, timeStr, srcTZ || COMPANY_TZ)
+    return formatInTZ(inst, viewerTZ || COMPANY_TZ)
+  } catch { return timeStr }
+}
+
+// Same, but returns 24h "HH:MM" (for positioning in day/week grids).
+export function wallTimeToViewerHHMM(dateStr, timeStr, srcTZ, viewerTZ) {
+  if (!timeStr) return timeStr
+  try {
+    const inst = zonedWallTimeToInstant(dateStr, timeStr, srcTZ || COMPANY_TZ)
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: viewerTZ || COMPANY_TZ, hour: '2-digit', minute: '2-digit', hour12: false })
+      .formatToParts(inst).reduce((a, p) => (a[p.type] = p.value, a), {})
+    return `${parts.hour % 24 === 24 ? '00' : parts.hour}:${parts.minute}`
+  } catch { return timeStr }
 }
 
 // Get the viewer's zone abbreviation (e.g. "CST") for labeling.
