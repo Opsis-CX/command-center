@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { can } from '../lib/permissions'
+import { can, ROLES } from '../lib/permissions'
 
 // TODO: replace with your real mock-call scheduling link (Calendly, Google
 // appointment page, etc.) when you have it.
@@ -36,7 +36,7 @@ export default function PeopleTags() {
     try {
       const [tagsRes, peopleRes, tgRes] = await Promise.all([
         supabase.from('tags').select('*').order('name'),
-        supabase.from('profiles').select('id, full_name, email, color, is_active, five9_username, five9_sent_at')
+        supabase.from('profiles').select('id, full_name, email, color, is_active, five9_username, five9_sent_at, role')
           .eq('is_active', true).order('full_name'),
         supabase.from('taggables').select('*').eq('entity_type', 'profile'),
       ])
@@ -69,6 +69,25 @@ export default function PeopleTags() {
       setBusyTag(false)
     }
   }
+  // Admin-only: change a person's permission role. Optimistic update, then
+  // persist. RLS on profiles must restrict role writes to admins (see notes).
+  const [roleBusy, setRoleBusy] = useState(null)   // person id currently saving
+  async function changeRole(personId, nextRole) {
+    if (!canEdit) return
+    const prev = people
+    setPeople(ps => ps.map(p => p.id === personId ? { ...p, role: nextRole } : p))
+    setRoleBusy(personId); setErr('')
+    try {
+      const { error } = await supabase.from('profiles').update({ role: nextRole }).eq('id', personId)
+      if (error) throw error
+    } catch (e) {
+      setPeople(prev)                               // roll back on failure
+      setErr(e.message || 'Could not update role')
+    } finally {
+      setRoleBusy(null)
+    }
+  }
+
   function personHasTag(personId, tagId) {
     return taggables.some(t => t.entity_id === personId && t.tag_id === tagId)
   }
@@ -209,6 +228,20 @@ export default function PeopleTags() {
                     onClick={() => five9Open === p.id ? setFive9Open(null) : openFive9(p)}>
                     {p.five9_sent_at ? 'Five9 ✓' : 'Five9 setup'}
                   </button>
+                  {canEdit ? (
+                    <select
+                      value={p.role || 'agent'}
+                      disabled={roleBusy === p.id}
+                      onChange={e => changeRole(p.id, e.target.value)}
+                      title="Permission role"
+                      style={{ fontSize: 12.5, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', fontFamily: 'inherit', background: 'var(--canvas)', color: 'var(--ink)', cursor: 'pointer', flex: 'none' }}>
+                      {ROLES.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+                    </select>
+                  ) : (
+                    <span style={{ fontSize: 12, color: 'var(--ink-soft)', flex: 'none' }}>
+                      {(ROLES.find(r => r.key === (p.role || 'agent')) || {}).label}
+                    </span>
+                  )}
                 </div>
 
                 {five9Open === p.id && (
