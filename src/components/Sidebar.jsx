@@ -13,6 +13,7 @@ import ChangePassword from './ChangePassword'
 const NAV = [
   { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, roles: ['admin', 'agent'] },
   { type: 'link', to: '/weekly-sync', label: 'Weekly Sync', ic: '🗓', roles: ['admin'] },
+  { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂', roles: ['admin'] },
   { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', roles: ['admin', 'agent'] },
   { type: 'link', to: '/chat', label: 'Chat', ic: '💬', roles: ['admin', 'agent'] },
   { type: 'link', to: '/hiring', label: 'Hiring', ic: '👥', roles: ['admin'] },
@@ -41,7 +42,6 @@ const NAV = [
       { to: '/people', label: 'People & tags', roles: ['admin'] },
       { to: '/clients', label: 'Clients', roles: ['admin'] },
       { to: '/positions', label: 'Positions', roles: ['admin'] },
-      { to: '/projects', label: 'Project Management', roles: ['admin'] },
     ],
   },
 ]
