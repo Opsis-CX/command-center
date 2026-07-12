@@ -37,6 +37,31 @@ function weekLabel(iso) {
   return `Week of ${f(mon)} – ${f(sun)}`
 }
 
+// The instant this week locks: the Sunday that ends the week, 8:00pm America/New_York.
+// Returns a Date (a true instant). After this moment, the week is read-only.
+function lockInstant(weekMondayIso) {
+  // Sunday = Monday + 6 days, at 20:00 ET. Build it as an ET wall-time, then
+  // convert to a real instant by measuring ET's offset on that date.
+  const mon = new Date(weekMondayIso + 'T00:00:00')
+  const sun = new Date(mon); sun.setDate(sun.getDate() + 6)
+  const y = sun.getFullYear(), m = sun.getMonth(), d = sun.getDate()
+  // Find the UTC instant whose ET wall-clock reads y-m-d 20:00.
+  // Start from a UTC guess, then correct by the ET offset at that guess.
+  const guess = new Date(Date.UTC(y, m, d, 20, 0, 0))
+  const etWall = new Date(guess.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const offsetMs = guess.getTime() - etWall.getTime()
+  return new Date(guess.getTime() + offsetMs)
+}
+function isWeekLocked(weekMondayIso) {
+  return Date.now() >= lockInstant(weekMondayIso).getTime()
+}
+function lockLabel(weekMondayIso) {
+  return lockInstant(weekMondayIso).toLocaleString('en-US', {
+    timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  }) + ' ET'
+}
+
 export default function WeeklySync() {
   const { user } = useAuth()
   const userId = user?.id
@@ -51,7 +76,7 @@ export default function WeeklySync() {
     setLoading(true)
     const [upRes, profRes] = await Promise.all([
       supabase.from('weekly_updates').select('*').eq('week_start_date', week),
-      supabase.from('profiles').select('id, full_name').order('full_name'),
+      supabase.from('profiles').select('id, full_name, role').order('full_name'),
     ])
     setUpdates(upRes.data || [])
     setProfiles(profRes.data || [])
@@ -63,13 +88,14 @@ export default function WeeklySync() {
 
   const mine = updates.find(u => u.profile_id === userId)
   const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || 'Unknown'
+  const locked = isWeekLocked(week)
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
         <div>
           <h1 className="page-title">Weekly Sync</h1>
-          <p className="page-sub">Everyone submits their update by Monday 12:00pm ET. It all rolls into one team review below.</p>
+          <p className="page-sub">Everyone submits their update by Sunday at 8:00pm ET. After that the week locks — no further edits. It all rolls into one team review below.</p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="btn btn-ghost" onClick={() => setWeek(w => addWeeks(w, -1))}>‹ Prev</button>
@@ -87,7 +113,7 @@ export default function WeeklySync() {
 
       {loading ? <p className="page-sub">Loading…</p> :
         tab === 'mine'
-          ? <MyUpdate week={week} userId={userId} existing={mine} onSaved={(msg) => { load(); flash(msg) }} />
+          ? <MyUpdate week={week} userId={userId} existing={mine} locked={locked} lockLabelText={lockLabel(week)} onSaved={(msg) => { load(); flash(msg) }} />
           : <Presentation week={week} updates={updates} profiles={profiles} nameOf={nameOf} />
       }
     </div>
@@ -102,7 +128,7 @@ function TabBtn({ active, onClick, children }) {
   )
 }
 
-function MyUpdate({ week, userId, existing, onSaved }) {
+function MyUpdate({ week, userId, existing, locked, lockLabelText, onSaved }) {
   const [form, setForm] = useState({})
   const [busy, setBusy] = useState(false)
 
@@ -115,6 +141,7 @@ function MyUpdate({ week, userId, existing, onSaved }) {
   const submitted = !!existing?.submitted_at
 
   async function save(markSubmitted) {
+    if (locked) { onSaved('This week is locked — no more edits.'); return }
     setBusy(true)
     const row = {
       profile_id: userId, week_start_date: week,
@@ -133,9 +160,14 @@ function MyUpdate({ week, userId, existing, onSaved }) {
 
   return (
     <div style={{ maxWidth: 720 }}>
-      {submitted && (
+      {locked && (
+        <div className="card" style={{ padding: '10px 14px', marginBottom: 16, background: 'var(--canvas)', border: '1px solid var(--line)', color: 'var(--ink-soft)', fontSize: 13, fontWeight: 500 }}>
+          🔒 This week locked at {lockLabelText}. Submissions and edits are closed{submitted ? '. Your submitted update is shown below (read-only).' : ' — nothing was submitted for you this week.'}
+        </div>
+      )}
+      {submitted && !locked && (
         <div className="card" style={{ padding: '10px 14px', marginBottom: 16, background: 'var(--passed-bg)', border: '1px solid var(--passed)', color: 'var(--passed)', fontSize: 13, fontWeight: 500 }}>
-          ✓ Submitted {new Date(existing.submitted_at).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}. You can still edit and re-save.
+          ✓ Submitted {new Date(existing.submitted_at).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}. You can still edit and re-save until {lockLabelText}.
         </div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -146,15 +178,18 @@ function MyUpdate({ week, userId, existing, onSaved }) {
             </label>
             <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 8 }}>{s.hint}</div>
             <textarea value={form[s.key] || ''} onChange={e => setForm(f => ({ ...f, [s.key]: e.target.value }))}
+              disabled={locked}
               placeholder={`\u2022 ${s.hint}…`}
-              style={{ width: '100%', minHeight: 70, border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', background: 'var(--canvas)' }} />
+              style={{ width: '100%', minHeight: 70, border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', background: locked ? 'var(--line-soft)' : 'var(--canvas)', opacity: locked ? 0.7 : 1, cursor: locked ? 'not-allowed' : 'text' }} />
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', gap: 10, marginTop: 16, position: 'sticky', bottom: 0, background: 'var(--canvas)', padding: '12px 0' }}>
-        <button className="btn btn-ghost" onClick={() => save(false)} disabled={busy}>{busy ? 'Saving…' : 'Save draft'}</button>
-        <button className="btn btn-primary" onClick={() => save(true)} disabled={busy}>{submitted ? 'Re-submit' : 'Submit update'}</button>
-      </div>
+      {!locked && (
+        <div style={{ display: 'flex', gap: 10, marginTop: 16, position: 'sticky', bottom: 0, background: 'var(--canvas)', padding: '12px 0' }}>
+          <button className="btn btn-ghost" onClick={() => save(false)} disabled={busy}>{busy ? 'Saving…' : 'Save draft'}</button>
+          <button className="btn btn-primary" onClick={() => save(true)} disabled={busy}>{submitted ? 'Re-submit' : 'Submit update'}</button>
+        </div>
+      )}
     </div>
   )
 }
@@ -162,7 +197,9 @@ function MyUpdate({ week, userId, existing, onSaved }) {
 function Presentation({ week, updates, profiles, nameOf }) {
   const submitted = updates.filter(u => u.submitted_at)
   const submittedIds = new Set(submitted.map(u => u.profile_id))
-  const missing = profiles.filter(p => !submittedIds.has(p.id))
+  // Only non-agents are expected to submit, so only they can be "missing".
+  const expected = profiles.filter(p => String(p.role || 'agent').trim().toLowerCase() !== 'agent')
+  const missing = expected.filter(p => !submittedIds.has(p.id))
 
   if (submitted.length === 0) {
     return (
