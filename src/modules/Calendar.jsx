@@ -1,28 +1,14 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { COMPANY_TZ, companyTimeToInstant, formatInTZ, detectedTZ } from '../lib/tz'
+import { COMPANY_TZ, companyTimeToInstant, formatInTZ, detectedTZ, wallTimeToViewerHHMM } from '../lib/tz'
 
 // Convert a wall-clock time stored in `srcTZ` on `dateStr` into "HH:MM" as seen
-// in `viewerTZ`. Used to translate shifts (company tz) and manual events
-// (creator tz) into the viewer's local clock before display.
+// in `viewerTZ` (robust/browser-safe, from tz.js).
 function toViewerHHMM(dateStr, timeStr, srcTZ, viewerTZ) {
   if (!timeStr || !dateStr) return timeStr
-  try {
-    const inst = zonedToInstant(dateStr, timeStr, srcTZ)
-    const parts = new Intl.DateTimeFormat('en-US', { timeZone: viewerTZ, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(inst)
-    const h = parts.find(p => p.type === 'hour').value
-    const m = parts.find(p => p.type === 'minute').value
-    return `${h}:${m}`
-  } catch { return timeStr }
-}
-function zonedToInstant(dateStr, timeStr, tz) {
-  const [y, mo, d] = dateStr.split('-').map(Number)
-  const [h, mi] = (timeStr || '00:00').split(':').map(Number)
-  const guess = Date.UTC(y, mo - 1, d, h, mi)
-  const asZoned = new Date(guess).toLocaleString('en-US', { timeZone: tz })
-  const diff = guess - new Date(asZoned).getTime()
-  return new Date(guess + diff)
+  if (!viewerTZ || viewerTZ === (srcTZ || COMPANY_TZ)) return timeStr
+  return wallTimeToViewerHHMM(dateStr, timeStr, srcTZ || COMPANY_TZ, viewerTZ)
 }
 
 // ============================================================
