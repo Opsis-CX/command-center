@@ -51,15 +51,19 @@ const MATRIX = {
 
 // can(role, "schedule.create_schedules") -> boolean
 export function can(role, perm) {
+  const r = String(role || '').trim().toLowerCase()
+  if (r === 'admin') return true            // admin always passes
   const allowed = MATRIX[perm]
   if (!allowed) return false
-  return allowed.includes(role)
+  return allowed.includes(r)
 }
 
 // Convenience: does this role have ANY capability under a page prefix?
 // Used for nav gating (show the page if they can do anything on it).
 export function canAny(role, pagePrefix) {
-  return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + ".")) && MATRIX[k].includes(role))
+  const r = String(role || '').trim().toLowerCase()
+  if (r === 'admin') return true
+  return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + ".")) && MATRIX[k].includes(r))
 }
 
 export const ALL_PERMS = Object.keys(MATRIX)
