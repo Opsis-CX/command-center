@@ -27,6 +27,11 @@ function currentMonday() {
   now.setDate(now.getDate() - day)
   return now.toISOString().slice(0, 10)
 }
+// The week people should be planning: NEXT week (you fill out next week's sync
+// during the current week). Defaults the view here.
+function defaultWeek() {
+  return addWeeks(currentMonday(), 1)
+}
 function addWeeks(iso, n) {
   const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n * 7)
   return d.toISOString().slice(0, 10)
@@ -60,9 +65,18 @@ function zonedTimeToUtc(y, m, d, hour, minute, timeZone) {
   return new Date(ts)
 }
 function lockInstant(weekMondayIso) {
+  // Lock at the Sunday 8pm ET immediately BEFORE this week starts.
+  // That Sunday is the day before the week's Monday.
   const mon = new Date(weekMondayIso + 'T00:00:00')
-  const sun = new Date(mon); sun.setDate(sun.getDate() + 6)
-  return zonedTimeToUtc(sun.getFullYear(), sun.getMonth(), sun.getDate(), 20, 0, 'America/New_York')
+  const sunBefore = new Date(mon); sunBefore.setDate(sunBefore.getDate() - 1)
+  return zonedTimeToUtc(sunBefore.getFullYear(), sunBefore.getMonth(), sunBefore.getDate(), 20, 0, 'America/New_York')
+}
+// The soft "due" reminder: end of the Friday before the week starts (Friday of
+// the current week = Monday minus 3 days). Used for messaging only, not a lock.
+function dueLabel(weekMondayIso) {
+  const mon = new Date(weekMondayIso + 'T00:00:00')
+  const fri = new Date(mon); fri.setDate(fri.getDate() - 3)
+  return fri.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
 }
 function isWeekLocked(weekMondayIso) {
   return Date.now() >= lockInstant(weekMondayIso).getTime()
@@ -77,7 +91,7 @@ function lockLabel(weekMondayIso) {
 export default function WeeklySync() {
   const { user } = useAuth()
   const userId = user?.id
-  const [week, setWeek] = useState(currentMonday())
+  const [week, setWeek] = useState(defaultWeek())
   const [tab, setTab] = useState('mine')            // 'mine' | 'presentation'
   const [updates, setUpdates] = useState([])
   const [profiles, setProfiles] = useState([])
@@ -125,7 +139,7 @@ export default function WeeklySync() {
 
       {loading ? <p className="page-sub">Loading…</p> :
         tab === 'mine'
-          ? <MyUpdate week={week} userId={userId} existing={mine} locked={locked} lockLabelText={lockLabel(week)} onSaved={(msg) => { load(); flash(msg) }} />
+          ? <MyUpdate week={week} userId={userId} existing={mine} locked={locked} lockLabelText={lockLabel(week)} dueLabelText={dueLabel(week)} onSaved={(msg) => { load(); flash(msg) }} />
           : <Presentation week={week} updates={updates} profiles={profiles} nameOf={nameOf} />
       }
     </div>
@@ -140,7 +154,7 @@ function TabBtn({ active, onClick, children }) {
   )
 }
 
-function MyUpdate({ week, userId, existing, locked, lockLabelText, onSaved }) {
+function MyUpdate({ week, userId, existing, locked, lockLabelText, dueLabelText, onSaved }) {
   const [busy, setBusy] = useState(false)
   // One HTML value per section; htmlRefs holds the latest for each.
   const htmlRefs = useRef({})
@@ -181,6 +195,11 @@ function MyUpdate({ week, userId, existing, locked, lockLabelText, onSaved }) {
       {locked && (
         <div className="card" style={{ padding: '10px 14px', marginBottom: 16, background: 'var(--canvas)', border: '1px solid var(--line)', color: 'var(--ink-soft)', fontSize: 13, fontWeight: 500 }}>
           🔒 This week locked at {lockLabelText}. Submissions and edits are closed{submitted ? '. Your submitted update is shown below (read-only).' : ' — nothing was submitted for you this week.'}
+        </div>
+      )}
+      {!locked && !submitted && (
+        <div className="card" style={{ padding: '10px 14px', marginBottom: 16, background: 'var(--accent-bg)', border: '1px solid var(--line)', color: 'var(--ink-soft)', fontSize: 13, fontWeight: 500 }}>
+          🗓 Due by end of day {dueLabelText}. Final cutoff is {lockLabelText}, when this week locks.
         </div>
       )}
       {submitted && !locked && (
