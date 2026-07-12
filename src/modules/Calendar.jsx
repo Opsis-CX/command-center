@@ -66,13 +66,17 @@ export default function Calendar() {
   const [gcalConn, setGcalConn] = useState(null)
   const [gcalEvents, setGcalEvents] = useState([])
   const [timeEntries, setTimeEntries] = useState([])
+  const [sharedWithMe, setSharedWithMe] = useState([])   // shares where I'm the viewer
+  const [mySharedOut, setMySharedOut] = useState([])     // shares I've granted
+  const [hiddenShares, setHiddenShares] = useState({})   // ownerId -> true (toggled off in my view)
+  const [showShares, setShowShares] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     const uid = user?.id || null
     setUserId(uid)
-    const [evRes, taskRes, taRes, clmRes, blkRes, profRes, subRes, feedRes, gtRes, geRes, timeRes] = await Promise.all([
+    const [evRes, taskRes, taRes, clmRes, blkRes, profRes, subRes, feedRes, gtRes, geRes, timeRes, shareInRes, shareOutRes] = await Promise.all([
       supabase.from('calendar_events').select('*'),
       supabase.from('tasks').select('id, name, due_date, priority, status, project_id').is('deleted_at', null),
       supabase.from('task_assignees').select('task_id, profile_id'),
@@ -84,6 +88,8 @@ export default function Calendar() {
       supabase.from('google_calendar_tokens').select('google_email, connected_at, color').maybeSingle(),
       supabase.from('google_calendar_events').select('*'),
       supabase.from('time_entries').select('id, task_id, user_id, started_at, ended_at, duration_minutes'),
+      supabase.from('calendar_shares').select('*').eq('viewer_id', uid),
+      supabase.from('calendar_shares').select('*').eq('owner_id', uid),
     ])
     setEvents(evRes.data || [])
     setTasks(taskRes.data || [])
@@ -96,6 +102,8 @@ export default function Calendar() {
     setGcalConn(gtRes.data || null)
     setGcalEvents(geRes.data || [])
     setTimeEntries(timeRes.data || [])
+    setSharedWithMe(shareInRes.data || [])
+    setMySharedOut(shareOutRes.data || [])
     setLoading(false)
   }, [])
 
@@ -169,12 +177,34 @@ export default function Calendar() {
       start: g.start_time, end: g.end_time, color: gcalConn?.color || '#EA4335',
       description: g.description, location: g.location, hangoutLink: g.hangout_link, htmlLink: g.html_link,
     }))
-    return [...evs, ...ivs, ...feeds, ...gcal].sort((a, b) => {
+
+    // Shared calendars: other people's manual events + intervals, when they've
+    // shared with me and I haven't toggled them off. Colored per share, labeled by name.
+    const shareByOwner = {}; sharedWithMe.forEach(s => { shareByOwner[s.owner_id] = s })
+    const activeShareOwners = new Set(sharedWithMe.filter(s => !hiddenShares[s.owner_id]).map(s => s.owner_id))
+    const nameOf = (pid) => (profiles.find(p => p.id === pid) || {}).full_name || 'Someone'
+    const sharedEvs = events
+      .filter(e => e.event_date === ds && e.owner_id && activeShareOwners.has(e.owner_id) && e.owner_id !== userId)
+      .map(e => ({
+        kind: 'shared', id: 'se-' + e.id, title: `${e.title} · ${nameOf(e.owner_id)}`, allDay: e.all_day,
+        start: e.start_time, end: e.end_time, color: shareByOwner[e.owner_id]?.color || '#0891B2',
+        description: e.notes, sharedFrom: nameOf(e.owner_id),
+      }))
+    const sharedIvs = claims
+      .filter(c => c.profile_id && activeShareOwners.has(c.profile_id) && c.profile_id !== userId)
+      .map(c => ({ c, b: blocks.find(b => b.id === c.shift_block_id) }))
+      .filter(x => x.b && x.b.block_date === ds)
+      .map(({ c, b }) => ({
+        kind: 'shared', id: 'si-' + c.id, title: `${nameOf(c.profile_id)} working`, allDay: false,
+        start: b.start_time, end: b.end_time, color: shareByOwner[c.profile_id]?.color || '#0891B2',
+      }))
+
+    return [...evs, ...ivs, ...feeds, ...gcal, ...sharedEvs, ...sharedIvs].sort((a, b) => {
       if (a.allDay && !b.allDay) return -1
       if (!a.allDay && b.allDay) return 1
       return (a.start || '').localeCompare(b.start || '')
     })
-  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn])
+  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn, events, claims, sharedWithMe, hiddenShares, profiles, userId])
 
   const tasksOn = useCallback((ds) => {
     const due = myTasks.filter(t => t.due_date === ds)
@@ -190,7 +220,8 @@ export default function Calendar() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
+        <button className="btn btn-ghost" onClick={() => setShowShares(true)} style={{ fontSize: 13 }}>👥 Shared calendars</button>
         <button className="btn btn-ghost" onClick={() => setShowSubs(true)} style={{ fontSize: 13 }}>⚙ Connected calendars</button>
       </div>
       <BookFrame view={view} setView={setView}>
@@ -198,6 +229,12 @@ export default function Calendar() {
         {view === 'week' && <WeekView {...shared} />}
         {view === 'day' && <DayView {...shared} />}
       </BookFrame>
+
+      {showShares && (
+        <SharesModal userId={userId} profiles={profiles} sharedWithMe={sharedWithMe} mySharedOut={mySharedOut}
+          hiddenShares={hiddenShares} setHiddenShares={setHiddenShares}
+          onClose={() => setShowShares(false)} onChanged={() => load()} />
+      )}
 
       {showSubs && (
         <SubscriptionsModal subs={subs} userId={userId} gcalConn={gcalConn} setGcalConn={setGcalConn} setSubs={setSubs}
@@ -718,6 +755,65 @@ function TaskAndTodoList({ tasks, todos, onToggle, onDel, emptyBoth, onToggleTas
 
 function PanelHead({ children }) {
   return <div style={{ color: '#c07a5a', fontSize: 12, letterSpacing: 2, fontWeight: 500 }}>{children}</div>
+}
+
+// ---------- SHARED CALENDARS ----------
+function SharesModal({ userId, profiles, sharedWithMe, mySharedOut, hiddenShares, setHiddenShares, onClose, onChanged }) {
+  const [pick, setPick] = useState('')
+  const [busy, setBusy] = useState(false)
+  const nameOf = (pid) => (profiles.find(p => p.id === pid) || {}).full_name || 'Unknown'
+  const alreadyShared = new Set(mySharedOut.map(s => s.viewer_id))
+  const candidates = profiles.filter(p => p.id !== userId && !alreadyShared.has(p.id))
+
+  async function shareWith() {
+    if (!pick) return
+    setBusy(true)
+    await supabase.from('calendar_shares').insert({ owner_id: userId, viewer_id: pick })
+    setPick(''); setBusy(false); onChanged()
+  }
+  async function unshare(viewerId) {
+    await supabase.from('calendar_shares').delete().eq('owner_id', userId).eq('viewer_id', viewerId)
+    onChanged()
+  }
+  function toggleHidden(ownerId) { setHiddenShares(prev => ({ ...prev, [ownerId]: !prev[ownerId] })) }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }} onClick={onClose}>
+      <div className="card" style={{ width: 480, maxWidth: '92vw', padding: 22, maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 17 }}>Shared calendars</h3>
+        <p className="page-sub" style={{ marginTop: 0, marginBottom: 16, fontSize: 13 }}>Share your meetings and work times with teammates so they can see your availability. Read-only.</p>
+
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>People viewing my calendar</div>
+        {mySharedOut.length ? mySharedOut.map(s => (
+          <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--line-soft)' }}>
+            <span style={{ flex: 1, fontSize: 13 }}>{nameOf(s.viewer_id)}</span>
+            <button className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--failed)' }} onClick={() => unshare(s.viewer_id)}>Stop sharing</button>
+          </div>
+        )) : <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', fontStyle: 'italic', marginBottom: 6 }}>You haven't shared with anyone yet.</div>}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, marginBottom: 20 }}>
+          <select value={pick} onChange={e => setPick(e.target.value)} style={{ flex: 1, fontSize: 13, padding: '7px 9px', borderRadius: 6, border: '1px solid var(--line)' }}>
+            <option value="">Share my calendar with…</option>
+            {candidates.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+          </select>
+          <button className="btn btn-primary" onClick={shareWith} disabled={!pick || busy}>Share</button>
+        </div>
+
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8, borderTop: '1px solid var(--line)', paddingTop: 16 }}>Calendars shared with me</div>
+        {sharedWithMe.length ? sharedWithMe.map(s => (
+          <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--line-soft)' }}>
+            <span style={{ width: 12, height: 12, borderRadius: 3, background: s.color, flexShrink: 0 }} />
+            <span style={{ flex: 1, fontSize: 13, opacity: hiddenShares[s.owner_id] ? 0.5 : 1 }}>{nameOf(s.owner_id)}</span>
+            <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => toggleHidden(s.owner_id)}>{hiddenShares[s.owner_id] ? 'Show' : 'Hide'}</button>
+          </div>
+        )) : <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', fontStyle: 'italic' }}>No one has shared their calendar with you yet.</div>}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
+          <button className="btn btn-ghost" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ---------- CONNECTED CALENDARS (external .ics feeds) ----------
