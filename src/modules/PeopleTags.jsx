@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
+import { can } from '../lib/permissions'
 
 // TODO: replace with your real mock-call scheduling link (Calendly, Google
 // appointment page, etc.) when you have it.
@@ -13,6 +15,8 @@ async function sendHiringEmail(kind, to, data) {
 }
 
 export default function PeopleTags() {
+  const { appRole } = useAuth()
+  const canEdit = can(appRole, 'people_and_tags.edit')
   const [tags, setTags] = useState([])
   const [people, setPeople] = useState([])
   const [taggables, setTaggables] = useState([])
@@ -49,6 +53,7 @@ export default function PeopleTags() {
     }
   }
   async function createTag() {
+    if (!canEdit) return
     const name = newTagName.trim()
     if (!name) return
     setBusyTag(true); setErr('')
@@ -68,6 +73,7 @@ export default function PeopleTags() {
     return taggables.some(t => t.entity_id === personId && t.tag_id === tagId)
   }
   async function toggleTag(personId, tagId) {
+    if (!canEdit) return
     const existing = taggables.find(t => t.entity_id === personId && t.tag_id === tagId)
     try {
       if (existing) {
@@ -96,6 +102,7 @@ export default function PeopleTags() {
     setFive9Msg('')
   }
   async function sendFive9(person) {
+    if (!canEdit) return
     if (!five9User.trim() || !five9Pass.trim()) { setFive9Msg('Enter both a username and a temporary password.'); return }
     setFive9Busy(true); setFive9Msg('')
     try {
@@ -145,6 +152,11 @@ export default function PeopleTags() {
         <h1 className="page-title">People &amp; tags</h1>
         <p className="page-sub">Create tags, then tag people. Certifications assigned to a tag reach everyone who has it.</p>
       </div>
+      {!canEdit && (
+        <div className="card" style={{ background: 'var(--accent-bg, rgba(0,119,182,.06))', border: '1px solid var(--line)', marginBottom: 16, padding: '10px 14px', fontSize: 13 }}>
+          👁 You have view-only access to this page.
+        </div>
+      )}
       {err && (
         <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}>
           <b style={{ color: 'var(--failed)' }}>Something went wrong.</b>
