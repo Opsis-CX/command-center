@@ -1,16 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { COMPANY_TZ } from '../lib/tz'
+import { COMPANY_TZ, companyTimeToInstant } from '../lib/tz'
 
-// interpret a company-zone wall time (date + "HH:MM") as a true instant
+// interpret a company-zone wall time (date + "HH:MM") as a true instant (robust)
 function companyInstant(dateStr, timeStr) {
-  const [y, mo, d] = dateStr.split('-').map(Number)
-  const [h, mi] = (timeStr || '00:00').slice(0, 5).split(':').map(Number)
-  const guess = Date.UTC(y, mo - 1, d, h, mi)
-  const asZoned = new Date(guess).toLocaleString('en-US', { timeZone: COMPANY_TZ })
-  const diff = guess - new Date(asZoned).getTime()
-  return new Date(guess + diff)
+  return companyTimeToInstant(dateStr, (timeStr || '00:00').slice(0, 5))
 }
 
 // Persistent control in the app's top header.
