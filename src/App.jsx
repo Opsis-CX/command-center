@@ -20,6 +20,7 @@ import ScheduleBuilder from './modules/ScheduleBuilder'
 import Positions from './modules/Positions'
 import ScheduleInsights from './modules/ScheduleInsights'
 import Chat from './modules/Chat'
+import Settings from './modules/Settings'
 import Projects from './modules/Projects'
 import Clients from './modules/Clients'
 import Reporting from './modules/Reporting'
@@ -112,6 +113,7 @@ function AuthedApp({ session, isAdmin, navOpen, setNavOpen, location }) {
             {!isAdmin && <Route path="/my-certifications" element={<Placeholder title="My certifications" note="These unlock the schedules you can claim." />} />}
 {!isAdmin && <Route path="/my-courses" element={<MyCourses />} />}            <Route path="/schedule" element={<Schedule />} />
             <Route path="/chat" element={<Chat />} />
+            <Route path="/settings" element={<Settings />} />
             {isAdmin && <Route path="/weekly-sync" element={<WeeklySync />} />}
             {isAdmin && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
             {isAdmin && <Route path="/positions" element={<Positions />} />}
