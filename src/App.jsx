@@ -20,6 +20,7 @@ import ScheduleBuilder from './modules/ScheduleBuilder'
 import Positions from './modules/Positions'
 import ScheduleInsights from './modules/ScheduleInsights'
 import Chat from './modules/Chat'
+import { canAny } from './lib/permissions'
 import Settings from './modules/Settings'
 import Projects from './modules/Projects'
 import Clients from './modules/Clients'
@@ -39,7 +40,7 @@ function AssessmentRoute() {
   return <AssessmentForm applicationId={appId} />
 }
 export default function App() {
-  const { session, loading, isAdmin } = useAuth()
+  const { session, loading, isAdmin, appRole } = useAuth()
   const [navOpen, setNavOpen] = useState(false)
   const location = useLocation()
   // apply the saved light/dark/system theme as early as possible
@@ -102,22 +103,23 @@ function AuthedApp({ session, isAdmin, navOpen, setNavOpen, location }) {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/calendar" element={<Calendar />} />
-            {isAdmin && <Route path="/certifications" element={<Certifications />} />}
-            {isAdmin && <Route path="/matrix" element={<Placeholder title="Certification matrix" note="The agents × call-types grid mounts here." />} />}
-            {isAdmin && <Route path="/courses" element={<CourseBuilder />} />}
-            {isAdmin && <Route path="/projects" element={<Projects />} />}
-            {isAdmin && <Route path="/clients" element={<Clients />} />}
-            {isAdmin && <Route path="/reporting" element={<Reporting />} />}
-            {isAdmin && <Route path="/people" element={<PeopleTags />} />}
-            {isAdmin && <Route path="/hiring" element={<HiringDashboard />} />}
-            {!isAdmin && <Route path="/my-certifications" element={<Placeholder title="My certifications" note="These unlock the schedules you can claim." />} />}
-{!isAdmin && <Route path="/my-courses" element={<MyCourses />} />}            <Route path="/schedule" element={<Schedule />} />
-            <Route path="/chat" element={<Chat />} />
             <Route path="/settings" element={<Settings />} />
-            {isAdmin && <Route path="/weekly-sync" element={<WeeklySync />} />}
-            {isAdmin && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
-            {isAdmin && <Route path="/positions" element={<Positions />} />}
-            {isAdmin && <Route path="/insights" element={<ScheduleInsights />} />}
+            <Route path="/schedule" element={<Schedule />} />
+            <Route path="/chat" element={canAny(appRole, 'chat') ? <Chat /> : <Placeholder title="No access" note="You don't have access to this area." />} />
+            {canAny(appRole, 'certifications.all') && <Route path="/certifications" element={<Certifications />} />}
+            {canAny(appRole, 'certifications.all') && <Route path="/matrix" element={<Placeholder title="Certification matrix" note="The agents × call-types grid mounts here." />} />}
+            {canAny(appRole, 'certifications.builder') && <Route path="/courses" element={<CourseBuilder />} />}
+            {canAny(appRole, 'certifications.assigned_to_complete') && <Route path="/my-certifications" element={<Placeholder title="My certifications" note="These unlock the schedules you can claim." />} />}
+            {canAny(appRole, 'certifications.assigned_to_complete') && <Route path="/my-courses" element={<MyCourses />} />}
+            {canAny(appRole, 'project_management') && <Route path="/projects" element={<Projects />} />}
+            {canAny(appRole, 'clients.view_only') && <Route path="/clients" element={<Clients />} />}
+            {canAny(appRole, 'reporting') && <Route path="/reporting" element={<Reporting />} />}
+            {canAny(appRole, 'people_and_tags.view_only') && <Route path="/people" element={<PeopleTags />} />}
+            {canAny(appRole, 'hiring') && <Route path="/hiring" element={<HiringDashboard />} />}
+            {canAny(appRole, 'weekly_sync') && <Route path="/weekly-sync" element={<WeeklySync />} />}
+            {canAny(appRole, 'schedule.create_schedules') && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
+            {canAny(appRole, 'positions.view_only') && <Route path="/positions" element={<Positions />} />}
+            {canAny(appRole, 'schedule.all') && <Route path="/insights" element={<ScheduleInsights />} />}
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </div>
