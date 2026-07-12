@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { can } from '../lib/permissions'
 
 // ============================================================
 // CLIENTS — company-wide client list, shared by the Projects
 // module (tasks.client_id) and Scheduling (schedules.client_id).
-// One place to add / rename / delete clients.
+// View-only for some roles; edit controls gated to clients.edit.
 // ============================================================
 
 export default function Clients() {
-  const { isAdmin } = useAuth()
+  const { appRole } = useAuth()
+  const canEdit = can(appRole, 'clients.edit')
   const [clients, setClients] = useState([])
   const [taskCounts, setTaskCounts] = useState({})
   const [scheduleCounts, setScheduleCounts] = useState({})
@@ -74,7 +76,6 @@ export default function Clients() {
     setClients(prev => prev.filter(x => x.id !== c.id)); flash('Client deleted')
   }
 
-  if (!isAdmin) return <p className="page-sub">You don't have access to manage clients.</p>
   if (loading) return <p className="page-sub">Loading clients…</p>
 
   return (
@@ -87,6 +88,7 @@ export default function Clients() {
       {msg && <div className="card" style={{ padding: '8px 12px', marginBottom: 12, fontSize: 13, color: 'var(--accent)', display: 'inline-block' }}>{msg}</div>}
 
       {/* add */}
+      {canEdit && (
       <div className="card" style={{ padding: 16, marginBottom: 20, maxWidth: 480 }}>
         <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-soft)', display: 'block', marginBottom: 6 }}>Add a new client</label>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -97,6 +99,7 @@ export default function Clients() {
           <button onClick={addClient} className="btn btn-primary">Add</button>
         </div>
       </div>
+      )}
 
       {/* list */}
       <div className="card" style={{ padding: 0, overflow: 'hidden', maxWidth: 620 }}>
@@ -124,10 +127,12 @@ export default function Clients() {
                       {tCount} task{tCount !== 1 ? 's' : ''} · {sCount} schedule{sCount !== 1 ? 's' : ''}
                     </div>
                   </div>
-                  <button onClick={() => { setEditingId(c.id); setEditName(c.name) }} title="Rename"
-                    style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, padding: 4 }}>✎</button>
-                  <button onClick={() => deleteClient(c)} title="Delete"
-                    style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--failed)', fontSize: 13, padding: 4 }}>🗑</button>
+                  {canEdit && <>
+                    <button onClick={() => { setEditingId(c.id); setEditName(c.name) }} title="Rename"
+                      style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, padding: 4 }}>✎</button>
+                    <button onClick={() => deleteClient(c)} title="Delete"
+                      style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--failed)', fontSize: 13, padding: 4 }}>🗑</button>
+                  </>}
                 </>
               )}
             </div>
