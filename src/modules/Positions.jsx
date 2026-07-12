@@ -1,13 +1,18 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
+import { can } from '../lib/permissions'
 
 // ============================================================
-// POSITIONS — admin
+// POSITIONS
 // Manage the roles/positions people are scheduled for.
 // Stored in the call_types table; UI calls them "Positions".
+// Edit controls gated to roles with positions.edit; others see view-only.
 // ============================================================
 
 export default function Positions() {
+  const { appRole } = useAuth()
+  const canEdit = can(appRole, 'positions.edit')
   const [positions, setPositions] = useState([])
   const [schedules, setSchedules] = useState([])
   const [loading, setLoading] = useState(true)
@@ -46,7 +51,7 @@ export default function Positions() {
           <h1 className="page-title">Positions</h1>
           <p className="page-sub">The roles people are scheduled for. Each schedule is tied to a position; certifications can require one.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setEditing({})}>+ New position</button>
+        {canEdit && <button className="btn btn-primary" onClick={() => setEditing({})}>+ New position</button>}
       </div>
 
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
@@ -66,10 +71,12 @@ export default function Positions() {
                 </div>
                 {p.description && <p className="page-sub" style={{ marginTop: 5 }}>{p.description}</p>}
                 <p className="page-sub" style={{ marginTop: 8, fontSize: 12 }}>{scheduleCount} schedule{scheduleCount !== 1 ? 's' : ''}</p>
-                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '6px 12px' }} onClick={() => setEditing(p)}>Edit</button>
-                  <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '6px 12px' }} onClick={() => toggleActive(p)}>{p.active === false ? 'Activate' : 'Deactivate'}</button>
-                </div>
+                {canEdit && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '6px 12px' }} onClick={() => setEditing(p)}>Edit</button>
+                    <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '6px 12px' }} onClick={() => toggleActive(p)}>{p.active === false ? 'Activate' : 'Deactivate'}</button>
+                  </div>
+                )}
               </div>
             )
           })}
