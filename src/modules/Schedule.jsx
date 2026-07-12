@@ -2,6 +2,21 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { notifyIntervalReleased, notifyNoShow } from '../lib/notify'
+import { COMPANY_TZ } from '../lib/tz'
+
+// Convert a company-zone wall time on a given date to the viewer's local "h:mm AM".
+function blockTimeInViewer(dateStr, timeStr, viewerTZ) {
+  if (!timeStr) return ''
+  if (!viewerTZ || viewerTZ === COMPANY_TZ) return formatTime(timeStr)
+  try {
+    const [y, mo, d] = dateStr.split('-').map(Number)
+    const [h, mi] = timeStr.slice(0, 5).split(':').map(Number)
+    const guess = Date.UTC(y, mo - 1, d, h, mi)
+    const asZoned = new Date(guess).toLocaleString('en-US', { timeZone: COMPANY_TZ })
+    const inst = new Date(guess + (guess - new Date(asZoned).getTime()))
+    return inst.toLocaleTimeString('en-US', { timeZone: viewerTZ, hour: 'numeric', minute: '2-digit' })
+  } catch { return formatTime(timeStr) }
+}
 
 // ============================================================
 // SCHEDULE
@@ -557,7 +572,7 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
       .map(b => {
         const claim = claims.find(c => c.shift_block_id === b.id && c.profile_id === me.id)
         let cls = 'mine'; if (claim?.checked_in_at) cls += ' checkedin'; if (claim?.status === 'no_show') cls = 'noshow'
-        return <Iv key={b.id} block={b} cls={cls} time={`${formatTime(b.start_time)}–${formatTime(b.end_time)}`} role={b.role} onPop={onPop} />
+        return <Iv key={b.id} block={b} cls={cls} time={`${blockTimeInViewer(b.block_date, b.start_time, me?.timezone)}–${blockTimeInViewer(b.block_date, b.end_time, me?.timezone)}`} role={b.role} onPop={onPop} />
       })
     return <div key={ds} className={'wg-cell' + (ds === todayStr ? ' today' : '') + (items.length ? '' : ' dim')}>{items}</div>
   })
@@ -575,7 +590,7 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
     }).sort((a, b) => a.start_time.localeCompare(b.start_time))
       .map(b => {
         const left = b.total_spots - claims.filter(c => c.shift_block_id === b.id).length
-        return <Iv key={b.id} block={b} cls="open" spots={`${left} open`} time={`${formatTime(b.start_time)}–${formatTime(b.end_time)}`} role={b.role} onPop={onPop} />
+        return <Iv key={b.id} block={b} cls="open" spots={`${left} open`} time={`${blockTimeInViewer(b.block_date, b.start_time, me?.timezone)}–${blockTimeInViewer(b.block_date, b.end_time, me?.timezone)}`} role={b.role} onPop={onPop} />
       })
     return <div key={ds} className={'wg-cell' + (ds === todayStr ? ' today' : '') + (items.length ? '' : ' dim')}>{items}</div>
   })
@@ -652,12 +667,12 @@ function AdminGrid({ days, todayStr, weekBlocks, claims, profiles, onPop }) {
         const left = b.total_spots - cl.length
         if (person.__open) {
           if (left <= 0) return null
-          return <Iv key={b.id} block={b} cls="open" spots={`${left} open`} time={`${formatTime(b.start_time)}–${formatTime(b.end_time)}`} role={b.role} onPop={onPop} />
+          return <Iv key={b.id} block={b} cls="open" spots={`${left} open`} time={`${blockTimeInViewer(b.block_date, b.start_time, me?.timezone)}–${blockTimeInViewer(b.block_date, b.end_time, me?.timezone)}`} role={b.role} onPop={onPop} />
         }
         const theirs = cl.find(c => c.profile_id === person.id)
         if (!theirs) return null
         let cls = 'taken'; if (theirs.checked_in_at) cls += ' checkedin'; if (theirs.status === 'no_show') cls = 'noshow'
-        return <Iv key={b.id} block={b} cls={cls} time={`${formatTime(b.start_time)}–${formatTime(b.end_time)}`} role={b.role} onPop={onPop} />
+        return <Iv key={b.id} block={b} cls={cls} time={`${blockTimeInViewer(b.block_date, b.start_time, me?.timezone)}–${blockTimeInViewer(b.block_date, b.end_time, me?.timezone)}`} role={b.role} onPop={onPop} />
       })
       return <div key={ds} className={'wg-cell' + (ds === todayStr ? ' today' : '') + (items.some(Boolean) ? '' : ' dim')}>{items}</div>
     })
@@ -693,7 +708,7 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIn
 
   return <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
     <div className="modal" style={{ width: 380 }}>
-      <div style={{ fontSize: 18, fontWeight: 700 }}>{formatTime(block.start_time)} – {formatTime(block.end_time)}</div>
+      <div style={{ fontSize: 18, fontWeight: 700 }}>{blockTimeInViewer(block.block_date, block.start_time, me?.timezone)} – {blockTimeInViewer(block.block_date, block.end_time, me?.timezone)}</div>
       <div className="page-sub" style={{ marginBottom: 14 }}>{new Date(block.block_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, marginBottom: 16 }}>
@@ -763,7 +778,7 @@ function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onC
           {date === todayStr ? 'Today · ' : ''}{new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 12 }}>
-          {byDate[date].map(e => <ShiftCard key={e.claim.id} block={e.block} claim={e.claim} isPast={false} started={hasIntervalStarted(e.block)} onUnclaim={onUnclaim} onCheckIn={onCheckIn} onCheckOut={onCheckOut} />)}
+          {byDate[date].map(e => <ShiftCard key={e.claim.id} block={e.block} claim={e.claim} isPast={false} started={hasIntervalStarted(e.block)} viewerTZ={me?.timezone} onUnclaim={onUnclaim} onCheckIn={onCheckIn} onCheckOut={onCheckOut} />)}
         </div>
       </div>
     )) : <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 20 }}>No upcoming intervals.</div></div>}
@@ -771,7 +786,7 @@ function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onC
     {past.length > 0 && <div style={{ marginBottom: 22 }}>
       <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', marginBottom: 10, opacity: .6 }}>Past intervals</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 12 }}>
-        {past.slice(0, 12).map(e => <ShiftCard key={e.claim.id} block={e.block} claim={e.claim} isPast={true} started={true} onUnclaim={onUnclaim} onCheckIn={onCheckIn} onCheckOut={onCheckOut} />)}
+        {past.slice(0, 12).map(e => <ShiftCard key={e.claim.id} block={e.block} claim={e.claim} isPast={true} started={true} viewerTZ={me?.timezone} onUnclaim={onUnclaim} onCheckIn={onCheckIn} onCheckOut={onCheckOut} />)}
       </div>
     </div>}
   </div>
@@ -784,7 +799,7 @@ function workedLabel(claim) {
   return h ? `${h}h ${m}m` : `${m}m`
 }
 
-function ShiftCard({ block, claim, isPast, started, onUnclaim, onCheckIn, onCheckOut }) {
+function ShiftCard({ block, claim, isPast, started, viewerTZ, onUnclaim, onCheckIn, onCheckOut }) {
   const checkedIn = claim?.checked_in_at; const checkedOut = claim?.checked_out_at
   const noShow = claim?.status === 'no_show'
   const pending = claim?.status === 'pending_review'
@@ -806,7 +821,7 @@ function ShiftCard({ block, claim, isPast, started, onUnclaim, onCheckIn, onChec
   }
 
   return <div className="iv mine" style={{ cursor: 'default', padding: '14px 16px' }}>
-    <div className="iv-time" style={{ fontSize: 15 }}>{formatTime(block.start_time)} – {formatTime(block.end_time)}</div>
+    <div className="iv-time" style={{ fontSize: 15 }}>{blockTimeInViewer(block.block_date, block.start_time, viewerTZ)} – {blockTimeInViewer(block.block_date, block.end_time, viewerTZ)}</div>
     {block.role && <div className="iv-sub" style={{ fontSize: 12, marginBottom: 4 }}>{block.role}</div>}
 
     {checkedOut ? (
