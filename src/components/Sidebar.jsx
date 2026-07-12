@@ -4,49 +4,51 @@ import { useAuth } from '../lib/auth'
 import { useUnread } from '../lib/unread'
 import { supabase } from '../lib/supabase'
 import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
+import { canAny } from '../lib/permissions'
 import ChangePassword from './ChangePassword'
 // Sidebar navigation.
 // - `type: 'link'`  → a single top-level link.
 // - `type: 'section'` → a clickable header that expands/collapses its children.
-// Each item keeps a `roles` list; a person only sees items for their role, and
-// a section with no visible children is hidden entirely.
+// Each item carries a `perm` page-key; a person only sees it if their role has
+// any capability under that page. Sections with no visible children are hidden.
 const NAV = [
-  { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, roles: ['admin', 'agent'] },
-  { type: 'link', to: '/weekly-sync', label: 'Weekly Sync', ic: '🗓', roles: ['admin'] },
-  { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂', roles: ['admin'] },
-  { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', roles: ['admin', 'agent'] },
-  { type: 'link', to: '/chat', label: 'Chat', ic: '💬', roles: ['admin', 'agent'] },
-  { type: 'link', to: '/hiring', label: 'Hiring', ic: '👥', roles: ['admin'] },
+  { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, perm: 'dashboard' },
+  { type: 'link', to: '/weekly-sync', label: 'Weekly Sync', ic: '🗓', perm: 'weekly_sync' },
+  { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
+  { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂', perm: 'project_management' },
+  { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },  // everyone gets calendar
+  { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
+  { type: 'link', to: '/hiring', label: 'Hiring', ic: '👥', perm: 'hiring' },
   {
-    type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
+    type: 'section', key: 'certifications', label: 'Certifications', ic: '✦', perm: 'certifications',
     children: [
-      { to: '/certifications', label: 'Certifications', roles: ['admin'] },
-      { to: '/my-certifications', label: 'My certifications', roles: ['agent'] },
-      { to: '/matrix', label: 'Certification matrix', roles: ['admin'] },
-      { to: '/courses', label: 'Course builder', roles: ['admin'] },
-      { to: '/my-courses', label: 'My courses', roles: ['agent'] },
+      { to: '/certifications', label: 'Certifications', perm: 'certifications.all' },
+      { to: '/my-certifications', label: 'My certifications', perm: 'certifications.view_personal_score_and_content_assigned' },
+      { to: '/matrix', label: 'Certification matrix', perm: 'certifications.all' },
+      { to: '/courses', label: 'Course builder', perm: 'certifications.builder' },
+      { to: '/my-courses', label: 'My courses', perm: 'certifications.assigned_to_complete' },
     ],
   },
   {
-    type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
+    type: 'section', key: 'schedule', label: 'Schedule', ic: '◷', perm: 'schedule',
     children: [
-      { to: '/schedule', label: 'Schedule', roles: ['admin', 'agent'] },
-      { to: '/schedule-builder', label: 'Schedule builder', roles: ['admin'] },
-      { to: '/insights', label: 'Schedule insights', roles: ['admin'] },
+      { to: '/schedule', label: 'Schedule', perm: 'schedule.view_my_schedule' },
+      { to: '/schedule-builder', label: 'Schedule builder', perm: 'schedule.create_schedules' },
+      { to: '/insights', label: 'Schedule insights', perm: 'schedule.all' },
     ],
   },
-  { type: 'link', to: '/reporting', label: 'Reporting', ic: '📈', roles: ['admin'] },
+  { type: 'link', to: '/reporting', label: 'Reporting', ic: '📈', perm: 'reporting' },
   {
-    type: 'section', key: 'backend', label: 'Backend', ic: '⚙',
+    type: 'section', key: 'backend', label: 'Backend', ic: '⚙', perm: null,
     children: [
-      { to: '/people', label: 'People & tags', roles: ['admin'] },
-      { to: '/clients', label: 'Clients', roles: ['admin'] },
-      { to: '/positions', label: 'Positions', roles: ['admin'] },
+      { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
+      { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
+      { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
     ],
   },
 ]
 export default function Sidebar({ open, onNavigate }) {
-  const { isAdmin, level, roles, user, signOut } = useAuth()
+  const { isAdmin, level, roles, user, signOut, appRole } = useAuth()
   const { total: unreadTotal } = useUnread()
   const location = useLocation()
   const isOwner = level >= 100 || (roles || []).includes('owner')
@@ -95,7 +97,8 @@ export default function Sidebar({ open, onNavigate }) {
       {NAV.map(entry => {
         // --- single top-level link ---
         if (entry.type === 'link') {
-          if (!entry.roles.includes(viewRole)) return null
+          // perm null = available to everyone (e.g. Calendar)
+          if (entry.perm && !canAny(appRole, entry.perm)) return null
           return (
             <NavLink key={entry.to} to={entry.to} end={entry.end}
               onClick={() => onNavigate && onNavigate()}
@@ -110,7 +113,7 @@ export default function Sidebar({ open, onNavigate }) {
           )
         }
         // --- collapsible section ---
-        const children = entry.children.filter(c => c.roles.includes(viewRole))
+        const children = entry.children.filter(c => !c.perm || canAny(appRole, c.perm))
         if (!children.length) return null
         const isOpen = !!openSections[entry.key]
         return (
