@@ -413,6 +413,7 @@ export default function Chat() {
 }
 
 function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profiles, isMobile, onBack, markRead }) {
+  const { appRole } = useAuth()
   const [messages, setMessages] = useState([])
   const [senders, setSenders] = useState({})
   const [acks, setAcks] = useState([])           // all acknowledgments for messages in view
@@ -656,6 +657,30 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     if (error) { setMessages(prev); setErr('Could not delete: ' + error.message) }
   }
 
+  // ---- EDIT (author only; normal messages only, not @update) ----
+  const [editing, setEditing] = useState(null)   // { id, html } or null
+  const [editSaving, setEditSaving] = useState(false)
+  function openEdit(m) {
+    if (m.sender_id !== me.id || m.requires_ack) return
+    setEditing({ id: m.id, html: m.body || '' })
+  }
+  async function saveEdit(rawHtml) {
+    if (!editing) return
+    const body = sanitizeHtml(rawHtml)
+    const plain = htmlToText(rawHtml)
+    if (!plain) { setErr("A message can't be empty. Delete it instead."); return }
+    const id = editing.id
+    const now = new Date().toISOString()
+    const prev = messages
+    setMessages(cur => cur.map(x => x.id === id ? { ...x, body, edited_at: now } : x))  // optimistic
+    setEditSaving(true); setErr('')
+    const { error } = await supabase.from('messages')
+      .update({ body, edited_at: now }).eq('id', id).eq('sender_id', me.id)
+    setEditSaving(false)
+    if (error) { setMessages(prev); setErr('Could not save edit: ' + error.message); return }
+    setEditing(null)
+  }
+
   // ---- SCROLL ----
   //
   // Goal: land on the newest message when a channel opens, follow new messages
@@ -861,7 +886,9 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   // The DB is the real gate — this only decides whether to draw the button.
   // Do NOT add isOwner here: `level` is not a column on profiles, so the DB
   // would reject a delete that this let the user attempt.
-  const canModerate = isAdmin
+  // Delete rule: the author, or anyone whose role isn't 'agent'
+  // (asc / support / certification / marketing / admin can moderate).
+  const canModerate = String(appRole || 'agent').trim().toLowerCase() !== 'agent'
 
   // Read receipts render on the newest message only; a line under every one is noise.
   const newestId = topLevel.length
@@ -898,6 +925,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             const grouped = prev && prev.sender_id === m.sender_id && !m.requires_ack && !prev.requires_ack && (new Date(m.created_at) - new Date(prev.created_at) < 5 * 60000)
             const name = m.sender_id === me.id ? 'You' : (senders[m.sender_id] || 'Someone')
             const canDelete = !m._optimistic && (m.sender_id === me.id || canModerate)
+            const canEdit = !m._optimistic && m.sender_id === me.id && !m.requires_ack
             const readerIds = m._optimistic ? [] : readersOf(m, readState, members, me.id)
             const readerNames = readerIds.map(pid => senders[pid] || profiles.find(p => p.id === pid)?.full_name).filter(Boolean)
             const isNewest = m.id === newestId
@@ -912,6 +940,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                   {!grouped && <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
                     <b style={{ fontSize: 13.5 }}>{name}</b>
                     <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{timeLabel(m.created_at)}</span>
+                    {m.edited_at && <span style={{ fontSize: 10.5, color: 'var(--ink-soft)', fontStyle: 'italic' }}>(edited)</span>}
                     {m.is_here && <span className="badge" style={{ background: 'var(--accent-bg)', color: 'var(--accent)', fontSize: 10 }}>@here</span>}
                   </div>}
 
@@ -961,7 +990,14 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                   )}
                 </div>
 
-                {/* Hover-revealed delete. Own message, or moderator. */}
+                {/* Hover-revealed actions. Edit = own normal message; delete = own or moderator. */}
+                {canEdit && (
+                  <button className="chat-msg-delete" title="Edit your message"
+                    onClick={() => openEdit(m)}
+                    style={{ position: 'absolute', top: 0, right: canDelete ? 34 : 0, border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '4px 6px', color: 'var(--ink-soft)' }}>
+                    ✏️
+                  </button>
+                )}
                 {canDelete && (
                   <button className="chat-msg-delete" title={m.sender_id === me.id ? 'Delete your message' : 'Remove this message'}
                     onClick={() => deleteMessage(m)}
@@ -1065,6 +1101,15 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 
       {trackFor && <TrackPanel messageId={trackFor} me={me} members={members} profiles={profiles} acks={acks} onClose={() => setTrackFor(null)} />}
       {threadFor && <ThreadPanel parentId={threadFor} channelId={channelId} me={me} senders={senders} profiles={profiles} channel={channel} members={members} onClose={() => setThreadFor(null)} />}
+      {editing && (
+        <EditMessageModal
+          initialHtml={editing.html}
+          profiles={profiles}
+          saving={editSaving}
+          onCancel={() => setEditing(null)}
+          onSave={saveEdit}
+        />
+      )}
       {showPrefs && <NotificationPrefsPanel channelId={channelId} channelName={channel?.name}
         isDm={channel?.is_dm} dmName={dmName} meId={me.id} profiles={profiles}
         onClose={() => setShowPrefs(false)} />}
@@ -1373,6 +1418,38 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
 }
 
 // Who has read a message. Renders inline under the newest one.
+function EditMessageModal({ initialHtml, profiles, saving, onCancel, onSave }) {
+  const editorRef = useRef(null)
+  const htmlRef = useRef(initialHtml || '')
+  return (
+    <div onClick={onCancel}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 4000, display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, width: 'min(560px, 100%)', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', fontWeight: 700, fontSize: 15 }}>Edit message</div>
+        <div style={{ padding: 16 }}>
+          <RichEditor
+            value={initialHtml || ''}
+            variant="chat"
+            autofocus
+            editorRef={editorRef}
+            profiles={profiles}
+            onChange={(html) => { htmlRef.current = html }}
+            placeholder="Edit your message…"
+          />
+        </div>
+        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button className="btn btn-ghost" onClick={onCancel} disabled={saving}>Cancel</button>
+          <button className="btn btn-primary" disabled={saving}
+            onClick={() => onSave(htmlRef.current)}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ReadByPanel({ names, unread, onClose }) {
   return (
     <>
