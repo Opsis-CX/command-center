@@ -39,7 +39,7 @@ export function ProjectsDataProvider({ children }) {
       const [profRes, profilesRes, projRes, cliRes, recRes, pmRes, taskRes, taRes, comRes, actRes, attRes, timeRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         supabase.from('profiles').select('*').order('full_name'),
-        supabase.from('projects').select('*').order('created_at'),
+        supabase.from('projects').select('*').order('name', { ascending: true }),
         supabase.from('clients').select('*').order('name'),
         supabase.from('recurring_tasks').select('*').order('created_at', { ascending: false }),
         supabase.from('project_members').select('*'),
