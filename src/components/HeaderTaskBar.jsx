@@ -1,6 +1,17 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { COMPANY_TZ } from '../lib/tz'
+
+// interpret a company-zone wall time (date + "HH:MM") as a true instant
+function companyInstant(dateStr, timeStr) {
+  const [y, mo, d] = dateStr.split('-').map(Number)
+  const [h, mi] = (timeStr || '00:00').slice(0, 5).split(':').map(Number)
+  const guess = Date.UTC(y, mo - 1, d, h, mi)
+  const asZoned = new Date(guess).toLocaleString('en-US', { timeZone: COMPANY_TZ })
+  const diff = guess - new Date(asZoned).getTime()
+  return new Date(guess + diff)
+}
 
 // Persistent control in the app's top header.
 // - Non-agents ("support"/admins): task timer (pick a task, start/stop, live counter).
@@ -53,13 +64,12 @@ export default function HeaderTaskBar() {
 
   // ---------- check in / out: find an interval active right now ----------
   const myTaskIds = new Set(assignees.map(a => a.task_id))
-  const now = etNow()
+  const now = new Date()   // real instant; compare against company-tz instants
   const activeClaim = claims.map(c => ({ c, b: blocks.find(b => b.id === c.shift_block_id) }))
     .filter(({ c, b }) => {
       if (!b || c.status === 'no_show' || c.checked_out_at) return false
-      const start = new Date(`${b.block_date}T${b.start_time.slice(0, 5)}:00`)
-      const end = new Date(`${b.block_date}T${b.end_time.slice(0, 5)}:00`)
-      // active from a bit before start through a grace window after end
+      const start = companyInstant(b.block_date, b.start_time)
+      const end = companyInstant(b.block_date, b.end_time)
       return now >= new Date(start.getTime() - GRACE_MIN * 60000) && now <= new Date(end.getTime() + GRACE_MIN * 60000)
     })[0]
 
@@ -71,8 +81,8 @@ export default function HeaderTaskBar() {
   async function checkOut() {
     if (!activeClaim) return
     const b = activeClaim.b
-    const end = new Date(`${b.block_date}T${b.end_time.slice(0, 5)}:00`)
-    const outOfWindow = Math.abs((etNow() - end) / 60000) > GRACE_MIN
+    const end = companyInstant(b.block_date, b.end_time)
+    const outOfWindow = Math.abs((new Date() - end) / 60000) > GRACE_MIN
     let note = ''
     if (outOfWindow) { note = window.prompt("You're outside your scheduled time. Add a note (required):") || ''; if (!note.trim()) return }
     const payload = { checked_out_at: new Date().toISOString(), status: outOfWindow ? 'pending_review' : 'completed' }
