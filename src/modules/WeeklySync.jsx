@@ -40,17 +40,17 @@ function weekLabel(iso) {
 // The instant this week locks: the Sunday that ends the week, 8:00pm America/New_York.
 // Returns a Date (a true instant). After this moment, the week is read-only.
 function lockInstant(weekMondayIso) {
-  // Sunday = Monday + 6 days, at 20:00 ET. Build it as an ET wall-time, then
-  // convert to a real instant by measuring ET's offset on that date.
   const mon = new Date(weekMondayIso + 'T00:00:00')
   const sun = new Date(mon); sun.setDate(sun.getDate() + 6)
   const y = sun.getFullYear(), m = sun.getMonth(), d = sun.getDate()
-  // Find the UTC instant whose ET wall-clock reads y-m-d 20:00.
-  // Start from a UTC guess, then correct by the ET offset at that guess.
-  const guess = new Date(Date.UTC(y, m, d, 20, 0, 0))
-  const etWall = new Date(guess.toLocaleString('en-US', { timeZone: 'America/New_York' }))
-  const offsetMs = guess.getTime() - etWall.getTime()
-  return new Date(guess.getTime() + offsetMs)
+  // We want the UTC instant whose America/New_York wall clock reads y-m-d 20:00.
+  // 1) Take 20:00 as if it were UTC.
+  // 2) Ask what New York's wall clock reads at that instant.
+  // 3) The difference between that reading and 20:00 is ET's offset; subtract it.
+  const asUtc = Date.UTC(y, m, d, 20, 0, 0)
+  const etReading = new Date(new Date(asUtc).toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const offsetMs = etReading.getTime() - asUtc         // ET is behind UTC → negative
+  return new Date(asUtc - offsetMs)
 }
 function isWeekLocked(weekMondayIso) {
   return Date.now() >= lockInstant(weekMondayIso).getTime()
