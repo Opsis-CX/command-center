@@ -50,9 +50,6 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false)
   const [meId, setMeId] = useState(null)
   const [prefs, setPrefs] = useState(null)
-  const [muted, setMuted] = useState(() => {
-    try { return localStorage.getItem('notif_muted') === '1' } catch (e) { return false }
-  })
   const wrapRef = useRef(null)
   const chimeRef = useRef(null)
   const navigate = useNavigate()
@@ -89,13 +86,13 @@ export default function NotificationBell() {
         (payload) => {
           setItems(prev => {
             if (prev.some(x => x.id === payload.new.id)) return prev
-            if (!muted && allowsSound(prefs, categoryForType(payload.new.type))) chimeRef.current?.play()
+            if (allowsSound(prefs, categoryForType(payload.new.type))) chimeRef.current?.play()
             return [payload.new, ...prev]
           })
         })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [meId, muted, prefs])
+  }, [meId, prefs])
 
   useEffect(() => {
     function onDoc(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
@@ -105,9 +102,6 @@ export default function NotificationBell() {
 
   const unread = items.filter(n => !n.read_at).length
 
-  function toggleMute() {
-    setMuted(m => { const nv = !m; try { localStorage.setItem('notif_muted', nv ? '1' : '0') } catch (e) {} if (!nv) chimeRef.current?.play(); return nv })
-  }
 
   async function markAllRead() {
     const ids = items.filter(n => !n.read_at).map(n => n.id)
@@ -133,10 +127,6 @@ export default function NotificationBell() {
 
   return (
     <div ref={wrapRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 4 }}>
-      <button onClick={toggleMute} aria-label={muted ? 'Unmute notifications' : 'Mute notifications'} title={muted ? 'Unmute' : 'Mute'}
-        style={{ border: 0, background: 'transparent', cursor: 'pointer', padding: 6, fontSize: 15, lineHeight: 1, color: muted ? 'var(--ink-soft)' : 'var(--ink)', opacity: muted ? 0.7 : 1 }}>
-        {muted ? '🔇' : '🔊'}
-      </button>
       <button onClick={() => setOpen(o => !o)} aria-label="Notifications"
         style={{ position: 'relative', border: 0, background: 'transparent', cursor: 'pointer', padding: 6, fontSize: 18, lineHeight: 1, color: 'var(--ink)' }}>
         🔔
