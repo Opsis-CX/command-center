@@ -149,9 +149,11 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
                 {STATUSES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
             </Field>
-            <Field label="Created by">
-              <span style={{ fontSize: 13, color: 'var(--ink)' }}>
-                {(profiles.find(p => p.id === task.created_by) || {}).full_name || 'Unknown'}
+            <Field label="Created">
+              <span style={{ fontSize: 13, color: 'var(--ink-soft)' }}>
+                {task.created_at
+                  ? new Date(task.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+                  : '—'}
               </span>
             </Field>
           </div>
