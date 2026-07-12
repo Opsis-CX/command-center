@@ -547,3 +547,37 @@ export async function notifyTaskMention({
     }))
   )
 }
+
+// ─── CATEGORIES ──────────────────────────────────────────────
+// One source of truth mapping each notification `type` to a category.
+// Used by the notifications page (filtering) and the preferences system
+// (per-category delivery choices). Keep every type produced above mapped
+// here; unknown types fall back to 'other'.
+export const NOTIF_CATEGORIES = [
+  { key: 'chat',      label: 'Chat & messages' },
+  { key: 'schedule',  label: 'Schedule & shifts' },
+  { key: 'projects',  label: 'Projects & tasks' },
+  { key: 'hiring',    label: 'Hiring' },
+  { key: 'other',     label: 'Other' },
+]
+
+const TYPE_TO_CATEGORY = {
+  // chat
+  chat_message: 'chat', chat_mention: 'chat', chat_here: 'chat',
+  chat_dm: 'chat', chat_update: 'chat', ack_nudge: 'chat', channel_added: 'chat',
+  // schedule
+  interval_released: 'schedule', no_show: 'schedule',
+  // projects
+  task_assigned: 'projects', task_completed: 'projects', task_mention: 'projects',
+  // hiring (types created by the hiring module / edge fn)
+  application_received: 'hiring', assessment_submitted: 'hiring',
+  mock_requested: 'hiring', hire_stage_changed: 'hiring',
+}
+
+export function categoryForType(type) {
+  return TYPE_TO_CATEGORY[type] || 'other'
+}
+
+export const CATEGORY_LABEL = Object.fromEntries(
+  NOTIF_CATEGORIES.map(c => [c.key, c.label])
+)
