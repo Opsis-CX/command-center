@@ -26,14 +26,14 @@ function fmtSize(bytes) {
 }
 function fileIcon(mime) {
   const m = mime || ''
-  if (m.includes('pdf')) return '\u{1F4C4}'
-  if (m.includes('sheet') || m.includes('excel') || m.includes('csv')) return '\u{1F4CA}'
-  if (m.includes('word') || m.includes('document')) return '\u{1F4DD}'
-  if (m.includes('presentation') || m.includes('powerpoint')) return '\u{1F4FD}'
-  if (m.startsWith('image/')) return '\u{1F5BC}'
-  if (m.startsWith('video/')) return '\u{1F3AC}'
-  if (m.includes('zip') || m.includes('compressed')) return '\u{1F5DC}'
-  return '\u{1F4CE}'
+  if (m.includes('pdf')) return '📄'
+  if (m.includes('sheet') || m.includes('excel') || m.includes('csv')) return '📊'
+  if (m.includes('word') || m.includes('document')) return '📝'
+  if (m.includes('presentation') || m.includes('powerpoint')) return '📽'
+  if (m.startsWith('image/')) return '🖼'
+  if (m.startsWith('video/')) return '🎬'
+  if (m.includes('zip') || m.includes('compressed')) return '🗜'
+  return '📎'
 }
 
 async function uploadKbFile(file, meta, uploaderId) {
@@ -64,9 +64,9 @@ function FileRow({ f, onDelete }) {
       <span style={{ fontSize: 18, flex: 'none' }}>{fileIcon(f.mime_type)}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
-        <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>{fmtSize(f.size_bytes)}{err && <span style={{ color: 'var(--failed)' }}> \u00b7 {err}</span>}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>{fmtSize(f.size_bytes)}{err && <span style={{ color: 'var(--failed)' }}> · {err}</span>}</div>
       </div>
-      <button className="btn btn-ghost" style={{ fontSize: 12.5, flex: 'none' }} onClick={grab} disabled={busy}>{busy ? '\u2026' : '\u2b07 Download'}</button>
+      <button className="btn btn-ghost" style={{ fontSize: 12.5, flex: 'none' }} onClick={grab} disabled={busy}>{busy ? '…' : '⬇ Download'}</button>
       {onDelete && <button className="btn btn-ghost" style={{ fontSize: 12.5, color: 'var(--failed)', flex: 'none' }} onClick={() => onDelete(f)}>Remove</button>}
     </div>
   )
@@ -86,7 +86,7 @@ export default function KnowledgeBase() {
       <div className="page-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <h1 className="page-title">Knowledge Base</h1>
-          <p className="page-sub">Guides, processes, and files \u2014 organized in folders.</p>
+          <p className="page-sub">Guides, processes, and files — organized in folders.</p>
         </div>
       </div>
 
@@ -213,7 +213,7 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
             <button className="btn btn-ghost" style={{ fontSize: 13, padding: '4px 8px' }} onClick={() => onOpenFolder(c.id)}>{c.name}</button>
           </React.Fragment>
         ))}
-        {folder && <><span style={{ color: 'var(--ink-soft)' }}>/</span><span style={{ fontWeight: 700 }}>{folder.icon || '\u{1F4C1}'} {folder.name}</span></>}
+        {folder && <><span style={{ color: 'var(--ink-soft)' }}>/</span><span style={{ fontWeight: 700 }}>{folder.icon || '📁'} {folder.name}</span></>}
       </div>
 
       {canAuthor && (
@@ -221,7 +221,7 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
           <button className="btn btn-ghost" onClick={() => setEditingFolder('new')}>+ New folder</button>
           <button className="btn btn-ghost" onClick={onNewArticle}>+ New article</button>
           <label className="btn btn-ghost" style={{ cursor: 'pointer' }}>
-            {uploading ? 'Uploading\u2026' : '+ Upload file'}
+            {uploading ? 'Uploading…' : '+ Upload file'}
             <input type="file" multiple hidden onChange={uploadHere} disabled={uploading} />
           </label>
           {folder && <button className="btn btn-ghost" onClick={() => setEditingFolder(folder)}>Folder settings</button>}
@@ -233,20 +233,20 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
           onDone={() => { setEditingFolder(null); load() }} onCancel={() => setEditingFolder(null)} />
       )}
 
-      {loading ? <p className="page-sub">Loading\u2026</p> : (
+      {loading ? <p className="page-sub">Loading…</p> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {subfolders.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
               {subfolders.map(sf => (
-                <div key={sf.id} className="card" style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <button onClick={() => onOpenFolder(sf.id)} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, border: 0, background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', minWidth: 0 }}>
-                    <span style={{ fontSize: 24, flex: 'none' }}>{sf.icon || '\u{1F4C1}'}</span>
+                <div key={sf.id} className="card" style={{ padding: 14, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <button onClick={() => onOpenFolder(sf.id)} style={{ flex: 1, display: 'flex', alignItems: 'flex-start', gap: 10, border: 0, background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', minWidth: 0 }}>
+                    <span style={{ fontSize: 24, flex: 'none', lineHeight: 1.2 }}>{sf.icon || '📁'}</span>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sf.name}</div>
-                      {sf.description && <div style={{ fontSize: 12, color: 'var(--ink-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sf.description}</div>}
+                      <div style={{ fontSize: 14, fontWeight: 600, overflowWrap: 'anywhere', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{sf.name}</div>
+                      {sf.description && <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2, overflowWrap: 'anywhere', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{sf.description}</div>}
                     </div>
                   </button>
-                  {canAuthor && <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px', flex: 'none', color: 'var(--failed)' }} onClick={() => deleteFolder(sf)}>\u2715</button>}
+                  {canAuthor && <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px', flex: 'none', color: 'var(--failed)' }} onClick={() => deleteFolder(sf)}>✕</button>}
                 </div>
               ))}
             </div>
@@ -280,7 +280,7 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
 function SearchBar({ q, setQ }) {
   return (
     <div style={{ marginBottom: 16 }}>
-      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search the knowledge base\u2026"
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search the knowledge base…"
         style={{ width: '100%', maxWidth: 480, padding: '10px 14px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 14, fontFamily: 'inherit', background: 'var(--surface)' }} />
     </div>
   )
@@ -290,7 +290,7 @@ function SearchResults({ results, searching, onOpen, onClear }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <span className="page-sub" style={{ fontSize: 13 }}>{searching ? 'Searching\u2026' : results.length + ' result' + (results.length === 1 ? '' : 's')}</span>
+        <span className="page-sub" style={{ fontSize: 13 }}>{searching ? 'Searching…' : results.length + ' result' + (results.length === 1 ? '' : 's')}</span>
         <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={onClear}>Clear</button>
       </div>
       {!searching && results.length === 0 ? (
@@ -316,7 +316,7 @@ function FolderEditor({ folder, parentId, onDone, onCancel }) {
   const { user } = useAuth()
   const [name, setName] = useState(folder?.name || '')
   const [description, setDescription] = useState(folder?.description || '')
-  const [icon, setIcon] = useState(folder?.icon || '\u{1F4C1}')
+  const [icon, setIcon] = useState(folder?.icon || '📁')
   const [hasOwn, setHasOwn] = useState(folder?.has_own_audience ?? (!parentId))
   const [roles, setRoles] = useState(folder?.audience_roles || [])
   const [tagIds, setTagIds] = useState([])
@@ -334,7 +334,7 @@ function FolderEditor({ folder, parentId, onDone, onCancel }) {
   async function save() {
     if (!name.trim()) { setErr('Name is required.'); return }
     setBusy(true); setErr('')
-    const row = { name: name.trim(), description: description.trim() || null, icon: icon || '\u{1F4C1}',
+    const row = { name: name.trim(), description: description.trim() || null, icon: icon || '📁',
       audience_roles: hasOwn ? roles : [], has_own_audience: hasOwn, updated_at: new Date().toISOString() }
     let fid = folder?.id
     if (fid) {
@@ -390,7 +390,7 @@ function FolderEditor({ folder, parentId, onDone, onCancel }) {
       )}
       <div style={{ display: 'flex', gap: 10 }}>
         <button className="btn btn-ghost" onClick={onCancel} disabled={busy}>Cancel</button>
-        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving\u2026' : 'Save folder'}</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save folder'}</button>
       </div>
     </div>
   )
@@ -422,18 +422,18 @@ function ArticleReader({ id, canAuthor, onBack, onEdit }) {
     await supabase.from('kb_feedback').upsert({ article_id: id, profile_id: user.id, helpful }, { onConflict: 'article_id,profile_id' })
   }
 
-  if (article === undefined) return <p className="page-sub">Loading\u2026</p>
+  if (article === undefined) return <p className="page-sub">Loading…</p>
   if (article === null) return (
     <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
       <h3 style={{ fontSize: 15, marginBottom: 6 }}>Article not available</h3>
       <p style={{ fontSize: 13 }}>It may be unpublished, or not shared with you.</p>
-      <button className="btn btn-ghost" style={{ marginTop: 14 }} onClick={onBack}>\u2190 Back</button>
+      <button className="btn btn-ghost" style={{ marginTop: 14 }} onClick={onBack}>← Back</button>
     </div>
   )
 
   return (
     <div style={{ maxWidth: 760 }}>
-      <button className="btn btn-ghost" style={{ marginBottom: 16, fontSize: 13 }} onClick={onBack}>\u2190 Back</button>
+      <button className="btn btn-ghost" style={{ marginBottom: 16, fontSize: 13 }} onClick={onBack}>← Back</button>
       <div className="card" style={{ padding: '28px 32px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, lineHeight: 1.2 }}>{article.title}</h1>
@@ -558,12 +558,12 @@ function ArticleEditor({ id, folderId, onDone, onCancel }) {
     setBusy(false); onDone(savedId)
   }
 
-  if (loading) return <p className="page-sub">Loading\u2026</p>
+  if (loading) return <p className="page-sub">Loading…</p>
   const inputStyle = { width: '100%', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', background: 'var(--canvas)' }
 
   return (
     <div style={{ maxWidth: 760 }}>
-      <button className="btn btn-ghost" style={{ marginBottom: 16, fontSize: 13 }} onClick={onCancel}>\u2190 Cancel</button>
+      <button className="btn btn-ghost" style={{ marginBottom: 16, fontSize: 13 }} onClick={onCancel}>← Cancel</button>
       {err && <div className="card" style={{ padding: '10px 14px', marginBottom: 14, borderColor: 'var(--failed)', color: 'var(--failed)', fontSize: 13 }}>{err}</div>}
 
       <div className="card" style={{ padding: 20, marginBottom: 16 }}>
@@ -572,7 +572,7 @@ function ArticleEditor({ id, folderId, onDone, onCancel }) {
         <div style={{ marginTop: 14 }}>
           <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-soft)' }}>Folder</label>
           <select value={chosenFolder} onChange={e => setChosenFolder(e.target.value)} style={{ ...inputStyle, marginTop: 6 }}>
-            <option value="">\u2014 Top level \u2014</option>
+            <option value="">— Top level —</option>
             {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
@@ -580,14 +580,14 @@ function ArticleEditor({ id, folderId, onDone, onCancel }) {
 
       <div className="card" style={{ padding: 20, marginBottom: 16 }}>
         <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-soft)', display: 'block', marginBottom: 8 }}>Content</label>
-        <RichEditor value={bodyRef.current} variant="full" minHeight={260} placeholder="Write the article\u2026" onChange={(html) => { bodyRef.current = html }} />
+        <RichEditor value={bodyRef.current} variant="full" minHeight={260} placeholder="Write the article…" onChange={(html) => { bodyRef.current = html }} />
       </div>
 
       <div className="card" style={{ padding: 20, marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-soft)' }}>Attachments</label>
           <label className="btn btn-ghost" style={{ fontSize: 12.5, cursor: 'pointer' }}>
-            {uploading ? 'Uploading\u2026' : '+ Add files'}
+            {uploading ? 'Uploading…' : '+ Add files'}
             <input type="file" multiple hidden onChange={onPickFiles} disabled={uploading} />
           </label>
         </div>
@@ -609,7 +609,7 @@ function ArticleEditor({ id, folderId, onDone, onCancel }) {
         <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Who can see this</div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', marginBottom: 10 }}>
           <input type="checkbox" checked={overrideAudience} onChange={e => setOverrideAudience(e.target.checked)} />
-          Override the folder\u2019s audience for this article
+          Override the folder’s audience for this article
         </label>
         {overrideAudience ? (
           <div>
@@ -630,12 +630,12 @@ function ArticleEditor({ id, folderId, onDone, onCancel }) {
             </div>
           </div>
         ) : (
-          <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>This article inherits its folder\u2019s audience.</div>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>This article inherits its folder’s audience.</div>
         )}
       </div>
 
       <div style={{ display: 'flex', gap: 10, position: 'sticky', bottom: 0, background: 'var(--canvas)', padding: '12px 0' }}>
-        <button className="btn btn-ghost" onClick={() => save(false)} disabled={busy}>{busy ? 'Saving\u2026' : 'Save draft'}</button>
+        <button className="btn btn-ghost" onClick={() => save(false)} disabled={busy}>{busy ? 'Saving…' : 'Save draft'}</button>
         <button className="btn btn-primary" onClick={() => save(true)} disabled={busy}>Publish</button>
       </div>
     </div>
