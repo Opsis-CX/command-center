@@ -148,6 +148,7 @@ function titleFor(path) {
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/weekly-sync': 'Weekly Sync',
-'/hiring': 'Hiring', '/quality': 'Quality',
-  }  return map[path] || 'Command Center'
+    '/hiring': 'Hiring', '/quality': 'Quality',
+  }
+  return map[path] || 'Command Center'
 }
