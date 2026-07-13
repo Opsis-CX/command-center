@@ -52,7 +52,7 @@ async function downloadKbFile(fileId) {
   window.open(data.url, '_blank')
 }
 
-function FileRow({ f, onDelete }) {
+function FileRow({ f, onDelete, onMove }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   async function grab() {
@@ -67,6 +67,7 @@ function FileRow({ f, onDelete }) {
         <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>{fmtSize(f.size_bytes)}{err && <span style={{ color: 'var(--failed)' }}> · {err}</span>}</div>
       </div>
       <button className="btn btn-ghost" style={{ fontSize: 12.5, flex: 'none' }} onClick={grab} disabled={busy}>{busy ? '…' : '⬇ Download'}</button>
+      {onMove && <button className="btn btn-ghost" style={{ fontSize: 12.5, flex: 'none' }} onClick={() => onMove(f)}>Move</button>}
       {onDelete && <button className="btn btn-ghost" style={{ fontSize: 12.5, color: 'var(--failed)', flex: 'none' }} onClick={() => onDelete(f)}>Remove</button>}
     </div>
   )
@@ -120,6 +121,8 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
   const [uploading, setUploading] = useState(false)
   const [editingFolder, setEditingFolder] = useState(null)
   const [busyMsg, setBusyMsg] = useState('')
+  const [allFolders, setAllFolders] = useState([])       // full list for the move picker
+  const [moving, setMoving] = useState(null)             // { kind:'article'|'file', item } being moved
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -153,6 +156,8 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
     setSubfolders(sfRes.data || [])
     setArticles(aRes.data || [])
     setFiles(fRes.data || [])
+    // full folder list for the move picker (all readable folders)
+    supabase.from('kb_folders').select('id, name, parent_id').order('name').then(({ data }) => setAllFolders(data || []))
     setLoading(false)
   }, [folderId])
   useEffect(() => { load() }, [load])
@@ -200,6 +205,17 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
     await supabase.from('kb_articles').delete().eq('id', a.id)
     load()
   }
+  async function doMove(destFolderId) {
+    if (!moving) return
+    const dest = destFolderId || null
+    if (moving.kind === 'article') {
+      await supabase.from('kb_articles').update({ folder_id: dest }).eq('id', moving.item.id)
+    } else {
+      await supabase.from('kb_files').update({ folder_id: dest }).eq('id', moving.item.id)
+    }
+    setMoving(null)
+    load()
+  }
 
   if (results !== null) {
     return (
@@ -241,6 +257,9 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
         <FolderEditor folder={editingFolder === 'new' ? null : editingFolder} parentId={folderId}
           onDone={() => { setEditingFolder(null); load() }} onCancel={() => setEditingFolder(null)} />
       )}
+      {moving && (
+        <MoveModal moving={moving} folders={allFolders} onMove={doMove} onCancel={() => setMoving(null)} />
+      )}
 
       {loading ? <p className="page-sub">Loading…</p> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -272,10 +291,11 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
                     </span>
                     <span style={{ fontSize: 11.5, color: 'var(--ink-soft)', flex: 'none' }}>{fmtDate(a.updated_at)}</span>
                   </button>
+                  {canAuthor && <button className="btn btn-ghost" title="Move to another folder" style={{ fontSize: 12.5, padding: '4px 10px', flex: 'none' }} onClick={() => setMoving({ kind: 'article', item: a })}>Move</button>}
                   {canAuthor && <button className="btn btn-ghost" title="Delete article" style={{ fontSize: 13, padding: '4px 12px', flex: 'none', color: 'var(--failed)' }} onClick={() => deleteArticle(a)}>✕</button>}
                 </div>
               ))}
-              {visibleFiles.map(f => <FileRow key={f.id} f={f} onDelete={canAuthor ? removeFile : null} />)}
+              {visibleFiles.map(f => <FileRow key={f.id} f={f} onDelete={canAuthor ? removeFile : null} onMove={canAuthor ? ((file) => setMoving({ kind: 'file', item: file })) : null} />)}
             </div>
           ) : subfolders.length === 0 && (
             <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
@@ -285,6 +305,45 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+function MoveModal({ moving, folders, onMove, onCancel }) {
+  const [dest, setDest] = useState('')
+  // build an indented, depth-ordered list so the tree is readable
+  const byParent = {}
+  folders.forEach(f => { const k = f.parent_id || 'root'; (byParent[k] = byParent[k] || []).push(f) })
+  const ordered = []
+  const walk = (parentKey, depth) => {
+    (byParent[parentKey] || []).sort((a, b) => a.name.localeCompare(b.name)).forEach(f => {
+      ordered.push({ ...f, depth })
+      walk(f.id, depth + 1)
+    })
+  }
+  walk('root', 0)
+  const currentFolderId = moving.item.folder_id || ''
+  const label = moving.kind === 'article' ? (moving.item.title || 'this article') : (moving.item.name || 'this file')
+
+  return (
+    <div onClick={onCancel} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} className="card" style={{ padding: 20, width: 'min(440px, 100%)', maxHeight: '80vh', overflow: 'auto' }}>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Move “{label}”</div>
+        <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 14 }}>Choose where it should live.</div>
+        <select value={dest} onChange={e => setDest(e.target.value)}
+          style={{ width: '100%', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', background: 'var(--canvas)', marginBottom: 16 }}>
+          <option value="">— Top level (Home) —</option>
+          {ordered.map(f => (
+            <option key={f.id} value={f.id} disabled={f.id === currentFolderId}>
+              {'\u00A0'.repeat(f.depth * 3)}{f.name}{f.id === currentFolderId ? '  (current)' : ''}
+            </option>
+          ))}
+        </select>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+          <button className="btn btn-primary" onClick={() => onMove(dest)}>Move here</button>
+        </div>
+      </div>
     </div>
   )
 }
