@@ -117,17 +117,16 @@ function humanSize(bytes) {
 }
 
 // onLoad → re-pin the scroller, since images change list height after paint.
-function AttachmentView({ att, onMediaLoad }) {
+function AttachmentView({ att, onMediaLoad, onOpenImage }) {
   const type = att.file_type || ''
   const isImg = type.startsWith('image/')
   const isVid = type.startsWith('video/')
 
   if (isImg) {
     return (
-      <a href={att.public_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6 }}>
-        <img src={att.public_url} alt={att.file_name} onLoad={onMediaLoad}
-          style={{ maxWidth: 280, maxHeight: 240, borderRadius: 8, border: '1px solid var(--line)', display: 'block' }} />
-      </a>
+      <img src={att.public_url} alt={att.file_name} onLoad={onMediaLoad}
+        onClick={() => onOpenImage && onOpenImage(att.public_url)}
+        style={{ maxWidth: 280, maxHeight: 240, borderRadius: 8, border: '1px solid var(--line)', display: 'block', marginTop: 6, cursor: 'zoom-in' }} />
     )
   }
   if (isVid) {
@@ -148,6 +147,54 @@ function AttachmentView({ att, onMediaLoad }) {
     </a>
   )
 }
+
+// Full-screen image lightbox — pops over chat, closes on backdrop click / X / Escape.
+// Supports arrow-key + on-screen navigation across multiple images.
+function Lightbox({ images, index, onClose, onNav }) {
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') onClose()
+      else if (e.key === 'ArrowRight') onNav(1)
+      else if (e.key === 'ArrowLeft') onNav(-1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose, onNav])
+
+  if (index == null || !images.length) return null
+  const many = images.length > 1
+
+  return (
+    <div onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.82)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      {/* close */}
+      <button onClick={(e) => { e.stopPropagation(); onClose() }}
+        style={{ position: 'absolute', top: 16, right: 20, background: 'none', border: 'none', color: '#fff',
+          fontSize: 34, lineHeight: 1, cursor: 'pointer', opacity: 0.85 }}>×</button>
+
+      {many && (
+        <button onClick={(e) => { e.stopPropagation(); onNav(-1) }}
+          style={{ position: 'absolute', left: 16, background: 'rgba(255,255,255,0.12)', border: 'none', color: '#fff',
+            fontSize: 30, width: 48, height: 48, borderRadius: '50%', cursor: 'pointer' }}>‹</button>
+      )}
+
+      <img src={images[index]} alt="" onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: '92vw', maxHeight: '88vh', borderRadius: 8, boxShadow: '0 8px 40px rgba(0,0,0,0.5)', objectFit: 'contain' }} />
+
+      {many && (
+        <button onClick={(e) => { e.stopPropagation(); onNav(1) }}
+          style={{ position: 'absolute', right: 16, background: 'rgba(255,255,255,0.12)', border: 'none', color: '#fff',
+            fontSize: 30, width: 48, height: 48, borderRadius: '50%', cursor: 'pointer' }}>›</button>
+      )}
+
+      {many && (
+        <div style={{ position: 'absolute', bottom: 18, color: '#fff', fontSize: 13, opacity: 0.8 }}>{index + 1} / {images.length}</div>
+      )}
+    </div>
+  )
+}
+
 
 // Renders "X is typing…" / "X and Y are typing…"
 function TypingLine({ names }) {
@@ -425,6 +472,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   const [threadFor, setThreadFor] = useState(null) // parent message id for the thread panel
   const [reactions, setReactions] = useState([])   // all reactions for messages in view
   const [attachments, setAttachments] = useState([]) // attachments for messages in view
+  const [lightbox, setLightbox] = useState({ images: [], index: null })
   const [pending, setPending] = useState([])         // files staged to send
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef(null)
@@ -964,7 +1012,14 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                   )}
 
                   {attachments.filter(a => a.message_id === m.id).map(a => (
-                    <AttachmentView key={a.id} att={a} onMediaLoad={onMediaLoad} />
+                    <AttachmentView key={a.id} att={a} onMediaLoad={onMediaLoad}
+                      onOpenImage={(url) => {
+                        const imgs = attachments
+                          .filter(x => x.message_id === m.id && (x.file_type || '').startsWith('image/'))
+                          .map(x => x.public_url)
+                        const idx = Math.max(0, imgs.indexOf(url))
+                        setLightbox({ images: imgs, index: idx })
+                      }} />
                   ))}
 
                   <ReactionBar messageId={m.id} reactions={reactions} meId={me.id}
@@ -1102,6 +1157,11 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 
       {trackFor && <TrackPanel messageId={trackFor} me={me} members={members} profiles={profiles} acks={acks} onClose={() => setTrackFor(null)} />}
       {threadFor && <ThreadPanel parentId={threadFor} channelId={channelId} me={me} senders={senders} profiles={profiles} channel={channel} members={members} onClose={() => setThreadFor(null)} />}
+      {lightbox.index != null && (
+        <Lightbox images={lightbox.images} index={lightbox.index}
+          onClose={() => setLightbox({ images: [], index: null })}
+          onNav={(d) => setLightbox(lb => ({ ...lb, index: (lb.index + d + lb.images.length) % lb.images.length }))} />
+      )}
       {editing && (
         <EditMessageModal
           initialHtml={editing.html}
