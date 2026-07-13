@@ -19,6 +19,7 @@ const NAV = [
   { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },  // everyone gets calendar
   { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
   { type: 'link', to: '/hiring', label: 'Hiring', ic: '👥', perm: 'hiring' },
+  { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
   {
     type: 'section', key: 'certifications', label: 'Certifications', ic: '✦', perm: 'certifications',
     children: [
