@@ -10,6 +10,25 @@ const nextBlockId = () => `b${Date.now().toString(36)}${(blockSeq++).toString(36
 const withIds = (blocks) => (blocks || []).map(b => b._id ? b : { ...b, _id: nextBlockId() })
 const stripIds = (blocks) => (blocks || []).map(({ _id, ...rest }) => rest)
 
+// Helpers for the file/attachment block.
+function fmtSize(bytes) {
+  if (!bytes && bytes !== 0) return ''
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB'
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+}
+function fileIcon(mime) {
+  const m = mime || ''
+  if (m.includes('pdf')) return '📄'
+  if (m.includes('sheet') || m.includes('excel') || m.includes('csv')) return '📊'
+  if (m.includes('word') || m.includes('document')) return '📝'
+  if (m.includes('presentation') || m.includes('powerpoint')) return '📽'
+  if (m.startsWith('image/')) return '🖼'
+  if (m.startsWith('video/')) return '🎬'
+  if (m.includes('zip') || m.includes('compressed')) return '🗜'
+  return '📎'
+}
+
 // Detect phone-width viewport; updates on resize.
 function useIsMobile(breakpoint = 700) {
   const [mobile, setMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= breakpoint : false)
@@ -295,6 +314,7 @@ function LessonBody({ lesson, onSave }) {
     const base = type === 'text' ? { type: 'text', html: '' }
       : type === 'image' ? { type: 'image', url: '' }
       : type === 'video' ? { type: 'video', embed: '' }
+      : type === 'file' ? { type: 'file', url: '', name: '', size: 0, mime: '' }
       : { type: 'callout', tone: 'info', html: '' }
     setBlocks(bs => [...bs, { ...base, _id: nextBlockId() }])
   }
@@ -319,6 +339,17 @@ function LessonBody({ lesson, onSave }) {
     } catch (e) { alert('Upload failed: ' + e.message) }
   }
 
+  async function uploadFile(file, id) {
+    try {
+      const safe = file.name.replace(/[^\w.\- ]+/g, '_')
+      const path = `files/${Date.now()}-${Math.random().toString(36).slice(2)}-${safe}`
+      const { error: upErr } = await supabase.storage.from('course-media').upload(path, file, { contentType: file.type || undefined })
+      if (upErr) throw upErr
+      const { data } = supabase.storage.from('course-media').getPublicUrl(path)
+      setBlock(id, { url: data.publicUrl, name: file.name, size: file.size, mime: file.type || '' })
+    } catch (e) { alert('Upload failed: ' + e.message) }
+  }
+
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
       <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -332,6 +363,7 @@ function LessonBody({ lesson, onSave }) {
         <AddBtn onClick={() => addBlock('text')}>¶ Text</AddBtn>
         <AddBtn onClick={() => addBlock('image')}>🖼 Image</AddBtn>
         <AddBtn onClick={() => addBlock('video')}>▶ Video</AddBtn>
+        <AddBtn onClick={() => addBlock('file')}>📎 File</AddBtn>
         <AddBtn onClick={() => addBlock('callout')}>💡 Callout</AddBtn>
       </div>
 
@@ -375,6 +407,23 @@ function LessonBody({ lesson, onSave }) {
                 </div>
               : <input placeholder="Paste video link (YouTube, Vimeo)" onChange={e => setBlock(b._id, { embed: toEmbed(e.target.value) })}
                   style={{ width: '100%', padding: 9, border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit' }} />)}
+
+            {b.type === 'file' && (b.url
+              ? <div style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', background: 'var(--surface)' }}>
+                  <span style={{ fontSize: 22, flex: 'none' }}>{fileIcon(b.mime)}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name || 'File'}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>{fmtSize(b.size)}</div>
+                  </div>
+                  <label className="btn btn-ghost" style={{ fontSize: 12.5, cursor: 'pointer', flex: 'none' }}>
+                    Replace
+                    <input type="file" hidden onChange={e => { if (e.target.files[0]) uploadFile(e.target.files[0], b._id) }} />
+                  </label>
+                </div>
+              : <div style={{ border: '1px dashed var(--line)', borderRadius: 8, padding: 20, textAlign: 'center', background: 'var(--canvas)' }}>
+                  <div className="page-sub" style={{ marginBottom: 8 }}>Upload a file for learners to download (PDF, doc, sheet, anything)</div>
+                  <input type="file" onChange={e => { if (e.target.files[0]) uploadFile(e.target.files[0], b._id) }} />
+                </div>)}
           </div>
         ))}
         {blocks.length === 0 && <p className="page-sub">Use the toolbar to add text, images, or video.</p>}
@@ -437,6 +486,17 @@ export function LessonView({ blocks }) {
               referrerPolicy="no-referrer"
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, borderRadius: 10 }} />
           </div>
+        }
+        if (b.type === 'file' && b.url) {
+          return <a key={i} href={b.url} target="_blank" rel="noreferrer" download={b.name || undefined}
+            style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', margin: '14px 0', textDecoration: 'none', color: 'inherit', background: 'var(--surface)' }}>
+            <span style={{ fontSize: 22, flex: 'none' }}>{fileIcon(b.mime)}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name || 'Download file'}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>{fmtSize(b.size)}</div>
+            </div>
+            <span className="btn btn-ghost" style={{ fontSize: 12.5, flex: 'none' }}>⬇ Download</span>
+          </a>
         }
         return null
       })}
