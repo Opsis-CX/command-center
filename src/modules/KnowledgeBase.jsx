@@ -23,6 +23,73 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function fmtSize(bytes) {
+  if (!bytes && bytes !== 0) return ''
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB'
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+}
+function fileIcon(mime) {
+  const m = mime || ''
+  if (m.includes('pdf')) return '📄'
+  if (m.includes('sheet') || m.includes('excel') || m.includes('csv')) return '📊'
+  if (m.includes('word') || m.includes('document')) return '📝'
+  if (m.includes('presentation') || m.includes('powerpoint')) return '📽'
+  if (m.startsWith('image/')) return '🖼'
+  if (m.startsWith('video/')) return '🎬'
+  if (m.includes('zip') || m.includes('compressed')) return '🗜'
+  return '📎'
+}
+
+// Upload a File to the private kb-files bucket and create the metadata row.
+// meta = { article_id } or { category_id, audience_roles, override_audience, status }
+async function uploadKbFile(file, meta, uploaderId) {
+  const safe = file.name.replace(/[^\w.\- ]+/g, '_')
+  const path = `${crypto.randomUUID()}/${safe}`
+  const { error: upErr } = await supabase.storage.from('kb-files').upload(path, file, {
+    contentType: file.type || undefined, upsert: false,
+  })
+  if (upErr) throw new Error(upErr.message)
+  const row = {
+    name: file.name, storage_path: path, mime_type: file.type || null, size_bytes: file.size,
+    uploaded_by: uploaderId, ...meta,
+  }
+  const { data, error } = await supabase.from('kb_files').insert(row).select('*').single()
+  if (error) {
+    // roll back the orphaned object if the metadata insert failed
+    await supabase.storage.from('kb-files').remove([path])
+    throw new Error(error.message)
+  }
+  return data
+}
+
+// Ask the Edge Function for a signed URL (access-checked) and trigger download.
+async function downloadKbFile(fileId) {
+  const { data, error } = await supabase.functions.invoke('kb-file-url', { body: { fileId } })
+  if (error || !data?.url) throw new Error(data?.error || error?.message || 'Download unavailable')
+  window.open(data.url, '_blank')
+}
+
+function FileRow({ f, onDelete }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  async function grab() {
+    setBusy(true); setErr('')
+    try { await downloadKbFile(f.id) } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
+      <span style={{ fontSize: 18, flex: 'none' }}>{fileIcon(f.mime_type)}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>{fmtSize(f.size_bytes)}{err && <span style={{ color: 'var(--failed)' }}> · {err}</span>}</div>
+      </div>
+      <button className="btn btn-ghost" style={{ fontSize: 12.5, flex: 'none' }} onClick={grab} disabled={busy}>{busy ? '…' : '⬇ Download'}</button>
+      {onDelete && <button className="btn btn-ghost" style={{ fontSize: 12.5, color: 'var(--failed)', flex: 'none' }} onClick={() => onDelete(f)}>Remove</button>}
+    </div>
+  )
+}
+
 export default function KnowledgeBase() {
   const { appRole } = useAuth()
   const canAuthor = isAuthorRole(appRole)
@@ -56,24 +123,30 @@ export default function KnowledgeBase() {
 
 // ---------------- BROWSE / LANDING ----------------
 function Browse({ canAuthor, onOpen, onManageCats }) {
+  const { user } = useAuth()
   const [cats, setCats] = useState([])
   const [articles, setArticles] = useState([])
+  const [sfiles, setSfiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [results, setResults] = useState(null)
   const [searching, setSearching] = useState(false)
+  const [uploadCat, setUploadCat] = useState(null)   // category id currently uploading to
 
-  useEffect(() => { (async () => {
+  const load = useCallback(async () => {
     setLoading(true)
-    const [cRes, aRes] = await Promise.all([
+    const [cRes, aRes, fRes] = await Promise.all([
       supabase.from('kb_categories').select('*').order('sort_order').order('name'),
-      // RLS returns only readable articles; we show published ones in browse.
       supabase.from('kb_articles').select('id, title, category_id, status, updated_at, view_count').order('updated_at', { ascending: false }),
+      // standalone files only (attached ones live under their article)
+      supabase.from('kb_files').select('*').is('article_id', null).order('created_at', { ascending: false }),
     ])
     setCats(cRes.data || [])
     setArticles(aRes.data || [])
+    setSfiles(fRes.data || [])
     setLoading(false)
-  })() }, [])
+  }, [])
+  useEffect(() => { load() }, [load])
 
   // debounced full-text search via the kb_search RPC (RLS-respecting)
   useEffect(() => {
@@ -90,6 +163,27 @@ function Browse({ canAuthor, onOpen, onManageCats }) {
   const visible = canAuthor ? articles : articles.filter(a => a.status === 'published')
   const byCat = (catId) => visible.filter(a => a.category_id === catId)
   const uncategorized = visible.filter(a => !a.category_id)
+  const filesInCat = (catId) => sfiles.filter(f => f.category_id === catId && (canAuthor || f.status === 'published'))
+
+  async function uploadStandalone(e, categoryId) {
+    const picked = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (!picked.length) return
+    setUploadCat(categoryId)
+    try {
+      for (const file of picked) {
+        await uploadKbFile(file, { category_id: categoryId, article_id: null, status: 'published' }, user?.id)
+      }
+      await load()
+    } catch (err) { alert('Upload failed: ' + err.message) }
+    finally { setUploadCat(null) }
+  }
+  async function removeStandalone(f) {
+    if (!window.confirm(`Remove ${f.name}?`)) return
+    await supabase.storage.from('kb-files').remove([f.storage_path])
+    await supabase.from('kb_files').delete().eq('id', f.id)
+    load()
+  }
 
   return (
     <div>
@@ -115,28 +209,44 @@ function Browse({ canAuthor, onOpen, onManageCats }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {cats.map(c => {
             const arts = byCat(c.id)
-            if (arts.length === 0 && !canAuthor) return null
+            const cfiles = filesInCat(c.id)
+            if (arts.length === 0 && cfiles.length === 0 && !canAuthor) return null
             return (
               <div key={c.id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
                 <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span style={{ fontSize: 18 }}>{c.icon || '📁'}</span>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 15 }}>{c.name}</div>
                     {c.description && <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>{c.description}</div>}
                   </div>
+                  {canAuthor && (
+                    <label className="btn btn-ghost" style={{ fontSize: 12, cursor: 'pointer', flex: 'none' }}>
+                      {uploadCat === c.id ? 'Uploading…' : '+ File'}
+                      <input type="file" multiple hidden onChange={(e) => uploadStandalone(e, c.id)} disabled={uploadCat === c.id} />
+                    </label>
+                  )}
                 </div>
-                {arts.length === 0 ? (
-                  <div style={{ padding: '14px 18px', fontSize: 13, color: 'var(--ink-soft)' }}>No articles yet.</div>
-                ) : arts.map(a => (
-                  <button key={a.id} onClick={() => onOpen(a.id)}
-                    style={{ display: 'flex', width: '100%', textAlign: 'left', alignItems: 'center', justifyContent: 'space-between', gap: 12, border: 0, borderBottom: '1px solid var(--line-soft)', background: 'transparent', padding: '12px 18px', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    <span style={{ fontSize: 14, color: 'var(--ink)' }}>
-                      {a.title}
-                      {a.status === 'draft' && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--line-soft)', borderRadius: 4, padding: '1px 6px' }}>DRAFT</span>}
-                    </span>
-                    <span style={{ fontSize: 11.5, color: 'var(--ink-soft)', flex: 'none' }}>{fmtDate(a.updated_at)}</span>
-                  </button>
-                ))}
+                {arts.length === 0 && cfiles.length === 0 ? (
+                  <div style={{ padding: '14px 18px', fontSize: 13, color: 'var(--ink-soft)' }}>Nothing here yet.</div>
+                ) : (
+                  <>
+                    {arts.map(a => (
+                      <button key={a.id} onClick={() => onOpen(a.id)}
+                        style={{ display: 'flex', width: '100%', textAlign: 'left', alignItems: 'center', justifyContent: 'space-between', gap: 12, border: 0, borderBottom: '1px solid var(--line-soft)', background: 'transparent', padding: '12px 18px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        <span style={{ fontSize: 14, color: 'var(--ink)' }}>
+                          {a.title}
+                          {a.status === 'draft' && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--line-soft)', borderRadius: 4, padding: '1px 6px' }}>DRAFT</span>}
+                        </span>
+                        <span style={{ fontSize: 11.5, color: 'var(--ink-soft)', flex: 'none' }}>{fmtDate(a.updated_at)}</span>
+                      </button>
+                    ))}
+                    {cfiles.length > 0 && (
+                      <div style={{ padding: '4px 18px 10px' }}>
+                        {cfiles.map(f => <FileRow key={f.id} f={f} onDelete={canAuthor ? removeStandalone : null} />)}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )
           })}
@@ -195,6 +305,7 @@ function ArticleReader({ id, canAuthor, onBack, onEdit }) {
   const [cat, setCat] = useState(null)
   const [tags, setTags] = useState([])
   const [myFeedback, setMyFeedback] = useState(null)
+  const [files, setFiles] = useState([])
   const countedRef = useRef(false)
 
   useEffect(() => { (async () => {
@@ -207,6 +318,8 @@ function ArticleReader({ id, canAuthor, onBack, onEdit }) {
       .then(({ data }) => setTags((data || []).map(x => x.tags?.name).filter(Boolean)))
     if (user) supabase.from('kb_feedback').select('helpful').eq('article_id', id).eq('profile_id', user.id).maybeSingle()
       .then(({ data }) => setMyFeedback(data ? data.helpful : null))
+    supabase.from('kb_files').select('*').eq('article_id', id).order('created_at')
+      .then(({ data }) => setFiles(data || []))
     // increment view count once per open
     if (!countedRef.current) {
       countedRef.current = true
@@ -248,6 +361,12 @@ function ArticleReader({ id, canAuthor, onBack, onEdit }) {
         <div style={{ marginTop: 20, fontSize: 15, lineHeight: 1.7 }}>
           {isEmptyHtml(article.body || '') ? <p style={{ color: 'var(--ink-soft)' }}>This article has no content yet.</p> : <RichContent html={article.body} />}
         </div>
+        {files.length > 0 && (
+          <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 6 }}>Attachments</div>
+            {files.map(f => <FileRow key={f.id} f={f} />)}
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ padding: '14px 20px', marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -275,7 +394,10 @@ function ArticleEditor({ id, onDone, onCancel }) {
   const [overrideAudience, setOverrideAudience] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [files, setFiles] = useState([])
+  const [uploading, setUploading] = useState(false)
   const bodyRef = useRef('')
+  const createdIdRef = useRef(null)   // set if attachments forced an early create
 
   useEffect(() => { (async () => {
     const [cRes, tRes] = await Promise.all([
@@ -293,6 +415,8 @@ function ArticleEditor({ id, onDone, onCancel }) {
         const { data: atags } = await supabase.from('kb_article_tags').select('tag_id, is_audience').eq('article_id', id)
         setTopicTagIds((atags || []).filter(t => !t.is_audience).map(t => t.tag_id))
         setAudienceTagIds((atags || []).filter(t => t.is_audience).map(t => t.tag_id))
+        const { data: fData } = await supabase.from('kb_files').select('*').eq('article_id', id).order('created_at')
+        setFiles(fData || [])
       }
       setLoading(false)
     }
@@ -300,6 +424,41 @@ function ArticleEditor({ id, onDone, onCancel }) {
 
   function toggle(list, setList, val) {
     setList(list.includes(val) ? list.filter(x => x !== val) : [...list, val])
+  }
+
+  // Attachments require the article to exist (needs article_id). If this is a
+  // brand-new unsaved article, save a draft first so we have an id to attach to.
+  async function ensureSavedId() {
+    if (id) return id
+    if (createdIdRef.current) return createdIdRef.current
+    const row = {
+      title: title.trim() || 'Untitled', body: isEmptyHtml(bodyRef.current) ? null : bodyRef.current,
+      category_id: categoryId || null, status: 'draft', audience_roles: audienceRoles,
+      override_audience: overrideAudience, author_id: user?.id, updated_at: new Date().toISOString(),
+    }
+    const { data, error } = await supabase.from('kb_articles').insert(row).select('id').single()
+    if (error) throw new Error(error.message)
+    createdIdRef.current = data.id
+    return data.id
+  }
+  async function onPickFiles(e) {
+    const picked = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (!picked.length) return
+    setUploading(true); setErr('')
+    try {
+      const aid = await ensureSavedId()
+      for (const file of picked) {
+        const rec = await uploadKbFile(file, { article_id: aid, category_id: null }, user?.id)
+        setFiles(prev => [...prev, rec])
+      }
+    } catch (e2) { setErr('Upload failed: ' + e2.message) }
+    finally { setUploading(false) }
+  }
+  async function removeFile(f) {
+    setFiles(prev => prev.filter(x => x.id !== f.id))
+    await supabase.storage.from('kb-files').remove([f.storage_path])
+    await supabase.from('kb_files').delete().eq('id', f.id)
   }
 
   async function save(publish) {
@@ -317,12 +476,12 @@ function ArticleEditor({ id, onDone, onCancel }) {
     }
     if (publish) row.published_at = new Date().toISOString()
 
-    let savedId = id
-    if (id) {
-      const { error } = await supabase.from('kb_articles').update(row).eq('id', id)
+    let savedId = id || createdIdRef.current
+    if (savedId) {
+      const { error } = await supabase.from('kb_articles').update(row).eq('id', savedId)
       if (error) { setErr(error.message); setBusy(false); return }
       // revision snapshot
-      await supabase.from('kb_revisions').insert({ article_id: id, title: row.title, body: row.body, edited_by: user?.id })
+      await supabase.from('kb_revisions').insert({ article_id: savedId, title: row.title, body: row.body, edited_by: user?.id })
     } else {
       const { data, error } = await supabase.from('kb_articles').insert(row).select('id').single()
       if (error) { setErr(error.message); setBusy(false); return }
@@ -382,6 +541,19 @@ function ArticleEditor({ id, onDone, onCancel }) {
               </button>
             ))}
         </div>
+      </div>
+
+      <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-soft)' }}>Attachments</label>
+          <label className="btn btn-ghost" style={{ fontSize: 12.5, cursor: 'pointer' }}>
+            {uploading ? 'Uploading…' : '+ Add files'}
+            <input type="file" multiple hidden onChange={onPickFiles} disabled={uploading} />
+          </label>
+        </div>
+        {files.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>No files attached. Add PDFs, docs, or anything else readers should be able to download.</div>
+        ) : files.map(f => <FileRow key={f.id} f={f} onDelete={removeFile} />)}
       </div>
 
       <div className="card" style={{ padding: 20, marginBottom: 16 }}>
