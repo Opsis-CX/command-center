@@ -457,12 +457,12 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       setLoading(true); setErr('')
       try {
         const [msgRes, memRes] = await Promise.all([
-          supabase.from('messages').select('*').eq('channel_id', channelId).is('deleted_at', null).order('created_at').limit(200),
+          supabase.from('messages').select('*').eq('channel_id', channelId).is('deleted_at', null).order('created_at', { ascending: false }).limit(200),
           supabase.from('channel_members').select('profile_id').eq('channel_id', channelId),
         ])
         if (msgRes.error) throw msgRes.error
         if (!active) return
-        const msgs = msgRes.data || []
+        const msgs = (msgRes.data || []).slice().reverse()
         setMessages(msgs)
         setMembers((memRes.data || []).map(m => m.profile_id))
         await hydrateSenders(msgs)
@@ -484,11 +484,12 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     const t = setInterval(async () => {
       const { data } = await supabase.from('messages')
         .select('*').eq('channel_id', channelId).is('deleted_at', null)
-        .order('created_at').limit(200)
+        .order('created_at', { ascending: false }).limit(200)
       if (!data) return
+      const fresh = data.slice().reverse()
       setMessages(prev => {
         const ids = new Set(prev.map(m => m.id))
-        const added = data.filter(m => !ids.has(m.id))
+        const added = fresh.filter(m => !ids.has(m.id))
         if (!added.length) return prev
         hydrateSenders(added)
         return [...prev, ...added]
