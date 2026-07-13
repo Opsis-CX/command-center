@@ -27,6 +27,7 @@ import Reporting from './modules/Reporting'
 import Calendar from './modules/Calendar'
 import WeeklySync from './modules/WeeklySync'
 import Notifications from './modules/Notifications'
+import KnowledgeBase from './modules/KnowledgeBase'
 import { UnreadProvider } from './lib/unread'
 // --- hiring pipeline ---
 import ApplicationForm from './modules/ApplicationForm'
@@ -111,6 +112,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/notifications" element={<Notifications />} />
+              <Route path="/knowledge" element={<KnowledgeBase />} />
               <Route path="/schedule" element={<Schedule />} />
               <Route path="/chat" element={canAny(appRole, 'chat') ? <Chat /> : <Placeholder title="No access" note="You don't have access to this area." />} />
               {canAny(appRole, 'certifications.all') && <Route path="/certifications" element={<Certifications />} />}
