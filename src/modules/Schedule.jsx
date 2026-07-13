@@ -285,7 +285,10 @@ export default function Schedule() {
     }
     const existing = claims.filter(c => c.shift_block_id === block.id)
     if (existing.length >= block.total_spots) { flash('That interval just filled up'); load(true); return }
-    if (hasIntervalStarted(block)) { flash('That interval already started'); load(true); return }
+    // NOTE: intentionally no "already started" block here — agents may pick up
+    // an interval at any time, including after it has started or ended. Late
+    // check-in flagging still applies, so lateness stays visible to managers.
+    if (hasIntervalStarted(block)) { /* allowed: late pickup */ }
     if (overlapsExisting(me.id, block)) { flash('Overlaps an interval you already have that day'); return }
     const weekMonday = mondayOf(new Date(block.block_date + 'T00:00:00'))
     if (claimedHoursInWeek(me.id, weekMonday) + blockHours(block) > WEEKLY_HOUR_CAP) {
@@ -587,7 +590,7 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
     const items = weekBlocks.filter(b => {
       if (b.block_date !== ds) return false
       if (b.block_date > horizonStr) return false   // beyond the rolling window — not visible yet
-      if (hasIntervalStarted(b)) return false
+      // (started/ended intervals stay claimable — late pickup is allowed)
       const cl = claims.filter(c => c.shift_block_id === b.id)
       if (cl.length >= b.total_spots) return false
       if (cl.some(c => c.profile_id === me.id)) return false
@@ -755,7 +758,7 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIn
             if (out) { note = window.prompt("You're outside your scheduled time. Add a note (required):") || ''; if (!note.trim()) return }
             onCheckOut(mine.id, block, note)
           }}>Check out</button>}
-        </> : (!isFull && !started && canClaim && <button className="btn btn-primary" onClick={() => onClaim(block)}>Claim this interval</button>)}
+        </> : (!isFull && canClaim && <button className="btn btn-primary" onClick={() => onClaim(block)}>{hasIntervalStarted(block) ? 'Claim (already started)' : 'Claim this interval'}</button>)}
       </div>
     </div>
   </div>
