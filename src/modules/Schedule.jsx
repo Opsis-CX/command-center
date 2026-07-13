@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { can } from '../lib/permissions'
 import { notifyIntervalReleased, notifyNoShow } from '../lib/notify'
 import { COMPANY_TZ, wallTimeToViewer } from '../lib/tz'
 
@@ -100,7 +101,10 @@ function releaseDayIndex(tier) {
 }
 
 export default function Schedule() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, appRole } = useAuth()
+  // Certification (and admin) can VIEW every published schedule read-only,
+  // even ones they're not in the audience for. Claiming stays audience-gated.
+  const canViewAll = isAdmin || can(appRole, 'schedule.view_all_schedules')
   const [me, setMe] = useState(null)
   const [profiles, setProfiles] = useState([])
   const [tiers, setTiers] = useState([])
@@ -185,8 +189,10 @@ export default function Schedule() {
   function myVisibleSchedules(forceMine) {
     const published = schedules.filter(s => s.status === 'published')
     if (isAdmin && !forceMine) return published
-    // agent (or admin in 'my view'): must hold the cert (graceful) — audience check
-    // applies to non-admins; admins in my-view can claim any they're certified for.
+    // View-all roles (e.g. Certification) see every published schedule read-only.
+    // They can only CLAIM where inAudience() — enforced in the claim handler.
+    if (canViewAll && !forceMine) return published
+    // agent (or admin in 'my view'): must hold the cert (graceful) + audience check
     return published.filter(s => hasPassedCertForCallType(s.call_type_id) && (isAdmin || inAudience(s.id)))
   }
 
@@ -262,6 +268,12 @@ export default function Schedule() {
   }
 
   async function claimBlock(block) {
+    // Audience guard: view-all roles (Certification) can SEE every schedule,
+    // but may only claim intervals on schedules they're in the audience for.
+    // Admins bypass. This mirrors the DB guard and gives instant feedback.
+    if (!isAdmin && !inAudience(block.schedule_id)) {
+      flash("You can view this schedule but can't claim intervals on it."); return
+    }
     // Fast client-side checks: instant feedback, no round trip. These can be
     // wrong if the page is stale — the database trigger is the real guard.
     if (!isAdmin) {
