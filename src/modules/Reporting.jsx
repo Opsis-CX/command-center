@@ -47,13 +47,14 @@ export default function Reporting() {
   const [clients, setClients] = useState([])
   const [claims, setClaims] = useState([])
   const [sblocks, setSblocks] = useState([])
+  const [qaAudits, setQaAudits] = useState([])
 
   const load = useCallback(async () => {
     setLoading(true)
     // inclusive of the whole 'to' day
     const fromISO = new Date(range.from + 'T00:00:00').toISOString()
     const toISO = new Date(range.to + 'T23:59:59').toISOString()
-    const [teRes, profRes, taskRes, cliRes, clmRes, blkRes] = await Promise.all([
+    const [teRes, profRes, taskRes, cliRes, clmRes, blkRes, qaRes] = await Promise.all([
       supabase.from('time_entries').select('*')
         .not('duration_minutes', 'is', null)
         .gte('started_at', fromISO).lte('started_at', toISO),
@@ -62,11 +63,13 @@ export default function Reporting() {
       supabase.from('clients').select('id, name'),
       supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at, checked_out_at'),
       supabase.from('shift_blocks').select('id, block_date, start_time, end_time'),
+      supabase.from('qa_audits').select('*').gte('created_at', fromISO).lte('created_at', toISO),
     ])
     setEntries(teRes.data || [])
     setProfiles(profRes.data || [])
     setTasks(taskRes.data || [])
     setClients(cliRes.data || [])
+    setQaAudits(qaRes.error ? [] : (qaRes.data || []))
     // keep only claims whose block falls in range
     const blocks = blkRes.data || []
     const inRange = (blocks).filter(b => b.block_date >= range.from && b.block_date <= range.to)
@@ -227,6 +230,47 @@ export default function Reporting() {
     downloadCSV(`scheduled-vs-worked-${range.from}_to_${range.to}.csv`, rows)
   }
 
+  // QUALITY: per-agent QA rollup over the range (conversation audits carry the 0-100 score)
+  const qaByAgent = useMemo(() => {
+    const m = {}
+    for (const a of qaAudits) {
+      const key = a.agent_name || '—'
+      if (!m[key]) m[key] = { total: 0, conv: 0, convScoreSum: 0, autoFails: 0, byType: {} }
+      m[key].total += 1
+      m[key].byType[a.audit_type] = (m[key].byType[a.audit_type] || 0) + 1
+      if (a.auto_fail) m[key].autoFails += 1
+      if (a.audit_type === 'conversation' && a.clean_qa_score != null) {
+        m[key].conv += 1
+        m[key].convScoreSum += Number(a.clean_qa_score)
+      }
+    }
+    return Object.entries(m)
+      .map(([name, d]) => ({
+        name,
+        audits: d.total,
+        convAudits: d.conv,
+        avgScore: d.conv ? Math.round(d.convScoreSum / d.conv) : null,
+        autoFails: d.autoFails,
+        byType: d.byType,
+      }))
+      .sort((a, b) => (b.avgScore ?? -1) - (a.avgScore ?? -1) || a.name.localeCompare(b.name))
+  }, [qaAudits])
+
+  const qaTotals = useMemo(() => {
+    const conv = qaAudits.filter(a => a.audit_type === 'conversation' && a.clean_qa_score != null)
+    const avg = conv.length ? Math.round(conv.reduce((s, a) => s + Number(a.clean_qa_score), 0) / conv.length) : null
+    return { audits: qaAudits.length, avg, autoFails: qaAudits.filter(a => a.auto_fail).length }
+  }, [qaAudits])
+
+  function exportQualityCSV() {
+    const header = ['Agent', 'Audits', 'Conversation audits', 'Avg clean score %', 'Auto-fails']
+    const rows = [header]
+    qaByAgent.forEach(a => {
+      rows.push([a.name, a.audits, a.convAudits, a.avgScore == null ? '' : a.avgScore, a.autoFails])
+    })
+    downloadCSV(`quality-${range.from}_to_${range.to}.csv`, rows)
+  }
+
   const personRows = Object.entries(grouped.byPerson)
     .sort((a, b) => nameOf(a[0], profiles).localeCompare(nameOf(b[0], profiles)))
   const clientRows = Object.entries(grouped.byClient)
@@ -255,14 +299,71 @@ export default function Reporting() {
           <button onClick={() => setView('person')} style={tabBtn(view === 'person')}>By Person (Payroll)</button>
           <button onClick={() => setView('client')} style={tabBtn(view === 'client')}>By Client (Invoicing)</button>
           <button onClick={() => setView('compare')} style={tabBtn(view === 'compare')}>Scheduled vs Worked</button>
+          <button onClick={() => setView('quality')} style={tabBtn(view === 'quality')}>Quality</button>
         </div>
         <button className="btn btn-primary" style={{ marginLeft: 'auto' }}
-          onClick={view === 'person' ? exportPersonCSV : view === 'client' ? exportClientCSV : exportCompareCSV}>
-          Export {view === 'person' ? 'Payroll' : view === 'client' ? 'Invoicing' : 'Comparison'} CSV
+          onClick={view === 'person' ? exportPersonCSV : view === 'client' ? exportClientCSV : view === 'quality' ? exportQualityCSV : exportCompareCSV}>
+          Export {view === 'person' ? 'Payroll' : view === 'client' ? 'Invoicing' : view === 'quality' ? 'Quality' : 'Comparison'} CSV
         </button>
       </div>
 
-      {loading ? <p className="page-sub">Loading…</p> : (
+      {loading ? <p className="page-sub">Loading…</p> : view === 'quality' ? (
+        <>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+            <div className="card" style={{ padding: '12px 16px' }}>
+              <span style={{ fontSize: 12, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Total audits</span>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>{qaTotals.audits}</div>
+            </div>
+            <div className="card" style={{ padding: '12px 16px' }}>
+              <span style={{ fontSize: 12, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Avg clean score</span>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>{qaTotals.avg == null ? '—' : qaTotals.avg + '%'}</div>
+            </div>
+            <div className="card" style={{ padding: '12px 16px' }}>
+              <span style={{ fontSize: 12, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Auto-fails</span>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>{qaTotals.autoFails}</div>
+            </div>
+          </div>
+
+          {qaByAgent.length === 0 ? (
+            <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
+              <h3 style={{ fontSize: 14, marginBottom: 4 }}>No audits in this range</h3>
+              <p style={{ fontSize: 13 }}>QA audits recorded between these dates will appear here.</p>
+            </div>
+          ) : (
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                    <th style={{ ...cellL, fontWeight: 700 }}>Agent</th>
+                    <th style={{ ...cellR, fontWeight: 700 }}>Audits</th>
+                    <th style={{ ...cellR, fontWeight: 700 }}>Conversation</th>
+                    <th style={{ ...cellR, fontWeight: 700 }}>Avg score</th>
+                    <th style={{ ...cellR, fontWeight: 700 }}>Auto-fails</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {qaByAgent.map(a => {
+                    const col = a.avgScore == null ? 'var(--ink-soft)'
+                      : a.avgScore >= 90 ? 'var(--passed)'
+                      : a.avgScore >= 80 ? 'var(--accent)'
+                      : a.avgScore >= 70 ? 'var(--needed)' : 'var(--failed)'
+                    return (
+                      <tr key={a.name} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                        <td style={{ ...cellL, fontWeight: 600 }}>{a.name}</td>
+                        <td style={cellR}>{a.audits}</td>
+                        <td style={cellR}>{a.convAudits}</td>
+                        <td style={{ ...cellR, color: col, fontWeight: 700 }}>{a.avgScore == null ? '—' : a.avgScore + '%'}</td>
+                        <td style={{ ...cellR, color: a.autoFails ? 'var(--failed)' : 'var(--ink-soft)' }}>{a.autoFails || '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      ) : null}
+      {loading || view === 'quality' ? null : (
         <>
           <div className="card" style={{ padding: '12px 16px', marginBottom: 16, display: 'inline-block' }}>
             <span style={{ fontSize: 12, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Total tracked</span>
