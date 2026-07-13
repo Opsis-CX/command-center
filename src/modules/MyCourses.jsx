@@ -5,6 +5,7 @@ import { LessonView, useScrolledToBottom } from './CourseBuilder'
 export default function MyCourses() {
   const [courses, setCourses] = useState([])
   const [status, setStatus] = useState({})   // course_id -> attempt status
+  const [progress, setProgress] = useState({}) // course_id -> { last_lesson_idx, completed_lessons }
   const [openCourse, setOpenCourse] = useState(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
@@ -15,24 +16,30 @@ export default function MyCourses() {
     setLoading(true); setErr('')
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      const [coRes, stRes] = await Promise.all([
+      const [coRes, stRes, prRes] = await Promise.all([
         supabase.from('courses').select('*').eq('status', 'published').order('title'),
         supabase.from('quiz_attempt_status').select('*').eq('profile_id', user.id),
+        supabase.from('course_progress').select('*').eq('profile_id', user.id),
       ])
       if (coRes.error) throw coRes.error
       setCourses(coRes.data || [])
       const byCourse = {}
       for (const r of (stRes.data || [])) byCourse[r.course_id] = r
       setStatus(byCourse)
+      const prByCourse = {}
+      for (const r of (prRes.data || [])) prByCourse[r.course_id] = r
+      setProgress(prByCourse)
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }
 
   // No row in the view = never attempted.
   const statusFor = (id) => status[id] || { attempts_used: 0, attempts_left: 2, has_passed: false }
+  const progressFor = (id) => progress[id] || { last_lesson_idx: 0, completed_lessons: false }
 
   if (openCourse) {
     return <CourseRunner course={openCourse}
       status={statusFor(openCourse.id)}
+      progress={progressFor(openCourse.id)}
       onExit={() => { setOpenCourse(null); load() }} />
   }
 
@@ -54,6 +61,8 @@ export default function MyCourses() {
 
           {courses.map(c => {
             const s = statusFor(c.id)
+            const pr = progressFor(c.id)
+            const started = pr.last_lesson_idx > 0 || pr.completed_lessons
             const locked = !s.has_passed && s.attempts_left === 0
             return (
               <div className="card" key={c.id}>
@@ -75,11 +84,16 @@ export default function MyCourses() {
                         : `${s.attempts_left} attempt${s.attempts_left === 1 ? '' : 's'} remaining.`}
                 </p>
 
+                {!s.has_passed && started && !locked && (
+                  <p className="page-sub" style={{ marginTop: 6, fontSize: 12, color: 'var(--accent)' }}>
+                    {pr.completed_lessons ? 'Lessons finished — quiz is next.' : `Resume at lesson ${pr.last_lesson_idx + 1}.`}
+                  </p>
+                )}
                 <div style={{ marginTop: 14 }}>
                   <button className="btn btn-primary" disabled={locked}
                     style={locked ? { opacity: .45, cursor: 'not-allowed' } : undefined}
                     onClick={() => setOpenCourse(c)}>
-                    {s.has_passed ? 'Review lessons' : s.attempts_used > 0 ? 'Continue' : 'Start course'}
+                    {s.has_passed ? 'Review lessons' : (started || s.attempts_used > 0) ? 'Continue' : 'Start course'}
                   </button>
                 </div>
               </div>
@@ -92,13 +106,14 @@ export default function MyCourses() {
 }
 
 // Lessons, then quiz, then results.
-function CourseRunner({ course, status, onExit }) {
+function CourseRunner({ course, status, progress, onExit }) {
   const [lessons, setLessons] = useState([])
   const [idx, setIdx] = useState(0)
   const [phase, setPhase] = useState('lessons')   // lessons | quiz | done
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
+  const furthestRef = useRef(progress?.last_lesson_idx || 0)
 
   const scrollRef = useRef(null)
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0 }, [idx])
@@ -108,9 +123,37 @@ function CourseRunner({ course, status, onExit }) {
     supabase.from('lessons').select('*').eq('course_id', course.id).order('sort_order')
       .then(({ data, error }) => {
         if (error) setErr(error.message)
-        setLessons(data || []); setLoading(false)
+        const list = data || []
+        setLessons(list)
+        // resume at the saved lesson, clamped to the available range
+        if (!status?.has_passed && list.length) {
+          const start = Math.min(Math.max(progress?.last_lesson_idx || 0, 0), list.length - 1)
+          setIdx(start)
+        }
+        setLoading(false)
       })
   }, [course.id])
+
+  // Persist the furthest lesson reached (never moves backward).
+  async function saveProgress(newIdx, finishedLessons) {
+    const furthest = Math.max(furthestRef.current, newIdx)
+    furthestRef.current = furthest
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      await supabase.from('course_progress').upsert({
+        profile_id: user.id, course_id: course.id,
+        last_lesson_idx: furthest,
+        completed_lessons: !!finishedLessons || furthest >= (lessons.length - 1),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'profile_id,course_id' })
+    } catch { /* progress is best-effort; never block the learner */ }
+  }
+  function goNext() {
+    const next = idx + 1
+    setIdx(next)
+    saveProgress(next, false)
+  }
 
   if (loading) return <p className="page-sub">Loading course…</p>
 
@@ -156,12 +199,12 @@ function CourseRunner({ course, status, onExit }) {
             {idx < total - 1
               ? <button className="btn btn-primary" disabled={!readToEnd}
                   style={!readToEnd ? { opacity: .45, cursor: 'not-allowed' } : undefined}
-                  onClick={() => setIdx(i => i + 1)}>Next →</button>
+                  onClick={goNext}>Next →</button>
               : status.has_passed
                 ? <span className="page-sub">You've already passed this course.</span>
                 : <button className="btn btn-cta" disabled={!readToEnd}
                     style={!readToEnd ? { opacity: .45, cursor: 'not-allowed' } : undefined}
-                    onClick={() => setPhase('quiz')}>Start quiz →</button>}
+                    onClick={() => { saveProgress(total - 1, true); setPhase('quiz') }}>Start quiz →</button>}
           </div>
         </div>
       )}
