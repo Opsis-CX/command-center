@@ -18,6 +18,14 @@ import { canAny } from '../lib/permissions'
 // same qa_audits table with no schema change.
 // ============================================================
 
+const CAMPAIGNS = [
+  ['lavin', 'Lavin'],
+  ['open_invoices', 'Open Invoices'],
+]
+const BRANDS = {
+  lavin: ['Apple', 'Cedar Park', 'Cheney', 'Cunningham', 'Genson', 'Omaha', 'TVG', 'Quality', 'PDQ', 'Inbound - No Brand'],
+  open_invoices: [],
+}
 const AUDIT_TYPES = [
   ['conversation', 'Conversation'],
   ['voicemail', 'Voicemail'],
@@ -73,19 +81,23 @@ export default function QualityAudit() {
 function NewAudit({ prefill, onDone }) {
   const { user } = useAuth()
   const [questions, setQuestions] = useState([])
+  const [subItems, setSubItems] = useState([])
   const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState('')
 
+  const [campaign, setCampaign] = useState('lavin')
   const [auditType, setAuditType] = useState('conversation')
   const [agentName, setAgentName] = useState(prefill?.agent_name || '')
   const [callId, setCallId] = useState(prefill?.call_id || '')
   const [callDate, setCallDate] = useState(prefill?.call_date || new Date().toISOString().slice(0, 10))
   const [recording, setRecording] = useState(prefill?.recording_link || '')
+  const [uploadingRec, setUploadingRec] = useState(false)
+  const [recError, setRecError] = useState('')
   const [brand, setBrand] = useState(prefill?.brand || '')
-  const [answers, setAnswers] = useState({})       // { question_id: true|false|null }
+  const [answers, setAnswers] = useState({})       // { question_id: { value:'yes'|'no'|'na', missed:[subItemId] } }
   const [autoFail, setAutoFail] = useState(false)
   const [curDisp, setCurDisp] = useState(prefill?.disposition || '')
   const [correctDisp, setCorrectDisp] = useState('')
@@ -94,41 +106,79 @@ function NewAudit({ prefill, onDone }) {
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     try {
-      const [qRes, aRes] = await Promise.all([
+      const [qRes, sRes, aRes] = await Promise.all([
         supabase.from('qa_questions').select('*').eq('active', true).order('sort_order'),
+        supabase.from('qa_sub_items').select('*').eq('active', true).order('sort_order'),
         supabase.from('profiles').select('id, full_name, role, is_active').eq('role', 'agent').order('full_name'),
       ])
       if (qRes.error) throw qRes.error
-      // shape profiles to what the form expects: agent_name + profile_id
       setQuestions(qRes.data || [])
+      setSubItems(sRes.error ? [] : (sRes.data || []))
       setAgents((aRes.data || []).map(p => ({ agent_name: p.full_name, profile_id: p.id, status: p.is_active ? 'Active' : 'Inactive' })))
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
 
-  const typeQuestions = useMemo(
-    () => questions.filter(q => q.audit_type === auditType).sort((a, b) => a.sort_order - b.sort_order),
-    [questions, auditType]
-  )
+  // Conversation questions are campaign-specific; other audit types are 'all'.
+  const typeQuestions = useMemo(() => {
+    return questions
+      .filter(q => q.audit_type === auditType)
+      .filter(q => auditType !== 'conversation' || q.campaign === campaign || q.campaign === 'all')
+      .sort((a, b) => a.sort_order - b.sort_order)
+  }, [questions, auditType, campaign])
 
-  // reset answers when the audit type changes
-  useEffect(() => { setAnswers({}); setAutoFail(false) }, [auditType])
+  const subItemsFor = useCallback((qid) => subItems.filter(s => s.question_id === qid).sort((a, b) => a.sort_order - b.sort_order), [subItems])
 
-  // live score: earned / max of ANSWERED questions * 100; auto-fail forces 0
+  // reset answers when audit type or campaign changes
+  useEffect(() => { setAnswers({}); setAutoFail(false) }, [auditType, campaign])
+
+  // live score: N/A excluded from both earned and denominator; auto-fail forces 0
   const { earned, max, score } = useMemo(() => {
     let e = 0, m = 0
     for (const q of typeQuestions) {
-      const v = answers[q.id]
-      if (v === true) { e += Number(q.points); m += Number(q.points) }
-      else if (v === false) { m += Number(q.points) }
-      // null/unanswered doesn't count toward max, so partial audits still read sensibly
+      const a = answers[q.id]
+      const v = a?.value
+      if (v === 'yes') { e += Number(q.points); m += Number(q.points) }
+      else if (v === 'no') { m += Number(q.points) }
+      // 'na' or unanswered: excluded from the denominator
     }
     const s = autoFail ? 0 : (m > 0 ? Math.round((e / m) * 100) : null)
     return { earned: e, max: m, score: s }
   }, [typeQuestions, answers, autoFail])
 
   function setAnswer(qid, val) {
-    setAnswers(prev => ({ ...prev, [qid]: prev[qid] === val ? null : val }))
+    setAnswers(prev => {
+      const cur = prev[qid] || {}
+      // toggling the same value clears it
+      const value = cur.value === val ? null : val
+      return { ...prev, [qid]: { ...cur, value, missed: value === 'no' ? (cur.missed || []) : [] } }
+    })
+  }
+  function toggleMissed(qid, subId) {
+    setAnswers(prev => {
+      const cur = prev[qid] || { value: 'no', missed: [] }
+      const missed = cur.missed || []
+      const next = missed.includes(subId) ? missed.filter(x => x !== subId) : [...missed, subId]
+      return { ...prev, [qid]: { ...cur, missed: next } }
+    })
+  }
+
+  async function uploadRecording(file) {
+    if (!file) return
+    setRecError(''); setUploadingRec(true)
+    try {
+      const ext = file.name.includes('.') ? file.name.split('.').pop() : 'bin'
+      const rand = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()))
+      const path = `${new Date().toISOString().slice(0, 10)}/${rand}.${ext}`
+      const { error: upErr } = await supabase.storage.from('qa-recordings').upload(path, file, { contentType: file.type || undefined, upsert: false })
+      if (upErr) throw upErr
+      const { data: pub } = supabase.storage.from('qa-recordings').getPublicUrl(path)
+      setRecording(pub.publicUrl)
+    } catch (e) {
+      setRecError(e.message || 'Upload failed')
+    } finally {
+      setUploadingRec(false)
+    }
   }
 
   async function save() {
@@ -140,6 +190,7 @@ function NewAudit({ prefill, onDone }) {
       profile_id: agent?.profile_id || null,
       auditor_id: user?.id || null,
       audit_type: auditType,
+      campaign: auditType === 'conversation' ? campaign : null,
       source: 'manual',
       call_id: callId || null,
       call_date: callDate || null,
@@ -175,6 +226,18 @@ function NewAudit({ prefill, onDone }) {
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b> <span className="page-sub">{err}</span></div>}
       {savedMsg && <div className="card" style={{ borderColor: 'var(--passed)', marginBottom: 14 }}><b style={{ color: 'var(--passed)' }}>{savedMsg}</b></div>}
 
+      {/* campaign (conversation audits are campaign-specific) */}
+      {auditType === 'conversation' && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', color: 'var(--ink-soft)', marginBottom: 5 }}>Campaign</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {CAMPAIGNS.map(([k, label]) => (
+              <button key={k} className={'btn ' + (campaign === k ? 'btn-primary' : 'btn-ghost')} onClick={() => setCampaign(k)}>{label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* audit type */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
         {AUDIT_TYPES.map(([k, label]) => (
@@ -193,8 +256,19 @@ function NewAudit({ prefill, onDone }) {
           </Field>
           <Field label="Call ID / Link"><input value={callId} onChange={e => setCallId(e.target.value)} style={inputStyle} placeholder="Call ID" /></Field>
           <Field label="Call date"><input type="date" value={callDate} onChange={e => setCallDate(e.target.value)} style={inputStyle} /></Field>
-          <Field label="Brand"><input value={brand} onChange={e => setBrand(e.target.value)} style={inputStyle} placeholder="Brand / lead type" /></Field>
-          <Field label="Recording link"><input value={recording} onChange={e => setRecording(e.target.value)} style={inputStyle} placeholder="https://…" /></Field>
+          <Field label="Brand / Location">
+            <select value={brand} onChange={e => setBrand(e.target.value)} style={inputStyle}>
+              <option value="">Select…</option>
+              {(BRANDS[campaign] || []).map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </Field>
+          <Field label="Call recording">
+            <input type="file" accept="audio/*,video/*" onChange={e => uploadRecording(e.target.files?.[0])} disabled={uploadingRec}
+              style={{ ...inputStyle, padding: '6px 8px' }} />
+            {uploadingRec && <div className="page-sub" style={{ fontSize: 12, marginTop: 4 }}>Uploading…</div>}
+            {recError && <div style={{ fontSize: 12, marginTop: 4, color: 'var(--failed)' }}>{recError}</div>}
+            {recording && !uploadingRec && <div className="page-sub" style={{ fontSize: 12, marginTop: 4 }}>✓ Recording attached — <a href={recording} target="_blank" rel="noreferrer">preview</a></div>}
+          </Field>
         </div>
       </div>
 
@@ -202,17 +276,33 @@ function NewAudit({ prefill, onDone }) {
       <div className="card" style={{ marginBottom: 14 }}>
         <SectionTitle>{typeLabel(auditType)} scorecard</SectionTitle>
         {typeQuestions.map(q => {
-          const v = answers[q.id]
+          const a = answers[q.id] || {}
+          const v = a.value
+          const subs = subItemsFor(q.id)
           return (
-            <div key={q.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '9px 0', borderTop: '1px solid var(--line-soft)', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: 220, fontSize: 13.5 }}>
-                {q.label}
-                {Number(q.points) > 0 && <span className="page-sub" style={{ marginLeft: 8, fontSize: 12 }}>({q.points} pts)</span>}
+            <div key={q.id} style={{ padding: '9px 0', borderTop: '1px solid var(--line-soft)' }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 220, fontSize: 13.5 }}>
+                  {q.label}
+                  {Number(q.points) > 0 && <span className="page-sub" style={{ marginLeft: 8, fontSize: 12 }}>({q.points} pts)</span>}
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button className={'btn ' + (v === 'yes' ? 'btn-primary' : 'btn-ghost')} style={{ padding: '5px 14px' }} onClick={() => setAnswer(q.id, 'yes')}>Yes</button>
+                  <button className={'btn ' + (v === 'no' ? 'btn-primary' : 'btn-ghost')} style={{ padding: '5px 14px' }} onClick={() => setAnswer(q.id, 'no')}>No</button>
+                  {q.allow_na && <button className={'btn ' + (v === 'na' ? 'btn-primary' : 'btn-ghost')} style={{ padding: '5px 14px' }} onClick={() => setAnswer(q.id, 'na')}>N/A</button>}
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button className={'btn ' + (v === true ? 'btn-primary' : 'btn-ghost')} style={{ padding: '5px 14px' }} onClick={() => setAnswer(q.id, true)}>Yes</button>
-                <button className={'btn ' + (v === false ? 'btn-primary' : 'btn-ghost')} style={{ padding: '5px 14px' }} onClick={() => setAnswer(q.id, false)}>No</button>
-              </div>
+              {v === 'no' && subs.length > 0 && (
+                <div style={{ marginTop: 8, paddingLeft: 4, display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
+                  <span className="page-sub" style={{ fontSize: 12, width: '100%' }}>What was missed?</span>
+                  {subs.map(s => (
+                    <label key={s.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={(a.missed || []).includes(s.id)} onChange={() => toggleMissed(q.id, s.id)} />
+                      {s.label}
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           )
         })}
