@@ -116,6 +116,8 @@ function Td({ children, right }) {
 function AgentScorecard({ row, canCoach, onBack }) {
   const [notes, setNotes] = useState([])
   const [loadingNotes, setLoadingNotes] = useState(true)
+  const [qaAudits, setQaAudits] = useState([])
+  const [subItemLabels, setSubItemLabels] = useState({})
 
   const loadNotes = useCallback(async () => {
     if (!row) return
@@ -124,6 +126,22 @@ function AgentScorecard({ row, canCoach, onBack }) {
     setNotes(data || []); setLoadingNotes(false)
   }, [row])
   useEffect(() => { loadNotes() }, [loadNotes])
+
+  const loadQa = useCallback(async () => {
+    if (!row) return
+    const [aRes, sRes] = await Promise.all([
+      supabase.from('qa_audits')
+        .select('id, audit_type, campaign, clean_qa_score, auto_fail, brand, feedback, answers, created_at, call_date')
+        .eq('agent_name', row.agent_name)
+        .order('created_at', { ascending: false })
+        .limit(50),
+      supabase.from('qa_sub_items').select('id, label'),
+    ])
+    setQaAudits(aRes.data || [])
+    const map = {}; (sRes.data || []).forEach(s => { map[s.id] = s.label })
+    setSubItemLabels(map)
+  }, [row])
+  useEffect(() => { loadQa() }, [loadQa])
 
   if (!row) return (
     <div>
@@ -198,6 +216,50 @@ function AgentScorecard({ row, canCoach, onBack }) {
           <p style={{ fontSize: 14, lineHeight: 1.65, margin: 0 }}>{row.coaching_focus_last_30_days}</p>
         </div>
       )}
+
+      {/* QA Feedback — the agent's own audited calls + written feedback */}
+      <div className="card" style={{ marginTop: 14 }}>
+        <SectionTitle>Quality Feedback</SectionTitle>
+        {qaAudits.length === 0 ? (
+          <p className="page-sub" style={{ fontSize: 13 }}>No quality reviews yet.</p>
+        ) : (
+          <div>
+            {qaAudits.map(a => {
+              const s = a.clean_qa_score
+              const col = a.auto_fail ? { bg: '#fdecea', fg: '#b71c1c' }
+                : s == null ? { bg: 'var(--line-soft)', fg: 'var(--ink-soft)' }
+                : s >= 90 ? { bg: '#e8f5e9', fg: '#1b5e20' }
+                : s >= 80 ? { bg: '#fff8e1', fg: '#8d6e00' }
+                : s >= 70 ? { bg: '#e3f2fd', fg: '#0d47a1' }
+                : { bg: '#fdecea', fg: '#b71c1c' }
+              return (
+                <div key={a.id} style={{ padding: '10px 0', borderTop: '1px solid var(--line-soft)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: col.bg, color: col.fg }}>
+                      {a.auto_fail ? 'Auto-fail' : (s == null ? '—' : s + '%')}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 600, textTransform: 'capitalize' }}>{(a.audit_type || '').replace('_', ' ')}</span>
+                    {a.brand && <span className="page-sub" style={{ fontSize: 12 }}>· {a.brand}</span>}
+                    <span className="page-sub" style={{ fontSize: 12, marginLeft: 'auto' }}>{fmtDate(a.call_date || a.created_at)}</span>
+                  </div>
+                  {a.feedback && <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: '6px 0 0', color: 'var(--ink)' }}>{a.feedback}</p>}
+                  {(() => {
+                    const missed = []
+                    const ans = a.answers || {}
+                    Object.values(ans).forEach(v => {
+                      if (v && v.value === 'no' && Array.isArray(v.missed)) {
+                        v.missed.forEach(id => { if (subItemLabels[id]) missed.push(subItemLabels[id]) })
+                      }
+                    })
+                    if (!missed.length) return null
+                    return <p style={{ fontSize: 12.5, margin: '5px 0 0', color: 'var(--ink-soft)' }}><b>Missed:</b> {missed.join(', ')}</p>
+                  })()}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Coaching notes */}
       <div className="card" style={{ marginTop: 14 }}>
