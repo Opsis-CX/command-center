@@ -191,6 +191,15 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
     await supabase.from('kb_folders').delete().eq('id', f.id)
     load()
   }
+  async function deleteArticle(a) {
+    if (!window.confirm('Delete "' + a.title + '"? This cannot be undone.')) return
+    // remove any attached files from storage first, then the article (cascades tags/files rows)
+    const { data: att } = await supabase.from('kb_files').select('storage_path').eq('article_id', a.id)
+    const paths = (att || []).map(x => x.storage_path).filter(Boolean)
+    if (paths.length) await supabase.storage.from('kb-files').remove(paths)
+    await supabase.from('kb_articles').delete().eq('id', a.id)
+    load()
+  }
 
   if (results !== null) {
     return (
@@ -255,13 +264,16 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
           {(visibleArticles.length > 0 || visibleFiles.length > 0) ? (
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
               {visibleArticles.map(a => (
-                <button key={a.id} onClick={() => onOpenArticle(a.id)}
-                  style={{ display: 'flex', width: '100%', textAlign: 'left', alignItems: 'center', justifyContent: 'space-between', gap: 12, border: 0, borderBottom: '1px solid var(--line-soft)', background: 'transparent', padding: '12px 18px', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  <span style={{ fontSize: 14 }}>📄 {a.title}
-                    {a.status === 'draft' && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--line-soft)', borderRadius: 4, padding: '1px 6px' }}>DRAFT</span>}
-                  </span>
-                  <span style={{ fontSize: 11.5, color: 'var(--ink-soft)', flex: 'none' }}>{fmtDate(a.updated_at)}</span>
-                </button>
+                <div key={a.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--line-soft)' }}>
+                  <button onClick={() => onOpenArticle(a.id)}
+                    style={{ flex: 1, display: 'flex', textAlign: 'left', alignItems: 'center', justifyContent: 'space-between', gap: 12, border: 0, background: 'transparent', padding: '12px 18px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <span style={{ fontSize: 14 }}>📄 {a.title}
+                      {a.status === 'draft' && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--line-soft)', borderRadius: 4, padding: '1px 6px' }}>DRAFT</span>}
+                    </span>
+                    <span style={{ fontSize: 11.5, color: 'var(--ink-soft)', flex: 'none' }}>{fmtDate(a.updated_at)}</span>
+                  </button>
+                  {canAuthor && <button className="btn btn-ghost" title="Delete article" style={{ fontSize: 13, padding: '4px 12px', flex: 'none', color: 'var(--failed)' }} onClick={() => deleteArticle(a)}>✕</button>}
+                </div>
               ))}
               {visibleFiles.map(f => <FileRow key={f.id} f={f} onDelete={canAuthor ? removeFile : null} />)}
             </div>
@@ -637,6 +649,15 @@ function ArticleEditor({ id, folderId, onDone, onCancel }) {
       <div style={{ display: 'flex', gap: 10, position: 'sticky', bottom: 0, background: 'var(--canvas)', padding: '12px 0' }}>
         <button className="btn btn-ghost" onClick={() => save(false)} disabled={busy}>{busy ? 'Saving…' : 'Save draft'}</button>
         <button className="btn btn-primary" onClick={() => save(true)} disabled={busy}>Publish</button>
+        {id && <button className="btn btn-ghost" style={{ marginLeft: 'auto', color: 'var(--failed)' }} disabled={busy} onClick={async () => {
+          if (!window.confirm('Delete this article? This cannot be undone.')) return
+          setBusy(true)
+          const { data: att } = await supabase.from('kb_files').select('storage_path').eq('article_id', id)
+          const paths = (att || []).map(x => x.storage_path).filter(Boolean)
+          if (paths.length) await supabase.storage.from('kb-files').remove(paths)
+          await supabase.from('kb_articles').delete().eq('id', id)
+          setBusy(false); onDone()
+        }}>Delete article</button>}
       </div>
     </div>
   )
