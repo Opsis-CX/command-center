@@ -96,11 +96,12 @@ function NewAudit({ prefill, onDone }) {
     try {
       const [qRes, aRes] = await Promise.all([
         supabase.from('qa_questions').select('*').eq('active', true).order('sort_order'),
-        supabase.from('sc_agents').select('agent_name, profile_id, status').order('agent_name'),
+        supabase.from('profiles').select('id, full_name, role, is_active').eq('role', 'agent').order('full_name'),
       ])
       if (qRes.error) throw qRes.error
+      // shape profiles to what the form expects: agent_name + profile_id
       setQuestions(qRes.data || [])
-      setAgents(aRes.data || [])
+      setAgents((aRes.data || []).map(p => ({ agent_name: p.full_name, profile_id: p.id, status: p.is_active ? 'Active' : 'Inactive' })))
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
