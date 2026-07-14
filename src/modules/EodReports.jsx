@@ -20,6 +20,12 @@ function isoDate(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padS
 function etDateOf(iso) { return isoDate(new Date(new Date(iso).toLocaleString('en-US', { timeZone: 'America/New_York' }))) }
 const hrs = (min) => (min / 60).toFixed(2)
 const prettyDate = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+// ET wall-clock helpers for the "interval ending soon" reminder.
+function toMin(t) { const [h, m] = String(t).slice(0, 5).split(':').map(Number); return h * 60 + m }
+function etMinutesNow() { const n = etNow(); return n.getHours() * 60 + n.getMinutes() }
+function fmtClock(t) { const [h, m] = String(t).slice(0, 5).split(':').map(Number); const ap = h < 12 ? 'AM' : 'PM'; const hh = ((h + 11) % 12) + 1; return `${hh}:${String(m).padStart(2, '0')} ${ap}` }
+const REMIND_BEFORE_MIN = 30   // start reminding this many minutes before interval end
+const REMIND_GRACE_MIN = 60    // keep reminding this many minutes after, until submitted
 
 // Pull a person's tracked time for one ET date, grouped by task.
 async function fetchTracked(userId, date) {
@@ -123,6 +129,30 @@ function PersonalEod({ userId }) {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [missing, setMissing] = useState(false)
+  // interval-end reminder: latest end time (today) among the person's claimed shifts
+  const [myEnd, setMyEnd] = useState(null)   // { min, time } or null
+  const [, setTick] = useState(0)            // re-render each minute to update the window
+
+  // Load today's claimed interval end once (static for the day).
+  useEffect(() => {
+    if (!userId) return
+    let active = true
+    ;(async () => {
+      const today = isoDate(etNow())
+      const [claimsRes, blocksRes] = await Promise.all([
+        supabase.from('shift_claims').select('shift_block_id').eq('profile_id', userId),
+        supabase.from('shift_blocks').select('id, block_date, end_time').eq('block_date', today),
+      ])
+      if (!active) return
+      const mine = new Set((claimsRes.data || []).map(c => c.shift_block_id))
+      const ends = (blocksRes.data || []).filter(b => mine.has(b.id) && b.end_time).map(b => ({ min: toMin(b.end_time), time: b.end_time }))
+      setMyEnd(ends.length ? ends.sort((a, b) => b.min - a.min)[0] : null)
+    })()
+    return () => { active = false }
+  }, [userId])
+
+  // Tick every minute so the reminder appears/clears without a reload.
+  useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 60000); return () => clearInterval(id) }, [])
 
   const load = useCallback(async () => {
     if (!userId) return
@@ -157,6 +187,10 @@ function PersonalEod({ userId }) {
     finally { setSaving(false) }
   }
 
+  const isTodayView = date === isoDate(etNow())
+  const untilEnd = myEnd ? myEnd.min - etMinutesNow() : null
+  const showReminder = isTodayView && !submittedAt && untilEnd != null && untilEnd <= REMIND_BEFORE_MIN && untilEnd >= -REMIND_GRACE_MIN
+
   return (
     <div className="card">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
@@ -165,6 +199,17 @@ function PersonalEod({ userId }) {
           style={{ border: '1px solid var(--line)', borderRadius: 7, padding: '5px 8px', fontSize: 12.5, fontFamily: 'inherit', background: 'var(--canvas)', color: 'var(--ink)' }} />
       </div>
       <p className="page-sub" style={{ marginBottom: 14 }}>Your tracked tasks fill in automatically. Add anything the tracker can't capture, then save.</p>
+
+      {showReminder && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--accent-bg, rgba(0,119,182,.08))', border: '1px solid var(--accent)', borderRadius: 8, padding: '10px 12px', marginBottom: 14 }}>
+          <span style={{ fontSize: 18 }}>⏰</span>
+          <div style={{ fontSize: 13, lineHeight: 1.45 }}>
+            {untilEnd >= 0
+              ? <>Your interval ends at <b>{fmtClock(myEnd.time)}</b> (in {untilEnd} min) — take a minute to fill out your end-of-day report before you sign off.</>
+              : <>Your interval ended at <b>{fmtClock(myEnd.time)}</b> — don't forget to submit your end-of-day report.</>}
+          </div>
+        </div>
+      )}
 
       {missing ? <SetupNote /> : loading ? <p className="page-sub">Loading…</p> : (
         <>
