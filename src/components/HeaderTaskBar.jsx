@@ -125,7 +125,7 @@ export default function HeaderTaskBar() {
         ) : (
           <div style={chip}>
             <span style={{ fontSize: 12, color: '#16A34A', fontWeight: 600 }}>✓ Checked in</span>
-            <button onClick={checkOut} style={{ border: '1px solid #c3bfb5', background: 'transparent', borderRadius: 8, padding: '5px 12px', fontSize: 12.5, cursor: 'pointer' }}>Check out</button>
+            <button onClick={checkOut} style={{ border: '1px solid var(--line)', background: 'transparent', borderRadius: 8, padding: '5px 12px', fontSize: 12.5, cursor: 'pointer' }}>Check out</button>
           </div>
         )
       )}
@@ -135,7 +135,7 @@ export default function HeaderTaskBar() {
         runningTask ? (
           <div style={{ ...chip, background: 'rgba(22,163,74,.08)', border: '1px solid #16A34A', borderRadius: 8, padding: '5px 10px' }}>
             <span style={{ fontSize: 11, color: '#16A34A', fontWeight: 700 }}>●</span>
-            <span style={{ fontSize: 12.5, color: '#4a4640', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{runningTask.name}</span>
+            <span style={{ fontSize: 12.5, color: 'var(--ink)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{runningTask.name}</span>
             <span style={{ fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#16A34A' }}>{elapsed()}</span>
             <button onClick={stopRunning} style={{ border: 'none', background: '#DC2626', color: '#fff', borderRadius: 6, padding: '3px 10px', fontSize: 12, cursor: 'pointer' }}>Stop</button>
           </div>
