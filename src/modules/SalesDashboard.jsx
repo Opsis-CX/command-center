@@ -122,6 +122,8 @@ export default function SalesDashboard() {
   const [losingDeal, setLosingDeal] = useState(null)
   // whether the "new lead" create dialog is open
   const [creating, setCreating] = useState(false)
+  // whether the "import CSV" dialog is open
+  const [importing, setImporting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -268,6 +270,10 @@ export default function SalesDashboard() {
             style={{ border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>
             ＋ New lead
           </button>
+          <button onClick={() => setImporting(true)}
+            style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', fontSize: 13.5, fontWeight: 700, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>
+            ⭱ Import CSV
+          </button>
           <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search org, contact, role…"
             style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '7px 11px', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', minWidth: 200, fontFamily: 'inherit' }} />
           <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)}
@@ -353,6 +359,11 @@ export default function SalesDashboard() {
           setDeals(prev => [deal, ...prev])   // optimistic; realtime will reconcile
           setSelected(deal)                    // open the new lead's panel
         }}
+        onError={setErr} />}
+
+      {importing && <ImportModal
+        onCancel={() => setImporting(false)}
+        onDone={() => { setImporting(false); load() }}
         onError={setErr} />}
     </div>
   )
@@ -620,6 +631,216 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, onUpdate,
 // Create-a-lead dialog. Inserts a row into `deals` at the first stage
 // ('new_lead'). Only writes columns the board already reads/writes, so it
 // matches the existing schema. Organization is the one required field.
+// ---- CSV import -------------------------------------------------
+// Minimal but correct CSV parser: handles quoted fields, embedded commas,
+// escaped double-quotes (""), and CRLF/LF line endings. Returns the header
+// row plus an array of value-arrays.
+function parseCSV(text) {
+  const rows = []
+  let row = [], field = '', inQuotes = false
+  const endField = () => { row.push(field); field = '' }
+  const endRow = () => { endField(); rows.push(row); row = [] }
+  text = text.replace(/^\uFEFF/, '')   // strip BOM
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (inQuotes) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++ } else inQuotes = false }
+      else field += c
+    } else if (c === '"') inQuotes = true
+    else if (c === ',') endField()
+    else if (c === '\n') endRow()
+    else if (c === '\r') { /* handled by the \n that follows */ }
+    else field += c
+  }
+  if (field.length || row.length) endRow()
+  const clean = rows.filter(r => !(r.length === 1 && r[0].trim() === ''))
+  const headers = clean.shift() || []
+  return { headers: headers.map(h => h.trim()), rows: clean }
+}
+
+// The deal fields the importer can fill, with header keywords used to guess a
+// mapping. Order = display order. `organization` is required per row.
+// Maps a CRM stage label (e.g. "Email 1 Sent", "Email Unreachable") back to a
+// pipeline status key, using the same labels the board already displays.
+// Unknown labels fall back to the first stage.
+const LABEL_TO_STATUS = Object.fromEntries(
+  Object.entries(STAGE_LABEL).map(([k, v]) => [v.toLowerCase().trim(), k])
+)
+const stageToStatus = (text) => LABEL_TO_STATUS[(text || '').toLowerCase().trim()] || 'new_lead'
+
+const IMPORT_FIELDS = [
+  { key: 'organization',   label: 'Organization', required: true, match: ['organization', 'company', 'account'] },
+  { key: 'contact_person', label: 'Contact person', match: ['contact person', 'person - name', 'contact name', 'full name', 'name'] },
+  { key: 'title',          label: 'Role / title', match: ['title', 'role', 'job'] },
+  { key: 'status',         label: 'Stage', match: ['stage'] },
+  { key: 'contact_email',  label: 'Email', match: ['email', 'e-mail'] },
+  { key: 'contact_phone',  label: 'Phone', match: ['phone', 'mobile', 'tel'] },
+  { key: 'value',          label: 'Value', match: ['value', 'amount'] },
+  { key: 'owner_name',     label: 'Owner', match: ['owner'] },
+  { key: 'source',         label: 'Source', match: ['source', 'channel'] },
+]
+function autoMap(headers) {
+  const norm = headers.map(h => h.toLowerCase())
+  const map = {}
+  for (const f of IMPORT_FIELDS) {
+    let idx = -1
+    for (const m of f.match) { idx = norm.findIndex(h => h.includes(m)); if (idx >= 0) break }
+    map[f.key] = idx
+  }
+  return map
+}
+
+function ImportModal({ onCancel, onDone, onError }) {
+  const [parsed, setParsed] = useState(null)   // { headers, rows }
+  const [map, setMap] = useState({})
+  const [fileName, setFileName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [localErr, setLocalErr] = useState('')
+  const [result, setResult] = useState(null)   // { inserted, skipped }
+
+  function onFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFileName(file.name); setLocalErr(''); setResult(null)
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const p = parseCSV(String(reader.result))
+        if (!p.headers.length || !p.rows.length) { setLocalErr('That file has no data rows.'); return }
+        setParsed(p); setMap(autoMap(p.headers))
+      } catch (err) { setLocalErr('Could not read that file: ' + err.message) }
+    }
+    reader.onerror = () => setLocalErr('Could not read that file.')
+    reader.readAsText(file)
+  }
+
+  const cell = (r, key) => { const i = map[key]; return i != null && i >= 0 ? (r[i] ?? '') : '' }
+  const clean = (v) => { const t = (v ?? '').toString().trim(); return t === '' ? null : t }
+  const toNum = (v) => { const t = clean(v); if (t == null) return null; const n = Number(t.replace(/[^0-9.\-]/g, '')); return isNaN(n) ? null : n }
+
+  // rows that have an organization — the rest are skipped
+  const buildable = parsed ? parsed.rows.filter(r => clean(cell(r, 'organization'))) : []
+  const skipCount = parsed ? parsed.rows.length - buildable.length : 0
+
+  async function doImport() {
+    if (!buildable.length) { setLocalErr('No rows have an Organization, so nothing can be imported. Check the mapping.'); return }
+    setBusy(true); setLocalErr('')
+    const rows = buildable.map(r => ({
+      status: (map.status != null && map.status >= 0) ? stageToStatus(cell(r, 'status')) : 'new_lead',
+      organization: clean(cell(r, 'organization')),
+      contact_person: clean(cell(r, 'contact_person')),
+      title: clean(cell(r, 'title')),
+      contact_email: clean(cell(r, 'contact_email')),
+      contact_phone: clean(cell(r, 'contact_phone')),
+      owner_name: clean(cell(r, 'owner_name')),
+      source: clean(cell(r, 'source')),
+      value: toNum(cell(r, 'value')),
+    }))
+    let inserted = 0
+    for (let i = 0; i < rows.length; i += 200) {
+      const chunk = rows.slice(i, i + 200)
+      const { error } = await supabase.from('deals').insert(chunk)
+      if (error) {
+        setBusy(false)
+        setLocalErr(`Imported ${inserted} before an error: ${error.message}`)
+        onError && onError(error.message)
+        return
+      }
+      inserted += chunk.length
+    }
+    setBusy(false)
+    setResult({ inserted, skipped: skipCount })
+  }
+
+  const box = { width: '640px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14, padding: 22, boxShadow: '0 18px 50px rgba(0,0,0,.25)' }
+
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onCancel() }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 200, display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div style={box}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 800 }}>Import leads from CSV</h3>
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--ink-soft)' }}>
+          Each row becomes a lead at the “New Lead” stage. Only mapped columns are imported.
+        </p>
+        {localErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{localErr}</div>}
+
+        {result ? (
+          <div>
+            <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', borderRadius: 8, padding: '12px 14px', fontSize: 13.5, marginBottom: 16 }}>
+              Imported <b>{result.inserted}</b> lead{result.inserted === 1 ? '' : 's'}.{result.skipped > 0 ? ` Skipped ${result.skipped} row${result.skipped === 1 ? '' : 's'} with no organization.` : ''}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={onDone}
+                style={{ border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '8px 18px', cursor: 'pointer', fontFamily: 'inherit' }}>Done</button>
+            </div>
+          </div>
+        ) : !parsed ? (
+          <div style={{ border: '1px dashed var(--line)', borderRadius: 10, padding: 28, textAlign: 'center', background: 'var(--canvas)' }}>
+            <div style={{ fontSize: 13.5, color: 'var(--ink-soft)', marginBottom: 10 }}>Choose a .csv file exported from your CRM</div>
+            <input type="file" accept=".csv,text/csv" onChange={onFile} />
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 12 }}>
+              <b>{fileName}</b> · {parsed.rows.length} row{parsed.rows.length === 1 ? '' : 's'} · {parsed.headers.length} columns
+            </div>
+
+            <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', marginBottom: 8 }}>Map columns</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 14px', marginBottom: 18 }}>
+              {IMPORT_FIELDS.map(f => (
+                <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <label style={{ fontSize: 12.5, color: 'var(--ink)', width: 108, flex: 'none' }}>
+                    {f.label}{f.required ? ' *' : ''}
+                  </label>
+                  <select value={map[f.key] ?? -1} onChange={e => setMap(m => ({ ...m, [f.key]: Number(e.target.value) }))}
+                    style={{ flex: 1, minWidth: 0, border: '1px solid var(--line)', borderRadius: 7, padding: '6px 8px', fontSize: 12.5, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }}>
+                    <option value={-1}>— skip —</option>
+                    {parsed.headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', marginBottom: 8 }}>Preview (first 3)</div>
+            <div style={{ border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden', marginBottom: 8 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: 'var(--canvas)' }}>
+                    {IMPORT_FIELDS.filter(f => (map[f.key] ?? -1) >= 0).map(f => (
+                      <th key={f.key} style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--line)', fontWeight: 700 }}>{f.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {buildable.slice(0, 3).map((r, ri) => (
+                    <tr key={ri}>
+                      {IMPORT_FIELDS.filter(f => (map[f.key] ?? -1) >= 0).map(f => (
+                        <td key={f.key} style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140 }}>{cell(r, f.key) || '—'}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 16 }}>
+              Will import <b>{buildable.length}</b> lead{buildable.length === 1 ? '' : 's'}{skipCount > 0 ? ` · ${skipCount} skipped (no organization)` : ''}. Importing again will create duplicates.
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={onCancel} disabled={busy}
+                style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', fontSize: 13.5, fontWeight: 600, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+              <button onClick={doImport} disabled={busy || !buildable.length}
+                style={{ border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '8px 18px', cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', opacity: busy || !buildable.length ? .6 : 1 }}>
+                {busy ? 'Importing…' : `Import ${buildable.length} lead${buildable.length === 1 ? '' : 's'}`}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function NewLeadModal({ onCancel, onCreated, onError }) {
   const [f, setF] = useState({
     organization: '', contact_person: '', title: '', contact_email: '',
