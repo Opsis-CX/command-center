@@ -29,6 +29,16 @@ function fileIcon(mime) {
   return '📎'
 }
 
+// Callout ("insight") tones. Backward-compatible: an existing callout with no
+// tone falls back to 'info', which is the original accent styling. Used by both
+// the editor and the shared learner renderer so they never drift.
+const CALLOUT_TONES = {
+  info:    { label: 'Info',      icon: '💡', bg: 'var(--accent-bg)', fg: 'var(--accent)' },
+  tip:     { label: 'Tip',       icon: '✅', bg: 'var(--passed-bg)', fg: 'var(--passed)' },
+  warning: { label: 'Important', icon: '⚠️', bg: 'var(--failed-bg)', fg: 'var(--failed)' },
+}
+const calloutTone = (t) => CALLOUT_TONES[t] || CALLOUT_TONES.info
+
 // Detect phone-width viewport; updates on resize.
 function useIsMobile(breakpoint = 700) {
   const [mobile, setMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= breakpoint : false)
@@ -310,13 +320,34 @@ function LessonBody({ lesson, onSave }) {
   const [title, setTitle] = useState(lesson.title)
   const [blocks, setBlocks] = useState(() => withIds(lesson.content_blocks))
 
-  function addBlock(type) {
+  // addBlock(type, atIndex): insert a new block. Omit atIndex (or pass null) to
+  // append to the end; pass an index to drop it *between* existing blocks.
+  function addBlock(type, atIndex) {
     const base = type === 'text' ? { type: 'text', html: '' }
+      : type === 'heading' ? { type: 'heading', text: '', level: 2 }
       : type === 'image' ? { type: 'image', url: '' }
       : type === 'video' ? { type: 'video', embed: '' }
       : type === 'file' ? { type: 'file', url: '', name: '', size: 0, mime: '' }
       : { type: 'callout', tone: 'info', html: '' }
-    setBlocks(bs => [...bs, { ...base, _id: nextBlockId() }])
+    const block = { ...base, _id: nextBlockId() }
+    setBlocks(bs => {
+      if (atIndex == null || atIndex >= bs.length) return [...bs, block]
+      const copy = bs.slice()
+      copy.splice(Math.max(0, atIndex), 0, block)
+      return copy
+    })
+  }
+
+  // Move a block one slot up (dir -1) or down (dir +1).
+  function moveBlock(id, dir) {
+    setBlocks(bs => {
+      const i = bs.findIndex(b => b._id === id)
+      const j = i + dir
+      if (i < 0 || j < 0 || j >= bs.length) return bs
+      const copy = bs.slice()
+      ;[copy[i], copy[j]] = [copy[j], copy[i]]
+      return copy
+    })
   }
 
   const setBlock = (id, patch) => setBlocks(bs => bs.map(b => b._id === id ? { ...b, ...patch } : b))
@@ -359,31 +390,64 @@ function LessonBody({ lesson, onSave }) {
           onClick={() => onSave({ ...lesson, title, content_blocks: stripIds(blocks) })}>Save lesson</button>
       </div>
 
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: 3, alignItems: 'center', background: '#fbfcfd' }}>
+      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', background: '#fbfcfd' }}>
+        <span style={{ fontSize: 11.5, color: 'var(--ink-soft)', fontWeight: 600, marginRight: 4 }}>Add to end:</span>
+        <AddBtn onClick={() => addBlock('heading')}>▤ Heading</AddBtn>
         <AddBtn onClick={() => addBlock('text')}>¶ Text</AddBtn>
         <AddBtn onClick={() => addBlock('image')}>🖼 Image</AddBtn>
         <AddBtn onClick={() => addBlock('video')}>▶ Video</AddBtn>
         <AddBtn onClick={() => addBlock('file')}>📎 File</AddBtn>
-        <AddBtn onClick={() => addBlock('callout')}>💡 Callout</AddBtn>
+        <AddBtn onClick={() => addBlock('callout')}>💡 Insight</AddBtn>
       </div>
 
       <div style={{ padding: '20px 22px', minHeight: 260 }}>
-        {blocks.map(b => (
-          <div key={b._id} style={{ position: 'relative', margin: '14px 0' }}>
-            <button onClick={() => delBlock(b._id)} title="Delete"
-              style={{ position: 'absolute', right: -6, top: 2, zIndex: 2, border: 0, background: 'transparent', color: 'var(--ink-soft)', cursor: 'pointer', fontSize: 13 }}>✕</button>
+        {blocks.map((b, i) => (
+          <div key={b._id}>
+            {/* Insert point ABOVE this block — drop any block type between sections */}
+            <InsertBar onAdd={(type) => addBlock(type, i)} />
+
+            <div style={{ position: 'relative', margin: '4px 0' }}>
+              <div style={{ position: 'absolute', right: -6, top: 2, zIndex: 2, display: 'flex', gap: 1 }}>
+                <IconBtn title="Move up" disabled={i === 0} onClick={() => moveBlock(b._id, -1)}>↑</IconBtn>
+                <IconBtn title="Move down" disabled={i === blocks.length - 1} onClick={() => moveBlock(b._id, 1)}>↓</IconBtn>
+                <IconBtn title="Delete" onClick={() => delBlock(b._id)}>✕</IconBtn>
+              </div>
+
+            {b.type === 'heading' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 60 }}>
+                <select value={b.level || 2} onChange={e => setBlock(b._id, { level: +e.target.value })}
+                  style={{ border: '1px solid var(--line)', borderRadius: 6, padding: '4px 6px', fontSize: 12, fontFamily: 'inherit', flex: 'none' }}>
+                  <option value={2}>Heading</option>
+                  <option value={3}>Subheading</option>
+                </select>
+                <input value={b.text || ''} onChange={e => setBlock(b._id, { text: e.target.value })}
+                  placeholder="Section heading…"
+                  style={{ flex: 1, border: 0, borderBottom: '2px solid var(--line-soft)', fontSize: (b.level || 2) === 2 ? 21 : 17, fontWeight: 700, padding: '4px 0', outline: 'none', fontFamily: 'inherit', color: 'var(--ink)' }} />
+              </div>
+            )}
 
             {(b.type === 'text' || b.type === 'callout') && (
               <div style={{
-                padding: b.type === 'callout' ? '12px 14px' : 0,
+                padding: b.type === 'callout' ? '10px 14px' : 0,
                 borderRadius: b.type === 'callout' ? 8 : 0,
-                background: b.type === 'callout' ? 'var(--accent-bg)' : 'transparent',
+                borderLeft: b.type === 'callout' ? `3px solid ${calloutTone(b.tone).fg}` : 'none',
+                background: b.type === 'callout' ? calloutTone(b.tone).bg : 'transparent',
               }}>
+                {b.type === 'callout' && (
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
+                    {Object.entries(CALLOUT_TONES).map(([key, t]) => (
+                      <button key={key} onClick={() => setBlock(b._id, { tone: key })}
+                        style={{ border: '1px solid ' + ((b.tone || 'info') === key ? t.fg : 'var(--line)'), background: (b.tone || 'info') === key ? t.fg : 'transparent', color: (b.tone || 'info') === key ? '#fff' : 'var(--ink-soft)', fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 12, cursor: 'pointer' }}>
+                        {t.icon} {t.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <RichEditor
                   variant="full"
                   value={b.html || ''}
                   onChange={html => setBlock(b._id, { html })}
-                  placeholder={b.type === 'callout' ? 'Callout text…' : 'Write the lesson…'}
+                  placeholder={b.type === 'callout' ? 'Insight text…' : 'Write the lesson…'}
                   minHeight={80}
                   maxHeight={2000}
                 />
@@ -424,9 +488,12 @@ function LessonBody({ lesson, onSave }) {
                   <div className="page-sub" style={{ marginBottom: 8 }}>Upload a file for learners to download (PDF, doc, sheet, anything)</div>
                   <input type="file" onChange={e => { if (e.target.files[0]) uploadFile(e.target.files[0], b._id) }} />
                 </div>)}
+            </div>
           </div>
         ))}
-        {blocks.length === 0 && <p className="page-sub">Use the toolbar to add text, images, or video.</p>}
+        {/* Insert point at the very end */}
+        {blocks.length > 0 && <InsertBar onAdd={(type) => addBlock(type, blocks.length)} />}
+        {blocks.length === 0 && <p className="page-sub">Use the toolbar above to add a heading, text, image, video, file, or insight.</p>}
       </div>
     </div>
   )
@@ -469,9 +536,19 @@ export function LessonView({ blocks }) {
   return (
     <div>
       {(blocks || []).map((b, i) => {
-        if (b.type === 'text' || b.type === 'callout') {
+        if (b.type === 'heading') {
+          if (!b.text) return null
+          const big = (b.level || 2) === 2
+          return <div key={i} style={{ fontSize: big ? 22 : 18, fontWeight: 700, lineHeight: 1.3, color: 'var(--ink)', margin: big ? '26px 0 10px' : '20px 0 6px', paddingBottom: big ? 6 : 0, borderBottom: big ? '2px solid var(--line)' : 'none' }}>{b.text}</div>
+        }
+        if (b.type === 'callout') {
+          const t = calloutTone(b.tone)
           return <RichContent key={i} html={b.html}
-            style={{ fontSize: 15.5, lineHeight: 1.7, margin: '12px 0', padding: b.type === 'callout' ? '13px 15px' : 0, borderRadius: b.type === 'callout' ? 8 : 0, background: b.type === 'callout' ? 'var(--accent-bg)' : 'transparent' }} />
+            style={{ fontSize: 15.5, lineHeight: 1.7, margin: '12px 0', padding: '13px 15px', borderRadius: 8, borderLeft: `3px solid ${t.fg}`, background: t.bg }} />
+        }
+        if (b.type === 'text') {
+          return <RichContent key={i} html={b.html}
+            style={{ fontSize: 15.5, lineHeight: 1.7, margin: '12px 0' }} />
         }
         if (b.type === 'image' && b.url) {
           const justify = b.align === 'center' ? 'center' : b.align === 'right' ? 'flex-end' : 'flex-start'
@@ -562,6 +639,45 @@ function CoursePreview({ course, lessons, onClose }) {
 const AddBtn = ({ children, onClick }) => (
   <button onClick={onClick} style={{ border: 0, background: 'transparent', color: 'var(--ink-soft)', fontSize: 12.5, fontWeight: 600, padding: '6px 9px', borderRadius: 6, cursor: 'pointer' }}>{children}</button>
 )
+
+// Small square icon button used for per-block move/delete controls.
+const IconBtn = ({ children, onClick, title, disabled }) => (
+  <button onClick={onClick} title={title} disabled={disabled}
+    style={{ border: 0, background: 'transparent', color: 'var(--ink-soft)', cursor: disabled ? 'default' : 'pointer', fontSize: 13, lineHeight: 1, width: 20, height: 20, borderRadius: 5, opacity: disabled ? 0.25 : 0.75 }}>{children}</button>
+)
+
+// A slim divider that sits between blocks. Hovering reveals a "+ Insert" pill;
+// clicking it opens a compact type picker so a new block can be dropped at this
+// exact position (between existing sections) rather than only at the end.
+function InsertBar({ onAdd }) {
+  const [hover, setHover] = useState(false)
+  const [open, setOpen] = useState(false)
+  const show = hover || open
+  const pick = (type) => { onAdd(type); setOpen(false); setHover(false) }
+  return (
+    <div onMouseEnter={() => setHover(true)} onMouseLeave={() => { setHover(false); setOpen(false) }}
+      style={{ margin: '2px 0' }}>
+      {!open ? (
+        <div onClick={() => setOpen(true)} title="Insert a block here"
+          style={{ display: 'flex', alignItems: 'center', gap: 8, height: 18, cursor: 'pointer' }}>
+          <div style={{ flex: 1, height: 1, background: show ? 'var(--accent)' : 'transparent' }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', opacity: show ? 1 : 0, border: '1px solid var(--accent)', borderRadius: 12, padding: '1px 9px', lineHeight: '15px', background: 'var(--surface)', whiteSpace: 'nowrap' }}>+ Insert</span>
+          <div style={{ flex: 1, height: 1, background: show ? 'var(--accent)' : 'transparent' }} />
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', padding: '6px 8px', background: '#fbfcfd', border: '1px solid var(--accent)', borderRadius: 8 }}>
+          <AddBtn onClick={() => pick('heading')}>▤ Heading</AddBtn>
+          <AddBtn onClick={() => pick('text')}>¶ Text</AddBtn>
+          <AddBtn onClick={() => pick('image')}>🖼 Image</AddBtn>
+          <AddBtn onClick={() => pick('video')}>▶ Video</AddBtn>
+          <AddBtn onClick={() => pick('file')}>📎 File</AddBtn>
+          <AddBtn onClick={() => pick('callout')}>💡 Insight</AddBtn>
+          <button onClick={() => setOpen(false)} style={{ marginLeft: 'auto', border: 0, background: 'transparent', color: 'var(--ink-soft)', cursor: 'pointer', fontSize: 12 }}>Cancel</button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ============ QUIZ EDITOR ============
 function QuizEditor({ courseId }) {
