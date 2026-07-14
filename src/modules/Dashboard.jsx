@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import LiveStatus from './LiveStatus'
+import EodReportCard from './EodReports'
 
 // ============================================================
 // DASHBOARD — role-aware command center home.
@@ -95,6 +96,10 @@ export default function Dashboard() {
       {isAdmin
         ? <AdminDashboard data={data} navigate={navigate} />
         : <AgentDashboard data={data} me={me} navigate={navigate} />}
+
+      {/* End-of-day reports: admin roll-up, or the person's own report to fill.
+          Self-gates by role (agents see nothing). */}
+      <EodReportCard />
     </div>
   )
 }
