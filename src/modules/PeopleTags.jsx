@@ -17,6 +17,7 @@ async function sendHiringEmail(kind, to, data) {
 export default function PeopleTags() {
   const { appRole } = useAuth()
   const canEdit = can(appRole, 'people_and_tags.edit')
+  const canDelete = can(appRole, 'people_and_tags.delete')   // admin only
   const [tags, setTags] = useState([])
   const [people, setPeople] = useState([])
   const [taggables, setTaggables] = useState([])
@@ -24,6 +25,7 @@ export default function PeopleTags() {
   const [err, setErr] = useState('')
   const [newTagName, setNewTagName] = useState('')
   const [busyTag, setBusyTag] = useState(false)
+  const [deletingTag, setDeletingTag] = useState(null)   // tag id being deleted
   // Five9 setup: which person's form is open, and its field values
   const [five9Open, setFive9Open] = useState(null)   // person id
   const [five9User, setFive9User] = useState('')
@@ -67,6 +69,53 @@ export default function PeopleTags() {
       setErr(e.message || 'Could not create tag')
     } finally {
       setBusyTag(false)
+    }
+  }
+  // Admin-only. Deleting a tag also frees the people it's on. A tag that's still
+  // assigned to certifications or Knowledge Base items is refused up front, so
+  // those assignments are never silently removed — the admin clears them there
+  // first. People-tag links (managed on this page) are cleaned up as part of it.
+  async function deleteTag(tag) {
+    if (!canDelete) return
+    const peopleCount = taggables.filter(t => t.tag_id === tag.id).length
+
+    // Refuse if the tag is still used by certifications or the knowledge base.
+    let certCount = 0, kbCount = 0
+    try {
+      const [caRes, kfRes, kaRes] = await Promise.all([
+        supabase.from('certification_assignments').select('id', { count: 'exact', head: true }).eq('tag_id', tag.id),
+        supabase.from('kb_folder_tags').select('folder_id', { count: 'exact', head: true }).eq('tag_id', tag.id),
+        supabase.from('kb_article_tags').select('article_id', { count: 'exact', head: true }).eq('tag_id', tag.id),
+      ])
+      certCount = caRes.count || 0
+      kbCount = (kfRes.count || 0) + (kaRes.count || 0)
+    } catch (_) { /* if a check can't run, fall through — the FK will still protect the delete */ }
+
+    if (certCount > 0 || kbCount > 0) {
+      const parts = []
+      if (certCount) parts.push(`${certCount} certification${certCount === 1 ? '' : 's'}`)
+      if (kbCount) parts.push(`${kbCount} Knowledge Base item${kbCount === 1 ? '' : 's'}`)
+      setErr(`"${tag.name}" is still assigned to ${parts.join(' and ')}. Remove it there first, then delete the tag.`)
+      return
+    }
+
+    if (!window.confirm(`Delete the tag "${tag.name}"?\n\nIt will be removed from ${peopleCount} ${peopleCount === 1 ? 'person' : 'people'}. This can't be undone.`)) return
+
+    setDeletingTag(tag.id); setErr('')
+    try {
+      if (peopleCount > 0) {
+        const { error: tgErr } = await supabase.from('taggables').delete().eq('tag_id', tag.id)
+        if (tgErr) throw tgErr
+      }
+      const { error } = await supabase.from('tags').delete().eq('id', tag.id)
+      if (error) throw error
+      setTags(prev => prev.filter(t => t.id !== tag.id))
+      setTaggables(prev => prev.filter(t => t.tag_id !== tag.id))
+    } catch (e) {
+      setErr(e.message || 'Could not delete tag')
+      load()
+    } finally {
+      setDeletingTag(null)
     }
   }
   // Admin-only: change a person's permission role. Optimistic update, then
@@ -186,7 +235,9 @@ export default function PeopleTags() {
         <>
           <div className="card" style={{ marginBottom: 20 }}>
             <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600 }}>Tags</h3>
-            <p className="page-sub" style={{ marginBottom: 14 }}>These are the groups you assign certifications to.</p>
+            <p className="page-sub" style={{ marginBottom: 14 }}>
+              These are the groups you assign certifications to.{canDelete ? ' Click the × on a tag to delete it (admins only).' : ''}
+            </p>
             <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
               <input
                 value={newTagName}
@@ -204,7 +255,17 @@ export default function PeopleTags() {
             ) : (
               <div className="tag-picker">
                 {tags.map(t => (
-                  <span key={t.id} className="tag-opt on" style={{ cursor: 'default' }}>{t.name}</span>
+                  <span key={t.id} className="tag-opt on"
+                    style={{ cursor: 'default', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    {t.name}
+                    {canDelete && (
+                      <button type="button" onClick={() => deleteTag(t)} disabled={deletingTag === t.id}
+                        title={`Delete "${t.name}"`} aria-label={`Delete ${t.name}`}
+                        style={{ border: 0, background: 'transparent', color: 'inherit', cursor: deletingTag === t.id ? 'default' : 'pointer', fontSize: 15, lineHeight: 1, padding: '0 0 0 2px', opacity: deletingTag === t.id ? 0.4 : 0.65 }}>
+                        {deletingTag === t.id ? '…' : '×'}
+                      </button>
+                    )}
+                  </span>
                 ))}
               </div>
             )}
