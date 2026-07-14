@@ -62,6 +62,21 @@ const STAGE_EMAIL = {
   won: 'won_welcome',
 }
 
+// ---- Lost reasons -------------------------------------------
+// Shown in the "Mark as Lost" dialog. Edit freely — this list is the
+// only place to change; everything else follows it. Keep 'Other' last.
+const LOST_REASONS = [
+  'No response',
+  'Not interested',
+  'No budget',
+  'Bad timing',
+  'Chose a competitor',
+  'Not a fit',
+  'Contact left the company',
+  'Company closed / restructured',
+  'Other',
+]
+
 // ---- email stub (mirrors sendHiringEmail) -------------------
 async function sendSalesEmail(kind, to, data) {
   if (!kind || !to) return
@@ -103,6 +118,8 @@ export default function SalesDashboard() {
   // drag-and-drop state: which deal is being dragged, which column is hovered
   const [dragId, setDragId] = useState(null)
   const [dragOverCol, setDragOverCol] = useState(null)
+  // deal currently in the "mark as lost" dialog (null = closed)
+  const [losingDeal, setLosingDeal] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -125,7 +142,7 @@ export default function SalesDashboard() {
   // move a deal to a new stage, log the event, fire the stubbed email.
   // If the target stage has an auto-email wired, confirm first — this covers
   // drags, the dropdown, and the quick buttons alike.
-  async function transition(deal, toStatus, { note, skipConfirm } = {}) {
+  async function transition(deal, toStatus, { note, skipConfirm, extraPatch } = {}) {
     if (toStatus === deal.status) return
     const emailKind = STAGE_EMAIL[toStatus]
     if (emailKind && !skipConfirm) {
@@ -138,7 +155,9 @@ export default function SalesDashboard() {
     }
     setBusy(true)
     const from = deal.status
-    const patch = { status: toStatus, reviewer_id: user?.id }
+    const patch = { status: toStatus, reviewer_id: user?.id, ...(extraPatch || {}) }
+    // reopening a lost deal clears its stale reason
+    if (from === 'lost' && toStatus !== 'lost') patch.lost_reason = null
     if (emailKind) patch.last_emailed_at = new Date().toISOString()
 
     const { error } = await supabase.from('deals').update(patch).eq('id', deal.id)
@@ -161,9 +180,14 @@ export default function SalesDashboard() {
       (deal.contact_email ? ` and sends the welcome email to ${deal.contact_email}.` : '.'))) return
     transition(deal, 'won', { note: 'marked won', skipConfirm: true })
   }
-  const markLost = (deal) => {
-    if (!window.confirm(`Mark ${deal.organization} as LOST? This removes it from the pipeline.`)) return
-    transition(deal, 'lost', { note: 'marked lost', skipConfirm: true })
+  // Lost goes through a dialog so a reason is always captured.
+  const markLost = (deal) => setLosingDeal(deal)
+  const confirmLost = (deal, reason, detail) => {
+    setLosingDeal(null)
+    const note = 'marked lost: ' + reason + (detail ? ' — ' + detail : '')
+    transition(deal, 'lost', { note, skipConfirm: true, extraPatch: { lost_reason: reason } })
+    // if the panel is open on this deal, close it — the deal left the board
+    setSelected(prev => prev && prev.id === deal.id ? null : prev)
   }
 
   // ---- drag-and-drop handlers ----
@@ -289,7 +313,7 @@ export default function SalesDashboard() {
                 <span style={{ width: 28, height: 28, borderRadius: '50%', background: avatarColor(deal.organization), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>{initials(deal.organization)}</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600 }}>{deal.organization}</div>
-                  <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{deal.contact_person} · {STAGE_LABEL[deal.status]}</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{deal.contact_person} · {STAGE_LABEL[deal.status]}{deal.lost_reason ? ` · ${deal.lost_reason}` : ''}</div>
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{timeAgo(deal.created_at)}</span>
               </button>
@@ -300,6 +324,10 @@ export default function SalesDashboard() {
 
       {selected && <DealPanel deal={selected} user={user} onClose={() => setSelected(null)}
         onTransition={transition} onWon={markWon} onLost={markLost} busy={busy} />}
+
+      {losingDeal && <LostDialog deal={losingDeal}
+        onCancel={() => setLosingDeal(null)}
+        onConfirm={(reason, detail) => confirmLost(losingDeal, reason, detail)} />}
     </div>
   )
 }
@@ -400,7 +428,11 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, busy }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <label style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600, flex: 'none' }}>Move to stage:</label>
               <select disabled={busy} value={deal.status}
-                onChange={e => onTransition(deal, e.target.value, { note: `moved to ${STAGE_LABEL[e.target.value]} via stage picker` })}
+                onChange={e => {
+                  const v = e.target.value
+                  if (v === 'lost') { onLost(deal); return }
+                  onTransition(deal, v, { note: `moved to ${STAGE_LABEL[v]} via stage picker` })
+                }}
                 style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, padding: '7px 10px', fontSize: 13, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }}>
                 {STAGES.map(s => (
                   <option key={s.key} value={s.key}>
@@ -436,6 +468,7 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, busy }) {
           <Row label="Value" value={money(deal.value)} />
           <Row label="Owner" value={deal.owner_name} />
           <Row label="Source" value={deal.source} />
+          <Row label="Lost reason" value={deal.lost_reason} />
           <Row label="Notes" value={deal.notes} />
 
           {/* add note */}
@@ -465,6 +498,37 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, busy }) {
               </div>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Small centered dialog for marking a deal Lost — captures a reason
+// (from LOST_REASONS) plus an optional free-text detail.
+function LostDialog({ deal, onCancel, onConfirm }) {
+  const [reason, setReason] = useState(LOST_REASONS[0])
+  const [detail, setDetail] = useState('')
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onCancel() }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 200, display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div style={{ width: 420, maxWidth: '100%', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14, padding: 20, boxShadow: '0 18px 50px rgba(0,0,0,.25)' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800 }}>Mark as Lost</h3>
+        <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--ink-soft)' }}>
+          {deal.organization} will be removed from the pipeline. Why was it lost?
+        </p>
+        <select value={reason} onChange={e => setReason(e.target.value)} autoFocus
+          style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 8, padding: '9px 11px', fontSize: 13.5, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit', marginBottom: 10 }}>
+          {LOST_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <textarea value={detail} onChange={e => setDetail(e.target.value)}
+          placeholder="Optional detail (e.g. who they went with, when to revisit)…"
+          style={{ width: '100%', minHeight: 56, border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 13, fontFamily: 'inherit', background: 'var(--canvas)', color: 'var(--ink)', resize: 'vertical', marginBottom: 14 }} />
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel}
+            style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', fontSize: 13.5, fontWeight: 600, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+          <button onClick={() => onConfirm(reason, detail.trim())}
+            style={{ border: 0, borderRadius: 8, background: '#DC2626', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '8px 16px', cursor: 'pointer', fontFamily: 'inherit' }}>Mark Lost</button>
         </div>
       </div>
     </div>
