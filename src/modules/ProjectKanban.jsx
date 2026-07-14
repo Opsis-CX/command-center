@@ -10,7 +10,7 @@ import { dueCls } from './projectHelpers'
 // ============================================================
 
 const COLS = [
-  { key: 'todo', label: 'To do', color: '#6B6860' },
+  { key: 'todo', label: 'To do', color: 'var(--ink-soft)' },
   { key: 'inprogress', label: 'In progress', color: '#2563EB' },
   { key: 'review', label: 'In review', color: '#7C3AED' },
   { key: 'blocked', label: 'Blocked', color: '#DC2626' },
