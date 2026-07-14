@@ -105,6 +105,29 @@ function avatarColor(name) {
 }
 const money = (n) => (n ? '$' + Number(n).toLocaleString() : '$0')
 
+// ---- deal attachments -------------------------------------------
+// Storage bucket that holds deal files (proposals, contracts, docs).
+// Create it once in Supabase (public bucket named exactly this). To reuse an
+// existing bucket instead, change this one string.
+const DEAL_BUCKET = 'deal-attachments'
+const MAX_ATTACH_MB = 50
+function fmtSize(bytes) {
+  if (!bytes && bytes !== 0) return ''
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB'
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+}
+function fileIcon(type) {
+  const t = type || ''
+  if (t.startsWith('image/')) return '🖼'
+  if (t.startsWith('video/')) return '🎬'
+  if (t.includes('pdf')) return '📄'
+  if (t.includes('word') || t.includes('document')) return '📝'
+  if (t.includes('sheet') || t.includes('excel') || t.includes('csv')) return '📊'
+  if (t.includes('presentation') || t.includes('powerpoint')) return '📽'
+  return '📎'
+}
+
 export default function SalesDashboard() {
   const { user } = useAuth()
   const [deals, setDeals] = useState([])
@@ -388,6 +411,9 @@ function DealCard({ deal, onClick, dragging, onDragStart, onDragEnd }) {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 11, color: 'var(--ink-soft)' }}>
         <span>{money(deal.value)}</span>
+        {deal.attachments && deal.attachments.length > 0 && (
+          <span title={`${deal.attachments.length} attachment${deal.attachments.length === 1 ? '' : 's'}`}>📎 {deal.attachments.length}</span>
+        )}
         <span style={{ marginLeft: 'auto' }}>{timeAgo(deal.created_at)}</span>
       </div>
     </div>
@@ -403,6 +429,10 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, onUpdate,
   const [savingEdit, setSavingEdit] = useState(false)
   const [form, setForm] = useState({})
   const [editErr, setEditErr] = useState('')
+  // attachment upload state
+  const [upBusy, setUpBusy] = useState(false)
+  const [upErr, setUpErr] = useState('')
+  const attList = deal.attachments || []
 
   const loadHistory = useCallback(async () => {
     const [{ data: ev }, { data: act }] = await Promise.all([
@@ -423,6 +453,43 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, onUpdate,
     if (!noteText.trim()) return
     await logActivity('note', { body: noteText.trim() })
     setNoteText('')
+  }
+
+  // Upload one or more files to the deal bucket, then persist their metadata in
+  // the deal's `attachments` JSONB array. Also logs an activity per file.
+  async function onFiles(e) {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (!files.length) return
+    setUpErr(''); setUpBusy(true)
+    let next = [...(deal.attachments || [])]
+    let added = 0
+    for (const file of files) {
+      if (file.size > MAX_ATTACH_MB * 1024 * 1024) { setUpErr(`${file.name} is over ${MAX_ATTACH_MB}MB — skipped.`); continue }
+      const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const path = `${deal.id}/${Date.now()}-${safe}`
+      const { error: upE } = await supabase.storage.from(DEAL_BUCKET).upload(path, file, { contentType: file.type || undefined })
+      if (upE) { setUpErr(`Upload failed: ${upE.message}`); continue }
+      next = [{ name: file.name, type: file.type || '', size: file.size, path, uploaded_by: user?.id || null, created_at: new Date().toISOString() }, ...next]
+      added++
+    }
+    if (added) {
+      try {
+        await onUpdate(deal, { attachments: next })
+        logActivity('attachment', { body: `added ${added} file${added === 1 ? '' : 's'}` })
+      } catch (err) { setUpErr(err.message || 'Files uploaded but could not be saved to the deal.') }
+    }
+    setUpBusy(false)
+  }
+
+  async function removeAttachment(att) {
+    if (!window.confirm(`Remove "${att.name}" from this deal?`)) return
+    setUpErr('')
+    try {
+      await supabase.storage.from(DEAL_BUCKET).remove([att.path])
+      const next = (deal.attachments || []).filter(a => a.path !== att.path)
+      await onUpdate(deal, { attachments: next })
+    } catch (err) { setUpErr(err.message || 'Could not remove that file.') }
   }
 
   function startEdit() {
@@ -588,6 +655,43 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, onUpdate,
               <Row label="Notes" value={deal.notes} />
             </>
           )}
+
+          {/* Attachments (proposals, contracts, docs) */}
+          <div style={{ marginTop: 4, marginBottom: 20, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <h3 style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', margin: 0 }}>Attachments</h3>
+              <label style={{ border: '1px solid var(--line)', borderRadius: 7, background: 'var(--canvas)', color: 'var(--ink)', fontSize: 12.5, fontWeight: 600, padding: '5px 12px', cursor: upBusy ? 'default' : 'pointer', fontFamily: 'inherit', opacity: upBusy ? .6 : 1 }}>
+                {upBusy ? 'Uploading…' : '📎 Add file'}
+                <input type="file" multiple hidden disabled={upBusy} onChange={onFiles} />
+              </label>
+            </div>
+
+            {attList.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>No files yet — attach the proposal, contract, or any supporting doc.</div>
+            ) : (
+              <div style={{ display: 'grid', gap: 6 }}>
+                {attList.map(a => {
+                  const isImg = (a.type || '').startsWith('image/')
+                  const { data } = supabase.storage.from(DEAL_BUCKET).getPublicUrl(a.path)
+                  const url = data?.publicUrl || '#'
+                  return (
+                    <div key={a.path} style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', background: 'var(--canvas)' }}>
+                      {isImg
+                        ? <img src={url} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
+                        : <span style={{ width: 32, height: 32, borderRadius: 6, background: 'var(--accent-bg)', display: 'grid', placeItems: 'center', fontSize: 16, flex: 'none' }}>{fileIcon(a.type)}</span>}
+                      <a href={url} target="_blank" rel="noreferrer" download={a.name} style={{ flex: 1, minWidth: 0, textDecoration: 'none', color: 'var(--ink)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{fmtSize(a.size)}{a.created_at ? ` · ${timeAgo(a.created_at)}` : ''}</div>
+                      </a>
+                      <button onClick={() => removeAttachment(a)} title="Remove"
+                        style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--failed, #DC2626)', fontSize: 14, flex: 'none' }}>🗑</button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {upErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12, marginTop: 8 }}>{upErr}</div>}
+          </div>
 
           {/* add note */}
           <div style={{ marginTop: 8, marginBottom: 20 }}>
