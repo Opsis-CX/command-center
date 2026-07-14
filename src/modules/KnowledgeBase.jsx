@@ -267,7 +267,7 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
               {subfolders.map(sf => (
                 <div key={sf.id} className="card" style={{ padding: 14, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                  <button onClick={() => onOpenFolder(sf.id)} style={{ flex: 1, display: 'flex', alignItems: 'flex-start', gap: 10, border: 0, background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', minWidth: 0 }}>
+                  <button onClick={() => onOpenFolder(sf.id)} style={{ flex: 1, display: 'flex', alignItems: 'flex-start', gap: 10, border: 0, background: 'transparent', color: 'var(--ink)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', minWidth: 0 }}>
                     <span style={{ fontSize: 24, flex: 'none', lineHeight: 1.2 }}>{sf.icon || '📁'}</span>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, overflowWrap: 'anywhere', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{sf.name}</div>
@@ -285,7 +285,7 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
               {visibleArticles.map(a => (
                 <div key={a.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--line-soft)' }}>
                   <button onClick={() => onOpenArticle(a.id)}
-                    style={{ flex: 1, display: 'flex', textAlign: 'left', alignItems: 'center', justifyContent: 'space-between', gap: 12, border: 0, background: 'transparent', padding: '12px 18px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    style={{ flex: 1, display: 'flex', textAlign: 'left', alignItems: 'center', justifyContent: 'space-between', gap: 12, border: 0, background: 'transparent', color: 'var(--ink)', padding: '12px 18px', cursor: 'pointer', fontFamily: 'inherit' }}>
                     <span style={{ fontSize: 14 }}>📄 {a.title}
                       {a.status === 'draft' && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--line-soft)', borderRadius: 4, padding: '1px 6px' }}>DRAFT</span>}
                     </span>
