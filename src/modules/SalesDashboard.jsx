@@ -473,12 +473,6 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, onUpdate,
 
   const efield = { width: '100%', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', fontSize: 13.5, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }
   const elabel = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', margin: '0 0 3px', display: 'block' }
-  const EditField = ({ lbl, k, type = 'text', placeholder, full }) => (
-    <div style={{ marginBottom: 11, gridColumn: full ? '1 / -1' : undefined }}>
-      <label style={elabel}>{lbl}</label>
-      <input type={type} value={form[k]} onChange={setFld(k)} placeholder={placeholder} style={efield} />
-    </div>
-  )
 
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
@@ -568,14 +562,14 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, onUpdate,
           {editing ? (
             <div style={{ marginBottom: 18 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
-                <EditField lbl="Organization *" k="organization" placeholder="Acme Corp" full />
-                <EditField lbl="Contact person" k="contact_person" placeholder="Jane Doe" />
-                <EditField lbl="Role / title" k="title" placeholder="VP Marketing" />
-                <EditField lbl="Email" k="contact_email" type="email" placeholder="jane@acme.com" />
-                <EditField lbl="Phone" k="contact_phone" placeholder="(555) 123-4567" />
-                <EditField lbl="Value ($)" k="value" type="number" placeholder="0" />
-                <EditField lbl="Owner" k="owner_name" placeholder="Lead owner" />
-                <EditField lbl="Source" k="source" placeholder="Referral, LinkedIn…" full />
+                <FormField lbl="Organization *" value={form.organization} onChange={setFld('organization')} placeholder="Acme Corp" full />
+                <FormField lbl="Contact person" value={form.contact_person} onChange={setFld('contact_person')} placeholder="Jane Doe" />
+                <FormField lbl="Role / title" value={form.title} onChange={setFld('title')} placeholder="VP Marketing" />
+                <FormField lbl="Email" value={form.contact_email} onChange={setFld('contact_email')} type="email" placeholder="jane@acme.com" />
+                <FormField lbl="Phone" value={form.contact_phone} onChange={setFld('contact_phone')} placeholder="(555) 123-4567" />
+                <FormField lbl="Value ($)" value={form.value} onChange={setFld('value')} type="number" placeholder="0" />
+                <FormField lbl="Owner" value={form.owner_name} onChange={setFld('owner_name')} placeholder="Lead owner" />
+                <FormField lbl="Source" value={form.source} onChange={setFld('source')} placeholder="Referral, LinkedIn…" full />
               </div>
               <label style={elabel}>Notes</label>
               <textarea value={form.notes} onChange={setFld('notes')} placeholder="Anything useful about this lead…"
@@ -841,6 +835,21 @@ function ImportModal({ onCancel, onDone, onError }) {
   )
 }
 
+// Module-scope field component. IMPORTANT: this must live at module scope, not
+// inside a modal's render body. A component defined inside render gets a new
+// function identity on every keystroke, so React remounts the <input> each time
+// and focus jumps away (the cursor bounced back to the first field). Hoisting it
+// here keeps the input mounted, so typing behaves normally.
+function FormField({ lbl, value, onChange, type = 'text', placeholder, full, autoFocus }) {
+  return (
+    <div style={{ marginBottom: 12, gridColumn: full ? '1 / -1' : undefined }}>
+      <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', margin: '0 0 4px', display: 'block' }}>{lbl}</label>
+      <input type={type} value={value} onChange={onChange} placeholder={placeholder} autoFocus={autoFocus}
+        style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 8, padding: '9px 11px', fontSize: 13.5, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }} />
+    </div>
+  )
+}
+
 function NewLeadModal({ onCancel, onCreated, onError }) {
   const [f, setF] = useState({
     organization: '', contact_person: '', title: '', contact_email: '',
@@ -879,13 +888,6 @@ function NewLeadModal({ onCancel, onCreated, onError }) {
 
   const field = { width: '100%', border: '1px solid var(--line)', borderRadius: 8, padding: '9px 11px', fontSize: 13.5, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }
   const label = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', margin: '0 0 4px', display: 'block' }
-  const Field = ({ lbl, k, type = 'text', placeholder, full }) => (
-    <div style={{ marginBottom: 12, gridColumn: full ? '1 / -1' : undefined }}>
-      <label style={label}>{lbl}</label>
-      <input type={type} value={f[k]} onChange={set(k)} placeholder={placeholder} style={field}
-        autoFocus={k === 'organization'} />
-    </div>
-  )
 
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onCancel() }}
@@ -898,14 +900,14 @@ function NewLeadModal({ onCancel, onCreated, onError }) {
         {localErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{localErr}</div>}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
-          <Field lbl="Organization *" k="organization" placeholder="Acme Corp" full />
-          <Field lbl="Contact person" k="contact_person" placeholder="Jane Doe" />
-          <Field lbl="Role / title" k="title" placeholder="VP Marketing" />
-          <Field lbl="Email" k="contact_email" type="email" placeholder="jane@acme.com" />
-          <Field lbl="Phone" k="contact_phone" placeholder="(555) 123-4567" />
-          <Field lbl="Deal value ($)" k="value" type="number" placeholder="0" />
-          <Field lbl="Owner" k="owner_name" placeholder="Who owns this lead" />
-          <Field lbl="Source" k="source" placeholder="Referral, LinkedIn, list…" full />
+          <FormField lbl="Organization *" value={f.organization} onChange={set('organization')} placeholder="Acme Corp" full autoFocus />
+          <FormField lbl="Contact person" value={f.contact_person} onChange={set('contact_person')} placeholder="Jane Doe" />
+          <FormField lbl="Role / title" value={f.title} onChange={set('title')} placeholder="VP Marketing" />
+          <FormField lbl="Email" value={f.contact_email} onChange={set('contact_email')} type="email" placeholder="jane@acme.com" />
+          <FormField lbl="Phone" value={f.contact_phone} onChange={set('contact_phone')} placeholder="(555) 123-4567" />
+          <FormField lbl="Deal value ($)" value={f.value} onChange={set('value')} type="number" placeholder="0" />
+          <FormField lbl="Owner" value={f.owner_name} onChange={set('owner_name')} placeholder="Who owns this lead" />
+          <FormField lbl="Source" value={f.source} onChange={set('source')} placeholder="Referral, LinkedIn, list…" full />
           <div style={{ marginBottom: 4, gridColumn: '1 / -1' }}>
             <label style={label}>Notes</label>
             <textarea value={f.notes} onChange={set('notes')} placeholder="Anything useful about this lead…"
