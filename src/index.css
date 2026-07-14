@@ -8,6 +8,15 @@
   --ink-soft:   var(--teal);
   --line:       #dfe6e9;
   --line-soft:  #eef2f3;
+  /* Calendar "paper" palette — warm in light mode, flips to readable dark below */
+  --cal-paper:    #fdfcfa;
+  --cal-panel:    #ece8e0;
+  --cal-line:     #c3bfb5;
+  --cal-line-2:   #ece8e0;
+  --cal-line-3:   #f2efe9;
+  --cal-ink:      #3a3a38;
+  --cal-ink-soft: #6a665e;
+  --cal-ink-mute: #9a968c;
   --surface:    var(--white);
   --canvas:     #f4f7f8;
   --accent:     var(--blue);
@@ -258,6 +267,14 @@ a{color:inherit;text-decoration:none;}
 :root[data-theme="dark"] {
   --ink:        #e8eef0;
   --ink-soft:   #9fb4bb;
+  --cal-paper:    #161d21;
+  --cal-panel:    #1b242a;
+  --cal-line:     #2b353b;
+  --cal-line-2:   #232d33;
+  --cal-line-3:   #1e272c;
+  --cal-ink:      #e8eef0;
+  --cal-ink-soft: #b3c1c7;
+  --cal-ink-mute: #8a99a0;
   --line:       #2a3439;
   --line-soft:  #212a2e;
   --surface:    #161d21;
@@ -279,6 +296,14 @@ a{color:inherit;text-decoration:none;}
   :root:not([data-theme="light"]):not([data-theme="dark"]) {
     --ink:        #e8eef0;
     --ink-soft:   #9fb4bb;
+    --cal-paper:    #161d21;
+    --cal-panel:    #1b242a;
+    --cal-line:     #2b353b;
+    --cal-line-2:   #232d33;
+    --cal-line-3:   #1e272c;
+    --cal-ink:      #e8eef0;
+    --cal-ink-soft: #b3c1c7;
+    --cal-ink-mute: #8a99a0;
     --line:       #2a3439;
     --line-soft:  #212a2e;
     --surface:    #161d21;
