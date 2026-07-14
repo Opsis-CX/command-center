@@ -34,16 +34,19 @@ const STAGES = [
   { key: 'proposal_sent',   title: 'Proposal Sent',         hint: 'Proposal out' },
   { key: 'negotiations',    title: 'Negotiations',          hint: 'Working terms' },
   { key: 'contract_sent',   title: 'Contract Sent',         hint: 'Awaiting signature' },
+  { key: 'contract_signed', title: 'Contract Signed',       hint: 'Signed — mark Won to close' },
 ]
-// Terminal statuses — hidden behind the toggle (like the hiring "screened out").
-// email_unreachable = dead end; contract_signed = won.
-const CLOSED = ['email_unreachable', 'contract_signed']
+// Terminal statuses — removed from the board, shown behind the toggle
+// (like the hiring "screened out"). won/lost are the real exits;
+// email_unreachable is a third exit for dead email addresses.
+const CLOSED = ['won', 'lost', 'email_unreachable']
 const STAGE_LABEL = {
   new_lead: 'New Lead', email_1_sent: 'Email 1 Sent', email_unreachable: 'Email Unreachable',
   call_1_made: 'Call 1 Made', linkedin_1_sent: 'LinkedIn Message 1 Sent', email_2_sent: 'Email 2 Sent',
   call_2_made: 'Call 2 Made', linkedin_2_sent: 'LinkedIn Message 2 Sent', drip_campaign: 'Added to Drip Campaign',
   contact_made: 'Contact Made', discovery_call: 'Discovery Call Scheduled', proposal_sent: 'Proposal Sent',
   negotiations: 'Negotiations', contract_sent: 'Contract Sent', contract_signed: 'Contract Signed',
+  won: 'Won', lost: 'Lost',
 }
 // direct status -> column (kept as an indirection layer like the hiring board,
 // so you can add sub-statuses later without touching the columns).
@@ -56,7 +59,7 @@ const STAGE_EMAIL = {
   email_2_sent: 'followup',     // second email in the sequence
   proposal_sent: 'proposal',
   contract_sent: 'contract',
-  contract_signed: 'won_welcome',
+  won: 'won_welcome',
 }
 
 // ---- email stub (mirrors sendHiringEmail) -------------------
@@ -153,13 +156,14 @@ export default function SalesDashboard() {
     setSelected(prev => prev && prev.id === deal.id ? { ...prev, ...patch } : prev)
     setBusy(false)
   }
-  const markSigned = (deal) => {
-    if (!window.confirm(`Mark ${deal.organization} as CONTRACT SIGNED (won)?`)) return
-    transition(deal, 'contract_signed', { note: 'contract signed', skipConfirm: true })
+  const markWon = (deal) => {
+    if (!window.confirm(`Mark ${deal.organization} as WON? This removes it from the pipeline` +
+      (deal.contact_email ? ` and sends the welcome email to ${deal.contact_email}.` : '.'))) return
+    transition(deal, 'won', { note: 'marked won', skipConfirm: true })
   }
-  const markUnreachable = (deal) => {
-    if (!window.confirm(`Mark ${deal.organization} as EMAIL UNREACHABLE (dead)?`)) return
-    transition(deal, 'email_unreachable', { note: 'marked unreachable', skipConfirm: true })
+  const markLost = (deal) => {
+    if (!window.confirm(`Mark ${deal.organization} as LOST? This removes it from the pipeline.`)) return
+    transition(deal, 'lost', { note: 'marked lost', skipConfirm: true })
   }
 
   // ---- drag-and-drop handlers ----
@@ -208,8 +212,8 @@ export default function SalesDashboard() {
     if (col && byColumn[col]) byColumn[col].push(d)
   })
   const activeCount = deals.filter(d => !CLOSED.includes(d.status)).length
-  const wonCount = deals.filter(d => d.status === 'contract_signed').length
-  const lostCount = deals.filter(d => d.status === 'email_unreachable').length
+  const wonCount = deals.filter(d => d.status === 'won').length
+  const lostCount = deals.filter(d => d.status === 'lost' || d.status === 'email_unreachable').length
 
   if (loading) return <p className="page-sub" style={{ padding: 20 }}>Loading pipeline…</p>
 
@@ -219,7 +223,7 @@ export default function SalesDashboard() {
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Sales pipeline</h1>
           <p className="page-sub" style={{ margin: '4px 0 0', fontSize: 13.5 }}>
-            {activeCount} active · {wonCount} signed · {lostCount} unreachable
+            {activeCount} active · {wonCount} won · {lostCount} lost
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -232,7 +236,7 @@ export default function SalesDashboard() {
           </select>
           <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, cursor: 'pointer', color: 'var(--ink-soft)' }}>
             <input type="checkbox" checked={showClosed} onChange={e => setShowClosed(e.target.checked)} />
-            Show signed/unreachable ({wonCount + lostCount})
+            Show won/lost ({wonCount + lostCount})
           </label>
         </div>
       </div>
@@ -295,7 +299,7 @@ export default function SalesDashboard() {
       )}
 
       {selected && <DealPanel deal={selected} user={user} onClose={() => setSelected(null)}
-        onTransition={transition} onSigned={markSigned} onUnreachable={markUnreachable} busy={busy} />}
+        onTransition={transition} onWon={markWon} onLost={markLost} busy={busy} />}
     </div>
   )
 }
@@ -325,7 +329,7 @@ function DealCard({ deal, onClick, dragging, onDragStart, onDragEnd }) {
   )
 }
 
-function DealPanel({ deal, user, onClose, onTransition, onSigned, onUnreachable, busy }) {
+function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, busy }) {
   const [events, setEvents] = useState([])
   const [activities, setActivities] = useState([])
   const [noteText, setNoteText] = useState('')
@@ -386,10 +390,10 @@ function DealPanel({ deal, user, onClose, onTransition, onSigned, onUnreachable,
                     → Move to {next.title}
                   </button>
                 )}
-                <button disabled={busy} onClick={() => onSigned(deal)}
-                  style={{ border: 0, borderRadius: 8, background: '#16A34A', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>Signed</button>
-                <button disabled={busy} onClick={() => onUnreachable(deal)}
-                  style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#DC2626', fontSize: 13.5, fontWeight: 700, padding: '9px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>Unreachable</button>
+                <button disabled={busy} onClick={() => onWon(deal)}
+                  style={{ border: 0, borderRadius: 8, background: '#16A34A', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>🏆 Won</button>
+                <button disabled={busy} onClick={() => onLost(deal)}
+                  style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#DC2626', fontSize: 13.5, fontWeight: 700, padding: '9px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>Lost</button>
               </div>
             )}
             {/* jump to ANY stage — forward or backward, or reopen a closed deal */}
@@ -403,8 +407,9 @@ function DealPanel({ deal, user, onClose, onTransition, onSigned, onUnreachable,
                     {s.title}{STAGE_EMAIL[s.key] ? ' (sends email)' : ''}
                   </option>
                 ))}
-                <option value="contract_signed">Contract Signed{STAGE_EMAIL.contract_signed ? ' (sends email)' : ''}</option>
-                <option value="email_unreachable">Email Unreachable</option>
+                <option value="won">Won — remove from pipeline{STAGE_EMAIL.won ? ' (sends email)' : ''}</option>
+                <option value="lost">Lost — remove from pipeline</option>
+                <option value="email_unreachable">Email Unreachable — remove from pipeline</option>
               </select>
             </div>
             {next && STAGE_EMAIL[next.key] && (
