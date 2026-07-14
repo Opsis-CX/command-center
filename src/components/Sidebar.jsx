@@ -6,59 +6,98 @@ import { supabase } from '../lib/supabase'
 import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
 import { canAny } from '../lib/permissions'
 import ChangePassword from './ChangePassword'
-// Sidebar navigation.
-// - `type: 'link'`  → a single top-level link.
-// - `type: 'section'` → a clickable header that expands/collapses its children.
-// Each item carries a `perm` page-key; a person only sees it if their role has
-// any capability under that page. Sections with no visible children are hidden.
+
+// Sidebar navigation, organized into labelled GROUPS.
+//
+// NAV = [ { group: 'Main', items: [ ...items ] }, ... ]
+//
+// Each item is one of:
+//   - { type: 'link',    to, label, ic, end?, perm }
+//       → a single top-level link.
+//   - { type: 'section', key, label, ic, children: [{ to, label, perm }] }
+//       → a clickable header that expands/collapses its children.
+//
+// `perm` is a page-key; a person only sees an item if their role has any
+// capability under that key (perm: null = visible to everyone). A section is
+// hidden when none of its children are visible, and a GROUP is hidden
+// automatically when none of its items are visible — so you never see an empty
+// header. To move something, just cut/paste the item between groups; to add a
+// group, add another { group, items } block. Order in this array = order shown.
 const NAV = [
-  { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, perm: 'dashboard' },
-  { type: 'link', to: '/weekly-sync', label: 'Weekly Sync', ic: '🗓', perm: 'weekly_sync' },
-  { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
-  { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.view_own' },
-  { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂', perm: 'project_management' },
-  { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },  // everyone gets calendar
-  { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
-  { type: 'link', to: '/hiring', label: 'Hiring', ic: '👥', perm: 'hiring' },
-  // Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
-  // and grant it to the right roles, like 'hiring'. To show it to everyone
-  // temporarily, change perm: 'sales' to perm: null.
-  { type: 'link', to: '/sales', label: 'Sales', ic: '📊', perm: 'sales' },
-  { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
   {
-    type: 'section', key: 'certifications', label: 'Certifications', ic: '✦', perm: 'certifications',
-    children: [
-      { to: '/certifications', label: 'Certifications', perm: 'certifications.all' },
-      { to: '/my-certifications', label: 'My certifications', perm: 'certifications.view_personal_score_and_content_assigned' },
-      { to: '/matrix', label: 'Certification matrix', perm: 'certifications.all' },
-      { to: '/courses', label: 'Course builder', perm: 'certifications.builder' },
-      { to: '/my-courses', label: 'My courses', perm: 'certifications.assigned_to_complete' },
+    group: 'Main',
+    items: [
+      { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, perm: 'dashboard' },
+      { type: 'link', to: '/weekly-sync', label: 'Weekly Sync', ic: '🗓', perm: 'weekly_sync' },
+      { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
+      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },  // everyone gets calendar
     ],
   },
   {
-    type: 'section', key: 'schedule', label: 'Schedule', ic: '◷', perm: 'schedule',
-    children: [
-      { to: '/schedule', label: 'Schedule', perm: 'schedule.view_my_schedule' },
-      { to: '/schedule-builder', label: 'Schedule builder', perm: 'schedule.create_schedules' },
-      { to: '/insights', label: 'Schedule insights', perm: 'schedule.all' },
+    group: 'Performance',
+    items: [
+      { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
+      { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.view_own' },
+      { type: 'link', to: '/reporting', label: 'Reporting', ic: '📈', perm: 'reporting' },
     ],
   },
-  { type: 'link', to: '/reporting', label: 'Reporting', ic: '📈', perm: 'reporting' },
   {
-    type: 'section', key: 'backend', label: 'Backend', ic: '⚙', perm: null,
-    children: [
-      { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
-      { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
-      { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
+    group: 'Operations',
+    items: [
+      { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂', perm: 'project_management' },
+      { type: 'link', to: '/hiring', label: 'Hiring', ic: '👥', perm: 'hiring' },
+      // Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
+      // and grant it to the right roles, like 'hiring'. To show it to everyone
+      // temporarily, change perm: 'sales' to perm: null.
+      { type: 'link', to: '/sales', label: 'Sales', ic: '📊', perm: 'sales' },
+      {
+        type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
+        children: [
+          { to: '/schedule', label: 'Schedule', perm: 'schedule.view_my_schedule' },
+          { to: '/schedule-builder', label: 'Schedule builder', perm: 'schedule.create_schedules' },
+          { to: '/insights', label: 'Schedule insights', perm: 'schedule.all' },
+        ],
+      },
+    ],
+  },
+  {
+    group: 'Learning',
+    items: [
+      {
+        type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
+        children: [
+          { to: '/certifications', label: 'Certifications', perm: 'certifications.all' },
+          { to: '/my-certifications', label: 'My certifications', perm: 'certifications.view_personal_score_and_content_assigned' },
+          { to: '/matrix', label: 'Certification matrix', perm: 'certifications.all' },
+          { to: '/courses', label: 'Course builder', perm: 'certifications.builder' },
+          { to: '/my-courses', label: 'My courses', perm: 'certifications.assigned_to_complete' },
+        ],
+      },
+      { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
+    ],
+  },
+  {
+    group: 'Admin',
+    items: [
+      {
+        type: 'section', key: 'backend', label: 'Backend', ic: '⚙', perm: null,
+        children: [
+          { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
+          { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
+          { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
+        ],
+      },
     ],
   },
 ]
+
 export default function Sidebar({ open, onNavigate }) {
   const { isAdmin, level, roles, user, signOut, appRole } = useAuth()
   const { total: unreadTotal } = useUnread()
   const location = useLocation()
+
   const isOwner = level >= 100 || (roles || []).includes('owner')
-  const viewRole = isAdmin ? 'admin' : 'agent'
+
   // Show the person's real name. useAuth only gives us the auth user (email),
   // so pull full_name from their profile. Fall back to the email prefix only
   // if the profile has no name yet.
@@ -72,78 +111,110 @@ export default function Sidebar({ open, onNavigate }) {
   }, [user?.id])
   const name = fullName || user?.email?.split('@')[0] || 'User'
   const initial = (name.trim()[0] || 'U').toUpperCase()
+
   // Theme toggle (System → Light → Dark)
   const [theme, setThemeState] = useState(getTheme())
   const [pwOpen, setPwOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const cycleTheme = () => { const t = nextTheme(theme); setTheme(t); setThemeState(t) }
+
   // Which collapsible sections are open. Several can be open at once.
   const [openSections, setOpenSections] = useState({})
   const toggleSection = (key) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }))
+
   // Auto-open whichever section contains the current page, so you're never
   // sitting on a page whose section is collapsed.
   useEffect(() => {
     const path = location.pathname
     setOpenSections(prev => {
       let next = prev
-      for (const entry of NAV) {
-        if (entry.type !== 'section') continue
-        const hit = entry.children.some(c => c.to === path)
-        if (hit && !prev[entry.key]) next = { ...next, [entry.key]: true }
+      for (const grp of NAV) {
+        for (const item of grp.items) {
+          if (item.type !== 'section') continue
+          const hit = item.children.some(c => c.to === path)
+          if (hit && !prev[item.key]) next = { ...next, [item.key]: true }
+        }
       }
       return next
     })
   }, [location.pathname])
+
+  // Is a single item visible to this person? Used to decide whether a group
+  // header should render at all.
+  const itemVisible = (item) => {
+    if (item.type === 'link') return !item.perm || canAny(appRole, item.perm)
+    return item.children.some(c => !c.perm || canAny(appRole, c.perm))
+  }
+
+  // Render one nav item (link or collapsible section).
+  const renderItem = (item) => {
+    // --- single top-level link ---
+    if (item.type === 'link') {
+      if (item.perm && !canAny(appRole, item.perm)) return null
+      return (
+        <NavLink key={item.to} to={item.to} end={item.end}
+          onClick={() => onNavigate && onNavigate()}
+          className={({ isActive }) => 'nav-item' + (isActive ? ' on' : '')}>
+          <span className="ic">{item.ic}</span> {item.label}
+          {item.to === '/chat' && unreadTotal > 0 && (
+            <span style={{ marginLeft: 'auto', background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
+              {unreadTotal > 99 ? '99+' : unreadTotal}
+            </span>
+          )}
+        </NavLink>
+      )
+    }
+
+    // --- collapsible section ---
+    const children = item.children.filter(c => !c.perm || canAny(appRole, c.perm))
+    if (!children.length) return null
+    const isOpen = !!openSections[item.key]
+    return (
+      <div key={item.key} className="nav-section">
+        <button type="button" className="nav-item nav-section-head" onClick={() => toggleSection(item.key)}
+          aria-expanded={isOpen}>
+          <span className="ic">{item.ic}</span> {item.label}
+          <span className="nav-caret" style={{ marginLeft: 'auto', transition: 'transform .15s ease', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
+        </button>
+        {isOpen && (
+          <div className="nav-section-body">
+            {children.map(c => (
+              <NavLink key={c.to} to={c.to}
+                onClick={() => onNavigate && onNavigate()}
+                className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
+                style={{ paddingLeft: 34 }}>
+                {c.label}
+              </NavLink>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <aside className={'sidebar' + (open ? ' open' : '')}>
       <div className="brand">
         <img src="/opsis-logo.png" alt="Opsis" style={{ width: '100%', height: 'auto', maxHeight: 64, objectFit: 'contain' }} />
       </div>
-      {NAV.map(entry => {
-        // --- single top-level link ---
-        if (entry.type === 'link') {
-          // perm null = available to everyone (e.g. Calendar)
-          if (entry.perm && !canAny(appRole, entry.perm)) return null
-          return (
-            <NavLink key={entry.to} to={entry.to} end={entry.end}
-              onClick={() => onNavigate && onNavigate()}
-              className={({ isActive }) => 'nav-item' + (isActive ? ' on' : '')}>
-              <span className="ic">{entry.ic}</span> {entry.label}
-              {entry.to === '/chat' && unreadTotal > 0 && (
-                <span style={{ marginLeft: 'auto', background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
-                  {unreadTotal > 99 ? '99+' : unreadTotal}
-                </span>
-              )}
-            </NavLink>
-          )
-        }
-        // --- collapsible section ---
-        const children = entry.children.filter(c => !c.perm || canAny(appRole, c.perm))
-        if (!children.length) return null
-        const isOpen = !!openSections[entry.key]
+
+      {NAV.map(grp => {
+        // Hide the whole group (label included) if nothing in it is visible.
+        const anyVisible = grp.items.some(itemVisible)
+        if (!anyVisible) return null
         return (
-          <div key={entry.key} className="nav-section">
-            <button type="button" className="nav-item nav-section-head" onClick={() => toggleSection(entry.key)}
-              aria-expanded={isOpen}>
-              <span className="ic">{entry.ic}</span> {entry.label}
-              <span className="nav-caret" style={{ marginLeft: 'auto', transition: 'transform .15s ease', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
-            </button>
-            {isOpen && (
-              <div className="nav-section-body">
-                {children.map(c => (
-                  <NavLink key={c.to} to={c.to}
-                    onClick={() => onNavigate && onNavigate()}
-                    className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
-                    style={{ paddingLeft: 34 }}>
-                    {c.label}
-                  </NavLink>
-                ))}
-              </div>
-            )}
+          <div key={grp.group} className="nav-group">
+            <div className="nav-group-label"
+              style={{ padding: '14px 12px 4px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', opacity: .45 }}>
+              {grp.group}
+            </div>
+            {grp.items.map(renderItem)}
           </div>
         )
       })}
+
       <div className="nav-spacer" />
+
       <div className="user-chip">
         <div className="user-av">{initial}</div>
         <div>
@@ -151,6 +222,7 @@ export default function Sidebar({ open, onNavigate }) {
           <div className="user-role">{isOwner ? 'Owner' : isAdmin ? 'Admin' : 'Agent'}</div>
         </div>
       </div>
+
       {/* Settings dropdown (below the name) */}
       <div className="nav-section">
         <button className="nav-item nav-section-head" onClick={() => setSettingsOpen(o => !o)}
@@ -181,6 +253,7 @@ export default function Sidebar({ open, onNavigate }) {
           </div>
         )}
       </div>
+
       <button className="signout" onClick={signOut}>Sign out</button>
       {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} onDone={() => setPwOpen(false)} />}
     </aside>
