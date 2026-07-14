@@ -120,6 +120,8 @@ export default function SalesDashboard() {
   const [dragOverCol, setDragOverCol] = useState(null)
   // deal currently in the "mark as lost" dialog (null = closed)
   const [losingDeal, setLosingDeal] = useState(null)
+  // whether the "new lead" create dialog is open
+  const [creating, setCreating] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -190,6 +192,17 @@ export default function SalesDashboard() {
     setSelected(prev => prev && prev.id === deal.id ? null : prev)
   }
 
+  // Edit a deal's fields (contact info, value, notes, etc.) in place.
+  // Throws on error so the panel can keep the form open; also surfaces the
+  // message on the board banner.
+  async function updateDeal(deal, patch) {
+    const { data, error } = await supabase.from('deals').update(patch).eq('id', deal.id).select().single()
+    if (error) { setErr(error.message); throw error }
+    setDeals(prev => prev.map(d => d.id === deal.id ? { ...d, ...data } : d))
+    setSelected(prev => prev && prev.id === deal.id ? { ...prev, ...data } : prev)
+    return data
+  }
+
   // ---- drag-and-drop handlers ----
   function onDragStart(e, deal) {
     setDragId(deal.id)
@@ -251,6 +264,10 @@ export default function SalesDashboard() {
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button onClick={() => setCreating(true)}
+            style={{ border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>
+            ＋ New lead
+          </button>
           <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search org, contact, role…"
             style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '7px 11px', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', minWidth: 200, fontFamily: 'inherit' }} />
           <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)}
@@ -323,11 +340,20 @@ export default function SalesDashboard() {
       )}
 
       {selected && <DealPanel deal={selected} user={user} onClose={() => setSelected(null)}
-        onTransition={transition} onWon={markWon} onLost={markLost} busy={busy} />}
+        onTransition={transition} onWon={markWon} onLost={markLost} onUpdate={updateDeal} busy={busy} />}
 
       {losingDeal && <LostDialog deal={losingDeal}
         onCancel={() => setLosingDeal(null)}
         onConfirm={(reason, detail) => confirmLost(losingDeal, reason, detail)} />}
+
+      {creating && <NewLeadModal
+        onCancel={() => setCreating(false)}
+        onCreated={(deal) => {
+          setCreating(false)
+          setDeals(prev => [deal, ...prev])   // optimistic; realtime will reconcile
+          setSelected(deal)                    // open the new lead's panel
+        }}
+        onError={setErr} />}
     </div>
   )
 }
@@ -357,10 +383,15 @@ function DealCard({ deal, onClick, dragging, onDragStart, onDragEnd }) {
   )
 }
 
-function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, busy }) {
+function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, onUpdate, busy }) {
   const [events, setEvents] = useState([])
   const [activities, setActivities] = useState([])
   const [noteText, setNoteText] = useState('')
+  // inline edit state for the deal's own fields
+  const [editing, setEditing] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [form, setForm] = useState({})
+  const [editErr, setEditErr] = useState('')
 
   const loadHistory = useCallback(async () => {
     const [{ data: ev }, { data: act }] = await Promise.all([
@@ -383,6 +414,32 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, busy }) {
     setNoteText('')
   }
 
+  function startEdit() {
+    setForm({
+      organization: deal.organization || '', contact_person: deal.contact_person || '',
+      title: deal.title || '', contact_email: deal.contact_email || '',
+      contact_phone: deal.contact_phone || '', value: deal.value ?? '',
+      owner_name: deal.owner_name || '', source: deal.source || '', notes: deal.notes || '',
+    })
+    setEditErr(''); setEditing(true)
+  }
+  const setFld = (k) => (e) => setForm(prev => ({ ...prev, [k]: e.target.value }))
+  async function saveEdit() {
+    if (!(form.organization || '').trim()) { setEditErr('Organization is required.'); return }
+    setSavingEdit(true); setEditErr('')
+    const clean = (v) => { const t = (v || '').trim(); return t === '' ? null : t }
+    const patch = {
+      organization: form.organization.trim(), contact_person: clean(form.contact_person),
+      title: clean(form.title), contact_email: clean(form.contact_email),
+      contact_phone: clean(form.contact_phone), owner_name: clean(form.owner_name),
+      source: clean(form.source), notes: clean(form.notes),
+      value: form.value === '' ? null : Number(form.value),
+    }
+    try { await onUpdate(deal, patch); setEditing(false) }
+    catch (e) { setEditErr(e.message || 'Could not save changes.') }
+    finally { setSavingEdit(false) }
+  }
+
   // next-stage advance control
   const idx = STAGES.findIndex(s => s.key === deal.status)
   const next = idx >= 0 && idx < STAGES.length - 1 ? STAGES[idx + 1] : null
@@ -393,6 +450,24 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, busy }) {
       <div style={{ fontSize: 13.5, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{value}</div>
     </div>
   ) : null
+
+  // Like Row, but always renders — shows a muted "Not set" when empty, so
+  // missing contact details are visible instead of silently hidden.
+  const RowShow = ({ label, value }) => (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 13.5, lineHeight: 1.5, whiteSpace: 'pre-wrap', color: value ? 'var(--ink)' : 'var(--ink-soft)', fontStyle: value ? 'normal' : 'italic' }}>{value || 'Not set'}</div>
+    </div>
+  )
+
+  const efield = { width: '100%', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', fontSize: 13.5, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }
+  const elabel = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', margin: '0 0 3px', display: 'block' }
+  const EditField = ({ lbl, k, type = 'text', placeholder, full }) => (
+    <div style={{ marginBottom: 11, gridColumn: full ? '1 / -1' : undefined }}>
+      <label style={elabel}>{lbl}</label>
+      <input type={type} value={form[k]} onChange={setFld(k)} placeholder={placeholder} style={efield} />
+    </div>
+  )
 
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
@@ -461,15 +536,53 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, busy }) {
               style={{ border: '1px solid var(--line)', borderRadius: 7, background: 'var(--canvas)', color: 'var(--ink)', fontSize: 12.5, fontWeight: 600, padding: '6px 11px', cursor: 'pointer', fontFamily: 'inherit' }}>＋ Log meeting</button>
           </div>
 
-          <Row label="Contact" value={deal.contact_person} />
-          <Row label="Role / title" value={deal.title && deal.title !== deal.organization ? deal.title : null} />
-          <Row label="Email" value={deal.contact_email} />
-          <Row label="Phone" value={deal.contact_phone} />
-          <Row label="Value" value={money(deal.value)} />
-          <Row label="Owner" value={deal.owner_name} />
-          <Row label="Source" value={deal.source} />
-          <Row label="Lost reason" value={deal.lost_reason} />
-          <Row label="Notes" value={deal.notes} />
+          {/* Details — view or edit the deal's own fields */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, paddingTop: 4, borderTop: '1px solid var(--line)' }}>
+            <h3 style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', margin: '12px 0 0' }}>Details</h3>
+            {!editing ? (
+              <button onClick={startEdit}
+                style={{ marginTop: 12, border: '1px solid var(--line)', borderRadius: 7, background: 'var(--canvas)', color: 'var(--ink)', fontSize: 12.5, fontWeight: 600, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>✎ Edit</button>
+            ) : (
+              <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+                <button onClick={() => setEditing(false)} disabled={savingEdit}
+                  style={{ border: '1px solid var(--line)', borderRadius: 7, background: 'var(--surface)', color: 'var(--ink)', fontSize: 12.5, fontWeight: 600, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                <button onClick={saveEdit} disabled={savingEdit}
+                  style={{ border: 0, borderRadius: 7, background: 'var(--accent)', color: '#fff', fontSize: 12.5, fontWeight: 700, padding: '5px 14px', cursor: savingEdit ? 'default' : 'pointer', fontFamily: 'inherit', opacity: savingEdit ? .6 : 1 }}>{savingEdit ? 'Saving…' : 'Save'}</button>
+              </div>
+            )}
+          </div>
+
+          {editErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 12 }}>{editErr}</div>}
+
+          {editing ? (
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
+                <EditField lbl="Organization *" k="organization" placeholder="Acme Corp" full />
+                <EditField lbl="Contact person" k="contact_person" placeholder="Jane Doe" />
+                <EditField lbl="Role / title" k="title" placeholder="VP Marketing" />
+                <EditField lbl="Email" k="contact_email" type="email" placeholder="jane@acme.com" />
+                <EditField lbl="Phone" k="contact_phone" placeholder="(555) 123-4567" />
+                <EditField lbl="Value ($)" k="value" type="number" placeholder="0" />
+                <EditField lbl="Owner" k="owner_name" placeholder="Lead owner" />
+                <EditField lbl="Source" k="source" placeholder="Referral, LinkedIn…" full />
+              </div>
+              <label style={elabel}>Notes</label>
+              <textarea value={form.notes} onChange={setFld('notes')} placeholder="Anything useful about this lead…"
+                style={{ ...efield, minHeight: 64, resize: 'vertical' }} />
+            </div>
+          ) : (
+            <>
+              <RowShow label="Contact" value={deal.contact_person} />
+              <Row label="Role / title" value={deal.title && deal.title !== deal.organization ? deal.title : null} />
+              <RowShow label="Email" value={deal.contact_email} />
+              <RowShow label="Phone" value={deal.contact_phone} />
+              <Row label="Value" value={money(deal.value)} />
+              <Row label="Owner" value={deal.owner_name} />
+              <Row label="Source" value={deal.source} />
+              <Row label="Lost reason" value={deal.lost_reason} />
+              <Row label="Notes" value={deal.notes} />
+            </>
+          )}
 
           {/* add note */}
           <div style={{ marginTop: 8, marginBottom: 20 }}>
@@ -498,6 +611,94 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, busy }) {
               </div>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Create-a-lead dialog. Inserts a row into `deals` at the first stage
+// ('new_lead'). Only writes columns the board already reads/writes, so it
+// matches the existing schema. Organization is the one required field.
+function NewLeadModal({ onCancel, onCreated, onError }) {
+  const [f, setF] = useState({
+    organization: '', contact_person: '', title: '', contact_email: '',
+    contact_phone: '', value: '', owner_name: '', source: '', notes: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [localErr, setLocalErr] = useState('')
+  const set = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }))
+
+  async function save() {
+    if (!f.organization.trim()) { setLocalErr('Organization is required.'); return }
+    setSaving(true); setLocalErr('')
+    // Build the row from non-empty fields only; nulls where blank.
+    const clean = (v) => { const t = (v || '').trim(); return t === '' ? null : t }
+    const row = {
+      status: 'new_lead',
+      organization: f.organization.trim(),
+      contact_person: clean(f.contact_person),
+      title: clean(f.title),
+      contact_email: clean(f.contact_email),
+      contact_phone: clean(f.contact_phone),
+      owner_name: clean(f.owner_name),
+      source: clean(f.source),
+      notes: clean(f.notes),
+      value: f.value === '' ? null : Number(f.value),
+    }
+    const { data, error } = await supabase.from('deals').insert(row).select().single()
+    if (error) {
+      setSaving(false)
+      setLocalErr(error.message)   // shows the exact DB error if a column mismatches
+      onError && onError(error.message)
+      return
+    }
+    onCreated(data)
+  }
+
+  const field = { width: '100%', border: '1px solid var(--line)', borderRadius: 8, padding: '9px 11px', fontSize: 13.5, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }
+  const label = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', margin: '0 0 4px', display: 'block' }
+  const Field = ({ lbl, k, type = 'text', placeholder, full }) => (
+    <div style={{ marginBottom: 12, gridColumn: full ? '1 / -1' : undefined }}>
+      <label style={label}>{lbl}</label>
+      <input type={type} value={f[k]} onChange={set(k)} placeholder={placeholder} style={field}
+        autoFocus={k === 'organization'} />
+    </div>
+  )
+
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onCancel() }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 200, display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div style={{ width: 520, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14, padding: 22, boxShadow: '0 18px 50px rgba(0,0,0,.25)' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 800 }}>New lead</h3>
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--ink-soft)' }}>
+          Adds a deal to the pipeline at the “New Lead” stage.
+        </p>
+        {localErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{localErr}</div>}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
+          <Field lbl="Organization *" k="organization" placeholder="Acme Corp" full />
+          <Field lbl="Contact person" k="contact_person" placeholder="Jane Doe" />
+          <Field lbl="Role / title" k="title" placeholder="VP Marketing" />
+          <Field lbl="Email" k="contact_email" type="email" placeholder="jane@acme.com" />
+          <Field lbl="Phone" k="contact_phone" placeholder="(555) 123-4567" />
+          <Field lbl="Deal value ($)" k="value" type="number" placeholder="0" />
+          <Field lbl="Owner" k="owner_name" placeholder="Who owns this lead" />
+          <Field lbl="Source" k="source" placeholder="Referral, LinkedIn, list…" full />
+          <div style={{ marginBottom: 4, gridColumn: '1 / -1' }}>
+            <label style={label}>Notes</label>
+            <textarea value={f.notes} onChange={set('notes')} placeholder="Anything useful about this lead…"
+              style={{ ...field, minHeight: 64, resize: 'vertical' }} />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+          <button onClick={onCancel} disabled={saving}
+            style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', fontSize: 13.5, fontWeight: 600, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+          <button onClick={save} disabled={saving}
+            style={{ border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '8px 18px', cursor: saving ? 'default' : 'pointer', fontFamily: 'inherit', opacity: saving ? .6 : 1 }}>
+            {saving ? 'Adding…' : 'Add lead'}
+          </button>
         </div>
       </div>
     </div>
