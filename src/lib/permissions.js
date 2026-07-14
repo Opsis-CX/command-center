@@ -44,6 +44,9 @@ const MATRIX = {
   'reporting': ['asc', 'certification', 'marketing', 'admin'],
   'people_and_tags.view_only': ['asc', 'admin'],
   'people_and_tags.edit': ['certification', 'marketing', 'admin'],
+  // Deleting a tag is destructive (it can affect certification assignments), so
+  // it's kept strictly at the admin level — not granted to certification/marketing.
+  'people_and_tags.delete': ['admin'],
   'clients.view_only': ['asc', 'certification', 'marketing', 'admin'],
   'clients.edit': ['admin'],
   'positions.view_only': ['asc', 'certification', 'marketing', 'admin'],
