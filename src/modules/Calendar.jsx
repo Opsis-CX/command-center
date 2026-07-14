@@ -289,14 +289,14 @@ export default function Calendar() {
 function BookFrame({ view, setView, children }) {
   return (
     <div style={{ background: '#4a6178', borderRadius: 16, padding: 18, boxShadow: 'inset 0 0 40px rgba(0,0,0,.22)', position: 'relative' }}>
-      <div style={{ display: 'flex', background: '#fdfcfa', borderRadius: 8, overflow: 'hidden', minHeight: 560 }}>
+      <div style={{ display: 'flex', background: 'var(--cal-paper)', borderRadius: 8, overflow: 'hidden', minHeight: 560 }}>
         <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '30px 0', background: '#4a6178' }}>
           {['month', 'week', 'day'].map(v => (
             <button key={v} onClick={() => setView(v)}
               style={{
                 writingMode: 'vertical-rl', textOrientation: 'mixed', border: 'none', cursor: 'pointer',
-                background: view === v ? '#fdfcfa' : '#e8e4dc', color: '#5a5650',
+                background: view === v ? 'var(--cal-paper)' : 'var(--cal-panel)', color: 'var(--cal-ink)',
                 padding: '14px 6px', borderRadius: '0 6px 6px 0', fontSize: 12, letterSpacing: 2,
                 textTransform: 'uppercase', fontWeight: 600,
               }}>{v}</button>
@@ -324,9 +324,9 @@ function LeftRail({ cursor, setCursor, onAddEvent, itemsOn, tasksOn }) {
   const dateLabel = today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 
   return (
-    <div style={{ width: 216, flexShrink: 0, padding: '20px 18px', borderRight: '1px solid #ece8e0', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#7a94ab', marginBottom: 2 }}>Today</div>
-      <div style={{ fontFamily: 'Georgia, serif', fontSize: 19, color: '#3a3a38', lineHeight: 1.2, marginBottom: 14 }}>{dateLabel}</div>
+    <div style={{ width: 216, flexShrink: 0, padding: '20px 18px', borderRight: '1px solid var(--cal-line-2)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: 'var(--cal-ink-soft)', marginBottom: 2 }}>Today</div>
+      <div style={{ fontFamily: 'Georgia, serif', fontSize: 19, color: 'var(--cal-ink)', lineHeight: 1.2, marginBottom: 14 }}>{dateLabel}</div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
         <button onClick={() => setCursor(etNow())} style={railBtn}>TODAY</button>
@@ -338,23 +338,23 @@ function LeftRail({ cursor, setCursor, onAddEvent, itemsOn, tasksOn }) {
         <div key={i.kind + i.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '5px 0', fontSize: 12.5 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: i.color, marginTop: 4, flexShrink: 0 }} />
           <div style={{ minWidth: 0 }}>
-            <div style={{ color: '#4a4640', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</div>
-            <div style={{ color: '#9a968c', fontSize: 11 }}>{i.allDay ? 'All day' : fmtTime(i.start)}</div>
+            <div style={{ color: 'var(--cal-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</div>
+            <div style={{ color: 'var(--cal-ink-mute)', fontSize: 11 }}>{i.allDay ? 'All day' : fmtTime(i.start)}</div>
           </div>
         </div>
-      )) : <div style={{ fontSize: 12, color: '#c3bfb5', fontStyle: 'italic' }}>Nothing scheduled.</div>}
+      )) : <div style={{ fontSize: 12, color: 'var(--cal-ink-mute)', fontStyle: 'italic' }}>Nothing scheduled.</div>}
 
       <div style={{ color: '#c07a5a', fontSize: 11, letterSpacing: 2, margin: '18px 0 6px' }}>DUE TODAY</div>
       {dueTasks.length ? dueTasks.map(t => (
         <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '5px 0', fontSize: 12.5 }}>
-          <span style={{ width: 13, height: 13, borderRadius: '50%', border: '1.5px solid ' + (t.priority === 'high' ? COLORS.priority : '#c3bfb5'), flexShrink: 0 }} />
-          <span style={{ color: '#4a4640', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+          <span style={{ width: 13, height: 13, borderRadius: '50%', border: '1.5px solid ' + (t.priority === 'high' ? COLORS.priority : 'var(--cal-line)'), flexShrink: 0 }} />
+          <span style={{ color: 'var(--cal-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
         </div>
-      )) : <div style={{ fontSize: 12, color: '#c3bfb5', fontStyle: 'italic' }}>No tasks due.</div>}
+      )) : <div style={{ fontSize: 12, color: 'var(--cal-ink-mute)', fontStyle: 'italic' }}>No tasks due.</div>}
     </div>
   )
 }
-const railBtn = { border: '1px solid #c3bfb5', borderRadius: 14, padding: '4px 12px', fontSize: 11, color: '#6a665e', letterSpacing: '.5px', background: 'transparent', cursor: 'pointer' }
+const railBtn = { border: '1px solid var(--cal-line)', borderRadius: 14, padding: '4px 12px', fontSize: 11, color: 'var(--cal-ink-soft)', letterSpacing: '.5px', background: 'transparent', cursor: 'pointer' }
 
 // ---------- MONTH VIEW ----------
 function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent, onShowDetail }) {
@@ -383,9 +383,9 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
     const shown = items.slice(0, MAX_SHOWN)
     const more = items.length - shown.length
     return (
-      <div style={{ background: inMonth ? '#fff' : '#faf8f4', height: CELL_H, padding: '4px 6px', cursor: 'pointer', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+      <div style={{ background: inMonth ? '#fff' : 'var(--cal-paper)', height: CELL_H, padding: '4px 6px', cursor: 'pointer', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
         onClick={() => onAddEvent(d)}>
-        <div style={{ fontSize: 12, color: isToday ? '#fff' : '#9a968c', background: isToday ? COLORS.event : 'transparent', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div style={{ fontSize: 12, color: isToday ? '#fff' : 'var(--cal-ink-mute)', background: isToday ? COLORS.event : 'transparent', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           {d.getDate()}
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -403,7 +403,7 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
         </div>
         {more > 0 && (
           <div onClick={(e) => { e.stopPropagation(); setDayPopup({ date: d, items }) }}
-            style={{ fontSize: 10, color: '#7a94ab', fontWeight: 600, padding: '1px 2px', flexShrink: 0, cursor: 'pointer' }}>
+            style={{ fontSize: 10, color: 'var(--cal-ink-soft)', fontWeight: 600, padding: '1px 2px', flexShrink: 0, cursor: 'pointer' }}>
             + {more} more
           </div>
         )}
@@ -423,10 +423,10 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
           onNext={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>
           {dayNames.map(d => (
-            <div key={d} style={{ textAlign: 'center', color: '#7a94ab', fontSize: 11, letterSpacing: 1.5, paddingBottom: 8 }}>{d.toUpperCase()}</div>
+            <div key={d} style={{ textAlign: 'center', color: 'var(--cal-ink-soft)', fontSize: 11, letterSpacing: 1.5, paddingBottom: 8 }}>{d.toUpperCase()}</div>
           ))}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1, background: '#ece8e0', border: '1px solid #ece8e0' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1, background: 'var(--cal-panel)', border: '1px solid var(--cal-line-2)' }}>
           {days.map((d, i) => <DayCell key={i} d={d} />)}
         </div>
       </div>
@@ -459,13 +459,13 @@ function ViewNav({ cursor, setCursor, label, onPrev, onNext }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
       <button onClick={onPrev} style={navArrow}>‹</button>
-      <div style={{ fontFamily: 'Georgia, "Playfair Display", serif', fontSize: 34, fontStyle: 'italic', color: '#3a3a38', minWidth: 220, letterSpacing: '.5px', lineHeight: 1 }}>{label}</div>
+      <div style={{ fontFamily: 'Georgia, "Playfair Display", serif', fontSize: 34, fontStyle: 'italic', color: 'var(--cal-ink)', minWidth: 220, letterSpacing: '.5px', lineHeight: 1 }}>{label}</div>
       <button onClick={onNext} style={navArrow}>›</button>
       <button onClick={() => setCursor(etNow())} style={{ ...railBtn, marginLeft: 8 }}>TODAY</button>
     </div>
   )
 }
-const navArrow = { border: '1px solid #c3bfb5', background: 'transparent', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', color: '#6a665e', fontSize: 16, lineHeight: 1 }
+const navArrow = { border: '1px solid var(--cal-line)', background: 'transparent', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', color: 'var(--cal-ink-soft)', fontSize: 16, lineHeight: 1 }
 
 // ---------- WEEK VIEW ----------
 function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent, onShowDetail }) {
@@ -483,12 +483,12 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
     const timed = itemsOn(ds).filter(i => !i.allDay && i.start)
     const { priority } = tasksOn(ds)
     return (
-      <div style={{ flex: 1, borderRight: '1px solid #ece8e0', minWidth: 0 }}>
-        <div style={{ textAlign: 'center', fontSize: 11, letterSpacing: 1, color: isoDate(d) === todayStr ? COLORS.event : '#7a94ab', fontWeight: isoDate(d) === todayStr ? 700 : 400, padding: '6px 0' }}>
+      <div style={{ flex: 1, borderRight: '1px solid var(--cal-line-2)', minWidth: 0 }}>
+        <div style={{ textAlign: 'center', fontSize: 11, letterSpacing: 1, color: isoDate(d) === todayStr ? COLORS.event : 'var(--cal-ink-soft)', fontWeight: isoDate(d) === todayStr ? 700 : 400, padding: '6px 0' }}>
           {d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()} {d.getDate()}
         </div>
-        <div style={{ position: 'relative', height: hours.length * ROW, borderTop: '1px solid #ece8e0' }} onClick={() => onAddEvent(d)}>
-          {hours.map((h, i) => <div key={h} style={{ position: 'absolute', top: i * ROW, left: 0, right: 0, height: ROW, borderBottom: '1px solid #f2efe9' }} />)}
+        <div style={{ position: 'relative', height: hours.length * ROW, borderTop: '1px solid var(--cal-line-2)' }} onClick={() => onAddEvent(d)}>
+          {hours.map((h, i) => <div key={h} style={{ position: 'absolute', top: i * ROW, left: 0, right: 0, height: ROW, borderBottom: '1px solid var(--cal-line-3)' }} />)}
           {timed.map(i => {
             const startH = parseHour(i.start)
             const endH = i.end ? parseHour(i.end) : startH + 1
@@ -502,11 +502,11 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
             )
           })}
         </div>
-        <div style={{ borderTop: '1px solid #ece8e0', padding: '6px', minHeight: 70 }}>
-          <div style={{ fontSize: 10, color: '#b0aca4', letterSpacing: 1 }}>PRIORITY</div>
+        <div style={{ borderTop: '1px solid var(--cal-line-2)', padding: '6px', minHeight: 70 }}>
+          <div style={{ fontSize: 10, color: 'var(--cal-ink-mute)', letterSpacing: 1 }}>PRIORITY</div>
           {priority.map(t => (
-            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#5a5650', margin: '3px 0' }}>
-              <span style={{ width: 12, height: 12, borderRadius: '50%', border: '1.5px solid #c3bfb5', flexShrink: 0 }} />
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--cal-ink)', margin: '3px 0' }}>
+              <span style={{ width: 12, height: 12, borderRadius: '50%', border: '1.5px solid var(--cal-line)', flexShrink: 0 }} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
             </div>
           ))}
@@ -522,7 +522,7 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
         <div style={{ padding: '6px 0', fontSize: 11 }}>&nbsp;</div>
         <div style={{ position: 'relative', height: hours.length * ROW, borderTop: '1px solid transparent' }}>
           {hours.map((h, i) => (
-            <div key={h} style={{ position: 'absolute', top: i * ROW - 6, right: 4, fontSize: 10, color: '#b0aca4' }}>{hourLabel(h)}</div>
+            <div key={h} style={{ position: 'absolute', top: i * ROW - 6, right: 4, fontSize: 10, color: 'var(--cal-ink-mute)' }}>{hourLabel(h)}</div>
           ))}
         </div>
       </div>
@@ -560,11 +560,11 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
   return (
     <div style={{ display: 'flex', minHeight: 820 }}>
       {/* left page: hourly column */}
-      <div style={{ flex: 1, padding: '18px 20px', borderRight: '1px solid #ece8e0', minWidth: 0 }}>
+      <div style={{ flex: 1, padding: '18px 20px', borderRight: '1px solid var(--cal-line-2)', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
           <div>
-            <span style={{ fontFamily: 'Georgia, serif', fontSize: 24, color: '#3a3a38' }}>{DOW[(cursor.getDay() + 6) % 7]}</span>
-            <span style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#7a94ab', marginLeft: 8 }}>{MONTHS[cursor.getMonth()]} {cursor.getDate()}, {cursor.getFullYear()}</span>
+            <span style={{ fontFamily: 'Georgia, serif', fontSize: 24, color: 'var(--cal-ink)' }}>{DOW[(cursor.getDay() + 6) % 7]}</span>
+            <span style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: 'var(--cal-ink-soft)', marginLeft: 8 }}>{MONTHS[cursor.getMonth()]} {cursor.getDate()}, {cursor.getFullYear()}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <button onClick={() => setCursor(addDays(cursor, -1))} style={navArrow}>‹</button>
@@ -578,8 +578,8 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
         ))}
         <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 760 }}>
           {hours.map(h => (
-            <div key={h} style={{ display: 'flex', borderTop: '1px solid #f2efe9', flex: 1, minHeight: 34 }}>
-              <div style={{ width: 44, fontSize: 11, color: '#b0aca4', paddingTop: 2 }}>{h === 0 ? '12 am' : h === 12 ? '12 pm' : h > 12 ? `${h - 12} pm` : `${h} am`}</div>
+            <div key={h} style={{ display: 'flex', borderTop: '1px solid var(--cal-line-3)', flex: 1, minHeight: 34 }}>
+              <div style={{ width: 44, fontSize: 11, color: 'var(--cal-ink-mute)', paddingTop: 2 }}>{h === 0 ? '12 am' : h === 12 ? '12 pm' : h > 12 ? `${h - 12} pm` : `${h} am`}</div>
               <div style={{ flex: 1 }} onClick={() => onAddEvent(cursor)}>
                 {timed.filter(i => parseHour(i.start) === h).map(i => (
                   <div key={i.id} onClick={(e) => openItem(i, e)}
@@ -678,18 +678,18 @@ function DayPlanner({ userId, ds, priority, other, quote, onToggleTaskDone, onTo
       </div>
 
       <div style={{ width: 170, flexShrink: 0 }}>
-        <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 13, color: '#6a665e', lineHeight: 1.5 }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 13, color: 'var(--cal-ink-soft)', lineHeight: 1.5 }}>
           &ldquo;{q}&rdquo;
-          <div style={{ marginTop: 6, fontStyle: 'normal', fontSize: 12, color: '#9a968c' }}>— {who}</div>
+          <div style={{ marginTop: 6, fontStyle: 'normal', fontSize: 12, color: 'var(--cal-ink-mute)' }}>— {who}</div>
         </div>
 
         <div style={{ marginTop: 22 }}>
           <PanelHead>MEALS</PanelHead>
           {MEAL_FIELDS.map(([key, label]) => (
             <div key={key} style={{ marginTop: 6 }}>
-              <div style={{ fontSize: 10, color: '#b0aca4', letterSpacing: 1 }}>{label.toUpperCase()}</div>
+              <div style={{ fontSize: 10, color: 'var(--cal-ink-mute)', letterSpacing: 1 }}>{label.toUpperCase()}</div>
               <input value={meals[key] || ''} onChange={e => setMeal(key, e.target.value)} onBlur={() => save({ meals })}
-                placeholder="…" style={{ width: '100%', fontSize: 12, border: 'none', borderBottom: '1px solid #ece8e0', background: 'transparent', padding: '2px 0', outline: 'none', color: '#4a4640' }} />
+                placeholder="…" style={{ width: '100%', fontSize: 12, border: 'none', borderBottom: '1px solid var(--cal-line-2)', background: 'transparent', padding: '2px 0', outline: 'none', color: 'var(--cal-ink)' }} />
             </div>
           ))}
         </div>
@@ -701,40 +701,40 @@ function DayPlanner({ userId, ds, priority, other, quote, onToggleTaskDone, onTo
               const filled = i < water
               return (
                 <span key={i} onClick={() => setWaterTo(i + 1)} title={`${i + 1} of ${WATER_GOAL}`}
-                  style={{ cursor: 'pointer', width: 22, height: 26, borderRadius: '3px 3px 8px 8px', border: '2px solid ' + (filled ? COLORS.event : '#c3bfb5'), background: filled ? COLORS.event : 'transparent' }} />
+                  style={{ cursor: 'pointer', width: 22, height: 26, borderRadius: '3px 3px 8px 8px', border: '2px solid ' + (filled ? COLORS.event : 'var(--cal-line)'), background: filled ? COLORS.event : 'transparent' }} />
               )
             })}
           </div>
-          <div style={{ fontSize: 11, color: '#9a968c', marginTop: 6 }}>{water} of {WATER_GOAL} glasses</div>
+          <div style={{ fontSize: 11, color: 'var(--cal-ink-mute)', marginTop: 6 }}>{water} of {WATER_GOAL} glasses</div>
         </div>
 
         <div style={{ marginTop: 22 }}>
           <PanelHead>WELLBEING</PanelHead>
           <div onClick={toggleWalk}
-            style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, cursor: 'pointer', padding: '8px 10px', borderRadius: 8, background: walkDone ? 'rgba(22,163,74,.08)' : 'transparent', border: '1px solid ' + (walkDone ? '#16A34A' : '#ece8e0') }}>
-            <span style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, border: '2px solid ' + (walkDone ? '#16A34A' : '#c3bfb5'), background: walkDone ? '#16A34A' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12 }}>{walkDone ? '✓' : ''}</span>
-            <span style={{ fontSize: 12.5, color: '#4a4640' }}>15-minute walk today</span>
+            style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, cursor: 'pointer', padding: '8px 10px', borderRadius: 8, background: walkDone ? 'rgba(22,163,74,.08)' : 'transparent', border: '1px solid ' + (walkDone ? '#16A34A' : 'var(--cal-line-2)') }}>
+            <span style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, border: '2px solid ' + (walkDone ? '#16A34A' : 'var(--cal-line)'), background: walkDone ? '#16A34A' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12 }}>{walkDone ? '✓' : ''}</span>
+            <span style={{ fontSize: 12.5, color: 'var(--cal-ink)' }}>15-minute walk today</span>
           </div>
           {walkDone && (
             <div style={{ marginTop: 8 }}>
               <div style={{ fontSize: 12, color: '#16A34A', fontStyle: 'italic', marginBottom: 6 }}>Way to go — your body and mind thank you! 🌿</div>
               <input value={walkNote} onChange={e => setWalkNote(e.target.value)} onBlur={() => save({ walk_note: walkNote })}
                 placeholder="How was it? (optional)"
-                style={{ width: '100%', fontSize: 12, border: 'none', borderBottom: '1px solid #ece8e0', background: 'transparent', padding: '3px 0', outline: 'none', color: '#4a4640' }} />
+                style={{ width: '100%', fontSize: 12, border: 'none', borderBottom: '1px solid var(--cal-line-2)', background: 'transparent', padding: '3px 0', outline: 'none', color: 'var(--cal-ink)' }} />
             </div>
           )}
           {[['break', 'Took a real break'], ['air', 'Got fresh air / sunlight'], ['connect', 'Connected with someone']].map(([key, label]) => (
             <div key={key} onClick={() => toggleWell(key)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, cursor: 'pointer', padding: '8px 10px', borderRadius: 8, background: wellbeing[key] ? 'rgba(22,163,74,.08)' : 'transparent', border: '1px solid ' + (wellbeing[key] ? '#16A34A' : '#ece8e0') }}>
-              <span style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, border: '2px solid ' + (wellbeing[key] ? '#16A34A' : '#c3bfb5'), background: wellbeing[key] ? '#16A34A' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12 }}>{wellbeing[key] ? '✓' : ''}</span>
-              <span style={{ fontSize: 12.5, color: '#4a4640' }}>{label}</span>
+              style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, cursor: 'pointer', padding: '8px 10px', borderRadius: 8, background: wellbeing[key] ? 'rgba(22,163,74,.08)' : 'transparent', border: '1px solid ' + (wellbeing[key] ? '#16A34A' : 'var(--cal-line-2)') }}>
+              <span style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, border: '2px solid ' + (wellbeing[key] ? '#16A34A' : 'var(--cal-line)'), background: wellbeing[key] ? '#16A34A' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12 }}>{wellbeing[key] ? '✓' : ''}</span>
+              <span style={{ fontSize: 12.5, color: 'var(--cal-ink)' }}>{label}</span>
             </div>
           ))}
           <div style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 10, color: '#b0aca4', letterSpacing: 1 }}>ONE GOOD THING TODAY</div>
+            <div style={{ fontSize: 10, color: 'var(--cal-ink-mute)', letterSpacing: 1 }}>ONE GOOD THING TODAY</div>
             <input value={wellbeing.goodThing || ''} onChange={e => setWellbeing({ ...wellbeing, goodThing: e.target.value })} onBlur={() => save({ wellbeing })}
               placeholder="Something that went well…"
-              style={{ width: '100%', fontSize: 12, border: 'none', borderBottom: '1px solid #ece8e0', background: 'transparent', padding: '3px 0', outline: 'none', color: '#4a4640', marginTop: 4 }} />
+              style={{ width: '100%', fontSize: 12, border: 'none', borderBottom: '1px solid var(--cal-line-2)', background: 'transparent', padding: '3px 0', outline: 'none', color: 'var(--cal-ink)', marginTop: 4 }} />
           </div>
         </div>
       </div>
@@ -746,23 +746,23 @@ function QuickAdd({ value, setValue, onAdd, placeholder }) {
   return (
     <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
       <input value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') onAdd() }}
-        placeholder={placeholder} style={{ flex: 1, fontSize: 12, border: 'none', borderBottom: '1px solid #ece8e0', background: 'transparent', padding: '3px 0', outline: 'none', color: '#4a4640' }} />
-      <button onClick={onAdd} style={{ border: '1px solid #c3bfb5', borderRadius: 12, background: 'transparent', color: '#6a665e', fontSize: 11, padding: '2px 10px', cursor: 'pointer' }}>Add</button>
+        placeholder={placeholder} style={{ flex: 1, fontSize: 12, border: 'none', borderBottom: '1px solid var(--cal-line-2)', background: 'transparent', padding: '3px 0', outline: 'none', color: 'var(--cal-ink)' }} />
+      <button onClick={onAdd} style={{ border: '1px solid var(--cal-line)', borderRadius: 12, background: 'transparent', color: 'var(--cal-ink-soft)', fontSize: 11, padding: '2px 10px', cursor: 'pointer' }}>Add</button>
     </div>
   )
 }
 
 function TaskAndTodoList({ tasks, todos, onToggle, onDel, emptyBoth, onToggleTaskDone, onToggleTaskTimer, runningEntry }) {
-  if (!tasks.length && !todos.length) return <div style={{ fontSize: 12, color: '#c3bfb5', fontStyle: 'italic', margin: '8px 0' }}>{emptyBoth}</div>
+  if (!tasks.length && !todos.length) return <div style={{ fontSize: 12, color: 'var(--cal-ink-mute)', fontStyle: 'italic', margin: '8px 0' }}>{emptyBoth}</div>
   return (
     <div style={{ marginTop: 6 }}>
       {tasks.map(t => {
         const done = t.status === 'done'
         const isRunning = runningEntry && runningEntry.task_id === t.id
         return (
-          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: done ? '#b0aca4' : '#4a4640', margin: '5px 0' }}>
+          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: done ? 'var(--cal-ink-mute)' : 'var(--cal-ink)', margin: '5px 0' }}>
             <span onClick={() => onToggleTaskDone && onToggleTaskDone(t)}
-              style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid ' + (done ? '#16A34A' : '#c3bfb5'), background: done ? '#16A34A' : 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10 }}>{done ? '✓' : ''}</span>
+              style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid ' + (done ? '#16A34A' : 'var(--cal-line)'), background: done ? '#16A34A' : 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10 }}>{done ? '✓' : ''}</span>
             <span style={{ textDecoration: done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
             {onToggleTaskTimer && !done && (
               <button onClick={() => onToggleTaskTimer(t)} title={isRunning ? 'Stop timer' : 'Start timer'}
@@ -774,10 +774,10 @@ function TaskAndTodoList({ tasks, todos, onToggle, onDel, emptyBoth, onToggleTas
         )
       })}
       {todos.map(t => (
-        <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: t.done ? '#b0aca4' : '#4a4640', margin: '5px 0' }}>
-          <span onClick={() => onToggle(t.id)} style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid ' + (t.done ? COLORS.event : '#c3bfb5'), background: t.done ? COLORS.event : 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10 }}>{t.done ? '✓' : ''}</span>
+        <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: t.done ? 'var(--cal-ink-mute)' : 'var(--cal-ink)', margin: '5px 0' }}>
+          <span onClick={() => onToggle(t.id)} style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid ' + (t.done ? COLORS.event : 'var(--cal-line)'), background: t.done ? COLORS.event : 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10 }}>{t.done ? '✓' : ''}</span>
           <span style={{ textDecoration: t.done ? 'line-through' : 'none' }}>{t.text}</span>
-          <span onClick={() => onDel(t.id)} style={{ marginLeft: 'auto', color: '#c3bfb5', cursor: 'pointer', fontSize: 14 }}>×</span>
+          <span onClick={() => onDel(t.id)} style={{ marginLeft: 'auto', color: 'var(--cal-ink-mute)', cursor: 'pointer', fontSize: 14 }}>×</span>
         </div>
       ))}
     </div>
