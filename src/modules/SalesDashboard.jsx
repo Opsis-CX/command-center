@@ -7,6 +7,13 @@ import { useAuth } from '../lib/auth'
 //  status->column indirection, realtime refresh, detail slide-over,
 //  stage-event logging, and STUBBED email on transitions
 //  (see sendSalesEmail — wire the Edge Function to your Gmail).
+//
+//  Moving deals:
+//   - drag a card onto any column (forward OR backward)
+//   - or use the "Move to stage…" dropdown in the detail panel
+//   - or the quick "next stage" / Signed / Unreachable buttons
+//  Stages wired to an auto-email ask for confirmation first, so a
+//  casual drag never sends an email unintentionally.
 // ============================================================
 
 // ---- Stages -------------------------------------------------
@@ -90,6 +97,9 @@ export default function SalesDashboard() {
   const [busy, setBusy] = useState(false)
   const [query, setQuery] = useState('')
   const [orgFilter, setOrgFilter] = useState('')
+  // drag-and-drop state: which deal is being dragged, which column is hovered
+  const [dragId, setDragId] = useState(null)
+  const [dragOverCol, setDragOverCol] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -109,12 +119,23 @@ export default function SalesDashboard() {
     return () => { supabase.removeChannel(ch) }
   }, [load])
 
-  // move a deal to a new stage, log the event, fire the stubbed email
-  async function transition(deal, toStatus, { note } = {}) {
+  // move a deal to a new stage, log the event, fire the stubbed email.
+  // If the target stage has an auto-email wired, confirm first — this covers
+  // drags, the dropdown, and the quick buttons alike.
+  async function transition(deal, toStatus, { note, skipConfirm } = {}) {
+    if (toStatus === deal.status) return
+    const emailKind = STAGE_EMAIL[toStatus]
+    if (emailKind && !skipConfirm) {
+      const ok = window.confirm(
+        `Moving ${deal.organization} to "${STAGE_LABEL[toStatus]}" will send the "${emailKind}" email` +
+        (deal.contact_email ? ` to ${deal.contact_email}.` : ' (no email on file, so nothing will send).') +
+        `\n\nContinue?`
+      )
+      if (!ok) return
+    }
     setBusy(true)
     const from = deal.status
     const patch = { status: toStatus, reviewer_id: user?.id }
-    const emailKind = STAGE_EMAIL[toStatus]
     if (emailKind) patch.last_emailed_at = new Date().toISOString()
 
     const { error } = await supabase.from('deals').update(patch).eq('id', deal.id)
@@ -134,11 +155,33 @@ export default function SalesDashboard() {
   }
   const markSigned = (deal) => {
     if (!window.confirm(`Mark ${deal.organization} as CONTRACT SIGNED (won)?`)) return
-    transition(deal, 'contract_signed', { note: 'contract signed' })
+    transition(deal, 'contract_signed', { note: 'contract signed', skipConfirm: true })
   }
   const markUnreachable = (deal) => {
     if (!window.confirm(`Mark ${deal.organization} as EMAIL UNREACHABLE (dead)?`)) return
-    transition(deal, 'email_unreachable', { note: 'marked unreachable' })
+    transition(deal, 'email_unreachable', { note: 'marked unreachable', skipConfirm: true })
+  }
+
+  // ---- drag-and-drop handlers ----
+  function onDragStart(e, deal) {
+    setDragId(deal.id)
+    e.dataTransfer.effectAllowed = 'move'
+    // some browsers need data set for the drag to start
+    e.dataTransfer.setData('text/plain', deal.id)
+  }
+  function onDragEnd() { setDragId(null); setDragOverCol(null) }
+  function onColDragOver(e, colKey) {
+    e.preventDefault()                       // required to allow dropping
+    e.dataTransfer.dropEffect = 'move'
+    if (dragOverCol !== colKey) setDragOverCol(colKey)
+  }
+  function onColDrop(e, colKey) {
+    e.preventDefault()
+    const id = dragId || e.dataTransfer.getData('text/plain')
+    setDragId(null); setDragOverCol(null)
+    const deal = deals.find(d => d.id === id)
+    if (!deal || deal.status === colKey) return
+    transition(deal, colKey, { note: `dragged to ${STAGE_LABEL[colKey]}` })
   }
 
   // filtering
@@ -199,7 +242,17 @@ export default function SalesDashboard() {
       {/* Kanban board */}
       <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start' }}>
         {STAGES.map(col => (
-          <div key={col.key} style={{ flex: 'none', width: 264, background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 12, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100dvh - 240px)' }}>
+          <div key={col.key}
+            onDragOver={e => onColDragOver(e, col.key)}
+            onDragLeave={() => setDragOverCol(prev => prev === col.key ? null : prev)}
+            onDrop={e => onColDrop(e, col.key)}
+            style={{
+              flex: 'none', width: 264, background: 'var(--canvas)',
+              border: dragOverCol === col.key ? '2px dashed var(--accent)' : '1px solid var(--line)',
+              borderRadius: 12, display: 'flex', flexDirection: 'column',
+              maxHeight: 'calc(100dvh - 240px)',
+              transition: 'border-color .1s ease',
+            }}>
             <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid var(--line)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <b style={{ fontSize: 13.5 }}>{col.title}</b>
@@ -210,7 +263,11 @@ export default function SalesDashboard() {
             <div style={{ padding: 10, overflowY: 'auto', display: 'grid', gap: 8, flex: 1, minHeight: 60 }}>
               {byColumn[col.key].length === 0 && <div style={{ fontSize: 12, color: 'var(--ink-soft)', textAlign: 'center', padding: '16px 0' }}>—</div>}
               {byColumn[col.key].map(deal => (
-                <DealCard key={deal.id} deal={deal} onClick={() => setSelected(deal)} />
+                <DealCard key={deal.id} deal={deal}
+                  dragging={dragId === deal.id}
+                  onDragStart={e => onDragStart(e, deal)}
+                  onDragEnd={onDragEnd}
+                  onClick={() => setSelected(deal)} />
               ))}
             </div>
           </div>
@@ -243,9 +300,16 @@ export default function SalesDashboard() {
   )
 }
 
-function DealCard({ deal, onClick }) {
+function DealCard({ deal, onClick, dragging, onDragStart, onDragEnd }) {
   return (
-    <div style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 10, padding: 10, cursor: 'pointer' }} onClick={onClick}>
+    <div draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onClick={onClick}
+      style={{
+        border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 10, padding: 10,
+        cursor: 'grab', opacity: dragging ? 0.4 : 1, transition: 'opacity .1s ease',
+      }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
         <span style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(deal.organization), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flex: 'none' }}>{initials(deal.organization)}</span>
         <div style={{ minWidth: 0, flex: 1 }}>
@@ -313,9 +377,9 @@ function DealPanel({ deal, user, onClose, onTransition, onSigned, onUnreachable,
 
         <div style={{ padding: 20 }}>
           {/* stage controls */}
-          {!CLOSED.includes(deal.status) && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ marginBottom: 20 }}>
+            {!CLOSED.includes(deal.status) && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
                 {next && (
                   <button disabled={busy} onClick={() => onTransition(deal, next.key, { note: `advanced to ${next.title}` })}
                     style={{ flex: 1, border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 150 }}>
@@ -327,13 +391,28 @@ function DealPanel({ deal, user, onClose, onTransition, onSigned, onUnreachable,
                 <button disabled={busy} onClick={() => onUnreachable(deal)}
                   style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#DC2626', fontSize: 13.5, fontWeight: 700, padding: '9px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>Unreachable</button>
               </div>
-              {next && STAGE_EMAIL[next.key] && (
-                <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 7 }}>
-                  Moving to {next.title} will send the “{STAGE_EMAIL[next.key]}” email (once the Edge Function is connected to your Gmail).
-                </div>
-              )}
+            )}
+            {/* jump to ANY stage — forward or backward, or reopen a closed deal */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <label style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600, flex: 'none' }}>Move to stage:</label>
+              <select disabled={busy} value={deal.status}
+                onChange={e => onTransition(deal, e.target.value, { note: `moved to ${STAGE_LABEL[e.target.value]} via stage picker` })}
+                style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, padding: '7px 10px', fontSize: 13, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }}>
+                {STAGES.map(s => (
+                  <option key={s.key} value={s.key}>
+                    {s.title}{STAGE_EMAIL[s.key] ? ' (sends email)' : ''}
+                  </option>
+                ))}
+                <option value="contract_signed">Contract Signed{STAGE_EMAIL.contract_signed ? ' (sends email)' : ''}</option>
+                <option value="email_unreachable">Email Unreachable</option>
+              </select>
             </div>
-          )}
+            {next && STAGE_EMAIL[next.key] && (
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 7 }}>
+                Moving to {next.title} will send the “{STAGE_EMAIL[next.key]}” email (once the Edge Function is connected to your Gmail).
+              </div>
+            )}
+          </div>
 
           {/* quick log buttons */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
