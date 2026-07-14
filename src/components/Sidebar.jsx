@@ -20,6 +20,10 @@ const NAV = [
   { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },  // everyone gets calendar
   { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
   { type: 'link', to: '/hiring', label: 'Hiring', ic: '👥', perm: 'hiring' },
+  // Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
+  // and grant it to the right roles, like 'hiring'. To show it to everyone
+  // temporarily, change perm: 'sales' to perm: null.
+  { type: 'link', to: '/sales', label: 'Sales', ic: '📊', perm: 'sales' },
   { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
   {
     type: 'section', key: 'certifications', label: 'Certifications', ic: '✦', perm: 'certifications',
@@ -73,7 +77,6 @@ export default function Sidebar({ open, onNavigate }) {
   const [pwOpen, setPwOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const cycleTheme = () => { const t = nextTheme(theme); setTheme(t); setThemeState(t) }
-
   // Which collapsible sections are open. Several can be open at once.
   const [openSections, setOpenSections] = useState({})
   const toggleSection = (key) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }))
@@ -148,7 +151,6 @@ export default function Sidebar({ open, onNavigate }) {
           <div className="user-role">{isOwner ? 'Owner' : isAdmin ? 'Admin' : 'Agent'}</div>
         </div>
       </div>
-
       {/* Settings dropdown (below the name) */}
       <div className="nav-section">
         <button className="nav-item nav-section-head" onClick={() => setSettingsOpen(o => !o)}
@@ -179,7 +181,6 @@ export default function Sidebar({ open, onNavigate }) {
           </div>
         )}
       </div>
-
       <button className="signout" onClick={signOut}>Sign out</button>
       {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} onDone={() => setPwOpen(false)} />}
     </aside>
