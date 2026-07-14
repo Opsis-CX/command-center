@@ -1,7 +1,6 @@
 // Permissions matrix — generated from the Command Center Roles sheet.
 // Each key is page or page.capability; value lists which roles have it.
 // Roles: agent, asc (Agent Support Coordinator), support, certification, marketing, admin
-
 export const ROLES = [
   { key: 'admin', label: 'Admin' },
   { key: 'asc', label: 'Agent Support Coordinator' },
@@ -10,7 +9,6 @@ export const ROLES = [
   { key: 'marketing', label: 'Marketing' },
   { key: 'agent', label: 'Agent' },
 ]
-
 // For each permission, the set of roles that have it.
 const MATRIX = {
   'dashboard': ['asc', 'support', 'certification', 'marketing', 'admin'],
@@ -28,6 +26,8 @@ const MATRIX = {
   'chat.create_dms': ['asc', 'certification', 'marketing', 'admin'],
   'hiring.all': ['certification', 'marketing', 'admin'],
   'hiring.view_stage_only': ['asc', 'admin'],
+  'sales.all': ['marketing', 'admin'],
+  'sales.view_only': ['marketing', 'admin'],
   'certifications.all': ['certification', 'admin'],
   'certifications.builder': ['certification', 'admin'],
   'certifications.assigned_to_complete': ['agent', 'asc', 'support', 'admin'],
@@ -52,7 +52,6 @@ const MATRIX = {
   'project_management.create_projects': ['certification', 'marketing', 'admin'],
   'project_management.add_tasks_to_projects_assigned_to': ['asc', 'support', 'certification', 'marketing', 'admin'],
 }
-
 // can(role, "schedule.create_schedules") -> boolean
 export function can(role, perm) {
   const r = String(role || '').trim().toLowerCase()
@@ -61,7 +60,6 @@ export function can(role, perm) {
   if (!allowed) return false
   return allowed.includes(r)
 }
-
 // Convenience: does this role have ANY capability under a page prefix?
 // Used for nav gating (show the page if they can do anything on it).
 export function canAny(role, pagePrefix) {
@@ -69,5 +67,4 @@ export function canAny(role, pagePrefix) {
   if (r === 'admin') return true
   return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + ".")) && MATRIX[k].includes(r))
 }
-
 export const ALL_PERMS = Object.keys(MATRIX)
