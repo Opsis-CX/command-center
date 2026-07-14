@@ -35,25 +35,22 @@ import { UnreadProvider } from './lib/unread'
 import ApplicationForm from './modules/ApplicationForm'
 import AssessmentForm from './modules/AssessmentForm'
 import HiringDashboard from './modules/HiringDashboard'
+// --- sales pipeline ---
+import SalesDashboard from './modules/SalesDashboard'
 // A tiny wrapper so the assessment route can read :appId from the URL and
 // pass it into the form as a prop.
 import { useParams } from 'react-router-dom'
-
 function AssessmentRoute() {
   const { appId } = useParams()
   return <AssessmentForm applicationId={appId} />
 }
-
 export default function App() {
   const { session, loading, isAdmin, appRole } = useAuth()
   const [navOpen, setNavOpen] = useState(false)
   const location = useLocation()
-
   // apply the saved light/dark/system theme as early as possible
   useEffect(() => { initTheme() }, [])
-
   if (loading) return <div className="loading-screen">Loading…</div>
-
   // ---- PUBLIC routes (no login required) ----
   // These must be checked BEFORE the login gate so job applicants who aren't
   // signed in can reach the application and assessment forms.
@@ -68,12 +65,9 @@ export default function App() {
       </Routes>
     )
   }
-
   if (!session) return <Login />
-
   return <AuthedApp session={session} isAdmin={isAdmin} appRole={appRole} navOpen={navOpen} setNavOpen={setNavOpen} location={location} />
 }
-
 // Everything behind the login gate. Split out so the must-change-password
 // check can run with a session guaranteed to exist.
 function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location }) {
@@ -87,10 +81,8 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
       .catch(() => { if (active) setMustChange(false) }) // never lock someone out on an error
     return () => { active = false }
   }, [session.user.id])
-
   if (mustChange === null) return <div className="loading-screen">Loading…</div>
   if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
-
   return (
     <UnreadProvider>
       <div className="app">
@@ -129,6 +121,11 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {canAny(appRole, 'reporting') && <Route path="/reporting" element={<Reporting />} />}
               {canAny(appRole, 'people_and_tags.view_only') && <Route path="/people" element={<PeopleTags />} />}
               {canAny(appRole, 'hiring') && <Route path="/hiring" element={<HiringDashboard />} />}
+              {/* Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
+                  and grant it to the right roles, exactly like 'hiring'. To open it to
+                  everyone temporarily, replace this line with:
+                  <Route path="/sales" element={<SalesDashboard />} /> */}
+              {canAny(appRole, 'sales') && <Route path="/sales" element={<SalesDashboard />} />}
               {canAny(appRole, 'weekly_sync') && <Route path="/weekly-sync" element={<WeeklySync />} />}
               {canAny(appRole, 'schedule.create_schedules') && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
               {canAny(appRole, 'positions.view_only') && <Route path="/positions" element={<Positions />} />}
@@ -141,14 +138,13 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
     </UnreadProvider>
   )
 }
-
 function titleFor(path) {
   const map = {
     '/': 'Dashboard', '/certifications': 'Certifications', '/matrix': 'Certification matrix',
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/weekly-sync': 'Weekly Sync',
-    '/hiring': 'Hiring', '/quality': 'Quality',
+    '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales',
   }
   return map[path] || 'Command Center'
 }
