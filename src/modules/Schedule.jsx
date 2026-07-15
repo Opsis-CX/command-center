@@ -105,6 +105,9 @@ export default function Schedule() {
   // Certification (and admin) can VIEW every published schedule read-only,
   // even ones they're not in the audience for. Claiming stays audience-gated.
   const canViewAll = isAdmin || can(appRole, 'schedule.view_all_schedules')
+  // Roles with no release times (e.g. ASC) always have the full rolling window
+  // unlocked — no daily release-time wait, no release banner.
+  const noReleaseTimes = isAdmin || can(appRole, 'schedule.no_release_times')
   const [me, setMe] = useState(null)
   const [profiles, setProfiles] = useState([])
   const [tiers, setTiers] = useState([])
@@ -223,7 +226,7 @@ export default function Schedule() {
   // No-tier (new) agents default to 11:45. Times are Eastern.
   function getMyReleaseStatus() {
     const tier = tiers.find(t => t.id === me?.tier_id)
-    if (isAdmin) return { unlocked: true, tier, horizonDays: 14, releaseDate: null, nextUnlock: null }
+    if (noReleaseTimes) return { unlocked: true, tier, horizonDays: 14, releaseDate: null, nextUnlock: null }
     const now = etNow()
 
     let h, m
@@ -276,7 +279,7 @@ export default function Schedule() {
     }
     // Fast client-side checks: instant feedback, no round trip. These can be
     // wrong if the page is stale — the database trigger is the real guard.
-    if (!isAdmin) {
+    if (!noReleaseTimes) {
       const rs = getMyReleaseStatus()
       const horizon = etNow(); horizon.setDate(horizon.getDate() + (rs.horizonDays ?? 13))
       if (block.block_date > isoDate(horizon)) {
@@ -467,7 +470,7 @@ function ClaimView(props) {
 
   return (
     <div>
-      {!teamMode && !isAdmin && <ReleaseBanner status={releaseStatus} />}
+      {!teamMode && !isAdmin && releaseStatus?.releaseDate && <ReleaseBanner status={releaseStatus} />}
 
       {isAdmin && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
