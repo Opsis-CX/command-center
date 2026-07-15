@@ -1,83 +1,150 @@
-// Permissions matrix — generated from the Command Center Roles sheet (updated Jul 2026).
-// Each key is page or page.capability; value lists which roles have it.
-// Roles: agent, asc (Agent Support Coordinator), support, certification, quality, marketing, sales, admin
-export const ROLES = [
-  { key: 'admin', label: 'Admin' },
-  { key: 'asc', label: 'Agent Support Coordinator' },
-  { key: 'support', label: 'Support' },
-  { key: 'certification', label: 'Certification' },
-  { key: 'quality', label: 'Quality' },
-  { key: 'marketing', label: 'Marketing' },
-  { key: 'sales', label: 'Sales' },
-  { key: 'agent', label: 'Agent' },
-]
-// For each permission, the set of roles that have it.
-const MATRIX = {
-  'dashboard': ['asc', 'support', 'certification', 'quality', 'marketing', 'admin'],
-  'weekly_sync': ['asc', 'certification', 'quality', 'marketing', 'admin'],
-  'service_performance_scorecard': ['agent'],
-  // Quality Audit isn't on the roles sheet — left as-is. Confirm whether the new
-  // "quality" role should be added here (and to is_qa_auditor() in Supabase).
-  'quality_audit': ['certification', 'admin'],
-  'quality_audit.enter_audits': ['certification', 'admin'],
-  'quality_audit.view_own': ['certification', 'admin'],
-  'service_performance_scorecard.view_personal_scorecard': ['agent', 'admin'],
-  'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'quality', 'marketing', 'admin'],
-  'service_performance_scorecard.edit_scorecard': ['admin'],
-  'chat.all': ['admin'],
-  'chat.invited_channels_dms_only': ['agent', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
-  'chat.create_channels': ['admin'],
-  'chat.create_dms': ['asc', 'certification', 'quality', 'marketing', 'admin'],
-  'hiring.all': ['certification', 'admin'],
-  'hiring.view_stage_only': ['marketing', 'admin'],
-  // Sales page isn't on the roles sheet — left as-is.
-  'sales.all': ['marketing', 'admin'],
-  'sales.view_only': ['marketing', 'admin'],
-  'certifications.all': ['certification', 'admin'],
-  'certifications.builder': ['certification', 'admin'],
-  'certifications.assigned_to_complete': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'admin'],
-  'certifications.view_personal_score_and_content_assigned': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'admin'],
-  'certifications.view_content_and_scores_only_of_agents': ['asc', 'quality', 'marketing', 'admin'],
-  'schedule.all': ['admin'],
-  'schedule.create_schedules': ['admin'],
-  'schedule.view_only_projects_assigned_to': ['asc', 'quality', 'admin'],
-  // Insights limited to schedules the person is assigned to (audience membership).
-  'schedule.view_insights_assigned': ['asc', 'admin'],
-  // Bypass daily release times: full rolling window is always unlocked.
-  'schedule.no_release_times': ['asc', 'admin'],
-  'schedule.ability_to_assign_intervals_to_agents': ['asc', 'admin'],
-  'schedule.accept_and_release_intervals_on_an_assigned_schedule': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'admin'],
-  'schedule.ability_to_assign_agents_to_schedules': ['certification', 'admin'],
-  'schedule.view_my_schedule': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'admin'],
-  // Not on the roles sheet — left as-is.
-  'schedule.view_all_schedules': ['certification', 'admin'],
-  'reporting': ['asc', 'certification', 'quality', 'marketing', 'admin'],
-  'people_and_tags.view_only': ['asc', 'quality', 'admin'],
-  'people_and_tags.edit': ['certification', 'admin'],
-  // Deleting a tag is destructive (it can affect certification assignments), so
-  // it's kept strictly at the admin level.
-  'people_and_tags.delete': ['admin'],
-  'clients.view_only': ['certification', 'quality', 'marketing', 'admin'],
-  'clients.edit': ['admin'],
-  'positions.view_only': ['admin'],
-  'positions.edit': ['admin'],
-  'project_management.all': ['admin'],
-  'project_management.create_projects': ['certification', 'quality', 'marketing', 'admin'],
-  'project_management.add_tasks_to_projects_assigned_to': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
+import NotificationBell from './components/NotificationBell'
+import HeaderTaskBar from './components/HeaderTaskBar'
+import { useState, useEffect } from 'react'
+import { Routes, Route, useLocation } from 'react-router-dom'
+import { initTheme } from './lib/theme'
+import { supabase } from './lib/supabase'
+import ChangePassword from './components/ChangePassword'
+import { useAuth } from './lib/auth'
+import Login from './components/Login'
+import Sidebar from './components/Sidebar'
+import Certifications from './modules/Certifications'
+import MyCourses from './modules/MyCourses'
+import Dashboard from './modules/Dashboard'
+import { Placeholder } from './modules/Placeholders'
+import PeopleTags from './modules/PeopleTags'
+import CourseBuilder from './modules/CourseBuilder'
+import Schedule from './modules/Schedule'
+import ScheduleBuilder from './modules/ScheduleBuilder'
+import Positions from './modules/Positions'
+import ScheduleInsights from './modules/ScheduleInsights'
+import Chat from './modules/Chat'
+import { canAny } from './lib/permissions'
+import Settings from './modules/Settings'
+import Projects from './modules/Projects'
+import Clients from './modules/Clients'
+import Reporting from './modules/Reporting'
+import Calendar from './modules/Calendar'
+import WeeklySync from './modules/WeeklySync'
+import Notifications from './modules/Notifications'
+import KnowledgeBase from './modules/KnowledgeBase'
+import Scorecard from './modules/Scorecard'
+import QualityAudit from './modules/QualityAudit'
+import { UnreadProvider } from './lib/unread'
+// --- hiring pipeline ---
+import ApplicationForm from './modules/ApplicationForm'
+import AssessmentForm from './modules/AssessmentForm'
+import HiringDashboard from './modules/HiringDashboard'
+// --- sales pipeline ---
+import SalesDashboard from './modules/SalesDashboard'
+// A tiny wrapper so the assessment route can read :appId from the URL and
+// pass it into the form as a prop.
+import { useParams } from 'react-router-dom'
+function AssessmentRoute() {
+  const { appId } = useParams()
+  return <AssessmentForm applicationId={appId} />
 }
-// can(role, "schedule.create_schedules") -> boolean
-export function can(role, perm) {
-  const r = String(role || '').trim().toLowerCase()
-  if (r === 'admin') return true            // admin always passes
-  const allowed = MATRIX[perm]
-  if (!allowed) return false
-  return allowed.includes(r)
+export default function App() {
+  const { session, loading, isAdmin, appRole } = useAuth()
+  const [navOpen, setNavOpen] = useState(false)
+  const location = useLocation()
+  // apply the saved light/dark/system theme as early as possible
+  useEffect(() => { initTheme() }, [])
+  if (loading) return <div className="loading-screen">Loading…</div>
+  // ---- PUBLIC routes (no login required) ----
+  // These must be checked BEFORE the login gate so job applicants who aren't
+  // signed in can reach the application and assessment forms.
+  const publicPaths = ['/apply', '/assessment']
+  const isPublic = publicPaths.some(p => location.pathname === p || location.pathname.startsWith(p + '/'))
+  if (isPublic) {
+    return (
+      <Routes>
+        <Route path="/apply" element={<ApplicationForm />} />
+        <Route path="/assessment/:appId" element={<AssessmentRoute />} />
+        <Route path="/assessment" element={<AssessmentForm />} />
+      </Routes>
+    )
+  }
+  if (!session) return <Login />
+  return <AuthedApp session={session} isAdmin={isAdmin} appRole={appRole} navOpen={navOpen} setNavOpen={setNavOpen} location={location} />
 }
-// Convenience: does this role have ANY capability under a page prefix?
-// Used for nav gating (show the page if they can do anything on it).
-export function canAny(role, pagePrefix) {
-  const r = String(role || '').trim().toLowerCase()
-  if (r === 'admin') return true
-  return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + ".")) && MATRIX[k].includes(r))
+// Everything behind the login gate. Split out so the must-change-password
+// check can run with a session guaranteed to exist.
+function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location }) {
+  // Agents handed the shared temporary password must set their own before
+  // they can use the app. Checked once, on load.
+  const [mustChange, setMustChange] = useState(null) // null = still checking
+  useEffect(() => {
+    let active = true
+    supabase.from('profiles').select('must_change_password').eq('id', session.user.id).single()
+      .then(({ data }) => { if (active) setMustChange(!!data?.must_change_password) })
+      .catch(() => { if (active) setMustChange(false) }) // never lock someone out on an error
+    return () => { active = false }
+  }, [session.user.id])
+  if (mustChange === null) return <div className="loading-screen">Loading…</div>
+  if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
+  return (
+    <UnreadProvider>
+      <div className="app">
+        <Sidebar open={navOpen} onNavigate={() => setNavOpen(false)} />
+        {/* tap-to-close backdrop, only visible on mobile when the nav is open */}
+        {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
+        <main className="main">
+          <div className="topbar">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button className="nav-toggle" onClick={() => setNavOpen(o => !o)} aria-label="Menu">☰</button>
+              <div className="crumb"><b>{titleFor(location.pathname)}</b></div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <HeaderTaskBar />
+              <NotificationBell />
+            </div>
+          </div>
+          <div className="content">
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/calendar" element={<Calendar />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/notifications" element={<Notifications />} />
+              <Route path="/knowledge" element={<KnowledgeBase />} />
+              {canAny(appRole, 'service_performance_scorecard') && <Route path="/scorecard" element={<Scorecard />} />}
+              <Route path="/quality" element={canAny(appRole, 'quality_audit.view_own') ? <QualityAudit /> : <Placeholder title="No access" note="You don't have access to this area." />} />
+              <Route path="/schedule" element={<Schedule />} />
+              <Route path="/chat" element={canAny(appRole, 'chat') ? <Chat /> : <Placeholder title="No access" note="You don't have access to this area." />} />
+              {canAny(appRole, 'certifications.all') && <Route path="/certifications" element={<Certifications />} />}
+              {canAny(appRole, 'certifications.all') && <Route path="/matrix" element={<Placeholder title="Certification matrix" note="The agents × call-types grid mounts here." />} />}
+              {canAny(appRole, 'certifications.builder') && <Route path="/courses" element={<CourseBuilder />} />}
+              {canAny(appRole, 'certifications.assigned_to_complete') && <Route path="/my-certifications" element={<Placeholder title="My certifications" note="These unlock the schedules you can claim." />} />}
+              {canAny(appRole, 'certifications.assigned_to_complete') && <Route path="/my-courses" element={<MyCourses />} />}
+              {canAny(appRole, 'project_management') && <Route path="/projects" element={<Projects />} />}
+              {canAny(appRole, 'clients.view_only') && <Route path="/clients" element={<Clients />} />}
+              {canAny(appRole, 'reporting') && <Route path="/reporting" element={<Reporting />} />}
+              {canAny(appRole, 'people_and_tags.view_only') && <Route path="/people" element={<PeopleTags />} />}
+              {canAny(appRole, 'hiring') && <Route path="/hiring" element={<HiringDashboard />} />}
+              {/* Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
+                  and grant it to the right roles, exactly like 'hiring'. To open it to
+                  everyone temporarily, replace this line with:
+                  <Route path="/sales" element={<SalesDashboard />} /> */}
+              {canAny(appRole, 'sales') && <Route path="/sales" element={<SalesDashboard />} />}
+              {canAny(appRole, 'weekly_sync') && <Route path="/weekly-sync" element={<WeeklySync />} />}
+              {canAny(appRole, 'schedule.create_schedules') && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
+              {canAny(appRole, 'positions.view_only') && <Route path="/positions" element={<Positions />} />}
+              {(canAny(appRole, 'schedule.all') || canAny(appRole, 'schedule.view_insights_assigned')) && <Route path="/insights" element={<ScheduleInsights />} />}
+              <Route path="*" element={<Dashboard />} />
+            </Routes>
+          </div>
+        </main>
+      </div>
+    </UnreadProvider>
+  )
 }
-export const ALL_PERMS = Object.keys(MATRIX)
+function titleFor(path) {
+  const map = {
+    '/': 'Dashboard', '/certifications': 'Certifications', '/matrix': 'Certification matrix',
+    '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
+    '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
+    '/chat': 'Chat', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/weekly-sync': 'Weekly Sync',
+    '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales',
+  }
+  return map[path] || 'Command Center'
+}
