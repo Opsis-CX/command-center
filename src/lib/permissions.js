@@ -43,8 +43,10 @@ const MATRIX = {
   'schedule.view_only_projects_assigned_to': ['asc', 'quality', 'admin'],
   // Insights limited to schedules the person is assigned to (audience membership).
   'schedule.view_insights_assigned': ['asc', 'admin'],
-  // Bypass daily release times: full rolling window is always unlocked.
-  'schedule.no_release_times': ['asc', 'admin'],
+  // No release times or rolling-window lock: schedules/intervals on their
+  // assigned schedules are ALWAYS fully available. Only agents are locked
+  // to the 14-day rolling release window (and cert-gated).
+  'schedule.no_release_times': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
   'schedule.ability_to_assign_intervals_to_agents': ['asc', 'admin'],
   'schedule.accept_and_release_intervals_on_an_assigned_schedule': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'admin'],
   'schedule.ability_to_assign_agents_to_schedules': ['certification', 'admin'],
