@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
-import { notifyIntervalReleased, notifyNoShow } from '../lib/notify'
+import { notifyIntervalReleased, notifyNoShow, notifyIntervalAssigned } from '../lib/notify'
 import { COMPANY_TZ, wallTimeToViewer } from '../lib/tz'
 
 // Convert a company-zone wall time on a given date to the viewer's local "h:mm AM".
@@ -108,6 +108,8 @@ export default function Schedule() {
   // Roles with no release times (e.g. ASC) always have the full rolling window
   // unlocked — no daily release-time wait, no release banner.
   const noReleaseTimes = isAdmin || can(appRole, 'schedule.no_release_times')
+  // Managers who can place agents directly onto intervals (Admin + ASC).
+  const canAssign = isAdmin || can(appRole, 'schedule.ability_to_assign_intervals_to_agents')
   const [me, setMe] = useState(null)
   const [profiles, setProfiles] = useState([])
   const [tiers, setTiers] = useState([])
@@ -398,14 +400,59 @@ export default function Schedule() {
     return { ok: true }
   }
 
-  async function logActivity(action, block) {
+  // ---------- manager assignment (Admin + ASC) ----------
+  async function assignBlock(block, profileId) {
+    const target = profiles.find(p => p.id === profileId)
+    if (!target) { flash('Pick a person to assign'); return }
+    const existing = claims.filter(c => c.shift_block_id === block.id)
+    if (existing.length >= block.total_spots) { flash('That interval is already full'); load(true); return }
+    if (existing.some(c => c.profile_id === profileId)) { flash(`${target.full_name} is already on this interval`); return }
+    if (overlapsExisting(profileId, block)) { flash(`${target.full_name} already has an overlapping interval that day`); return }
+    const weekMonday = mondayOf(new Date(block.block_date + 'T00:00:00'))
+    if (claimedHoursInWeek(profileId, weekMonday) + blockHours(block) > WEEKLY_HOUR_CAP) {
+      flash(`That would put ${target.full_name} over ${WEEKLY_HOUR_CAP} hours this week`); return
+    }
+
+    const { error } = await supabase.from('shift_claims').insert({ shift_block_id: block.id, profile_id: profileId, status: 'claimed' })
+    if (error) {
+      const msg = error.message || ''
+      if (error.code === '23505') flash(`${target.full_name} already claimed this`)
+      else if (msg.includes('already full')) flash('That interval just filled up')
+      else if (msg.includes('overlaps')) flash(`That overlaps an interval ${target.full_name} already has`)
+      else if (msg.includes('40 hours')) flash(`That would put ${target.full_name} over 40 hours this week`)
+      else flash('Could not assign that interval')
+      load(true)
+      return
+    }
+    logActivity('assigned', block, target.full_name)
+    try {
+      notifyIntervalAssigned({
+        recipientId: profileId, actorId: me.id, actorName: me.full_name,
+        when: `${formatTime(block.start_time)}–${formatTime(block.end_time)} on ${block.block_date}`,
+      })
+    } catch (e) { /* non-blocking */ }
+    flash(`Assigned to ${target.full_name}`); load(true)
+  }
+
+  async function unassignBlock(claim, block) {
+    const target = profiles.find(p => p.id === claim.profile_id)
+    if (!window.confirm(`Remove ${target?.full_name || 'this person'} from this interval?`)) return
+    // Manager removal — intentionally NO shift_cancellations row, so the agent
+    // isn't penalized for a scheduling decision they didn't make.
+    const { error } = await supabase.from('shift_claims').delete().eq('id', claim.id)
+    if (error) { flash('Could not remove them from this interval'); return }
+    logActivity('unassigned', block, target?.full_name)
+    flash('Removed from interval'); load(true)
+  }
+
+  async function logActivity(action, block, affectedName) {
     try {
       const schedule = block ? schedules.find(s => s.id === block.schedule_id) : null
       const blockLabel = block ? `${formatTime(block.start_time)}–${formatTime(block.end_time)} on ${block.block_date}` : null
       await supabase.from('schedule_activity_log').insert({
         actor_id: me.id, action, schedule_id: schedule?.id || null, schedule_title: schedule?.title || null,
         shift_block_id: block?.id || null, block_label: blockLabel,
-        affected_profile_name: me.full_name || null,
+        affected_profile_name: affectedName || me.full_name || null,
       })
     } catch (e) { /* non-blocking */ }
   }
@@ -437,6 +484,7 @@ export default function Schedule() {
           releaseStatus={getMyReleaseStatus()}
           claimedHoursInWeek={claimedHoursInWeek} hasIntervalStarted={hasIntervalStarted}
           onClaim={claimBlock} onUnclaim={unclaimBlock} onCheckIn={checkIn} onCheckOut={checkOut} onNoShow={markNoShow}
+          canAssign={canAssign} audience={audience} onAssign={assignBlock} onUnassign={unassignBlock}
         />
       ) : (
         <MyScheduleView me={me} blocks={blocks} claims={claims} hasIntervalStarted={hasIntervalStarted} onUnclaim={unclaimBlock} onCheckIn={checkIn} onCheckOut={checkOut} />
@@ -447,7 +495,8 @@ export default function Schedule() {
 
 function ClaimView(props) {
   const { isAdmin, adminView, setAdminView, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
-    claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow } = props
+    claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow,
+    canAssign, audience, onAssign, onUnassign } = props
   const [popBlock, setPopBlock] = useState(null)
 
   // Admins in 'team' view see the team grid; everyone else (agents, and
@@ -497,6 +546,7 @@ function ClaimView(props) {
 
       {popBlock && <IntervalPopover
         block={popBlock} claims={claims} profiles={profiles} me={me} canClaim={!teamMode} isAdmin={isAdmin}
+        canAssign={canAssign} audience={audience}
         hasIntervalStarted={hasIntervalStarted}
         onClose={() => setPopBlock(null)}
         onClaim={(b) => { onClaim(b); setPopBlock(null) }}
@@ -504,6 +554,8 @@ function ClaimView(props) {
         onCheckIn={(cid, b) => { onCheckIn(cid, b); setPopBlock(null) }}
         onCheckOut={(cid, b, note) => { onCheckOut(cid, b, note); setPopBlock(null) }}
         onNoShow={(claim, b) => { onNoShow(claim, b); setPopBlock(null) }}
+        onAssign={(b, pid) => { onAssign(b, pid); setPopBlock(null) }}
+        onUnassign={(claim, b) => { onUnassign(claim, b); setPopBlock(null) }}
       />}
     </div>
   )
@@ -709,7 +761,8 @@ function Iv({ block, cls, spots, time, role, onPop }) {
 }
 
 // ---------- INTERVAL POPOVER ----------
-function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIntervalStarted, onClose, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow }) {
+function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, canAssign, audience, hasIntervalStarted, onClose, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow, onAssign, onUnassign }) {
+  const [assignTo, setAssignTo] = React.useState('')
   const cl = claims.filter(c => c.shift_block_id === block.id)
   const mine = cl.find(c => c.profile_id === me.id)
   const left = block.total_spots - cl.length
@@ -731,7 +784,7 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIn
         {mine?.status === 'no_show' && <Row k="Status" v="No-show" />}
       </div>
 
-      {isAdmin && cl.length > 0 && (
+      {(isAdmin || canAssign) && cl.length > 0 && (
         <div style={{ borderTop: '1px solid var(--line-soft)', paddingTop: 10, marginBottom: 12 }}>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>Claimants</div>
           {cl.map(c => {
@@ -743,11 +796,35 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, hasIn
                 <span style={{ color: c.status === 'no_show' ? 'var(--failed)' : c.checked_in_at ? 'var(--passed)' : 'var(--ink-soft)' }}>{status}</span>
                 {started && c.status !== 'no_show' && !c.checked_in_at &&
                   <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 8px', color: 'var(--failed)' }} onClick={() => onNoShow(c, block)}>No-show</button>}
+                {canAssign && !started && !c.checked_in_at &&
+                  <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 8px', color: 'var(--failed)' }} onClick={() => onUnassign(c, block)}>Remove</button>}
               </div>
             )
           })}
         </div>
       )}
+
+      {canAssign && !isFull && (() => {
+        const audienceIds = new Set((audience || []).filter(a => a.schedule_id === block.schedule_id).map(a => a.profile_id))
+        const claimedIds = new Set(cl.map(c => c.profile_id))
+        const eligible = profiles.filter(p => p.is_active !== false && audienceIds.has(p.id) && !claimedIds.has(p.id))
+        return (
+          <div style={{ borderTop: '1px solid var(--line-soft)', paddingTop: 10, marginBottom: 12 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>Assign to agent</div>
+            {eligible.length ? (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select className="input" style={{ flex: 1, fontSize: 13 }} value={assignTo} onChange={e => setAssignTo(e.target.value)}>
+                  <option value="">Select a person…</option>
+                  {eligible.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
+                </select>
+                <button className="btn btn-primary" style={{ fontSize: 12.5 }} disabled={!assignTo} onClick={() => onAssign(block, assignTo)}>Assign</button>
+              </div>
+            ) : (
+              <div className="page-sub" style={{ fontSize: 12.5 }}>No eligible people — everyone assigned to this schedule already has this interval.</div>
+            )}
+          </div>
+        )
+      })()}
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button className="btn btn-ghost" onClick={onClose}>Close</button>
