@@ -41,6 +41,10 @@ const MATRIX = {
   'schedule.all': ['admin'],
   'schedule.create_schedules': ['admin'],
   'schedule.view_only_projects_assigned_to': ['asc', 'quality', 'admin'],
+  // Insights limited to schedules the person is assigned to (audience membership).
+  'schedule.view_insights_assigned': ['asc', 'admin'],
+  // Bypass daily release times: full rolling window is always unlocked.
+  'schedule.no_release_times': ['asc', 'admin'],
   'schedule.ability_to_assign_intervals_to_agents': ['asc', 'admin'],
   'schedule.accept_and_release_intervals_on_an_assigned_schedule': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'admin'],
   'schedule.ability_to_assign_agents_to_schedules': ['certification', 'admin'],
