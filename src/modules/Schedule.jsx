@@ -197,8 +197,10 @@ export default function Schedule() {
     // View-all roles (e.g. Certification) see every published schedule read-only.
     // They can only CLAIM where inAudience() — enforced in the claim handler.
     if (canViewAll && !forceMine) return published
-    // agent (or admin in 'my view'): must hold the cert (graceful) + audience check
-    return published.filter(s => hasPassedCertForCallType(s.call_type_id) && (isAdmin || inAudience(s.id)))
+    // Agents must hold the gating cert (graceful) + be in the audience.
+    // All other roles skip the cert gate — their assigned schedules are
+    // always available to them. Audience membership is still required.
+    return published.filter(s => (noReleaseTimes || hasPassedCertForCallType(s.call_type_id)) && (isAdmin || inAudience(s.id)))
   }
 
   // ---------- open on the first week that has intervals ----------
@@ -228,7 +230,9 @@ export default function Schedule() {
   // No-tier (new) agents default to 11:45. Times are Eastern.
   function getMyReleaseStatus() {
     const tier = tiers.find(t => t.id === me?.tier_id)
-    if (noReleaseTimes) return { unlocked: true, tier, horizonDays: 14, releaseDate: null, nextUnlock: null }
+    // No-release-time roles (everyone except agents) see every interval on
+    // their schedules with no rolling-window cutoff at all.
+    if (noReleaseTimes) return { unlocked: true, tier, horizonDays: 3650, releaseDate: null, nextUnlock: null }
     const now = etNow()
 
     let h, m
