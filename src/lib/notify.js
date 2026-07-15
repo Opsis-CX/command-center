@@ -441,6 +441,32 @@ export async function notifyNoShow({
   ])
 }
 
+export async function notifyIntervalAssigned({
+  recipientId,
+  actorId,
+  actorName,
+  when,
+}) {
+  if (!recipientId || recipientId === actorId) return []
+
+  return insertMany([
+    {
+      recipient_id: recipientId,
+      type: 'interval_assigned',
+      title: 'You were assigned an interval',
+
+      body: when
+        ? `${actorName || 'A manager'} assigned you ${when}.`
+        : null,
+
+      link: '/schedule',
+
+      actor_id: actorId || null,
+      actor_name: actorName || null,
+    },
+  ])
+}
+
 // ─── PROJECTS ────────────────────────────────────────────────
 
 export async function notifyTaskAssigned({
