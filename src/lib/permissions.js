@@ -48,9 +48,9 @@ const MATRIX = {
   // to the 14-day rolling release window (and cert-gated).
   'schedule.no_release_times': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
   'schedule.ability_to_assign_intervals_to_agents': ['asc', 'admin'],
-  'schedule.accept_and_release_intervals_on_an_assigned_schedule': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'admin'],
+  'schedule.accept_and_release_intervals_on_an_assigned_schedule': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
   'schedule.ability_to_assign_agents_to_schedules': ['certification', 'admin'],
-  'schedule.view_my_schedule': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'admin'],
+  'schedule.view_my_schedule': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
   // Not on the roles sheet — left as-is.
   'schedule.view_all_schedules': ['certification', 'admin'],
   'reporting': ['asc', 'certification', 'quality', 'marketing', 'admin'],
