@@ -55,7 +55,7 @@ const NAV = [
         children: [
           { to: '/schedule', label: 'Schedule', perm: 'schedule.view_my_schedule' },
           { to: '/schedule-builder', label: 'Schedule builder', perm: 'schedule.create_schedules' },
-          { to: '/insights', label: 'Schedule insights', perm: 'schedule.all' },
+          { to: '/insights', label: 'Schedule insights', perm: 'schedule.view_insights_assigned' },
         ],
       },
     ],
