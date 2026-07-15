@@ -1,59 +1,65 @@
-// Permissions matrix — generated from the Command Center Roles sheet.
+// Permissions matrix — generated from the Command Center Roles sheet (updated Jul 2026).
 // Each key is page or page.capability; value lists which roles have it.
-// Roles: agent, asc (Agent Support Coordinator), support, certification, marketing, admin
+// Roles: agent, asc (Agent Support Coordinator), support, certification, quality, marketing, sales, admin
 export const ROLES = [
   { key: 'admin', label: 'Admin' },
   { key: 'asc', label: 'Agent Support Coordinator' },
   { key: 'support', label: 'Support' },
   { key: 'certification', label: 'Certification' },
+  { key: 'quality', label: 'Quality' },
   { key: 'marketing', label: 'Marketing' },
+  { key: 'sales', label: 'Sales' },
   { key: 'agent', label: 'Agent' },
 ]
 // For each permission, the set of roles that have it.
 const MATRIX = {
-  'dashboard': ['asc', 'support', 'certification', 'marketing', 'admin'],
-  'weekly_sync': ['asc', 'certification', 'marketing', 'admin'],
+  'dashboard': ['asc', 'support', 'certification', 'quality', 'marketing', 'admin'],
+  'weekly_sync': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard': ['agent'],
+  // Quality Audit isn't on the roles sheet — left as-is. Confirm whether the new
+  // "quality" role should be added here (and to is_qa_auditor() in Supabase).
   'quality_audit': ['certification', 'admin'],
   'quality_audit.enter_audits': ['certification', 'admin'],
   'quality_audit.view_own': ['certification', 'admin'],
   'service_performance_scorecard.view_personal_scorecard': ['agent', 'admin'],
-  'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'marketing', 'admin'],
+  'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard.edit_scorecard': ['admin'],
   'chat.all': ['admin'],
-  'chat.invited_channels_dms_only': ['agent', 'support', 'certification', 'marketing', 'admin'],
-  'chat.create_channels': ['asc', 'certification', 'marketing', 'admin'],
-  'chat.create_dms': ['asc', 'certification', 'marketing', 'admin'],
-  'hiring.all': ['certification', 'marketing', 'admin'],
-  'hiring.view_stage_only': ['asc', 'admin'],
+  'chat.invited_channels_dms_only': ['agent', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
+  'chat.create_channels': ['admin'],
+  'chat.create_dms': ['asc', 'certification', 'quality', 'marketing', 'admin'],
+  'hiring.all': ['certification', 'admin'],
+  'hiring.view_stage_only': ['marketing', 'admin'],
+  // Sales page isn't on the roles sheet — left as-is.
   'sales.all': ['marketing', 'admin'],
   'sales.view_only': ['marketing', 'admin'],
   'certifications.all': ['certification', 'admin'],
   'certifications.builder': ['certification', 'admin'],
-  'certifications.assigned_to_complete': ['agent', 'asc', 'support', 'admin'],
-  'certifications.view_personal_score_and_content_assigned': ['agent', 'asc', 'support', 'admin'],
-  'certifications.view_content_and_scores_only_of_agents': ['asc', 'marketing', 'admin'],
+  'certifications.assigned_to_complete': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'admin'],
+  'certifications.view_personal_score_and_content_assigned': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'admin'],
+  'certifications.view_content_and_scores_only_of_agents': ['asc', 'quality', 'marketing', 'admin'],
   'schedule.all': ['admin'],
   'schedule.create_schedules': ['admin'],
-  'schedule.view_only_projects_assigned_to': ['asc', 'admin'],
+  'schedule.view_only_projects_assigned_to': ['asc', 'quality', 'admin'],
   'schedule.ability_to_assign_intervals_to_agents': ['asc', 'admin'],
-  'schedule.accept_and_release_intervals_on_an_assigned_schedule': ['agent', 'asc', 'support', 'certification', 'marketing', 'admin'],
-  'schedule.ability_to_assign_agents_to_schedules': ['certification', 'marketing', 'admin'],
-  'schedule.view_my_schedule': ['agent', 'asc', 'support', 'certification', 'marketing', 'admin'],
+  'schedule.accept_and_release_intervals_on_an_assigned_schedule': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'admin'],
+  'schedule.ability_to_assign_agents_to_schedules': ['certification', 'admin'],
+  'schedule.view_my_schedule': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'admin'],
+  // Not on the roles sheet — left as-is.
   'schedule.view_all_schedules': ['certification', 'admin'],
-  'reporting': ['asc', 'certification', 'marketing', 'admin'],
-  'people_and_tags.view_only': ['asc', 'admin'],
-  'people_and_tags.edit': ['certification', 'marketing', 'admin'],
+  'reporting': ['asc', 'certification', 'quality', 'marketing', 'admin'],
+  'people_and_tags.view_only': ['asc', 'quality', 'admin'],
+  'people_and_tags.edit': ['certification', 'admin'],
   // Deleting a tag is destructive (it can affect certification assignments), so
-  // it's kept strictly at the admin level — not granted to certification/marketing.
+  // it's kept strictly at the admin level.
   'people_and_tags.delete': ['admin'],
-  'clients.view_only': ['asc', 'certification', 'marketing', 'admin'],
+  'clients.view_only': ['certification', 'quality', 'marketing', 'admin'],
   'clients.edit': ['admin'],
-  'positions.view_only': ['asc', 'certification', 'marketing', 'admin'],
+  'positions.view_only': ['admin'],
   'positions.edit': ['admin'],
   'project_management.all': ['admin'],
-  'project_management.create_projects': ['certification', 'marketing', 'admin'],
-  'project_management.add_tasks_to_projects_assigned_to': ['asc', 'support', 'certification', 'marketing', 'admin'],
+  'project_management.create_projects': ['certification', 'quality', 'marketing', 'admin'],
+  'project_management.add_tasks_to_projects_assigned_to': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
 }
 // can(role, "schedule.create_schedules") -> boolean
 export function can(role, perm) {
