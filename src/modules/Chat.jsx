@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { can } from '../lib/permissions'
 import { notifyChatMessage, notifyAckNudge, notifyChannelAdded } from '../lib/notify'
 import { useUnread } from '../lib/unread'
 import EmojiPicker from 'emoji-picker-react'
@@ -308,8 +309,11 @@ function MentionTextarea({ value, onChange, onEnter, profiles, placeholder, rows
 }
 
 export default function Chat() {
-  const { isAdmin, level } = useAuth()
+  const { isAdmin, level, appRole } = useAuth()
   const isOwner = (level || 0) >= 100
+  // Matrix-driven: who can start new channels / DMs (see lib/permissions.js).
+  const canCreateChannels = isAdmin || can(appRole, 'chat.create_channels')
+  const canCreateDMs = isAdmin || can(appRole, 'chat.create_dms')
   const isMobile = useIsMobile()
   const { counts: unreadCounts, markRead } = useUnread()
   const [me, setMe] = useState(null)
@@ -397,10 +401,10 @@ export default function Chat() {
         <div style={{ borderRight: isMobile ? 'none' : '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--canvas)', minHeight: 0, height: isMobile ? '100%' : 'auto' }}>
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 'none' }}>
             <b style={{ fontSize: 14 }}>Channels</b>
-            {isAdmin && <button className="btn btn-ghost" style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => setShowCreate(true)}>+ New</button>}
+            {canCreateChannels && <button className="btn btn-ghost" style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => setShowCreate(true)}>+ New</button>}
           </div>
           <div style={{ overflowY: 'auto', flex: 1, padding: 8, minHeight: 0 }}>
-            {channels.filter(c => !c.is_dm).length === 0 && <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{isAdmin ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>}
+            {channels.filter(c => !c.is_dm).length === 0 && <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{canCreateChannels ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>}
             {channels.filter(c => !c.is_dm).map(c => (
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
                 <button onClick={() => openChannel(c.id)}
@@ -417,10 +421,10 @@ export default function Chat() {
               </div>
             ))}
 
-            {(channels.some(c => c.is_dm) || isAdmin) && (
+            {(channels.some(c => c.is_dm) || canCreateDMs) && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 11px 6px' }}>
                 <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-soft)' }}>Direct messages</span>
-                {isAdmin && <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button>}
+                {canCreateDMs && <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button>}
               </div>
             )}
 
