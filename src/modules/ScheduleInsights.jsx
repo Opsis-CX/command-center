@@ -285,6 +285,7 @@ function UnassignedView({ publishedBlocks, clientNameForBlock, positionForBlock,
 // ---------- ACTIVITY LOG ----------
 const VERBS = {
   claimed: 'claimed', released: 'released', released_late: 'released (late)', checked_in: 'checked in to',
+  assigned: 'assigned an interval in', unassigned: 'removed someone from an interval in',
   marked_no_show: 'was marked a no-show for', schedule_created: 'created schedule', schedule_updated: 'updated schedule',
   schedule_published: 'published schedule', schedule_deleted: 'deleted schedule', block_created: 'added an interval to',
   block_updated: 'updated an interval in', block_deleted: 'removed an interval from',
