@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
+import { canAny } from '../lib/permissions'
 
 // ============================================================
 // SCHEDULE INSIGHTS — Stage 3 (admin)
@@ -34,6 +36,12 @@ const TIER_COLORS = {
 function tierColor(name) { return TIER_COLORS[name] || { bg: 'var(--canvas)', text: 'var(--ink-soft)' } }
 
 export default function ScheduleInsights() {
+  const { isAdmin, appRole } = useAuth()
+  // Full-visibility roles (admin / schedule.all) see every schedule.
+  // Everyone else (e.g. ASC) sees insights only for schedules they're
+  // assigned to via schedule_audience.
+  const viewAll = isAdmin || canAny(appRole, 'schedule.all')
+  const [audienceIds, setAudienceIds] = useState([])
   const [schedules, setSchedules] = useState([])
   const [blocks, setBlocks] = useState([])
   const [claims, setClaims] = useState([])
@@ -49,7 +57,8 @@ export default function ScheduleInsights() {
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     try {
-      const [schRes, blkRes, clmRes, profRes, tierRes, cliRes, posRes, actRes] = await Promise.all([
+      const { data: { user } } = await supabase.auth.getUser()
+      const [schRes, blkRes, clmRes, profRes, tierRes, cliRes, posRes, actRes, audRes] = await Promise.all([
         supabase.from('schedules').select('*'),
         supabase.from('shift_blocks').select('*'),
         supabase.from('shift_claims').select('*'),
@@ -58,8 +67,10 @@ export default function ScheduleInsights() {
         supabase.from('clients').select('*').order('name'),
         supabase.from('call_types').select('id, name'),
         supabase.from('schedule_activity_log').select('*').order('created_at', { ascending: false }).limit(500),
+        supabase.from('schedule_audience').select('schedule_id').eq('profile_id', user?.id || ''),
       ])
       if (schRes.error) throw schRes.error
+      setAudienceIds((audRes.data || []).map(a => a.schedule_id))
       setSchedules(schRes.data || [])
       setBlocks(blkRes.data || [])
       setClaims(clmRes.data || [])
@@ -73,8 +84,13 @@ export default function ScheduleInsights() {
 
   useEffect(() => { load() }, [load])
 
+  // Restricted roles only see schedules they're in the audience for.
+  const visibleSchedules = viewAll ? schedules : schedules.filter(s => audienceIds.includes(s.id))
+  const visibleIds = new Set(visibleSchedules.map(s => s.id))
+  const visibleActivity = viewAll ? activity : activity.filter(a => a.schedule_id && visibleIds.has(a.schedule_id))
+
   // helpers
-  const scheduleById = (id) => schedules.find(s => s.id === id)
+  const scheduleById = (id) => visibleSchedules.find(s => s.id === id)
   const clientNameForBlock = (b) => {
     const s = scheduleById(b.schedule_id)
     return clients.find(c => c.id === s?.client_id)?.name || 'Unassigned client'
@@ -84,7 +100,7 @@ export default function ScheduleInsights() {
     return positions.find(p => p.id === s?.call_type_id)?.name || ''
   }
   const publishedBlocks = () => {
-    const pubIds = new Set(schedules.filter(s => s.status === 'published').map(s => s.id))
+    const pubIds = new Set(visibleSchedules.filter(s => s.status === 'published').map(s => s.id))
     return blocks.filter(b => pubIds.has(b.schedule_id))
   }
   const claimsFor = (blockId) => claims.filter(c => c.shift_block_id === blockId)
@@ -116,7 +132,7 @@ export default function ScheduleInsights() {
     <div>
       <div style={{ marginBottom: 18 }}>
         <h1 className="page-title">Schedule insights</h1>
-        <p className="page-sub">Coverage by client and hour, fill rate by tier, and the full activity log.</p>
+        <p className="page-sub">Coverage by client and hour, fill rate by tier, and the full activity log.{!viewAll ? ' Showing schedules assigned to you.' : ''}</p>
       </div>
 
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
@@ -131,7 +147,7 @@ export default function ScheduleInsights() {
       {tab === 'tomorrow' && <StaffingView dateFilter={tomorrow} label={dateLabel(tomorrow)} {...{ publishedBlocks, clientNameForBlock, positionForBlock, claimsFor, profiles, tierOf, tierBreakdown, tiers }} />}
       {tab === 'all' && <StaffingView dateFilter={null} label="All published intervals" {...{ publishedBlocks, clientNameForBlock, positionForBlock, claimsFor, profiles, tierOf, tierBreakdown, tiers }} />}
       {tab === 'unassigned' && <UnassignedView {...{ publishedBlocks, clientNameForBlock, positionForBlock, claimsFor, tierBreakdown, tiers }} />}
-      {tab === 'activity' && <ActivityView activity={activity} profiles={profiles} />}
+      {tab === 'activity' && <ActivityView activity={visibleActivity} profiles={profiles} />}
     </div>
   )
 }
