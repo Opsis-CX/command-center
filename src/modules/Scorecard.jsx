@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 
+// Google Calendar appointment schedule for 1:1 coaching sessions.
+const COACHING_BOOKING_URL = 'https://calendar.google.com/calendar/u/0/appointments/schedules/AcZssZ3P6W-GsPBWhYjGd6hZ0Tc-QZbGsL09mvQEIhQM7F-VyBeCtt4S4THBAJTMolouBe7YF1lfztrl'
+
 // ============================================================
 // SERVICE PERFORMANCE SCORECARD
 // - Managers (asc/certification/marketing/admin) see the whole team.
@@ -269,7 +272,16 @@ function AgentScorecard({ row, canCoach, onBack }) {
 
       {/* Coaching notes */}
       <div className="card" style={{ marginTop: 14 }}>
-        <SectionTitle>Notes &amp; Anecdotal Feedback</SectionTitle>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <SectionTitle>Notes &amp; Anecdotal Feedback</SectionTitle>
+          {/* Book a coaching session — right where you're reading the scores
+              that prompt one. */}
+          <a href={COACHING_BOOKING_URL} target="_blank" rel="noreferrer"
+            className="btn btn-ghost"
+            style={{ marginLeft: 'auto', fontSize: 12, padding: '4px 10px', textDecoration: 'none' }}>
+            📅 Book a coaching session
+          </a>
+        </div>
         {canCoach && <AddNote agentName={row.agent_name} onAdded={loadNotes} />}
         {loadingNotes ? <p className="page-sub" style={{ fontSize: 13 }}>Loading…</p> : notes.length === 0 ? (
           <p className="page-sub" style={{ fontSize: 13 }}>No feedback recorded yet.</p>
