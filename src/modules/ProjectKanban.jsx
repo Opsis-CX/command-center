@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useProjectsData } from './projectsData'
-import { PriorityBadge, DueLabel, AvatarStack } from './projectBits'
+import { PriorityBadge, DueLabel, AvatarStack, SearchBox } from './projectBits'
 import { dueCls } from './projectHelpers'
 
 // ============================================================
@@ -20,12 +20,23 @@ const COLS = [
 export default function ProjectKanban({ activeProject, setActiveProject, onOpenTask, onAddTask }) {
   const { myVisibleTasks, myVisibleProjects, projects, profiles, taskAssignees } = useProjectsData()
   const myProjects = myVisibleProjects()
+  const [search, setSearch] = useState('')
 
-  const tasks = myVisibleTasks().filter(t => activeProject === 'all' || t.project_id === activeProject)
+  const q = search.trim().toLowerCase()
+  const tasks = myVisibleTasks()
+    .filter(t => activeProject === 'all' || t.project_id === activeProject)
+    .filter(t => {
+      if (!q) return true
+      const proj = projects.find(p => p.id === t.project_id)
+      return (t.title || '').toLowerCase().includes(q)
+        || (t.description || '').toLowerCase().includes(q)
+        || (proj?.name || '').toLowerCase().includes(q)
+    })
   const now = new Date(); now.setHours(0, 0, 0, 0)
 
   return (
     <div>
+      <SearchBox value={search} onChange={setSearch} placeholder="Search tasks…" style={{ maxWidth: 340, marginBottom: 12 }} />
       {/* project filter pills */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
         <Pill active={activeProject === 'all'} onClick={() => setActiveProject('all')}>All projects</Pill>
