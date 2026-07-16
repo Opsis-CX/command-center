@@ -223,14 +223,26 @@ function QuizRunner({ course, onDone, onBack }) {
 
   async function load() {
     try {
+      // The server picks this attempt's questions (random subset, random order)
+      // and remembers them — grading only counts the served set, so the client
+      // can't influence which questions appear. Refreshing returns the SAME set.
+      const { data: served, error: startErr } = await supabase.rpc('start_quiz', { p_course_id: course.id })
+      if (startErr) throw startErr
+      const servedIds = (served?.question_ids || []).map(String)
+
       const { data: qs, error } = await supabase.from('quiz_questions')
-        .select('id, prompt, points, sort_order').eq('course_id', course.id).order('sort_order')
+        .select('id, prompt, points, sort_order').eq('course_id', course.id).in('id', servedIds)
       if (error) throw error
       // Deliberately does not select is_correct — the answer key stays server-side.
-      const withOpts = await Promise.all((qs || []).map(async q => {
-   const { data: opts } = await supabase.from('quiz_options_public')
+      const byId = Object.fromEntries((qs || []).map(q => [q.id, q]))
+      const ordered = servedIds.map(id => byId[id]).filter(Boolean)
+      const withOpts = await Promise.all(ordered.map(async q => {
+        const { data: opts } = await supabase.from('quiz_options_public')
           .select('id, label, sort_order').eq('question_id', q.id).order('sort_order')
-        return { ...q, options: opts || [] }
+        // Shuffle answer options too, so "the answer is always B" can't circulate.
+        const shuffled = (opts || []).map(o => ({ o, r: Math.random() }))
+          .sort((a, b) => a.r - b.r).map(x => x.o)
+        return { ...q, options: shuffled }
       }))
       setQuestions(withOpts)
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
