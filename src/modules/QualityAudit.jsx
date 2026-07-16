@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { canAny } from '../lib/permissions'
+import { notifyCallReviewAssigned, notifyCallReviewSubmitted } from '../lib/notify'
 
 // ============================================================
 // QUALITY AUDIT
@@ -55,24 +56,30 @@ function tierText(score) {
 export default function QualityAudit() {
   const { appRole } = useAuth()
   const isAuditor = canAny(appRole, 'quality_audit')
-  const [tab, setTab] = useState(isAuditor ? 'new' : 'results')
+  const canSeeResults = canAny(appRole, 'quality_audit.view_own')
+  // Agents land straight on their call reviews; auditors keep their old default.
+  const [tab, setTab] = useState(isAuditor ? 'new' : canSeeResults ? 'results' : 'reviews')
 
   return (
     <div>
       <div style={{ marginBottom: 18 }}>
         <h1 className="page-title">Quality</h1>
-        <p className="page-sub">Score calls, work the audit queue, and track quality — feeding the scorecard directly.</p>
+        <p className="page-sub">{isAuditor
+          ? 'Score calls, work the audit queue, assign call reviews, and track quality — feeding the scorecard directly.'
+          : 'Review your assigned calls and reflect on what went well and what to improve.'}</p>
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
         {isAuditor && <button className={'btn ' + (tab === 'new' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('new')}>New audit</button>}
         {isAuditor && <button className={'btn ' + (tab === 'queue' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('queue')}>Queue</button>}
-        <button className={'btn ' + (tab === 'results' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('results')}>Results</button>
+        {canSeeResults && <button className={'btn ' + (tab === 'results' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('results')}>Results</button>}
+        <button className={'btn ' + (tab === 'reviews' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('reviews')}>Call reviews</button>
       </div>
 
       {tab === 'new' && isAuditor && <NewAudit onDone={() => setTab('results')} />}
       {tab === 'queue' && isAuditor && <Queue onPick={() => setTab('new')} />}
-      {tab === 'results' && <Results isAuditor={isAuditor} />}
+      {tab === 'results' && canSeeResults && <Results isAuditor={isAuditor} />}
+      {tab === 'reviews' && <CallReviews isAuditor={isAuditor} />}
     </div>
   )
 }
@@ -496,4 +503,298 @@ function Th({ children, right }) {
 }
 function Td({ children, right }) {
   return <td style={{ padding: '11px 14px', textAlign: right ? 'right' : 'left', whiteSpace: 'nowrap' }}>{children}</td>
+}
+
+// ============================================================
+// CALL REVIEWS — self-review of a recorded call.
+// Auditors assign a recording to an agent; the agent listens and
+// submits 3 things done well + 3 things to improve. RLS keeps
+// agents scoped to their own rows.
+// ============================================================
+const MAX_REVIEW_AUDIO_BYTES = 50 * 1024 * 1024 // 50MB
+
+function CallReviews({ isAuditor }) {
+  const { user } = useAuth()
+  const [me, setMe] = useState(null)
+  const [reviews, setReviews] = useState([])
+  const [profiles, setProfiles] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr('')
+    try {
+      const meRes = await supabase.from('profiles').select('id, full_name').eq('id', user.id).single()
+      setMe(meRes.data)
+      const [rRes, pRes] = await Promise.all([
+        supabase.from('call_reviews').select('*').order('created_at', { ascending: false }),
+        isAuditor
+          ? supabase.from('profiles').select('id, full_name, role, is_active').order('full_name')
+          : Promise.resolve({ data: [] }),
+      ])
+      if (rRes.error) throw rRes.error
+      setReviews(rRes.data || [])
+      setProfiles(pRes.data || [])
+    } catch (e) { setErr(e.message) } finally { setLoading(false) }
+  }, [user.id, isAuditor])
+  useEffect(() => { load() }, [load])
+
+  const nameOf = (id) => profiles.find(p => p.id === id)?.full_name || (id === user.id ? 'You' : 'Someone')
+
+  if (loading) return <p className="page-sub">Loading call reviews…</p>
+  if (err) return <div className="card" style={{ borderColor: 'var(--failed)' }}><b style={{ color: 'var(--failed)' }}>Couldn't load.</b> <span className="page-sub">{err}</span></div>
+
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      {isAuditor && <AssignReview me={me} profiles={profiles} onAssigned={load} />}
+      {isAuditor
+        ? <AuditorReviewList reviews={reviews} nameOf={nameOf} onChanged={load} />
+        : <AgentReviewList reviews={reviews} me={me} onChanged={load} />}
+    </div>
+  )
+}
+
+// ---- Auditor: assign a call to an agent ----
+function AssignReview({ me, profiles, onAssigned }) {
+  const [agentId, setAgentId] = useState('')
+  const [callDate, setCallDate] = useState(new Date().toISOString().slice(0, 10))
+  const [note, setNote] = useState('')
+  const [recordingUrl, setRecordingUrl] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [err, setErr] = useState('')
+
+  const agents = profiles.filter(p => String(p.role || '').toLowerCase() === 'agent' && p.is_active !== false)
+
+  async function uploadRecording(file) {
+    if (!file) return
+    setErr('')
+    if (file.size > MAX_REVIEW_AUDIO_BYTES) { setErr(`"${file.name}" is over 50MB.`); return }
+    setUploading(true)
+    try {
+      const ext = file.name.includes('.') ? file.name.split('.').pop() : 'dat'
+      const rand = crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random())
+      const path = `call-reviews/${rand}.${ext}`
+      const { error: upErr } = await supabase.storage.from('qa-recordings').upload(path, file, { contentType: file.type || undefined, upsert: false })
+      if (upErr) throw upErr
+      const { data: pub } = supabase.storage.from('qa-recordings').getPublicUrl(path)
+      setRecordingUrl(pub.publicUrl)
+    } catch (e) { setErr('Upload failed: ' + e.message) } finally { setUploading(false) }
+  }
+
+  async function assign() {
+    setErr(''); setMsg('')
+    if (!agentId) { setErr('Pick an agent.'); return }
+    if (!recordingUrl.trim()) { setErr('Upload a recording or paste a recording link.'); return }
+    setSaving(true)
+    try {
+      const { error } = await supabase.from('call_reviews').insert({
+        agent_id: agentId, assigned_by: me.id,
+        call_date: callDate || null, note: note.trim() || null,
+        recording_url: recordingUrl.trim(),
+      })
+      if (error) throw error
+      try {
+        await notifyCallReviewAssigned({ recipientId: agentId, actorId: me.id, actorName: me.full_name })
+      } catch (e) { console.error('Review assigned, but notification failed', e) }
+      setMsg('Review assigned ✓')
+      setAgentId(''); setNote(''); setRecordingUrl('')
+      onAssigned?.()
+    } catch (e) { setErr(e.message) } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="card">
+      <b style={{ fontSize: 14 }}>Assign a call review</b>
+      <p className="page-sub" style={{ fontSize: 12.5, margin: '3px 0 14px' }}>The agent listens to the call and submits 3 things they did well and 3 things to improve.</p>
+      <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>Agent</label>
+            <select value={agentId} onChange={e => setAgentId(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', background: 'var(--surface)' }}>
+              <option value="">Select agent…</option>
+              {agents.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>Call date</label>
+            <input type="date" value={callDate} onChange={e => setCallDate(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', background: 'var(--surface)', boxSizing: 'border-box' }} />
+          </div>
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>Recording</label>
+          <input type="file" accept="audio/*,video/*" disabled={uploading} onChange={e => { uploadRecording(e.target.files?.[0]); e.target.value = '' }}
+            style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', boxSizing: 'border-box' }} />
+          {uploading && <div className="page-sub" style={{ fontSize: 12, marginTop: 4 }}>Uploading…</div>}
+          {recordingUrl && !uploading && <div className="page-sub" style={{ fontSize: 12, marginTop: 4 }}>✓ Recording attached — <a href={recordingUrl} target="_blank" rel="noreferrer">preview</a></div>}
+          <input placeholder="…or paste a recording link" value={recordingUrl} onChange={e => setRecordingUrl(e.target.value)}
+            style={{ width: '100%', marginTop: 6, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', boxSizing: 'border-box' }} />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>Note to the agent <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}>(optional)</span></label>
+          <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Focus on the opening and how the objection was handled."
+            style={{ width: '100%', minHeight: 54, resize: 'vertical', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', boxSizing: 'border-box' }} />
+        </div>
+        {err && <div style={{ color: 'var(--failed)', fontSize: 12.5 }}>{err}</div>}
+        {msg && <div style={{ color: 'var(--passed)', fontSize: 12.5, fontWeight: 600 }}>{msg}</div>}
+        <div><button className="btn btn-primary" onClick={assign} disabled={saving || uploading}>{saving ? 'Assigning…' : 'Assign review'}</button></div>
+      </div>
+    </div>
+  )
+}
+
+// ---- Auditor: all reviews with status + submitted answers ----
+function AuditorReviewList({ reviews, nameOf, onChanged }) {
+  const [openId, setOpenId] = useState(null)
+
+  async function remove(r) {
+    if (!window.confirm(`Delete this call review for ${nameOf(r.agent_id)}? This can't be undone.`)) return
+    const { error } = await supabase.from('call_reviews').delete().eq('id', r.id)
+    if (error) { window.alert('Could not delete: ' + error.message); return }
+    onChanged?.()
+  }
+
+  if (!reviews.length) return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 24 }}>No call reviews assigned yet.</div></div>
+
+  return (
+    <div className="card">
+      <b style={{ fontSize: 14 }}>Assigned reviews</b>
+      <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+        {reviews.map(r => {
+          const submitted = r.status === 'submitted'
+          const open = openId === r.id
+          return (
+            <div key={r.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <b style={{ fontSize: 13.5 }}>{nameOf(r.agent_id)}</b>
+                <span className="page-sub" style={{ fontSize: 12 }}>{fmtDate(r.call_date)} · assigned {fmtDate(r.created_at)}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: submitted ? 'var(--passed-bg)' : 'var(--needed-bg)', color: submitted ? 'var(--passed)' : 'var(--needed)' }}>
+                  {submitted ? 'Submitted' : 'Waiting on agent'}
+                </span>
+                {submitted && <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => setOpenId(open ? null : r.id)}>{open ? 'Hide' : 'View answers'}</button>}
+                <button onClick={() => remove(r)} title="Delete review"
+                  style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, padding: '2px 4px' }}>🗑</button>
+              </div>
+              {r.note && <div className="page-sub" style={{ fontSize: 12.5, marginTop: 5 }}>Note: {r.note}</div>}
+              <audio controls src={r.recording_url} style={{ width: '100%', maxWidth: 420, marginTop: 8 }} />
+              {open && submitted && (
+                <div style={{ marginTop: 10, display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+                  <ReviewAnswers title="✅ Did well" items={r.went_well} />
+                  <ReviewAnswers title="🔧 To improve" items={r.improvements} />
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function ReviewAnswers({ title, items }) {
+  return (
+    <div style={{ background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px' }}>
+      <b style={{ fontSize: 12.5 }}>{title}</b>
+      <ol style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 13, lineHeight: 1.6 }}>
+        {(items || []).map((x, i) => <li key={i}>{x}</li>)}
+      </ol>
+    </div>
+  )
+}
+
+// ---- Agent: my reviews (pending form / submitted read-only) ----
+function AgentReviewList({ reviews, me, onChanged }) {
+  if (!reviews.length) {
+    return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 24 }}>No call reviews assigned to you yet. When a call is ready to review, it appears here (you'll also get a notification).</div></div>
+  }
+  const pending = reviews.filter(r => r.status !== 'submitted')
+  const doneOnes = reviews.filter(r => r.status === 'submitted')
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      {pending.map(r => <AgentReviewForm key={r.id} review={r} me={me} onChanged={onChanged} />)}
+      {doneOnes.length > 0 && (
+        <div className="card">
+          <b style={{ fontSize: 14 }}>Completed reviews</b>
+          <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+            {doneOnes.map(r => (
+              <div key={r.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px' }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <span className="page-sub" style={{ fontSize: 12 }}>Call {fmtDate(r.call_date)} · submitted {fmtDate(r.submitted_at)}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: 'var(--passed-bg)', color: 'var(--passed)' }}>Submitted</span>
+                </div>
+                <div style={{ marginTop: 8, display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+                  <ReviewAnswers title="✅ Did well" items={r.went_well} />
+                  <ReviewAnswers title="🔧 To improve" items={r.improvements} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AgentReviewForm({ review, me, onChanged }) {
+  const [well, setWell] = useState(['', '', ''])
+  const [improve, setImprove] = useState(['', '', ''])
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const setAt = (setter) => (i) => (e) => setter(prev => prev.map((x, j) => j === i ? e.target.value : x))
+
+  async function submit() {
+    setErr('')
+    if (well.some(x => !x.trim()) || improve.some(x => !x.trim())) {
+      setErr('Please fill in all three strengths and all three improvements.')
+      return
+    }
+    setSaving(true)
+    try {
+      const { error } = await supabase.from('call_reviews').update({
+        went_well: well.map(x => x.trim()),
+        improvements: improve.map(x => x.trim()),
+        status: 'submitted',
+        submitted_at: new Date().toISOString(),
+      }).eq('id', review.id)
+      if (error) throw error
+      try {
+        await notifyCallReviewSubmitted({ recipientId: review.assigned_by, actorId: me.id, actorName: me.full_name })
+      } catch (e) { console.error('Review submitted, but notification failed', e) }
+      onChanged?.()
+    } catch (e) { setErr(e.message) } finally { setSaving(false) }
+  }
+
+  const inputStyle = { width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', background: 'var(--surface)', boxSizing: 'border-box' }
+
+  return (
+    <div className="card" style={{ borderColor: 'var(--accent)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <b style={{ fontSize: 14 }}>Call review — {fmtDate(review.call_date)}</b>
+        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: 'var(--needed-bg)', color: 'var(--needed)' }}>Needs your review</span>
+      </div>
+      {review.note && <p className="page-sub" style={{ fontSize: 12.5, margin: '6px 0 0' }}>Note from your coach: {review.note}</p>}
+      <p className="page-sub" style={{ fontSize: 12.5, margin: '6px 0 10px' }}>Listen to your call, then share 3 things you did well and 3 things you'd improve.</p>
+      <audio controls src={review.recording_url} style={{ width: '100%', maxWidth: 460 }} />
+      <div style={{ marginTop: 14, display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
+        <div>
+          <b style={{ fontSize: 13 }}>✅ 3 things I did well</b>
+          <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+            {well.map((v, i) => <input key={i} style={inputStyle} placeholder={`${i + 1}.`} value={v} onChange={setAt(setWell)(i)} />)}
+          </div>
+        </div>
+        <div>
+          <b style={{ fontSize: 13 }}>🔧 3 things I can improve</b>
+          <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+            {improve.map((v, i) => <input key={i} style={inputStyle} placeholder={`${i + 1}.`} value={v} onChange={setAt(setImprove)(i)} />)}
+          </div>
+        </div>
+      </div>
+      {err && <div style={{ color: 'var(--failed)', fontSize: 12.5, marginTop: 10 }}>{err}</div>}
+      <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={submit} disabled={saving}>{saving ? 'Submitting…' : 'Submit review'}</button>
+    </div>
+  )
 }
