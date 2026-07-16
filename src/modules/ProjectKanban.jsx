@@ -18,12 +18,26 @@ const COLS = [
 ]
 
 export default function ProjectKanban({ activeProject, setActiveProject, onOpenTask, onAddTask }) {
-  const { myVisibleTasks, myVisibleProjects, projects, profiles, taskAssignees } = useProjectsData()
+  const { myVisibleTasks, myVisibleProjects, projects, profiles, taskAssignees, userId } = useProjectsData()
   const myProjects = myVisibleProjects()
   const [search, setSearch] = useState('')
+  // Being a project member means seeing that whole board, which buries the
+  // handful of tasks actually on your plate. Default to just those.
+  const [mineOnly, setMineOnly] = useState(() => {
+    try { return localStorage.getItem('kanbanMineOnly') !== 'false' } catch { return true }
+  })
+  const toggleMineOnly = () => setMineOnly(v => {
+    const next = !v
+    try { localStorage.setItem('kanbanMineOnly', String(next)) } catch { /* private mode */ }
+    return next
+  })
 
   const q = search.trim().toLowerCase()
-  const tasks = myVisibleTasks()
+  const myTaskIds = new Set(taskAssignees.filter(a => a.profile_id === userId).map(a => a.task_id))
+  const allVisible = myVisibleTasks()
+  const mineCount = allVisible.filter(t => myTaskIds.has(t.id)).length
+  const tasks = allVisible
+    .filter(t => !mineOnly || myTaskIds.has(t.id))
     .filter(t => activeProject === 'all' || t.project_id === activeProject)
     .filter(t => {
       if (!q) return true
@@ -36,7 +50,17 @@ export default function ProjectKanban({ activeProject, setActiveProject, onOpenT
 
   return (
     <div>
-      <SearchBox value={search} onChange={setSearch} placeholder="Search tasks…" style={{ maxWidth: 340, marginBottom: 12 }} />
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+        <SearchBox value={search} onChange={setSearch} placeholder="Search tasks…" style={{ maxWidth: 340 }} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}>
+          <input type="checkbox" checked={mineOnly} onChange={toggleMineOnly} style={{ cursor: 'pointer' }} />
+          Only my tasks
+          <span className="page-sub" style={{ fontWeight: 400 }}>({mineCount})</span>
+        </label>
+        {mineOnly && mineCount === 0 && (
+          <span className="page-sub" style={{ fontSize: 12 }}>Nothing assigned to you — untick to see the whole board.</span>
+        )}
+      </div>
       {/* project filter pills */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
         <Pill active={activeProject === 'all'} onClick={() => setActiveProject('all')}>All projects</Pill>
