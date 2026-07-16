@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useProjectsData } from './projectsData'
-import { AvatarStack } from './projectBits'
+import { AvatarStack, SearchBox } from './projectBits'
 import { exportProject } from './projectCsv'
 
 // ============================================================
@@ -11,10 +11,19 @@ import { exportProject } from './projectCsv'
 
 export default function ProjectGrid({ onOpenProject, onNewProject, onEditProject }) {
   const { myVisibleProjects, tasks, projectMembers, profiles, clients, taskAssignees, timeEntries } = useProjectsData()
-  const myProjects = myVisibleProjects()
+  const [search, setSearch] = useState('')
+  const q = search.trim().toLowerCase()
+  const allMine = myVisibleProjects()
+  const myProjects = allMine.filter(p => {
+    if (!q) return true
+    const client = clients.find(c => c.id === p.client_id)
+    return (p.name || '').toLowerCase().includes(q)
+      || (p.description || '').toLowerCase().includes(q)
+      || (client?.name || '').toLowerCase().includes(q)
+  })
   const now = new Date(); now.setHours(0, 0, 0, 0)
 
-  if (!myProjects.length) {
+  if (!allMine.length) {
     return (
       <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
         <h3 style={{ fontSize: 14, marginBottom: 4 }}>No projects yet</h3>
@@ -26,8 +35,9 @@ export default function ProjectGrid({ onOpenProject, onNewProject, onEditProject
 
   return (
     <div>
+      <SearchBox value={search} onChange={setSearch} placeholder="Search projects…" style={{ maxWidth: 340, marginBottom: 12 }} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>{myProjects.length} project{myProjects.length !== 1 ? 's' : ''}</div>
+        <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>{myProjects.length} project{myProjects.length !== 1 ? 's' : ''}{q ? ` matching "${search.trim()}"` : ''}</div>
         {onNewProject && <button className="btn btn-primary" onClick={() => onNewProject()}>+ New Project</button>}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
