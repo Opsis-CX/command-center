@@ -675,3 +675,73 @@ export async function notifyCallReviewSubmitted({
     },
   ])
 }
+
+// ---- Help Center tickets ----
+
+export async function notifyTicketCreated({
+  recipientIds,
+  actorId,
+  actorName,
+  ticketNumber,
+  category,
+  subject,
+}) {
+  const ids = uniqueIds(recipientIds).filter(id => id !== actorId)
+  if (!ids.length) return []
+
+  return insertMany(ids.map(recipientId => ({
+    recipient_id: recipientId,
+    type: 'ticket_created',
+    title: `New help ticket #${ticketNumber} — ${category}`,
+    body: `${actorName || 'Someone'}: ${String(subject || '').slice(0, 100)}`,
+    link: '/help',
+    actor_id: actorId || null,
+    actor_name: actorName || null,
+  })))
+}
+
+export async function notifyTicketReply({
+  recipientIds,
+  actorId,
+  actorName,
+  ticketNumber,
+  body,
+}) {
+  const ids = uniqueIds(recipientIds).filter(id => id !== actorId)
+  if (!ids.length) return []
+
+  return insertMany(ids.map(recipientId => ({
+    recipient_id: recipientId,
+    type: 'ticket_reply',
+    title: `${actorName || 'Someone'} replied on ticket #${ticketNumber}`,
+    body: String(body || '').slice(0, 120) || null,
+    link: '/help',
+    actor_id: actorId || null,
+    actor_name: actorName || null,
+  })))
+}
+
+export async function notifyTicketStatus({
+  recipientId,
+  actorId,
+  actorName,
+  ticketNumber,
+  status,
+}) {
+  if (!recipientId || recipientId === actorId) return []
+
+  const label = status === 'resolved' ? 'resolved'
+    : status === 'closed' ? 'closed'
+      : status === 'pending' ? 'waiting on your reply'
+        : 'reopened'
+
+  return insertMany([{
+    recipient_id: recipientId,
+    type: 'ticket_status',
+    title: `Ticket #${ticketNumber} is ${label}`,
+    body: null,
+    link: '/help',
+    actor_id: actorId || null,
+    actor_name: actorName || null,
+  }])
+}
