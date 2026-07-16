@@ -36,6 +36,11 @@ const SCREENED_OUT = ['out_of_area', 'auto_denied', 'denied', 'assessment_denied
 // To find a project's id: open it in Projects, or check the projects table.
 const ONBOARDING_PROJECT_ID = null
 
+// Task owners. Corinne handles Rippling onboarding; Becky is the fallback if
+// automatic Command Center account creation fails.
+const CORINNE_ID = '6d73d6ff-b70f-4180-880b-1b791bb03bde'
+const BECKY_ID = '2825c623-847e-4747-9234-ee5579f1afcb'
+
 // Some statuses live under a column even though the column key differs
 // (e.g. assessment_sent belongs under "Approved" until it comes back).
 const STATUS_TO_COLUMN = {
@@ -116,13 +121,61 @@ export default function HiringDashboard() {
   // interval, and whenever the tasks table changes.
   // Create the agent's login account (email invite → they set a password).
   // Runs server-side via the invite-agent Edge Function.
+  // Returns true on success. A silent failure here would strand a new hire in
+  // Certification with no way to log in, so callers surface the error and a
+  // fallback task is raised for Becky.
   async function inviteAgentAccount(app) {
     try {
-      const { error } = await supabase.functions.invoke('invite-agent', {
+      const { data, error } = await supabase.functions.invoke('invite-agent', {
         body: { email: app.email, fullName: app.full_name, phone: app.phone || null },
       })
-      if (error) console.error('invite-agent failed:', error)
-    } catch (e) { console.error('invite-agent failed:', e) }
+      const failure = error?.message || data?.error
+      if (failure) {
+        console.error('invite-agent failed:', failure)
+        await createAccountFallbackTask(app, failure)
+        return false
+      }
+      if (data?.email_error) {
+        // Account exists but the welcome email didn't go out — still needs a human.
+        await createAccountFallbackTask(app, `Account created, but the invite email failed: ${data.email_error}`)
+      }
+      return true
+    } catch (e) {
+      console.error('invite-agent failed:', e)
+      await createAccountFallbackTask(app, String(e?.message || e))
+      return false
+    }
+  }
+
+  // Fallback: if automatic account creation fails, tell Becky to do it by hand
+  // rather than letting the new hire quietly fall through the cracks.
+  async function createAccountFallbackTask(app, reason) {
+    try {
+      const taskId = crypto.randomUUID()
+      const contact = [
+        app.email ? `Email: ${app.email}` : null,
+        app.phone ? `Phone: ${app.phone}` : null,
+      ].filter(Boolean).join('\n')
+      const { error } = await supabase.from('tasks').insert({
+        id: taskId,
+        name: `Create Command Center account for ${app.full_name}`,
+        status: 'todo',
+        priority: 'critical',
+        due_date: new Date().toISOString().slice(0, 10),
+        project_id: ONBOARDING_PROJECT_ID || null,
+        notes: `Automatic account creation failed, so this needs to be done manually — they can't start certification without a login.\n\n${contact}\n\nReason: ${reason}`,
+        created_by: user?.id || null,
+      })
+      if (error) { console.error('fallback task failed:', error); return }
+      await supabase.from('task_assignees').insert({ task_id: taskId, profile_id: BECKY_ID })
+      try {
+        const notify = await import('../lib/notify')
+        notify.notifyTaskAssigned?.({
+          recipientIds: [BECKY_ID], actorId: user?.id, actorName: 'Hiring',
+          taskName: `Create Command Center account for ${app.full_name}`, projectName: null, taskId,
+        })
+      } catch (e) { /* notify optional */ }
+    } catch (e) { console.error('createAccountFallbackTask failed:', e) }
   }
 
   const checkRipplingTasks = useCallback(async () => {
@@ -136,12 +189,14 @@ export default function HiringDashboard() {
     for (const app of waiting) {
       if (doneIds.has(app.rippling_task_id)) {
         // create their login account so they can access certification
-        await inviteAgentAccount(app)
+        const invited = await inviteAgentAccount(app)
         const patch = { status: 'certifying', reviewed_at: new Date().toISOString() }
         await supabase.from('hiring_applications').update(patch).eq('id', app.id)
         await supabase.from('hiring_stage_events').insert({
           application_id: app.id, from_status: 'assessment_passed', to_status: 'certifying',
-          note: 'Rippling setup task completed by Corinne; login account invited',
+          note: invited
+            ? 'Rippling setup completed; Command Center account created and invite emailed'
+            : 'Rippling setup completed; automatic account creation FAILED — manual task raised for Becky',
         })
       }
     }
@@ -158,7 +213,6 @@ export default function HiringDashboard() {
 
   // move an application to a new status, log the event, fire the stubbed email
   // Corinne's profile id — the "set up in Rippling" task is assigned to her.
-  const CORINNE_ID = '6d73d6ff-b70f-4180-880b-1b791bb03bde'
 
   // The Chat channel to alert when someone finishes certification.
   const SUPPORT_CHANNEL_NAME = '# Call Center Support Team'
@@ -185,13 +239,22 @@ export default function HiringDashboard() {
   async function createRipplingTask(app) {
     try {
       const taskId = crypto.randomUUID()
+      // Contact details go in the task itself so Corinne doesn't have to dig
+      // through the pipeline to find them. Due same day — onboarding paperwork
+      // gates everything downstream.
+      const contact = [
+        app.email ? `Email: ${app.email}` : null,
+        app.phone ? `Phone: ${app.phone}` : null,
+        app.state ? `State: ${app.state}` : null,
+      ].filter(Boolean).join('\n')
       const { error: tErr } = await supabase.from('tasks').insert({
         id: taskId,
         name: `Set up ${app.full_name} in Rippling`,
         status: 'todo',
         priority: 'high',
+        due_date: new Date().toISOString().slice(0, 10),
         project_id: ONBOARDING_PROJECT_ID || null,
-        notes: `New hire cleared assessment. Create their Rippling onboarding, then mark this task done to advance them to certification.`,
+        notes: `New hire cleared assessment.\n\n${contact}\n\nCreate their Rippling onboarding, then mark this task done — that automatically creates their Command Center login and advances them to certification.`,
         created_by: user?.id || null,
       })
       if (tErr) { console.error('could not create Rippling task:', tErr); return null }
