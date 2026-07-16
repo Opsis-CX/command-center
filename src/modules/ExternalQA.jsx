@@ -143,16 +143,56 @@ export default function ExternalQA() {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [done, setDone] = useState(null)       // {score, emailed, emailErr}
+  const [editing, setEditing] = useState(null) // audit row being corrected, or null for a new audit
 
   const load = useCallback(async () => {
     const [meRes, csrRes, recentRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name').eq('id', user.id).single(),
       supabase.from('external_csrs').select('*').eq('active', true).order('full_name'),
-      supabase.from('external_qa_audits').select('id, csr_name, brand, call_date, score_pct, email_sent_at, email_error, created_at').order('created_at', { ascending: false }).limit(12),
+      supabase.from('external_qa_audits').select('*').order('created_at', { ascending: false }).limit(12),
     ])
     setMe(meRes.data); setCsrs(csrRes.data || []); setRecent(recentRes.data || [])
   }, [user.id])
   useEffect(() => { load() }, [load])
+
+  // Load a submitted audit back into the form for correction. The CSR already
+  // has the original numbers in their inbox, so saving always re-sends a
+  // clearly-marked updated review.
+  function startEdit(a) {
+    setEditing(a)
+    setBrand(a.brand || '')
+    const match = csrs.find(c => c.email && a.csr_email && c.email.toLowerCase() === a.csr_email.toLowerCase())
+    setCsrId(match?.id || '')
+    if (!match) setCsrManual({ name: a.csr_name || '', email: a.csr_email || '' })
+    setCallDate(a.call_date || '')
+    setCallTime(a.call_time || '')
+    setDirection(a.direction || '')
+    const known = CALL_TYPES.includes(a.call_type)
+    setCallType(a.call_type ? (known ? a.call_type : 'Other') : '')
+    setCallTypeOther(known ? '' : (a.call_type || ''))
+    const ans = {}, mis = {}
+    QA_SECTIONS.forEach(sec => {
+      const s = (a.sections || {})[sec.key] || {}
+      if (s.answer) ans[sec.key] = s.answer
+      if (s.misses?.length) mis[sec.key] = new Set(s.misses)
+    })
+    setAnswers(ans); setMisses(mis)
+    const knownOutcome = OUTCOMES.includes(a.outcome)
+    setOutcome(a.outcome ? (knownOutcome ? a.outcome : 'Other') : '')
+    setOutcomeOther(knownOutcome ? '' : (a.outcome || ''))
+    setNotBooked(a.not_booked_reason || '')
+    setNotes(a.notes || '')
+    setRecFile(null); setRecKey(k => k + 1); setRecStatus(''); setErr(''); setDone(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function cancelEdit() {
+    setEditing(null)
+    setCsrId(''); setCsrManual({ name: '', email: '' }); setCallDate(new Date().toISOString().slice(0, 10))
+    setCallTime(''); setDirection(''); setCallType(''); setCallTypeOther('')
+    setAnswers({}); setMisses({}); setOutcome(''); setOutcomeOther(''); setNotBooked(''); setNotes('')
+    setRecFile(null); setRecKey(k => k + 1); setRecStatus(''); setErr('')
+  }
 
   const brandCsrs = csrs.filter(c => !brand || c.brand === brand)
   const pickedCsr = csrs.find(c => c.id === csrId) || null
@@ -206,27 +246,53 @@ export default function ExternalQA() {
         sections[sec.key] = { answer: answers[sec.key], misses: answers[sec.key] === 'no' ? [...(misses[sec.key] || [])] : [] }
       })
 
-      const { data: audit, error } = await supabase.from('external_qa_audits').insert({
-        auditor_id: me.id, auditor_name: me.full_name,
+      const payload = {
         brand, csr_name: csrName, csr_email: csrEmail, agent_number: pickedCsr?.agent_number || null,
         call_date: callDate, call_time: callTime || null, direction,
         call_type: callType === 'Other' ? (callTypeOther.trim() || 'Other') : callType || null,
         sections, points_earned: earned, points_possible: possible, score_pct: scorePct,
         outcome: outcome === 'Other' ? (outcomeOther.trim() || 'Other') : outcome || null,
         not_booked_reason: outcome === 'Not Booked' ? (notBooked || null) : null,
-        notes: notes.trim() || null, recording_url: recordingUrl,
-      }).select().single()
-      if (error) throw error
+        notes: notes.trim() || null,
+      }
 
-      // Email the CSR their results
+      let audit, oldScore = null
+      if (editing) {
+        // Correction: keep the original auditor, record who revised it, and
+        // snapshot the previous scoring for the edit history.
+        oldScore = editing.score_pct
+        await supabase.from('external_qa_audit_edits').insert({
+          audit_id: editing.id, editor_id: me.id, editor_name: me.full_name,
+          old_score_pct: editing.score_pct, new_score_pct: scorePct, old_sections: editing.sections,
+        })
+        const { data, error } = await supabase.from('external_qa_audits').update({
+          ...payload,
+          ...(recordingUrl ? { recording_url: recordingUrl } : {}),
+          edited_at: new Date().toISOString(), edited_by: me.id, editor_name: me.full_name,
+          edit_count: (editing.edit_count || 0) + 1,
+        }).eq('id', editing.id).select().single()
+        if (error) throw error
+        audit = data
+      } else {
+        const { data, error } = await supabase.from('external_qa_audits').insert({
+          ...payload, auditor_id: me.id, auditor_name: me.full_name, recording_url: recordingUrl,
+        }).select().single()
+        if (error) throw error
+        audit = data
+      }
+
+      // Email the CSR their results (corrections are clearly marked as updated)
       let emailed = false, emailErr = null
       if (csrEmail) {
-        const { data: sendRes, error: sendErr } = await supabase.functions.invoke('send-quality-email', { body: { audit_id: audit.id } })
+        const { data: sendRes, error: sendErr } = await supabase.functions.invoke('send-quality-email', {
+          body: { audit_id: audit.id, revised: !!editing, old_score: oldScore },
+        })
         if (sendErr || sendRes?.error) emailErr = sendErr?.message || sendRes?.error
         else emailed = true
       }
 
-      setDone({ score: scorePct, emailed, emailErr, csrName, recWarn })
+      setDone({ score: scorePct, emailed, emailErr, csrName, recWarn, wasEdit: !!editing, oldScore })
+      setEditing(null)
       // reset the scoring parts, keep brand/auditor context
       setCsrId(''); setCsrManual({ name: '', email: '' }); setCallTime(''); setDirection(''); setCallType(''); setCallTypeOther('')
       setAnswers({}); setMisses({}); setOutcome(''); setOutcomeOther(''); setNotBooked(''); setNotes(''); setRecFile(null); setRecKey(k => k + 1); setRecStatus('')
@@ -238,9 +304,13 @@ export default function ExternalQA() {
     <div style={{ display: 'grid', gap: 16 }}>
       {done && (
         <div className="card" style={{ borderColor: 'var(--passed)' }}>
-          <b style={{ color: 'var(--passed)' }}>Audit saved — {done.csrName} scored {done.score}%.</b>{' '}
+          <b style={{ color: 'var(--passed)' }}>
+            {done.wasEdit
+              ? `Audit updated — ${done.csrName}${done.oldScore != null && done.oldScore !== done.score ? `: ${done.oldScore}% → ${done.score}%` : ` scored ${done.score}%`}.`
+              : `Audit saved — ${done.csrName} scored ${done.score}%.`}
+          </b>{' '}
           <span className="page-sub" style={{ fontSize: 13 }}>
-            {done.emailed ? 'Their feedback email is on its way. ✉️'
+            {done.emailed ? (done.wasEdit ? 'An updated review email is on its way to them. ✉️' : 'Their feedback email is on its way. ✉️')
               : done.emailErr ? `Saved, but the email failed: ${done.emailErr}`
                 : 'No email on file for this agent, so nothing was sent.'}
             {done.recWarn ? ` ${done.recWarn}` : ''}
@@ -249,9 +319,23 @@ export default function ExternalQA() {
         </div>
       )}
 
-      <div className="card">
-        <b style={{ fontSize: 14 }}>External QA audit</b>
-        <p className="page-sub" style={{ fontSize: 12.5, margin: '3px 0 14px' }}>Score a client CSR's call. On submit, they receive their results and the recording by email — questions route to their manager.</p>
+      <div className="card" style={editing ? { borderColor: 'var(--needed)' } : undefined}>
+        {editing ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <b style={{ fontSize: 14, color: 'var(--needed)' }}>Correcting a submitted audit — {editing.csr_name}, {editing.call_date}</b>
+              <p className="page-sub" style={{ fontSize: 12.5, margin: '3px 0 0' }}>
+                Originally {editing.score_pct}% by {editing.auditor_name || 'unknown'}. Saving sends {editing.csr_name?.split(' ')[0]} an updated review that replaces the first one.
+              </p>
+            </div>
+            <button className="btn btn-ghost" onClick={cancelEdit}>Cancel edit</button>
+          </div>
+        ) : (
+          <>
+            <b style={{ fontSize: 14 }}>External QA audit</b>
+            <p className="page-sub" style={{ fontSize: 12.5, margin: '3px 0 14px' }}>Score a client CSR's call. On submit, they receive their results and the recording by email — questions route to their manager.</p>
+          </>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12, marginBottom: 14 }}>
           <div><label style={labelStyle}>Brand *</label>
@@ -357,7 +441,7 @@ export default function ExternalQA() {
             placeholder="What they did well, and specifically what to work on…" /></div>
         {err && <div style={{ color: 'var(--failed)', fontSize: 12.5, marginTop: 10 }}>{err}</div>}
         <button className="btn btn-cta" style={{ marginTop: 12 }} onClick={submit} disabled={saving}>
-          {saving ? 'Saving & emailing…' : 'Submit audit & email the agent'}
+          {saving ? 'Saving & emailing…' : editing ? 'Save changes & send updated review' : 'Submit audit & email the agent'}
         </button>
       </div>
 
@@ -366,13 +450,21 @@ export default function ExternalQA() {
           <b style={{ fontSize: 14 }}>Recent external audits</b>
           <div style={{ marginTop: 8 }}>
             {recent.map(r => (
-              <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--line-soft)', fontSize: 13 }}>
-                <b style={{ width: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.csr_name}</b>
+              <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--line-soft)', fontSize: 13, background: editing?.id === r.id ? 'var(--needed-bg)' : undefined }}>
+                <b style={{ width: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.csr_name}</b>
                 <span className="page-sub" style={{ fontSize: 12 }}>{r.brand} · {r.call_date}</span>
+                {r.edit_count > 0 && (
+                  <span title={`Edited ${r.edit_count === 1 ? 'once' : r.edit_count + ' times'}${r.editor_name ? ' by ' + r.editor_name : ''}`}
+                    style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--needed)', background: 'var(--needed-bg)', borderRadius: 999, padding: '2px 7px' }}>
+                    edited
+                  </span>
+                )}
                 <b style={{ marginLeft: 'auto', color: r.score_pct >= 90 ? 'var(--passed)' : r.score_pct >= 75 ? 'var(--needed)' : 'var(--failed)' }}>{r.score_pct}%</b>
                 <span style={{ fontSize: 11.5, color: r.email_sent_at ? 'var(--passed)' : r.email_error ? 'var(--failed)' : 'var(--ink-soft)' }}>
                   {r.email_sent_at ? '✉ sent' : r.email_error ? '✉ failed' : '—'}
                 </span>
+                <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '3px 9px' }}
+                  onClick={() => startEdit(r)} disabled={saving}>Edit</button>
               </div>
             ))}
           </div>
