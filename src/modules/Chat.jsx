@@ -1874,6 +1874,9 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
   const [names, setNames] = useState(senders || {})
   const replyEditorRef = useRef(null)   // rich reply composer
   const replyHtmlRef = useRef('')
+  const [tReactions, setTReactions] = useState([])     // reactions in this thread
+  const [reactFor, setReactFor] = useState(null)       // message id with picker open
+  const [reactorsFor, setReactorsFor] = useState(null) // {messageId, emoji} reactor list open
   const [loading, setLoading] = useState(true)
   const [tAttachments, setTAttachments] = useState([]) // attachments for parent + replies
   const [pending, setPending] = useState([])           // files staged for the next reply
@@ -1909,10 +1912,13 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
         const { data } = await supabase.from('profiles').select('id, full_name').in('id', miss)
         if (data) setNames(prev => { const n = { ...prev }; data.forEach(p => n[p.id] = p.full_name); return n })
       }
-      // Attachments for the parent and every reply.
+      // Attachments + reactions for the parent and every reply.
       const msgIds = [parentId, ...(rRes.data || []).map(r => r.id)]
-      const { data: atts } = await supabase.from('message_attachments').select('*').in('message_id', msgIds)
-      if (active) setTAttachments(atts || [])
+      const [{ data: atts }, { data: reacts }] = await Promise.all([
+        supabase.from('message_attachments').select('*').in('message_id', msgIds),
+        supabase.from('message_reactions').select('*').in('message_id', msgIds),
+      ])
+      if (active) { setTAttachments(atts || []); setTReactions(reacts || []) }
       setLoading(false)
       // Opening the thread means you've seen what's in it.
       onSeen?.(parentId)
@@ -1936,6 +1942,13 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
           if (!threadIdsRef.current.has(payload.new.message_id)) return
           setTAttachments(prev => prev.some(a => a.id === payload.new.id) ? prev : [...prev, payload.new])
         })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions' },
+        (payload) => {
+          if (!threadIdsRef.current.has(payload.new.message_id)) return
+          setTReactions(prev => prev.some(r => r.id === payload.new.id) ? prev : [...prev, payload.new])
+        })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' },
+        (payload) => { setTReactions(prev => prev.filter(r => r.id !== payload.old.id)) })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2038,6 +2051,21 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
     }
   }
 
+  async function toggleThreadReaction(messageId, emoji) {
+    const mine = tReactions.find(r => r.message_id === messageId && r.profile_id === me.id && r.emoji === emoji)
+    setReactFor(null)
+    if (mine) {
+      setTReactions(prev => prev.filter(r => r !== mine))
+      await supabase.from('message_reactions').delete().eq('message_id', messageId).eq('profile_id', me.id).eq('emoji', emoji)
+    } else {
+      const optimistic = { id: 'temp-' + Date.now(), message_id: messageId, profile_id: me.id, emoji }
+      setTReactions(prev => [...prev, optimistic])
+      const { data, error } = await supabase.from('message_reactions').insert({ message_id: messageId, profile_id: me.id, emoji }).select().single()
+      if (error && error.code !== '23505') setTReactions(prev => prev.filter(r => r !== optimistic))
+      else if (data) setTReactions(prev => prev.map(r => r === optimistic ? data : r))
+    }
+  }
+
   const nameFor = (id) => id === me.id ? 'You' : (names[id] || 'Someone')
 
   const attsFor = (msgId) => tAttachments.filter(a => a.message_id === msgId)
@@ -2070,6 +2098,13 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
               {attsFor(parent.id).map(a => (
                 <AttachmentView key={a.id} att={a} onOpenImage={openImage(parent.id)} />
               ))}
+              <ReactionBar messageId={parent.id} reactions={tReactions} meId={me.id}
+                profiles={profiles} senders={names}
+                onToggle={toggleThreadReaction}
+                pickerOpen={reactFor === parent.id}
+                onOpenPicker={() => setReactFor(reactFor === parent.id ? null : parent.id)}
+                onClosePicker={() => setReactFor(null)}
+                reactorsFor={reactorsFor} setReactorsFor={setReactorsFor} />
             </div>}
             <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginBottom: 8 }}>{replies.length} repl{replies.length === 1 ? 'y' : 'ies'}</div>
             {replies.map(r => {
@@ -2087,6 +2122,15 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
                     {attsFor(r.id).map(a => (
                       <AttachmentView key={a.id} att={a} onOpenImage={openImage(r.id)} />
                     ))}
+                    {!r._optimistic && (
+                      <ReactionBar messageId={r.id} reactions={tReactions} meId={me.id}
+                        profiles={profiles} senders={names}
+                        onToggle={toggleThreadReaction}
+                        pickerOpen={reactFor === r.id}
+                        onOpenPicker={() => setReactFor(reactFor === r.id ? null : r.id)}
+                        onClosePicker={() => setReactFor(null)}
+                        reactorsFor={reactorsFor} setReactorsFor={setReactorsFor} />
+                    )}
                   </div>
                 </div>
               )
