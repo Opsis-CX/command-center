@@ -46,15 +46,17 @@ export default function Dashboard() {
       const meRes = await supabase.from('profiles').select('*').eq('id', user.id).single()
       const today = isoDate(etNow())
 
-      const [schRes, blkRes, clmRes, actRes, recRes, certRes, profRes, notifRes] = await Promise.all([
+      const [schRes, blkRes, clmRes, actRes, recRes, certRes, profRes, notifRes, eodRes] = await Promise.all([
         supabase.from('schedules').select('*').eq('status', 'published'),
         supabase.from('shift_blocks').select('*'),
         supabase.from('shift_claims').select('*'),
         supabase.from('schedule_activity_log').select('*').order('created_at', { ascending: false }).limit(8),
         supabase.from('agent_cert_records').select('*'),
         supabase.from('certifications').select('id, name, active'),
-        supabase.from('profiles').select('id, full_name, is_active'),
+        supabase.from('profiles').select('id, full_name, is_active, role'),
         supabase.from('notifications').select('*').eq('recipient_id', user.id).is('read_at', null),
+        // RLS lets admins read everyone's reports; others just get their own (fine — only admins render this stat).
+        supabase.from('daily_reports').select('profile_id').eq('report_date', today),
       ])
 
       setMe(meRes.data)
@@ -68,6 +70,7 @@ export default function Dashboard() {
         certifications: certRes.data || [],
         profiles: profRes.data || [],
         unread: notifRes.data || [],
+        eodToday: eodRes.data || [],
         userId: user.id,
       })
     } finally { setLoading(false) }
@@ -128,7 +131,7 @@ function Section({ title, action, onAction, children }) {
 
 // ---------- ADMIN ----------
 function AdminDashboard({ data, navigate }) {
-  const { today, schedules, blocks, claims, activity, certRecords, certifications, profiles, unread } = data
+  const { today, schedules, blocks, claims, activity, certRecords, certifications, profiles, unread, eodToday = [] } = data
   const pubIds = new Set(schedules.map(s => s.id))
   const pubBlocks = blocks.filter(b => pubIds.has(b.schedule_id))
   const todayBlocks = pubBlocks.filter(b => b.block_date === today)
@@ -142,7 +145,25 @@ function AdminDashboard({ data, navigate }) {
 
   const activeGatingCertIds = new Set(certifications.filter(c => c.active !== false).map(c => c.id))
   const pendingCerts = certRecords.filter(r => activeGatingCertIds.has(r.certification_id) && (r.status === 'needed' || r.status === 'failed')).length
-  const activePeople = profiles.filter(p => p.is_active !== false).length
+
+  // End-of-day report compliance: every active non-agent is expected to file one.
+  const eodExpected = profiles.filter(p => p.is_active !== false && String(p.role || '').toLowerCase() !== 'agent').length
+  const eodDone = new Set(eodToday.map(r => r.profile_id)).size
+
+  // Fill-rate projection: today through t+6, from published schedules.
+  const addDaysISO = (ds, n) => {
+    const d = new Date(ds + 'T00:00:00'); d.setDate(d.getDate() + n)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+  const next7 = Array.from({ length: 7 }, (_, i) => {
+    const ds = addDaysISO(today, i)
+    const dayBlocks = pubBlocks.filter(b => b.block_date === ds)
+    const spots = dayBlocks.reduce((s, b) => s + b.total_spots, 0)
+    const claimed = dayBlocks.reduce((s, b) => s + claims.filter(c => c.shift_block_id === b.id).length, 0)
+    const pct = spots ? Math.round((claimed / spots) * 100) : null // null = nothing scheduled
+    const label = i === 0 ? 'Today' : new Date(ds + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' })
+    return { ds, label, spots, claimed, pct }
+  })
 
   return (
     <div>
@@ -150,11 +171,37 @@ function AdminDashboard({ data, navigate }) {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 22 }}>
         <StatCard label="Today's fill rate" value={`${fillPct}%`} sub={`${todayClaimed}/${todaySpots} spots claimed`} color={fillPct >= 80 ? 'var(--passed)' : fillPct >= 50 ? 'var(--needed)' : 'var(--failed)'} onClick={() => navigate('/insights')} />
         <StatCard label="Open intervals" value={openBlocks.length} sub="today & upcoming" color="var(--accent)" onClick={() => navigate('/insights')} />
-        <StatCard label="Certs needing attention" value={pendingCerts} sub="needed or failed" color={pendingCerts ? 'var(--needed)' : 'var(--passed)'} onClick={() => navigate('/certifications')} />
-        <StatCard label="Active people" value={activePeople} sub="on the team" onClick={() => navigate('/people')} />
+        <StatCard label="Agent certifications" value={pendingCerts} sub="records marked needed or failed" color={pendingCerts ? 'var(--needed)' : 'var(--passed)'} onClick={() => navigate('/certifications')} />
+        <StatCard label="EOD reports today" value={`${eodDone}/${eodExpected}`} sub="non-agents submitted" color={eodDone >= eodExpected ? 'var(--passed)' : 'var(--needed)'} onClick={() => navigate('/')} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 18 }}>
+      <Section title="Fill rate — next 7 days" action="Schedule insights →" onAction={() => navigate('/insights')}>
+        <div className="card">
+          {next7.every(d => d.pct === null)
+            ? <div className="page-sub" style={{ padding: 8 }}>No published intervals in the next 7 days.</div>
+            : next7.map(d => (
+              <div key={d.ds} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--line-soft)' }}>
+                <span style={{ width: 74, fontSize: 12.5, fontWeight: d.label === 'Today' ? 700 : 500, flexShrink: 0 }}>{d.label}</span>
+                <div style={{ flex: 1, height: 14, background: 'var(--canvas)', borderRadius: 7, overflow: 'hidden' }}>
+                  {d.pct !== null && (
+                    <div style={{ width: `${Math.min(d.pct, 100)}%`, height: '100%', borderRadius: 7,
+                      background: d.pct >= 80 ? 'var(--passed)' : d.pct >= 50 ? 'var(--needed)' : 'var(--failed)',
+                      transition: 'width .3s ease' }} />
+                  )}
+                </div>
+                <span style={{ width: 44, textAlign: 'right', fontSize: 12.5, fontWeight: 700, flexShrink: 0,
+                  color: d.pct === null ? 'var(--ink-soft)' : d.pct >= 80 ? 'var(--passed)' : d.pct >= 50 ? 'var(--needed)' : 'var(--failed)' }}>
+                  {d.pct === null ? '—' : `${d.pct}%`}
+                </span>
+                <span style={{ width: 64, textAlign: 'right', fontSize: 11.5, color: 'var(--ink-soft)', flexShrink: 0 }}>
+                  {d.pct === null ? 'none' : `${d.claimed}/${d.spots}`}
+                </span>
+              </div>
+            ))}
+        </div>
+      </Section>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 18, marginTop: 18 }}>
         <Section title="Open intervals to fill" action="Schedule insights →" onAction={() => navigate('/insights')}>
           <div className="card">
             {openBlocks.length === 0 ? <div className="page-sub" style={{ padding: 8 }}>Everything's covered. 🎉</div>
