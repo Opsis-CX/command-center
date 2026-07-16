@@ -138,6 +138,7 @@ export default function ExternalQA() {
   const [notBooked, setNotBooked] = useState('')
   const [notes, setNotes] = useState('')
   const [recFile, setRecFile] = useState(null)
+  const [recKey, setRecKey] = useState(0)   // bump to re-mount (clear) the file input
   const [recStatus, setRecStatus] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -228,7 +229,7 @@ export default function ExternalQA() {
       setDone({ score: scorePct, emailed, emailErr, csrName, recWarn })
       // reset the scoring parts, keep brand/auditor context
       setCsrId(''); setCsrManual({ name: '', email: '' }); setCallTime(''); setDirection(''); setCallType(''); setCallTypeOther('')
-      setAnswers({}); setMisses({}); setOutcome(''); setOutcomeOther(''); setNotBooked(''); setNotes(''); setRecFile(null)
+      setAnswers({}); setMisses({}); setOutcome(''); setOutcomeOther(''); setNotBooked(''); setNotes(''); setRecFile(null); setRecKey(k => k + 1); setRecStatus('')
       load()
     } catch (e) { setErr(e.message) } finally { setSaving(false) }
   }
@@ -289,7 +290,7 @@ export default function ExternalQA() {
           {callType === 'Other' && <div><label style={labelStyle}>Call type — other</label>
             <input style={inputStyle} value={callTypeOther} onChange={e => setCallTypeOther(e.target.value)} /></div>}
           <div><label style={labelStyle}>Call recording (sent to the agent)</label>
-            <input type="file" accept="audio/*,video/*" style={{ ...inputStyle, padding: '6px 10px' }} onChange={e => setRecFile(e.target.files?.[0] || null)} />
+            <input key={recKey} type="file" accept="audio/*,video/*" style={{ ...inputStyle, padding: '6px 10px' }} onChange={e => setRecFile(e.target.files?.[0] || null)} />
             {recStatus && <div style={{ fontSize: 11.5, color: 'var(--accent)', marginTop: 4 }}>{recStatus}</div>}</div>
         </div>
       </div>
