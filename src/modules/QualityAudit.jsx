@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import ExternalQA, { ClientRecaps } from './ExternalQA'
@@ -60,6 +60,7 @@ export default function QualityAudit() {
   const canSeeResults = canAny(appRole, 'quality_audit.view_own')
   // Agents land straight on their call reviews; auditors keep their old default.
   const [tab, setTab] = useState(isAuditor ? 'new' : canSeeResults ? 'results' : 'reviews')
+  const [editing, setEditing] = useState(null)  // qa_audits row being corrected
 
   return (
     <div>
@@ -71,7 +72,7 @@ export default function QualityAudit() {
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
-        {isAuditor && <button className={'btn ' + (tab === 'new' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('new')}>New audit</button>}
+        {isAuditor && <button className={'btn ' + (tab === 'new' ? 'btn-primary' : 'btn-ghost')} onClick={() => { setEditing(null); setTab('new') }}>New audit</button>}
         {isAuditor && <button className={'btn ' + (tab === 'queue' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('queue')}>Queue</button>}
         {canSeeResults && <button className={'btn ' + (tab === 'results' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('results')}>Results</button>}
         <button className={'btn ' + (tab === 'reviews' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('reviews')}>Call reviews</button>
@@ -79,9 +80,17 @@ export default function QualityAudit() {
         {isAuditor && <button className={'btn ' + (tab === 'recaps' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('recaps')}>Client recaps</button>}
       </div>
 
-      {tab === 'new' && isAuditor && <NewAudit onDone={() => setTab('results')} />}
-      {tab === 'queue' && isAuditor && <Queue onPick={() => setTab('new')} />}
-      {tab === 'results' && canSeeResults && <Results isAuditor={isAuditor} />}
+      {tab === 'new' && isAuditor && (
+        <NewAudit
+          key={editing?.id || 'new'}   // remount so the form seeds from the audit being edited
+          editAudit={editing}
+          onDone={() => { setEditing(null); setTab('results') }}
+        />
+      )}
+      {tab === 'queue' && isAuditor && <Queue onPick={() => { setEditing(null); setTab('new') }} />}
+      {tab === 'results' && canSeeResults && (
+        <Results isAuditor={isAuditor} onEdit={(a) => { setEditing(a); setTab('new') }} />
+      )}
       {tab === 'reviews' && <CallReviews isAuditor={isAuditor} />}
       {tab === 'external' && isAuditor && <ExternalQA />}
       {tab === 'recaps' && isAuditor && <ClientRecaps />}
@@ -90,7 +99,7 @@ export default function QualityAudit() {
 }
 
 // ---------------- NEW AUDIT ----------------
-function NewAudit({ prefill, onDone }) {
+function NewAudit({ prefill, editAudit, onDone }) {
   const { user } = useAuth()
   const [questions, setQuestions] = useState([])
   const [subItems, setSubItems] = useState([])
@@ -99,36 +108,40 @@ function NewAudit({ prefill, onDone }) {
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState('')
+  const [meName, setMeName] = useState('')
 
-  const [campaign, setCampaign] = useState('lavin')
-  const [auditType, setAuditType] = useState('conversation')
-  const [agentName, setAgentName] = useState(prefill?.agent_name || '')
-  const [callId, setCallId] = useState(prefill?.call_id || '')
-  const [callDate, setCallDate] = useState(prefill?.call_date || new Date().toISOString().slice(0, 10))
-  const [recording, setRecording] = useState(prefill?.recording_link || '')
+  // editAudit = a submitted audit being corrected; prefill = a queued call.
+  const [campaign, setCampaign] = useState(editAudit?.campaign || 'lavin')
+  const [auditType, setAuditType] = useState(editAudit?.audit_type || 'conversation')
+  const [agentName, setAgentName] = useState(editAudit?.agent_name || prefill?.agent_name || '')
+  const [callId, setCallId] = useState(editAudit?.call_id || prefill?.call_id || '')
+  const [callDate, setCallDate] = useState(editAudit?.call_date || prefill?.call_date || new Date().toISOString().slice(0, 10))
+  const [recording, setRecording] = useState(editAudit?.recording_link || prefill?.recording_link || '')
   const [uploadingRec, setUploadingRec] = useState(false)
   const [recError, setRecError] = useState('')
-  const [brand, setBrand] = useState(prefill?.brand || '')
-  const [answers, setAnswers] = useState({})       // { question_id: { value:'yes'|'no'|'na', missed:[subItemId] } }
-  const [autoFail, setAutoFail] = useState(false)
-  const [curDisp, setCurDisp] = useState(prefill?.disposition || '')
-  const [correctDisp, setCorrectDisp] = useState('')
-  const [feedback, setFeedback] = useState('')
+  const [brand, setBrand] = useState(editAudit?.brand || prefill?.brand || '')
+  const [answers, setAnswers] = useState(editAudit?.answers || {})  // { question_id: { value:'yes'|'no'|'na', missed:[subItemId] } }
+  const [autoFail, setAutoFail] = useState(!!editAudit?.auto_fail)
+  const [curDisp, setCurDisp] = useState(editAudit?.current_disposition || prefill?.disposition || '')
+  const [correctDisp, setCorrectDisp] = useState(editAudit?.correct_disposition || '')
+  const [feedback, setFeedback] = useState(editAudit?.feedback || '')
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     try {
-      const [qRes, sRes, aRes] = await Promise.all([
+      const [qRes, sRes, aRes, meRes] = await Promise.all([
         supabase.from('qa_questions').select('*').eq('active', true).order('sort_order'),
         supabase.from('qa_sub_items').select('*').eq('active', true).order('sort_order'),
         supabase.from('profiles').select('id, full_name, role, is_active').eq('role', 'agent').order('full_name'),
+        supabase.from('profiles').select('full_name').eq('id', user?.id).maybeSingle(),
       ])
+      setMeName(meRes.data?.full_name || '')
       if (qRes.error) throw qRes.error
       setQuestions(qRes.data || [])
       setSubItems(sRes.error ? [] : (sRes.data || []))
       setAgents((aRes.data || []).map(p => ({ agent_name: p.full_name, profile_id: p.id, status: p.is_active ? 'Active' : 'Inactive' })))
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
-  }, [])
+  }, [user?.id])
   useEffect(() => { load() }, [load])
 
   // Conversation questions are campaign-specific; other audit types are 'all'.
@@ -141,8 +154,13 @@ function NewAudit({ prefill, onDone }) {
 
   const subItemsFor = useCallback((qid) => subItems.filter(s => s.question_id === qid).sort((a, b) => a.sort_order - b.sort_order), [subItems])
 
-  // reset answers when audit type or campaign changes
-  useEffect(() => { setAnswers({}); setAutoFail(false) }, [auditType, campaign])
+  // Reset answers when the auditor switches audit type/campaign — but never on
+  // the first render of an edit, which would wipe the audit we just loaded.
+  const firstRun = useRef(true)
+  useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return }
+    setAnswers({}); setAutoFail(false)
+  }, [auditType, campaign])
 
   // live score: N/A excluded from both earned and denominator; auto-fail forces 0
   const { earned, max, score } = useMemo(() => {
@@ -217,6 +235,29 @@ function NewAudit({ prefill, onDone }) {
       correct_disposition: correctDisp || null,
       feedback: feedback || null,
     }
+    if (editAudit) {
+      // Correction: preserve the original auditor, log what changed (the agent
+      // may have already discussed this score in coaching), then update.
+      const { error: logErr } = await supabase.from('qa_audit_edits').insert({
+        audit_id: editAudit.id, editor_id: user?.id || null, editor_name: meName || null,
+        old_score: editAudit.clean_qa_score, new_score: score,
+        old_answers: editAudit.answers, old_feedback: editAudit.feedback,
+      })
+      if (logErr) { setSaving(false); setErr(logErr.message); return }
+      const { auditor_id, ...editable } = row   // keep the original auditor
+      const { error } = await supabase.from('qa_audits').update({
+        ...editable,
+        edited_at: new Date().toISOString(), edited_by: user?.id || null, editor_name: meName || null,
+        edit_count: (editAudit.edit_count || 0) + 1,
+      }).eq('id', editAudit.id)
+      setSaving(false)
+      if (error) { setErr(error.message); return }
+      const was = editAudit.clean_qa_score
+      setSavedMsg(`Updated — ${agentName}: ${was == null ? 'n/a' : was + '%'} → ${score == null ? 'n/a' : score + '%'}${autoFail ? ' (auto-fail)' : ''}. Their scorecard now shows the corrected score.`)
+      if (onDone) setTimeout(onDone, 1400)
+      return
+    }
+
     const { error } = await supabase.from('qa_audits').insert(row)
     // if this call came from the queue, it will simply stop showing as unaudited
     setSaving(false)
@@ -237,6 +278,17 @@ function NewAudit({ prefill, onDone }) {
     <div style={{ maxWidth: 880 }}>
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b> <span className="page-sub">{err}</span></div>}
       {savedMsg && <div className="card" style={{ borderColor: 'var(--passed)', marginBottom: 14 }}><b style={{ color: 'var(--passed)' }}>{savedMsg}</b></div>}
+      {editAudit && (
+        <div className="card" style={{ borderColor: 'var(--needed)', marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <b style={{ color: 'var(--needed)' }}>Correcting a submitted audit — {editAudit.agent_name}, {editAudit.call_date || fmtDateTime(editAudit.created_at)}</b>
+            <div className="page-sub" style={{ fontSize: 12.5 }}>
+              Originally {editAudit.clean_qa_score == null ? 'n/a' : editAudit.clean_qa_score + '%'}. Saving updates their scorecard and records who made the change.
+            </div>
+          </div>
+          {onDone && <button className="btn btn-ghost" onClick={onDone}>Cancel edit</button>}
+        </div>
+      )}
 
       {/* campaign (conversation audits are campaign-specific) */}
       {auditType === 'conversation' && (
@@ -349,7 +401,7 @@ function NewAudit({ prefill, onDone }) {
             {autoFail ? 'Auto-fail applied' : `${earned} / ${max} pts answered`}
           </div>
         </div>
-        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save audit'}</button>
+        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : editAudit ? 'Save changes' : 'Save audit'}</button>
       </div>
     </div>
   )
@@ -421,7 +473,7 @@ function Queue({ onPick }) {
 }
 
 // ---------------- RESULTS ----------------
-function Results({ isAuditor }) {
+function Results({ isAuditor, onEdit }) {
   const [audits, setAudits] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
@@ -471,7 +523,7 @@ function Results({ isAuditor }) {
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, minWidth: 760 }}>
             <thead><tr style={{ background: 'var(--canvas)', textAlign: 'left' }}>
-              <Th>When</Th><Th>Agent</Th><Th>Type</Th><Th>Brand</Th><Th right>Score</Th><Th>Flags</Th>
+              <Th>When</Th><Th>Agent</Th><Th>Type</Th><Th>Brand</Th><Th right>Score</Th><Th>Flags</Th>{isAuditor && <Th right>{''}</Th>}
             </tr></thead>
             <tbody>
               {audits.map(a => {
@@ -483,7 +535,18 @@ function Results({ isAuditor }) {
                     <Td>{typeLabel(a.audit_type)}</Td>
                     <Td>{a.brand || '—'}</Td>
                     <Td right>{a.clean_qa_score == null ? '—' : <span className="badge" style={{ background: c.bg, color: c.text, fontWeight: 700 }}>{a.clean_qa_score}%</span>}</Td>
-                    <Td>{a.auto_fail ? <span className="badge" style={{ background: 'var(--failed-bg)', color: 'var(--failed)' }}>Auto-fail</span> : (a.source === 'ai' ? <span className="badge" style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}>AI</span> : '')}</Td>
+                    <Td>
+                      {a.auto_fail ? <span className="badge" style={{ background: 'var(--failed-bg)', color: 'var(--failed)' }}>Auto-fail</span> : (a.source === 'ai' ? <span className="badge" style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}>AI</span> : '')}
+                      {a.edit_count > 0 && (
+                        <span className="badge" title={`Edited ${a.edit_count === 1 ? 'once' : a.edit_count + ' times'}${a.editor_name ? ' by ' + a.editor_name : ''}`}
+                          style={{ background: 'var(--needed-bg)', color: 'var(--needed)', marginLeft: 4 }}>edited</span>
+                      )}
+                    </Td>
+                    {isAuditor && (
+                      <Td right>
+                        <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '3px 9px' }} onClick={() => onEdit?.(a)}>Edit</button>
+                      </Td>
+                    )}
                   </tr>
                 )
               })}
