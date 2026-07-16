@@ -37,7 +37,7 @@ const NAV = [
     group: 'Performance',
     items: [
       { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
-      { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.view_own' },
+      { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
       { type: 'link', to: '/reporting', label: 'Reporting', ic: '📈', perm: 'reporting' },
     ],
   },
