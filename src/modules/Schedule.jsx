@@ -378,6 +378,32 @@ export default function Schedule() {
     flash("You're checked in!"); load(true)
   }
 
+  // ---- Unpaid breaks: pause the check-in, resume when back ----
+  const [openBreaks, setOpenBreaks] = useState({}) // claim_id -> open break row
+  const loadBreaks = useCallback(async () => {
+    const { data } = await supabase.from('shift_breaks').select('*').is('ended_at', null)
+    const map = {}; (data || []).forEach(b => { map[b.claim_id] = b })
+    setOpenBreaks(map)
+  }, [])
+  useEffect(() => { loadBreaks() }, [loadBreaks])
+
+  async function startBreak(claim, block) {
+    const { error } = await supabase.from('shift_breaks')
+      .insert({ claim_id: claim.id, profile_id: claim.profile_id })
+    if (error) { flash(error.message.includes('duplicate') ? "You're already on a break." : 'Could not start break'); return }
+    if (block) logActivity('break_started', block)
+    flash('Break started — see you soon! ☕'); loadBreaks()
+  }
+
+  async function endBreak(claim, block) {
+    const { error } = await supabase.from('shift_breaks')
+      .update({ ended_at: new Date().toISOString() })
+      .eq('claim_id', claim.id).is('ended_at', null)
+    if (error) { flash('Could not end break'); return }
+    if (block) logActivity('break_ended', block)
+    flash("Welcome back — you're checked in!"); loadBreaks()
+  }
+
   // Grace window (minutes) on each side of scheduled end. Within → clean 'completed'.
   // Outside (early or late) → requires a note, lands as 'pending_review' for admin approval.
   const GRACE_MIN = 15
@@ -398,6 +424,9 @@ export default function Schedule() {
     if (note && note.trim()) payload.checkout_note = note.trim()
     const { error } = await supabase.from('shift_claims').update(payload).eq('id', claimId)
     if (error) { flash('Error checking out'); return {} }
+    // Checking out while on a break ends the break too.
+    await supabase.from('shift_breaks').update({ ended_at: nowISO }).eq('claim_id', claimId).is('ended_at', null)
+    loadBreaks()
     if (block) logActivity('checked_out', block)
     flash(status === 'pending_review' ? "Checked out — sent to admin for review." : "You're checked out — nice work!")
     load(true)
@@ -491,7 +520,7 @@ export default function Schedule() {
           canAssign={canAssign} audience={audience} onAssign={assignBlock} onUnassign={unassignBlock}
         />
       ) : (
-        <MyScheduleView me={me} blocks={blocks} claims={claims} hasIntervalStarted={hasIntervalStarted} onUnclaim={unclaimBlock} onCheckIn={checkIn} onCheckOut={checkOut} />
+        <MyScheduleView me={me} blocks={blocks} claims={claims} hasIntervalStarted={hasIntervalStarted} onUnclaim={unclaimBlock} onCheckIn={checkIn} onCheckOut={checkOut} openBreaks={openBreaks} onStartBreak={startBreak} onEndBreak={endBreak} />
       )}
     </div>
   )
@@ -851,7 +880,7 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, canAs
 function Row({ k, v }) { return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: 'var(--ink-soft)' }}>{k}</span><span>{v}</span></div> }
 
 // ---------- MY SCHEDULE ----------
-function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onCheckIn, onCheckOut }) {
+function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onCheckIn, onCheckOut, openBreaks = {}, onStartBreak, onEndBreak }) {
   const myClaims = claims.filter(c => c.profile_id === me.id)
   if (!myClaims.length) return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>No intervals claimed yet. Head to Schedule to pick up some time.</div></div>
 
@@ -870,7 +899,7 @@ function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onC
           {date === todayStr ? 'Today · ' : ''}{new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 12 }}>
-          {byDate[date].map(e => <ShiftCard key={e.claim.id} block={e.block} claim={e.claim} isPast={false} started={hasIntervalStarted(e.block)} viewerTZ={me?.timezone} onUnclaim={onUnclaim} onCheckIn={onCheckIn} onCheckOut={onCheckOut} />)}
+          {byDate[date].map(e => <ShiftCard key={e.claim.id} block={e.block} claim={e.claim} isPast={false} started={hasIntervalStarted(e.block)} viewerTZ={me?.timezone} onUnclaim={onUnclaim} onCheckIn={onCheckIn} onCheckOut={onCheckOut} openBreak={openBreaks[e.claim.id]} onStartBreak={onStartBreak} onEndBreak={onEndBreak} />)}
         </div>
       </div>
     )) : <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 20 }}>No upcoming intervals.</div></div>}
@@ -891,7 +920,7 @@ function workedLabel(claim) {
   return h ? `${h}h ${m}m` : `${m}m`
 }
 
-function ShiftCard({ block, claim, isPast, started, viewerTZ, onUnclaim, onCheckIn, onCheckOut }) {
+function ShiftCard({ block, claim, isPast, started, viewerTZ, onUnclaim, onCheckIn, onCheckOut, openBreak, onStartBreak, onEndBreak }) {
   const checkedIn = claim?.checked_in_at; const checkedOut = claim?.checked_out_at
   const noShow = claim?.status === 'no_show'
   const pending = claim?.status === 'pending_review'
@@ -922,7 +951,20 @@ function ShiftCard({ block, claim, isPast, started, viewerTZ, onUnclaim, onCheck
       </div>
     ) : !isPast && checkedIn ? (
       <>
-        <div style={{ fontSize: 12, color: 'var(--passed)', fontWeight: 600, margin: '8px 0 6px' }}>✓ Checked in</div>
+        {openBreak ? (
+          <div style={{ fontSize: 12, color: 'var(--needed)', fontWeight: 700, margin: '8px 0 6px' }}>
+            ☕ On unpaid break · since {new Date(openBreak.started_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: 'var(--passed)', fontWeight: 600, margin: '8px 0 6px' }}>✓ Checked in</div>
+        )}
+        {openBreak ? (
+          <button className="btn btn-primary" style={{ width: '100%', fontSize: 12, marginBottom: 6 }}
+            onClick={() => onEndBreak?.(claim, block)}>I'm back — resume shift</button>
+        ) : (
+          <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, marginBottom: 6, border: '1px solid var(--line)' }}
+            onClick={() => onStartBreak?.(claim, block)}>☕ Take unpaid break</button>
+        )}
         {showNote && (
           <div style={{ marginBottom: 6 }}>
             <div style={{ fontSize: 11, color: 'var(--needed)', marginBottom: 4 }}>You're outside your scheduled time — add a note (required):</div>
