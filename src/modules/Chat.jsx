@@ -1845,10 +1845,35 @@ function ReplyAffordance({ count, unseen = 0, onOpen }) {
 }
 
 function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel, members = [], onClose, onSeen, highlightId }) {
+  // Drag the panel's left edge to resize; the width sticks (localStorage)
+  // so it opens the way you like it next time.
+  const [panelW, setPanelW] = useState(() => {
+    const saved = parseInt(localStorage.getItem('threadPanelW') || '', 10)
+    return Number.isFinite(saved) ? Math.min(Math.max(saved, 320), 720) : 380
+  })
+  const dragRef = useRef(null)
+  function startDrag(e) {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = panelW
+    const move = (ev) => {
+      const w = Math.min(Math.max(startW + (startX - ev.clientX), 320), 720)
+      setPanelW(w)
+      dragRef.current = w
+    }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      if (dragRef.current) localStorage.setItem('threadPanelW', String(dragRef.current))
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
   const [parent, setParent] = useState(null)
   const [replies, setReplies] = useState([])
   const [names, setNames] = useState(senders || {})
-  const [text, setText] = useState('')
+  const replyEditorRef = useRef(null)   // rich reply composer
+  const replyHtmlRef = useRef('')
   const [loading, setLoading] = useState(true)
   const [tAttachments, setTAttachments] = useState([]) // attachments for parent + replies
   const [pending, setPending] = useState([])           // files staged for the next reply
@@ -1935,19 +1960,24 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
   const removePending = (idx) => setPending(prev => prev.filter((_, i) => i !== idx))
 
   async function sendReply() {
-    const body = text.trim()
+    const rawHtml = replyHtmlRef.current || ''
+    const plain = htmlToText(rawHtml)
+    const body = sanitizeHtml(rawHtml)
     const filesToSend = pending
-    if (!body && filesToSend.length === 0) return
-    setText(''); setPending([]); stopTyping(); setUploadErr('')
+    if (!plain && filesToSend.length === 0) return
+    setPending([]); stopTyping(); setUploadErr('')
     if (filesToSend.length) setUploading(true)
 
-    const mentionedIds = extractMentions(body, profiles).filter(id => id !== me.id)
+    const mentionedIds = extractMentions(plain, profiles).filter(id => id !== me.id)
 
     const temp = { id: 'temp-' + Date.now(), channel_id: channelId, sender_id: me.id, body: body || '', parent_id: parentId, created_at: new Date().toISOString(), _optimistic: true }
     setReplies(prev => [...prev, temp])
 
     const { data, error } = await supabase.from('messages').insert({ channel_id: channelId, sender_id: me.id, body: body || '', parent_id: parentId }).select().single()
-    if (error) { setReplies(prev => prev.filter(m => m.id !== temp.id)); setText(body); setPending(filesToSend); setUploading(false); return }
+    if (error) { setReplies(prev => prev.filter(m => m.id !== temp.id)); setPending(filesToSend); setUploading(false); setUploadErr('Could not send: ' + error.message); return }
+
+    // Only clear the editor once the reply actually landed.
+    replyEditorRef.current?.clear(); replyHtmlRef.current = ''
 
     // Upload staged files and attach them to the reply.
     if (filesToSend.length) {
@@ -1996,7 +2026,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
         channelId, channelName: channel?.name, isDm: channel?.is_dm,
         actorId: me.id, actorName: me.full_name,
         isHere: false, requiresAck: false,
-        body: body || (filesToSend.length ? `📎 ${filesToSend[0].name}` : ''),
+        body: plain || (filesToSend.length ? `📎 ${filesToSend[0].name}` : ''),
         mentionedIds,
         messageId: data.id,
         replyToIds: threadParticipantIds,
@@ -2020,7 +2050,10 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
   }
 
   return (
-    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 380, maxWidth: '90%', background: 'var(--surface)', borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 24px rgba(0,0,0,.08)', zIndex: 20 }}>
+    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: panelW, maxWidth: '90%', background: 'var(--surface)', borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 24px rgba(0,0,0,.08)', zIndex: 20 }}>
+      {/* drag handle on the left edge */}
+      <div onMouseDown={startDrag} title="Drag to resize"
+        style={{ position: 'absolute', left: -4, top: 0, bottom: 0, width: 9, cursor: 'col-resize', zIndex: 21 }} />
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 'none' }}>
         <b style={{ fontSize: 14 }}>Thread</b>
         <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 9px' }} onClick={onClose}>Close</button>
@@ -2082,10 +2115,19 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
             onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
           <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach file"
             style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 16, padding: '7px 10px', flex: 'none' }}>📎</button>
-          <MentionTextarea value={text} onChange={(v) => { setText(v); notifyTyping() }} onEnter={sendReply} profiles={profiles}
-            placeholder="Reply… (@name to mention)"
-            style={{ resize: 'none', padding: '9px 11px', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', outline: 'none', maxHeight: 100 }} />
-          <button className="btn btn-primary" onClick={sendReply} disabled={uploading || (!text.trim() && pending.length === 0)}>Reply</button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <RichEditor
+              variant="chat"
+              editorRef={replyEditorRef}
+              profiles={profiles}
+              submitOnEnter
+              onChange={(html) => { replyHtmlRef.current = html; notifyTyping() }}
+              onSubmit={sendReply}
+              onPasteFiles={(files) => addFiles(files)}
+              placeholder="Reply… (@name to mention, paste files)"
+            />
+          </div>
+          <button className="btn btn-primary" onClick={sendReply} disabled={uploading} style={{ alignSelf: 'flex-end' }}>Reply</button>
         </div>
       </div>
       {lightbox.index != null && (
