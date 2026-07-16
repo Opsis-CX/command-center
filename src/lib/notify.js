@@ -629,3 +629,49 @@ export function categoryForType(type) {
 export const CATEGORY_LABEL = Object.fromEntries(
   NOTIF_CATEGORIES.map(c => [c.key, c.label])
 )
+
+// ---- Call reviews (Quality tab) ----
+
+export async function notifyCallReviewAssigned({
+  recipientId,
+  actorId,
+  actorName,
+}) {
+  if (!recipientId || recipientId === actorId) {
+    return []
+  }
+
+  return insertMany([
+    {
+      recipient_id: recipientId,
+      type: 'call_review_assigned',
+      title: 'A call is ready for your review',
+      body: `${actorName || 'Someone'} assigned you a call recording. Listen and share 3 things you did well and 3 things to improve.`,
+      link: '/quality',
+      actor_id: actorId || null,
+      actor_name: actorName || null,
+    },
+  ])
+}
+
+export async function notifyCallReviewSubmitted({
+  recipientId,
+  actorId,
+  actorName,
+}) {
+  if (!recipientId || recipientId === actorId) {
+    return []
+  }
+
+  return insertMany([
+    {
+      recipient_id: recipientId,
+      type: 'call_review_submitted',
+      title: `${actorName || 'Someone'} completed their call review`,
+      body: 'Their 3 strengths and 3 improvements are ready to read in Quality.',
+      link: '/quality',
+      actor_id: actorId || null,
+      actor_name: actorName || null,
+    },
+  ])
+}
