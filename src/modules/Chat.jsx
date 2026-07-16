@@ -463,8 +463,28 @@ export default function Chat() {
   const channelList = channels.filter(c => !c.is_dm).sort(byActivity)
   const dmList = channels.filter(c => c.is_dm).sort(byActivity)
 
+  // ---- Slack-style anchoring ----
+  // Instead of guessing the chrome above us (the old hard-coded 150px, which
+  // left a dead strip under the composer), measure where the chat shell
+  // actually starts and fill exactly to the bottom of the window. The page
+  // never scrolls; only the message list does.
+  const shellRef = useRef(null)
+  const [chatH, setChatH] = useState(null)
+  useLayoutEffect(() => {
+    const compute = () => {
+      if (!shellRef.current) return
+      const scroller = shellRef.current.closest('.main')
+      if (scroller) scroller.scrollTop = 0
+      const top = shellRef.current.getBoundingClientRect().top
+      setChatH(Math.max(380, window.innerHeight - top - 16))
+    }
+    compute()
+    window.addEventListener('resize', compute)
+    return () => window.removeEventListener('resize', compute)
+  }, [loading])
+
   return (
-    <div style={{ display: isMobile ? 'block' : 'grid', gridTemplateColumns: '240px 1fr', gap: 0, height: 'calc(100dvh - 150px)', maxHeight: 'calc(100dvh - 150px)', minHeight: 420, border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
+    <div ref={shellRef} style={{ display: isMobile ? 'block' : 'grid', gridTemplateColumns: '240px 1fr', gap: 0, height: chatH || 'calc(100dvh - 150px)', maxHeight: chatH || 'calc(100dvh - 150px)', minHeight: 380, border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
       {showList && (
         <div style={{ borderRight: isMobile ? 'none' : '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--canvas)', minHeight: 0, height: isMobile ? '100%' : 'auto' }}>
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 'none' }}>
@@ -1690,6 +1710,13 @@ function ReadByPanel({ names, unread, onClose }) {
 
 function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, pickerOpen, onOpenPicker, onClosePicker, reactorsFor, setReactorsFor }) {
   const mine = reactions.filter(r => r.message_id === messageId)
+  // If there isn't ~380px of room below the bar (i.e. the message sits low on
+  // screen, which is where people usually react), open the picker UPWARD so
+  // it's fully visible without scrolling.
+  const barRef = useRef(null)
+  const openUp = pickerOpen && barRef.current
+    ? (window.innerHeight - barRef.current.getBoundingClientRect().bottom) < 380
+    : false
 
   // group by emoji: count, whether I reacted, and WHO reacted
   const groups = {}
@@ -1716,7 +1743,7 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
   const open = reactorsFor && reactorsFor.messageId === messageId ? reactorsFor.emoji : null
 
   return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4, position: 'relative' }}>
+    <div ref={barRef} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4, position: 'relative' }}>
       {entries.map(([emoji, g]) => (
         <button key={emoji}
           title={titleFor(g, emoji)}
@@ -1758,7 +1785,7 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
       {pickerOpen && (
         <>
           <div onClick={onClosePicker} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', top: 26, left: 0, zIndex: 41 }}>
+          <div style={{ position: 'absolute', ...(openUp ? { bottom: 26 } : { top: 26 }), left: 0, zIndex: 41 }}>
             <EmojiPicker onEmojiClick={(e) => onToggle(messageId, e.emoji)}
               width={300} height={360} previewConfig={{ showPreview: false }} reactionsDefaultOpen={true} />
           </div>
