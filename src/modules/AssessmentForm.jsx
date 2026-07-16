@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 // ============================================================
 //  ASSESSMENT FORM  (trimmed)
@@ -49,6 +49,143 @@ function Section({ title, sub, children }) {
   )
 }
 
+// ---- In-page voice recorder ----
+// The old flow was a bare file input. On phones that opens the OS file
+// picker / voice-recorder app over the whole screen, so the script the
+// applicant is supposed to read disappears exactly when they need it.
+// This records right on the page with MediaRecorder — the script stays
+// visible the entire time. A file upload remains as a fallback for
+// browsers without recording support (or people who prefer it).
+function pickRecordingMime() {
+  if (typeof window === 'undefined' || !window.MediaRecorder) return null
+  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac']
+  return candidates.find(t => { try { return MediaRecorder.isTypeSupported(t) } catch { return false } }) || ''
+}
+
+function VoiceRecorderField({ file, onFile, fieldKey }) {
+  const [recState, setRecState] = useState('idle') // idle | recording | error
+  const [elapsed, setElapsed] = useState(0)
+  const [recErr, setRecErr] = useState('')
+  const [playUrl, setPlayUrl] = useState(null)
+  const recorderRef = useRef(null)
+  const chunksRef = useRef([])
+  const timerRef = useRef(null)
+  const streamRef = useRef(null)
+
+  const canRecord = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && pickRecordingMime() !== null
+
+  // Release mic + timers if the person navigates away mid-recording.
+  useEffect(() => () => {
+    clearInterval(timerRef.current)
+    try { streamRef.current?.getTracks().forEach(t => t.stop()) } catch { /* noop */ }
+    if (playUrl) URL.revokeObjectURL(playUrl)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function startRecording() {
+    setRecErr('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+      const mime = pickRecordingMime()
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
+      recorderRef.current = rec
+      chunksRef.current = []
+      rec.ondataavailable = (e) => { if (e.data?.size) chunksRef.current.push(e.data) }
+      rec.onstop = () => {
+        const type = rec.mimeType || mime || 'audio/webm'
+        const blob = new Blob(chunksRef.current, { type })
+        const ext = type.includes('mp4') || type.includes('aac') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm'
+        const named = new File([blob], `${fieldKey}-${Date.now()}.${ext}`, { type })
+        stream.getTracks().forEach(t => t.stop())
+        streamRef.current = null
+        if (playUrl) URL.revokeObjectURL(playUrl)
+        setPlayUrl(URL.createObjectURL(blob))
+        onFile(named)
+        setRecState('idle')
+      }
+      rec.start()
+      setElapsed(0)
+      clearInterval(timerRef.current)
+      timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000)
+      setRecState('recording')
+    } catch (e) {
+      setRecState('error')
+      setRecErr(e?.name === 'NotAllowedError'
+        ? 'Microphone access was blocked. Allow the mic in your browser settings, or upload an audio file below.'
+        : 'Could not start recording — you can upload an audio file below instead.')
+    }
+  }
+
+  function stopRecording() {
+    clearInterval(timerRef.current)
+    try { recorderRef.current?.stop() } catch { /* noop */ }
+  }
+
+  function clearTake() {
+    if (playUrl) URL.revokeObjectURL(playUrl)
+    setPlayUrl(null)
+    onFile(null)
+  }
+
+  function onPickFile(e) {
+    const f = e.target.files?.[0] || null
+    if (playUrl) { URL.revokeObjectURL(playUrl); setPlayUrl(null) }
+    onFile(f)
+    if (f) setPlayUrl(URL.createObjectURL(f))
+    e.target.value = ''
+  }
+
+  const mmss = `${String(Math.floor(elapsed / 60)).padStart(1, '0')}:${String(elapsed % 60).padStart(2, '0')}`
+
+  return (
+    <div>
+      {canRecord && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {recState === 'recording' ? (
+            <>
+              <button type="button" onClick={stopRecording}
+                style={{ border: 0, borderRadius: 8, background: '#DC2626', color: '#fff', fontWeight: 700, fontSize: 13.5, padding: '10px 16px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                ⏹ Stop recording
+              </button>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#DC2626', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#DC2626', display: 'inline-block', animation: 'pulse 1.2s ease-in-out infinite' }} />
+                Recording {mmss} — read the script above
+              </span>
+            </>
+          ) : (
+            <button type="button" onClick={startRecording}
+              style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', fontWeight: 600, fontSize: 13.5, padding: '10px 16px', cursor: 'pointer', fontFamily: 'inherit' }}>
+              🎙 {file ? 'Re-record' : 'Record here'}
+            </button>
+          )}
+        </div>
+      )}
+      {recErr && <div style={{ fontSize: 12, color: '#DC2626', marginTop: 6 }}>{recErr}</div>}
+
+      {file && recState !== 'recording' && (
+        <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+          <div style={{ fontSize: 12, color: '#16A34A' }}>✓ {file.name}</div>
+          {playUrl && <audio controls src={playUrl} style={{ width: '100%', maxWidth: 360 }} />}
+          <button type="button" onClick={clearTake}
+            style={{ border: 0, background: 'transparent', color: 'var(--ink-soft)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', padding: 0, width: 'fit-content' }}>
+            Remove recording
+          </button>
+        </div>
+      )}
+
+      {recState !== 'recording' && (
+        <div style={{ marginTop: 8 }}>
+          <label style={{ fontSize: 12, color: 'var(--ink-soft)', display: 'block', marginBottom: 4 }}>
+            {canRecord ? 'Or upload an audio file (MP3, WAV, or M4A):' : 'Upload an audio file (MP3, WAV, or M4A):'}
+          </label>
+          <input type="file" accept="audio/*,.mp3,.wav,.m4a" onChange={onPickFile} style={{ ...inputStyle, padding: '8px 11px' }} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AssessmentForm({ applicationId }) {
   const [f, setF] = useState({
     full_name: '',
@@ -66,7 +203,6 @@ export default function AssessmentForm({ applicationId }) {
   const [done, setDone] = useState(false)
 
   const set = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target?.value ?? e }))
-  const setFile = (k) => (e) => setFiles(prev => ({ ...prev, [k]: e.target.files?.[0] || null }))
   const toggleCallType = (t) => setCallTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
   const toggleAvail = (slot, day) => {
     const key = `${slot}-${day}`
@@ -80,7 +216,7 @@ export default function AssessmentForm({ applicationId }) {
     if (!f.own_equipment) return 'Please answer the equipment question.'
     if (!f.comfortable_1099) return 'Please answer the 1099 question.'
     if (!files.rec_outbound || !files.rec_inbound || !files.rec_rebuttal1 || !files.rec_rebuttal2)
-      return 'Please upload all four voice recordings.'
+      return 'Please record or upload all four voice recordings.'
     return ''
   }
 
@@ -150,14 +286,6 @@ export default function AssessmentForm({ applicationId }) {
       <option value="">Select…</option><option value="yes">Yes</option><option value="no">No</option>
     </select>
   )
-  const fileField = (k, accept, hint) => (
-    <div>
-      <input type="file" accept={accept} onChange={setFile(k)} style={{ ...inputStyle, padding: '8px 11px' }} />
-      {files[k] && <div style={{ fontSize: 12, color: '#16A34A', marginTop: 4 }}>✓ {files[k].name}</div>}
-      {hint && !files[k] && <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>{hint}</div>}
-    </div>
-  )
-
   return (
     <div style={{ maxWidth: 660, margin: '0 auto', padding: '32px 20px 80px' }}>
       <div style={{ textAlign: 'center', marginBottom: 24 }}>
@@ -231,34 +359,34 @@ export default function AssessmentForm({ applicationId }) {
         <div><label style={labelStyle}>Your desired hourly or performance-based rate</label><input style={inputStyle} value={f.desired_rate} onChange={set('desired_rate')} /></div>
       </Section>
 
-      <Section title="Voice recordings" sub="Record each in your customer-service voice, then upload the audio file (MP3 or WAV). Read the script exactly as written.">
+      <Section title="Voice recordings" sub="Tap Record and read each script in your customer-service voice — the script stays on screen while you record. You can also upload an audio file instead.">
         <div>
           <label style={labelStyle}>1. Outbound greeting{reqMark}</label>
           <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 8, lineHeight: 1.5 }}>
             "Hi Becky, this is [Your Name] with Opsis. I'm calling about your request for a [home improvement project of your choice]. I just want to get a quick idea of what you're looking for so we can get you set up properly."
           </div>
-          {fileField('rec_outbound', 'audio/*,.mp3,.wav,.m4a', 'MP3, WAV, or M4A.')}
+          <VoiceRecorderField fieldKey="rec_outbound" file={files.rec_outbound} onFile={(f) => setFiles(prev => ({ ...prev, rec_outbound: f }))} />
         </div>
         <div>
           <label style={labelStyle}>2. Inbound greeting{reqMark}</label>
           <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 8, lineHeight: 1.5 }}>
             "Thank you for calling Opsis. This is [Your Name]. How can I help you today?"
           </div>
-          {fileField('rec_inbound', 'audio/*,.mp3,.wav,.m4a', 'MP3, WAV, or M4A.')}
+          <VoiceRecorderField fieldKey="rec_inbound" file={files.rec_inbound} onFile={(f) => setFiles(prev => ({ ...prev, rec_inbound: f }))} />
         </div>
         <div>
           <label style={labelStyle}>3. Rebuttal — "I'm not interested"{reqMark}</label>
           <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 8, lineHeight: 1.5 }}>
             If someone on the phone says "I'm not interested," what's a good response to try to regain their interest? Record your answer.
           </div>
-          {fileField('rec_rebuttal1', 'audio/*,.mp3,.wav,.m4a', 'MP3, WAV, or M4A.')}
+          <VoiceRecorderField fieldKey="rec_rebuttal1" file={files.rec_rebuttal1} onFile={(f) => setFiles(prev => ({ ...prev, rec_rebuttal1: f }))} />
         </div>
         <div>
           <label style={labelStyle}>4. Rebuttal — "How much does it cost?"{reqMark}</label>
           <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 8, lineHeight: 1.5 }}>
             We can't give quotes over the phone — someone needs to inspect the area (for free) to give an exact quote. If someone asks "How much does it cost?", how would you respond? Record your answer.
           </div>
-          {fileField('rec_rebuttal2', 'audio/*,.mp3,.wav,.m4a', 'MP3, WAV, or M4A.')}
+          <VoiceRecorderField fieldKey="rec_rebuttal2" file={files.rec_rebuttal2} onFile={(f) => setFiles(prev => ({ ...prev, rec_rebuttal2: f }))} />
         </div>
       </Section>
 
