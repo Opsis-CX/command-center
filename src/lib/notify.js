@@ -786,3 +786,26 @@ export async function notifyPickTaskNudge({
     actor_name: actorName || null,
   }])
 }
+
+// ---- Video calls ----
+
+export async function notifyIncomingCall({
+  recipientIds,
+  actorId,
+  actorName,
+  channelId,
+  isDm,
+}) {
+  const ids = uniqueIds(recipientIds).filter(id => id !== actorId)
+  if (!ids.length) return []
+
+  return insertMany(ids.map(recipientId => ({
+    recipient_id: recipientId,
+    type: 'incoming_call',
+    title: `📞 ${actorName || 'Someone'} started a video call${isDm ? ' with you' : ''}`,
+    body: 'The join link is in the conversation.',
+    link: chatLink(channelId),
+    actor_id: actorId || null,
+    actor_name: actorName || null,
+  })))
+}
