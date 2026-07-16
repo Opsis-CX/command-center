@@ -745,3 +745,44 @@ export async function notifyTicketStatus({
     actor_name: actorName || null,
   }])
 }
+
+// ---- Live status nudges (On now board) ----
+
+export async function notifyCheckInNudge({
+  recipientId,
+  actorId,
+  actorName,
+  intervalLabel = null,
+}) {
+  if (!recipientId || recipientId === actorId) return []
+
+  return insertMany([{
+    recipient_id: recipientId,
+    type: 'checkin_nudge',
+    title: 'Reminder: please check in for your shift',
+    body: intervalLabel
+      ? `You're scheduled ${intervalLabel} — ${actorName || 'someone'} nudged you to check in.`
+      : `${actorName || 'Someone'} nudged you to check in for your scheduled time.`,
+    link: '/schedule',
+    actor_id: actorId || null,
+    actor_name: actorName || null,
+  }])
+}
+
+export async function notifyPickTaskNudge({
+  recipientId,
+  actorId,
+  actorName,
+}) {
+  if (!recipientId || recipientId === actorId) return []
+
+  return insertMany([{
+    recipient_id: recipientId,
+    type: 'pick_task_nudge',
+    title: 'Reminder: start a task',
+    body: `You're checked in but no task is running — ${actorName || 'someone'} nudged you to pick what you're working on.`,
+    link: '/projects',
+    actor_id: actorId || null,
+    actor_name: actorName || null,
+  }])
+}
