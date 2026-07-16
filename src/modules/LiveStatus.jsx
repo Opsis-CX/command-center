@@ -69,6 +69,7 @@ export default function LiveStatus() {
   const [running, setRunning] = useState([])   // open time_entries (ended_at null)
   const [tasks, setTasks] = useState([])
   const [projects, setProjects] = useState([])
+  const [breaks, setBreaks] = useState([])     // open unpaid breaks
   const [loading, setLoading] = useState(true)
   const [, forceTick] = useState(0)
   const tickRef = useRef(null)
@@ -78,7 +79,7 @@ export default function LiveStatus() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       setUserId(user?.id || null)
-      const [profRes, blkRes, clmRes, runRes, taskRes, projRes] = await Promise.all([
+      const [profRes, blkRes, clmRes, runRes, taskRes, projRes, brkRes] = await Promise.all([
         supabase.from('profiles').select('id, full_name'),
         supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role, schedule_id'),
         supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at'),
@@ -86,6 +87,8 @@ export default function LiveStatus() {
         supabase.from('time_entries').select('id, user_id, task_id, started_at').is('ended_at', null),
         supabase.from('tasks').select('id, name, project_id'),
         supabase.from('projects').select('id, name'),
+        // open unpaid breaks (ended_at null)
+        supabase.from('shift_breaks').select('id, claim_id, profile_id, started_at').is('ended_at', null),
       ])
       setProfiles(profRes.data || [])
       setBlocks(blkRes.data || [])
@@ -93,6 +96,7 @@ export default function LiveStatus() {
       setRunning(runRes.data || [])
       setTasks(taskRes.data || [])
       setProjects(projRes.data || [])
+      setBreaks(brkRes.data || [])
     } finally { if (!silent) setLoading(false) }
   }, [])
 
@@ -100,7 +104,10 @@ export default function LiveStatus() {
 
   const checkOut = useCallback(async (claimId) => {
     if (!claimId) return
-    await supabase.from('shift_claims').update({ checked_out_at: new Date().toISOString(), status: 'completed' }).eq('id', claimId)
+    const nowISO = new Date().toISOString()
+    await supabase.from('shift_claims').update({ checked_out_at: nowISO, status: 'completed' }).eq('id', claimId)
+    // If they were on a break, the checkout ends it too.
+    await supabase.from('shift_breaks').update({ ended_at: nowISO }).eq('claim_id', claimId).is('ended_at', null)
     load(true)
   }, [load])
 
@@ -130,6 +137,7 @@ export default function LiveStatus() {
     const ch = supabase.channel('livestatus')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_claims' }, () => load(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'time_entries' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_breaks' }, () => load(true))
       .subscribe()
     const t = setInterval(() => load(true), POLL_MS)
     return () => { supabase.removeChannel(ch); clearInterval(t) }
@@ -183,9 +191,14 @@ export default function LiveStatus() {
     const checkedIn = checkedInByPerson[pid] || null
     const scheduledNow = nowIntervalByPerson[pid] || null
 
+    const openBreak = checkedIn ? breaks.find(b => b.claim_id === checkedIn.claim?.id) : null
+
     // state resolution
     let state, detail
-    if (checkedIn || timer) {
+    if (openBreak) {
+      state = 'break'   // checked in but on an unpaid break
+      detail = { startedAt: openBreak.started_at }
+    } else if (checkedIn || timer) {
       if (timer && task) {
         state = 'active'
         detail = { taskName: task.name, projectName: project?.name || null, startedAt: timer.started_at }
@@ -209,10 +222,11 @@ export default function LiveStatus() {
   if (!isAdmin) rows = rows.filter(r => r.pid === userId)
 
   // Sort: active first, then idle, then absent; alpha within each.
-  const order = { active: 0, idle: 1, absent: 2 }
+  const order = { active: 0, break: 1, idle: 2, absent: 3 }
   rows.sort((a, b) => (order[a.state] - order[b.state]) || a.name.localeCompare(b.name))
 
   const onCount = rows.filter(r => r.state === 'active' || r.state === 'idle').length
+  const breakCount = rows.filter(r => r.state === 'break').length
   const absentCount = rows.filter(r => r.state === 'absent').length
 
   if (!rows.length) {
@@ -233,6 +247,9 @@ export default function LiveStatus() {
           <span style={{ position: 'relative', width: 8, height: 8, borderRadius: '50%', background: 'var(--passed)' }} />
         </span>
         <span style={{ fontSize: 13, fontWeight: 700 }}>{onCount} on now</span>
+        {isAdmin && breakCount > 0 && (
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--needed)' }}>· {breakCount} on break</span>
+        )}
         {isAdmin && absentCount > 0 && (
           <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--failed)' }}>· {absentCount} scheduled, not here</span>
         )}
@@ -252,12 +269,12 @@ export default function LiveStatus() {
 }
 
 function StatusRow({ row, last, isAdmin, onCheckOut, onNudge, nudged, meId }) {
-  const dot = { active: 'var(--passed)', idle: 'var(--needed)', absent: 'var(--failed)' }[row.state]
+  const dot = { active: 'var(--passed)', break: '#0891B2', idle: 'var(--needed)', absent: 'var(--failed)' }[row.state]
   const bg = {
-    active: 'var(--passed-bg)', idle: 'var(--needed-bg)', absent: 'var(--failed-bg)',
+    active: 'var(--passed-bg)', break: '#E0F2FE', idle: 'var(--needed-bg)', absent: 'var(--failed-bg)',
   }[row.state]
   // admin can check out anyone who's checked in (active or idle) and has a claim
-  const canCheckOut = isAdmin && row.claimId && (row.state === 'active' || row.state === 'idle')
+  const canCheckOut = isAdmin && row.claimId && (row.state === 'active' || row.state === 'idle' || row.state === 'break')
   // admin can nudge: absent people to check in, idle people (not themselves) to pick a task
   const canNudge = isAdmin && row.pid !== meId && (row.state === 'absent' || row.state === 'idle')
 
@@ -292,6 +309,8 @@ function StatusRow({ row, last, isAdmin, onCheckOut, onNudge, nudged, meId }) {
             <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.detail.taskName}</div>
             {row.detail.projectName && <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{row.detail.projectName}</div>}
           </div>
+        ) : row.state === 'break' ? (
+          <span style={{ fontSize: 12.5, color: '#0891B2', fontWeight: 600 }}>On unpaid break · {elapsed(row.detail.startedAt)}</span>
         ) : row.state === 'idle' ? (
           <span style={{ fontSize: 12.5, color: 'var(--needed)', fontWeight: 600 }}>Checked in — no task</span>
         ) : (
@@ -307,7 +326,7 @@ function StatusRow({ row, last, isAdmin, onCheckOut, onNudge, nudged, meId }) {
           </span>
         ) : (
           <span className="badge" style={{ background: bg, color: dot }}>
-            {row.state === 'idle' ? 'Idle' : 'Absent'}
+            {row.state === 'break' ? 'On break' : row.state === 'idle' ? 'Idle' : 'Absent'}
           </span>
         )}
         {canNudge && (
