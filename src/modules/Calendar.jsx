@@ -551,6 +551,19 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
   )
 }
 
+// Responsive: stack the day-view pages and the planner columns when the
+// viewport is narrow (small window or mobile) instead of crushing them
+// side-by-side until the text overlaps.
+function useNarrow(breakpoint = 900) {
+  const [narrow, setNarrow] = useState(typeof window !== 'undefined' && window.innerWidth <= breakpoint)
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth <= breakpoint)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [breakpoint])
+  return narrow
+}
+
 // ---------- DAY VIEW ----------
 function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddEvent, onEditEvent, onShowDetail, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries }) {
   const openItem = (i, e) => { if (e) e.stopPropagation(); if (i.kind === 'event' && i.raw) onEditEvent(i.raw); else onShowDetail(i) }
@@ -561,11 +574,12 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
   const { priority, other } = tasksOn(ds)
   const hours = Array.from({ length: 24 }, (_, i) => i) // 12a–11p (full day)
   const [q, who] = quoteFor(cursor)
+  const narrow = useNarrow(900)
 
   return (
-    <div style={{ display: 'flex', minHeight: 820 }}>
+    <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', minHeight: narrow ? 0 : 820 }}>
       {/* left page: hourly column */}
-      <div style={{ flex: 1, padding: '18px 20px', borderRight: '1px solid var(--cal-line-2)', minWidth: 0 }}>
+      <div style={{ flex: 1, padding: '18px 20px', borderRight: narrow ? 'none' : '1px solid var(--cal-line-2)', borderBottom: narrow ? '1px solid var(--cal-line-2)' : 'none', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
           <div>
             <span style={{ fontFamily: 'Georgia, serif', fontSize: 24, color: 'var(--cal-ink)' }}>{DOW[(cursor.getDay() + 6) % 7]}</span>
@@ -612,6 +626,7 @@ const MEAL_FIELDS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 
 const WATER_GOAL = 8
 
 function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenItem, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries }) {
+  const narrow = useNarrow(700)
   const [water, setWater] = useState(0)
   const [meals, setMeals] = useState({})
   const [todos, setTodos] = useState([])   // {id, text, done, priority}
@@ -683,7 +698,7 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
           ⚠ {saveErr}
         </div>
       )}
-    <div style={{ display: 'flex', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', gap: 20 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         {dayItems.length > 0 && (
           <div style={{ marginBottom: 22 }}>
@@ -715,7 +730,7 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
         <QuickAdd value={newOtherTodo} setValue={setNewOtherTodo} onAdd={() => addTodo('other')} placeholder="Add a to-do…" />
       </div>
 
-      <div style={{ width: 250, flexShrink: 0 }}>
+      <div style={{ width: narrow ? '100%' : 250, flexShrink: 0 }}>
         <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 13, color: 'var(--cal-ink-soft)', lineHeight: 1.5 }}>
           &ldquo;{q}&rdquo;
           <div style={{ marginTop: 6, fontStyle: 'normal', fontSize: 12, color: 'var(--cal-ink-mute)' }}>— {who}</div>
