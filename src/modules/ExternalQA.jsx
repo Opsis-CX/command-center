@@ -46,6 +46,74 @@ export const QA_SECTIONS = [
     misses: ['Thanking the customer for calling', 'Showing appreciation'] },
 ]
 
+
+// ============================================================
+// PLAYABLE-AUDIO GUARD
+// Phone systems (Lightspeed etc.) export WAVs in telephony codecs like
+// GSM 6.10 that NO browser can play — the upload and email work, but the
+// CSR clicks ▶ and hears nothing. Sniff the file; if it's a non-playable
+// WAV codec, transcode it to mp3 in the browser (ffmpeg.wasm, lazy-loaded,
+// ~30MB one-time per session) before uploading. Verified against a real
+// GSM file from Lightspeed on 2026-07-16.
+// ============================================================
+const FF_VER = '0.12.10', FF_CORE = '0.12.6', FF_CDN = 'https://cdn.jsdelivr.net/npm'
+
+async function needsTranscode(file) {
+  try {
+    const head = new Uint8Array(await file.slice(0, 24).arrayBuffer())
+    const tag = (o) => String.fromCharCode(head[o], head[o + 1], head[o + 2], head[o + 3])
+    if (tag(0) !== 'RIFF' || tag(8) !== 'WAVE') return false      // mp3/m4a/webm/ogg — browsers handle
+    const fmt = head[20] | (head[21] << 8)                         // WAV codec id
+    return ![1, 3, 6, 7].includes(fmt)                             // PCM/float/a-law/u-law play fine
+  } catch { return false }
+}
+
+async function loadFFmpeg() {
+  if (window.__opsisFF?.loaded) return window.__opsisFF
+  const blobUrl = async (u, type) =>
+    URL.createObjectURL(new Blob([await fetch(u).then(r => r.arrayBuffer())], { type }))
+  if (!window.FFmpegWASM) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script')
+      s.src = `${FF_CDN}/@ffmpeg/ffmpeg@${FF_VER}/dist/umd/ffmpeg.js`
+      s.onload = res; s.onerror = () => rej(new Error('Could not load the audio converter.'))
+      document.head.appendChild(s)
+    })
+  }
+  const ff = new window.FFmpegWASM.FFmpeg()
+  await ff.load({
+    // ESM core is required: the class worker is a module worker, so the UMD
+    // core (no default export) fails with "failed to import ffmpeg-core.js".
+    coreURL: await blobUrl(`${FF_CDN}/@ffmpeg/core@${FF_CORE}/dist/esm/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await blobUrl(`${FF_CDN}/@ffmpeg/core@${FF_CORE}/dist/esm/ffmpeg-core.wasm`, 'application/wasm'),
+    classWorkerURL: await blobUrl(`${FF_CDN}/@ffmpeg/ffmpeg@${FF_VER}/dist/umd/814.ffmpeg.js`, 'text/javascript'),
+  })
+  window.__opsisFF = ff
+  return ff
+}
+
+// Returns { file, converted, warn } — never throws; on converter trouble the
+// original uploads with a warning so the audit itself is never blocked.
+async function ensurePlayable(file, onStatus) {
+  try {
+    if (!(await needsTranscode(file))) return { file, converted: false, warn: null }
+    onStatus?.('This recording uses a phone-system codec browsers can\u2019t play — converting to MP3\u2026')
+    const ff = await loadFFmpeg()
+    const inName = 'in-' + Date.now() + '.wav'
+    const outName = 'out-' + Date.now() + '.mp3'
+    await ff.writeFile(inName, new Uint8Array(await file.arrayBuffer()))
+    const code = await ff.exec(['-i', inName, '-ac', '1', '-b:a', '64k', outName])
+    if (code !== 0) throw new Error('convert failed')
+    const out = await ff.readFile(outName)
+    await ff.deleteFile(inName).catch(() => {}); await ff.deleteFile(outName).catch(() => {})
+    onStatus?.('Converted \u2713')
+    return { file: new File([out], 'recording.mp3', { type: 'audio/mpeg' }), converted: true, warn: null }
+  } catch (e) {
+    console.error('Audio conversion failed, uploading original:', e)
+    return { file, converted: false, warn: 'Heads up: this recording may not play in the agent\u2019s browser (conversion failed).' }
+  }
+}
+
 const inputStyle = { width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', background: 'var(--surface)', boxSizing: 'border-box' }
 const labelStyle = { display: 'block', fontSize: 12.5, fontWeight: 600, marginBottom: 4 }
 
@@ -70,6 +138,7 @@ export default function ExternalQA() {
   const [notBooked, setNotBooked] = useState('')
   const [notes, setNotes] = useState('')
   const [recFile, setRecFile] = useState(null)
+  const [recStatus, setRecStatus] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [done, setDone] = useState(null)       // {score, emailed, emailErr}
@@ -114,15 +183,21 @@ export default function ExternalQA() {
     if (!allAnswered) { setErr('Answer every scored question (use N/A where it doesn\u2019t apply).'); return }
     setSaving(true)
     try {
-      // recording upload (optional but encouraged — it goes to the CSR)
+      // recording upload (optional but encouraged — it goes to the CSR).
+      // Telephony-codec WAVs are converted to MP3 first so the CSR can
+      // actually press play (see PLAYABLE-AUDIO GUARD above).
       let recordingUrl = null
+      let recWarn = null
       if (recFile) {
-        const ext = recFile.name.includes('.') ? recFile.name.split('.').pop() : 'dat'
+        const { file: playable, converted, warn } = await ensurePlayable(recFile, setRecStatus)
+        recWarn = warn
+        const ext = converted ? 'mp3' : (recFile.name.includes('.') ? recFile.name.split('.').pop() : 'dat')
         const path = `external-qa/${crypto.randomUUID()}.${ext}`
-        const { error: upErr } = await supabase.storage.from('qa-recordings').upload(path, recFile, { contentType: recFile.type || undefined })
+        const { error: upErr } = await supabase.storage.from('qa-recordings').upload(path, playable, { contentType: playable.type || undefined })
         if (upErr) throw upErr
         const { data: pub } = supabase.storage.from('qa-recordings').getPublicUrl(path)
         recordingUrl = pub.publicUrl
+        setRecStatus('')
       }
 
       const sections = {}
@@ -150,7 +225,7 @@ export default function ExternalQA() {
         else emailed = true
       }
 
-      setDone({ score: scorePct, emailed, emailErr, csrName })
+      setDone({ score: scorePct, emailed, emailErr, csrName, recWarn })
       // reset the scoring parts, keep brand/auditor context
       setCsrId(''); setCsrManual({ name: '', email: '' }); setCallTime(''); setDirection(''); setCallType(''); setCallTypeOther('')
       setAnswers({}); setMisses({}); setOutcome(''); setOutcomeOther(''); setNotBooked(''); setNotes(''); setRecFile(null)
@@ -167,6 +242,7 @@ export default function ExternalQA() {
             {done.emailed ? 'Their feedback email is on its way. ✉️'
               : done.emailErr ? `Saved, but the email failed: ${done.emailErr}`
                 : 'No email on file for this agent, so nothing was sent.'}
+            {done.recWarn ? ` ${done.recWarn}` : ''}
           </span>
           <button className="btn btn-ghost" style={{ marginLeft: 10, fontSize: 12, padding: '3px 9px' }} onClick={() => setDone(null)}>Dismiss</button>
         </div>
@@ -213,7 +289,8 @@ export default function ExternalQA() {
           {callType === 'Other' && <div><label style={labelStyle}>Call type — other</label>
             <input style={inputStyle} value={callTypeOther} onChange={e => setCallTypeOther(e.target.value)} /></div>}
           <div><label style={labelStyle}>Call recording (sent to the agent)</label>
-            <input type="file" accept="audio/*,video/*" style={{ ...inputStyle, padding: '6px 10px' }} onChange={e => setRecFile(e.target.files?.[0] || null)} /></div>
+            <input type="file" accept="audio/*,video/*" style={{ ...inputStyle, padding: '6px 10px' }} onChange={e => setRecFile(e.target.files?.[0] || null)} />
+            {recStatus && <div style={{ fontSize: 11.5, color: 'var(--accent)', marginTop: 4 }}>{recStatus}</div>}</div>
         </div>
       </div>
 
