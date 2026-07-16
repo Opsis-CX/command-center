@@ -24,8 +24,8 @@ export default function ProjectMyDay({ onOpenTask }) {
     if (!aIds.includes(userId)) return false
     if (!q) return true
     const proj = projects.find(p => p.id === t.project_id)
-    return (t.title || '').toLowerCase().includes(q)
-      || (t.description || '').toLowerCase().includes(q)
+    return (t.name || '').toLowerCase().includes(q)
+      || (t.notes || '').toLowerCase().includes(q)
       || (proj?.name || '').toLowerCase().includes(q)
   })
 
