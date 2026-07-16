@@ -51,13 +51,18 @@ body{
 }
 button,input,textarea,select{font-family:inherit;}
 a{color:inherit;text-decoration:none;}
-.app{display:grid;grid-template-columns:238px 1fr;height:100vh;}
+.app{display:grid;grid-template-columns:238px 1fr;height:100vh;overflow:hidden;}
 .main{overflow:auto;}
 .topbar{height:60px;background:var(--surface);border-bottom:1px solid var(--line);
   display:flex;align-items:center;justify-content:space-between;padding:0 26px;position:sticky;top:0;z-index:10;}
 .crumb{font-size:14px;color:var(--ink-soft);} .crumb b{color:var(--ink);font-weight:600;}
 .content{padding:28px;}
-.sidebar{background:var(--sidebar);color:var(--white);padding:20px 14px;display:flex;flex-direction:column;}
+.sidebar{background:var(--sidebar);color:var(--white);padding:20px 14px;display:flex;flex-direction:column;height:100vh;min-height:0;overflow:hidden;box-sizing:border-box;}
+.nav-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 -6px;padding:0 6px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) transparent;}
+.nav-scroll::-webkit-scrollbar{width:6px;}
+.nav-scroll::-webkit-scrollbar-track{background:transparent;}
+.nav-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:3px;}
+.nav-scroll:hover::-webkit-scrollbar-thumb{background:rgba(255,255,255,.32);}
 .brand{display:flex;align-items:center;gap:10px;padding:4px 10px 20px;}
 .brand-mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--cyan),var(--blue));display:grid;place-items:center;font-weight:700;font-size:15px;color:var(--black);}
 .brand-name{font-weight:600;font-size:15.5px;letter-spacing:-.01em;}
