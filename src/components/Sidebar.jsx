@@ -199,22 +199,24 @@ export default function Sidebar({ open, onNavigate }) {
         <img src="/opsis-logo.png" alt="Opsis" style={{ width: '100%', height: 'auto', maxHeight: 64, objectFit: 'contain' }} />
       </div>
 
-      {NAV.map(grp => {
-        // Hide the whole group (label included) if nothing in it is visible.
-        const anyVisible = grp.items.some(itemVisible)
-        if (!anyVisible) return null
-        return (
-          <div key={grp.group} className="nav-group">
-            <div className="nav-group-label"
-              style={{ padding: '14px 12px 4px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', opacity: .45 }}>
-              {grp.group}
+      {/* Only THIS region scrolls when the nav outgrows the window — the page
+          itself never gets a scrollbar, and the user chip stays pinned below. */}
+      <div className="nav-scroll">
+        {NAV.map(grp => {
+          // Hide the whole group (label included) if nothing in it is visible.
+          const anyVisible = grp.items.some(itemVisible)
+          if (!anyVisible) return null
+          return (
+            <div key={grp.group} className="nav-group">
+              <div className="nav-group-label"
+                style={{ padding: '14px 12px 4px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', opacity: .45 }}>
+                {grp.group}
+              </div>
+              {grp.items.map(renderItem)}
             </div>
-            {grp.items.map(renderItem)}
-          </div>
-        )
-      })}
-
-      <div className="nav-spacer" />
+          )
+        })}
+      </div>
 
       <div className="user-chip">
         <div className="user-av">{initial}</div>
