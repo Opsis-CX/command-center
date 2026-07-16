@@ -202,6 +202,11 @@ export async function notifyChatMessage({
   body,
   mentionedIds = [],
   messageId = null,
+  // Thread replies: everyone already in the thread (parent author + prior
+  // repliers, minus the actor). They get a reply-specific notification even
+  // if their channel prefs would otherwise skip a normal message.
+  replyToIds = [],
+  parentAuthorId = null,
 }) {
   if (!channelId) {
     throw new Error('notifyChatMessage requires channelId.')
@@ -228,22 +233,30 @@ export async function notifyChatMessage({
 
   const rows = []
 
+  const replySet = new Set(uniqueIds(replyToIds))
+
   for (const pref of preferences) {
     const directlyMentioned = mentioned.has(
       pref.profile_id
     )
 
+    const inThread = replySet.has(pref.profile_id)
+
     const mentionEvent =
       directlyMentioned ||
       Boolean(isHere) ||
-      Boolean(requiresAck)
+      Boolean(requiresAck) ||
+      inThread
 
     const shouldNotify =
       pref.notify_all ||
       (pref.notify_mentions && mentionEvent) ||
       pref.notify_from.includes(actorId) ||
       matchesKeyword(body, pref.notify_keywords) ||
-      (Boolean(isDm) && pref.notify_mentions)
+      (Boolean(isDm) && pref.notify_mentions) ||
+      // A reply to a thread you're part of always notifies — being in the
+      // thread is a stronger signal than any channel-level preference.
+      inThread
 
     if (!shouldNotify) continue
 
@@ -251,21 +264,30 @@ export async function notifyChatMessage({
       ? 'chat_update'
       : isHere
         ? 'chat_here'
-        : isDm
-          ? 'chat_dm'
-          : directlyMentioned
-            ? 'chat_mention'
-            : 'chat_message'
+        : directlyMentioned
+          ? 'chat_mention'
+          : inThread
+            ? 'chat_reply'
+            : isDm
+              ? 'chat_dm'
+              : 'chat_message'
+
+    const isParentAuthor =
+      parentAuthorId && pref.profile_id === parentAuthorId
 
     const title = requiresAck
       ? `New update in ${where} — please confirm`
       : isHere
         ? `${actorName || 'Someone'} flagged everyone in ${where}`
-        : isDm
-          ? `New message from ${actorName || 'Someone'}`
-          : directlyMentioned
-            ? `${actorName || 'Someone'} mentioned you in ${where}`
-            : `${actorName || 'Someone'} posted in ${where}`
+        : directlyMentioned
+          ? `${actorName || 'Someone'} mentioned you in ${where}`
+          : inThread
+            ? isParentAuthor
+              ? `${actorName || 'Someone'} replied to your message in ${where}`
+              : `${actorName || 'Someone'} replied in a thread you're in (${where})`
+            : isDm
+              ? `New message from ${actorName || 'Someone'}`
+              : `${actorName || 'Someone'} posted in ${where}`
 
     rows.push({
       recipient_id: pref.profile_id,
