@@ -444,25 +444,6 @@ export default function Chat() {
     load()
   }
 
-  if (loading) return <p className="page-sub">Loading chat…</p>
-
-  const openChannel = (id) => { setActiveId(id); setMobileView('convo'); markRead(id) }
-
-  // On mobile, show either the list or the conversation. On desktop, both.
-  const showList = !isMobile || mobileView === 'list'
-  const showConvo = !isMobile || mobileView === 'convo'
-
-  // Most recent activity first; untouched channels fall to the bottom
-  // alphabetically. Applies to channels and DMs alike.
-  const byActivity = (a, b) => {
-    const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0
-    const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0
-    if (tb !== ta) return tb - ta
-    return (a.name || '').localeCompare(b.name || '')
-  }
-  const channelList = channels.filter(c => !c.is_dm).sort(byActivity)
-  const dmList = channels.filter(c => c.is_dm).sort(byActivity)
-
   // ---- Slack-style anchoring ----
   // Instead of guessing the chrome above us (the old hard-coded 150px, which
   // left a dead strip under the composer), measure where the chat shell
@@ -482,6 +463,25 @@ export default function Chat() {
     window.addEventListener('resize', compute)
     return () => window.removeEventListener('resize', compute)
   }, [loading])
+
+  if (loading) return <p className="page-sub">Loading chat…</p>
+
+  const openChannel = (id) => { setActiveId(id); setMobileView('convo'); markRead(id) }
+
+  // On mobile, show either the list or the conversation. On desktop, both.
+  const showList = !isMobile || mobileView === 'list'
+  const showConvo = !isMobile || mobileView === 'convo'
+
+  // Most recent activity first; untouched channels fall to the bottom
+  // alphabetically. Applies to channels and DMs alike.
+  const byActivity = (a, b) => {
+    const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0
+    const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0
+    if (tb !== ta) return tb - ta
+    return (a.name || '').localeCompare(b.name || '')
+  }
+  const channelList = channels.filter(c => !c.is_dm).sort(byActivity)
+  const dmList = channels.filter(c => c.is_dm).sort(byActivity)
 
   return (
     <div ref={shellRef} style={{ display: isMobile ? 'block' : 'grid', gridTemplateColumns: '240px 1fr', gap: 0, height: chatH || 'calc(100dvh - 150px)', maxHeight: chatH || 'calc(100dvh - 150px)', minHeight: 380, border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
