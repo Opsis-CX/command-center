@@ -685,12 +685,18 @@ function QuizEditor({ courseId }) {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
+  const [perAttempt, setPerAttempt] = useState('')     // '' = ask all
+  const [perSaving, setPerSaving] = useState(false)
+  const [perMsg, setPerMsg] = useState('')
 
   useEffect(() => { load() }, [courseId])
 
   async function load() {
     setLoading(true)
     try {
+      const { data: crs } = await supabase.from('courses')
+        .select('questions_per_attempt').eq('id', courseId).maybeSingle()
+      setPerAttempt(crs?.questions_per_attempt ? String(crs.questions_per_attempt) : '')
       const { data: qs, error } = await supabase.from('quiz_questions')
         .select('*').eq('course_id', courseId).order('sort_order')
       if (error) throw error
@@ -750,8 +756,41 @@ function QuizEditor({ courseId }) {
 
   if (loading) return <p className="page-sub">Loading quiz…</p>
 
+  async function savePerAttempt() {
+    setPerSaving(true); setPerMsg('')
+    const n = perAttempt === '' ? null : Math.max(1, parseInt(perAttempt, 10) || 0) || null
+    const { error } = await supabase.from('courses').update({ questions_per_attempt: n }).eq('id', courseId)
+    setPerSaving(false)
+    if (error) { setPerMsg('Could not save: ' + error.message); return }
+    setPerAttempt(n ? String(n) : '')
+    setPerMsg('Saved ✓'); setTimeout(() => setPerMsg(''), 1800)
+  }
+
+  const poolNote = (() => {
+    const n = parseInt(perAttempt, 10)
+    if (!perAttempt || !n) return `Every attempt asks all ${questions.length} questions, shuffled.`
+    if (n >= questions.length) return `You've set ${n} but the pool only has ${questions.length} — everyone gets all of them (shuffled) until you add more.`
+    return `Each attempt draws ${n} random questions from your pool of ${questions.length} — different people (and retakes) get different questions in a different order.`
+  })()
+
   return (
     <div>
+      <div className="card" style={{ marginBottom: 14, borderColor: 'var(--accent)' }}>
+        <b style={{ fontSize: 14 }}>🎲 Randomized question pool</b>
+        <p className="page-sub" style={{ fontSize: 12.5, margin: '4px 0 10px' }}>
+          Build a bigger pool than the quiz asks (e.g. 30 questions, ask 20). The server picks each attempt's
+          questions at random, in random order, with shuffled answer choices — so answers can't be passed around.
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>Questions per attempt</label>
+          <input type="number" min="1" value={perAttempt} onChange={e => setPerAttempt(e.target.value)} placeholder="all"
+            style={{ width: 80, padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit' }} />
+          <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={savePerAttempt} disabled={perSaving}>{perSaving ? 'Saving…' : 'Save'}</button>
+          {perMsg && <span className="page-sub" style={{ color: perMsg.startsWith('Saved') ? 'var(--passed)' : 'var(--failed)', fontSize: 12.5 }}>{perMsg}</span>}
+        </div>
+        <p className="page-sub" style={{ fontSize: 12, marginTop: 8 }}>{poolNote}</p>
+      </div>
+
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 12 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
       {questions.map((q, qi) => (
         <div className="card" key={q.id} style={{ marginBottom: 14 }}>
