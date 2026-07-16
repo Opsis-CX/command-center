@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useProjectsData } from './projectsData'
-import { StatusBadge, PriorityBadge, DueLabel } from './projectBits'
+import { StatusBadge, PriorityBadge, DueLabel, SearchBox } from './projectBits'
 import { dueCls } from './projectHelpers'
 import { exportMyDay } from './projectCsv'
 
@@ -17,9 +17,16 @@ export default function ProjectMyDay({ onOpenTask }) {
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 
+  const [search, setSearch] = useState('')
+  const q = search.trim().toLowerCase()
   const myTasks = myVisibleTasks().filter(t => {
     const aIds = taskAssignees.filter(a => a.task_id === t.id).map(a => a.profile_id)
-    return aIds.includes(userId)
+    if (!aIds.includes(userId)) return false
+    if (!q) return true
+    const proj = projects.find(p => p.id === t.project_id)
+    return (t.title || '').toLowerCase().includes(q)
+      || (t.description || '').toLowerCase().includes(q)
+      || (proj?.name || '').toLowerCase().includes(q)
   })
 
   const now = new Date(); now.setHours(0, 0, 0, 0)
@@ -52,10 +59,12 @@ export default function ProjectMyDay({ onOpenTask }) {
         )}
       </div>
 
+      <SearchBox value={search} onChange={setSearch} placeholder="Search my tasks…" style={{ maxWidth: 340, marginBottom: 16 }} />
+
       {myTasks.length === 0 ? (
         <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
-          <h3 style={{ fontSize: 14, marginBottom: 4 }}>Nothing on your plate right now</h3>
-          <p style={{ fontSize: 13 }}>Tasks assigned to you will show up here.</p>
+          <h3 style={{ fontSize: 14, marginBottom: 4 }}>{q ? 'No tasks match your search' : 'Nothing on your plate right now'}</h3>
+          <p style={{ fontSize: 13 }}>{q ? 'Try a different word, or clear the search.' : 'Tasks assigned to you will show up here.'}</p>
         </div>
       ) : buckets.length === 0 ? (
         <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
