@@ -36,7 +36,9 @@ const MATRIX = {
   'sales.view_only': ['marketing', 'admin'],
   'certifications.all': ['certification', 'admin'],
   'certifications.builder': ['certification', 'admin'],
-  'certifications.assigned_to_complete': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'admin'],
+  // certification is here so course authors can take (and preview) their own
+  // quizzes end-to-end, exactly as an agent would see them.
+  'certifications.assigned_to_complete': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'certification', 'admin'],
   'certifications.view_personal_score_and_content_assigned': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'admin'],
   'certifications.view_content_and_scores_only_of_agents': ['asc', 'quality', 'marketing', 'admin'],
   'schedule.all': ['admin'],
