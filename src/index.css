@@ -728,3 +728,9 @@ a{color:inherit;text-decoration:none;}
 
 .rich-full > :first-child { margin-top: 0; }
 .rich-full > :last-child { margin-bottom: 0; }
+
+/* Recording indicator on the assessment form */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
