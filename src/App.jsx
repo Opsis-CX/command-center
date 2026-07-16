@@ -108,7 +108,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/knowledge" element={<KnowledgeBase />} />
               {canAny(appRole, 'service_performance_scorecard') && <Route path="/scorecard" element={<Scorecard />} />}
-              <Route path="/quality" element={canAny(appRole, 'quality_audit.view_own') ? <QualityAudit /> : <Placeholder title="No access" note="You don't have access to this area." />} />
+              <Route path="/quality" element={(canAny(appRole, 'quality_audit.view_own') || canAny(appRole, 'quality_audit.call_reviews')) ? <QualityAudit /> : <Placeholder title="No access" note="You don't have access to this area." />} />
               <Route path="/schedule" element={<Schedule />} />
               <Route path="/chat" element={canAny(appRole, 'chat') ? <Chat /> : <Placeholder title="No access" note="You don't have access to this area." />} />
               {canAny(appRole, 'certifications.all') && <Route path="/certifications" element={<Certifications />} />}
