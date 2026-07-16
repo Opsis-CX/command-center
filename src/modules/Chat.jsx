@@ -361,21 +361,29 @@ export default function Chat() {
         setActiveId(mostRecent.id)
       }
 
-      // for DMs, find the other member's name
+      // for DMs, name the conversation after the OTHER members.
+      // 1:1  → their full name ("Corinne Alvarez")
+      // group → first names ("Becky, Corinne" style)
       const dmChannels = all.filter(c => c.is_dm)
       if (dmChannels.length) {
         const { data: mem } = await supabase.from('channel_members')
           .select('channel_id, profile_id').in('channel_id', dmChannels.map(c => c.id))
-        const otherIds = {}
+        const othersByChannel = {}
         dmChannels.forEach(c => {
-          const others = (mem || []).filter(m => m.channel_id === c.id && m.profile_id !== meRes.data.id)
-          if (others[0]) otherIds[c.id] = others[0].profile_id
+          othersByChannel[c.id] = (mem || [])
+            .filter(m => m.channel_id === c.id && m.profile_id !== meRes.data.id)
+            .map(m => m.profile_id)
         })
-        const ids = [...new Set(Object.values(otherIds))]
+        const ids = [...new Set(Object.values(othersByChannel).flat())]
         if (ids.length) {
           const { data: profs } = await supabase.from('profiles').select('id, full_name').in('id', ids)
           const nameById = {}; (profs || []).forEach(p => nameById[p.id] = p.full_name)
-          const map = {}; Object.entries(otherIds).forEach(([cid, pid]) => map[cid] = nameById[pid] || 'Unknown')
+          const map = {}
+          Object.entries(othersByChannel).forEach(([cid, pids]) => {
+            if (pids.length === 0) map[cid] = 'Just you'
+            else if (pids.length === 1) map[cid] = nameById[pids[0]] || 'Unknown'
+            else map[cid] = pids.map(pid => (nameById[pid] || 'Unknown').split(' ')[0]).sort().join(', ')
+          })
           setDmNames(map)
         }
       }
@@ -1079,7 +1087,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         <div style={{ minWidth: 0, flex: 1 }}>
           <b style={{ fontSize: 15 }}>{channel?.is_dm ? (dmName || 'Direct message') : `# ${channel?.name}`}</b>
           {channel?.description && !channel?.is_dm && <div className="page-sub" style={{ fontSize: 12.5 }}>{channel.description}</div>}
-          {channel?.is_dm && <div className="page-sub" style={{ fontSize: 12 }}>Direct message</div>}
+          {channel?.is_dm && <div className="page-sub" style={{ fontSize: 12 }}>{(dmName || '').includes(',') ? `Group message · ${(dmName || '').split(',').length + 1} people` : 'Direct message'}</div>}
         </div>
         <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', flex: 'none' }}
           onClick={() => setShowPrefs(true)} title="Notification settings">🔔</button>
@@ -2092,9 +2100,10 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
 }
 
 function CreateDMModal({ me, profiles, onClose, onCreated }) {
-  // Start a DM with ONE other person — you're always the other side.
-  // Reuses an existing DM with that person if one already exists.
+  // Start a DM with one or MORE people (group DM, Slack-style).
+  // Reuses an existing DM with exactly the same set of people if one exists.
   const [search, setSearch] = useState('')
+  const [picked, setPicked] = useState(new Set())
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -2103,40 +2112,48 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
     ? others.filter(p => p.full_name?.toLowerCase().includes(search.toLowerCase()))
     : others
 
-  async function startDM(personId) {
+  const toggle = (id) => setPicked(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
+  })
+
+  async function start() {
+    const personIds = [...picked]
+    if (!personIds.length) return
     setSaving(true); setErr('')
     try {
-      // first: look for an existing DM between me and this person
+      // Look for an existing DM whose member set is EXACTLY me + the picked
+      // people — a 1:1 with Corinne is a different conversation from
+      // me+Corinne+Alyssa, so partial overlaps don't count.
+      const wanted = new Set([me.id, ...personIds])
       const { data: myDms } = await supabase.from('channel_members')
         .select('channel_id, channels!inner(is_dm)')
         .eq('profile_id', me.id)
       const myDmIds = (myDms || []).filter(r => r.channels?.is_dm).map(r => r.channel_id)
 
       if (myDmIds.length) {
-        const { data: theirs } = await supabase.from('channel_members')
-          .select('channel_id')
-          .eq('profile_id', personId)
-          .in('channel_id', myDmIds)
-        if (theirs && theirs.length) {
-          onCreated(theirs[0].channel_id)   // existing DM found — just open it
-          return
-        }
+        const { data: allMems } = await supabase.from('channel_members')
+          .select('channel_id, profile_id').in('channel_id', myDmIds)
+        const byChannel = {}
+        ;(allMems || []).forEach(m => { (byChannel[m.channel_id] = byChannel[m.channel_id] || new Set()).add(m.profile_id) })
+        const existing = Object.entries(byChannel).find(([, set]) =>
+          set.size === wanted.size && [...wanted].every(id => set.has(id)))
+        if (existing) { onCreated(existing[0]); return }
       }
 
-      // otherwise: none exists — create a new DM with both of us
-      const myFirst = me.full_name?.split(' ')[0] || 'Me'
-      const theirFirst = profiles.find(p => p.id === personId)?.full_name?.split(' ')[0] || 'DM'
+      // None exists — create the conversation with everyone in it.
+      const firstNames = [me.id, ...personIds]
+        .map(id => (profiles.find(p => p.id === id)?.full_name || me.full_name || 'DM').split(' ')[0])
       const { data: ch, error: ce } = await supabase.from('channels')
-        .insert({ name: `${myFirst} / ${theirFirst}`, is_dm: true, created_by: me.id }).select().single()
+        .insert({ name: firstNames.join(' / '), is_dm: true, created_by: me.id }).select().single()
       if (ce) throw ce
       const { error: me2 } = await supabase.from('channel_members')
-        .insert([{ channel_id: ch.id, profile_id: me.id }, { channel_id: ch.id, profile_id: personId }])
+        .insert([me.id, ...personIds].map(pid => ({ channel_id: ch.id, profile_id: pid })))
       if (me2) throw me2
       await notifyChannelAdded({
-        recipientIds: [personId],
+        recipientIds: personIds,
         actorId: me.id,
         actorName: me.full_name,
-        channelName: 'Direct message',
+        channelName: personIds.length > 1 ? 'a group message' : 'Direct message',
         isDm: true,
         channelId: ch.id,
       })
@@ -2144,29 +2161,55 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
     } catch (e) { setErr(e.message); setSaving(false) }
   }
 
+  const pickedNames = [...picked].map(id => profiles.find(p => p.id === id)?.full_name?.split(' ')[0]).filter(Boolean)
+
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
-      <div className="modal" style={{ width: 420 }}>
+      <div className="modal" style={{ width: 440 }}>
         <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>New direct message</h3>
-        <p className="page-sub" style={{ marginBottom: 16 }}>Search for someone to start a conversation.</p>
+        <p className="page-sub" style={{ marginBottom: 16 }}>Pick one person — or several for a group conversation.</p>
         {err && <div className="login-err" style={{ marginBottom: 14 }}>{err}</div>}
+
+        {picked.size > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+            {[...picked].map(id => {
+              const p = profiles.find(x => x.id === id)
+              return (
+                <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--accent-bg)', color: 'var(--accent)', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>
+                  {p?.full_name}
+                  <button onClick={() => toggle(id)} style={{ border: 0, background: 'transparent', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
+                </span>
+              )
+            })}
+          </div>
+        )}
 
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search people…" autoFocus
           style={{ width: '100%', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', marginBottom: 10, boxSizing: 'border-box' }} />
 
-        <div style={{ border: '1px solid var(--line)', borderRadius: 8, maxHeight: 300, overflowY: 'auto' }}>
+        <div style={{ border: '1px solid var(--line)', borderRadius: 8, maxHeight: 280, overflowY: 'auto' }}>
           {matches.length === 0 && <div className="page-sub" style={{ padding: 14, fontSize: 13 }}>No people found.</div>}
-          {matches.map(p => (
-            <button key={p.id} type="button" disabled={saving} onClick={() => startDM(p.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', border: 0, borderBottom: '1px solid var(--line-soft)', background: 'transparent', cursor: 'pointer', padding: '10px 12px', fontFamily: 'inherit' }}>
-              <span style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flex: 'none' }}>{initials(p.full_name)}</span>
-              <span style={{ fontSize: 14, fontWeight: 500 }}>{p.full_name}</span>
-            </button>
-          ))}
+          {matches.map(p => {
+            const isPicked = picked.has(p.id)
+            return (
+              <button key={p.id} type="button" disabled={saving} onClick={() => toggle(p.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', border: 0, borderBottom: '1px solid var(--line-soft)', background: isPicked ? 'var(--accent-bg)' : 'transparent', cursor: 'pointer', padding: '10px 12px', fontFamily: 'inherit' }}>
+                <span style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flex: 'none' }}>{initials(p.full_name)}</span>
+                <span style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>{p.full_name}</span>
+                {isPicked && <span style={{ color: 'var(--accent)', fontWeight: 700 }}>✓</span>}
+              </button>
+            )
+          })}
         </div>
 
-        <div style={{ display: 'flex', marginTop: 16 }}>
+        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
+          <button className="btn btn-primary" style={{ flex: 1.4 }} onClick={start} disabled={saving || picked.size === 0}>
+            {saving ? 'Starting…'
+              : picked.size === 0 ? 'Start conversation'
+                : picked.size === 1 ? `Message ${pickedNames[0]}`
+                  : `Start group (${picked.size + 1} people)`}
+          </button>
         </div>
       </div>
     </div>
