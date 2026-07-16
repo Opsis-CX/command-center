@@ -242,6 +242,21 @@ function LessonEditor({ courseId, onBack }) {
     } catch (e) { setErr(e.message) }
   }
 
+  // Delete a lesson and renumber the rest so ordering stays 0..n-1.
+  async function deleteLesson(l) {
+    if (!window.confirm(`Delete the lesson "${l.title || 'Untitled'}"? This cannot be undone.`)) return
+    try {
+      const { error } = await supabase.from('lessons').delete().eq('id', l.id)
+      if (error) throw error
+      const rest = lessons.filter(x => x.id !== l.id)
+      await Promise.all(rest.map((x, idx) =>
+        x.sort_order === idx ? null : supabase.from('lessons').update({ sort_order: idx }).eq('id', x.id)
+      ).filter(Boolean))
+      setLessons(rest.map((x, idx) => ({ ...x, sort_order: idx })))
+      if (activeLesson === l.id) setActiveLesson(rest[0]?.id || null)
+    } catch (e) { setErr(e.message) }
+  }
+
   async function saveLesson(lesson) {
     try {
       const { error } = await supabase.from('lessons')
@@ -296,10 +311,15 @@ function LessonEditor({ courseId, onBack }) {
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '220px 1fr', gap: 16 }}>
           <div className="card" style={{ padding: 12, height: 'fit-content' }}>
             {lessons.map((l, i) => (
-              <button key={l.id} onClick={() => setActiveLesson(l.id)}
-                style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, background: l.id === activeLesson ? 'var(--accent-bg)' : 'transparent', color: l.id === activeLesson ? 'var(--accent)' : 'var(--ink)', padding: '9px 10px', borderRadius: 8, fontSize: 13.5, fontWeight: 500, cursor: 'pointer', marginBottom: 2, fontFamily: 'inherit' }}>
-                {i + 1}. {l.title || 'Untitled'}
-              </button>
+              <div key={l.id} className="lesson-row"
+                style={{ display: 'flex', alignItems: 'center', gap: 4, background: l.id === activeLesson ? 'var(--accent-bg)' : 'transparent', borderRadius: 8, marginBottom: 2 }}>
+                <button onClick={() => setActiveLesson(l.id)}
+                  style={{ flex: 1, minWidth: 0, textAlign: 'left', border: 0, background: 'transparent', color: l.id === activeLesson ? 'var(--accent)' : 'var(--ink)', padding: '9px 10px', fontSize: 13.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {i + 1}. {l.title || 'Untitled'}
+                </button>
+                <button className="lesson-del" title="Delete lesson" onClick={() => deleteLesson(l)}
+                  style={{ border: 0, background: 'transparent', color: 'var(--ink-soft)', cursor: 'pointer', fontSize: 13, padding: '4px 8px', borderRadius: 6, fontFamily: 'inherit' }}>✕</button>
+              </div>
             ))}
             <button className="btn btn-ghost" style={{ width: '100%', marginTop: 8 }} onClick={addLesson}>+ Add lesson</button>
           </div>
