@@ -354,7 +354,12 @@ export default function Chat() {
       setProfiles(profRes.data || [])
 
       const all = chRes.data || []
-      if (!activeIdRef.current && all.length && window.innerWidth > 700) setActiveId(all[0].id)
+      if (!activeIdRef.current && all.length && window.innerWidth > 700) {
+        // Open the most recently active conversation, matching the sidebar order.
+        const mostRecent = all.slice().sort((a, b) =>
+          new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0))[0]
+        setActiveId(mostRecent.id)
+      }
 
       // for DMs, find the other member's name
       const dmChannels = all.filter(c => c.is_dm)
@@ -378,6 +383,26 @@ export default function Chat() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // ---- Live sidebar ordering ----
+  // Any new message (top-level or reply) bumps its channel's last_message_at
+  // locally so the list re-sorts without a reload. Unfiltered subscription,
+  // same reasoning as elsewhere: RLS limits what we receive; we only touch
+  // channels already in state.
+  useEffect(() => {
+    const ch = supabase.channel('chat-activity')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          const m = payload.new
+          if (!m?.channel_id) return
+          setChannels(prev => prev.map(c =>
+            c.id === m.channel_id && (!c.last_message_at || new Date(m.created_at) > new Date(c.last_message_at))
+              ? { ...c, last_message_at: m.created_at }
+              : c))
+        })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [])
 
   // ---- Notification deep links: /chat?channel=<id>&message=<id> ----
   // Notifications have always generated these links; nothing consumed them,
@@ -419,6 +444,17 @@ export default function Chat() {
   const showList = !isMobile || mobileView === 'list'
   const showConvo = !isMobile || mobileView === 'convo'
 
+  // Most recent activity first; untouched channels fall to the bottom
+  // alphabetically. Applies to channels and DMs alike.
+  const byActivity = (a, b) => {
+    const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0
+    const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0
+    if (tb !== ta) return tb - ta
+    return (a.name || '').localeCompare(b.name || '')
+  }
+  const channelList = channels.filter(c => !c.is_dm).sort(byActivity)
+  const dmList = channels.filter(c => c.is_dm).sort(byActivity)
+
   return (
     <div style={{ display: isMobile ? 'block' : 'grid', gridTemplateColumns: '240px 1fr', gap: 0, height: 'calc(100dvh - 150px)', maxHeight: 'calc(100dvh - 150px)', minHeight: 420, border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
       {showList && (
@@ -428,8 +464,8 @@ export default function Chat() {
             {canCreateChannels && <button className="btn btn-ghost" style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => setShowCreate(true)}>+ New</button>}
           </div>
           <div style={{ overflowY: 'auto', flex: 1, padding: 8, minHeight: 0 }}>
-            {channels.filter(c => !c.is_dm).length === 0 && <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{canCreateChannels ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>}
-            {channels.filter(c => !c.is_dm).map(c => (
+            {channelList.length === 0 && <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{canCreateChannels ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>}
+            {channelList.map(c => (
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
                 <button onClick={() => openChannel(c.id)}
                   style={{ display: 'flex', alignItems: 'center', flex: 1, textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: unreadCounts[c.id] ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -445,14 +481,14 @@ export default function Chat() {
               </div>
             ))}
 
-            {(channels.some(c => c.is_dm) || canCreateDMs) && (
+            {(dmList.length > 0 || canCreateDMs) && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 11px 6px' }}>
                 <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-soft)' }}>Direct messages</span>
                 {canCreateDMs && <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button>}
               </div>
             )}
 
-            {channels.filter(c => c.is_dm).map(c => (
+            {dmList.map(c => (
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
                 <button onClick={() => openChannel(c.id)}
                   style={{ display: 'flex', alignItems: 'center', flex: 1, textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: unreadCounts[c.id] ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>
