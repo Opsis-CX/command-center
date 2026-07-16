@@ -24,10 +24,8 @@ const STAGES = [
   { key: 'new_lead',        title: 'New Lead',              hint: 'Imported / not yet worked' },
   { key: 'email_1_sent',    title: 'Email 1 Sent',          hint: 'First email out' },
   { key: 'call_1_made',     title: 'Call 1 Made',           hint: 'First call attempt' },
-  { key: 'linkedin_1_sent', title: 'LinkedIn Message 1 Sent', hint: 'First LinkedIn touch' },
   { key: 'email_2_sent',    title: 'Email 2 Sent',          hint: 'Second email out' },
   { key: 'call_2_made',     title: 'Call 2 Made',           hint: 'Second call attempt' },
-  { key: 'linkedin_2_sent', title: 'LinkedIn Message 2 Sent', hint: 'Second LinkedIn touch' },
   { key: 'drip_campaign',   title: 'Added to Drip Campaign', hint: 'In nurture sequence' },
   { key: 'contact_made',    title: 'Contact Made',          hint: 'They responded' },
   { key: 'discovery_call',  title: 'Discovery Call Scheduled', hint: 'Call booked' },
@@ -40,6 +38,8 @@ const STAGES = [
 // (like the hiring "screened out"). won/lost are the real exits;
 // email_unreachable is a third exit for dead email addresses.
 const CLOSED = ['won', 'lost', 'email_unreachable']
+// LinkedIn stages were retired from the board (July 2026). Their labels stay
+// so historical deals/stage events still display a readable name.
 const STAGE_LABEL = {
   new_lead: 'New Lead', email_1_sent: 'Email 1 Sent', email_unreachable: 'Email Unreachable',
   call_1_made: 'Call 1 Made', linkedin_1_sent: 'LinkedIn Message 1 Sent', email_2_sent: 'Email 2 Sent',
