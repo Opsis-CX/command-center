@@ -30,6 +30,7 @@ import Notifications from './modules/Notifications'
 import KnowledgeBase from './modules/KnowledgeBase'
 import Scorecard from './modules/Scorecard'
 import QualityAudit from './modules/QualityAudit'
+import HelpCenter from './modules/HelpCenter'
 import { UnreadProvider } from './lib/unread'
 // --- hiring pipeline ---
 import ApplicationForm from './modules/ApplicationForm'
@@ -108,6 +109,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/knowledge" element={<KnowledgeBase />} />
               {canAny(appRole, 'service_performance_scorecard') && <Route path="/scorecard" element={<Scorecard />} />}
+              <Route path="/help" element={<HelpCenter />} />
               <Route path="/quality" element={(canAny(appRole, 'quality_audit.view_own') || canAny(appRole, 'quality_audit.call_reviews')) ? <QualityAudit /> : <Placeholder title="No access" note="You don't have access to this area." />} />
               <Route path="/schedule" element={<Schedule />} />
               <Route path="/chat" element={canAny(appRole, 'chat') ? <Chat /> : <Placeholder title="No access" note="You don't have access to this area." />} />
@@ -144,7 +146,7 @@ function titleFor(path) {
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/weekly-sync': 'Weekly Sync',
-    '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales',
+    '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales', '/help': 'Help Center',
   }
   return map[path] || 'Command Center'
 }
