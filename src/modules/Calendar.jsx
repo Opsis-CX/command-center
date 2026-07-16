@@ -193,7 +193,10 @@ export default function Calendar() {
     })
     const gcal = gcalEvents.filter(g => g.event_date === ds && (!g.owner_id || g.owner_id === userId)).map(g => ({
       kind: 'gcal', id: g.id, title: g.title, allDay: g.all_day,
-      start: g.start_time, end: g.end_time, color: gcalConn?.color || '#EA4335',
+      // Stored in company time (sync v5) — show in the viewer's zone like everything else.
+      start: g.all_day ? g.start_time : toViewerHHMM(g.event_date, g.start_time, COMPANY_TZ, viewerTZ),
+      end: g.all_day ? g.end_time : toViewerHHMM(g.event_date, g.end_time, COMPANY_TZ, viewerTZ),
+      color: gcalConn?.color || '#EA4335', calendarName: g.calendar_name,
       description: g.description, location: g.location, hangoutLink: g.hangout_link, htmlLink: g.html_link,
     }))
 
@@ -215,7 +218,9 @@ export default function Calendar() {
       .filter(g => g.event_date === ds && g.owner_id && activeShareOwners.has(g.owner_id) && g.owner_id !== userId)
       .map(g => ({
         kind: 'shared', id: 'sg-' + g.id, title: `${g.title} · ${nameOf(g.owner_id)}`, allDay: g.all_day,
-        start: g.start_time, end: g.end_time, color: shareByOwner[g.owner_id]?.color || '#0891B2',
+        start: g.all_day ? g.start_time : toViewerHHMM(g.event_date, g.start_time, COMPANY_TZ, viewerTZ),
+        end: g.all_day ? g.end_time : toViewerHHMM(g.event_date, g.end_time, COMPANY_TZ, viewerTZ),
+        color: shareByOwner[g.owner_id]?.color || '#0891B2',
         description: g.description, location: g.location, hangoutLink: g.hangout_link, htmlLink: g.html_link,
         sharedFrom: nameOf(g.owner_id),
       }))
@@ -595,7 +600,7 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
 
       {/* right page: panels */}
       <div style={{ flex: 1, padding: '18px 20px', minWidth: 0 }}>
-        <DayPlanner userId={userId} ds={ds} priority={priority} other={other} quote={[q, who]}
+        <DayPlanner userId={userId} ds={ds} priority={priority} other={other} quote={[q, who]} dayItems={items} onOpenItem={openItem}
           onToggleTaskDone={onToggleTaskDone} onToggleTaskTimer={onToggleTaskTimer} runningEntry={runningEntry} timeEntries={timeEntries} />
       </div>
     </div>
@@ -606,7 +611,7 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
 const MEAL_FIELDS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snack', 'Snack']]
 const WATER_GOAL = 8
 
-function DayPlanner({ userId, ds, priority, other, quote, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries }) {
+function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenItem, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries }) {
   const [water, setWater] = useState(0)
   const [meals, setMeals] = useState({})
   const [todos, setTodos] = useState([])   // {id, text, done, priority}
@@ -616,6 +621,7 @@ function DayPlanner({ userId, ds, priority, other, quote, onToggleTaskDone, onTo
   const [walkNote, setWalkNote] = useState('')
   const [wellbeing, setWellbeing] = useState({})   // {break, air, connect} check-offs + goodThing note
   const [loaded, setLoaded] = useState(false)
+  const [saveErr, setSaveErr] = useState('')
 
   useEffect(() => {
     let active = true
@@ -637,10 +643,18 @@ function DayPlanner({ userId, ds, priority, other, quote, onToggleTaskDone, onTo
 
   const save = useCallback(async (patch) => {
     if (!userId) return
-    await supabase.from('day_planner').upsert({
+    const { error } = await supabase.from('day_planner').upsert({
       owner_id: userId, day: ds, water, meals, quick_todos: todos, walk_done: walkDone, walk_note: walkNote, wellbeing, updated_at: new Date().toISOString(), ...patch,
     }, { onConflict: 'owner_id,day' })
-  }, [userId, ds, water, meals, todos, walkDone, walkNote])
+    // This failed silently for a long time (the walk columns didn't exist in
+    // the DB, so EVERY save was rejected and lost on refresh). Never again:
+    if (error) {
+      console.error('day_planner save failed:', error.message, error)
+      setSaveErr("Couldn't save your changes — they may not survive a refresh. " + error.message)
+    } else {
+      setSaveErr('')
+    }
+  }, [userId, ds, water, meals, todos, walkDone, walkNote, wellbeing])
 
   function toggleWalk() { const v = !walkDone; setWalkDone(v); save({ walk_done: v }) }
   function toggleWell(key) { const w = { ...wellbeing, [key]: !wellbeing[key] }; setWellbeing(w); save({ wellbeing: w }) }
@@ -663,8 +677,32 @@ function DayPlanner({ userId, ds, priority, other, quote, onToggleTaskDone, onTo
   const myOtherTodos = todos.filter(t => t.priority !== 'high')
 
   return (
+    <div>
+      {saveErr && (
+        <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--failed)', background: 'var(--failed-bg)', color: 'var(--failed)', fontSize: 12.5, fontWeight: 600 }}>
+          ⚠ {saveErr}
+        </div>
+      )}
     <div style={{ display: 'flex', gap: 20 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
+        {dayItems.length > 0 && (
+          <div style={{ marginBottom: 22 }}>
+            <PanelHead>TODAY'S SCHEDULE</PanelHead>
+            <div style={{ marginTop: 6 }}>
+              {dayItems.map(i => (
+                <div key={i.id} onClick={(e) => onOpenItem?.(i, e)}
+                  style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '5px 2px', borderBottom: '1px solid var(--cal-line-3)', cursor: onOpenItem ? 'pointer' : 'default' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: i.color, flexShrink: 0, alignSelf: 'center' }} />
+                  <span style={{ fontSize: 11.5, color: 'var(--cal-ink-mute)', width: 108, flexShrink: 0 }}>
+                    {i.allDay ? 'All day' : `${fmtTime(i.start)}${i.end ? ' – ' + fmtTime(i.end) : ''}`}
+                  </span>
+                  <span style={{ fontSize: 12.5, color: 'var(--cal-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</span>
+                  {i.calendarName && <span style={{ fontSize: 10, color: 'var(--cal-ink-mute)', marginLeft: 'auto', flexShrink: 0 }}>{i.calendarName}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <PanelHead>PRIORITY TASKS</PanelHead>
         <TaskAndTodoList tasks={priority} todos={myPriorityTodos} onToggle={toggleTodo} onDel={delTodo} emptyBoth="No priority items."
           onToggleTaskDone={onToggleTaskDone} onToggleTaskTimer={onToggleTaskTimer} runningEntry={runningEntry} />
@@ -677,7 +715,7 @@ function DayPlanner({ userId, ds, priority, other, quote, onToggleTaskDone, onTo
         <QuickAdd value={newOtherTodo} setValue={setNewOtherTodo} onAdd={() => addTodo('other')} placeholder="Add a to-do…" />
       </div>
 
-      <div style={{ width: 170, flexShrink: 0 }}>
+      <div style={{ width: 250, flexShrink: 0 }}>
         <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 13, color: 'var(--cal-ink-soft)', lineHeight: 1.5 }}>
           &ldquo;{q}&rdquo;
           <div style={{ marginTop: 6, fontStyle: 'normal', fontSize: 12, color: 'var(--cal-ink-mute)' }}>— {who}</div>
@@ -738,6 +776,7 @@ function DayPlanner({ userId, ds, priority, other, quote, onToggleTaskDone, onTo
           </div>
         </div>
       </div>
+    </div>
     </div>
   )
 }
