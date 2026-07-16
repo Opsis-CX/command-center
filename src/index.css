@@ -739,3 +739,10 @@ a{color:inherit;text-decoration:none;}
   0%, 100% { opacity: 1; }
   50% { opacity: 0.25; }
 }
+
+/* Course builder: reveal the lesson delete control on hover/focus only, so
+   the sidebar stays clean but delete is always one click away. */
+.lesson-row .lesson-del { opacity: 0; transition: opacity .12s ease; }
+.lesson-row:hover .lesson-del,
+.lesson-row .lesson-del:focus-visible { opacity: 1; }
+.lesson-row .lesson-del:hover { color: var(--failed); background: var(--failed-bg); }
