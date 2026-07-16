@@ -81,3 +81,18 @@ export function AvatarStack({ ids, profiles, size = 24 }) {
     </div>
   )
 }
+
+// Shared search input for the project sub-views (My Day, Kanban, Projects).
+export function SearchBox({ value, onChange, placeholder = 'Search…', style }) {
+  return (
+    <div style={{ position: 'relative', ...style }}>
+      <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: 'var(--ink-soft)', pointerEvents: 'none' }}>🔍</span>
+      <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        style={{ width: '100%', boxSizing: 'border-box', padding: '8px 30px 8px 30px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'var(--surface)' }} />
+      {value && (
+        <button onClick={() => onChange('')} title="Clear"
+          style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, padding: 4 }}>✕</button>
+      )}
+    </div>
+  )
+}
