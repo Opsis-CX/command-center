@@ -21,9 +21,9 @@ import ProjectRecurring from './ProjectRecurring'
 
 const SUBVIEWS = [
   { key: 'myday', label: 'My Day' },
-  { key: 'dashboard', label: 'Dashboard' },
-  { key: 'kanban', label: 'Kanban' },
   { key: 'projects', label: 'Projects' },
+  { key: 'kanban', label: 'Kanban' },
+  { key: 'dashboard', label: 'Dashboard' },
   { key: 'recurring', label: 'Recurring' },
   { key: 'activity', label: 'Activity' },
 ]
