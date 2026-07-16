@@ -367,7 +367,14 @@ function ReportBlock({ title, body }) {
 export default function EodReportCard() {
   const { user, appRole, isAdmin } = useAuth()
   const role = String(appRole || '').toLowerCase()
-  if (isAdmin) return <div style={{ marginTop: 22 }}><AdminEod /></div>
-  if (role && role !== 'agent') return <div style={{ marginTop: 22 }}><PersonalEod userId={user?.id} /></div>
+  // Admins file their own report too — previously they only saw the roll-up
+  // and had no way to enter their commentary at all.
+  if (isAdmin) return (
+    <div style={{ marginTop: 22 }}>
+      <PersonalEod userId={user?.id} />
+      <div style={{ marginTop: 18 }}><AdminEod /></div>
+    </div>
+  )
+  if (role !== 'agent') return <div style={{ marginTop: 22 }}><PersonalEod userId={user?.id} /></div>
   return null
 }
