@@ -30,6 +30,7 @@ const NAV = [
       { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, perm: 'dashboard' },
       { type: 'link', to: '/weekly-sync', label: 'Weekly Sync', ic: '🗓', perm: 'weekly_sync' },
       { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
+      { type: 'link', to: '/help', label: 'Help Center', ic: '🛟', perm: null },  // everyone; tickets are private per RLS
       { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },  // everyone gets calendar
     ],
   },
