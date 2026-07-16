@@ -131,7 +131,7 @@ function AgentScorecard({ row, canCoach, onBack }) {
     if (!row) return
     const [aRes, sRes] = await Promise.all([
       supabase.from('qa_audits')
-        .select('id, audit_type, campaign, clean_qa_score, auto_fail, brand, feedback, answers, created_at, call_date')
+        .select('id, audit_type, campaign, clean_qa_score, auto_fail, brand, feedback, answers, created_at, call_date, edited_at, editor_name, edit_count')
         .eq('agent_name', row.agent_name)
         .order('created_at', { ascending: false })
         .limit(50),
@@ -240,6 +240,12 @@ function AgentScorecard({ row, canCoach, onBack }) {
                     </span>
                     <span style={{ fontSize: 13, fontWeight: 600, textTransform: 'capitalize' }}>{(a.audit_type || '').replace('_', ' ')}</span>
                     {a.brand && <span className="page-sub" style={{ fontSize: 12 }}>· {a.brand}</span>}
+                    {a.edit_count > 0 && (
+                      <span title={`Score updated ${fmtDate(a.edited_at)}${a.editor_name ? ' by ' + a.editor_name : ''}`}
+                        style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'var(--needed-bg)', color: 'var(--needed)' }}>
+                        updated
+                      </span>
+                    )}
                     <span className="page-sub" style={{ fontSize: 12, marginLeft: 'auto' }}>{fmtDate(a.call_date || a.created_at)}</span>
                   </div>
                   {a.feedback && <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: '6px 0 0', color: 'var(--ink)' }}>{a.feedback}</p>}
