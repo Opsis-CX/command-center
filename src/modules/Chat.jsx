@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
-import { notifyChatMessage, notifyAckNudge, notifyChannelAdded } from '../lib/notify'
+import { notifyChatMessage, notifyAckNudge, notifyChannelAdded, notifyIncomingCall } from '../lib/notify'
 import { useUnread } from '../lib/unread'
 import EmojiPicker from 'emoji-picker-react'
 import { RichEditor, RichContent, sanitizeHtml, htmlToText } from '../lib/RichEditor'
@@ -342,7 +342,7 @@ export default function Chat() {
       const myChannelIds = (myMem || []).map(m => m.channel_id)
 
       const [meRes, chRes, profRes] = await Promise.all([
-        supabase.from('profiles').select('id, full_name').eq('id', user.id).single(),
+        supabase.from('profiles').select('id, full_name, role, is_admin').eq('id', user.id).single(),
         myChannelIds.length
           ? supabase.from('channels').select('*').in('id', myChannelIds).order('name')
           : Promise.resolve({ data: [], error: null }),
@@ -1067,6 +1067,38 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     })
   }
 
+  // ---- Video call: mint a Meet link (via the caller's Google account,
+  // Jitsi fallback), drop it in the conversation, ring the members. ----
+  const [callBusy, setCallBusy] = useState(false)
+  async function startVideoCall() {
+    if (callBusy) return
+    setCallBusy(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('create-video-call', {
+        body: { title: channel?.is_dm ? `📹 Call · ${dmName || 'Direct message'}` : `📹 Call · #${channel?.name}` },
+      })
+      if (error || !data?.url) throw new Error(error?.message || data?.error || 'Could not create the call link.')
+
+      const label = channel?.is_dm ? (dmName || 'this conversation') : `#${channel?.name}`
+      const body = `📹 <b>${me.full_name || 'Someone'} started a video call</b> — <a href="${data.url}" target="_blank" rel="noopener noreferrer">Join the call</a>` +
+        (data.provider === 'jitsi' ? ' <i>(first person in may need to sign in to start the room)</i>' : '')
+      const { data: msg, error: mErr } = await supabase.from('messages')
+        .insert({ channel_id: channelId, sender_id: me.id, body }).select().single()
+      if (mErr) throw mErr
+      setMessages(prev => prev.some(x => x.id === msg.id) ? prev : [...prev, msg])
+
+      try {
+        await notifyIncomingCall({
+          recipientIds: members.filter(id => id !== me.id),
+          actorId: me.id, actorName: me.full_name,
+          channelId, isDm: channel?.is_dm,
+        })
+      } catch (e) { console.error('Call started, ringing failed', e) }
+
+      window.open(data.url, '_blank', 'noopener')
+    } catch (e) { setErr(e.message) } finally { setCallBusy(false) }
+  }
+
   async function confirmRead(messageId) {
     const optimistic = { id: 'temp-ack-' + Date.now(), message_id: messageId, profile_id: me.id, confirmed_at: new Date().toISOString() }
     setAcks(prev => [...prev, optimistic])
@@ -1109,6 +1141,10 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
           {channel?.description && !channel?.is_dm && <div className="page-sub" style={{ fontSize: 12.5 }}>{channel.description}</div>}
           {channel?.is_dm && <div className="page-sub" style={{ fontSize: 12 }}>{(dmName || '').includes(',') ? `Group message · ${(dmName || '').split(',').length + 1} people` : 'Direct message'}</div>}
         </div>
+        {(String(me?.role || '').toLowerCase() !== 'agent' || me?.is_admin) && (
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', flex: 'none' }}
+            onClick={startVideoCall} disabled={callBusy} title="Start a video call">{callBusy ? '…' : '📹 Call'}</button>
+        )}
         <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', flex: 'none' }}
           onClick={() => setShowPrefs(true)} title="Notification settings">🔔</button>
         {!channel?.is_dm && (
