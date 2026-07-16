@@ -28,8 +28,8 @@ export default function ProjectKanban({ activeProject, setActiveProject, onOpenT
     .filter(t => {
       if (!q) return true
       const proj = projects.find(p => p.id === t.project_id)
-      return (t.title || '').toLowerCase().includes(q)
-        || (t.description || '').toLowerCase().includes(q)
+      return (t.name || '').toLowerCase().includes(q)
+        || (t.notes || '').toLowerCase().includes(q)
         || (proj?.name || '').toLowerCase().includes(q)
     })
   const now = new Date(); now.setHours(0, 0, 0, 0)
