@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { notifyCheckInNudge, notifyPickTaskNudge } from '../lib/notify'
 
 // ============================================================
 // LIVE STATUS — who's on right now.
@@ -102,6 +103,27 @@ export default function LiveStatus() {
     await supabase.from('shift_claims').update({ checked_out_at: new Date().toISOString(), status: 'completed' }).eq('id', claimId)
     load(true)
   }, [load])
+
+  // One nudge per person per page-visit — the button flips to "Nudged ✓" so
+  // nobody gets machine-gunned with reminders.
+  const [nudged, setNudged] = useState({})
+  const nudge = useCallback(async (row) => {
+    const actorName = profiles.find(p => p.id === userId)?.full_name
+    setNudged(prev => ({ ...prev, [row.pid]: true }))
+    try {
+      if (row.state === 'absent') {
+        const label = row.interval
+          ? `${formatTime(row.interval.start_time)}–${formatTime(row.interval.end_time)}`
+          : null
+        await notifyCheckInNudge({ recipientId: row.pid, actorId: userId, actorName, intervalLabel: label })
+      } else {
+        await notifyPickTaskNudge({ recipientId: row.pid, actorId: userId, actorName })
+      }
+    } catch (e) {
+      console.error('Nudge failed:', e)
+      setNudged(prev => ({ ...prev, [row.pid]: false }))
+    }
+  }, [profiles, userId])
 
   // realtime + polling fallback (matches Schedule.jsx)
   useEffect(() => {
@@ -218,7 +240,7 @@ export default function LiveStatus() {
 
       <div>
         {rows.map((r, i) => (
-          <StatusRow key={r.pid} row={r} last={i === rows.length - 1} isAdmin={isAdmin} onCheckOut={checkOut} />
+          <StatusRow key={r.pid} row={r} last={i === rows.length - 1} isAdmin={isAdmin} onCheckOut={checkOut} onNudge={nudge} nudged={!!nudged[r.pid]} meId={userId} />
         ))}
       </div>
 
@@ -229,13 +251,15 @@ export default function LiveStatus() {
   )
 }
 
-function StatusRow({ row, last, isAdmin, onCheckOut }) {
+function StatusRow({ row, last, isAdmin, onCheckOut, onNudge, nudged, meId }) {
   const dot = { active: 'var(--passed)', idle: 'var(--needed)', absent: 'var(--failed)' }[row.state]
   const bg = {
     active: 'var(--passed-bg)', idle: 'var(--needed-bg)', absent: 'var(--failed-bg)',
   }[row.state]
   // admin can check out anyone who's checked in (active or idle) and has a claim
   const canCheckOut = isAdmin && row.claimId && (row.state === 'active' || row.state === 'idle')
+  // admin can nudge: absent people to check in, idle people (not themselves) to pick a task
+  const canNudge = isAdmin && row.pid !== meId && (row.state === 'absent' || row.state === 'idle')
 
   return (
     <div style={{
@@ -285,6 +309,16 @@ function StatusRow({ row, last, isAdmin, onCheckOut }) {
           <span className="badge" style={{ background: bg, color: dot }}>
             {row.state === 'idle' ? 'Idle' : 'Absent'}
           </span>
+        )}
+        {canNudge && (
+          <button onClick={() => !nudged && onNudge(row)} disabled={nudged}
+            title={row.state === 'absent' ? 'Send a reminder to check in' : 'Send a reminder to start a task'}
+            style={{ border: '1px solid ' + (nudged ? 'var(--line)' : row.state === 'absent' ? 'var(--failed)' : 'var(--needed)'),
+              background: nudged ? 'var(--canvas)' : row.state === 'absent' ? 'var(--failed-bg)' : 'var(--needed-bg)',
+              color: nudged ? 'var(--ink-soft)' : row.state === 'absent' ? 'var(--failed)' : 'var(--needed)',
+              borderRadius: 6, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: nudged ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
+            {nudged ? 'Nudged ✓' : '👋 Nudge'}
+          </button>
         )}
         {canCheckOut && (
           <button onClick={() => onCheckOut(row.claimId)} title="Check this person out"
