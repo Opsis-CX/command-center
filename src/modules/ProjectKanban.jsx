@@ -8,7 +8,7 @@ import { dueCls } from './projectHelpers'
 // Cards open the task detail panel; "+ Add task" opens the modal
 // pre-set to that column's status (and the active project).
 // ============================================================
-
+ 
 const COLS = [
   { key: 'todo', label: 'To do', color: 'var(--ink-soft)' },
   { key: 'inprogress', label: 'In progress', color: '#2563EB' },
