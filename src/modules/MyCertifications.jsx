@@ -12,7 +12,7 @@ import { useAuth } from '../lib/auth'
 // certification_id matches. A "needed" record with no attempt shows as
 // "Not started", with an attempt as "In progress".
 // ============================================================
-
+ 
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null)
 
 function statusView(r) {
