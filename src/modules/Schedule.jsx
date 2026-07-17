@@ -960,7 +960,7 @@ function ShiftCard({ block, claim, isPast, started, viewerTZ, onUnclaim, onCheck
         )}
         {openBreak ? (
           <button className="btn btn-primary" style={{ width: '100%', fontSize: 12, marginBottom: 6 }}
-            onClick={() => onEndBreak?.(claim, block)}>I'm back — resume shift</button>
+            onClick={() => onEndBreak?.(claim, block)}>I'm back — resume interval</button>
         ) : (
           <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, marginBottom: 6, border: '1px solid var(--line)' }}
             onClick={() => onStartBreak?.(claim, block)}>☕ Take unpaid break</button>
