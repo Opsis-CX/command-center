@@ -112,6 +112,7 @@ export function useScrolledToBottom(ref, resetKey, slack = 24) {
 export default function CourseBuilder() {
   const [courses, setCourses] = useState([])
   const [certs, setCerts] = useState([])
+  const [settingsCourse, setSettingsCourse] = useState(null)   // course whose settings are open
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [editingId, setEditingId] = useState(null)
@@ -170,8 +171,17 @@ export default function CourseBuilder() {
                 </span>
               </div>
               {c.description && <p className="page-sub" style={{ marginTop: 5 }}>{c.description}</p>}
-              <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
+              {/* Which certification this course grants — invisible once created
+                  before, and impossible to change. */}
+              <div className="page-sub" style={{ marginTop: 8, fontSize: 12.5 }}>
+                {c.certification_id
+                  ? <>Grants: <b style={{ color: 'var(--ink)' }}>{certs.find(x => x.id === c.certification_id)?.name || 'Unknown certification'}</b></>
+                  : 'Standalone course — grants no certification'}
+                {' · '}Pass mark {c.pass_threshold ?? 80}%
+              </div>
+              <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button className="btn btn-ghost" onClick={() => setEditingId(c.id)}>Edit content</button>
+                <button className="btn btn-ghost" onClick={() => setSettingsCourse(c)}>Settings</button>
                 <button className="btn btn-ghost" style={{ color: 'var(--failed)', borderColor: 'var(--failed-bg)' }} onClick={() => deleteCourse(c.id, c.title)}>Delete</button>
               </div>
             </div>
@@ -179,17 +189,23 @@ export default function CourseBuilder() {
         </div>
       )}
 
-      {creating && <NewCourseModal certs={certs} onClose={() => setCreating(false)}
-        onCreated={(id) => { setCreating(false); load(); setEditingId(id) }} />}
+      {creating && <CourseModal course={null} certs={certs} onClose={() => setCreating(false)}
+        onSaved={(id) => { setCreating(false); load(); setEditingId(id) }} />}
+
+      {settingsCourse && <CourseModal course={settingsCourse} certs={certs}
+        onClose={() => setSettingsCourse(null)}
+        onSaved={() => { setSettingsCourse(null); load() }} />}
     </div>
   )
 }
 
-function NewCourseModal({ certs, onClose, onCreated }) {
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [certId, setCertId] = useState('')
-  const [passThreshold, setPassThreshold] = useState(80)
+// One modal for both create and edit. `course` null = creating a new one.
+function CourseModal({ course, certs, onClose, onSaved }) {
+  const editing = !!course
+  const [title, setTitle] = useState(course?.title || '')
+  const [description, setDescription] = useState(course?.description || '')
+  const [certId, setCertId] = useState(course?.certification_id || '')
+  const [passThreshold, setPassThreshold] = useState(course?.pass_threshold ?? 80)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -198,23 +214,32 @@ function NewCourseModal({ certs, onClose, onCreated }) {
     setSaving(true); setErr('')
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      const { data, error } = await supabase.from('courses').insert({
+      const fields = {
         title: title.trim(),
         description: description.trim() || null,
         certification_id: certId || null,
         pass_threshold: passThreshold,
-        status: 'draft',
-        created_by: user?.id ?? null,
-      }).select().single()
-      if (error) throw error
-      onCreated(data.id)
+      }
+      if (editing) {
+        const { error } = await supabase.from('courses')
+          .update({ ...fields, updated_at: new Date().toISOString() })
+          .eq('id', course.id)
+        if (error) throw error
+        onSaved(course.id)
+      } else {
+        const { data, error } = await supabase.from('courses').insert({
+          ...fields, status: 'draft', created_by: user?.id ?? null,
+        }).select().single()
+        if (error) throw error
+        onSaved(data.id)
+      }
     } catch (e) { setErr(e.message); setSaving(false) }
   }
 
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal">
-        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>New course</h3>
+        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>{editing ? 'Course settings' : 'New course'}</h3>
         <p className="page-sub" style={{ marginBottom: 18 }}>Tie it to a certification so passing the quiz certifies the agent.</p>
         {err && <div className="login-err" style={{ marginBottom: 14 }}>{err}</div>}
         <div className="field"><label>Course title</label>
@@ -230,7 +255,7 @@ function NewCourseModal({ certs, onClose, onCreated }) {
           <input type="number" min="0" max="100" value={passThreshold} onChange={e => setPassThreshold(+e.target.value)} style={{ width: 100 }} /></div>
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
-          <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={saving}>{saving ? 'Creating…' : 'Create & build'}</button>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={saving}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Create & build'}</button>
         </div>
       </div>
     </div>
