@@ -793,14 +793,14 @@ function CopyModal({ schedule, schedules, blocks, onClose, onDone }) {
                 <div className="field">
                   <label>Copy this schedule\u2019s {myBlocks.length} interval(s) into</label>
                   <select value={tgtScheduleId} onChange={e => setTgtScheduleId(e.target.value)}>
-                    <option value={schedule.id}>Same schedule (shift dates forward)</option>
+                    <option value={schedule.id}>Same schedule (move dates forward)</option>
                     {schedules.filter(s => s.id !== schedule.id).map(s => (
                       <option key={s.id} value={s.id}>{s.title} — week of {fmtDate(s.week_start_date)}</option>
                     ))}
                   </select>
                 </div>
                 <div className="field">
-                  <label>Shift dates forward by</label>
+                  <label>Move dates forward by</label>
                   <select value={weekOffset} onChange={e => setWeekOffset(Number(e.target.value))}>
                     {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n} week{n !== 1 ? 's' : ''}</option>)}
                   </select>
