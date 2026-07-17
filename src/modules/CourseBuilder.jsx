@@ -262,6 +262,27 @@ function CourseModal({ course, certs, onClose, onSaved }) {
   )
 }
 
+// A question is only fit to serve if it has a prompt, at least two options
+// with text, and exactly one correct answer marked. Five empty shells reached
+// a live quiz on 2026-07-16 and were served to real agents — a question with
+// no text and no correct answer is unanswerable, so it fails everyone who
+// sees it. Publishing is the last gate before agents are affected.
+export function quizProblems(questions) {
+  const problems = []
+  ;(questions || []).forEach((q, i) => {
+    const n = i + 1
+    const opts = q.options || []
+    const filled = opts.filter(o => (o.label || '').trim())
+    const correct = opts.filter(o => o.is_correct)
+    if (!(q.prompt || '').trim()) problems.push({ n, id: q.id, msg: `Question ${n} has no text` })
+    else if (filled.length < 2) problems.push({ n, id: q.id, msg: `Question ${n} needs at least two answer options` })
+    else if (filled.length < opts.length) problems.push({ n, id: q.id, msg: `Question ${n} has a blank answer option` })
+    if ((q.prompt || '').trim() && correct.length === 0) problems.push({ n, id: q.id, msg: `Question ${n} has no correct answer marked` })
+    if (correct.length > 1) problems.push({ n, id: q.id, msg: `Question ${n} has more than one correct answer` })
+  })
+  return problems
+}
+
 // ============ LESSON EDITOR ============
 function LessonEditor({ courseId, onBack }) {
   const [course, setCourse] = useState(null)
@@ -330,9 +351,34 @@ function LessonEditor({ courseId, onBack }) {
   async function publish() {
     try {
       const next = course.status === 'published' ? 'draft' : 'published'
+
+      // Publishing is what exposes a quiz to agents, so check it here rather
+      // than trusting the builder tab to have been visited. Unpublishing is
+      // always allowed — that's the safe direction.
+      if (next === 'published') {
+        const { data: qs } = await supabase.from('quiz_questions')
+          .select('id, prompt, sort_order').eq('course_id', courseId).order('sort_order')
+        const ids = (qs || []).map(q => q.id)
+        let opts = []
+        if (ids.length) {
+          const { data: o } = await supabase.from('quiz_options')
+            .select('question_id, label, is_correct').in('question_id', ids)
+          opts = o || []
+        }
+        const withOpts = (qs || []).map(q => ({ ...q, options: opts.filter(o => o.question_id === q.id) }))
+        const problems = quizProblems(withOpts)
+        if (problems.length) {
+          const list = problems.slice(0, 6).map(p => '• ' + p.msg).join('\n')
+          const more = problems.length > 6 ? `\n…and ${problems.length - 6} more.` : ''
+          setErr(`This quiz isn't ready to publish:\n${list}${more}\n\nFix these in Quiz & scoring — agents can't answer an incomplete question, so it counts against them.`)
+          return
+        }
+      }
+
       const { error } = await supabase.from('courses').update({ status: next }).eq('id', courseId)
       if (error) throw error
       setCourse(c => ({ ...c, status: next }))
+      setErr('')
       flash(next === 'published' ? 'Published' : 'Unpublished')
     } catch (e) { setErr(e.message) }
   }
@@ -357,7 +403,9 @@ function LessonEditor({ courseId, onBack }) {
         </div>
       </div>
 
-      {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
+      {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}>
+        <b style={{ color: 'var(--failed)' }}>{err.startsWith('This quiz') ? 'Not ready to publish' : 'Error.'}</b>
+        <p className="page-sub" style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>{err}</p></div>}
 
       {previewing && <CoursePreview course={course} lessons={lessons} onClose={() => setPreviewing(false)} />}
 
@@ -768,6 +816,9 @@ function QuizEditor({ courseId }) {
   const [perSaving, setPerSaving] = useState(false)
   const [perMsg, setPerMsg] = useState('')
 
+  const problems = quizProblems(questions)
+  const badIds = new Set(problems.map(p => p.id))
+
   useEffect(() => { load() }, [courseId])
 
   async function load() {
@@ -871,8 +922,25 @@ function QuizEditor({ courseId }) {
       </div>
 
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 12 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
+
+      {/* Surface incomplete questions here, where they can be fixed, rather
+          than letting them reach an agent's quiz. */}
+      {problems.length > 0 && (
+        <div className="card" style={{ borderColor: 'var(--needed)', marginBottom: 12 }}>
+          <b style={{ color: 'var(--needed)' }}>{problems.length} question{problems.length === 1 ? '' : 's'} need{problems.length === 1 ? 's' : ''} attention</b>
+          <p className="page-sub" style={{ fontSize: 12.5, margin: '4px 0 8px' }}>
+            Incomplete questions can't be answered correctly, so they count against agents. Fix these before publishing.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {problems.map((p, i) => (
+              <span key={i} className="page-sub" style={{ fontSize: 12.5, color: 'var(--needed)' }}>• {p.msg}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {questions.map((q, qi) => (
-        <div className="card" key={q.id} style={{ marginBottom: 14 }}>
+        <div className="card" key={q.id} style={{ marginBottom: 14, borderColor: badIds.has(q.id) ? 'var(--needed)' : undefined }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
             <span style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flex: 'none' }}>{qi + 1}</span>
             <input value={q.prompt} placeholder="Question prompt…"
