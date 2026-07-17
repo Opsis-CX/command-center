@@ -1,748 +1,195 @@
-:root{
-  --black:      #000000;
-  --white:      #FFFFFF;
-  --cyan:       #00E6E6;
-  --blue:       #0077B6;
-  --teal:       #245866;
-  --ink:        #0d1518;
-  --ink-soft:   var(--teal);
-  --line:       #dfe6e9;
-  --line-soft:  #eef2f3;
-  /* Calendar "paper" palette — warm in light mode, flips to readable dark below */
-  --cal-paper:    #fdfcfa;
-  --cal-panel:    #ece8e0;
-  --cal-line:     #c3bfb5;
-  --cal-line-2:   #ece8e0;
-  --cal-line-3:   #f2efe9;
-  --cal-ink:      #3a3a38;
-  --cal-ink-soft: #6a665e;
-  --cal-ink-mute: #9a968c;
-  --surface:    var(--white);
-  --canvas:     #f4f7f8;
-  --accent:     var(--blue);
-  --accent-bg:  #e5f1f8;
-  --accent-ink: var(--white);
-  --cta:        var(--cyan);
-  --cta-ink:    #00312f;
-  --passed:     #1f8a53; --passed-bg:#e7f5ec;
-  --failed:     #c0392b; --failed-bg:#fbe9e7;
-  --needed:     var(--teal); --needed-bg:#e3edf0;
-  --sidebar:    var(--black);
-  --sidebar-soft:#7f9299;
-  --radius:12px; --radius-sm:8px;
-  --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.06);
+// SUPABASE EDGE FUNCTION: send-sales-email
+// Called by the Sales pipeline on stage transitions. For now it only sends the
+// PROPOSAL email: when a rep marks a proposal Sent, the deal moves to
+// "Proposal Sent", which invokes this with kind='proposal'. We fetch that deal's
+// latest proposal and email it to the client as a branded HTML email (the same
+// content as the builder, in an email-safe light theme). Every other stage-email
+// kind (intro/followup/contract/won_welcome) is intentionally skipped so no other
+// transition starts emailing clients until you ask for it.
+//
+// Sends via Gmail SMTP, same mechanism as send-quality-email.
+// SECRETS (either pair works; SALES_* takes priority so you can send from a
+// dedicated mailbox like hello@opsiscx.com):
+//   SALES_GMAIL_USER + SALES_GMAIL_APP_PASS   (preferred)
+//   GMAIL_USER + GMAIL_APP_PASS               (shared fallback)
 
-  /* Emoji font fallbacks. Without these the browser renders a tofu box or a
-     flat monochrome glyph. Appended to every font stack that shows user text. */
-  --font-emoji: "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts'
 
-  /* The app's base stack, defined once so chat surfaces can reuse it. */
-  --font-body: 'Poppins',ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, 'Content-Type': 'application/json' } })
 
-  /* Toolbar strip above the chat composer. Overridden in dark mode below. */
-  --composer-toolbar-bg: #fbfcfd;
+const CALENDLY = 'https://calendly.com/opsiscx-support/30min'
+const CONTACT_PHONE = '656-234-8009'
+const CONTACT_EMAIL = 'hello@opsiscx.com'
+
+function esc(s: unknown) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
-*{box-sizing:border-box;}
-html,body,#root{height:100%;margin:0;}
-body{
-  font-family: var(--font-body), var(--font-emoji);
-  color:var(--ink); background:var(--canvas);
-  -webkit-font-smoothing:antialiased;
-}
-button,input,textarea,select{font-family:inherit;}
-a{color:inherit;text-decoration:none;}
-.app{display:grid;grid-template-columns:238px 1fr;height:100vh;overflow:hidden;}
-.main{overflow:auto;}
-.topbar{height:60px;background:var(--surface);border-bottom:1px solid var(--line);
-  display:flex;align-items:center;justify-content:space-between;padding:0 26px;position:sticky;top:0;z-index:10;}
-.crumb{font-size:14px;color:var(--ink-soft);} .crumb b{color:var(--ink);font-weight:600;}
-.content{padding:28px;}
-.sidebar{background:var(--sidebar);color:var(--white);padding:20px 14px;display:flex;flex-direction:column;height:100vh;min-height:0;overflow:hidden;box-sizing:border-box;}
-.nav-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 -6px;padding:0 6px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) transparent;}
-.nav-scroll::-webkit-scrollbar{width:6px;}
-.nav-scroll::-webkit-scrollbar-track{background:transparent;}
-.nav-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:3px;}
-.nav-scroll:hover::-webkit-scrollbar-thumb{background:rgba(255,255,255,.32);}
-.brand{display:flex;align-items:center;gap:10px;padding:4px 10px 20px;}
-.brand-mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--cyan),var(--blue));display:grid;place-items:center;font-weight:700;font-size:15px;color:var(--black);}
-.brand-name{font-weight:600;font-size:15.5px;letter-spacing:-.01em;}
-.nav-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--sidebar-soft);padding:12px 12px 6px;font-weight:600;}
-.nav-item{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:var(--radius-sm);cursor:pointer;font-size:14px;font-weight:500;color:#c7d2d6;margin:1px 0;transition:background .12s,color .12s;border:0;background:transparent;width:100%;text-align:left;}
-.nav-item:hover{background:rgba(0,230,230,.10);color:var(--cyan);}
-.nav-item.on{background:var(--cyan);color:var(--black);font-weight:600;}
-.nav-item .ic{width:18px;flex:none;opacity:.9;}
-.nav-spacer{flex:1;}
-.user-chip{display:flex;align-items:center;gap:10px;padding:10px;border-radius:var(--radius-sm);background:rgba(255,255,255,.06);}
-.user-av{width:32px;height:32px;border-radius:50%;background:var(--cyan);color:var(--black);display:grid;place-items:center;font-size:12px;font-weight:700;flex:none;}
-.user-name{font-size:13.5px;font-weight:600;}
-.user-role{font-size:11.5px;color:var(--sidebar-soft);}
-.signout{margin-top:8px;border:0;background:transparent;color:var(--sidebar-soft);font-size:12.5px;cursor:pointer;padding:6px 10px;text-align:left;}
-.signout:hover{color:var(--cyan);}
-.page-head{margin-bottom:22px;}
-.page-title{margin:0;font-size:24px;font-weight:700;letter-spacing:-.02em;color:var(--ink);}
-.page-sub{margin:5px 0 0;color:var(--ink-soft);font-size:14px;}
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;}
-.badge{display:inline-block;font-size:11.5px;font-weight:600;padding:4px 11px;border-radius:999px;white-space:nowrap;align-self:flex-start;flex:0 0 auto;}
-.badge.needed{background:var(--needed-bg);color:var(--needed);}
-.badge.passed{background:var(--passed-bg);color:var(--passed);}
-.badge.failed{background:var(--failed-bg);color:var(--failed);}
-.btn{border:0;border-radius:var(--radius-sm);padding:9px 16px;font-size:13.5px;font-weight:600;cursor:pointer;transition:filter .12s;}
-.btn:hover{filter:brightness(1.05);}
-.btn-primary{background:var(--accent);color:var(--accent-ink);}
-.btn-cta{background:var(--cta);color:var(--cta-ink);}
-.btn-ghost{background:var(--canvas);color:var(--ink-soft);border:1px solid var(--line);}
-.login-wrap{display:grid;place-items:center;height:100vh;background:var(--black);}
-.login-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.4);padding:34px;width:380px;max-width:calc(100vw - 32px);}
-.login-brand{display:flex;align-items:center;gap:11px;margin-bottom:22px;}
-.login-title{font-size:19px;font-weight:700;letter-spacing:-.01em;}
-.field{margin-bottom:15px;}
-.field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;}
-.field input,.field textarea,.field select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:14px;font-family:inherit;color:var(--ink);outline:none;background:var(--surface);}
-.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,119,182,.15);}
-.field textarea{resize:vertical;min-height:60px;}
-.field .hint{font-size:12px;color:var(--ink-soft);margin-top:5px;}
-.login-btn{width:100%;padding:12px;border:0;border-radius:var(--radius-sm);background:var(--cta);color:var(--cta-ink);font-size:15px;font-weight:600;cursor:pointer;margin-top:6px;}
-.login-btn:disabled{opacity:.6;cursor:default;}
-.login-err{background:var(--failed-bg);color:var(--failed);font-size:13px;padding:10px 12px;border-radius:var(--radius-sm);margin-bottom:14px;}
-.loading-screen{display:grid;place-items:center;height:100vh;color:var(--ink-soft);font-size:14px;}
-.modal-back{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;z-index:9998;align-items:center;justify-content:center;padding:20px;}
-.modal-back.open{display:flex;}
-.modal{background:var(--surface);border-radius:var(--radius);box-shadow:0 20px 60px rgba(0,0,0,.35);width:480px;max-width:100%;padding:24px;max-height:88vh;overflow:auto;}
-.tag-picker{display:flex;flex-wrap:wrap;gap:7px;}
-.tag-opt{font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);cursor:pointer;}
-.tag-opt.on{background:var(--accent);color:var(--white);border-color:var(--accent);}
-/* ===== Mobile navigation — hamburger toggle + slide-out sidebar ===== */
-.nav-toggle{
-  display:none;
-  border:0;background:transparent;color:var(--ink);
-  font-size:22px;line-height:1;cursor:pointer;padding:4px 8px;
-}
-.nav-backdrop{
-  display:none;
-  position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:90;
-}
-@media(max-width:800px){
-  .app{grid-template-columns:1fr;}
-  .sidebar{
-    position:fixed;left:0;top:0;bottom:0;width:238px;z-index:100;
-    transform:translateX(-100%);transition:transform .2s;overflow-y:auto;
+
+// Render the proposal content as an email-safe HTML document (light theme —
+// the same palette the proposal uses on print). Inline styles only.
+function buildProposalEmail(content: any, pricing: any[], deal: any) {
+  const c = content || {}
+  const p = Array.isArray(pricing) ? pricing : []
+  const company = c.companyName || deal?.organization || 'your business'
+
+  const NAVY = '#0b3945', TEAL = '#0089A6', CORAL = '#D9553C', INK = '#33474e', MUTE = '#5f838c'
+  const eyebrow = (t: string) => `<div style="font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:${CORAL};margin:0 0 8px">${esc(t)}</div>`
+  const h2 = (t: string) => `<h2 style="font-size:22px;font-weight:800;color:${NAVY};margin:0 0 12px;line-height:1.25">${esc(t)}</h2>`
+
+  const services = (c.services || []).map((s: any) => `
+    <td width="50%" valign="top" style="padding:8px">
+      <div style="border:1px solid #dbe7eb;border-radius:12px;padding:16px 16px;background:#f6fbfd">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${TEAL};margin-bottom:6px">${esc(s.tag)}</div>
+        <div style="font-size:16px;font-weight:700;color:${NAVY};margin-bottom:5px">${esc(s.title)}</div>
+        <div style="font-size:14px;line-height:1.5;color:${INK}">${esc(s.body)}</div>
+      </div>
+    </td>`).join('')
+  // pair services into rows of 2
+  let servicesRows = ''
+  const sv = c.services || []
+  for (let i = 0; i < sv.length; i += 2) {
+    servicesRows += `<tr>${[sv[i], sv[i + 1]].filter(Boolean).map((s: any) => `
+      <td width="50%" valign="top" style="padding:8px">
+        <div style="border:1px solid #dbe7eb;border-radius:12px;padding:16px;background:#f6fbfd">
+          <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${TEAL};margin-bottom:6px">${esc(s.tag)}</div>
+          <div style="font-size:16px;font-weight:700;color:${NAVY};margin-bottom:5px">${esc(s.title)}</div>
+          <div style="font-size:14px;line-height:1.5;color:${INK}">${esc(s.body)}</div>
+        </div>
+      </td>`).join('')}</tr>`
   }
-  .sidebar.open{transform:translateX(0);}
-  .nav-toggle{display:inline-flex;align-items:center;}
-  .nav-backdrop{display:block;}
-}
-/* ===== Schedule week grid ===== */
-.grid-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);}
-.week-grid{display:grid;grid-template-columns:180px repeat(7,minmax(150px,1fr));min-width:1180px;}
-.wg-corner{position:sticky;left:0;z-index:6;background:var(--surface);border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);display:flex;align-items:center;}
-.wg-dayhead{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:8px 10px;text-align:center;background:var(--surface);}
-.wg-dayhead:last-child{border-right:none;}
-.wg-dayhead.today{background:var(--accent-bg);}
-.wg-dayname{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);}
-.wg-daydate{font-size:12px;color:var(--ink-soft);margin-top:1px;}
-.wg-daymeta{font-size:10px;color:var(--ink-soft);margin-top:3px;font-variant-numeric:tabular-nums;}
-.wg-rowlabel{position:sticky;left:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:10px 12px;display:flex;align-items:center;gap:9px;min-height:64px;}
-.wg-avatar{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;}
-.wg-person-name{font-size:12px;font-weight:600;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.wg-person-sub{font-size:10px;color:var(--ink-soft);margin-top:1px;}
-.wg-cell{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:5px;display:flex;flex-direction:column;gap:4px;min-height:64px;}
-.wg-cell:last-child{border-right:none;}
-.wg-cell.today{background:color-mix(in srgb,var(--accent-bg) 35%,transparent);}
-.wg-cell.dim{background:var(--canvas);}
-.iv{border-radius:6px;padding:5px 7px;font-size:11px;line-height:1.3;cursor:pointer;border:1px solid var(--line);background:var(--surface);transition:transform .1s,box-shadow .1s;position:relative;}
-.iv:hover{transform:translateY(-1px);box-shadow:var(--shadow);}
-.iv-time{font-weight:700;font-size:11px;white-space:nowrap;}
-.iv-sub{font-size:10px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.iv-spots{font-size:9px;font-weight:600;margin-top:2px;letter-spacing:.02em;}
-.iv.open{border-color:var(--line);}
-.iv.open .iv-spots{color:var(--accent);}
-.iv.mine{background:var(--passed-bg);border-color:var(--passed);}
-.iv.mine .iv-time{color:var(--passed);}
-.iv.mine .iv-spots{color:var(--passed);}
-.iv.taken{background:var(--accent-bg);border-color:var(--accent);opacity:.92;}
-.iv.taken .iv-time{color:var(--accent);}
-.iv.full{opacity:.55;}
-.iv.checkedin::after{content:"";position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--passed);}
-.iv.noshow{background:var(--failed-bg);border-color:var(--failed);}
-.iv.noshow .iv-time{color:var(--failed);}
-/* ===== Projects rich text editor ===== */
-.pm-rte:empty:before {
-  content: attr(data-placeholder);
-  color: var(--ink-soft);
-}
-.pm-rte ul { margin: 4px 0 4px 20px; padding: 0; }
-.pm-rte ol { margin: 4px 0 4px 20px; padding: 0; }
-.pm-rte li { margin-bottom: 2px; }
-.pm-rte b, .pm-rte strong { font-weight: 700; }
-.pm-rte i, .pm-rte em { font-style: italic; }
-.pm-mention { color: var(--accent); font-weight: 600; }
-.pm-rich ul { margin: 4px 0 4px 18px; padding: 0; }
-.pm-rich ol { margin: 4px 0 4px 18px; padding: 0; }
-.pm-rich li { margin-bottom: 2px; }
-.pm-rich .pm-mention { color: var(--accent); font-weight: 600; }
 
-/* ============================================================
-   CHAT
-   .chat-rich     — a rendered message body (renderBody)
-   .chat-composer — the contentEditable input (RichComposer)
-   .chat-emoji    — a reaction pill's emoji glyph
-   ============================================================ */
+  const brands = (c.brands || []).map((b: any) => `
+    <td valign="top" style="padding:6px;text-align:center">
+      <div style="border:1px solid #dbe7eb;border-radius:10px;padding:12px 10px;background:#f6fbfd">
+        <div style="font-size:14px;font-weight:700;color:${NAVY}">${esc(b.name)}</div>
+        <div style="font-size:12px;color:${MUTE};margin-top:2px">${esc(b.type)}</div>
+      </div>
+    </td>`).join('')
 
-/* Emoji rendering. body already carries --font-emoji, but the composer and
-   message bodies set their own font-size/inherit chains, and reaction pills
-   sit inside buttons — so restate it here rather than trust inheritance. */
-.chat-rich,
-.chat-composer,
-.chat-emoji {
-  font-family: var(--font-body), var(--font-emoji);
-}
+  const prices = p.map((pr: any) => `
+    <td width="50%" valign="top" style="padding:8px">
+      <div style="border:1px solid #dbe7eb;border-radius:12px;padding:18px;background:#f6fbfd">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${TEAL};margin-bottom:8px">${esc(pr.tag)}</div>
+        <div style="font-size:28px;font-weight:800;color:${NAVY};margin-bottom:8px">${esc(pr.price)}</div>
+        <div style="font-size:13.5px;line-height:1.5;color:${INK}">${esc(pr.description)}</div>
+      </div>
+    </td>`).join('')
 
-/* Reaction pill glyphs and the picker need color emoji at a legible size. */
-.chat-emoji { line-height: 1; }
+  const html = `
+  <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto;color:${INK};line-height:1.6;background:#fff">
+    <div style="padding:22px 24px 14px;border-bottom:1px solid #e6eef1">
+      <span style="font-size:20px;font-weight:800;color:${TEAL};letter-spacing:.02em">OpsisCX</span>
+    </div>
 
-/* @here / @update highlight.
-   This lives in a class, not an inline style, because renderBody() sanitizes
-   user HTML with ALLOWED_ATTR: [] — every attribute is stripped, including
-   any style="" we might have injected. The class survives. */
-.chat-rich .chat-mention {
-  color: var(--accent);
-  font-weight: 700;
-  background: var(--accent-bg);
-  border-radius: 4px;
-  padding: 0 3px;
+    <div style="padding:26px 24px 8px">
+      ${eyebrow('Digital Proposal · Prepared for ' + (c.preparedForName || deal?.contact_person || ''))}
+      <h1 style="font-size:28px;line-height:1.2;font-weight:800;color:${NAVY};margin:0 0 12px">${esc(c.headline || 'Your front office, handled.')}</h1>
+      <p style="font-size:16px;color:${INK};margin:0 0 16px">${esc(c.subhead || '')}</p>
+      <table role="presentation" width="100%" style="margin:8px 0 4px"><tr>
+        <td style="font-size:13px;color:${MUTE}"><b style="color:${TEAL}">Company</b><br>${esc(company)}</td>
+        <td style="font-size:13px;color:${MUTE}"><b style="color:${TEAL}">Prepared by</b><br>${esc(c.preparedBy || '')}</td>
+        <td style="font-size:13px;color:${MUTE}"><b style="color:${TEAL}">Date</b><br>${esc(c.date || '')}</td>
+      </tr></table>
+    </div>
+
+    ${c.situationLead ? `<div style="padding:14px 24px">
+      ${eyebrow('Where You Are Today')}
+      <p style="font-size:15px;color:${INK};margin:0 0 14px">${esc(c.situationLead)}</p>
+      ${c.quote ? `<div style="border-left:3px solid ${TEAL};background:#f0f9fc;border-radius:0 10px 10px 0;padding:10px 18px">
+        <p style="font-size:16px;font-style:italic;color:${NAVY};margin:0">${esc(c.quote)}</p>
+        <p style="font-size:13px;color:${MUTE};margin:8px 0 0">${esc(c.quoteAttribution || '')}</p>
+      </div>` : ''}
+    </div>` : ''}
+
+    <div style="padding:14px 16px">
+      <div style="padding:0 8px">${eyebrow('What We Propose')}${h2(c.proposeHeadline || '')}</div>
+      <table role="presentation" width="100%">${servicesRows}</table>
+    </div>
+
+    ${(c.brands && c.brands.length) ? `<div style="padding:14px 24px">
+      ${eyebrow('The Umbrella Model')}${h2(c.umbrellaHeadline || '')}
+      ${c.umbrellaLead ? `<p style="font-size:15px;color:${INK};margin:0 0 14px">${esc(c.umbrellaLead)}</p>` : ''}
+      <div style="text-align:center;margin:6px 0 10px"><span style="display:inline-block;background:${TEAL};color:#fff;font-weight:800;font-size:15px;padding:12px 26px;border-radius:10px">${esc(c.hubLabel || 'OpsisCX Operations Backbone')}</span></div>
+      <table role="presentation" width="100%"><tr>${brands}</tr></table>
+    </div>` : ''}
+
+    <div style="padding:14px 16px">
+      <div style="padding:0 8px">${eyebrow('Investment')}</div>
+      <table role="presentation" width="100%"><tr>${prices}</tr></table>
+      ${c.fineprint ? `<p style="font-size:13px;color:${MUTE};padding:6px 8px 0;margin:8px 0 0">${esc(c.fineprint)}</p>` : ''}
+    </div>
+
+    <div style="padding:22px 24px 10px;border-top:1px solid #e6eef1">
+      ${h2(c.ctaHeadline || 'Let’s map it to your season.')}
+      <p style="font-size:15px;color:${INK};margin:0 0 18px">${esc(c.ctaBody || '')}</p>
+      <a href="${CALENDLY}" style="display:inline-block;background:${TEAL};color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:13px 26px;border-radius:999px">Book a Discovery Call →</a>
+    </div>
+
+    <div style="padding:16px 24px 26px;border-top:1px solid #e6eef1;font-size:13px;color:${MUTE}">
+      <b style="color:${NAVY}">${esc(c.contactName || 'OpsisCX')}</b><br>
+      <a href="tel:${CONTACT_PHONE.replace(/[^0-9]/g, '')}" style="color:${TEAL};text-decoration:none">${CONTACT_PHONE}</a> ·
+      <a href="mailto:${CONTACT_EMAIL}" style="color:${TEAL};text-decoration:none">${CONTACT_EMAIL}</a> · opsiscx.com
+    </div>
+  </div>`
+
+  const subject = `Your OpsisCX proposal${company ? ` — ${company}` : ''}`
+  return { subject, html }
 }
 
-/* The composer toolbar can emit <ul>/<ol>. A CSS reset strips the markers,
-   so put them back — in the composer AND in the rendered message. */
-.chat-rich ul,
-.chat-composer ul { list-style: disc; margin: 4px 0 4px 20px; padding: 0; }
-.chat-rich ol,
-.chat-composer ol { list-style: decimal; margin: 4px 0 4px 20px; padding: 0; }
-.chat-rich li,
-.chat-composer li { margin-bottom: 2px; }
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
+  try {
+    const authHeader = req.headers.get('Authorization') || ''
+    if (!authHeader) return json({ error: 'Missing auth' }, 401)
+    const userClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: authHeader } } })
+    const { data: { user } } = await userClient.auth.getUser()
+    if (!user) return json({ error: 'Not authenticated' }, 401)
 
-.chat-rich b, .chat-rich strong,
-.chat-composer b, .chat-composer strong { font-weight: 700; }
-.chat-rich i, .chat-rich em,
-.chat-composer i, .chat-composer em { font-style: italic; }
-.chat-rich s, .chat-rich strike, .chat-rich del,
-.chat-composer s, .chat-composer strike, .chat-composer del { text-decoration: line-through; }
+    const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    const { data: prof } = await admin.from('profiles').select('role, is_admin').eq('id', user.id).maybeSingle()
+    const role = String(prof?.role || '').toLowerCase()
+    // Sales pipeline access = marketing + admin (matches the page gate).
+    if (!(prof?.is_admin || ['marketing', 'admin'].includes(role))) {
+      return json({ error: 'Not permitted' }, 403)
+    }
 
-/* renderBody sets white-space: pre-wrap, so <p> margins would double the
-   apparent line spacing. Collapse them, and hide the stray empty <div>s
-   contentEditable leaves behind. */
-.chat-rich p { margin: 0; }
-.chat-rich div:empty { display: none; }
+    const { kind, to, data } = await req.json()
+    if (!to) return json({ error: 'Missing recipient' }, 400)
 
-/* Links pasted into a message. */
-.chat-rich a { color: var(--accent); text-decoration: underline; }
+    // Only the proposal email is wired up right now. Other stage emails are
+    // intentionally skipped so moving a deal doesn't email the client yet.
+    if (kind !== 'proposal') return json({ ok: true, skipped: kind || 'unknown' })
 
-/* The emoji picker library renders its own surface. Round it off and make it
-   sit on our shadow so it doesn't look bolted on. */
-.EmojiPickerReact {
-  border-radius: var(--radius-sm) !important;
-  box-shadow: var(--shadow);
-}
+    const dealId = data?.dealId
+    if (!dealId) return json({ error: 'Missing dealId' }, 400)
 
-/* ============================================================
-   ADD-ONS: tighter content padding + dark mode
-   Paste this block at the END of your CSS file.
-   It overrides a few earlier rules (later CSS wins).
-   ============================================================ */
-/* ---- Tighter layout: content uses more of the screen ---- */
-.content { padding: 16px 18px; }
-.topbar  { padding: 0 18px; }
-@media (min-width: 1400px) {
-  /* on big screens, give a little more breathing room but still tight */
-  .content { padding: 18px 24px; }
-}
-/* ============================================================
-   DARK MODE
-   Two ways it activates:
-   1. Automatically, if the user's device is set to dark
-      (the @media prefers-color-scheme block), UNLESS they've
-      chosen an explicit theme.
-   2. Manually, when <html data-theme="dark"> is set by the
-      toggle (this wins over the system setting).
-   The toggle sets data-theme = "light" | "dark" | (removes it
-   for "system").
-   ============================================================ */
-/* Shared dark palette, used by both the manual and auto triggers */
-:root[data-theme="dark"] {
-  --ink:        #e8eef0;
-  --ink-soft:   #9fb4bb;
-  --cal-paper:    #161d21;
-  --cal-panel:    #1b242a;
-  --cal-line:     #2b353b;
-  --cal-line-2:   #232d33;
-  --cal-line-3:   #1e272c;
-  --cal-ink:      #e8eef0;
-  --cal-ink-soft: #b3c1c7;
-  --cal-ink-mute: #8a99a0;
-  --line:       #2a3439;
-  --line-soft:  #212a2e;
-  --surface:    #161d21;
-  --canvas:     #0d1417;
-  --accent:     #2b9fd6;
-  --accent-bg:  #16333f;
-  --accent-ink: #ffffff;
-  --passed:     #3fbf77; --passed-bg:#12301f;
-  --failed:     #e15c4d; --failed-bg:#3a1a15;
-  --needed:     #7fa6b2; --needed-bg:#1a2c31;
-  --sidebar:    #0a0f11;
-  --sidebar-soft:#6b7f86;
-  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.45);
-  --composer-toolbar-bg: #1b2327;
-}
-/* Follow the system setting automatically — but only when the user
-   hasn't explicitly picked light or dark. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]):not([data-theme="dark"]) {
-    --ink:        #e8eef0;
-    --ink-soft:   #9fb4bb;
-    --cal-paper:    #161d21;
-    --cal-panel:    #1b242a;
-    --cal-line:     #2b353b;
-    --cal-line-2:   #232d33;
-    --cal-line-3:   #1e272c;
-    --cal-ink:      #e8eef0;
-    --cal-ink-soft: #b3c1c7;
-    --cal-ink-mute: #8a99a0;
-    --line:       #2a3439;
-    --line-soft:  #212a2e;
-    --surface:    #161d21;
-    --canvas:     #0d1417;
-    --accent:     #2b9fd6;
-    --accent-bg:  #16333f;
-    --accent-ink: #ffffff;
-    --passed:     #3fbf77; --passed-bg:#12301f;
-    --failed:     #e15c4d; --failed-bg:#3a1a15;
-    --needed:     #7fa6b2; --needed-bg:#1a2c31;
-    --sidebar:    #0a0f11;
-    --sidebar-soft:#6b7f86;
-    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.45);
-    --composer-toolbar-bg: #1b2327;
+    const { data: deal } = await admin.from('deals').select('id, organization, contact_person').eq('id', dealId).maybeSingle()
+    const { data: props } = await admin.from('proposals').select('*').eq('deal_id', dealId)
+      .order('created_at', { ascending: false }).limit(1)
+    const proposal = props && props[0]
+    if (!proposal) return json({ ok: true, skipped: 'no proposal for this deal' })
+
+    const smtpUser = Deno.env.get('SALES_GMAIL_USER') || Deno.env.get('GMAIL_USER')
+    const smtpPass = Deno.env.get('SALES_GMAIL_APP_PASS') || Deno.env.get('GMAIL_APP_PASS')
+    if (!smtpUser || !smtpPass) return json({ error: 'Email not configured (set SALES_GMAIL_USER / SALES_GMAIL_APP_PASS or GMAIL_USER / GMAIL_APP_PASS)' }, 500)
+
+    const { subject, html } = buildProposalEmail(proposal.content, proposal.pricing, deal)
+    try {
+      const client = new SMTPClient({ connection: { hostname: 'smtp.gmail.com', port: 465, tls: true, auth: { username: smtpUser, password: smtpPass } } })
+      await client.send({ from: `OpsisCX <${smtpUser}>`, to, replyTo: smtpUser, subject, html })
+      await client.close()
+      await admin.from('proposals').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', proposal.id)
+      return json({ ok: true, sent_to: to, from: smtpUser })
+    } catch (e) {
+      return json({ error: 'Send failed: ' + String((e as any)?.message || e) }, 500)
+    }
+  } catch (err) {
+    return json({ error: 'Unhandled', detail: String(err) }, 500)
   }
-}
-/* A couple of spots that were pure white/black and need nudging in dark */
-:root[data-theme="dark"] .tag-opt.on,
-:root[data-theme="dark"] .badge.passed,
-:root[data-theme="dark"] .badge.failed { color: #fff; }
-
-/* The emoji picker ships a light theme by default. Ask it for dark. */
-:root[data-theme="dark"] .EmojiPickerReact {
-  --epr-bg-color: var(--surface);
-  --epr-category-label-bg-color: var(--surface);
-  --epr-text-color: var(--ink);
-  --epr-search-input-bg-color: var(--canvas);
-  --epr-picker-border-color: var(--line);
-  --epr-hover-bg-color: var(--accent-bg);
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]):not([data-theme="dark"]) .EmojiPickerReact {
-    --epr-bg-color: var(--surface);
-    --epr-category-label-bg-color: var(--surface);
-    --epr-text-color: var(--ink);
-    --epr-search-input-bg-color: var(--canvas);
-    --epr-picker-border-color: var(--line);
-    --epr-hover-bg-color: var(--accent-bg);
-  }
-}
-/* ============================================================
-   Append to index.css, inside (or just after) the CHAT block.
-   ============================================================ */
-
-/* The delete button sits in the corner of a message row and only appears on
-   hover. Without this it would show on all 200 messages at once. */
-.chat-msg-delete {
-  opacity: 0;
-  transition: opacity .12s;
-  pointer-events: none;
-}
-.chat-msg-row:hover .chat-msg-delete,
-.chat-msg-delete:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-.chat-msg-delete:hover {
-  background: var(--failed-bg) !important;
-  border-color: var(--failed) !important;
-}
-
-/* Touch devices have no hover. Show it always, faded, so it's reachable. */
-@media (hover: none) {
-  .chat-msg-delete { opacity: .45; pointer-events: auto; }
-}
-/* ============================================================
-   Append to index.css, inside (or just after) the CHAT block.
-   ============================================================ */
-
-/* The delete button sits in the corner of a message row and only appears on
-   hover. Without this it would show on all 200 messages at once. */
-.chat-msg-delete {
-  opacity: 0;
-  transition: opacity .12s;
-  pointer-events: none;
-}
-.chat-msg-row:hover .chat-msg-delete,
-.chat-msg-delete:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-.chat-msg-delete:hover {
-  background: var(--failed-bg) !important;
-  border-color: var(--failed) !important;
-}
-
-/* Touch devices have no hover. Show it always, faded, so it's reachable. */
-@media (hover: none) {
-  .chat-msg-delete { opacity: .45; pointer-events: auto; }
-}
-/* ============================================================
-   RICH EDITOR — append to index.css
-   Used by both Chat and Certification via <RichEditor> / <RichContent>.
-
-   TipTap ships NO styles. Without these, tables render as unstyled inline
-   text with no borders and no visible cells.
-   ============================================================ */
-
-.re-wrap {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  overflow: visible;
-  position: relative;
-}
-.re-wrap.disabled { opacity: .6; pointer-events: none; }
-.re-wrap:focus-within { border-color: var(--accent); }
-
-/* ---- toolbar ---- */
-.re-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  flex-wrap: wrap;
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--line-soft);
-  background: var(--composer-toolbar-bg);
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-}
-.re-btn {
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  color: var(--ink-soft);
-  font-size: 13px;
-  font-family: inherit;
-  min-width: 28px;
-  height: 26px;
-  padding: 0 5px;
-  border-radius: 5px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.re-btn:hover:not(:disabled) { background: var(--accent-bg); color: var(--accent); }
-.re-btn.on { background: var(--accent); color: var(--accent-ink); }
-.re-btn:disabled { opacity: .35; cursor: default; }
-.re-sep { width: 1px; height: 16px; background: var(--line); margin: 0 4px; flex: none; }
-
-/* ---- colour popover ---- */
-.re-popover {
-  position: absolute;
-  top: 30px;
-  left: 0;
-  z-index: 61;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
-  padding: 8px;
-}
-.re-swatch {
-  width: 20px; height: 20px;
-  border-radius: 4px;
-  border: 1px solid var(--line);
-  cursor: pointer;
-  padding: 0;
-}
-.re-swatch:hover { transform: scale(1.12); }
-.re-clear {
-  width: 100%;
-  border: 1px solid var(--line);
-  background: var(--canvas);
-  color: var(--ink-soft);
-  font-size: 11.5px;
-  font-family: inherit;
-  padding: 4px;
-  border-radius: 5px;
-  cursor: pointer;
-}
-
-/* ---- the editable surface ---- */
-.re-content {
-  outline: none;
-  padding: 10px 12px;
-  overflow-y: auto;
-  font-size: 14px;
-  line-height: 1.55;
-  color: var(--ink);
-}
-
-/* TipTap's Placeholder extension marks the first empty node. Without this rule
-   the placeholder text never appears. */
-.re-content p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  color: var(--ink-soft);
-  float: left;
-  height: 0;
-  pointer-events: none;
-}
-
-/* ============================================================
-   SHARED CONTENT STYLES
-   Apply to BOTH the editor surface and the rendered output, so what you type
-   is what you see. Any rule that only lands on one of them is a bug waiting.
-   ============================================================ */
-
-.re-content, .re-rendered {
-  font-family: var(--font-body), var(--font-emoji);
-  word-break: break-word;
-}
-
-.re-content p, .re-rendered p { margin: 0 0 6px; }
-.re-content p:last-child, .re-rendered p:last-child { margin-bottom: 0; }
-
-.re-content h1, .re-rendered h1 { font-size: 21px; font-weight: 700; margin: 14px 0 6px; letter-spacing: -.01em; }
-.re-content h2, .re-rendered h2 { font-size: 17px; font-weight: 700; margin: 12px 0 5px; }
-.re-content h3, .re-rendered h3 { font-size: 15px; font-weight: 600; margin: 10px 0 4px; }
-.re-content h1:first-child, .re-rendered h1:first-child,
-.re-content h2:first-child, .re-rendered h2:first-child,
-.re-content h3:first-child, .re-rendered h3:first-child { margin-top: 0; }
-
-.re-content ul, .re-rendered ul { list-style: disc;    margin: 4px 0 6px 20px; padding: 0; }
-.re-content ol, .re-rendered ol { list-style: decimal; margin: 4px 0 6px 20px; padding: 0; }
-.re-content li, .re-rendered li { margin: 2px 0; }
-.re-content li p, .re-rendered li p { margin: 0; }
-
-.re-content blockquote, .re-rendered blockquote {
-  border-left: 3px solid var(--line);
-  margin: 6px 0;
-  padding: 2px 0 2px 12px;
-  color: var(--ink-soft);
-}
-
-.re-content code, .re-rendered code {
-  background: var(--canvas);
-  border: 1px solid var(--line-soft);
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: .9em;
-}
-.re-content pre, .re-rendered pre {
-  background: var(--canvas);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  overflow-x: auto;
-  margin: 6px 0;
-}
-.re-content pre code, .re-rendered pre code { background: none; border: 0; padding: 0; }
-
-.re-content a, .re-rendered a { color: var(--accent); text-decoration: underline; cursor: pointer; }
-
-.re-content hr, .re-rendered hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
-
-/* ---- tables ----
-   `border-collapse: collapse` plus `table-layout: fixed` is what makes
-   ProseMirror's column resizing behave. Without fixed layout, dragging a
-   column border does nothing visible. */
-.re-content table, .re-rendered table {
-  border-collapse: collapse;
-  table-layout: fixed;
-  width: 100%;
-  margin: 8px 0;
-  overflow: hidden;
-}
-.re-content td, .re-content th,
-.re-rendered td, .re-rendered th {
-  border: 1px solid var(--line);
-  padding: 6px 9px;
-  vertical-align: top;
-  position: relative;
-  min-width: 1em;
-  font-size: 13.5px;
-}
-.re-content th, .re-rendered th {
-  background: var(--canvas);
-  font-weight: 700;
-  text-align: left;
-}
-.re-content .selectedCell:after {
-  /* ProseMirror marks selected cells with this class. */
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--accent-bg);
-  opacity: .5;
-  pointer-events: none;
-}
-.re-content .column-resize-handle {
-  position: absolute;
-  right: -2px; top: 0; bottom: 0;
-  width: 4px;
-  background: var(--accent);
-  cursor: col-resize;
-}
-.re-content.resize-cursor { cursor: col-resize; }
-
-/* ProseMirror's gap cursor: the blinking line shown when the caret sits
-   between two block nodes (e.g. just after a table). Invisible without this. */
-.ProseMirror-gapcursor { display: none; pointer-events: none; position: absolute; }
-.ProseMirror-gapcursor:after {
-  content: '';
-  display: block;
-  position: absolute;
-  top: -2px;
-  width: 20px;
-  border-top: 1px solid var(--ink);
-  animation: re-blink 1.1s steps(2, start) infinite;
-}
-.ProseMirror-focused .ProseMirror-gapcursor { display: block; }
-@keyframes re-blink { to { visibility: hidden; } }
-
-/* Rendered output is not editable, so it needs no min-height or padding. */
-.re-rendered { font-size: 14px; line-height: 1.55; }
-
-/* @here / @update, set by RichContent after sanitizing. */
-.re-rendered .chat-mention {
-  color: var(--accent);
-  font-weight: 700;
-  background: var(--accent-bg);
-  border-radius: 4px;
-  padding: 0 3px;
-}
-
-/* ---- @mention autocomplete ----
-   The popup is appended to <body>, not to the editor, so it can escape the
-   composer's overflow:auto without being clipped. Position is set inline. */
-.re-mention-popup {
-  position: fixed;
-  z-index: 200;
-}
-.re-mention-list {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 6px 20px rgba(0,0,0,.14);
-  overflow: hidden;
-  width: 240px;
-  max-height: 220px;
-  overflow-y: auto;
-}
-.re-mention-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  cursor: pointer;
-  padding: 8px 10px;
-  font-size: 13px;
-  font-family: inherit;
-}
-.re-mention-item.on { background: var(--accent-bg); color: var(--accent); }
-.re-mention-av {
-  width: 22px; height: 22px;
-  border-radius: 50%;
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font-size: 10px;
-  font-weight: 700;
-  flex: none;
-}
-/* ===== Rich text rendering (RichContent) ===== */
-.rich-full h1 { font-size: 22px; font-weight: 600; margin: 18px 0 8px; }
-.rich-full h2 { font-size: 18px; font-weight: 600; margin: 16px 0 7px; }
-.rich-full h3 { font-size: 16px; font-weight: 600; margin: 14px 0 6px; }
-.rich-full h4 { font-size: 15px; font-weight: 600; margin: 12px 0 5px; }
-
-.rich-full p { margin: 10px 0; }
-
-.rich-full ul,
-.rich-full ol { margin: 10px 0; padding-left: 22px; }
-.rich-full li { margin: 4px 0; }
-
-.rich-full a {
-  color: var(--accent);
-  text-decoration: underline;
-}
-
-.rich-full blockquote {
-  border-left: 3px solid var(--line);
-  padding-left: 12px;
-  margin: 12px 0;
-  color: var(--ink-soft);
-}
-
-.rich-full hr {
-  border: 0;
-  border-top: 1px solid var(--line);
-  margin: 16px 0;
-}
-
-.rich-full code {
-  background: var(--canvas);
-  padding: 2px 5px;
-  border-radius: 4px;
-  font-size: 0.9em;
-}
-
-.rich-full pre {
-  background: var(--canvas);
-  padding: 12px;
-  border-radius: 8px;
-  overflow-x: auto;
-}
-.rich-full pre code { background: none; padding: 0; }
-
-.rich-full table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 14px 0;
-  table-layout: fixed;
-}
-.rich-full th,
-.rich-full td {
-  border: 1px solid var(--line);
-  padding: 8px 10px;
-  text-align: left;
-  vertical-align: top;
-}
-.rich-full th {
-  background: var(--canvas);
-  font-weight: 600;
-}
-
-.rich-full > :first-child { margin-top: 0; }
-.rich-full > :last-child { margin-bottom: 0; }
-
-/* Recording indicator on the assessment form */
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
-}
-
-/* Course builder: reveal the lesson delete control on hover/focus only, so
-   the sidebar stays clean but delete is always one click away. */
-.lesson-row .lesson-del { opacity: 0; transition: opacity .12s ease; }
-.lesson-row:hover .lesson-del,
-.lesson-row .lesson-del:focus-visible { opacity: 1; }
-.lesson-row .lesson-del:hover { color: var(--failed); background: var(--failed-bg); }
+})
