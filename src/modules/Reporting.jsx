@@ -82,8 +82,11 @@ export default function Reporting() {
   useEffect(() => { load() }, [load])
 
   const nameOf = useCallback((id, list) => (list.find(x => x.id === id) || {}).full_name || (list.find(x => x.id === id) || {}).name || '—', [])
-  const clientOfTask = useCallback((taskId) => {
-    const t = tasks.find(x => x.id === taskId)
+  // Client for a time entry: meetings carry client_id directly; task timers
+  // derive the client from their task.
+  const clientOfEntry = useCallback((e) => {
+    if (e.client_id) return clients.find(c => c.id === e.client_id) || null
+    const t = tasks.find(x => x.id === e.task_id)
     if (!t || !t.client_id) return null
     return clients.find(c => c.id === t.client_id) || null
   }, [tasks, clients])
@@ -96,7 +99,7 @@ export default function Reporting() {
     for (const e of entries) {
       const min = e.duration_minutes || 0
       if (!min) continue
-      const cl = clientOfTask(e.task_id)
+      const cl = clientOfEntry(e)
       const clientKey = cl ? cl.id : '__none__'
       clientLabel[clientKey] = cl ? cl.name : 'No client'
 
@@ -109,7 +112,7 @@ export default function Reporting() {
       byClient[clientKey].people[e.user_id] = (byClient[clientKey].people[e.user_id] || 0) + min
     }
     return { byPerson, byClient, clientLabel }
-  }, [entries, clientOfTask])
+  }, [entries, clientOfEntry])
 
   const grandTotal = useMemo(() => hoursFromMinutes(entries.reduce((s, e) => s + (e.duration_minutes || 0), 0)), [entries])
 
@@ -154,22 +157,29 @@ export default function Reporting() {
     return t ? t.name : '(deleted task)'
   }, [tasks])
 
-  // Build task-level line items for exports: one row per person+task
-  // (client derived from the task), with summed hours.
+  // Label for a line item: task timers show the task name; meetings (no task)
+  // show the meeting title captured in the entry note.
+  const itemLabel = useCallback((li) => (
+    li.isMeeting ? (li.label || 'Meeting') : taskName(li.taskId)
+  ), [taskName])
+
+  // Build line items for exports/rows. Task timers roll up per person+task;
+  // each meeting is its own line (keyed by entry id) so titles stay distinct.
   const lineItems = useMemo(() => {
-    // key: personId||taskId -> { personId, taskId, clientKey, minutes }
     const map = {}
     for (const e of entries) {
       const min = e.duration_minutes || 0
       if (!min) continue
-      const cl = clientOfTask(e.task_id)
+      const cl = clientOfEntry(e)
       const clientKey = cl ? cl.id : '__none__'
-      const key = e.user_id + '||' + e.task_id
-      if (!map[key]) map[key] = { personId: e.user_id, taskId: e.task_id, clientKey, minutes: 0 }
+      const isMeeting = !e.task_id
+      const itemKey = isMeeting ? ('m:' + e.id) : ('t:' + e.task_id)
+      const key = e.user_id + '||' + itemKey
+      if (!map[key]) map[key] = { personId: e.user_id, taskId: e.task_id, itemKey, isMeeting, label: isMeeting ? (e.note || 'Meeting') : null, clientKey, minutes: 0 }
       map[key].minutes += min
     }
     return Object.values(map)
-  }, [entries, clientOfTask])
+  }, [entries, clientOfEntry])
 
   function exportPersonCSV() {
     const header = ['Person', 'Client', 'Task', 'Hours']
@@ -184,10 +194,10 @@ export default function Reporting() {
       .forEach(pid => {
         const items = byPerson[pid].sort((a, b) => {
           const ca = grouped.clientLabel[a.clientKey] || '', cb = grouped.clientLabel[b.clientKey] || ''
-          return ca.localeCompare(cb) || taskName(a.taskId).localeCompare(taskName(b.taskId))
+          return ca.localeCompare(cb) || itemLabel(a).localeCompare(itemLabel(b))
         })
         items.forEach(li => {
-          rows.push([nameOf(pid, profiles), grouped.clientLabel[li.clientKey], taskName(li.taskId), hoursFromMinutes(li.minutes)])
+          rows.push([nameOf(pid, profiles), grouped.clientLabel[li.clientKey], itemLabel(li) + (li.isMeeting ? ' (meeting)' : ''), hoursFromMinutes(li.minutes)])
         })
         rows.push([nameOf(pid, profiles), 'TOTAL', '', hoursFromMinutes(grouped.byPerson[pid].total)])
       })
@@ -207,10 +217,10 @@ export default function Reporting() {
       .forEach(ck => {
         const items = byClient[ck].sort((a, b) => {
           const pa = nameOf(a.personId, profiles), pb = nameOf(b.personId, profiles)
-          return pa.localeCompare(pb) || taskName(a.taskId).localeCompare(taskName(b.taskId))
+          return pa.localeCompare(pb) || itemLabel(a).localeCompare(itemLabel(b))
         })
         items.forEach(li => {
-          rows.push([grouped.clientLabel[ck], nameOf(li.personId, profiles), taskName(li.taskId), hoursFromMinutes(li.minutes)])
+          rows.push([grouped.clientLabel[ck], nameOf(li.personId, profiles), itemLabel(li) + (li.isMeeting ? ' (meeting)' : ''), hoursFromMinutes(li.minutes)])
         })
         rows.push([grouped.clientLabel[ck], 'TOTAL', '', hoursFromMinutes(grouped.byClient[ck].total)])
       })
@@ -282,7 +292,7 @@ export default function Reporting() {
     <div>
       <div style={{ marginBottom: 20 }}>
         <h1 className="page-title">Reporting</h1>
-        <p className="page-sub">Tracked task time by person (payroll) and by client (invoicing). Hours only — apply your own rates.</p>
+        <p className="page-sub">Tracked task &amp; meeting time by person (payroll) and by client (invoicing). Client meetings sync automatically from Fathom. Hours only — apply your own rates.</p>
       </div>
 
       {/* controls */}
@@ -440,10 +450,10 @@ export default function Reporting() {
                               <td style={cellR}>{hoursFromMinutes(min)} hrs</td>
                             </tr>
                             {lineItems.filter(li => li.personId === pid && li.clientKey === ck)
-                              .sort((a, b) => taskName(a.taskId).localeCompare(taskName(b.taskId)))
+                              .sort((a, b) => itemLabel(a).localeCompare(itemLabel(b)))
                               .map(li => (
-                                <tr key={li.taskId}>
-                                  <td style={{ ...cellL, paddingLeft: 32, color: 'var(--ink-soft)', fontSize: 12 }}>{taskName(li.taskId)}</td>
+                                <tr key={li.itemKey}>
+                                  <td style={{ ...cellL, paddingLeft: 32, color: 'var(--ink-soft)', fontSize: 12 }}>{itemLabel(li)}{li.isMeeting && <span style={meetingTag}>meeting</span>}</td>
                                   <td style={{ ...cellR, color: 'var(--ink-soft)', fontWeight: 500, fontSize: 12 }}>{hoursFromMinutes(li.minutes)} hrs</td>
                                 </tr>
                               ))}
@@ -473,10 +483,10 @@ export default function Reporting() {
                               <td style={cellR}>{hoursFromMinutes(min)} hrs</td>
                             </tr>
                             {lineItems.filter(li => li.clientKey === ck && li.personId === pid)
-                              .sort((a, b) => taskName(a.taskId).localeCompare(taskName(b.taskId)))
+                              .sort((a, b) => itemLabel(a).localeCompare(itemLabel(b)))
                               .map(li => (
-                                <tr key={li.taskId}>
-                                  <td style={{ ...cellL, paddingLeft: 32, color: 'var(--ink-soft)', fontSize: 12 }}>{taskName(li.taskId)}</td>
+                                <tr key={li.itemKey}>
+                                  <td style={{ ...cellL, paddingLeft: 32, color: 'var(--ink-soft)', fontSize: 12 }}>{itemLabel(li)}{li.isMeeting && <span style={meetingTag}>meeting</span>}</td>
                                   <td style={{ ...cellR, color: 'var(--ink-soft)', fontWeight: 500, fontSize: 12 }}>{hoursFromMinutes(li.minutes)} hrs</td>
                                 </tr>
                               ))}
@@ -498,6 +508,7 @@ const lbl = { fontSize: 12, fontWeight: 600, color: 'var(--ink-soft)' }
 const inp = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }
 const cellL = { padding: '9px 16px', borderBottom: '1px solid var(--line-soft)', fontSize: 13 }
 const cellR = { padding: '9px 16px', borderBottom: '1px solid var(--line-soft)', fontSize: 13, fontWeight: 600, textAlign: 'right', whiteSpace: 'nowrap' }
+const meetingTag = { marginLeft: 8, background: 'var(--accent-bg, var(--line-soft))', color: 'var(--accent)', fontSize: 10, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', padding: '1px 6px', borderRadius: 8, verticalAlign: 'middle' }
 function tabBtn(active) {
   return { padding: '8px 14px', border: 0, background: active ? 'var(--accent)' : 'var(--surface)', color: active ? '#fff' : 'var(--ink-soft)', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }
 }
