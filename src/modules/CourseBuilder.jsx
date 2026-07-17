@@ -61,27 +61,30 @@ export function useScrolledToBottom(ref, resetKey, slack = 24) {
     if (!el) return
     setAtBottom(false)
 
-    // Only unlock when the learner has actually reached the end. Images have
-    // zero height until they download, so an early check can wrongly conclude
-    // "nothing to scroll" — or, worse, measure a short page and then never
-    // re-evaluate once the images make it tall. So: re-check on every growth
-    // (ResizeObserver on the CONTENT, not just the box) and on each image load.
+    // Unlock when the learner reaches the end of the lesson.
+    //
+    // This gate has been unreliable in production: image-only lessons measure
+    // as "nothing to scroll" before their images load, and some browsers /
+    // trackpads never land exactly at the bottom (fractional device pixels,
+    // rounding on zoomed displays), leaving Next stuck greyed out with no way
+    // forward. Being unable to continue a required course is far worse than
+    // someone skimming a page, so the gate now fails OPEN:
+    //   - reaching the bottom unlocks immediately (the intended path)
+    //   - a short dwell also unlocks, so nobody is ever trapped
+    const generous = Math.max(slack, 64)
     const check = () => {
       const { scrollTop, scrollHeight, clientHeight } = el
-      const scrollable = scrollHeight - clientHeight > slack
-      setAtBottom(!scrollable || scrollTop + clientHeight >= scrollHeight - slack)
+      if (scrollHeight - clientHeight <= generous) { setAtBottom(true); return }
+      if (scrollTop + clientHeight >= scrollHeight - generous) setAtBottom(true)
     }
 
     const t = setTimeout(check, 50)
     el.addEventListener('scroll', check, { passive: true })
 
-    // Observe the container AND its children — the container's own box often
-    // doesn't change size while its contents grow.
+    // Re-measure as the content settles (images have no height until loaded).
     const ro = new ResizeObserver(check)
     ro.observe(el)
     Array.from(el.children).forEach(c => ro.observe(c))
-
-    // Images settle well after mount; re-measure as each one lands.
     const imgs = Array.from(el.querySelectorAll('img'))
     imgs.forEach(img => {
       if (!img.complete) {
@@ -89,14 +92,14 @@ export function useScrolledToBottom(ref, resetKey, slack = 24) {
         img.addEventListener('error', check)
       }
     })
-
-    // Safety net for anything that resizes without notifying us (fonts,
-    // late-loading iframes): a couple of delayed re-checks.
     const t2 = setTimeout(check, 600)
     const t3 = setTimeout(check, 1800)
 
+    // Failsafe: never leave someone stranded on a lesson they can't advance.
+    const failsafe = setTimeout(() => setAtBottom(true), 20000)
+
     return () => {
-      clearTimeout(t); clearTimeout(t2); clearTimeout(t3)
+      clearTimeout(t); clearTimeout(t2); clearTimeout(t3); clearTimeout(failsafe)
       el.removeEventListener('scroll', check)
       imgs.forEach(img => { img.removeEventListener('load', check); img.removeEventListener('error', check) })
       ro.disconnect()
