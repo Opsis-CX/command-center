@@ -124,7 +124,7 @@ export default function CourseBuilder() {
     setLoading(true); setErr('')
     try {
       const [cRes, certRes] = await Promise.all([
-        supabase.from('courses').select('*').order('created_at', { ascending: false }),
+        supabase.from('courses').select('*').order('sort_order').order('created_at', { ascending: false }),
         supabase.from('certifications').select('id, name').eq('active', true).order('name'),
       ])
       if (cRes.error) throw cRes.error
@@ -178,6 +178,7 @@ export default function CourseBuilder() {
                   ? <>Grants: <b style={{ color: 'var(--ink)' }}>{certs.find(x => x.id === c.certification_id)?.name || 'Unknown certification'}</b></>
                   : 'Standalone course — grants no certification'}
                 {' · '}Pass mark {c.pass_threshold ?? 80}%
+                {c.sort_order ? <> · Order {c.sort_order}</> : <> · Unsequenced</>}
               </div>
               <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button className="btn btn-ghost" onClick={() => setEditingId(c.id)}>Edit content</button>
@@ -206,6 +207,7 @@ function CourseModal({ course, certs, onClose, onSaved }) {
   const [description, setDescription] = useState(course?.description || '')
   const [certId, setCertId] = useState(course?.certification_id || '')
   const [passThreshold, setPassThreshold] = useState(course?.pass_threshold ?? 80)
+  const [sortOrder, setSortOrder] = useState(course?.sort_order ?? 0)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -219,6 +221,7 @@ function CourseModal({ course, certs, onClose, onSaved }) {
         description: description.trim() || null,
         certification_id: certId || null,
         pass_threshold: passThreshold,
+        sort_order: Number(sortOrder) || 0,
       }
       if (editing) {
         const { error } = await supabase.from('courses')
@@ -253,6 +256,11 @@ function CourseModal({ course, certs, onClose, onSaved }) {
           </select></div>
         <div className="field"><label>Pass mark (%)</label>
           <input type="number" min="0" max="100" value={passThreshold} onChange={e => setPassThreshold(+e.target.value)} style={{ width: 100 }} /></div>
+        <div className="field">
+          <label>Course order</label>
+          <input type="number" min="0" value={sortOrder} onChange={e => setSortOrder(e.target.value)} style={{ width: 100 }} />
+          <div className="hint">Agents work through courses in this order — a course stays locked until every lower-numbered course is passed. Use 0 for a standalone course with no prerequisites.</div>
+        </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={saving}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Create & build'}</button>
