@@ -9,6 +9,7 @@ import { useAuth } from './lib/auth'
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 import Certifications from './modules/Certifications'
+import MyCertifications from './modules/MyCertifications'
 import MyCourses from './modules/MyCourses'
 import Dashboard from './modules/Dashboard'
 import { Placeholder } from './modules/Placeholders'
@@ -115,7 +116,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/chat" element={canAny(appRole, 'chat') ? <Chat /> : <Placeholder title="No access" note="You don't have access to this area." />} />
               {canAny(appRole, 'certifications.all') && <Route path="/certifications" element={<Certifications />} />}
               {canAny(appRole, 'certifications.builder') && <Route path="/courses" element={<CourseBuilder />} />}
-              {canAny(appRole, 'certifications.assigned_to_complete') && <Route path="/my-certifications" element={<Placeholder title="My certifications" note="These unlock the schedules you can claim." />} />}
+              {canAny(appRole, 'certifications.assigned_to_complete') && <Route path="/my-certifications" element={<MyCertifications />} />}
               {canAny(appRole, 'certifications.assigned_to_complete') && <Route path="/my-courses" element={<MyCourses />} />}
               {canAny(appRole, 'project_management') && <Route path="/projects" element={<Projects />} />}
               {canAny(appRole, 'clients.view_only') && <Route path="/clients" element={<Clients />} />}
