@@ -151,7 +151,7 @@ export default function Settings() {
         <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Your timezone</div>
         <p className="page-sub" style={{ marginTop: 0, fontSize: 13, marginBottom: 14 }}>
           Schedules are set in company time ({tzAbbrev(COMPANY_TZ)}). Choose your timezone and all times across
-          Command Center — your calendar, shifts, and check-in — will show in your local time.
+          Command Center — your calendar, intervals, and check-in — will show in your local time.
         </p>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
