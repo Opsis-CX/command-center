@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
+import { canAny } from '../lib/permissions'
 
 // Certifications: list, create (assign by tag), and delete.
 export default function Certifications() {
+  const { appRole } = useAuth()
+  // Certification staff and admins manage certifications (permission
+  // 'certifications.all'); everyone else sees them read-only.
+  const canEdit = canAny(appRole, 'certifications.all')
   const [certs, setCerts] = useState([])
   const [records, setRecords] = useState([])
   const [tags, setTags] = useState([])
@@ -10,21 +16,26 @@ export default function Certifications() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [editCert, setEditCert] = useState(null)   // cert being edited (with tagIds)
 
   useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true); setErr('')
     try {
-      const [certsRes, recsRes, tagsRes, ctRes] = await Promise.all([
+      const [certsRes, recsRes, tagsRes, ctRes, asgRes] = await Promise.all([
         supabase.from('certifications').select('*').eq('active', true).order('name'),
         supabase.from('cert_record_status').select('*'),
         supabase.from('tags').select('*').order('name'),
         supabase.from('call_types').select('*').eq('active', true).order('name'),
+        supabase.from('certification_assignments').select('certification_id, tag_id'),
       ])
       if (certsRes.error) throw certsRes.error
       if (recsRes.error) throw recsRes.error
-      setCerts(certsRes.data || [])
+      // attach each cert's tag ids so Edit opens with them already picked
+      const byCert = {}
+      ;(asgRes.data || []).forEach(a => { (byCert[a.certification_id] = byCert[a.certification_id] || []).push(a.tag_id) })
+      setCerts((certsRes.data || []).map(c => ({ ...c, tagIds: byCert[c.id] || [] })))
       setRecords(recsRes.data || [])
       setTags(tagsRes.data || [])
       setCallTypes(ctRes.data || [])
@@ -69,7 +80,7 @@ export default function Certifications() {
           <h1 className="page-title">Certifications</h1>
           <p className="page-sub">Create certifications, assign them by tag, and track who has passed.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New certification</button>
+        {canEdit && <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New certification</button>}
       </div>
 
       {loading && <p className="page-sub">Loading…</p>}
@@ -84,7 +95,7 @@ export default function Certifications() {
       {!loading && !err && certs.length === 0 && (
         <div className="card">
           <div className="page-sub" style={{ textAlign: 'center', padding: 24 }}>
-            No certifications yet. Click <b>+ New certification</b> to create your first one.
+            No certifications yet.{canEdit ? <> Click <b>+ New certification</b> to create your first one.</> : ''}
           </div>
         </div>
       )}
@@ -101,32 +112,49 @@ export default function Certifications() {
                 <span className="badge passed">{s.passed} passed</span>
                 <span className="badge failed">{s.failed} failed</span>
               </div>
-              <div style={{ marginTop: 12 }}>
-                <button className="btn btn-ghost" style={{ color: 'var(--failed)', borderColor: 'var(--failed-bg)', fontSize: 12.5, padding: '6px 12px' }}
-                  onClick={() => deleteCert(cert)}>Delete</button>
-              </div>
+              {canEdit && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '6px 12px' }}
+                    onClick={() => setEditCert(cert)}>Edit</button>
+                  <button className="btn btn-ghost" style={{ color: 'var(--failed)', borderColor: 'var(--failed-bg)', fontSize: 12.5, padding: '6px 12px' }}
+                    onClick={() => deleteCert(cert)}>Delete</button>
+                </div>
+              )}
             </div>
           )
         })}
       </div>
 
-      {showCreate && (
-        <CreateCertModal
+      {showCreate && canEdit && (
+        <CertModal
+          cert={null}
           tags={tags}
           callTypes={callTypes}
           onClose={() => setShowCreate(false)}
-          onCreated={() => { setShowCreate(false); load() }}
+          onSaved={() => { setShowCreate(false); load() }}
+        />
+      )}
+
+      {editCert && canEdit && (
+        <CertModal
+          cert={editCert}
+          tags={tags}
+          callTypes={callTypes}
+          onClose={() => setEditCert(null)}
+          onSaved={() => { setEditCert(null); load() }}
         />
       )}
     </div>
   )
 }
 
-function CreateCertModal({ tags, callTypes, onClose, onCreated }) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [callTypeId, setCallTypeId] = useState('')
-  const [pickedTags, setPickedTags] = useState([])
+// One modal for both create and edit. `cert` null = creating a new one.
+function CertModal({ cert, tags, callTypes, onClose, onSaved }) {
+  const editing = !!cert
+  const [name, setName] = useState(cert?.name || '')
+  const [description, setDescription] = useState(cert?.description || '')
+  const [callTypeId, setCallTypeId] = useState(cert?.call_type_id || '')
+  const [pickedTags, setPickedTags] = useState(cert?.tagIds || [])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -139,33 +167,53 @@ function CreateCertModal({ tags, callTypes, onClose, onCreated }) {
     setSaving(true); setErr('')
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      const { data: cert, error: ce } = await supabase
-        .from('certifications')
-        .insert({
+      let certId = cert?.id
+
+      if (editing) {
+        const { error: ue } = await supabase.from('certifications').update({
           name: name.trim(),
           description: description.trim() || null,
           call_type_id: callTypeId || null,
-          active: true,
-          created_by: user?.id ?? null,
-        })
-        .select()
-        .single()
-      if (ce) throw ce
+          updated_at: new Date().toISOString(),
+        }).eq('id', certId)
+        if (ue) throw ue
+        // Replace the tag assignments with the current picks. Simpler and safer
+        // than diffing, and sync_cert_assignment reconciles agent records after.
+        const { error: de } = await supabase.from('certification_assignments').delete().eq('certification_id', certId)
+        if (de) throw de
+      } else {
+        const { data: created, error: ce } = await supabase
+          .from('certifications')
+          .insert({
+            name: name.trim(),
+            description: description.trim() || null,
+            call_type_id: callTypeId || null,
+            active: true,
+            created_by: user?.id ?? null,
+          })
+          .select()
+          .single()
+        if (ce) throw ce
+        certId = created.id
+      }
 
       if (pickedTags.length) {
         const rows = pickedTags.map(tagId => ({
-          certification_id: cert.id,
+          certification_id: certId,
           tag_id: tagId,
           assigned_by: user?.id ?? null,
         }))
         const { error: ae } = await supabase.from('certification_assignments').insert(rows)
         if (ae) throw ae
-        const { error: se } = await supabase.rpc('sync_cert_assignment', { p_certification_id: cert.id })
-        if (se) throw se
       }
-      onCreated()
+      // Reconcile who needs this certification, for both create and edit
+      // (an edit that removes a tag must drop those agents' records too).
+      const { error: se } = await supabase.rpc('sync_cert_assignment', { p_certification_id: certId })
+      if (se) throw se
+
+      onSaved()
     } catch (e) {
-      setErr(e.message || 'Could not create certification')
+      setErr(e.message || (editing ? 'Could not save certification' : 'Could not create certification'))
       setSaving(false)
     }
   }
@@ -173,8 +221,10 @@ function CreateCertModal({ tags, callTypes, onClose, onCreated }) {
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal">
-        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>New certification</h3>
-        <p className="page-sub" style={{ marginBottom: 18 }}>Create the credential, then build its course and quiz.</p>
+        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>{editing ? 'Edit certification' : 'New certification'}</h3>
+        <p className="page-sub" style={{ marginBottom: 18 }}>
+          {editing ? 'Changing tags updates who needs this certification.' : 'Create the credential, then build its course and quiz.'}
+        </p>
 
         {err && <div className="login-err" style={{ marginBottom: 14 }}>{err}</div>}
 
@@ -218,7 +268,7 @@ function CreateCertModal({ tags, callTypes, onClose, onCreated }) {
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={saving}>
-            {saving ? 'Creating…' : 'Create certification'}
+            {saving ? 'Saving…' : editing ? 'Save changes' : 'Create certification'}
           </button>
         </div>
       </div>
