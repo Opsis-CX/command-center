@@ -463,6 +463,7 @@ function LessonBody({ lesson, onSave }) {
       : type === 'image' ? { type: 'image', url: '' }
       : type === 'video' ? { type: 'video', embed: '' }
       : type === 'file' ? { type: 'file', url: '', name: '', size: 0, mime: '' }
+      : type === 'kb' ? { type: 'kb', article_id: '', title: '', note: '' }
       : { type: 'callout', tone: 'info', html: '' }
     const block = { ...base, _id: nextBlockId() }
     setBlocks(bs => {
@@ -532,6 +533,7 @@ function LessonBody({ lesson, onSave }) {
         <AddBtn onClick={() => addBlock('image')}>🖼 Image</AddBtn>
         <AddBtn onClick={() => addBlock('video')}>▶ Video</AddBtn>
         <AddBtn onClick={() => addBlock('file')}>📎 File</AddBtn>
+        <AddBtn onClick={() => addBlock('kb')}>📚 KB article</AddBtn>
         <AddBtn onClick={() => addBlock('callout')}>💡 Insight</AddBtn>
       </div>
 
@@ -606,6 +608,15 @@ function LessonBody({ lesson, onSave }) {
                 </div>
               : <input placeholder="Paste video link (YouTube, Vimeo)" onChange={e => setBlock(b._id, { embed: toEmbed(e.target.value) })}
                   style={{ width: '100%', padding: 9, border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit' }} />)}
+
+            {b.type === 'kb' && (
+              <KbArticlePicker
+                articleId={b.article_id}
+                note={b.note}
+                onPick={(a) => setBlock(b._id, { article_id: a?.id || '', title: a?.title || '' })}
+                onNote={(v) => setBlock(b._id, { note: v })}
+              />
+            )}
 
             {b.type === 'file' && (b.url
               ? <div style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', background: 'var(--surface)' }}>
@@ -699,6 +710,21 @@ export function LessonView({ blocks }) {
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, borderRadius: 10 }} />
           </div>
         }
+        if (b.type === 'kb' && b.article_id) {
+          // Deep-links into the Knowledge Base (/knowledge?id=…). New tab, so a
+          // learner mid-lesson doesn't lose their place.
+          return (
+            <a key={i} href={`/knowledge?id=${b.article_id}`} target="_blank" rel="noreferrer"
+              style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1px solid var(--line)', borderLeft: '3px solid var(--accent)', borderRadius: 10, padding: '12px 14px', margin: '14px 0', textDecoration: 'none', color: 'inherit', background: 'var(--surface)' }}>
+              <span style={{ fontSize: 20, flex: 'none' }}>📚</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--accent)' }}>{b.title || 'Knowledge Base article'}</div>
+                {b.note && <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginTop: 2 }}>{b.note}</div>}
+              </div>
+              <span style={{ fontSize: 12, color: 'var(--ink-soft)', flex: 'none' }}>Open ↗</span>
+            </a>
+          )
+        }
         if (b.type === 'file' && b.url) {
           return <a key={i} href={b.url} target="_blank" rel="noreferrer" download={b.name || undefined}
             style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', margin: '14px 0', textDecoration: 'none', color: 'inherit', background: 'var(--surface)' }}>
@@ -784,6 +810,73 @@ const IconBtn = ({ children, onClick, title, disabled }) => (
 // A slim divider that sits between blocks. Hovering reveals a "+ Insert" pill;
 // clicking it opens a compact type picker so a new block can be dropped at this
 // exact position (between existing sections) rather than only at the end.
+
+// Pick a published Knowledge Base article to link from a lesson. A dropdown of
+// real articles rather than a URL field: pasted links rot when an article is
+// renamed or moved, and nobody notices until a learner hits a dead end.
+function KbArticlePicker({ articleId, note, onPick, onNote }) {
+  const [articles, setArticles] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [q, setQ] = useState('')
+
+  useEffect(() => {
+    supabase.from('kb_articles')
+      .select('id, title, folder_id')
+      .eq('status', 'published')
+      .order('title')
+      .then(({ data }) => { setArticles(data || []); setLoading(false) })
+  }, [])
+
+  const picked = articles.find(a => a.id === articleId) || null
+  const shown = q.trim()
+    ? articles.filter(a => a.title.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 8)
+    : []
+
+  if (loading) return <div className="page-sub" style={{ fontSize: 13 }}>Loading articles…</div>
+
+  return (
+    <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', background: 'var(--surface)' }}>
+      {picked ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 20, flex: 'none' }}>📚</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{picked.title}</div>
+            <div className="page-sub" style={{ fontSize: 11.5 }}>Knowledge Base article</div>
+          </div>
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px', flex: 'none' }}
+            onClick={() => { onPick(null); setQ('') }}>Change</button>
+        </div>
+      ) : (
+        <>
+          <div className="page-sub" style={{ fontSize: 12.5, marginBottom: 6 }}>
+            Link a Knowledge Base article — learners open it without leaving the lesson.
+          </div>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search articles…"
+            style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+          {shown.length > 0 && (
+            <div style={{ marginTop: 6, border: '1px solid var(--line-soft)', borderRadius: 8, overflow: 'hidden' }}>
+              {shown.map(a => (
+                <div key={a.id} onClick={() => { onPick(a); setQ('') }}
+                  style={{ padding: '8px 10px', fontSize: 13.5, cursor: 'pointer', borderBottom: '1px solid var(--line-soft)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-bg)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  📚 {a.title}
+                </div>
+              ))}
+            </div>
+          )}
+          {q.trim() && shown.length === 0 && (
+            <div className="page-sub" style={{ fontSize: 12.5, marginTop: 6 }}>No published article matches “{q}”.</div>
+          )}
+        </>
+      )}
+      <input value={note || ''} onChange={e => onNote(e.target.value)}
+        placeholder="Optional: why they should read it…"
+        style={{ width: '100%', marginTop: 8, padding: '7px 9px', border: '1px solid var(--line-soft)', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+    </div>
+  )
+}
+
 function InsertBar({ onAdd }) {
   const [hover, setHover] = useState(false)
   const [open, setOpen] = useState(false)
@@ -806,6 +899,7 @@ function InsertBar({ onAdd }) {
           <AddBtn onClick={() => pick('image')}>🖼 Image</AddBtn>
           <AddBtn onClick={() => pick('video')}>▶ Video</AddBtn>
           <AddBtn onClick={() => pick('file')}>📎 File</AddBtn>
+          <AddBtn onClick={() => pick('kb')}>📚 KB article</AddBtn>
           <AddBtn onClick={() => pick('callout')}>💡 Insight</AddBtn>
           <button onClick={() => setOpen(false)} style={{ marginLeft: 'auto', border: 0, background: 'transparent', color: 'var(--ink-soft)', cursor: 'pointer', fontSize: 12 }}>Cancel</button>
         </div>
