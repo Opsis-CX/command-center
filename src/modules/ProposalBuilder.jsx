@@ -187,7 +187,7 @@ export default function ProposalBuilder({ deal, userName, onClose, onStatusChang
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {proposal.status !== 'sent' && proposal.status !== 'accepted' && (
-            <button className="pb-btn" onClick={() => markStatus('sent')}>Mark as Sent</button>
+            <button className="pb-btn pb-send" onClick={() => markStatus('sent')} title="Email this proposal to the deal contact from hello@opsiscx.com">✉ Send to client</button>
           )}
           {proposal.status === 'sent' && (
             <>
@@ -307,6 +307,7 @@ const PB_CSS = `
 .pb-badge{font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;}
 .pb-btn{font-family:'Poppins',system-ui,sans-serif;font-weight:700;font-size:13px;border:none;cursor:pointer;border-radius:999px;padding:9px 16px;background:#0089A6;color:#fff;}
 .pb-btn.pb-pdf{background:#13D9E8;color:#021116;}
+.pb-btn.pb-send{background:linear-gradient(135deg,#0089A6,#13D9E8);color:#021116;box-shadow:0 0 16px rgba(19,217,232,.5);}
 .pb-btn.pb-ok{background:#16A34A;color:#fff;}
 .pb-btn.pb-ghost{background:transparent;color:#a9c6cd;border:1px solid rgba(19,217,232,.3);}
 
