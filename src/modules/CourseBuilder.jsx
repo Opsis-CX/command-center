@@ -9,7 +9,7 @@ let blockSeq = 0
 const nextBlockId = () => `b${Date.now().toString(36)}${(blockSeq++).toString(36)}`
 const withIds = (blocks) => (blocks || []).map(b => b._id ? b : { ...b, _id: nextBlockId() })
 const stripIds = (blocks) => (blocks || []).map(({ _id, ...rest }) => rest)
-
+ 
 // Helpers for the file/attachment block.
 function fmtSize(bytes) {
   if (!bytes && bytes !== 0) return ''
