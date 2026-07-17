@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import ProposalBuilder from './ProposalBuilder'
 // ============================================================
 //  SALES PIPELINE DASHBOARD
 //  Kanban board for outbound B2B deals. Mirrors HiringDashboard:
@@ -135,6 +136,7 @@ export default function SalesDashboard() {
   const [err, setErr] = useState('')
   const [showClosed, setShowClosed] = useState(false)
   const [selected, setSelected] = useState(null)
+  const [proposalDeal, setProposalDeal] = useState(null)   // deal whose proposal builder is open
   const [busy, setBusy] = useState(false)
   const [query, setQuery] = useState('')
   const [orgFilter, setOrgFilter] = useState('')
@@ -369,7 +371,16 @@ export default function SalesDashboard() {
       )}
 
       {selected && <DealPanel deal={selected} user={user} onClose={() => setSelected(null)}
-        onTransition={transition} onWon={markWon} onLost={markLost} onUpdate={updateDeal} busy={busy} />}
+        onTransition={transition} onWon={markWon} onLost={markLost} onUpdate={updateDeal} busy={busy}
+        onOpenProposal={(d) => setProposalDeal(d)} />}
+
+      {proposalDeal && <ProposalBuilder deal={proposalDeal} userName={user?.email}
+        onClose={() => setProposalDeal(null)}
+        onStatusChange={(status) => {
+          // Marking a proposal Sent / Accepted advances the deal's stage.
+          if (status === 'sent') transition(proposalDeal, 'proposal_sent', { note: 'proposal marked sent' })
+          else if (status === 'accepted') transition(proposalDeal, 'won', { note: 'proposal accepted' })
+        }} />}
 
       {losingDeal && <LostDialog deal={losingDeal}
         onCancel={() => setLosingDeal(null)}
@@ -420,8 +431,16 @@ function DealCard({ deal, onClick, dragging, onDragStart, onDragEnd }) {
   )
 }
 
-function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, onUpdate, busy }) {
+const PROP_STATUS = {
+  draft:    { label: 'Draft',    bg: 'var(--line-soft)', fg: 'var(--ink-soft)' },
+  sent:     { label: 'Sent',     bg: '#e3f2fd', fg: '#0d47a1' },
+  accepted: { label: 'Accepted', bg: '#e8f5e9', fg: '#1b5e20' },
+  declined: { label: 'Declined', bg: '#fdecea', fg: '#b71c1c' },
+}
+
+function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, onUpdate, busy, onOpenProposal }) {
   const [events, setEvents] = useState([])
+  const [proposal, setProposal] = useState(undefined)   // undefined = loading, null = none yet
   const [activities, setActivities] = useState([])
   const [noteText, setNoteText] = useState('')
   // inline edit state for the deal's own fields
@@ -442,6 +461,15 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, onUpdate,
     setEvents(ev || []); setActivities(act || [])
   }, [deal.id])
   useEffect(() => { loadHistory() }, [loadHistory])
+
+  // Latest proposal for this deal (for the status badge + button label).
+  useEffect(() => {
+    let cancel = false
+    supabase.from('proposals').select('id, status').eq('deal_id', deal.id)
+      .order('created_at', { ascending: false }).limit(1)
+      .then(({ data }) => { if (!cancel) setProposal(data && data[0] ? data[0] : null) })
+    return () => { cancel = true }
+  }, [deal.id])
 
   async function logActivity(kind, extra = {}) {
     await supabase.from('deal_activities').insert({
@@ -596,6 +624,21 @@ function DealPanel({ deal, user, onClose, onTransition, onWon, onLost, onUpdate,
                 Moving to {next.title} will send the “{STAGE_EMAIL[next.key]}” email (once the Edge Function is connected to your Gmail).
               </div>
             )}
+          </div>
+
+          {/* Proposal — deal-linked builder */}
+          <div style={{ marginBottom: 18, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <h3 style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', margin: 0 }}>Proposal</h3>
+              {proposal && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: (PROP_STATUS[proposal.status] || {}).bg, color: (PROP_STATUS[proposal.status] || {}).fg }}>{(PROP_STATUS[proposal.status] || {}).label || proposal.status}</span>}
+            </div>
+            <button onClick={() => onOpenProposal(deal)}
+              style={{ width: '100%', border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>
+              {proposal ? '📄 Open proposal' : '📄 Create proposal'}
+            </button>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginTop: 6 }}>
+              Prefilled from this deal. Mark&nbsp;Sent and Export&nbsp;PDF are inside the builder; marking Sent advances the deal to Proposal&nbsp;Sent.
+            </div>
           </div>
 
           {/* quick log buttons */}
