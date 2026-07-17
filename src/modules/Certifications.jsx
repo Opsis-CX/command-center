@@ -158,16 +158,26 @@ export default function Certifications() {
 // (click a person to expand scores/dates) and a flat detail roster.
 // ============================================================
 const CERT_STATUS_META = {
-  needed: { label: 'In process', cls: 'needed' },
+  not_started: { label: 'Not started' },              // neutral chip (no badge class)
+  in_process: { label: 'In process', cls: 'needed' },
   passed: { label: 'Passed', cls: 'passed' },
   failed: { label: 'Failed', cls: 'failed' },
 }
 const fmtCertDate = (v) => (v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—')
 const certPct = (v) => (v == null ? '—' : v + '%')
 
+// A record's raw status is needed / passed / failed. "needed" (assigned but not
+// done) is split for display into "Not started" (no quiz attempt yet) vs
+// "In process" (has attempted at least once).
+function effStatus(r) {
+  if (r.status === 'passed' || r.status === 'failed') return r.status
+  return ((r.attempts && r.attempts > 0) || r.last_attempt_at) ? 'in_process' : 'not_started'
+}
+
 function StatusChip({ status }) {
   const m = CERT_STATUS_META[status]
   if (!m) return <span style={{ color: 'var(--ink-soft)' }}>—</span>
+  if (!m.cls) return <span className="badge" style={{ background: 'var(--line-soft)', color: 'var(--ink-soft)' }}>{m.label}</span>
   return <span className={'badge ' + m.cls}>{m.label}</span>
 }
 
@@ -194,21 +204,22 @@ function CertMatrix({ records, certs }) {
     || (p.agent_name || '').toLowerCase().includes(ql)
     || (p.agent_email || '').toLowerCase().includes(ql)
   const matchesStatus = (pid) => statusFilter === 'all'
-    || records.some(r => r.profile_id === pid && r.status === statusFilter)
+    || records.some(r => r.profile_id === pid && effStatus(r) === statusFilter)
 
   const people = allPeople.filter(p => matchesSearch(p) && matchesStatus(p.profile_id))
 
   const summary = {
     people: allPeople.length,
-    needed: records.filter(r => r.status === 'needed').length,
-    passed: records.filter(r => r.status === 'passed').length,
-    failed: records.filter(r => r.status === 'failed').length,
+    not_started: records.filter(r => effStatus(r) === 'not_started').length,
+    in_process: records.filter(r => effStatus(r) === 'in_process').length,
+    passed: records.filter(r => effStatus(r) === 'passed').length,
+    failed: records.filter(r => effStatus(r) === 'failed').length,
   }
 
   // Flat roster rows (person + cert), filtered the same way.
   const rosterRows = records
     .filter(r => matchesSearch({ agent_name: r.agent_name, agent_email: r.agent_email })
-      && (statusFilter === 'all' || r.status === statusFilter))
+      && (statusFilter === 'all' || effStatus(r) === statusFilter))
     .sort((a, b) => (a.agent_name || '').localeCompare(b.agent_name || '')
       || (a.certification_name || '').localeCompare(b.certification_name || ''))
 
@@ -220,7 +231,7 @@ function CertMatrix({ records, certs }) {
     }
     const lines = rosterRows.map(r => [
       r.agent_name, r.agent_email, r.certification_name,
-      CERT_STATUS_META[r.status]?.label || r.status,
+      CERT_STATUS_META[effStatus(r)]?.label || r.status,
       r.best_score_pct ?? '', r.attempts ?? '',
       r.passed_at ? fmtCertDate(r.passed_at) : '', r.last_attempt_at ? fmtCertDate(r.last_attempt_at) : '',
       r.expires_at ? fmtCertDate(r.expires_at) : '',
@@ -246,7 +257,7 @@ function CertMatrix({ records, certs }) {
           <div>
             <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>Certification Matrix</h2>
             <p className="page-sub" style={{ marginTop: 3 }}>
-              {summary.people} {summary.people === 1 ? 'person' : 'people'} · {summary.passed} passed · {summary.failed} failed · {summary.needed} in process
+              {summary.people} {summary.people === 1 ? 'person' : 'people'} · {summary.passed} passed · {summary.failed} failed · {summary.in_process} in process · {summary.not_started} not started
             </p>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -263,7 +274,8 @@ function CertMatrix({ records, certs }) {
             <option value="all">All statuses</option>
             <option value="passed">Passed</option>
             <option value="failed">Failed</option>
-            <option value="needed">In process</option>
+            <option value="in_process">In process</option>
+            <option value="not_started">Not started</option>
           </select>
         </div>
       </div>
@@ -296,7 +308,7 @@ function CertMatrix({ records, certs }) {
                       </MTd>
                       {certs.map(c => {
                         const r = recAt(p.profile_id, c.id)
-                        return <MTd key={c.id} center>{r ? <StatusChip status={r.status} /> : <span style={{ color: 'var(--ink-soft)' }}>—</span>}</MTd>
+                        return <MTd key={c.id} center>{r ? <StatusChip status={effStatus(r)} /> : <span style={{ color: 'var(--ink-soft)' }}>—</span>}</MTd>
                       })}
                     </tr>
                     {open && (
@@ -310,7 +322,7 @@ function CertMatrix({ records, certs }) {
                                 <div key={c.id} style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', background: 'var(--surface)' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
                                     <span style={{ fontSize: 12.5, fontWeight: 600 }}>{c.name}</span>
-                                    <StatusChip status={r.status} />
+                                    <StatusChip status={effStatus(r)} />
                                   </div>
                                   <DetailRow k="Best score" v={certPct(r.best_score_pct)} />
                                   <DetailRow k="Attempts" v={r.attempts ?? '—'} />
@@ -345,7 +357,7 @@ function CertMatrix({ records, certs }) {
                 <tr key={r.id} style={{ borderTop: '1px solid var(--line-soft)' }}>
                   <MTd><span style={{ fontWeight: 600 }}>{r.agent_name || '—'}</span></MTd>
                   <MTd>{r.certification_name}</MTd>
-                  <MTd><StatusChip status={r.status} /></MTd>
+                  <MTd><StatusChip status={effStatus(r)} /></MTd>
                   <MTd right>{certPct(r.best_score_pct)}</MTd>
                   <MTd right>{r.attempts ?? '—'}</MTd>
                   <MTd>{fmtCertDate(r.passed_at)}</MTd>
