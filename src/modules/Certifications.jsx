@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { canAny } from '../lib/permissions'
@@ -125,6 +125,8 @@ export default function Certifications() {
         })}
       </div>
 
+      {!loading && !err && <CertMatrix records={records} certs={certs} />}
+
       {showCreate && canEdit && (
         <CertModal
           cert={null}
@@ -144,6 +146,232 @@ export default function Certifications() {
           onSaved={() => { setEditCert(null); load() }}
         />
       )}
+    </div>
+  )
+}
+
+// ============================================================
+// CERTIFICATION MATRIX
+// Per-person visibility into who is in process / passed / failed.
+// Reads the cert_record_status rows already loaded by the page, so no
+// extra query. Two views: an at-a-glance people×certifications grid
+// (click a person to expand scores/dates) and a flat detail roster.
+// ============================================================
+const CERT_STATUS_META = {
+  needed: { label: 'In process', cls: 'needed' },
+  passed: { label: 'Passed', cls: 'passed' },
+  failed: { label: 'Failed', cls: 'failed' },
+}
+const fmtCertDate = (v) => (v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—')
+const certPct = (v) => (v == null ? '—' : v + '%')
+
+function StatusChip({ status }) {
+  const m = CERT_STATUS_META[status]
+  if (!m) return <span style={{ color: 'var(--ink-soft)' }}>—</span>
+  return <span className={'badge ' + m.cls}>{m.label}</span>
+}
+
+function CertMatrix({ records, certs }) {
+  const [view, setView] = useState('grid')          // 'grid' | 'roster'
+  const [q, setQ] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')  // all | needed | passed | failed
+  const [expanded, setExpanded] = useState(null)    // profile_id whose detail is open
+
+  // Distinct people who appear in the records, alphabetical.
+  const peopleMap = new Map()
+  records.forEach(r => {
+    if (!peopleMap.has(r.profile_id)) {
+      peopleMap.set(r.profile_id, { profile_id: r.profile_id, agent_name: r.agent_name, agent_email: r.agent_email })
+    }
+  })
+  const allPeople = Array.from(peopleMap.values())
+    .sort((a, b) => (a.agent_name || '').localeCompare(b.agent_name || ''))
+
+  const recAt = (pid, cid) => records.find(r => r.profile_id === pid && r.certification_id === cid) || null
+
+  const ql = q.trim().toLowerCase()
+  const matchesSearch = (p) => !ql
+    || (p.agent_name || '').toLowerCase().includes(ql)
+    || (p.agent_email || '').toLowerCase().includes(ql)
+  const matchesStatus = (pid) => statusFilter === 'all'
+    || records.some(r => r.profile_id === pid && r.status === statusFilter)
+
+  const people = allPeople.filter(p => matchesSearch(p) && matchesStatus(p.profile_id))
+
+  const summary = {
+    people: allPeople.length,
+    needed: records.filter(r => r.status === 'needed').length,
+    passed: records.filter(r => r.status === 'passed').length,
+    failed: records.filter(r => r.status === 'failed').length,
+  }
+
+  // Flat roster rows (person + cert), filtered the same way.
+  const rosterRows = records
+    .filter(r => matchesSearch({ agent_name: r.agent_name, agent_email: r.agent_email })
+      && (statusFilter === 'all' || r.status === statusFilter))
+    .sort((a, b) => (a.agent_name || '').localeCompare(b.agent_name || '')
+      || (a.certification_name || '').localeCompare(b.certification_name || ''))
+
+  function exportCsv() {
+    const head = ['Person', 'Email', 'Certification', 'Status', 'Best score %', 'Attempts', 'Passed', 'Last attempt', 'Expires']
+    const esc = (v) => {
+      const s = v == null ? '' : String(v)
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+    }
+    const lines = rosterRows.map(r => [
+      r.agent_name, r.agent_email, r.certification_name,
+      CERT_STATUS_META[r.status]?.label || r.status,
+      r.best_score_pct ?? '', r.attempts ?? '',
+      r.passed_at ? fmtCertDate(r.passed_at) : '', r.last_attempt_at ? fmtCertDate(r.last_attempt_at) : '',
+      r.expires_at ? fmtCertDate(r.expires_at) : '',
+    ].map(esc).join(','))
+    const csv = [head.join(','), ...lines].join('\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    const a = document.createElement('a')
+    a.href = url; a.download = 'certification-matrix.csv'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const ToggleBtn = ({ value, children }) => (
+    <button onClick={() => setView(value)}
+      style={{ border: '1px solid var(--line)', background: view === value ? 'var(--accent)' : 'var(--surface)', color: view === value ? '#fff' : 'var(--ink-soft)', fontSize: 12.5, fontWeight: 600, padding: '5px 12px', borderRadius: 7, cursor: 'pointer' }}>
+      {children}
+    </button>
+  )
+
+  return (
+    <div className="card" style={{ marginTop: 26, padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--line)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>Certification Matrix</h2>
+            <p className="page-sub" style={{ marginTop: 3 }}>
+              {summary.people} {summary.people === 1 ? 'person' : 'people'} · {summary.passed} passed · {summary.failed} failed · {summary.needed} in process
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <ToggleBtn value="grid">Grid</ToggleBtn>
+            <ToggleBtn value="roster">Roster</ToggleBtn>
+            <button onClick={exportCsv} className="btn btn-ghost" style={{ fontSize: 12.5, padding: '5px 12px' }}>⬇ CSV</button>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search person…"
+            style={{ flex: '1 1 220px', minWidth: 160, padding: '8px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', background: 'var(--canvas)' }} />
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            style={{ padding: '8px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', background: 'var(--canvas)' }}>
+            <option value="all">All statuses</option>
+            <option value="passed">Passed</option>
+            <option value="failed">Failed</option>
+            <option value="needed">In process</option>
+          </select>
+        </div>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        {records.length === 0 ? (
+          <p className="page-sub" style={{ padding: 24, textAlign: 'center' }}>
+            No certification records yet. Once a certification is assigned to a tag, the people who need it will appear here.
+          </p>
+        ) : people.length === 0 && view === 'grid' ? (
+          <p className="page-sub" style={{ padding: 24, textAlign: 'center' }}>No people match your filters.</p>
+        ) : view === 'grid' ? (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, minWidth: 480 }}>
+            <thead>
+              <tr style={{ background: 'var(--canvas)', textAlign: 'left' }}>
+                <MTh sticky>Person</MTh>
+                {certs.map(c => <MTh key={c.id} center>{c.name}</MTh>)}
+              </tr>
+            </thead>
+            <tbody>
+              {people.map(p => {
+                const open = expanded === p.profile_id
+                return (
+                  <Fragment key={p.profile_id}>
+                    <tr onClick={() => setExpanded(open ? null : p.profile_id)}
+                      style={{ borderTop: '1px solid var(--line-soft)', cursor: 'pointer', background: open ? 'var(--accent-bg)' : 'transparent' }}>
+                      <MTd sticky>
+                        <span style={{ fontWeight: 600 }}>{p.agent_name || '—'}</span>
+                        <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--ink-soft)' }}>{open ? '▾' : '▸'}</span>
+                      </MTd>
+                      {certs.map(c => {
+                        const r = recAt(p.profile_id, c.id)
+                        return <MTd key={c.id} center>{r ? <StatusChip status={r.status} /> : <span style={{ color: 'var(--ink-soft)' }}>—</span>}</MTd>
+                      })}
+                    </tr>
+                    {open && (
+                      <tr style={{ background: 'var(--canvas)' }}>
+                        <td colSpan={certs.length + 1} style={{ padding: '4px 16px 14px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10, marginTop: 8 }}>
+                            {certs.map(c => {
+                              const r = recAt(p.profile_id, c.id)
+                              if (!r) return null
+                              return (
+                                <div key={c.id} style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', background: 'var(--surface)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>{c.name}</span>
+                                    <StatusChip status={r.status} />
+                                  </div>
+                                  <DetailRow k="Best score" v={certPct(r.best_score_pct)} />
+                                  <DetailRow k="Attempts" v={r.attempts ?? '—'} />
+                                  <DetailRow k="Passed" v={fmtCertDate(r.passed_at)} />
+                                  <DetailRow k="Last attempt" v={fmtCertDate(r.last_attempt_at)} />
+                                  <DetailRow k="Expires" v={fmtCertDate(r.expires_at)} />
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
+            </tbody>
+          </table>
+        ) : rosterRows.length === 0 ? (
+          <p className="page-sub" style={{ padding: 24, textAlign: 'center' }}>No records match your filters.</p>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, minWidth: 760 }}>
+            <thead>
+              <tr style={{ background: 'var(--canvas)', textAlign: 'left' }}>
+                <MTh>Person</MTh><MTh>Certification</MTh><MTh>Status</MTh>
+                <MTh right>Best score</MTh><MTh right>Attempts</MTh>
+                <MTh>Passed</MTh><MTh>Last attempt</MTh><MTh>Expires</MTh>
+              </tr>
+            </thead>
+            <tbody>
+              {rosterRows.map(r => (
+                <tr key={r.id} style={{ borderTop: '1px solid var(--line-soft)' }}>
+                  <MTd><span style={{ fontWeight: 600 }}>{r.agent_name || '—'}</span></MTd>
+                  <MTd>{r.certification_name}</MTd>
+                  <MTd><StatusChip status={r.status} /></MTd>
+                  <MTd right>{certPct(r.best_score_pct)}</MTd>
+                  <MTd right>{r.attempts ?? '—'}</MTd>
+                  <MTd>{fmtCertDate(r.passed_at)}</MTd>
+                  <MTd>{fmtCertDate(r.last_attempt_at)}</MTd>
+                  <MTd>{fmtCertDate(r.expires_at)}</MTd>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function MTh({ children, center, right, sticky }) {
+  return <th style={{ padding: '10px 14px', fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', textAlign: center ? 'center' : right ? 'right' : 'left', whiteSpace: 'nowrap', position: sticky ? 'sticky' : undefined, left: sticky ? 0 : undefined, background: sticky ? 'var(--canvas)' : undefined, zIndex: sticky ? 1 : undefined }}>{children}</th>
+}
+function MTd({ children, center, right, sticky }) {
+  return <td style={{ padding: '10px 14px', textAlign: center ? 'center' : right ? 'right' : 'left', whiteSpace: 'nowrap', position: sticky ? 'sticky' : undefined, left: sticky ? 0 : undefined, background: sticky ? 'var(--surface)' : undefined }}>{children}</td>
+}
+function DetailRow({ k, v }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '2px 0', fontSize: 12.5 }}>
+      <span style={{ color: 'var(--ink-soft)' }}>{k}</span>
+      <span style={{ fontWeight: 600 }}>{v}</span>
     </div>
   )
 }
