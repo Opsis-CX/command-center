@@ -154,6 +154,8 @@ function CertModal({ cert, tags, callTypes, onClose, onSaved }) {
   const [name, setName] = useState(cert?.name || '')
   const [description, setDescription] = useState(cert?.description || '')
   const [callTypeId, setCallTypeId] = useState(cert?.call_type_id || '')
+  const [grantsTagId, setGrantsTagId] = useState(cert?.grants_tag_id || '')
+  const [removesTagId, setRemovesTagId] = useState(cert?.removes_tag_id || '')
   const [pickedTags, setPickedTags] = useState(cert?.tagIds || [])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -174,6 +176,8 @@ function CertModal({ cert, tags, callTypes, onClose, onSaved }) {
           name: name.trim(),
           description: description.trim() || null,
           call_type_id: callTypeId || null,
+          grants_tag_id: grantsTagId || null,
+          removes_tag_id: removesTagId || null,
           updated_at: new Date().toISOString(),
         }).eq('id', certId)
         if (ue) throw ue
@@ -188,6 +192,8 @@ function CertModal({ cert, tags, callTypes, onClose, onSaved }) {
             name: name.trim(),
             description: description.trim() || null,
             call_type_id: callTypeId || null,
+            grants_tag_id: grantsTagId || null,
+            removes_tag_id: removesTagId || null,
             active: true,
             created_by: user?.id ?? null,
           })
@@ -246,6 +252,26 @@ function CertModal({ cert, tags, callTypes, onClose, onSaved }) {
             <option value="">No — credential only</option>
             {callTypes.map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)}
           </select>
+        </div>
+
+        {/* Passing the quiz should move an agent from "needs this" to
+            "has this" automatically — otherwise someone has to remember to
+            re-tag every agent by hand. */}
+        <div className="field">
+          <label>When they pass, add this tag <span style={{ fontWeight: 400 }}>(optional)</span></label>
+          <select value={grantsTagId} onChange={e => setGrantsTagId(e.target.value)}>
+            <option value="">No tag</option>
+            {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+
+        <div className="field">
+          <label>…and remove this tag <span style={{ fontWeight: 400 }}>(optional)</span></label>
+          <select value={removesTagId} onChange={e => setRemovesTagId(e.target.value)}>
+            <option value="">No tag</option>
+            {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <div className="hint">Usually the "…Certification Needed" tag — passing the quiz means they no longer need it.</div>
         </div>
 
         <div className="field">
