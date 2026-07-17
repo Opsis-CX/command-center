@@ -77,8 +77,9 @@ export default function KnowledgeBase() {
   const { appRole } = useAuth()
   const canAuthor = isAuthorRole(appRole)
   const [params, setParams] = useSearchParams()
-- const view = params.get('view') || 'browse'
-+ const view = params.get('view') || (params.get('id') ? 'article' : 'browse') 
+  // A bare ?id= link (e.g. from a Certification lesson's KB-article block) should
+  // open that article, not silently fall back to the browse home.
+  const view = params.get('view') || (params.get('id') ? 'article' : 'browse')
   const folderId = params.get('folder') || null
   const articleId = params.get('id') || null
   const go = (next) => setParams(next, { replace: false })
