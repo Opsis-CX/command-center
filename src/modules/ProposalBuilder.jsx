@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 
 // ============================================================
@@ -291,11 +292,14 @@ function Overlay({ children, onClose }) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
-  return <div className="pb-overlay">{children}</div>
+  // Portal to <body> so that, on print, we can hide every other top-level node
+  // and leave only the sheet in the page flow — no stray blank pages.
+  return createPortal(<div className="pb-overlay">{children}</div>, document.body)
 }
 
 // Prototype CSS, scoped under `.pb-root`; overlay/chrome/print rules alongside.
 const PB_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;0,700&display=swap');
 .pb-overlay{position:fixed;inset:0;z-index:1000;background:#010b0f;overflow:auto;}
 .pb-chrome{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:12px;
   padding:12px 18px;background:rgba(7,26,32,.97);border-bottom:1px solid rgba(19,217,232,.3);backdrop-filter:blur(6px);}
@@ -353,12 +357,12 @@ const PB_CSS = `
 
 @media print{
   @page{size:auto;margin:0.5in;}
-  body.pb-printing *{visibility:hidden!important;}
-  body.pb-printing .pb-sheet,body.pb-printing .pb-sheet *{visibility:visible!important;}
-  body.pb-printing .pb-overlay{position:absolute!important;inset:auto!important;background:#fff!important;overflow:visible!important;}
+  body.pb-printing{background:#fff!important;}
+  body.pb-printing > *{display:none!important;}
+  body.pb-printing > .pb-overlay{display:block!important;position:static!important;inset:auto!important;background:#fff!important;overflow:visible!important;}
   body.pb-printing .pb-chrome{display:none!important;}
   body.pb-printing .pb-root{padding:0!important;}
-  body.pb-printing .pb-sheet{position:absolute;left:0;top:0;max-width:none;margin:0;border:none;border-radius:0;box-shadow:none;background:#fff!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
+  body.pb-printing .pb-sheet{max-width:none;margin:0;border:none;border-radius:0;box-shadow:none;background:#fff!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
   body.pb-printing .pb-root *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
   body.pb-printing .pb-root .cover,body.pb-printing .pb-root .block,body.pb-printing .pb-root .block.alt,body.pb-printing .pb-root .cta{background:#fff!important;border-top:1px solid #dbe7eb!important;}
   body.pb-printing .pb-root .cover{border-top:none!important;padding-top:8px!important;}
