@@ -9,7 +9,7 @@ export default function MyCourses() {
   const [openCourse, setOpenCourse] = useState(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
- 
+
   useEffect(() => { load() }, [])
 
   async function load() {
@@ -91,19 +91,21 @@ export default function MyCourses() {
 
                 <p className="page-sub" style={{ marginTop: 10, fontSize: 12.5 }}>
                   {s.has_passed
-                    ? `Certified — scored ${s.best_score_pct ?? ''}%`
+                    ? (c.quiz_required ? `Certified — scored ${s.best_score_pct ?? ''}%` : 'Completed ✓')
                     : prereq
                       ? <>Finish <b>{prereq.title}</b> first.</>
-                      : outOfAttempts
-                        ? 'You have used both attempts. Ask an admin to reset your quiz.'
-                        : s.attempts_used === 0
-                          ? 'Pass mark ' + c.pass_threshold + '%. You get 2 attempts.'
-                          : `${s.attempts_left} attempt${s.attempts_left === 1 ? '' : 's'} remaining.`}
+                      : !c.quiz_required
+                        ? 'Informational — finish the lessons to complete. No quiz.'
+                        : outOfAttempts
+                          ? 'You have used both attempts. Ask an admin to reset your quiz.'
+                          : s.attempts_used === 0
+                            ? 'Pass mark ' + c.pass_threshold + '%. You get 2 attempts.'
+                            : `${s.attempts_left} attempt${s.attempts_left === 1 ? '' : 's'} remaining.`}
                 </p>
 
                 {!s.has_passed && started && !locked && (
                   <p className="page-sub" style={{ marginTop: 6, fontSize: 12, color: 'var(--accent)' }}>
-                    {pr.completed_lessons ? 'Lessons finished — quiz is next.' : `Resume at lesson ${pr.last_lesson_idx + 1}.`}
+                    {pr.completed_lessons ? (c.quiz_required ? 'Lessons finished — quiz is next.' : 'Lessons finished — ready to complete.') : `Resume at lesson ${pr.last_lesson_idx + 1}.`}
                   </p>
                 )}
                 <div style={{ marginTop: 'auto', paddingTop: 14 }}>
@@ -130,6 +132,7 @@ function CourseRunner({ course, status, progress, onExit }) {
   const [phase, setPhase] = useState('lessons')   // lessons | quiz | done
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [completing, setCompleting] = useState(false)
   const [err, setErr] = useState('')
   const furthestRef = useRef(progress?.last_lesson_idx || 0)
 
@@ -171,6 +174,18 @@ function CourseRunner({ course, status, progress, onExit }) {
     const next = idx + 1
     setIdx(next)
     saveProgress(next, false)
+  }
+
+  // Informational course (no quiz): finishing the lessons completes it and
+  // records the certification via the same server-side pass path.
+  async function completeInformational() {
+    setCompleting(true); setErr('')
+    try {
+      await saveProgress(total - 1, true)
+      const { data, error } = await supabase.rpc('complete_informational_course', { p_course_id: course.id })
+      if (error) throw error
+      setResult(data); setPhase('done')
+    } catch (e) { setErr(e.message); setCompleting(false) }
   }
 
   if (loading) return <p className="page-sub">Loading course…</p>
@@ -217,9 +232,13 @@ function CourseRunner({ course, status, progress, onExit }) {
             {idx < total - 1
               ? <button className="btn btn-primary" onClick={goNext}>Next →</button>
               : status.has_passed
-                ? <span className="page-sub">You've already passed this course.</span>
-                : <button className="btn btn-cta"
-                    onClick={() => { saveProgress(total - 1, true); setPhase('quiz') }}>Start quiz →</button>}
+                ? <span className="page-sub">You've already {course.quiz_required ? 'passed' : 'completed'} this course.</span>
+                : course.quiz_required
+                  ? <button className="btn btn-cta"
+                      onClick={() => { saveProgress(total - 1, true); setPhase('quiz') }}>Start quiz →</button>
+                  : <button className="btn btn-cta" disabled={completing}
+                      style={completing ? { opacity: .6, cursor: 'not-allowed' } : undefined}
+                      onClick={completeInformational}>{completing ? 'Completing…' : 'Complete course →'}</button>}
           </div>
         </div>
       )}
@@ -334,14 +353,19 @@ function QuizRunner({ course, onDone, onBack }) {
 
 function Results({ course, result, onExit }) {
   const passed = result?.passed
+  // Informational courses have no score/pass-mark to report.
+  const informational = result?.informational || course.quiz_required === false
   return (
     <div>
       <div className="card" style={{ textAlign: 'center', padding: '40px 30px', maxWidth: 480, margin: '30px auto' }}>
         <div style={{ fontSize: 40, marginBottom: 10 }}>{passed ? '✓' : '✕'}</div>
         <h2 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 600, color: passed ? 'var(--passed)' : 'var(--failed)' }}>
-          {passed ? 'Passed' : 'Not passed'}
+          {informational ? 'Course complete' : passed ? 'Passed' : 'Not passed'}
         </h2>
-        <p className="page-sub">You scored {result?.score_pct}%. Pass mark is {course.pass_threshold}%.</p>
+
+        {informational
+          ? <p className="page-sub">You've finished this course.</p>
+          : <p className="page-sub">You scored {result?.score_pct}%. Pass mark is {course.pass_threshold}%.</p>}
 
         <p className="page-sub" style={{ marginTop: 14 }}>
           {passed
