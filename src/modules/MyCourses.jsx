@@ -194,16 +194,13 @@ function CourseRunner({ course, status, progress, onExit }) {
             <button className="btn btn-ghost" disabled={idx === 0}
               onClick={() => setIdx(i => Math.max(0, i - 1))}>← Back</button>
 
-            {!readToEnd && <span className="page-sub" style={{ fontSize: 12.5 }}>Scroll to the bottom to continue</span>}
+            {!readToEnd && <span className="page-sub" style={{ fontSize: 12.5 }}>Read to the bottom before continuing</span>}
 
             {idx < total - 1
-              ? <button className="btn btn-primary" disabled={!readToEnd}
-                  style={!readToEnd ? { opacity: .45, cursor: 'not-allowed' } : undefined}
-                  onClick={goNext}>Next →</button>
+              ? <button className="btn btn-primary" onClick={goNext}>Next →</button>
               : status.has_passed
                 ? <span className="page-sub">You've already passed this course.</span>
-                : <button className="btn btn-cta" disabled={!readToEnd}
-                    style={!readToEnd ? { opacity: .45, cursor: 'not-allowed' } : undefined}
+                : <button className="btn btn-cta"
                     onClick={() => { saveProgress(total - 1, true); setPhase('quiz') }}>Start quiz →</button>}
           </div>
         </div>
