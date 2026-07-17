@@ -9,7 +9,7 @@ let blockSeq = 0
 const nextBlockId = () => `b${Date.now().toString(36)}${(blockSeq++).toString(36)}`
 const withIds = (blocks) => (blocks || []).map(b => b._id ? b : { ...b, _id: nextBlockId() })
 const stripIds = (blocks) => (blocks || []).map(({ _id, ...rest }) => rest)
- 
+
 // Helpers for the file/attachment block.
 function fmtSize(bytes) {
   if (!bytes && bytes !== 0) return ''
@@ -177,7 +177,7 @@ export default function CourseBuilder() {
                 {c.certification_id
                   ? <>Grants: <b style={{ color: 'var(--ink)' }}>{certs.find(x => x.id === c.certification_id)?.name || 'Unknown certification'}</b></>
                   : 'Standalone course — grants no certification'}
-                {' · '}Pass mark {c.pass_threshold ?? 80}%
+                {' · '}{c.quiz_required === false ? 'No quiz (informational)' : `Pass mark ${c.pass_threshold ?? 80}%`}
                 {c.sort_order ? <> · Order {c.sort_order}</> : <> · Unsequenced</>}
               </div>
               <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -207,6 +207,7 @@ function CourseModal({ course, certs, onClose, onSaved }) {
   const [description, setDescription] = useState(course?.description || '')
   const [certId, setCertId] = useState(course?.certification_id || '')
   const [passThreshold, setPassThreshold] = useState(course?.pass_threshold ?? 80)
+  const [quizRequired, setQuizRequired] = useState(course?.quiz_required ?? true)
   const [sortOrder, setSortOrder] = useState(course?.sort_order ?? 0)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -221,6 +222,7 @@ function CourseModal({ course, certs, onClose, onSaved }) {
         description: description.trim() || null,
         certification_id: certId || null,
         pass_threshold: passThreshold,
+        quiz_required: quizRequired,
         sort_order: Number(sortOrder) || 0,
       }
       if (editing) {
@@ -254,8 +256,17 @@ function CourseModal({ course, certs, onClose, onSaved }) {
             <option value="">None (standalone course)</option>
             {certs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select></div>
-        <div className="field"><label>Pass mark (%)</label>
-          <input type="number" min="0" max="100" value={passThreshold} onChange={e => setPassThreshold(+e.target.value)} style={{ width: 100 }} /></div>
+        <div className="field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' }}>
+            <input type="checkbox" checked={quizRequired} onChange={e => setQuizRequired(e.target.checked)} style={{ width: 16, height: 16 }} />
+            <span>Require a quiz to complete</span>
+          </label>
+          <div className="hint">Turn this off for informational courses — agents complete them by finishing the lessons, with no quiz to pass.</div>
+        </div>
+        {quizRequired && (
+          <div className="field"><label>Pass mark (%)</label>
+            <input type="number" min="0" max="100" value={passThreshold} onChange={e => setPassThreshold(+e.target.value)} style={{ width: 100 }} /></div>
+        )}
         <div className="field">
           <label>Course order</label>
           <input type="number" min="0" value={sortOrder} onChange={e => setSortOrder(e.target.value)} style={{ width: 100 }} />
