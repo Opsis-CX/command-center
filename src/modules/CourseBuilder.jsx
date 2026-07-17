@@ -714,8 +714,7 @@ export function LessonView({ blocks }) {
           // Deep-links into the Knowledge Base (/knowledge?id=…). New tab, so a
           // learner mid-lesson doesn't lose their place.
           return (
-- href={`/knowledge?id=${b.article_id}`}
-+ href={`/knowledge?view=article&id=${b.article_id}`} 
+            <a key={i} href={`/knowledge?view=article&id=${b.article_id}`} target="_blank" rel="noreferrer"
               style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1px solid var(--line)', borderLeft: '3px solid var(--accent)', borderRadius: 10, padding: '12px 14px', margin: '14px 0', textDecoration: 'none', color: 'inherit', background: 'var(--surface)' }}>
               <span style={{ fontSize: 20, flex: 'none' }}>📚</span>
               <div style={{ flex: 1, minWidth: 0 }}>
