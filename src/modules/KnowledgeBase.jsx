@@ -77,7 +77,8 @@ export default function KnowledgeBase() {
   const { appRole } = useAuth()
   const canAuthor = isAuthorRole(appRole)
   const [params, setParams] = useSearchParams()
-  const view = params.get('view') || 'browse'
+- const view = params.get('view') || 'browse'
++ const view = params.get('view') || (params.get('id') ? 'article' : 'browse') 
   const folderId = params.get('folder') || null
   const articleId = params.get('id') || null
   const go = (next) => setParams(next, { replace: false })
