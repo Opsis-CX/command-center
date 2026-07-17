@@ -60,16 +60,47 @@ export function useScrolledToBottom(ref, resetKey, slack = 24) {
     const el = ref.current
     if (!el) return
     setAtBottom(false)
+
+    // Only unlock when the learner has actually reached the end. Images have
+    // zero height until they download, so an early check can wrongly conclude
+    // "nothing to scroll" — or, worse, measure a short page and then never
+    // re-evaluate once the images make it tall. So: re-check on every growth
+    // (ResizeObserver on the CONTENT, not just the box) and on each image load.
     const check = () => {
       const { scrollTop, scrollHeight, clientHeight } = el
-      if (scrollHeight - clientHeight <= slack) { setAtBottom(true); return }
-      if (scrollTop + clientHeight >= scrollHeight - slack) setAtBottom(true)
+      const scrollable = scrollHeight - clientHeight > slack
+      setAtBottom(!scrollable || scrollTop + clientHeight >= scrollHeight - slack)
     }
+
     const t = setTimeout(check, 50)
     el.addEventListener('scroll', check, { passive: true })
+
+    // Observe the container AND its children — the container's own box often
+    // doesn't change size while its contents grow.
     const ro = new ResizeObserver(check)
     ro.observe(el)
-    return () => { clearTimeout(t); el.removeEventListener('scroll', check); ro.disconnect() }
+    Array.from(el.children).forEach(c => ro.observe(c))
+
+    // Images settle well after mount; re-measure as each one lands.
+    const imgs = Array.from(el.querySelectorAll('img'))
+    imgs.forEach(img => {
+      if (!img.complete) {
+        img.addEventListener('load', check)
+        img.addEventListener('error', check)
+      }
+    })
+
+    // Safety net for anything that resizes without notifying us (fonts,
+    // late-loading iframes): a couple of delayed re-checks.
+    const t2 = setTimeout(check, 600)
+    const t3 = setTimeout(check, 1800)
+
+    return () => {
+      clearTimeout(t); clearTimeout(t2); clearTimeout(t3)
+      el.removeEventListener('scroll', check)
+      imgs.forEach(img => { img.removeEventListener('load', check); img.removeEventListener('error', check) })
+      ro.disconnect()
+    }
   }, [ref, resetKey, slack])
   return atBottom
 }
