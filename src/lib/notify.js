@@ -603,7 +603,7 @@ export async function notifyTaskMention({
 // here; unknown types fall back to 'other'.
 export const NOTIF_CATEGORIES = [
   { key: 'chat',      label: 'Chat & messages' },
-  { key: 'schedule',  label: 'Schedule & shifts' },
+  { key: 'schedule',  label: 'Schedule & intervals' },
   { key: 'projects',  label: 'Projects & tasks' },
   { key: 'hiring',    label: 'Hiring' },
   { key: 'other',     label: 'Other' },
@@ -759,7 +759,7 @@ export async function notifyCheckInNudge({
   return insertMany([{
     recipient_id: recipientId,
     type: 'checkin_nudge',
-    title: 'Reminder: please check in for your shift',
+    title: 'Reminder: please check in for your interval',
     body: intervalLabel
       ? `You're scheduled ${intervalLabel} — ${actorName || 'someone'} nudged you to check in.`
       : `${actorName || 'Someone'} nudged you to check in for your scheduled time.`,
