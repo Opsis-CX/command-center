@@ -487,6 +487,10 @@ function BlockModal({ editBlock, schedules, onClose, onSaved }) {
 
   async function save() {
     if (!date || !start || !end || !spots || spots < 1) { setErr('Fill in date, times, and spots.'); return }
+    // End must be after start (HH:MM strings compare correctly). Intervals are
+    // same-day, so an end at/before the start is a typo (e.g. 4:00 for 16:00)
+    // that would otherwise silently count as 0 hours.
+    if (end <= start) { setErr('End time must be after the start time.'); return }
     setSaving(true); setErr('')
     try {
       const payload = {
@@ -610,6 +614,7 @@ function ImportModal({ scheduleId, onClose, onDone }) {
       if (!start) re.push(`row ${rn}: bad start "${c[si]}"`)
       if (!end) re.push(`row ${rn}: bad end "${c[ei]}"`)
       if (!spots || spots < 1) re.push(`row ${rn}: spots must be ≥ 1`)
+      if (start && end && end <= start) re.push(`row ${rn}: end "${c[ei]}" must be after start "${c[si]}"`)
       if (re.length) bad.push(...re)
       else good.push({ date, start, end, spots, role: (ri > -1 ? c[ri] : '') || null, notes: (ni > -1 ? c[ni] : '') || null })
     }
