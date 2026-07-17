@@ -17,6 +17,10 @@ const COACHING_BOOKING_URL = 'https://calendar.google.com/calendar/u/0/appointme
 const MANAGER_ROLES = ['asc', 'certification', 'marketing', 'admin']
 const isManager = (r) => MANAGER_ROLES.includes(String(r || 'agent').trim().toLowerCase())
 const isAdmin = (r) => String(r || 'agent').trim().toLowerCase() === 'admin'
+// Notes & Anecdotal Feedback is limited to ASC and admins (plus the agent
+// viewing their own card). Certification/marketing managers can open the rest
+// of a scorecard but must not see this section.
+const canCoachNotes = (r) => ['asc', 'admin'].includes(String(r || '').trim().toLowerCase())
 
 const pct = (v, dp = 1) => (v == null ? '—' : (v * 100).toFixed(dp) + '%')
 const num = (v, dp = 2) => (v == null ? '—' : Number(v).toFixed(dp))
@@ -63,7 +67,9 @@ export default function Scorecard() {
 
   if (selected) {
     const row = rows.find(r => r.agent_name === selected)
-    return <AgentScorecard row={row} canCoach={manager} onBack={manager ? () => setSelected(null) : null} />
+    const coach = canCoachNotes(appRole)
+    const ownCard = row?.profile_id === user?.id
+    return <AgentScorecard row={row} canCoach={coach} canSeeNotes={coach || ownCard} onBack={manager ? () => setSelected(null) : null} />
   }
 
   // Manager team view
@@ -116,7 +122,7 @@ function Td({ children, right }) {
 }
 
 // ---------------- SINGLE AGENT SCORECARD ----------------
-function AgentScorecard({ row, canCoach, onBack }) {
+function AgentScorecard({ row, canCoach, canSeeNotes, onBack }) {
   const [notes, setNotes] = useState([])
   const [loadingNotes, setLoadingNotes] = useState(true)
   const [qaAudits, setQaAudits] = useState([])
@@ -270,7 +276,9 @@ function AgentScorecard({ row, canCoach, onBack }) {
         )}
       </div>
 
-      {/* Coaching notes */}
+      {/* Notes & Anecdotal Feedback — ASC, admins, and the agent on their own
+          card only. Certification/marketing must not see this section. */}
+      {canSeeNotes && (
       <div className="card" style={{ marginTop: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <SectionTitle>Notes &amp; Anecdotal Feedback</SectionTitle>
@@ -296,6 +304,7 @@ function AgentScorecard({ row, canCoach, onBack }) {
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }
