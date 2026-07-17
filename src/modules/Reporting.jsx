@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { ROLES } from '../lib/permissions'
+
+const ROLE_LABELS = Object.fromEntries(ROLES.map(r => [r.key, r.label]))
 
 // ============================================================
 // REPORTING — task-time reporting for payroll + invoicing.
@@ -48,6 +51,26 @@ export default function Reporting() {
   const [claims, setClaims] = useState([])
   const [sblocks, setSblocks] = useState([])
   const [qaAudits, setQaAudits] = useState([])
+  // People & Tags report data — a current snapshot, independent of the date range.
+  const [peopleFull, setPeopleFull] = useState([])
+  const [tags, setTags] = useState([])
+  const [taggables, setTaggables] = useState([])
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      const [pRes, tRes, tgRes] = await Promise.all([
+        supabase.from('profiles').select('id, full_name, email, phone, role, is_active, inactive_reason, deactivated_at, created_at').order('full_name'),
+        supabase.from('tags').select('id, name').order('name'),
+        supabase.from('taggables').select('tag_id, entity_id').eq('entity_type', 'profile'),
+      ])
+      if (!active) return
+      setPeopleFull(pRes.data || [])
+      setTags(tRes.data || [])
+      setTaggables(tgRes.data || [])
+    })()
+    return () => { active = false }
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -281,6 +304,54 @@ export default function Reporting() {
     downloadCSV(`quality-${range.from}_to_${range.to}.csv`, rows)
   }
 
+  // ---- People & Tags report (current snapshot) ----
+  const tagNameOf = useCallback((id) => (tags.find(t => t.id === id) || {}).name || '—', [tags])
+  const tagsForPerson = useCallback((pid) =>
+    taggables.filter(t => t.entity_id === pid).map(t => tagNameOf(t.tag_id)).sort((a, b) => a.localeCompare(b))
+  , [taggables, tagNameOf])
+
+  const peopleReport = useMemo(() => {
+    const people = peopleFull
+    const total = people.length
+    const active = people.filter(p => p.is_active).length
+    const byRole = {}
+    for (const p of people) {
+      const r = p.role || '—'
+      byRole[r] = byRole[r] || { total: 0, active: 0, inactive: 0 }
+      byRole[r].total++
+      if (p.is_active) byRole[r].active++; else byRole[r].inactive++
+    }
+    const tagCount = {}
+    for (const t of tags) tagCount[t.id] = 0
+    const tagged = new Set()
+    for (const tg of taggables) {
+      if (tagCount[tg.tag_id] != null) tagCount[tg.tag_id]++
+      tagged.add(tg.entity_id)
+    }
+    const untagged = people.filter(p => !tagged.has(p.id))
+    const emptyTags = tags.filter(t => (tagCount[t.id] || 0) === 0)
+    const inactiveList = people.filter(p => !p.is_active)
+      .sort((a, b) => (b.deactivated_at || '').localeCompare(a.deactivated_at || ''))
+    const reasonCount = {}
+    for (const p of inactiveList) { const r = p.inactive_reason || 'Unspecified'; reasonCount[r] = (reasonCount[r] || 0) + 1 }
+    return { total, active, inactive: total - active, byRole, tagCount, untagged, emptyTags, inactiveList, reasonCount }
+  }, [peopleFull, tags, taggables])
+
+  function exportPeopleCSV() {
+    const header = ['Name', 'Email', 'Phone', 'Role', 'Status', 'Inactive reason', 'Deactivated', 'Tags']
+    const rows = [header]
+    peopleFull.slice().sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')).forEach(p => {
+      rows.push([
+        p.full_name || '', p.email || '', p.phone || '', p.role || '',
+        p.is_active ? 'Active' : 'Inactive',
+        p.is_active ? '' : (p.inactive_reason || ''),
+        p.deactivated_at ? new Date(p.deactivated_at).toLocaleDateString() : '',
+        tagsForPerson(p.id).join('; '),
+      ])
+    })
+    downloadCSV(`people-and-tags-${range.to}.csv`, rows)
+  }
+
   const personRows = Object.entries(grouped.byPerson)
     .sort((a, b) => nameOf(a[0], profiles).localeCompare(nameOf(b[0], profiles)))
   const clientRows = Object.entries(grouped.byClient)
@@ -297,23 +368,28 @@ export default function Reporting() {
 
       {/* controls */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 20 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={lbl}>From</label>
-          <input type="date" value={range.from} onChange={e => setRange(r => ({ ...r, from: e.target.value }))} style={inp} />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={lbl}>To</label>
-          <input type="date" value={range.to} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} style={inp} />
-        </div>
-        <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
+        {view !== 'people' && (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={lbl}>From</label>
+              <input type="date" value={range.from} onChange={e => setRange(r => ({ ...r, from: e.target.value }))} style={inp} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={lbl}>To</label>
+              <input type="date" value={range.to} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} style={inp} />
+            </div>
+          </>
+        )}
+        <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden', flexWrap: 'wrap' }}>
           <button onClick={() => setView('person')} style={tabBtn(view === 'person')}>By Person (Payroll)</button>
           <button onClick={() => setView('client')} style={tabBtn(view === 'client')}>By Client (Invoicing)</button>
           <button onClick={() => setView('compare')} style={tabBtn(view === 'compare')}>Scheduled vs Worked</button>
           <button onClick={() => setView('quality')} style={tabBtn(view === 'quality')}>Quality</button>
+          <button onClick={() => setView('people')} style={tabBtn(view === 'people')}>People</button>
         </div>
         <button className="btn btn-primary" style={{ marginLeft: 'auto' }}
-          onClick={view === 'person' ? exportPersonCSV : view === 'client' ? exportClientCSV : view === 'quality' ? exportQualityCSV : exportCompareCSV}>
-          Export {view === 'person' ? 'Payroll' : view === 'client' ? 'Invoicing' : view === 'quality' ? 'Quality' : 'Comparison'} CSV
+          onClick={view === 'person' ? exportPersonCSV : view === 'client' ? exportClientCSV : view === 'quality' ? exportQualityCSV : view === 'people' ? exportPeopleCSV : exportCompareCSV}>
+          Export {view === 'person' ? 'Payroll' : view === 'client' ? 'Invoicing' : view === 'quality' ? 'Quality' : view === 'people' ? 'Roster' : 'Comparison'} CSV
         </button>
       </div>
 
@@ -372,8 +448,115 @@ export default function Reporting() {
             </div>
           )}
         </>
+      ) : view === 'people' ? (
+        <>
+          {/* headcount tiles */}
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+            {[['People', peopleReport.total], ['Active', peopleReport.active], ['Inactive', peopleReport.inactive], ['Untagged', peopleReport.untagged.length]].map(([k, v]) => (
+              <div key={k} className="card" style={{ padding: '12px 16px', minWidth: 110 }}>
+                <span style={{ fontSize: 12, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>{k}</span>
+                <div style={{ fontSize: 24, fontWeight: 700 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
+            {/* By role */}
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600, fontSize: 14 }}>By role</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ borderBottom: '1px solid var(--line)' }}>
+                  <th style={{ ...cellL, fontWeight: 700 }}>Role</th>
+                  <th style={{ ...cellR, fontWeight: 700 }}>Active</th>
+                  <th style={{ ...cellR, fontWeight: 700 }}>Inactive</th>
+                  <th style={{ ...cellR, fontWeight: 700 }}>Total</th>
+                </tr></thead>
+                <tbody>
+                  {Object.entries(peopleReport.byRole).sort((a, b) => b[1].total - a[1].total || a[0].localeCompare(b[0])).map(([role, d]) => (
+                    <tr key={role} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                      <td style={{ ...cellL, fontWeight: 600 }}>{ROLE_LABELS[role] || role}</td>
+                      <td style={cellR}>{d.active}</td>
+                      <td style={{ ...cellR, color: d.inactive ? 'var(--failed)' : 'var(--ink-soft)' }}>{d.inactive || '—'}</td>
+                      <td style={cellR}>{d.total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* By tag */}
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600, fontSize: 14 }}>By tag</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ borderBottom: '1px solid var(--line)' }}>
+                  <th style={{ ...cellL, fontWeight: 700 }}>Tag</th>
+                  <th style={{ ...cellR, fontWeight: 700 }}>People</th>
+                </tr></thead>
+                <tbody>
+                  {tags.slice().sort((a, b) => (peopleReport.tagCount[b.id] || 0) - (peopleReport.tagCount[a.id] || 0) || a.name.localeCompare(b.name)).map(t => (
+                    <tr key={t.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                      <td style={{ ...cellL, fontWeight: 600 }}>{t.name}</td>
+                      <td style={{ ...cellR, color: (peopleReport.tagCount[t.id] || 0) === 0 ? 'var(--failed)' : undefined }}>{peopleReport.tagCount[t.id] || 0}</td>
+                    </tr>
+                  ))}
+                  {tags.length === 0 && <tr><td style={cellL} colSpan={2}><span className="page-sub">No tags yet.</span></td></tr>}
+                </tbody>
+              </table>
+              {peopleReport.emptyTags.length > 0 && (
+                <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--ink-soft)', borderTop: '1px solid var(--line)' }}>
+                  Tags with nobody: {peopleReport.emptyTags.map(t => t.name).join(', ')}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Untagged people */}
+          <div className="card" style={{ padding: 0, overflow: 'hidden', marginTop: 14 }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600, fontSize: 14 }}>
+              People with no tags <span className="page-sub" style={{ fontWeight: 400 }}>({peopleReport.untagged.length})</span>
+            </div>
+            {peopleReport.untagged.length === 0
+              ? <div style={{ padding: '14px 16px' }}><span className="page-sub">Everyone has at least one tag. 🎉</span></div>
+              : <div style={{ padding: '10px 16px', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {peopleReport.untagged.slice().sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')).map(p => (
+                    <span key={p.id} style={{ fontSize: 12.5, background: 'var(--line-soft)', borderRadius: 999, padding: '3px 10px' }}>
+                      {p.full_name}{!p.is_active && <span style={{ color: 'var(--ink-soft)' }}> · inactive</span>}
+                    </span>
+                  ))}
+                </div>}
+          </div>
+
+          {/* Attrition / inactive */}
+          <div className="card" style={{ padding: 0, overflow: 'hidden', marginTop: 14 }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600, fontSize: 14 }}>
+              Inactive / removed <span className="page-sub" style={{ fontWeight: 400 }}>({peopleReport.inactiveList.length})</span>
+            </div>
+            {peopleReport.inactiveList.length === 0
+              ? <div style={{ padding: '14px 16px' }}><span className="page-sub">Nobody is inactive.</span></div>
+              : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr style={{ borderBottom: '1px solid var(--line)' }}>
+                    <th style={{ ...cellL, fontWeight: 700 }}>Name</th>
+                    <th style={{ ...cellL, fontWeight: 700 }}>Reason</th>
+                    <th style={{ ...cellR, fontWeight: 700 }}>Since</th>
+                  </tr></thead>
+                  <tbody>
+                    {peopleReport.inactiveList.map(p => (
+                      <tr key={p.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                        <td style={{ ...cellL, fontWeight: 600 }}>{p.full_name}</td>
+                        <td style={cellL}>{p.inactive_reason || <span className="page-sub">Unspecified</span>}</td>
+                        <td style={cellR}>{p.deactivated_at ? new Date(p.deactivated_at).toLocaleDateString() : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>}
+          </div>
+
+          <p className="page-sub" style={{ marginTop: 14, fontSize: 12 }}>
+            A current snapshot — the date range above doesn’t apply here. Use <b>Export Roster CSV</b> for the full list with contact info and tags.
+          </p>
+        </>
       ) : null}
-      {loading || view === 'quality' ? null : (
+      {loading || view === 'quality' || view === 'people' ? null : (
         <>
           <div className="card" style={{ padding: '12px 16px', marginBottom: 16, display: 'inline-block' }}>
             <span style={{ fontSize: 12, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Total tracked</span>
