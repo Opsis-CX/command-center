@@ -9,7 +9,7 @@ export default function MyCourses() {
   const [openCourse, setOpenCourse] = useState(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
-
+ 
   useEffect(() => { load() }, [])
 
   async function load() {
