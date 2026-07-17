@@ -17,7 +17,7 @@ export default function MyCourses() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       const [coRes, stRes, prRes] = await Promise.all([
-        supabase.from('courses').select('*').eq('status', 'published').order('title'),
+        supabase.from('courses').select('*').eq('status', 'published').order('sort_order').order('title'),
         supabase.from('quiz_attempt_status').select('*').eq('profile_id', user.id),
         supabase.from('course_progress').select('*').eq('profile_id', user.id),
       ])
@@ -35,6 +35,16 @@ export default function MyCourses() {
   // No row in the view = never attempted.
   const statusFor = (id) => status[id] || { attempts_used: 0, attempts_left: 2, has_passed: false }
   const progressFor = (id) => progress[id] || { last_lesson_idx: 0, completed_lessons: false }
+
+  // Courses run in sort_order: a course opens only once every course before it
+  // has been passed. Returns the course blocking this one, or null if it's open.
+  function blockedBy(course, index) {
+    for (let i = 0; i < index; i++) {
+      const prev = courses[i]
+      if (!statusFor(prev.id).has_passed) return prev
+    }
+    return null
+  }
 
   if (openCourse) {
     return <CourseRunner course={openCourse}
@@ -59,17 +69,22 @@ export default function MyCourses() {
               No courses assigned to you yet.
             </div></div>}
 
-          {courses.map(c => {
+          {courses.map((c, ci) => {
             const s = statusFor(c.id)
             const pr = progressFor(c.id)
             const started = pr.last_lesson_idx > 0 || pr.completed_lessons
-            const locked = !s.has_passed && s.attempts_left === 0
+            const outOfAttempts = !s.has_passed && s.attempts_left === 0
+            const prereq = s.has_passed ? null : blockedBy(c, ci)
+            const locked = outOfAttempts || !!prereq
             return (
-              <div className="card" key={c.id}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{c.title}</h3>
+              <div className="card" key={c.id} style={{ display: 'flex', flexDirection: 'column', opacity: prereq ? .72 : 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
+                    <span className="page-sub" style={{ fontWeight: 600 }}>{ci + 1}. </span>{c.title}
+                  </h3>
                   {s.has_passed && <span className="badge passed">Passed</span>}
-                  {locked && <span className="badge failed">Locked</span>}
+                  {prereq && <span className="badge" style={{ background: 'var(--line-soft)', color: 'var(--ink-soft)' }}>🔒 Locked</span>}
+                  {outOfAttempts && !prereq && <span className="badge failed">Locked</span>}
                 </div>
 
                 {c.description && <p className="page-sub" style={{ marginTop: 5 }}>{c.description}</p>}
@@ -77,11 +92,13 @@ export default function MyCourses() {
                 <p className="page-sub" style={{ marginTop: 10, fontSize: 12.5 }}>
                   {s.has_passed
                     ? `Certified — scored ${s.best_score_pct ?? ''}%`
-                    : locked
-                      ? 'You have used both attempts. Ask an admin to reset your quiz.'
-                      : s.attempts_used === 0
-                        ? 'Pass mark ' + c.pass_threshold + '%. You get 2 attempts.'
-                        : `${s.attempts_left} attempt${s.attempts_left === 1 ? '' : 's'} remaining.`}
+                    : prereq
+                      ? <>Finish <b>{prereq.title}</b> first.</>
+                      : outOfAttempts
+                        ? 'You have used both attempts. Ask an admin to reset your quiz.'
+                        : s.attempts_used === 0
+                          ? 'Pass mark ' + c.pass_threshold + '%. You get 2 attempts.'
+                          : `${s.attempts_left} attempt${s.attempts_left === 1 ? '' : 's'} remaining.`}
                 </p>
 
                 {!s.has_passed && started && !locked && (
@@ -89,11 +106,12 @@ export default function MyCourses() {
                     {pr.completed_lessons ? 'Lessons finished — quiz is next.' : `Resume at lesson ${pr.last_lesson_idx + 1}.`}
                   </p>
                 )}
-                <div style={{ marginTop: 14 }}>
+                <div style={{ marginTop: 'auto', paddingTop: 14 }}>
                   <button className="btn btn-primary" disabled={locked}
+                    title={prereq ? `Finish ${prereq.title} first` : undefined}
                     style={locked ? { opacity: .45, cursor: 'not-allowed' } : undefined}
-                    onClick={() => setOpenCourse(c)}>
-                    {s.has_passed ? 'Review lessons' : (started || s.attempts_used > 0) ? 'Continue' : 'Start course'}
+                    onClick={() => { if (!locked) setOpenCourse(c) }}>
+                    {prereq ? '🔒 Locked' : s.has_passed ? 'Review lessons' : (started || s.attempts_used > 0) ? 'Continue' : 'Start course'}
                   </button>
                 </div>
               </div>
