@@ -14,8 +14,11 @@ async function sendHiringEmail(kind, to, data) {
   } catch (e) { console.error('email send failed:', e) }
 }
 
+// Reasons shown when deactivating (removing) someone. Edit freely.
+const DEACTIVATION_REASONS = ['Resigned', 'Terminated', 'Attendance / No-show', 'Performance', 'Contract ended', 'Ghosted / Abandoned', 'Other']
+
 export default function PeopleTags() {
-  const { appRole } = useAuth()
+  const { appRole, user } = useAuth()
   const canEdit = can(appRole, 'people_and_tags.edit')
   const canDelete = can(appRole, 'people_and_tags.delete')   // admin only
   const [tags, setTags] = useState([])
@@ -26,6 +29,10 @@ export default function PeopleTags() {
   const [newTagName, setNewTagName] = useState('')
   const [busyTag, setBusyTag] = useState(false)
   const [deletingTag, setDeletingTag] = useState(null)   // tag id being deleted
+  const [showInactive, setShowInactive] = useState(true) // People & Tags manages inactive people too
+  const [deactivating, setDeactivating] = useState(null) // person id in the deactivate flow
+  const [deactReason, setDeactReason] = useState('')
+  const [activeBusy, setActiveBusy] = useState(null)     // person id currently saving active state
   // Five9 setup: which person's form is open, and its field values
   const [five9Open, setFive9Open] = useState(null)   // person id
   const [five9User, setFive9User] = useState('')
@@ -38,8 +45,8 @@ export default function PeopleTags() {
     try {
       const [tagsRes, peopleRes, tgRes] = await Promise.all([
         supabase.from('tags').select('*').order('name'),
-        supabase.from('profiles').select('id, full_name, email, color, is_active, five9_username, five9_sent_at, role')
-          .eq('is_active', true).order('full_name'),
+        supabase.from('profiles').select('id, full_name, email, color, is_active, inactive_reason, five9_username, five9_sent_at, role')
+          .order('full_name'),
         supabase.from('taggables').select('*').eq('entity_type', 'profile'),
       ])
       if (tagsRes.error) throw tagsRes.error
@@ -135,6 +142,26 @@ export default function PeopleTags() {
     } finally {
       setRoleBusy(null)
     }
+  }
+
+  // Deactivate ("remove") a person with a reason, or bring them back. Soft — the
+  // profile and all their history stay; they just drop out of active views.
+  async function setActive(personId, active, reason) {
+    if (!canEdit) return
+    const prev = people
+    const patch = active
+      ? { is_active: true, inactive_reason: null, deactivated_at: null, deactivated_by: null }
+      : { is_active: false, inactive_reason: reason || null, deactivated_at: new Date().toISOString(), deactivated_by: user?.id || null }
+    setPeople(ps => ps.map(p => p.id === personId ? { ...p, ...patch } : p))
+    setActiveBusy(personId); setErr('')
+    try {
+      const { error } = await supabase.from('profiles').update(patch).eq('id', personId)
+      if (error) throw error
+      setDeactivating(null); setDeactReason('')
+    } catch (e) {
+      setPeople(prev)
+      setErr(e.message || 'Could not update this person')
+    } finally { setActiveBusy(null) }
   }
 
   function personHasTag(personId, tagId) {
@@ -271,18 +298,31 @@ export default function PeopleTags() {
             )}
           </div>
           <div className="card">
-            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600 }}>People</h3>
-            <p className="page-sub" style={{ marginBottom: 14 }}>Click a tag under each person to add or remove it.</p>
-            {people.length === 0 ? (
-              <p className="page-sub">No active people found.</p>
-            ) : people.map(p => (
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+              <div>
+                <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600 }}>People</h3>
+                <p className="page-sub" style={{ margin: 0 }}>Click a tag under each person to add or remove it.</p>
+              </div>
+              {people.some(x => !x.is_active) && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink-soft)', cursor: 'pointer', flex: 'none' }}>
+                  <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
+                  Show inactive ({people.filter(x => !x.is_active).length})
+                </label>
+              )}
+            </div>
+            {(showInactive ? people : people.filter(x => x.is_active)).length === 0 ? (
+              <p className="page-sub">No people to show.</p>
+            ) : (showInactive ? people : people.filter(x => x.is_active)).map(p => (
               <div key={p.id} style={{ padding: '14px 0', borderBottom: '1px solid var(--line-soft)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                   <span style={{ width: 30, height: 30, borderRadius: '50%', background: p.color || 'var(--blue)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flex: 'none' }}>
                     {initials(p.full_name)}
                   </span>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{p.full_name}</div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>
+                      {p.full_name}
+                      {!p.is_active && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--line-soft)', padding: '1px 7px', borderRadius: 999 }}>Inactive{p.inactive_reason ? ' · ' + p.inactive_reason : ''}</span>}
+                    </div>
                     <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{p.email}</div>
                   </div>
                   <button type="button" className="btn btn-ghost" style={{ fontSize: 12.5 }}
@@ -303,7 +343,44 @@ export default function PeopleTags() {
                       {(ROLES.find(r => r.key === (p.role || 'agent')) || {}).label}
                     </span>
                   )}
+                  {canEdit && (p.is_active ? (
+                    <button type="button" className="btn btn-ghost"
+                      style={{ fontSize: 12.5, color: 'var(--failed)', flex: 'none' }}
+                      disabled={activeBusy === p.id}
+                      onClick={() => { setDeactivating(deactivating === p.id ? null : p.id); setDeactReason('') }}>
+                      Deactivate
+                    </button>
+                  ) : (
+                    <button type="button" className="btn btn-ghost"
+                      style={{ fontSize: 12.5, flex: 'none' }}
+                      disabled={activeBusy === p.id}
+                      onClick={() => setActive(p.id, true)}>
+                      {activeBusy === p.id ? 'Reactivating…' : 'Reactivate'}
+                    </button>
+                  ))}
                 </div>
+
+                {deactivating === p.id && canEdit && (
+                  <div style={{ background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: 14, margin: '4px 0 12px' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Deactivate {p.full_name}?</div>
+                    <p style={{ fontSize: 12, color: 'var(--ink-soft)', margin: '0 0 12px', lineHeight: 1.5 }}>
+                      They’ll be removed from active lists (schedule, scorecards, etc.) but their history is kept. You can reactivate them anytime.
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <select value={deactReason} onChange={e => setDeactReason(e.target.value)}
+                        style={{ fontSize: 13, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }}>
+                        <option value="">Reason for removal…</option>
+                        {DEACTIVATION_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                      <button className="btn btn-primary" style={{ background: 'var(--failed)' }}
+                        disabled={!deactReason || activeBusy === p.id}
+                        onClick={() => setActive(p.id, false, deactReason)}>
+                        {activeBusy === p.id ? 'Removing…' : 'Deactivate'}
+                      </button>
+                      <button className="btn btn-ghost" onClick={() => { setDeactivating(null); setDeactReason('') }}>Cancel</button>
+                    </div>
+                  </div>
+                )}
 
                 {five9Open === p.id && (
                   <div style={{ background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: 14, margin: '4px 0 12px' }}>
