@@ -24,6 +24,8 @@ const canCoachNotes = (r) => ['asc', 'admin'].includes(String(r || '').trim().to
 
 const pct = (v, dp = 1) => (v == null ? '—' : (v * 100).toFixed(dp) + '%')
 const num = (v, dp = 2) => (v == null ? '—' : Number(v).toFixed(dp))
+// ACW% and NR% are "higher = worse": color low (good) → high (bad).
+const badColor = (v) => (v == null ? 'inherit' : v >= 0.20 ? '#b71c1c' : v >= 0.10 ? '#8d6e00' : '#1b5e20')
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—')
 
 const TIER_STYLE = {
@@ -76,14 +78,14 @@ export default function Scorecard() {
   return (
     <div>
       <h1 className="page-title">Service Performance Scorecard</h1>
-      <p className="page-sub">Team performance — last 30 days. Ranked by weighted score (Conversion 40% · Quality 40% · Adherence 20%).</p>
+      <p className="page-sub">Team performance — last 30 days. Ranked by weighted score (Conversion 30% · Quality 20% · ACW% 20% · Not Ready% 10% · Adherence 20%). ACW% and Not Ready% are measured against login time — higher is worse.</p>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginTop: 20 }}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, minWidth: 720 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, minWidth: 860 }}>
             <thead>
               <tr style={{ background: 'var(--canvas)', textAlign: 'left' }}>
-                <Th>#</Th><Th>Agent</Th><Th>Tier</Th><Th right>Conversion</Th><Th right>Quality</Th><Th right>Adherence</Th><Th right>AHT</Th><Th right>Calls</Th>
+                <Th>#</Th><Th>Agent</Th><Th>Tier</Th><Th right>Conversion</Th><Th right>Quality</Th><Th right>ACW%</Th><Th right>NR%</Th><Th right>Adherence</Th><Th right>AHT</Th><Th right>Calls</Th>
               </tr>
             </thead>
             <tbody>
@@ -99,13 +101,15 @@ export default function Scorecard() {
                     <Td>{r.performance_tier ? <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: ts?.bg, color: ts?.fg }}>{r.performance_tier}</span> : <span style={{ color: 'var(--ink-soft)' }}>—</span>}</Td>
                     <Td right>{pct(r.conversion_rate_last_30_days)}</Td>
                     <Td right>{pct(r.avg_clean_qa_score_last_30_days)}</Td>
+                    <Td right><span style={{ color: badColor(r.acw_pct_last_30_days), fontWeight: 600 }}>{pct(r.acw_pct_last_30_days)}</span></Td>
+                    <Td right><span style={{ color: badColor(r.nr_pct_last_30_days), fontWeight: 600 }}>{pct(r.nr_pct_last_30_days)}</span></Td>
                     <Td right>{pct(r.schedule_adherence_last_30_days)}</Td>
                     <Td right>{num(r.avg_aht_minutes_last_30_days)}</Td>
                     <Td right>{r.calls_handled_last_30_days ?? '—'}</Td>
                   </tr>
                 )
               })}
-              {rows.length === 0 && <tr><Td>—</Td><Td>No scorecard data yet.</Td><Td /><Td /><Td /><Td /><Td /><Td /></tr>}
+              {rows.length === 0 && <tr><Td>—</Td><Td>No scorecard data yet.</Td><Td /><Td /><Td /><Td /><Td /><Td /><Td /><Td /></tr>}
             </tbody>
           </table>
         </div>
@@ -184,6 +188,8 @@ function AgentScorecard({ row, canCoach, canSeeNotes, onBack }) {
         <SummaryCard label="Conversion Rate" big={pct(row.conversion_rate_last_30_days, 2)} sub={`7 Days: ${pct(row.conversion_rate_last_7_days, 2)}`} />
         <SummaryCard label="Quality Score" big={pct(row.avg_clean_qa_score_last_30_days, 2)} sub={`7 Days: ${pct(row.avg_clean_qa_score_last_7_days, 2)}`} />
         <SummaryCard label="Schedule Adherence" big={pct(row.schedule_adherence_last_30_days, 2)} sub={`7 Days: ${pct(row.schedule_adherence_last_7_days, 2)}`} />
+        <SummaryCard label="ACW % (of login)" big={pct(row.acw_pct_last_30_days, 2)} sub={`7 Days: ${pct(row.acw_pct_last_7_days, 2)}`} bigColor={badColor(row.acw_pct_last_30_days)} />
+        <SummaryCard label="Not Ready % (of login)" big={pct(row.nr_pct_last_30_days, 2)} sub={`7 Days: ${pct(row.nr_pct_last_7_days, 2)}`} bigColor={badColor(row.nr_pct_last_30_days)} />
         <SummaryCard label="Average Handle Time" big={num(row.avg_aht_minutes_last_30_days, 2)} sub={`7 Days: ${num(row.avg_aht_minutes_last_7_days, 2)}`} />
       </div>
 
@@ -213,6 +219,8 @@ function AgentScorecard({ row, canCoach, canSeeNotes, onBack }) {
         <div className="card">
           <SectionTitle>Reliability (30 days)</SectionTitle>
           <InfoRow k="Schedule adherence" v={pct(row.schedule_adherence_last_30_days, 2)} />
+          <InfoRow k="ACW % (of login)" v={pct(row.acw_pct_last_30_days, 2)} vColor={badColor(row.acw_pct_last_30_days)} />
+          <InfoRow k="Not Ready % (of login)" v={pct(row.nr_pct_last_30_days, 2)} vColor={badColor(row.nr_pct_last_30_days)} />
           <InfoRow k="Weighted score" v={row.weighted_score == null ? '—' : (row.weighted_score * 100).toFixed(1)} />
           <InfoRow k="Team rank" v={row.agent_rank ?? '—'} />
         </div>
@@ -309,11 +317,11 @@ function AgentScorecard({ row, canCoach, canSeeNotes, onBack }) {
   )
 }
 
-function SummaryCard({ label, big, sub }) {
+function SummaryCard({ label, big, sub, bigColor }) {
   return (
     <div className="card" style={{ textAlign: 'center', padding: '16px 12px' }}>
       <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)' }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 800, margin: '6px 0 2px' }}>{big}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, margin: '6px 0 2px', color: bigColor || 'inherit' }}>{big}</div>
       <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>{sub}</div>
     </div>
   )
@@ -321,11 +329,11 @@ function SummaryCard({ label, big, sub }) {
 function SectionTitle({ children }) {
   return <div style={{ fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--accent)', marginBottom: 10 }}>{children}</div>
 }
-function InfoRow({ k, v }) {
+function InfoRow({ k, v, vColor }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '5px 0', fontSize: 13.5 }}>
       <span style={{ color: 'var(--ink-soft)' }}>{k}</span>
-      <span style={{ fontWeight: 600, textAlign: 'right' }}>{v}</span>
+      <span style={{ fontWeight: 600, textAlign: 'right', color: vColor || 'inherit' }}>{v}</span>
     </div>
   )
 }
