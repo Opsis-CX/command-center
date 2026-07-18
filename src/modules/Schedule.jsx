@@ -116,12 +116,13 @@ export default function Schedule() {
   const [schedules, setSchedules] = useState([])
   const [blocks, setBlocks] = useState([])
   const [claims, setClaims] = useState([])
+  const [trades, setTrades] = useState([])   // open interval-trade offers
   const [audience, setAudience] = useState([])
   const [certRecords, setCertRecords] = useState([])
   const [certifications, setCertifications] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
-  const [tab, setTab] = useState('claim') // claim | myshifts
+  const [tab, setTab] = useState('claim') // claim | myshifts | trade
   const [weekStart, setWeekStart] = useState(mondayOf(etNow()))
 
   // Once the data loads, jump to the first week that actually has intervals the
@@ -137,7 +138,7 @@ export default function Schedule() {
     setErr('')
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      const [meRes, profRes, tierRes, schRes, blkRes, clmRes, audRes, recRes, certRes] = await Promise.all([
+      const [meRes, profRes, tierRes, schRes, blkRes, clmRes, audRes, recRes, certRes, trdRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         supabase.from('profiles').select('id, full_name, email, tier_id, is_admin, is_active, release_penalty_until_thu').order('full_name'),
         supabase.from('performance_tiers').select('*').order('sort_order'),
@@ -147,6 +148,7 @@ export default function Schedule() {
         supabase.from('schedule_audience').select('*'),
         supabase.from('agent_cert_records').select('*'),
         supabase.from('certifications').select('id, call_type_id, active'),
+        supabase.from('interval_trades').select('*').eq('status', 'open'),
       ])
       if (meRes.error) throw meRes.error
       setMe(meRes.data)
@@ -155,6 +157,7 @@ export default function Schedule() {
       setSchedules(schRes.data || [])
       setBlocks(blkRes.data || [])
       setClaims(clmRes.data || [])
+      setTrades(trdRes.data || [])
       setAudience(audRes.data || [])
       setCertRecords(recRes.data || [])
       setCertifications(certRes.data || [])
@@ -170,6 +173,7 @@ export default function Schedule() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_claims' }, () => load(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_blocks' }, () => load(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'schedules' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'interval_trades' }, () => load(true))
       .subscribe()
     const t = setInterval(() => load(true), POLL_MS)
     return () => { supabase.removeChannel(ch); clearInterval(t) }
@@ -357,6 +361,29 @@ export default function Schedule() {
     flash(wasLate ? 'Released (late cancellation)' : 'Interval released'); load(true)
   }
 
+  // ---------- interval trading ----------
+  // Put your interval up for others to take WITHOUT releasing it. If nobody
+  // accepts, you still hold it and stay accountable.
+  const scheduleOf = (block) => schedules.find(s => s.id === block?.schedule_id)
+  const certOkForBlock = (block) => { const s = scheduleOf(block); return s ? hasPassedCertForCallType(s.call_type_id) : true }
+  const myOpenTradeFor = (blockId) => trades.find(tr => tr.shift_block_id === blockId && tr.offered_by === me?.id)
+
+  async function offerTrade(block) {
+    const { error } = await supabase.rpc('offer_interval_trade', { p_shift_block_id: block.id })
+    if (error) { flash(error.message || 'Could not put that up for trade'); return }
+    flash('Put on the trade board — you still hold it until someone takes it'); load(true)
+  }
+  async function cancelTrade(trade) {
+    const { error } = await supabase.rpc('cancel_interval_trade', { p_trade_id: trade.id })
+    if (error) { flash(error.message || 'Could not cancel that offer'); return }
+    flash('Taken off the trade board'); load(true)
+  }
+  async function acceptTrade(trade) {
+    const { error } = await supabase.rpc('accept_interval_trade', { p_trade_id: trade.id })
+    if (error) { flash(error.message || 'Could not accept that interval'); return }
+    flash("Interval accepted — it's yours now"); load(true)
+  }
+
   async function markNoShow(claim, block) {
     if (!window.confirm('Mark this person as a no-show for this interval?')) return
     const { error } = await supabase.from('shift_claims').update({ status: 'no_show' }).eq('id', claim.id)
@@ -502,6 +529,14 @@ export default function Schedule() {
         <div style={{ display: 'flex', gap: 8 }}>
           <button className={'btn ' + (tab === 'claim' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('claim')}>Schedule</button>
           <button className={'btn ' + (tab === 'myshifts' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('myshifts')}>My schedule</button>
+          <button className={'btn ' + (tab === 'trade' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('trade')} style={{ position: 'relative' }}>
+            Trade board
+            {trades.filter(tr => tr.offered_by !== me?.id).length > 0 && (
+              <span style={{ marginLeft: 7, background: 'var(--cta)', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '1px 7px' }}>
+                {trades.filter(tr => tr.offered_by !== me?.id).length}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -519,8 +554,13 @@ export default function Schedule() {
           onClaim={claimBlock} onUnclaim={unclaimBlock} onCheckIn={checkIn} onCheckOut={checkOut} onNoShow={markNoShow}
           canAssign={canAssign} audience={audience} onAssign={assignBlock} onUnassign={unassignBlock}
         />
+      ) : tab === 'trade' ? (
+        <TradeBoardView me={me} trades={trades} blocks={blocks} profiles={profiles}
+          certOkForBlock={certOkForBlock} hasIntervalStarted={hasIntervalStarted}
+          onAccept={acceptTrade} onCancel={cancelTrade} viewerTZ={me?.timezone} />
       ) : (
-        <MyScheduleView me={me} blocks={blocks} claims={claims} hasIntervalStarted={hasIntervalStarted} onUnclaim={unclaimBlock} onCheckIn={checkIn} onCheckOut={checkOut} openBreaks={openBreaks} onStartBreak={startBreak} onEndBreak={endBreak} />
+        <MyScheduleView me={me} blocks={blocks} claims={claims} hasIntervalStarted={hasIntervalStarted} onUnclaim={unclaimBlock} onCheckIn={checkIn} onCheckOut={checkOut} openBreaks={openBreaks} onStartBreak={startBreak} onEndBreak={endBreak}
+          onOfferTrade={offerTrade} onCancelTrade={cancelTrade} myOpenTradeFor={myOpenTradeFor} />
       )}
     </div>
   )
@@ -879,8 +919,70 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, canAs
 
 function Row({ k, v }) { return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: 'var(--ink-soft)' }}>{k}</span><span>{v}</span></div> }
 
+// ---------- TRADE BOARD ----------
+// Intervals other agents have offered up for someone else to take, WITHOUT
+// releasing them. Accepting transfers the seat (same rules as claiming). If
+// nobody accepts, the offering agent still holds it and stays accountable.
+function TradeBoardView({ me, trades, blocks, profiles, certOkForBlock, hasIntervalStarted, onAccept, onCancel, viewerTZ }) {
+  const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || 'Someone'
+  const dayLabel = (block) => new Date(block.block_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const todayStr = isoDate(etNow())
+
+  const rows = trades
+    .map(tr => ({ tr, block: blocks.find(b => b.id === tr.shift_block_id) }))
+    .filter(x => x.block && x.block.block_date >= todayStr && !hasIntervalStarted(x.block))
+    .sort((a, b) => (a.block.block_date + a.block.start_time).localeCompare(b.block.block_date + b.block.start_time))
+  const mine = rows.filter(x => x.tr.offered_by === me?.id)
+  const others = rows.filter(x => x.tr.offered_by !== me?.id)
+
+  return <div>
+    <div className="card" style={{ marginBottom: 16 }}>
+      <p className="page-sub" style={{ margin: 0 }}>
+        Intervals other agents have put up for grabs. Accepting one makes it yours — the same rules as claiming apply (certified for the position, under 40 hours, no overlap). Putting an interval here <b>isn’t</b> releasing it: if nobody takes it, the original agent still holds it and stays responsible for showing up.
+      </p>
+    </div>
+
+    {mine.length > 0 && <>
+      <div style={sectionHdr}>Your offers</div>
+      <div style={tradeGrid}>
+        {mine.map(({ tr, block }) => (
+          <div key={tr.id} className="iv mine" style={{ padding: '14px 16px' }}>
+            <div className="iv-time" style={{ fontSize: 14, fontWeight: 700 }}>{dayLabel(block)}</div>
+            <div className="iv-time" style={{ fontSize: 15 }}>{blockTimeInViewer(block.block_date, block.start_time, viewerTZ)} – {blockTimeInViewer(block.block_date, block.end_time, viewerTZ)}</div>
+            {block.role && <div className="iv-sub" style={{ fontSize: 12, marginBottom: 6 }}>{block.role}</div>}
+            <div style={{ fontSize: 11, color: 'var(--cta)', fontWeight: 700, marginBottom: 8 }}>🔁 On the trade board — you still hold it</div>
+            <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, border: '1px solid var(--line)' }} onClick={() => onCancel(tr)}>Take back</button>
+          </div>
+        ))}
+      </div>
+    </>}
+
+    <div style={sectionHdr}>Available to take {others.length ? `(${others.length})` : ''}</div>
+    {others.length === 0
+      ? <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 24 }}>Nothing on the trade board right now.</div></div>
+      : <div style={tradeGrid}>
+          {others.map(({ tr, block }) => {
+            const eligible = certOkForBlock(block)
+            return (
+              <div key={tr.id} className="iv" style={{ padding: '14px 16px' }}>
+                <div className="iv-time" style={{ fontSize: 14, fontWeight: 700 }}>{dayLabel(block)}</div>
+                <div className="iv-time" style={{ fontSize: 15 }}>{blockTimeInViewer(block.block_date, block.start_time, viewerTZ)} – {blockTimeInViewer(block.block_date, block.end_time, viewerTZ)}</div>
+                {block.role && <div className="iv-sub" style={{ fontSize: 12, marginBottom: 4 }}>{block.role}</div>}
+                <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 8 }}>Offered by {nameOf(tr.offered_by)}</div>
+                {eligible
+                  ? <button className="btn btn-primary" style={{ width: '100%', fontSize: 12 }} onClick={() => onAccept(tr)}>Accept this interval</button>
+                  : <div style={{ fontSize: 11, color: 'var(--ink-soft)', fontStyle: 'italic' }}>You’re not certified for this position yet.</div>}
+              </div>
+            )
+          })}
+        </div>}
+  </div>
+}
+const sectionHdr = { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', margin: '4px 0 10px' }
+const tradeGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 12, marginBottom: 22 }
+
 // ---------- MY SCHEDULE ----------
-function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onCheckIn, onCheckOut, openBreaks = {}, onStartBreak, onEndBreak }) {
+function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onCheckIn, onCheckOut, openBreaks = {}, onStartBreak, onEndBreak, onOfferTrade, onCancelTrade, myOpenTradeFor }) {
   const myClaims = claims.filter(c => c.profile_id === me.id)
   if (!myClaims.length) return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>No intervals claimed yet. Head to Schedule to pick up some time.</div></div>
 
@@ -899,7 +1001,7 @@ function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onC
           {date === todayStr ? 'Today · ' : ''}{new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 12 }}>
-          {byDate[date].map(e => <ShiftCard key={e.claim.id} block={e.block} claim={e.claim} isPast={false} started={hasIntervalStarted(e.block)} viewerTZ={me?.timezone} onUnclaim={onUnclaim} onCheckIn={onCheckIn} onCheckOut={onCheckOut} openBreak={openBreaks[e.claim.id]} onStartBreak={onStartBreak} onEndBreak={onEndBreak} />)}
+          {byDate[date].map(e => <ShiftCard key={e.claim.id} block={e.block} claim={e.claim} isPast={false} started={hasIntervalStarted(e.block)} viewerTZ={me?.timezone} onUnclaim={onUnclaim} onCheckIn={onCheckIn} onCheckOut={onCheckOut} openBreak={openBreaks[e.claim.id]} onStartBreak={onStartBreak} onEndBreak={onEndBreak} onOfferTrade={onOfferTrade} onCancelTrade={onCancelTrade} myTrade={myOpenTradeFor ? myOpenTradeFor(e.block.id) : null} />)}
         </div>
       </div>
     )) : <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 20 }}>No upcoming intervals.</div></div>}
@@ -920,7 +1022,7 @@ function workedLabel(claim) {
   return h ? `${h}h ${m}m` : `${m}m`
 }
 
-function ShiftCard({ block, claim, isPast, started, viewerTZ, onUnclaim, onCheckIn, onCheckOut, openBreak, onStartBreak, onEndBreak }) {
+function ShiftCard({ block, claim, isPast, started, viewerTZ, onUnclaim, onCheckIn, onCheckOut, openBreak, onStartBreak, onEndBreak, onOfferTrade, onCancelTrade, myTrade }) {
   const checkedIn = claim?.checked_in_at; const checkedOut = claim?.checked_out_at
   const noShow = claim?.status === 'no_show'
   const pending = claim?.status === 'pending_review'
@@ -987,6 +1089,14 @@ function ShiftCard({ block, claim, isPast, started, viewerTZ, onUnclaim, onCheck
       <div style={{ fontSize: 12, color: 'var(--needed)', fontWeight: 600, margin: '8px 0' }}>Never checked out — admin will review</div>
     )}
 
+    {!isPast && !started && !checkedIn && onOfferTrade && (
+      myTrade
+        ? <div style={{ marginTop: 6 }}>
+            <div style={{ fontSize: 11, color: 'var(--cta)', fontWeight: 700, marginBottom: 4 }}>🔁 On the trade board</div>
+            <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, border: '1px solid var(--line)' }} onClick={() => onCancelTrade(myTrade)}>Take back from trade board</button>
+          </div>
+        : <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, marginTop: 6, border: '1px solid var(--line)' }} onClick={() => onOfferTrade(block)} title="Offer this interval to others without giving it up — if nobody takes it, you still hold it.">🔁 Put up for trade</button>
+    )}
     {!isPast && !started && !checkedIn && <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, marginTop: 6, color: 'var(--failed)' }} onClick={() => onUnclaim(block)}>Release this spot</button>}
     {block.notes && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 8 }}>{block.notes}</div>}
   </div>
