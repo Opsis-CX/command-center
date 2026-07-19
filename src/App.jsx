@@ -27,6 +27,7 @@ import Clients from './modules/Clients'
 import Reporting from './modules/Reporting'
 import HourlyReports from './modules/HourlyReports'
 import Updates from './modules/Updates'
+import OpsisWeekly from './modules/OpsisWeekly'
 import Calendar from './modules/Calendar'
 import WeeklySync from './modules/WeeklySync'
 import Notifications from './modules/Notifications'
@@ -123,6 +124,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {canAny(appRole, 'project_management') && <Route path="/projects" element={<Projects />} />}
               {canAny(appRole, 'clients.view_only') && <Route path="/clients" element={<Clients />} />}
               <Route path="/updates" element={<Updates />} />
+              <Route path="/home" element={<OpsisWeekly />} />
               {canAny(appRole, 'reporting') && <Route path="/reporting" element={<Reporting />} />}
               {canAny(appRole, 'reporting') && <Route path="/reporting/hourly" element={<HourlyReports />} />}
               {canAny(appRole, 'people_and_tags.view_only') && <Route path="/people" element={<PeopleTags />} />}
@@ -149,7 +151,7 @@ function titleFor(path) {
     '/': 'Dashboard', '/certifications': 'Certifications',
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
-    '/chat': 'Chat', '/updates': 'Updates', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
+    '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales', '/help': 'Help Center',
   }
   return map[path] || 'Command Center'
