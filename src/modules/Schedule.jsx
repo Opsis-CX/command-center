@@ -560,6 +560,7 @@ export default function Schedule() {
           claimedHoursInWeek={claimedHoursInWeek} hasIntervalStarted={hasIntervalStarted}
           onClaim={claimBlock} onUnclaim={unclaimBlock} onCheckIn={checkIn} onCheckOut={checkOut} onNoShow={markNoShow}
           canAssign={canAssign} audience={audience} onAssign={assignBlock} onUnassign={unassignBlock}
+          trades={trades} onOfferTrade={offerTrade} onAcceptTrade={acceptTrade} onCancelTrade={cancelTrade} certOkForBlock={certOkForBlock} myOpenTradeFor={myOpenTradeFor}
         />
       ) : tab === 'trade' ? (
         <TradeBoardView me={me} trades={trades} blocks={blocks} profiles={profiles}
@@ -576,7 +577,8 @@ export default function Schedule() {
 function ClaimView(props) {
   const { isAdmin, adminView, setAdminView, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
     claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow,
-    canAssign, audience, onAssign, onUnassign } = props
+    canAssign, audience, onAssign, onUnassign,
+    trades, onOfferTrade, onAcceptTrade, onCancelTrade, certOkForBlock, myOpenTradeFor } = props
   const [popBlock, setPopBlock] = useState(null)
 
   // Admins in 'team' view see the team grid; everyone else (agents, and
@@ -622,12 +624,16 @@ function ClaimView(props) {
 
       {teamMode
         ? <AdminGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} profiles={profiles} me={me} onPop={setPopBlock} />
-        : <AgentGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} me={me} hasIntervalStarted={hasIntervalStarted} horizonDays={releaseStatus.horizonDays} onPop={setPopBlock} />}
+        : <AgentGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} me={me} hasIntervalStarted={hasIntervalStarted} horizonDays={releaseStatus.horizonDays} onPop={setPopBlock} trades={trades} />}
 
       {popBlock && <IntervalPopover
         block={popBlock} claims={claims} profiles={profiles} me={me} canClaim={!teamMode} isAdmin={isAdmin}
         canAssign={canAssign} audience={audience}
         hasIntervalStarted={hasIntervalStarted}
+        trades={trades}
+        onOfferTrade={(b) => { onOfferTrade(b); setPopBlock(null) }}
+        onAcceptTrade={(tr) => { onAcceptTrade(tr); setPopBlock(null) }}
+        onCancelTrade={(tr) => { onCancelTrade(tr); setPopBlock(null) }}
         onClose={() => setPopBlock(null)}
         onClaim={(b) => { onClaim(b); setPopBlock(null) }}
         onUnclaim={(b) => { onUnclaim(b); setPopBlock(null) }}
@@ -689,7 +695,7 @@ function ReleaseBanner({ status }) {
 }
 
 // ---------- AGENT GRID ----------
-function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted, horizonDays, onPop }) {
+function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted, horizonDays, onPop, trades }) {
   // Rolling-window cutoff: open intervals are visible only through today + horizonDays.
   const horizonStr = (() => {
     const d = etNow(); d.setDate(d.getDate() + (horizonDays ?? 13)); return isoDate(d)
@@ -720,6 +726,9 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
     return <div key={ds} className={'wg-cell' + (ds === todayStr ? ' today' : '') + (items.length ? '' : ' dim')}>{items}</div>
   })
 
+  // An interval up for trade (offered by someone else) shows here as grabbable too —
+  // so a released interval is available on BOTH the trade board and the schedule.
+  const tradeFor = (bid) => (trades || []).find(tr => tr.shift_block_id === bid && tr.offered_by !== me.id && tr.status === 'open')
   const openCells = days.map(d => {
     const ds = isoDate(d)
     const items = weekBlocks.filter(b => {
@@ -727,13 +736,14 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
       if (b.block_date > horizonStr) return false   // beyond the rolling window — not visible yet
       // (started/ended intervals stay claimable — late pickup is allowed)
       const cl = claims.filter(c => c.shift_block_id === b.id)
-      if (cl.length >= b.total_spots) return false
-      if (cl.some(c => c.profile_id === me.id)) return false
-      return true
+      if (cl.some(c => c.profile_id === me.id)) return false   // I already hold it
+      const hasOpenSeat = cl.length < b.total_spots
+      return hasOpenSeat || !!tradeFor(b.id)   // open seat OR up for trade
     }).sort((a, b) => a.start_time.localeCompare(b.start_time))
       .map(b => {
         const left = b.total_spots - claims.filter(c => c.shift_block_id === b.id).length
-        return <Iv key={b.id} block={b} cls="open" spots={`${left} open`} time={`${blockTimeInViewer(b.block_date, b.start_time, me?.timezone)}–${blockTimeInViewer(b.block_date, b.end_time, me?.timezone)}`} role={b.role} onPop={onPop} />
+        const traded = left <= 0 && tradeFor(b.id)
+        return <Iv key={b.id} block={b} cls="open" spots={traded ? '🔁 up for trade' : `${left} open`} time={`${blockTimeInViewer(b.block_date, b.start_time, me?.timezone)}–${blockTimeInViewer(b.block_date, b.end_time, me?.timezone)}`} role={b.role} onPop={onPop} />
       })
     return <div key={ds} className={'wg-cell' + (ds === todayStr ? ' today' : '') + (items.length ? '' : ' dim')}>{items}</div>
   })
@@ -841,13 +851,15 @@ function Iv({ block, cls, spots, time, role, onPop }) {
 }
 
 // ---------- INTERVAL POPOVER ----------
-function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, canAssign, audience, hasIntervalStarted, onClose, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow, onAssign, onUnassign }) {
+function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, canAssign, audience, hasIntervalStarted, trades, onOfferTrade, onAcceptTrade, onCancelTrade, onClose, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow, onAssign, onUnassign }) {
   const [assignTo, setAssignTo] = React.useState('')
   const cl = claims.filter(c => c.shift_block_id === block.id)
   const mine = cl.find(c => c.profile_id === me.id)
   const left = block.total_spots - cl.length
   const isFull = left <= 0
   const started = hasIntervalStarted(block)
+  const myTrade = (trades || []).find(tr => tr.shift_block_id === block.id && tr.offered_by === me.id && tr.status === 'open')
+  const othersTrade = (trades || []).find(tr => tr.shift_block_id === block.id && tr.offered_by !== me.id && tr.status === 'open')
   const names = cl.map(c => profiles.find(p => p.id === c.profile_id)?.full_name?.split(' ')[0] || '').filter(Boolean).join(', ')
 
   return <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
@@ -909,7 +921,11 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, canAs
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button className="btn btn-ghost" onClick={onClose}>Close</button>
         {mine ? <>
-          {!started && !mine.checked_in_at && mine.status !== 'no_show' && <button className="btn btn-ghost" style={{ color: 'var(--failed)' }} onClick={() => onUnclaim(block)}>Release spot</button>}
+          {!started && !mine.checked_in_at && mine.status !== 'no_show' && (
+            myTrade
+              ? <button className="btn btn-ghost" onClick={() => onCancelTrade(myTrade)} title="Take it back off the trade board — you keep the interval.">Take off trade board</button>
+              : <button className="btn btn-ghost" style={{ color: 'var(--accent)' }} onClick={() => onOfferTrade(block)} title="Can't make it? Put it up for trade. You still hold it (and stay accountable) until someone takes it.">🔁 Put up for trade</button>
+          )}
           {started && !mine.checked_in_at && mine.status !== 'no_show' && <button className="btn btn-primary" onClick={() => onCheckIn(mine.id, block)}>Check in</button>}
           {mine.checked_in_at && !mine.checked_out_at && mine.status !== 'no_show' && <button className="btn btn-primary" onClick={() => {
             const end = new Date(`${block.block_date}T${block.end_time.slice(0, 5)}:00`)
@@ -918,7 +934,9 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, canAs
             if (out) { note = window.prompt("You're outside your scheduled time. Add a note (required):") || ''; if (!note.trim()) return }
             onCheckOut(mine.id, block, note)
           }}>Check out</button>}
-        </> : (!isFull && canClaim && <button className="btn btn-primary" onClick={() => onClaim(block)}>{hasIntervalStarted(block) ? 'Claim (already started)' : 'Claim this interval'}</button>)}
+        </> : othersTrade && canClaim ? (
+          <button className="btn btn-primary" onClick={() => onAcceptTrade(othersTrade)}>{hasIntervalStarted(block) ? 'Accept (already started)' : 'Accept this interval'}</button>
+        ) : (!isFull && canClaim && <button className="btn btn-primary" onClick={() => onClaim(block)}>{hasIntervalStarted(block) ? 'Claim (already started)' : 'Claim this interval'}</button>)}
       </div>
     </div>
   </div>
@@ -1102,9 +1120,8 @@ function ShiftCard({ block, claim, isPast, started, viewerTZ, onUnclaim, onCheck
             <div style={{ fontSize: 11, color: 'var(--cta)', fontWeight: 700, marginBottom: 4 }}>🔁 On the trade board</div>
             <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, border: '1px solid var(--line)' }} onClick={() => onCancelTrade(myTrade)}>Take back from trade board</button>
           </div>
-        : <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, marginTop: 6, border: '1px solid var(--line)' }} onClick={() => onOfferTrade(block)} title="Offer this interval to others without giving it up — if nobody takes it, you still hold it.">🔁 Put up for trade</button>
+        : <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, marginTop: 6, border: '1px solid var(--line)' }} onClick={() => onOfferTrade(block)} title="Can't make it? Put it up for trade. You still hold it (and stay accountable) until someone takes it — it shows on the Trade board and the Schedule.">🔁 Can't make it? Put up for trade</button>
     )}
-    {!isPast && !started && !checkedIn && <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, marginTop: 6, color: 'var(--failed)' }} onClick={() => onUnclaim(block)}>Release this spot</button>}
     {block.notes && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 8 }}>{block.notes}</div>}
   </div>
 }
