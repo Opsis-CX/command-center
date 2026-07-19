@@ -110,6 +110,8 @@ export default function Schedule() {
   const noReleaseTimes = isAdmin || can(appRole, 'schedule.no_release_times')
   // Managers who can place agents directly onto intervals (Admin + ASC).
   const canAssign = isAdmin || can(appRole, 'schedule.ability_to_assign_intervals_to_agents')
+  // Fill Rate command panel — Admin + ASC (schedule insights).
+  const canFillRate = isAdmin || can(appRole, 'schedule.view_insights_assigned')
   const [me, setMe] = useState(null)
   const [profiles, setProfiles] = useState([])
   const [tiers, setTiers] = useState([])
@@ -537,13 +539,18 @@ export default function Schedule() {
               </span>
             )}
           </button>
+          {canFillRate && (
+            <button className={'btn ' + (tab === 'fillrate' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('fillrate')}>Fill Rate</button>
+          )}
         </div>
       </div>
 
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
       {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, background: 'var(--ink)', color: '#fff', padding: '11px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, zIndex: 2000, boxShadow: '0 8px 24px rgba(0,0,0,.3)' }}>{toast}</div>}
 
-      {tab === 'claim' ? (
+      {tab === 'fillrate' ? (
+        <FillRateView />
+      ) : tab === 'claim' ? (
         <ClaimView
           isAdmin={isAdmin} adminView={adminView} setAdminView={setAdminView}
           me={me} profiles={profiles} tiers={tiers}
@@ -1100,4 +1107,135 @@ function ShiftCard({ block, claim, isPast, started, viewerTZ, onUnclaim, onCheck
     {!isPast && !started && !checkedIn && <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, marginTop: 6, color: 'var(--failed)' }} onClick={() => onUnclaim(block)}>Release this spot</button>}
     {block.notes && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 8 }}>{block.notes}</div>}
   </div>
+}
+
+// ============================================================
+// FILL RATE — ASC command panel. Live schedule coverage + occupancy fill rate
+// (staffed hrs ÷ scheduled slot-hrs, to-date), tier mix, and open intervals.
+// Occupancy is refreshed hourly from Five9/BigQuery into sc_occupancy_today.
+// One-click "Copy update" replaces the manual tracker-sheet hourly post.
+// ============================================================
+const TIER_ORDER = ['Top Performer', 'High Performer', 'Nesting', 'Developing Performer', 'Improvement Opportunity', 'Unranked']
+const TIER_COLOR = {
+  'Top Performer': '#1b5e20', 'High Performer': '#8d6e00', 'Nesting': '#4527a0',
+  'Developing Performer': '#0d47a1', 'Improvement Opportunity': '#b71c1c', 'Unranked': '#6b7280',
+}
+// Fill rate / coverage colour: target is ~100%. Green ≥95, amber 90–95, red <90.
+function rateColor(v) { return v == null ? 'var(--ink)' : v >= 95 ? '#1b5e20' : v >= 90 ? '#8d6e00' : '#b71c1c' }
+
+function FillRateView() {
+  const [day, setDay] = useState(() => isoDate(etNow()))
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr('')
+    const { data, error } = await supabase.rpc('get_asc_fill_rate', { p_day: day })
+    if (error) { setErr(error.message); setData(null) } else { setData(data) }
+    setLoading(false)
+  }, [day])
+  useEffect(() => { load() }, [load])
+
+  const nowEt = new Date().toLocaleString('en-US', { timeZone: COMPANY_TZ, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const tiers = (data?.tier_mix || []).slice().sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier))
+  const opens = data?.open_intervals || []
+
+  function buildUpdate() {
+    if (!data) return ''
+    const fr = data.fill_rate == null ? 'n/a (schedule-only)' : data.fill_rate + '%'
+    const openStr = opens.length ? opens.map(o => `${o.start}–${o.end} (${o.open})`).join(', ') : 'none — fully covered'
+    const tierStr = tiers.length ? tiers.map(t => `${t.tier.replace(' Performer', '')} ${t.pct}%`).join(' · ') : 'n/a'
+    return [
+      `GarageCo Fill Rate — ${dayLabel}${data.is_today ? ` · as of ${nowEt}` : ''}`,
+      ``,
+      `Fill rate: ${fr}  (${data.occupancy_hours_todate} / ${data.scheduled_hours_todate} staffed hrs to-date)`,
+      `Coverage: ${data.coverage_pct ?? 'n/a'}%  (${data.filled_spots} of ${data.total_spots} slots · ${data.open_spots} open)`,
+      `Open intervals: ${openStr}`,
+      `Tier mix: ${tierStr}`,
+      ``,
+      `@Corinne Kerper @Becky Jackson @Brittney Thompson`,
+    ].join('\n')
+  }
+  async function copyUpdate() {
+    try { await navigator.clipboard.writeText(buildUpdate()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { setErr('Could not copy — select and copy manually.') }
+  }
+
+  if (loading) return <p className="page-sub">Loading fill rate…</p>
+  if (err) return <div className="card" style={{ borderColor: 'var(--failed)' }}><b style={{ color: 'var(--failed)' }}>Couldn't load fill rate.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>
+  if (!data) return null
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+        <input type="date" value={day} onChange={e => setDay(e.target.value)}
+          style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--canvas)' }} />
+        <button className="btn btn-ghost" onClick={load}>↻ Refresh</button>
+        {data.is_today && <span className="page-sub" style={{ fontSize: 12 }}>as of {nowEt} · occupancy synced {data.occupancy_updated_at ? new Date(data.occupancy_updated_at).toLocaleTimeString('en-US', { timeZone: COMPANY_TZ, hour: 'numeric', minute: '2-digit' }) : '—'}</span>}
+        <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={copyUpdate}>{copied ? '✓ Copied' : '📋 Copy update'}</button>
+      </div>
+
+      {/* Headline metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 14 }}>
+        <StatCard label="Fill Rate (staffed ÷ scheduled)" big={data.fill_rate == null ? '—' : data.fill_rate + '%'} bigColor={rateColor(data.fill_rate)}
+          sub={data.is_today ? `${data.occupancy_hours_todate} / ${data.scheduled_hours_todate} hrs to-date` : 'today only'} />
+        <StatCard label="Coverage (slots claimed)" big={(data.coverage_pct ?? '—') + '%'} bigColor={rateColor(data.coverage_pct)}
+          sub={`${data.filled_spots} of ${data.total_spots} slots`} />
+        <StatCard label="Open Slots" big={String(data.open_spots)} bigColor={data.open_spots > 0 ? '#b71c1c' : '#1b5e20'}
+          sub={opens.length ? `${opens.length} interval${opens.length > 1 ? 's' : ''}` : 'fully covered'} />
+        <StatCard label="Scheduled Hours" big={String(data.scheduled_hours_full)} sub="planned slot-hours today" />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+        {/* Open intervals to chase */}
+        <div className="card">
+          <div style={{ fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--accent)', marginBottom: 10 }}>Unassigned Intervals</div>
+          {opens.length === 0 ? (
+            <p className="page-sub" style={{ fontSize: 13, margin: 0 }}>Every interval is fully covered. 🎉</p>
+          ) : opens.map((o, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderTop: i ? '1px solid var(--line-soft)' : 'none', fontSize: 13.5 }}>
+              <span style={{ fontWeight: 600 }}>{o.start}–{o.end}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: '#fdecea', color: '#b71c1c' }}>{o.open} of {o.spots} open</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Tier mix of scheduled hours */}
+        <div className="card">
+          <div style={{ fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--accent)', marginBottom: 10 }}>Tier Mix (scheduled hours)</div>
+          {tiers.length === 0 ? (
+            <p className="page-sub" style={{ fontSize: 13, margin: 0 }}>No claimed intervals yet.</p>
+          ) : (
+            <div>
+              <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', marginBottom: 12 }}>
+                {tiers.map((t, i) => <div key={i} title={`${t.tier} ${t.pct}%`} style={{ width: t.pct + '%', background: TIER_COLOR[t.tier] || '#6b7280' }} />)}
+              </div>
+              {tiers.map((t, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', fontSize: 13.5 }}>
+                  <span><span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 2, background: TIER_COLOR[t.tier] || '#6b7280', marginRight: 8 }} />{t.tier}</span>
+                  <span style={{ fontWeight: 600 }}>{t.pct}% <span style={{ color: 'var(--ink-soft)', fontWeight: 400, fontSize: 12 }}>({t.hours}h)</span></span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <p className="page-sub" style={{ fontSize: 11.5, marginTop: 12 }}>
+        Fill rate = actual Five9 staffed hours ÷ scheduled slot-hours, counted up to now. Occupancy refreshes hourly from Five9 → BigQuery; make that export more frequent for finer intraday accuracy.
+      </p>
+    </div>
+  )
+}
+
+function StatCard({ label, big, sub, bigColor }) {
+  return (
+    <div className="card" style={{ textAlign: 'center', padding: '16px 12px' }}>
+      <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)' }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, margin: '6px 0 2px', color: bigColor || 'inherit' }}>{big}</div>
+      <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>{sub}</div>
+    </div>
+  )
 }
