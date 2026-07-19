@@ -1,8 +1,16 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useProjectsData } from './projectsData'
 import { Avatar } from './projectBits'
 import { PRIORITIES } from './projectHelpers'
+
+const FREQ_OPTIONS = [
+  { key: 'daily', label: 'Daily' },
+  { key: 'weekly', label: 'Weekly' },
+  { key: 'custom_days', label: 'Custom days' },
+  { key: 'monthly', label: 'Monthly' },
+  { key: 'yearly', label: 'Yearly' },
+]
 
 // ============================================================
 // RECURRING TASKS — list of templates + create/edit modal.
@@ -29,6 +37,37 @@ export default function ProjectRecurring() {
   const { recurring, projects, clients, profiles } = useProjectsData()
   const [modalId, setModalId] = useState(undefined) // undefined=closed, null=new, id=edit
 
+  // ---- Filters ----
+  const [q, setQ] = useState('')
+  const [fProject, setFProject] = useState('')     // project_id | '' (any) | 'none'
+  const [fAssignee, setFAssignee] = useState('')   // profile_id | '' (any)
+  const [fFreq, setFFreq] = useState('')           // frequency | '' (any)
+  const [fStatus, setFStatus] = useState('active') // 'all' | 'active' | 'paused'
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    return recurring.filter(r => {
+      if (needle && !(r.name || '').toLowerCase().includes(needle)) return false
+      if (fProject === 'none' && r.project_id) return false
+      if (fProject && fProject !== 'none' && r.project_id !== fProject) return false
+      if (fAssignee && !(r.assignee_ids || []).includes(fAssignee)) return false
+      if (fFreq && r.frequency !== fFreq) return false
+      if (fStatus === 'active' && !r.is_active) return false
+      if (fStatus === 'paused' && r.is_active) return false
+      return true
+    })
+  }, [recurring, q, fProject, fAssignee, fFreq, fStatus])
+
+  const filtersActive = q.trim() || fProject || fAssignee || fFreq || fStatus !== 'active'
+  const clearFilters = () => { setQ(''); setFProject(''); setFAssignee(''); setFFreq(''); setFStatus('all') }
+
+  // Only offer people who are actually assigned to some template, so the list stays short.
+  const assignableIds = useMemo(() => {
+    const s = new Set()
+    recurring.forEach(r => (r.assignee_ids || []).forEach(id => s.add(id)))
+    return s
+  }, [recurring])
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -46,7 +85,42 @@ export default function ProjectRecurring() {
           <h3 style={{ fontSize: 14, marginBottom: 4 }}>No recurring tasks yet</h3>
           <p style={{ fontSize: 13 }}>Set one up to automatically create a task on a schedule.</p>
         </div>
-      ) : recurring.map(r => {
+      ) : (
+      <>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name…"
+          style={{ ...filterInp, flex: '1 1 200px', minWidth: 160 }} />
+        <select value={fProject} onChange={e => setFProject(e.target.value)} style={filterInp}>
+          <option value="">All projects</option>
+          <option value="none">— No project —</option>
+          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select value={fAssignee} onChange={e => setFAssignee(e.target.value)} style={filterInp}>
+          <option value="">Anyone assigned</option>
+          {profiles.filter(p => assignableIds.has(p.id)).map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+        </select>
+        <select value={fFreq} onChange={e => setFFreq(e.target.value)} style={filterInp}>
+          <option value="">Any frequency</option>
+          {FREQ_OPTIONS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+        </select>
+        <select value={fStatus} onChange={e => setFStatus(e.target.value)} style={filterInp}>
+          <option value="active">Active</option>
+          <option value="paused">Paused</option>
+          <option value="all">All statuses</option>
+        </select>
+        {filtersActive && (
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 10px' }} onClick={clearFilters}>Clear</button>
+        )}
+        <span style={{ fontSize: 12, color: 'var(--ink-soft)', marginLeft: 'auto' }}>
+          {filtered.length} of {recurring.length}
+        </span>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--ink-soft)' }}>
+          <p style={{ fontSize: 13 }}>No recurring tasks match these filters.</p>
+        </div>
+      ) : filtered.map(r => {
         const proj = projects.find(p => p.id === r.project_id)
         const cl = clients.find(c => c.id === r.client_id)
         const names = (r.assignee_ids || []).map(id => profiles.find(p => p.id === id)?.full_name?.split(' ')[0]).filter(Boolean).join(', ')
@@ -70,6 +144,8 @@ export default function ProjectRecurring() {
           </div>
         )
       })}
+      </>
+      )}
 
       {modalId !== undefined && (
         <RecurringModal recurringId={modalId} onClose={() => setModalId(undefined)} />
@@ -292,6 +368,7 @@ function RecurringModal({ recurringId, onClose }) {
 }
 
 const inp = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', width: '100%', background: 'var(--surface)', color: 'var(--ink)' }
+const filterInp = { padding: '7px 9px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }
 function Grp({ label, children }) {
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}><label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-soft)' }}>{label}</label>{children}</div>
 }
