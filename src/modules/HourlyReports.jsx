@@ -287,12 +287,12 @@ function AffiliateView() {
     const t = data.totals, spd = data.speed || {}, eff = data.booking_efficiency || {}
     const takeaways = bullets([
       `${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}).`,
-      `${t.bookings} booked (${pctStr(t.booking_rate)} booking rate · ${pctStr(t.contact_conversion)} conversion).`,
+      `${t.bookings} booked — ${pctStr(t.booking_rate)} booking rate (of contacted).`,
       spd.first_dials ? `Speed to first dial: ${spd.within_15 ?? 0} within 15s / ${spd.over_15 ?? 0} over (avg ${secStr(spd.avg_sec)}).` : null,
       eff.total_booked ? `Booking efficiency (via dialing): ${eff.first_dial ?? 0} on 1st dial · ${eff.second_dial ?? 0} on 2nd · ${eff.three_plus ?? 0} on 3+ (avg ${eff.avg_dial ?? '—'} dials).` : null,
     ])
-    const cols = ['', 'New Leads', 'Dials', 'Live', 'Booked', 'Contact %', 'Book %', 'Conv %', 'Speed', 'Avg Dial']
-    const row = (name, r) => [name, r.new_leads, r.dials, r.live_contacts, r.bookings, pctStr(r.contact_rate), pctStr(r.booking_rate), pctStr(r.contact_conversion), secStr(r.avg_speed_sec), r.avg_dial_booked ?? '—']
+    const cols = ['', 'New Leads', 'Dials', 'Live', 'Booked', 'Contact %', 'Book %', 'Speed', 'Avg Dial']
+    const row = (name, r) => [name, r.new_leads, r.dials, r.live_contacts, r.bookings, pctStr(r.contact_rate), pctStr(r.booking_rate), secStr(r.avg_speed_sec), r.avg_dial_booked ?? '—']
     const vendorTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Vendor' : c), (data.vendors || []).map(r => row(r.vendor, r)))
     const brandTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Brand' : c), (data.brands || []).map(r => row(r.brand, r)))
     return [
@@ -310,7 +310,7 @@ function AffiliateView() {
     const lines = [
       `Affiliate Leads — Hourly Update · ${dayLabel}${data.is_today ? ` · ${hourLabel(data.current_hour)}` : ''}`, ``,
       `This hour: ${h.dials} dials · ${h.new_leads} new leads · ${h.live_contacts} contacted (${pctStr(h.contact_rate)}) · ${h.bookings} booked`,
-      `Today: ${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}) · ${t.bookings} booked (${pctStr(t.booking_rate)}) · ${pctStr(t.contact_conversion)} conversion · ${secStr(t.avg_speed_sec)} avg speed-to-dial`, ``,
+      `Today: ${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}) · ${t.bookings} booked (${pctStr(t.booking_rate)} of contacted) · ${secStr(t.avg_speed_sec)} avg speed-to-dial`, ``,
     ]
     if (overview.trim()) lines.push(`Overview: ${overview.trim()}`, ``)
     lines.push(`@Corinne Kerper @Becky Jackson @Brittney Thompson`)
@@ -328,10 +328,10 @@ function AffiliateView() {
 
   const perfCols = (r) => (<>
     <td style={td}>{r.new_leads}</td><td style={td}>{r.dials}</td><td style={td}>{r.live_contacts}</td><td style={td}>{r.bookings}</td>
-    <td style={td}>{pctStr(r.contact_rate)}</td><td style={td}>{pctStr(r.booking_rate)}</td><td style={td}>{pctStr(r.contact_conversion)}</td>
+    <td style={td}>{pctStr(r.contact_rate)}</td><td style={td}>{pctStr(r.booking_rate)}</td>
     <td style={td}>{secStr(r.avg_speed_sec)}</td><td style={td}>{r.avg_dial_booked ?? '—'}</td>
   </>)
-  const perfHead = (first) => (<tr><th style={thL}>{first}</th><th style={th}>New Leads</th><th style={th}>Dials</th><th style={th}>Live</th><th style={th}>Booked</th><th style={th}>Ctc%</th><th style={th}>Book%</th><th style={th}>Conv%</th><th style={th}>Speed</th><th style={th}>Avg Dial</th></tr>)
+  const perfHead = (first) => (<tr><th style={thL}>{first}</th><th style={th}>New Leads</th><th style={th}>Dials</th><th style={th}>Live</th><th style={th}>Booked</th><th style={th}>Ctc%</th><th style={th}>Book%</th><th style={th}>Speed</th><th style={th}>Avg Dial</th></tr>)
 
   return (
     <div>
@@ -355,8 +355,7 @@ function AffiliateView() {
         <StatCard label="Contacted" big={String(t.live_contacts)} sub="reached a person" />
         <StatCard label="Bookings" big={String(t.bookings)} bigColor={t.bookings > 0 ? good : 'inherit'} sub="appointments" />
         <StatCard label="Contact Rate" big={pctStr(t.contact_rate)} bigColor={t.contact_rate >= 10 ? good : t.contact_rate >= 5 ? warn : bad} sub="contacted ÷ dials" />
-        <StatCard label="Booking Rate" big={pctStr(t.booking_rate)} bigColor={t.booking_rate >= 3 ? good : t.booking_rate > 0 ? warn : bad} sub="booked ÷ dials" />
-        <StatCard label="Conversion" big={pctStr(t.contact_conversion)} sub="booked ÷ contacted" />
+        <StatCard label="Booking Rate" big={pctStr(t.booking_rate)} bigColor={t.booking_rate >= 15 ? good : t.booking_rate > 0 ? warn : bad} sub="booked ÷ contacted" />
         <StatCard label="Avg Speed" big={secStr(t.avg_speed_sec)} sub="to first dial" />
       </div>
 
