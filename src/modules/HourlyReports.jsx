@@ -73,7 +73,7 @@ function useHourlyReport(rpc, day) {
   return { data, loading, err, setErr, load }
 }
 
-function ControlsBar({ day, setDay, data, syncing, onRefresh, onCopy, copied }) {
+function ControlsBar({ day, setDay, data, syncing, onRefresh, onCopy, copied, onSave, saved }) {
   const nowEt = new Date().toLocaleString('en-US', { timeZone: COMPANY_TZ, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   const syncedLabel = data?.last_synced_at ? new Date(data.last_synced_at).toLocaleTimeString('en-US', { timeZone: COMPANY_TZ, hour: 'numeric', minute: '2-digit' }) : '—'
   return (
@@ -82,7 +82,8 @@ function ControlsBar({ day, setDay, data, syncing, onRefresh, onCopy, copied }) 
         style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--canvas)' }} />
       <button className="btn btn-ghost" onClick={onRefresh} disabled={syncing}>{syncing ? '⏳ Syncing…' : '↻ Refresh from Five9'}</button>
       <span className="page-sub" style={{ fontSize: 12 }}>{data?.is_today ? `as of ${nowEt} · ` : ''}synced {syncedLabel}</span>
-      <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={onCopy}>{copied ? '✓ Copied' : '📋 Copy update'}</button>
+      <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={onCopy}>{copied ? '✓ Copied' : '📋 Copy update'}</button>
+      <button className="btn btn-primary" onClick={onSave}>{saved ? '✓ Saved' : 'Save update'}</button>
     </div>
   )
 }
@@ -95,6 +96,7 @@ function OpenInvoicesView() {
   const { data, loading, err, setErr, load } = useHourlyReport('get_hourly_report_openinv', day)
   const [syncing, setSyncing] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [overview, setOverview] = useState('')
 
   async function refresh() {
@@ -102,6 +104,12 @@ function OpenInvoicesView() {
     try { const { error } = await supabase.rpc('refresh_hourly_calls'); if (error) throw error; await new Promise(r => setTimeout(r, 7000)); await load() }
     catch (e) { setErr(e.message || String(e)) }
     setSyncing(false)
+  }
+  async function saveUpdate() {
+    setErr('')
+    const { error } = await supabase.rpc('post_hourly_report', { p_type: 'open_invoices', p_hour: data?.current_hour ?? null, p_snapshot: data, p_commentary: overview.trim() || null, p_formatted: buildUpdate() })
+    if (error) { setErr(error.message); return }
+    setSaved(true); setTimeout(() => setSaved(false), 2000)
   }
   const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 
@@ -129,7 +137,7 @@ function OpenInvoicesView() {
 
   return (
     <div>
-      <ControlsBar day={day} setDay={setDay} data={data} syncing={syncing} onRefresh={refresh} onCopy={copyUpdate} copied={copied} />
+      <ControlsBar day={day} setDay={setDay} data={data} syncing={syncing} onRefresh={refresh} onCopy={copyUpdate} copied={copied} onSave={saveUpdate} saved={saved} />
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
 
       <div style={SECTION}>This Hour · {hourLabel(data.current_hour)}{data.is_today ? '' : ' (latest)'}</div>
@@ -210,6 +218,7 @@ function AffiliateView() {
   const { data, loading, err, setErr, load } = useHourlyReport('get_hourly_report_affiliate', day)
   const [syncing, setSyncing] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [overview, setOverview] = useState('')
 
   async function refresh() {
@@ -217,6 +226,12 @@ function AffiliateView() {
     try { const { error } = await supabase.rpc('refresh_hourly_calls'); if (error) throw error; await new Promise(r => setTimeout(r, 7000)); await load() }
     catch (e) { setErr(e.message || String(e)) }
     setSyncing(false)
+  }
+  async function saveUpdate() {
+    setErr('')
+    const { error } = await supabase.rpc('post_hourly_report', { p_type: 'affiliate', p_hour: data?.current_hour ?? null, p_snapshot: data, p_commentary: overview.trim() || null, p_formatted: buildUpdate() })
+    if (error) { setErr(error.message); return }
+    setSaved(true); setTimeout(() => setSaved(false), 2000)
   }
   const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 
@@ -251,7 +266,7 @@ function AffiliateView() {
 
   return (
     <div>
-      <ControlsBar day={day} setDay={setDay} data={data} syncing={syncing} onRefresh={refresh} onCopy={copyUpdate} copied={copied} />
+      <ControlsBar day={day} setDay={setDay} data={data} syncing={syncing} onRefresh={refresh} onCopy={copyUpdate} copied={copied} onSave={saveUpdate} saved={saved} />
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
 
       <div style={SECTION}>This Hour · {hourLabel(data.current_hour)}{data.is_today ? '' : ' (latest)'}</div>
