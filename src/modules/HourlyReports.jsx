@@ -291,8 +291,8 @@ function AffiliateView() {
       spd.first_dials ? `Speed to first dial: ${spd.within_15 ?? 0} within 15s / ${spd.over_15 ?? 0} over (avg ${secStr(spd.avg_sec)}).` : null,
       eff.total_booked ? `Booking efficiency: ${eff.first_dial ?? 0} on 1st dial · ${eff.second_dial ?? 0} on 2nd · ${eff.three_plus ?? 0} on 3+ (avg ${eff.avg_dial ?? '—'} dials).` : null,
     ])
-    const cols = ['', 'Leads', 'Dials', 'Live', 'Booked', 'Contact %', 'Book %', 'Conv %', 'Speed', 'Avg Dial']
-    const row = (name, r) => [name, r.leads, r.dials, r.live_contacts, r.bookings, pctStr(r.contact_rate), pctStr(r.booking_rate), pctStr(r.contact_conversion), secStr(r.avg_speed_sec), r.avg_dial_booked ?? '—']
+    const cols = ['', 'New Leads', 'Dials', 'Live', 'Booked', 'Contact %', 'Book %', 'Conv %', 'Speed', 'Avg Dial']
+    const row = (name, r) => [name, r.new_leads, r.dials, r.live_contacts, r.bookings, pctStr(r.contact_rate), pctStr(r.booking_rate), pctStr(r.contact_conversion), secStr(r.avg_speed_sec), r.avg_dial_booked ?? '—']
     const vendorTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Vendor' : c), (data.vendors || []).map(r => row(r.vendor, r)))
     const brandTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Brand' : c), (data.brands || []).map(r => row(r.brand, r)))
     return [
@@ -327,11 +327,11 @@ function AffiliateView() {
   const vendors = data.vendors || [], brands = data.brands || [], disp = data.dispositions || []
 
   const perfCols = (r) => (<>
-    <td style={td}>{r.leads}</td><td style={td}>{r.dials}</td><td style={td}>{r.live_contacts}</td><td style={td}>{r.bookings}</td>
+    <td style={td}>{r.new_leads}</td><td style={td}>{r.dials}</td><td style={td}>{r.live_contacts}</td><td style={td}>{r.bookings}</td>
     <td style={td}>{pctStr(r.contact_rate)}</td><td style={td}>{pctStr(r.booking_rate)}</td><td style={td}>{pctStr(r.contact_conversion)}</td>
     <td style={td}>{secStr(r.avg_speed_sec)}</td><td style={td}>{r.avg_dial_booked ?? '—'}</td>
   </>)
-  const perfHead = (first) => (<tr><th style={thL}>{first}</th><th style={th}>Leads</th><th style={th}>Dials</th><th style={th}>Live</th><th style={th}>Booked</th><th style={th}>Ctc%</th><th style={th}>Book%</th><th style={th}>Conv%</th><th style={th}>Speed</th><th style={th}>Avg Dial</th></tr>)
+  const perfHead = (first) => (<tr><th style={thL}>{first}</th><th style={th}>New Leads</th><th style={th}>Dials</th><th style={th}>Live</th><th style={th}>Booked</th><th style={th}>Ctc%</th><th style={th}>Book%</th><th style={th}>Conv%</th><th style={th}>Speed</th><th style={th}>Avg Dial</th></tr>)
 
   return (
     <div>
@@ -424,7 +424,7 @@ function AffiliateView() {
       <Commentary label="Comms Overview — your commentary" value={overview} onChange={setOverview} preview={buildUpdate()} />
       <p className="page-sub" style={{ fontSize: 11.5 }}>
         Live from Five9 → BigQuery (Lavin / Kashurba affiliate campaigns). “Contacted” = a real conversation, excluding voicemails and no-answers. Speed-to-first-dial uses Five9 preview time; dial number counts a lead’s attempts across the last 3 days.
-        <br /><b>Note:</b> total Leads and Undialed % need the lead-list feed (call_log only holds calls that were made) — “Leads” here counts leads that were dialed. Point me at a list source and I’ll wire those in.
+        <br /><b>Note:</b> “New Leads” = leads loaded that day (matches the totals above). Total leads on hand and Undialed % need the lead-list feed (call_log only holds calls that were made) — point me at a list source and I’ll wire those in.
       </p>
     </div>
   )
