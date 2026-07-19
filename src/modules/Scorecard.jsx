@@ -306,7 +306,10 @@ function AgentScorecard({ row, canCoach, canSeeNotes, onBack }) {
             {notes.map(n => (
               <div key={n.id} style={{ display: 'flex', gap: 12, padding: '10px 0', borderTop: '1px solid var(--line-soft)' }}>
                 <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', flex: 'none', width: 90 }}>{fmtDate(n.note_date)}</div>
-                <div style={{ fontSize: 14 }}>{n.body}</div>
+                <div style={{ fontSize: 14, flex: 1 }}>
+                  {n.focus && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#ede7f6', color: '#4527a0', marginRight: 8 }}>{n.focus}</span>}
+                  {n.body}
+                </div>
               </div>
             ))}
           </div>
@@ -338,9 +341,13 @@ function InfoRow({ k, v, vColor }) {
   )
 }
 
+// Coaching focus categories (ASC SOP). Shown as a tag on the agent's scorecard.
+const COACHING_FOCUS = ['Low QA', 'Call review — concern identified', 'Adherence', 'High AHT', 'Low AHT', 'ASC judgement']
+
 function AddNote({ agentName, onAdded }) {
   const { user } = useAuth()
   const [body, setBody] = useState('')
+  const [focus, setFocus] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -349,21 +356,29 @@ function AddNote({ agentName, onAdded }) {
     if (!body.trim()) return
     setBusy(true); setErr('')
     const { error } = await supabase.from('sc_coaching_notes').insert({
-      agent_name: agentName, note_date: date, body: body.trim(), author_id: user?.id,
+      agent_name: agentName, note_date: date, body: body.trim(), focus: focus || null, author_id: user?.id,
     })
     setBusy(false)
     if (error) { setErr(error.message); return }
-    setBody(''); onAdded()
+    setBody(''); setFocus(''); onAdded()
   }
 
   return (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start', marginBottom: 4 }}>
-      <input type="date" value={date} onChange={e => setDate(e.target.value)}
-        style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--canvas)', flex: 'none' }} />
-      <input value={body} onChange={e => setBody(e.target.value)} placeholder="Add feedback…" onKeyDown={e => { if (e.key === 'Enter') add() }}
-        style={{ flex: 1, minWidth: 200, padding: '8px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', background: 'var(--canvas)' }} />
-      <button className="btn btn-primary" onClick={add} disabled={busy}>{busy ? 'Adding…' : 'Add note'}</button>
-      {err && <div style={{ color: 'var(--failed)', fontSize: 12.5, width: '100%' }}>{err}</div>}
+    <div style={{ marginBottom: 4 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--canvas)', flex: 'none' }} />
+        <select value={focus} onChange={e => setFocus(e.target.value)}
+          style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--canvas)', flex: 'none' }}>
+          <option value="">Focus…</option>
+          {COACHING_FOCUS.map(f => <option key={f} value={f}>{f}</option>)}
+        </select>
+        <input value={body} onChange={e => setBody(e.target.value)} placeholder="Coaching note (the agent will see this)…" onKeyDown={e => { if (e.key === 'Enter') add() }}
+          style={{ flex: 1, minWidth: 200, padding: '8px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', background: 'var(--canvas)' }} />
+        <button className="btn btn-primary" onClick={add} disabled={busy}>{busy ? 'Adding…' : 'Add note'}</button>
+        {err && <div style={{ color: 'var(--failed)', fontSize: 12.5, width: '100%' }}>{err}</div>}
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginTop: 6 }}>Agents see these notes on their own scorecard — keep it constructive and contractor-friendly.</div>
     </div>
   )
 }
