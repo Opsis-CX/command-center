@@ -31,6 +31,8 @@ const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-US', { month: 'sh
 const TIER_STYLE = {
   'Top Performer': { bg: '#e8f5e9', fg: '#1b5e20' },
   'High Performer': { bg: '#fff8e1', fg: '#8d6e00' },
+  // Nesting: new agents without ranked data yet — sits between High and Developing.
+  'Nesting': { bg: '#ede7f6', fg: '#4527a0' },
   'Developing Performer': { bg: '#e3f2fd', fg: '#0d47a1' },
   'Improvement Opportunity': { bg: '#fdecea', fg: '#b71c1c' },
 }
