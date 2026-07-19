@@ -30,7 +30,7 @@ export default function Updates() {
   const [names, setNames] = useState({})
   const [err, setErr] = useState('')
   const [filter, setFilter] = useState('all')
-  const [composing, setComposing] = useState(false)
+  const [editing, setEditing] = useState(null)   // null = closed | 'new' | announcement object
   const [reads, setReads] = useState({})            // announcement_id -> [{profile_id, read_at}]
   const [openReaders, setOpenReaders] = useState(null)
   const [roster, setRoster] = useState({})          // announcement_id -> [{id, full_name}] (audience, lazy)
@@ -107,12 +107,14 @@ export default function Updates() {
           <h1 className="page-title">Updates</h1>
           <p className="page-sub">Command Center changes, client updates, and anything from your shift others should know. Post reaches Everyone — or just the team it concerns.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setComposing(c => !c)}>{composing ? 'Close' : '＋ New update'}</button>
+        <button className="btn btn-primary" onClick={() => setEditing(e => e ? null : 'new')}>{editing ? 'Close' : '＋ New update'}</button>
       </div>
 
       {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 12 }}>{err}</div>}
 
-      {composing && <Composer user={user} teams={teams} onPosted={() => { setComposing(false); load() }} />}
+      {editing && <Composer key={editing === 'new' ? 'new' : editing.id} user={user} teams={teams}
+        editItem={editing === 'new' ? null : editing}
+        onPosted={() => { setEditing(null); load() }} onCancel={() => setEditing(null)} />}
 
       {/* category filter */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 16px' }}>
@@ -136,6 +138,7 @@ export default function Updates() {
                       <span style={{ fontWeight: 700, fontSize: 15.5 }}>{a.title}</span>
                       <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                         {isAdmin && <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '3px 8px' }} onClick={() => togglePin(a)}>{a.pinned ? 'Unpin' : 'Pin'}</button>}
+                        {(mine || isAdmin) && <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '3px 8px' }} onClick={() => { setEditing(a); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>Edit</button>}
                         {(mine || isAdmin) && <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '3px 8px', color: 'var(--failed)' }} onClick={() => remove(a)}>Delete</button>}
                       </span>
                     </div>
@@ -201,14 +204,15 @@ function ReaderPanel({ reads, roster, names, meId }) {
   )
 }
 
-function Composer({ user, teams, onPosted }) {
-  const [title, setTitle] = useState('')
-  const [category, setCategory] = useState('general')
-  const [audience, setAudience] = useState([])   // team tag ids; empty = Everyone
+function Composer({ user, teams, editItem, onPosted, onCancel }) {
+  const isEdit = !!editItem
+  const [title, setTitle] = useState(editItem?.title || '')
+  const [category, setCategory] = useState(editItem?.category || 'general')
+  const [audience, setAudience] = useState(editItem?.audience_tags || [])   // team tag ids; empty = Everyone
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const editorRef = useRef(null)
-  const htmlRef = useRef('')
+  const htmlRef = useRef(editItem?.body || '')
 
   function toggleTag(id) {
     setAudience(prev => prev.includes(id) ? prev.filter(k => k !== id) : [...prev, id])
@@ -219,11 +223,10 @@ function Composer({ user, teams, onPosted }) {
     if (!title.trim()) { setErr('Give it a title.'); return }
     const body = sanitizeHtml(htmlRef.current || '')
     setBusy(true)
-    const { error } = await supabase.from('announcements').insert({
-      author_id: user?.id, title: title.trim(),
-      body: isEmptyHtml(body) ? null : body,
-      category, audience_tags: audience,
-    })
+    const payload = { title: title.trim(), body: isEmptyHtml(body) ? null : body, category, audience_tags: audience }
+    const { error } = isEdit
+      ? await supabase.from('announcements').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editItem.id)
+      : await supabase.from('announcements').insert({ author_id: user?.id, ...payload })
     setBusy(false)
     if (error) { setErr(error.message); return }
     onPosted()
@@ -254,12 +257,13 @@ function Composer({ user, teams, onPosted }) {
 
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', marginBottom: 6 }}>Details</div>
-          <RichEditor variant="full" editorRef={editorRef} onChange={(html) => { htmlRef.current = html }} placeholder="What's the update? (optional)" />
+          <RichEditor variant="full" editorRef={editorRef} value={editItem?.body || ''} onChange={(html) => { htmlRef.current = html }} placeholder="What's the update? (optional)" />
         </div>
 
         {err && <div style={{ color: 'var(--failed)', fontSize: 12.5 }}>{err}</div>}
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button className="btn btn-primary" onClick={post} disabled={busy}>{busy ? 'Posting…' : 'Post update'}</button>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          {onCancel && <button className="btn btn-ghost" onClick={onCancel} disabled={busy}>Cancel</button>}
+          <button className="btn btn-primary" onClick={post} disabled={busy}>{busy ? (isEdit ? 'Saving…' : 'Posting…') : (isEdit ? 'Save changes' : 'Post update')}</button>
         </div>
       </div>
     </div>
