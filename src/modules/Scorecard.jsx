@@ -87,7 +87,7 @@ export default function Scorecard() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, minWidth: 860 }}>
             <thead>
               <tr style={{ background: 'var(--canvas)', textAlign: 'left' }}>
-                <Th>#</Th><Th>Agent</Th><Th>Tier</Th><Th right>Conversion</Th><Th right>Quality</Th><Th right>ACW%</Th><Th right>NR%</Th><Th right>Adherence</Th><Th right>AHT</Th><Th right>Calls</Th>
+                <Th>#</Th><Th>Agent</Th><Th>Tier</Th><Th right>Conversion</Th><Th right>Quality</Th><Th right>ACW%</Th><Th right>NR%</Th><Th right>Adherence</Th><Th right>Calls</Th>
               </tr>
             </thead>
             <tbody>
@@ -106,12 +106,11 @@ export default function Scorecard() {
                     <Td right><span style={{ color: badColor(r.acw_pct_last_30_days), fontWeight: 600 }}>{pct(r.acw_pct_last_30_days)}</span></Td>
                     <Td right><span style={{ color: badColor(r.nr_pct_last_30_days), fontWeight: 600 }}>{pct(r.nr_pct_last_30_days)}</span></Td>
                     <Td right>{pct(r.schedule_adherence_last_30_days)}</Td>
-                    <Td right>{num(r.avg_aht_minutes_last_30_days)}</Td>
                     <Td right>{r.calls_handled_last_30_days ?? '—'}</Td>
                   </tr>
                 )
               })}
-              {rows.length === 0 && <tr><Td>—</Td><Td>No scorecard data yet.</Td><Td /><Td /><Td /><Td /><Td /><Td /><Td /><Td /></tr>}
+              {rows.length === 0 && <tr><Td>—</Td><Td>No scorecard data yet.</Td><Td /><Td /><Td /><Td /><Td /><Td /><Td /></tr>}
             </tbody>
           </table>
         </div>
@@ -192,7 +191,6 @@ function AgentScorecard({ row, canCoach, canSeeNotes, onBack }) {
         <SummaryCard label="Schedule Adherence" big={pct(row.schedule_adherence_last_30_days, 2)} sub={`7 Days: ${pct(row.schedule_adherence_last_7_days, 2)}`} />
         <SummaryCard label="ACW % (of login)" big={pct(row.acw_pct_last_30_days, 2)} sub={`7 Days: ${pct(row.acw_pct_last_7_days, 2)}`} bigColor={badColor(row.acw_pct_last_30_days)} />
         <SummaryCard label="Not Ready % (of login)" big={pct(row.nr_pct_last_30_days, 2)} sub={`7 Days: ${pct(row.nr_pct_last_7_days, 2)}`} bigColor={badColor(row.nr_pct_last_30_days)} />
-        <SummaryCard label="Average Handle Time" big={num(row.avg_aht_minutes_last_30_days, 2)} sub={`7 Days: ${num(row.avg_aht_minutes_last_7_days, 2)}`} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, marginTop: 14 }}>
