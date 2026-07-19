@@ -186,11 +186,11 @@ function AgentScorecard({ row, canCoach, canSeeNotes, onBack }) {
 
       {/* Performance summary — the four headline metrics */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginTop: 14 }}>
-        <SummaryCard label="Conversion Rate" big={pct(row.conversion_rate_last_30_days, 2)} sub={`7 Days: ${pct(row.conversion_rate_last_7_days, 2)}`} />
-        <SummaryCard label="Quality Score" big={pct(row.avg_clean_qa_score_last_30_days, 2)} sub={`7 Days: ${pct(row.avg_clean_qa_score_last_7_days, 2)}`} />
-        <SummaryCard label="Schedule Adherence" big={pct(row.schedule_adherence_last_30_days, 2)} sub={`7 Days: ${pct(row.schedule_adherence_last_7_days, 2)}`} />
-        <SummaryCard label="ACW % (of login)" big={pct(row.acw_pct_last_30_days, 2)} sub={`7 Days: ${pct(row.acw_pct_last_7_days, 2)}`} bigColor={badColor(row.acw_pct_last_30_days)} />
-        <SummaryCard label="Not Ready % (of login)" big={pct(row.nr_pct_last_30_days, 2)} sub={`7 Days: ${pct(row.nr_pct_last_7_days, 2)}`} bigColor={badColor(row.nr_pct_last_30_days)} />
+        <SummaryCard label="Conversion Rate" big={pct(row.conversion_rate_last_30_days, 2)} />
+        <SummaryCard label="Quality Score" big={pct(row.avg_clean_qa_score_last_30_days, 2)} />
+        <SummaryCard label="Schedule Adherence" big={pct(row.schedule_adherence_last_30_days, 2)} />
+        <SummaryCard label="ACW % (of login)" big={pct(row.acw_pct_last_30_days, 2)} bigColor={badColor(row.acw_pct_last_30_days)} />
+        <SummaryCard label="Not Ready % (of login)" big={pct(row.nr_pct_last_30_days, 2)} bigColor={badColor(row.nr_pct_last_30_days)} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, marginTop: 14 }}>
@@ -322,7 +322,7 @@ function SummaryCard({ label, big, sub, bigColor }) {
     <div className="card" style={{ textAlign: 'center', padding: '16px 12px' }}>
       <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)' }}>{label}</div>
       <div style={{ fontSize: 26, fontWeight: 800, margin: '6px 0 2px', color: bigColor || 'inherit' }}>{big}</div>
-      <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>{sub}</div>
+      {sub ? <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>{sub}</div> : null}
     </div>
   )
 }
