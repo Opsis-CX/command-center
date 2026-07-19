@@ -289,7 +289,7 @@ function AffiliateView() {
       `${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}).`,
       `${t.bookings} booked (${pctStr(t.booking_rate)} booking rate · ${pctStr(t.contact_conversion)} conversion).`,
       spd.first_dials ? `Speed to first dial: ${spd.within_15 ?? 0} within 15s / ${spd.over_15 ?? 0} over (avg ${secStr(spd.avg_sec)}).` : null,
-      eff.total_booked ? `Booking efficiency: ${eff.first_dial ?? 0} on 1st dial · ${eff.second_dial ?? 0} on 2nd · ${eff.three_plus ?? 0} on 3+ (avg ${eff.avg_dial ?? '—'} dials).` : null,
+      eff.total_booked ? `Booking efficiency (via dialing): ${eff.first_dial ?? 0} on 1st dial · ${eff.second_dial ?? 0} on 2nd · ${eff.three_plus ?? 0} on 3+ (avg ${eff.avg_dial ?? '—'} dials).` : null,
     ])
     const cols = ['', 'New Leads', 'Dials', 'Live', 'Booked', 'Contact %', 'Book %', 'Conv %', 'Speed', 'Avg Dial']
     const row = (name, r) => [name, r.new_leads, r.dials, r.live_contacts, r.bookings, pctStr(r.contact_rate), pctStr(r.booking_rate), pctStr(r.contact_conversion), secStr(r.avg_speed_sec), r.avg_dial_booked ?? '—']
@@ -385,7 +385,7 @@ function AffiliateView() {
               </div>
             ))}
           </div>
-          <p className="page-sub" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>{eff.total_booked ?? 0} booked · avg {eff.avg_dial ?? '—'} dials to book.</p>
+          <p className="page-sub" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>{eff.total_booked ?? 0} booked via dialing · avg {eff.avg_dial ?? '—'} dials to book. <span style={{ opacity: .8 }}>(Inbound bookings aren’t dial-attributed.)</span></p>
         </div>
         <div className="card">
           <div style={SECTION}>Disposition Summary</div>
