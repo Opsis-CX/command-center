@@ -39,7 +39,13 @@ const NAV = [
     items: [
       { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
       { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
-      { type: 'link', to: '/reporting', label: 'Reporting', ic: '📈', perm: 'reporting' },
+      {
+        type: 'section', key: 'reporting', label: 'Reporting', ic: '📈',
+        children: [
+          { to: '/reporting', label: 'Reporting', perm: 'reporting' },
+          { to: '/reporting/hourly', label: 'Hourly', perm: 'reporting' },
+        ],
+      },
     ],
   },
   {
