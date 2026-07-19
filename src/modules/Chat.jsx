@@ -578,6 +578,8 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   const [highlightId, setHighlightId] = useState(null) // deep-linked message to flash
   const [readersFor, setReadersFor] = useState(null) // message id whose reader list is open
   const [reactorsFor, setReactorsFor] = useState(null) // {messageId, emoji} whose reactor list is open
+  const [pinned, setPinned] = useState([])         // pinned messages in this channel (newest pin first)
+  const [showPinned, setShowPinned] = useState(false) // is the pinned drawer expanded
   const composerRef = useRef(null)
   const htmlRef = useRef('')
 
@@ -614,6 +616,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         await loadAttachments(msgs)
         await loadReadState()
         await loadThreadReads()
+        await loadPinned()
       } catch (e) { if (active) setErr(e.message) } finally { if (active) setLoading(false) }
     })()
     return () => { active = false }
@@ -761,6 +764,45 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     setAttachments(data || [])
   }
 
+  // Pinned messages are loaded separately from the 200-message window so a pin
+  // stays visible even after it scrolls far up the history.
+  async function loadPinned() {
+    const { data } = await supabase.from('messages')
+      .select('*').eq('channel_id', channelId)
+      .not('pinned_at', 'is', null).is('deleted_at', null)
+      .order('pinned_at', { ascending: false })
+    const list = data || []
+    setPinned(list)
+    hydrateSenders(list)
+  }
+
+  // Pin / unpin a top-level message. Gated in the UI to moderators; the DB's
+  // "delete own or moderate" UPDATE policy is the real gate.
+  async function togglePin(m) {
+    const willPin = !m.pinned_at
+    const patch = willPin
+      ? { pinned_at: new Date().toISOString(), pinned_by: me.id }
+      : { pinned_at: null, pinned_by: null }
+    // optimistic — update both the stream row and the pinned drawer
+    setMessages(prev => prev.map(x => x.id === m.id ? { ...x, ...patch } : x))
+    setPinned(prev => {
+      const others = prev.filter(x => x.id !== m.id)
+      if (!willPin) return others
+      return [{ ...m, ...patch }, ...others].sort((a, b) => new Date(b.pinned_at) - new Date(a.pinned_at))
+    })
+    const { error } = await supabase.from('messages').update(patch).eq('id', m.id)
+    if (error) { setErr('Could not update pin: ' + error.message); loadPinned() }
+  }
+
+  // Bring a pinned message into view and flash it, reusing the deep-link flash.
+  function jumpToPinned(id) {
+    setShowPinned(false)
+    stickToBottom.current = false
+    setHighlightId(id)
+    setTimeout(() => { document.getElementById('chat-msg-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }, 60)
+    setTimeout(() => setHighlightId(null), 5000)
+  }
+
   function addFiles(fileList) {
     const arr = Array.from(fileList || [])
     const tooBig = arr.find(f => f.size > MAX_FILE_BYTES)
@@ -822,8 +864,19 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         (payload) => {
           const m = payload.new
           if (m.channel_id !== channelId) return
-          if (m.deleted_at) setMessages(prev => prev.filter(x => x.id !== m.id))
-          else setMessages(prev => prev.map(x => x.id === m.id ? m : x))
+          if (m.deleted_at) {
+            setMessages(prev => prev.filter(x => x.id !== m.id))
+            setPinned(prev => prev.filter(x => x.id !== m.id))
+          } else {
+            setMessages(prev => prev.map(x => x.id === m.id ? m : x))
+            // Keep the pinned drawer in sync when someone else pins/unpins.
+            setPinned(prev => {
+              const others = prev.filter(x => x.id !== m.id)
+              if (!m.pinned_at) return others
+              hydrateSenders([m])
+              return [m, ...others].sort((a, b) => new Date(b.pinned_at) - new Date(a.pinned_at))
+            })
+          }
         })
       // Someone else read the channel — update their receipt live.
       .on('postgres_changes', { event: '*', schema: 'public', table: 'channel_read_state' },
@@ -1152,6 +1205,43 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         )}
       </div>
 
+      {pinned.length > 0 && (
+        <div style={{ flex: 'none', borderBottom: '1px solid var(--line)', background: 'var(--canvas)' }}>
+          <button onClick={() => setShowPinned(s => !s)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)', textAlign: 'left' }}>
+            <span style={{ fontSize: 13 }}>📌</span>
+            <b style={{ fontSize: 12.5 }}>{pinned.length} pinned {pinned.length === 1 ? 'message' : 'messages'}</b>
+            <span style={{ marginLeft: 'auto', fontSize: 11, opacity: .7, transition: 'transform .15s ease', transform: showPinned ? 'rotate(90deg)' : 'rotate(0deg)' }}>▸</span>
+          </button>
+          {showPinned && (
+            <div style={{ maxHeight: 220, overflowY: 'auto', padding: '2px 12px 10px' }}>
+              {pinned.map(p => {
+                const pName = p.sender_id === me.id ? 'You' : (senders[p.sender_id] || 'Someone')
+                return (
+                  <div key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 6px', borderTop: '1px solid var(--line)' }}>
+                    <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => jumpToPinned(p.id)}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 2 }}>
+                        <b style={{ fontSize: 12 }}>{pName}</b>
+                        <span style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>{timeLabel(p.created_at)}</span>
+                      </div>
+                      <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        {htmlToText(p.body) || '(no text)'}
+                      </div>
+                    </div>
+                    <button onClick={() => jumpToPinned(p.id)} title="Jump to message"
+                      className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 7px', flex: 'none' }}>Jump</button>
+                    {canModerate && (
+                      <button onClick={() => togglePin(p)} title="Unpin"
+                        className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 7px', flex: 'none', color: 'var(--ink-soft)' }}>Unpin</button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       <div ref={scrollerRef} onScroll={onScroll}
         style={{ flex: 1, overflowY: 'auto', padding: '16px 18px 28px', minHeight: 0 }}>
         {err && <div style={{ color: 'var(--failed)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
@@ -1170,6 +1260,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             const name = m.sender_id === me.id ? 'You' : (senders[m.sender_id] || 'Someone')
             const canDelete = !m._optimistic && (m.sender_id === me.id || canModerate)
             const canEdit = !m._optimistic && m.sender_id === me.id && !m.requires_ack
+            const canPin = !m._optimistic && canModerate
             const readerIds = m._optimistic ? [] : readersOf(m, readState, members, me.id)
             const readerNames = readerIds.map(pid => senders[pid] || profiles.find(p => p.id === pid)?.full_name).filter(Boolean)
             const isNewest = m.id === newestId
@@ -1191,6 +1282,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                     <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{timeLabel(m.created_at)}</span>
                     {m.edited_at && <span style={{ fontSize: 10.5, color: 'var(--ink-soft)', fontStyle: 'italic' }}>(edited)</span>}
                     {m.is_here && <span className="badge" style={{ background: 'var(--accent-bg)', color: 'var(--accent)', fontSize: 10 }}>@here</span>}
+                    {m.pinned_at && <span title="Pinned" style={{ fontSize: 10.5, color: 'var(--accent)' }}>📌 Pinned</span>}
                   </div>}
 
                   {m.requires_ack ? (
@@ -1247,20 +1339,31 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                   )}
                 </div>
 
-                {/* Hover-revealed actions. Edit = own normal message; delete = own or moderator. */}
-                {canEdit && (
-                  <button className="chat-msg-delete" title="Edit your message"
-                    onClick={() => openEdit(m)}
-                    style={{ position: 'absolute', top: 0, right: canDelete ? 34 : 0, border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '4px 6px', color: 'var(--ink-soft)' }}>
-                    ✏️
-                  </button>
-                )}
-                {canDelete && (
-                  <button className="chat-msg-delete" title={m.sender_id === me.id ? 'Delete your message' : 'Remove this message'}
-                    onClick={() => deleteMessage(m)}
-                    style={{ position: 'absolute', top: 0, right: 0, border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '4px 6px', color: 'var(--failed)' }}>
-                    🗑
-                  </button>
+                {/* Hover-revealed actions. Pin = moderator; edit = own normal message; delete = own or moderator. */}
+                {(canPin || canEdit || canDelete) && (
+                  <div style={{ position: 'absolute', top: 0, right: 0, display: 'flex', gap: 4 }}>
+                    {canPin && (
+                      <button className="chat-msg-delete" title={m.pinned_at ? 'Unpin this message' : 'Pin this message'}
+                        onClick={() => togglePin(m)}
+                        style={{ border: '1px solid var(--line)', background: m.pinned_at ? 'var(--accent-bg)' : 'var(--surface)', borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '4px 6px', color: 'var(--ink-soft)' }}>
+                        📌
+                      </button>
+                    )}
+                    {canEdit && (
+                      <button className="chat-msg-delete" title="Edit your message"
+                        onClick={() => openEdit(m)}
+                        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '4px 6px', color: 'var(--ink-soft)' }}>
+                        ✏️
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button className="chat-msg-delete" title={m.sender_id === me.id ? 'Delete your message' : 'Remove this message'}
+                        onClick={() => deleteMessage(m)}
+                        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '4px 6px', color: 'var(--failed)' }}>
+                        🗑
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )
