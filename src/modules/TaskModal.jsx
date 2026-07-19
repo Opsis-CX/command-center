@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useProjectsData } from './projectsData'
 import { Avatar } from './projectBits'
 import { statusLabel, STATUSES, PRIORITIES, stripHtml } from './projectHelpers'
-import { notifyTaskAssigned, notifyTaskCompleted } from '../lib/notify'
+import { notifyTaskAssigned, notifyTaskAdded, notifyTaskCompleted } from '../lib/notify'
 
 // ============================================================
 // TASK MODAL — create a new task or edit an existing one.
@@ -18,7 +18,7 @@ import { notifyTaskAssigned, notifyTaskCompleted } from '../lib/notify'
 
 export default function TaskModal({ taskId, defaultStatus, defaultProject, onClose }) {
   const {
-    tasks, projects, clients, profiles, taskAssignees, userId, me,
+    tasks, projects, clients, profiles, taskAssignees, projectMembers, userId, me,
     logActivity, refresh,
   } = useProjectsData()
 
@@ -97,6 +97,17 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
       const names = newlyAssigned.map(pid => profiles.find(p => p.id === pid)?.full_name).filter(Boolean).join(', ')
       logActivity(taskId ? 'assigned' : 'created_and_assigned', id, taskData.name, taskData.project_id, proj?.name, names ? `Assigned to ${names}` : null)
       notifyTaskAssigned({ recipientIds: newlyAssigned, actorId: userId, actorName: me?.full_name, taskName: taskData.name, projectName: proj?.name, taskId: id })
+    }
+    // Alert the project's members whenever a NEW task is added to the list
+    // (skip the creator and anyone already pinged as an assignee).
+    if (!taskId && projectId) {
+      const recipients = (projectMembers || [])
+        .filter(m => m.project_id === projectId)
+        .map(m => m.profile_id)
+        .filter(pid => pid !== userId && !newlyAssigned.includes(pid))
+      if (recipients.length) {
+        notifyTaskAdded({ recipientIds: recipients, actorId: userId, actorName: me?.full_name, taskName: taskData.name, projectName: proj?.name, taskId: id })
+      }
     }
     if (!taskId && !newlyAssigned.length) {
       logActivity('created', id, taskData.name, taskData.project_id, proj?.name)
