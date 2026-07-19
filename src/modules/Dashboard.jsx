@@ -46,7 +46,7 @@ export default function Dashboard() {
       const meRes = await supabase.from('profiles').select('*').eq('id', user.id).single()
       const today = isoDate(etNow())
 
-      const [schRes, blkRes, clmRes, actRes, recRes, certRes, profRes, notifRes, eodRes] = await Promise.all([
+      const [schRes, blkRes, clmRes, actRes, recRes, certRes, profRes, notifRes, eodRes, audRes] = await Promise.all([
         supabase.from('schedules').select('*').eq('status', 'published'),
         supabase.from('shift_blocks').select('*'),
         supabase.from('shift_claims').select('*'),
@@ -57,6 +57,10 @@ export default function Dashboard() {
         supabase.from('notifications').select('*').eq('recipient_id', user.id).is('read_at', null),
         // RLS lets admins read everyone's reports; others just get their own (fine — only admins render this stat).
         supabase.from('daily_reports').select('profile_id').eq('report_date', today),
+        // The schedules THIS person is assigned to. Gates which open intervals
+        // we surface — an agent should never see intervals for a role/team
+        // they're not in the audience for.
+        supabase.from('schedule_audience').select('schedule_id').eq('profile_id', user.id),
       ])
 
       setMe(meRes.data)
@@ -71,6 +75,7 @@ export default function Dashboard() {
         profiles: profRes.data || [],
         unread: notifRes.data || [],
         eodToday: eodRes.data || [],
+        myAudience: audRes.data || [],
         userId: user.id,
       })
     } finally { setLoading(false) }
@@ -251,9 +256,12 @@ function AdminDashboard({ data, navigate }) {
 
 // ---------- AGENT ----------
 function AgentDashboard({ data, me, navigate }) {
-  const { today, schedules, blocks, claims, certRecords, certifications, unread, userId } = data
+  const { today, schedules, blocks, claims, certRecords, certifications, unread, userId, myAudience = [] } = data
   const pubIds = new Set(schedules.map(s => s.id))
   const pubBlocks = blocks.filter(b => pubIds.has(b.schedule_id))
+  // Schedules this person is assigned to. Open intervals are only offered for
+  // these — never for roles/teams they aren't in the audience for.
+  const myAudIds = new Set(myAudience.map(a => a.schedule_id))
 
   // my upcoming claimed intervals
   const myClaims = claims.filter(c => c.profile_id === userId)
@@ -264,9 +272,11 @@ function AgentDashboard({ data, me, navigate }) {
 
   const nextShift = myUpcoming[0]
 
-  // open intervals I could claim (any published, has room, not mine, not started)
+  // open intervals I could claim: on a schedule I'm assigned to (in the
+  // audience), has room, not already mine, not in the past.
   const openForMe = pubBlocks.filter(b => {
     if (b.block_date < today) return false
+    if (!myAudIds.has(b.schedule_id)) return false
     const cl = claims.filter(c => c.shift_block_id === b.id)
     return cl.length < b.total_spots && !cl.some(c => c.profile_id === userId)
   }).sort((a, b) => (a.block_date + a.start_time).localeCompare(b.block_date + b.start_time))
