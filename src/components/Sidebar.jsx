@@ -29,6 +29,7 @@ const NAV = [
     group: 'Main',
     items: [
       { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, perm: 'dashboard' },
+      { type: 'link', to: '/updates', label: 'Updates', ic: '📣', perm: null },  // everyone; RLS gates audience
       {
         type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
         children: [
