@@ -25,38 +25,10 @@ import ChangePassword from './ChangePassword'
 // group, add another { group, items } block. Order in this array = order shown.
 const NAV = [
   {
+    // Daily drivers, pinned at the top. Single-tap for the pages people live in.
     group: 'Main',
     items: [
       { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, perm: 'dashboard' },
-      { type: 'link', to: '/weekly-sync', label: 'Weekly Sync', ic: '🗓', perm: 'weekly_sync' },
-      { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
-      { type: 'link', to: '/help', label: 'Help Center', ic: '🛟', perm: null },  // everyone; tickets are private per RLS
-      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },  // everyone gets calendar
-    ],
-  },
-  {
-    group: 'Performance',
-    items: [
-      { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
-      { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
-      {
-        type: 'section', key: 'reporting', label: 'Reporting', ic: '📈',
-        children: [
-          { to: '/reporting', label: 'Reporting', perm: 'reporting' },
-          { to: '/reporting/hourly', label: 'Hourly', perm: 'reporting' },
-        ],
-      },
-    ],
-  },
-  {
-    group: 'Operations',
-    items: [
-      { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂', perm: 'project_management' },
-      { type: 'link', to: '/hiring', label: 'Hiring', ic: '👥', perm: 'hiring' },
-      // Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
-      // and grant it to the right roles, like 'hiring'. To show it to everyone
-      // temporarily, change perm: 'sales' to perm: null.
-      { type: 'link', to: '/sales', label: 'Sales', ic: '📊', perm: 'sales' },
       {
         type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
         children: [
@@ -65,11 +37,33 @@ const NAV = [
           { to: '/insights', label: 'Schedule insights', perm: 'schedule.view_insights_assigned' },
         ],
       },
+      { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
+      {
+        type: 'section', key: 'reporting', label: 'Reporting', ic: '📈',
+        children: [
+          { to: '/reporting', label: 'Reporting', perm: 'reporting' },
+          { to: '/reporting/hourly', label: 'Hourly', perm: 'reporting' },
+        ],
+      },
+      { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
+      { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
     ],
   },
   {
-    group: 'Learning',
+    // Everything secondary, folded into collapsible sections so the list stays short.
+    group: 'More',
     items: [
+      {
+        type: 'section', key: 'operations', label: 'Operations', ic: '🧰',
+        children: [
+          { to: '/weekly-sync', label: 'Weekly Sync', perm: 'weekly_sync' },
+          { to: '/projects', label: 'Project Management', perm: 'project_management' },
+          { to: '/hiring', label: 'Hiring', perm: 'hiring' },
+          // Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
+          // and grant it to the right roles, like 'hiring'.
+          { to: '/sales', label: 'Sales', perm: 'sales' },
+        ],
+      },
       {
         type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
         children: [
@@ -80,11 +74,13 @@ const NAV = [
         ],
       },
       { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
-    ],
-  },
-  {
-    group: 'Admin',
-    items: [
+      {
+        type: 'section', key: 'resources', label: 'Resources', ic: '🛟', perm: null,
+        children: [
+          { to: '/help', label: 'Help Center', perm: null },     // everyone; tickets are private per RLS
+          { to: '/calendar', label: 'Calendar', perm: null },    // everyone gets calendar
+        ],
+      },
       {
         type: 'section', key: 'backend', label: 'Backend', ic: '⚙', perm: null,
         children: [
