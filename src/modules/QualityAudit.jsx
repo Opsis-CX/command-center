@@ -27,7 +27,7 @@ const CAMPAIGNS = [
 ]
 const BRANDS = {
   lavin: ['Apple', 'Cedar Park', 'Cheney', 'Cunningham', 'Genson', 'Omaha', 'TVG', 'Quality', 'PDQ', 'Inbound - No Brand'],
-  open_invoices: [],
+  open_invoices: ['Cedar Park', 'Inbound - No Brand'],
 }
 const AUDIT_TYPES = [
   ['conversation', 'Conversation'],
@@ -275,7 +275,7 @@ function NewAudit({ prefill, editAudit, onDone }) {
   if (loading) return <p className="page-sub">Loading form…</p>
 
   const sc = scoreColor(score)
-  const showDisposition = auditType === 'disposition' || auditType === 'voicemail' || auditType === 'no_answer'
+  const showDisposition = auditType === 'conversation' || auditType === 'disposition' || auditType === 'voicemail' || auditType === 'no_answer'
 
   return (
     <div style={{ maxWidth: 880 }}>
