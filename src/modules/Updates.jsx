@@ -31,6 +31,9 @@ export default function Updates() {
   const [err, setErr] = useState('')
   const [filter, setFilter] = useState('all')
   const [composing, setComposing] = useState(false)
+  const [reads, setReads] = useState({})            // announcement_id -> [{profile_id, read_at}]
+  const [openReaders, setOpenReaders] = useState(null)
+  const [roster, setRoster] = useState({})          // announcement_id -> [{id, full_name}] (audience, lazy)
 
   const load = useCallback(async () => {
     setErr('')
@@ -42,13 +45,43 @@ export default function Updates() {
     const list = aRes.data || []
     setItems(list)
     setTeams(rRes.data || [])
-    const ids = [...new Set(list.map(a => a.author_id).filter(Boolean))]
-    if (ids.length) {
-      const { data: profs } = await supabase.from('profiles').select('id, full_name').in('id', ids)
+    const annIds = list.map(a => a.id)
+    let readRows = []
+    if (annIds.length) {
+      const { data: rd } = await supabase.from('announcement_reads').select('announcement_id, profile_id, read_at').in('announcement_id', annIds)
+      readRows = rd || []
+      const byAnn = {}
+      readRows.forEach(r => { (byAnn[r.announcement_id] = byAnn[r.announcement_id] || []).push(r) })
+      setReads(byAnn)
+    }
+    const pids = [...new Set([...list.map(a => a.author_id), ...readRows.map(r => r.profile_id)].filter(Boolean))]
+    if (pids.length) {
+      const { data: profs } = await supabase.from('profiles').select('id, full_name').in('id', pids)
       setNames(Object.fromEntries((profs || []).map(p => [p.id, p.full_name])))
     }
   }, [])
   useEffect(() => { load() }, [load])
+
+  const readByMe = (a) => (reads[a.id] || []).some(r => r.profile_id === user?.id)
+  async function markRead(a) {
+    if (!user?.id || readByMe(a)) return
+    setReads(cur => ({ ...cur, [a.id]: [...(cur[a.id] || []), { profile_id: user.id, read_at: new Date().toISOString() }] }))
+    await supabase.from('announcement_reads').insert({ announcement_id: a.id, profile_id: user.id })
+  }
+  async function toggleReaders(a) {
+    if (openReaders === a.id) { setOpenReaders(null); return }
+    setOpenReaders(a.id)
+    if (roster[a.id]) return
+    let people = []
+    if (a.audience_tags && a.audience_tags.length) {
+      const { data: tg } = await supabase.from('taggables').select('entity_id').eq('entity_type', 'profile').in('tag_id', a.audience_tags)
+      const ids = [...new Set((tg || []).map(x => x.entity_id))]
+      if (ids.length) { const { data: profs } = await supabase.from('profiles').select('id, full_name').in('id', ids).eq('is_active', true); people = profs || [] }
+    } else {
+      const { data: profs } = await supabase.from('profiles').select('id, full_name').eq('is_active', true); people = profs || []
+    }
+    setRoster(cur => ({ ...cur, [a.id]: people }))
+  }
 
   async function togglePin(a) {
     const next = !a.pinned
@@ -72,7 +105,7 @@ export default function Updates() {
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
           <h1 className="page-title">Updates</h1>
-          <p className="page-sub">Command Center changes, client updates, and anything from your shift others should know. Post reaches Everyone — or just the roles it concerns.</p>
+          <p className="page-sub">Command Center changes, client updates, and anything from your shift others should know. Post reaches Everyone — or just the team it concerns.</p>
         </div>
         <button className="btn btn-primary" onClick={() => setComposing(c => !c)}>{composing ? 'Close' : '＋ New update'}</button>
       </div>
@@ -112,13 +145,58 @@ export default function Updates() {
                       <span>·</span>
                       <span>{when(a.created_at)}</span>
                       <span>·</span>
-                      <span title="Who can see this">{targeted ? '👁 ' + audienceLabel(a) : '👁 Everyone'}</span>
+                      <span title="Who can see this">{targeted ? '📣 ' + audienceLabel(a) : '📣 Everyone'}</span>
                     </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 10, flexWrap: 'wrap', borderTop: '1px solid var(--line-soft)', paddingTop: 8 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, cursor: readByMe(a) ? 'default' : 'pointer', color: readByMe(a) ? '#16A34A' : 'var(--ink)' }}>
+                        <input type="checkbox" checked={readByMe(a)} disabled={readByMe(a)} onChange={() => markRead(a)} />
+                        {readByMe(a) ? '✓ You read this' : 'Mark as read'}
+                      </label>
+                      {(mine || isAdmin) && (
+                        <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '3px 8px' }} onClick={() => toggleReaders(a)}>
+                          👁 {(reads[a.id] || []).length} read {openReaders === a.id ? '▴' : '▾'}
+                        </button>
+                      )}
+                    </div>
+                    {openReaders === a.id && (mine || isAdmin) && (
+                      <ReaderPanel reads={reads[a.id] || []} roster={roster[a.id]} names={names} meId={user?.id} />
+                    )}
                   </div>
                 )
               })}
             </div>
           )}
+    </div>
+  )
+}
+
+function ReaderPanel({ reads, roster, names, meId }) {
+  if (roster === undefined) return <div className="page-sub" style={{ fontSize: 12, marginTop: 6 }}>Loading readers…</div>
+  const nameOf = (id) => (roster || []).find(p => p.id === id)?.full_name || names[id] || (id === meId ? 'You' : 'Someone')
+  const readIds = new Set(reads.map(r => r.profile_id))
+  const readList = reads.slice().sort((x, y) => new Date(y.read_at) - new Date(x.read_at))
+  const unread = (roster || []).filter(p => !readIds.has(p.id))
+  return (
+    <div style={{ marginTop: 8, border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', background: 'var(--canvas)' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', marginBottom: 5 }}>
+        Read ({readList.length}{roster ? ` of ${roster.length}` : ''})
+      </div>
+      {readList.length === 0 ? <div className="page-sub" style={{ fontSize: 12, margin: 0 }}>No one has marked it read yet.</div> : (
+        <div style={{ fontSize: 12.5, display: 'grid', gap: 3 }}>
+          {readList.map(r => (
+            <div key={r.profile_id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <span>{nameOf(r.profile_id)}</span>
+              <span style={{ color: 'var(--ink-soft)' }}>{when(r.read_at)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {roster && unread.length > 0 && (
+        <>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', margin: '9px 0 5px' }}>Not yet ({unread.length})</div>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>{unread.map(p => p.full_name).join(', ')}</div>
+        </>
+      )}
     </div>
   )
 }
