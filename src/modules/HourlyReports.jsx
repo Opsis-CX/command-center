@@ -14,6 +14,17 @@ const good = '#1b5e20', warn = '#8d6e00', bad = '#b71c1c'
 const pctStr = (v) => v == null ? '—' : v + '%'
 const secStr = (v) => v == null ? '—' : v + 's'
 
+// ---- HTML report builders (posted natively into the GarageCo Reporting chat) ----
+// Constrained to what lib/sanitize.js allows: h3/p/ul/li/strong/table + background-color on th.
+const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const TH_STYLE = 'background-color:#1f8a53; color:#ffffff'
+function htmlTable(headers, rows) {
+  const head = '<thead><tr>' + headers.map(h => `<th style="${TH_STYLE}">${esc(h)}</th>`).join('') + '</tr></thead>'
+  const body = '<tbody>' + rows.map(r => '<tr>' + r.map(c => `<td>${esc(c)}</td>`).join('') + '</tr>').join('') + '</tbody>'
+  return `<table>${head}${body}</table>`
+}
+const bullets = (items) => '<ul>' + items.filter(Boolean).map(i => `<li>${i}</li>`).join('') + '</ul>'
+
 const SECTION = { fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--accent)', marginBottom: 10 }
 const taStyle = { display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--canvas)', resize: 'vertical', boxSizing: 'border-box' }
 const th = { textAlign: 'right', padding: '6px 8px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', color: 'var(--ink-soft)', borderBottom: '1px solid var(--line)' }
@@ -73,7 +84,7 @@ function useHourlyReport(rpc, day) {
   return { data, loading, err, setErr, load }
 }
 
-function ControlsBar({ day, setDay, data, syncing, onRefresh, onCopy, copied, onSave, saved }) {
+function ControlsBar({ day, setDay, data, syncing, onRefresh, onCopy, copied, onPost, posting, posted }) {
   const nowEt = new Date().toLocaleString('en-US', { timeZone: COMPANY_TZ, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   const syncedLabel = data?.last_synced_at ? new Date(data.last_synced_at).toLocaleTimeString('en-US', { timeZone: COMPANY_TZ, hour: 'numeric', minute: '2-digit' }) : '—'
   return (
@@ -82,8 +93,8 @@ function ControlsBar({ day, setDay, data, syncing, onRefresh, onCopy, copied, on
         style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--canvas)' }} />
       <button className="btn btn-ghost" onClick={onRefresh} disabled={syncing}>{syncing ? '⏳ Syncing…' : '↻ Refresh from Five9'}</button>
       <span className="page-sub" style={{ fontSize: 12 }}>{data?.is_today ? `as of ${nowEt} · ` : ''}synced {syncedLabel}</span>
-      <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={onCopy}>{copied ? '✓ Copied' : '📋 Copy update'}</button>
-      <button className="btn btn-primary" onClick={onSave}>{saved ? '✓ Saved' : 'Save update'}</button>
+      <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={onCopy}>{copied ? '✓ Copied' : '📋 Copy text'}</button>
+      <button className="btn btn-primary" onClick={onPost} disabled={posting}>{posted ? '✓ Posted to Reporting' : posting ? 'Posting…' : '📣 Post to Reporting'}</button>
     </div>
   )
 }
@@ -96,7 +107,8 @@ function OpenInvoicesView() {
   const { data, loading, err, setErr, load } = useHourlyReport('get_hourly_report_openinv', day)
   const [syncing, setSyncing] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [posting, setPosting] = useState(false)
+  const [posted, setPosted] = useState(false)
   const [overview, setOverview] = useState('')
 
   async function refresh() {
@@ -105,13 +117,46 @@ function OpenInvoicesView() {
     catch (e) { setErr(e.message || String(e)) }
     setSyncing(false)
   }
-  async function saveUpdate() {
-    setErr('')
-    const { error } = await supabase.rpc('post_hourly_report', { p_type: 'open_invoices', p_hour: data?.current_hour ?? null, p_snapshot: data, p_commentary: overview.trim() || null, p_formatted: buildUpdate() })
+  async function postToReporting() {
+    setPosting(true); setErr('')
+    const { error } = await supabase.rpc('post_hourly_to_reporting', { p_type: 'open_invoices', p_hour: data?.current_hour ?? null, p_html: buildHtml(), p_snapshot: data, p_commentary: overview.trim() || null })
+    setPosting(false)
     if (error) { setErr(error.message); return }
-    setSaved(true); setTimeout(() => setSaved(false), 2000)
+    setPosted(true); setTimeout(() => setPosted(false), 3000)
   }
   const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+
+  function buildHtml() {
+    if (!data) return ''
+    const t = data.totals
+    const bh = (data.by_hour || []).filter(r => r.calls > 0)
+    const peak = bh.reduce((a, r) => r.calls > (a?.calls || 0) ? r : a, null)
+    const best = bh.reduce((a, r) => (r.contact_rate ?? -1) > (a?.contact_rate ?? -1) ? r : a, null)
+    const disp = data.dispositions || []
+    const topTwo = disp.slice(0, 2)
+    const topShare = topTwo.reduce((s, d) => s + (d.pct || 0), 0)
+    const takeaways = bullets([
+      peak && `Peak volume: <strong>${esc(hourLabel(peak.hour))}</strong> with ${peak.calls} calls.`,
+      best && `Best contact rate: <strong>${pctStr(best.contact_rate)}</strong> at ${esc(hourLabel(best.hour))}.`,
+      `${t.calls} outbound calls · ${t.live_contacts} live contacts (avg ${pctStr(t.contact_rate)}) · ${pctStr(t.success_rate)} success rate.`,
+      topTwo.length && `${Math.round(topShare)}% of calls ended in ${topTwo.map(d => esc(d.disposition)).join(' or ')}.`,
+    ])
+    const brandTbl = htmlTable(
+      ['Brand', 'Calls', 'Live', 'Contact %', 'Call Backs', 'Hot Transfers', 'Success %', 'Avg Attempts'],
+      (data.by_brand || []).map(b => [b.brand, b.calls, b.live_contacts, pctStr(b.contact_rate), b.callbacks, b.hot_transfers, pctStr(b.success_rate), b.avg_attempts ?? '—'])
+    )
+    const hourTbl = htmlTable(
+      ['Hour', 'Calls', 'Live', 'Contact %', 'Call Backs', 'Hot Transfers', 'Success %', 'Avg Attempts'],
+      bh.map(r => [hourLabel(r.hour), r.calls, r.live_contacts, pctStr(r.contact_rate), r.callbacks, r.hot_transfers, pctStr(r.success_rate), r.avg_attempts ?? '—'])
+    )
+    return [
+      `<h3>Open Invoices — Hourly Report · ${esc(dayLabel)}${data.is_today ? ` · ${esc(hourLabel(data.current_hour))}` : ''}</h3>`,
+      takeaways,
+      overview.trim() ? `<p><strong>Notes:</strong> ${esc(overview.trim())}</p>` : '',
+      `<p><strong>Brand Performance</strong></p>`, brandTbl,
+      `<p><strong>Hourly Breakdown</strong></p>`, hourTbl,
+    ].join('')
+  }
 
   function buildUpdate() {
     if (!data) return ''
@@ -137,7 +182,7 @@ function OpenInvoicesView() {
 
   return (
     <div>
-      <ControlsBar day={day} setDay={setDay} data={data} syncing={syncing} onRefresh={refresh} onCopy={copyUpdate} copied={copied} onSave={saveUpdate} saved={saved} />
+      <ControlsBar day={day} setDay={setDay} data={data} syncing={syncing} onRefresh={refresh} onCopy={copyUpdate} copied={copied} onPost={postToReporting} posting={posting} posted={posted} />
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
 
       <div style={SECTION}>This Hour · {hourLabel(data.current_hour)}{data.is_today ? '' : ' (latest)'}</div>
@@ -218,7 +263,8 @@ function AffiliateView() {
   const { data, loading, err, setErr, load } = useHourlyReport('get_hourly_report_affiliate', day)
   const [syncing, setSyncing] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [posting, setPosting] = useState(false)
+  const [posted, setPosted] = useState(false)
   const [overview, setOverview] = useState('')
 
   async function refresh() {
@@ -227,13 +273,36 @@ function AffiliateView() {
     catch (e) { setErr(e.message || String(e)) }
     setSyncing(false)
   }
-  async function saveUpdate() {
-    setErr('')
-    const { error } = await supabase.rpc('post_hourly_report', { p_type: 'affiliate', p_hour: data?.current_hour ?? null, p_snapshot: data, p_commentary: overview.trim() || null, p_formatted: buildUpdate() })
+  async function postToReporting() {
+    setPosting(true); setErr('')
+    const { error } = await supabase.rpc('post_hourly_to_reporting', { p_type: 'affiliate', p_hour: data?.current_hour ?? null, p_html: buildHtml(), p_snapshot: data, p_commentary: overview.trim() || null })
+    setPosting(false)
     if (error) { setErr(error.message); return }
-    setSaved(true); setTimeout(() => setSaved(false), 2000)
+    setPosted(true); setTimeout(() => setPosted(false), 3000)
   }
   const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+
+  function buildHtml() {
+    if (!data) return ''
+    const t = data.totals, spd = data.speed || {}, eff = data.booking_efficiency || {}
+    const takeaways = bullets([
+      `${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}).`,
+      `${t.bookings} booked (${pctStr(t.booking_rate)} booking rate · ${pctStr(t.contact_conversion)} conversion).`,
+      spd.first_dials ? `Speed to first dial: ${spd.within_15 ?? 0} within 15s / ${spd.over_15 ?? 0} over (avg ${secStr(spd.avg_sec)}).` : null,
+      eff.total_booked ? `Booking efficiency: ${eff.first_dial ?? 0} on 1st dial · ${eff.second_dial ?? 0} on 2nd · ${eff.three_plus ?? 0} on 3+ (avg ${eff.avg_dial ?? '—'} dials).` : null,
+    ])
+    const cols = ['', 'Leads', 'Dials', 'Live', 'Booked', 'Contact %', 'Book %', 'Conv %', 'Speed', 'Avg Dial']
+    const row = (name, r) => [name, r.leads, r.dials, r.live_contacts, r.bookings, pctStr(r.contact_rate), pctStr(r.booking_rate), pctStr(r.contact_conversion), secStr(r.avg_speed_sec), r.avg_dial_booked ?? '—']
+    const vendorTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Vendor' : c), (data.vendors || []).map(r => row(r.vendor, r)))
+    const brandTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Brand' : c), (data.brands || []).map(r => row(r.brand, r)))
+    return [
+      `<h3>Affiliate Leads — Hourly Report · ${esc(dayLabel)}${data.is_today ? ` · ${esc(hourLabel(data.current_hour))}` : ''}</h3>`,
+      takeaways,
+      overview.trim() ? `<p><strong>Notes:</strong> ${esc(overview.trim())}</p>` : '',
+      `<p><strong>Vendor Performance</strong></p>`, vendorTbl,
+      `<p><strong>Brand Performance</strong></p>`, brandTbl,
+    ].join('')
+  }
 
   function buildUpdate() {
     if (!data) return ''
@@ -266,7 +335,7 @@ function AffiliateView() {
 
   return (
     <div>
-      <ControlsBar day={day} setDay={setDay} data={data} syncing={syncing} onRefresh={refresh} onCopy={copyUpdate} copied={copied} onSave={saveUpdate} saved={saved} />
+      <ControlsBar day={day} setDay={setDay} data={data} syncing={syncing} onRefresh={refresh} onCopy={copyUpdate} copied={copied} onPost={postToReporting} posting={posting} posted={posted} />
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
 
       <div style={SECTION}>This Hour · {hourLabel(data.current_hour)}{data.is_today ? '' : ' (latest)'}</div>
