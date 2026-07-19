@@ -25,6 +25,7 @@ import Settings from './modules/Settings'
 import Projects from './modules/Projects'
 import Clients from './modules/Clients'
 import Reporting from './modules/Reporting'
+import HourlyReports from './modules/HourlyReports'
 import Calendar from './modules/Calendar'
 import WeeklySync from './modules/WeeklySync'
 import Notifications from './modules/Notifications'
@@ -121,6 +122,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {canAny(appRole, 'project_management') && <Route path="/projects" element={<Projects />} />}
               {canAny(appRole, 'clients.view_only') && <Route path="/clients" element={<Clients />} />}
               {canAny(appRole, 'reporting') && <Route path="/reporting" element={<Reporting />} />}
+              {canAny(appRole, 'reporting') && <Route path="/reporting/hourly" element={<HourlyReports />} />}
               {canAny(appRole, 'people_and_tags.view_only') && <Route path="/people" element={<PeopleTags />} />}
               {canAny(appRole, 'hiring') && <Route path="/hiring" element={<HiringDashboard />} />}
               {/* Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
@@ -145,7 +147,7 @@ function titleFor(path) {
     '/': 'Dashboard', '/certifications': 'Certifications',
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
-    '/chat': 'Chat', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/weekly-sync': 'Weekly Sync',
+    '/chat': 'Chat', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales', '/help': 'Help Center',
   }
   return map[path] || 'Command Center'
