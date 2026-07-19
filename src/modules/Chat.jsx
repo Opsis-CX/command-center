@@ -1357,7 +1357,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       </div>
 
       {trackFor && <TrackPanel messageId={trackFor} me={me} members={members} profiles={profiles} acks={acks} onClose={() => setTrackFor(null)} />}
-      {threadFor && <ThreadPanel parentId={threadFor} channelId={channelId} me={me} senders={senders} profiles={profiles} channel={channel} members={members} onClose={() => setThreadFor(null)} onSeen={markThreadRead} highlightId={highlightId} />}
+      {threadFor && <ThreadPanel parentId={threadFor} channelId={channelId} me={me} senders={senders} profiles={profiles} channel={channel} members={members} canModerate={canModerate} onClose={() => setThreadFor(null)} onSeen={markThreadRead} highlightId={highlightId} />}
       {lightbox.index != null && (
         <Lightbox images={lightbox.images} index={lightbox.index}
           onClose={() => setLightbox({ images: [], index: null })}
@@ -1844,7 +1844,7 @@ function ReplyAffordance({ count, unseen = 0, onOpen }) {
   )
 }
 
-function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel, members = [], onClose, onSeen, highlightId }) {
+function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel, members = [], canModerate = false, onClose, onSeen, highlightId }) {
   // Drag the panel's left edge to resize; the width sticks (localStorage)
   // so it opens the way you like it next time.
   const [panelW, setPanelW] = useState(() => {
@@ -1883,8 +1883,41 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
   const [uploading, setUploading] = useState(false)
   const [uploadErr, setUploadErr] = useState('')
   const [lightbox, setLightbox] = useState({ images: [], index: null })
+  const [editingReply, setEditingReply] = useState(null)   // { id, html } or null
+  const [editSaving, setEditSaving] = useState(false)
   const endRef = useRef(null)
   const fileInputRef = useRef(null)
+
+  // Edit / delete a reply — mirrors the main message list (author edits own,
+  // author or moderator deletes; deletes are soft so the audit trail survives).
+  async function deleteReply(r) {
+    const isMine = r.sender_id === me.id
+    const who = isMine ? 'your reply' : `${nameFor(r.sender_id)}'s reply`
+    if (!window.confirm(`Delete ${who}? It disappears for everyone. This can't be undone from the app.`)) return
+    let reason = null
+    if (!isMine) { reason = window.prompt('Reason for removing this reply? (optional, saved to the audit trail)'); if (reason === null) return }
+    const prev = replies
+    setReplies(cur => cur.filter(x => x.id !== r.id))   // optimistic
+    const { error } = await supabase.from('messages').update({ deleted_at: new Date().toISOString(), deleted_by: me.id, deleted_reason: reason || null }).eq('id', r.id)
+    if (error) { setReplies(prev); setUploadErr('Could not delete: ' + error.message) }
+  }
+  function openReplyEdit(r) {
+    if (r.sender_id !== me.id) return
+    setEditingReply({ id: r.id, html: r.body || '' })
+  }
+  async function saveReplyEdit(rawHtml) {
+    if (!editingReply) return
+    const body = sanitizeHtml(rawHtml)
+    if (!htmlToText(rawHtml)) { setUploadErr("A reply can't be empty. Delete it instead."); return }
+    const id = editingReply.id, now = new Date().toISOString()
+    const prev = replies
+    setReplies(cur => cur.map(x => x.id === id ? { ...x, body, edited_at: now } : x))   // optimistic
+    setEditSaving(true); setUploadErr('')
+    const { error } = await supabase.from('messages').update({ body, edited_at: now }).eq('id', id).eq('sender_id', me.id)
+    setEditSaving(false)
+    if (error) { setReplies(prev); setUploadErr('Could not save edit: ' + error.message); return }
+    setEditingReply(null)
+  }
 
   // The realtime attachment handler needs the current thread message ids
   // without resubscribing every time a reply lands.
@@ -2109,15 +2142,17 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
             <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginBottom: 8 }}>{replies.length} repl{replies.length === 1 ? 'y' : 'ies'}</div>
             {replies.map(r => {
               const flash = highlightId === r.id
+              const canEdit = !r._optimistic && r.sender_id === me.id
+              const canDelete = !r._optimistic && (r.sender_id === me.id || canModerate)
               return (
-                <div key={r.id} id={'thread-msg-' + r.id}
-                  style={{ display: 'flex', gap: 9, marginBottom: 10, opacity: r._optimistic ? 0.6 : 1,
+                <div key={r.id} id={'thread-msg-' + r.id} className="chat-msg-row"
+                  style={{ display: 'flex', gap: 9, marginBottom: 10, opacity: r._optimistic ? 0.6 : 1, position: 'relative',
                     background: flash ? 'var(--accent-bg)' : 'transparent',
                     outline: flash ? '2px solid var(--accent)' : 'none',
                     borderRadius: flash ? 8 : 0, padding: flash ? '5px 6px' : 0 }}>
                   <span style={{ width: 28, height: 28, borderRadius: '50%', background: avatarColor(nameFor(r.sender_id)), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>{initials(nameFor(r.sender_id))}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}><b style={{ fontSize: 12.5 }}>{nameFor(r.sender_id)}</b><span style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>{timeLabel(r.created_at)}</span></div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}><b style={{ fontSize: 12.5 }}>{nameFor(r.sender_id)}</b><span style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>{timeLabel(r.created_at)}</span>{r.edited_at && <span style={{ fontSize: 10, color: 'var(--ink-soft)', fontStyle: 'italic' }}>(edited)</span>}</div>
                     <RichContent html={r.body} highlightMentions style={{ fontSize: 13.5 }} />
                     {attsFor(r.id).map(a => (
                       <AttachmentView key={a.id} att={a} onOpenImage={openImage(r.id)} />
@@ -2132,6 +2167,14 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
                         reactorsFor={reactorsFor} setReactorsFor={setReactorsFor} />
                     )}
                   </div>
+                  {canEdit && (
+                    <button className="chat-msg-delete" title="Edit your reply" onClick={() => openReplyEdit(r)}
+                      style={{ position: 'absolute', top: 0, right: canDelete ? 30 : 0, border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 6, cursor: 'pointer', fontSize: 11, lineHeight: 1, padding: '3px 5px', color: 'var(--ink-soft)' }}>✏️</button>
+                  )}
+                  {canDelete && (
+                    <button className="chat-msg-delete" title={r.sender_id === me.id ? 'Delete your reply' : 'Remove this reply'} onClick={() => deleteReply(r)}
+                      style={{ position: 'absolute', top: 0, right: 0, border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 6, cursor: 'pointer', fontSize: 11, lineHeight: 1, padding: '3px 5px', color: 'var(--failed)' }}>🗑</button>
+                  )}
                 </div>
               )
             })}
@@ -2178,6 +2221,10 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
         <Lightbox images={lightbox.images} index={lightbox.index}
           onClose={() => setLightbox({ images: [], index: null })}
           onNav={(d) => setLightbox(lb => ({ ...lb, index: (lb.index + d + lb.images.length) % lb.images.length }))} />
+      )}
+      {editingReply && (
+        <EditMessageModal initialHtml={editingReply.html} profiles={profiles} saving={editSaving}
+          onCancel={() => setEditingReply(null)} onSave={saveReplyEdit} />
       )}
     </div>
   )
