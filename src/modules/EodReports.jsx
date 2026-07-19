@@ -129,6 +129,9 @@ function PersonalEod({ userId }) {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [missing, setMissing] = useState(false)
+  const [emailMsg, setEmailMsg] = useState('')
+  const [emailing, setEmailing] = useState(false)
+  const [historyKey, setHistoryKey] = useState(0)   // bump to refresh the history list after a save
   // interval-end reminder: latest end time (today) among the person's claimed shifts
   const [myEnd, setMyEnd] = useState(null)   // { min, time } or null
   const [, setTick] = useState(0)            // re-render each minute to update the window
@@ -183,8 +186,20 @@ function PersonalEod({ userId }) {
       }, { onConflict: 'profile_id,report_date' })
       if (error) { if (tableMissing(error)) setMissing(true); throw error }
       setSubmittedAt(new Date().toISOString())
+      setHistoryKey(k => k + 1)
+      emailCopy(date)   // send the submitter a copy for their records
     } catch (e) { setErr(e.message || 'Could not save.') }
     finally { setSaving(false) }
+  }
+
+  async function emailCopy(reportDate) {
+    setEmailing(true); setEmailMsg('Emailing a copy…')
+    try {
+      const { data, error } = await supabase.functions.invoke('send-eod-copy', { body: { report_date: reportDate } })
+      if (error || data?.error) { setEmailMsg('Couldn’t email a copy — ' + (data?.error || error?.message || 'try again')); return }
+      setEmailMsg('📧 A copy was emailed to you.')
+    } catch (e) { setEmailMsg('Couldn’t email a copy — ' + (e.message || 'try again')) }
+    finally { setEmailing(false) }
   }
 
   const isTodayView = date === isoDate(etNow())
@@ -226,11 +241,86 @@ function PersonalEod({ userId }) {
               <textarea style={area} value={c.notes} onChange={e => setC({ ...c, notes: e.target.value })} placeholder="Live listens, training, anything else…" /></div>
           </div>
           {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 12 }}>{err}</div>}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : submittedAt ? 'Update report' : 'Submit report'}</button>
+            {submittedAt && <button className="btn btn-ghost" onClick={() => emailCopy(date)} disabled={emailing}>{emailing ? 'Emailing…' : '📧 Email me a copy'}</button>}
             {submittedAt && <span className="page-sub" style={{ fontSize: 12 }}>Last saved {new Date(submittedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>}
+            {emailMsg && <span className="page-sub" style={{ fontSize: 12, color: emailMsg.startsWith('📧') ? '#16A34A' : 'var(--ink-soft)' }}>{emailMsg}</span>}
           </div>
         </>
+      )}
+      <MyPastReports userId={userId} refreshKey={historyKey} onEmail={emailCopy} emailing={emailing} />
+    </div>
+  )
+}
+
+// ---------- personal history: look back at past submitted EODs ----------
+function MyPastReports({ userId, refreshKey, onEmail, emailing }) {
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState(null)
+  const [openId, setOpenId] = useState(null)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!userId || !open) return
+    let active = true
+    ;(async () => {
+      setErr('')
+      const { data, error } = await supabase.from('daily_reports').select('*')
+        .eq('profile_id', userId).order('report_date', { ascending: false }).limit(120)
+      if (!active) return
+      if (error) { setErr(error.message || 'Could not load your past reports.'); setRows([]) }
+      else setRows(data || [])
+    })()
+    return () => { active = false }
+  }, [userId, open, refreshKey])
+
+  return (
+    <div style={{ borderTop: '1px solid var(--line)', marginTop: 18, paddingTop: 14 }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 0, cursor: 'pointer', fontFamily: 'inherit', padding: 0, color: 'var(--ink)' }}>
+        <span style={{ fontSize: 12, opacity: .6, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▸</span>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>My past reports</span>
+        <span className="page-sub" style={{ fontSize: 12 }}>— look back at any EOD you've submitted</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 10 }}>{err}</div>}
+          {rows === null ? <p className="page-sub" style={{ fontSize: 12.5 }}>Loading…</p>
+            : rows.length === 0 ? <p className="page-sub" style={{ fontSize: 12.5 }}>No submitted reports yet.</p>
+              : (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {rows.map(r => {
+                    const isOpen = openId === r.id
+                    const tracked = { rows: Array.isArray(r.tasks_snapshot) ? r.tasks_snapshot : [], total: r.total_minutes || 0 }
+                    return (
+                      <div key={r.id} style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
+                        <button onClick={() => setOpenId(isOpen ? null : r.id)}
+                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--canvas)', border: 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                          <span style={{ fontWeight: 600, fontSize: 13.5 }}>{prettyDate(r.report_date)}</span>
+                          <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--ink-soft)' }}>{hrs(r.total_minutes || 0)}h</span>
+                          <span style={{ fontSize: 11, opacity: .6, transform: isOpen ? 'rotate(90deg)' : 'none' }}>▸</span>
+                        </button>
+                        {isOpen && (
+                          <div style={{ padding: 12, borderTop: '1px solid var(--line)' }}>
+                            <TrackedTable tracked={tracked} />
+                            <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+                              <ReportBlock title="Additional work / comments" body={r.additional_work} />
+                              <ReportBlock title="Agent / trend concerns" body={r.concerns} />
+                              <ReportBlock title="Notes" body={r.notes} />
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
+                              <button className="btn btn-ghost" onClick={() => onEmail(r.report_date)} disabled={emailing}>📧 Email me a copy</button>
+                              <span className="page-sub" style={{ fontSize: 11 }}>Submitted {r.submitted_at ? new Date(r.submitted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+        </div>
       )}
     </div>
   )
