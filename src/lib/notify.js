@@ -526,6 +526,40 @@ export async function notifyTaskAssigned({
   )
 }
 
+// Fired when a NEW task is added to a project — alerts the project's members so
+// everyone sees what landed on the list (assignees get task_assigned instead).
+export async function notifyTaskAdded({
+  recipientIds,
+  actorId,
+  actorName,
+  taskName,
+  projectName,
+  taskId,
+}) {
+  const ids = uniqueIds(recipientIds).filter(id => id !== actorId)
+
+  const link = taskId
+    ? `/projects?task=${encodeURIComponent(taskId)}`
+    : '/projects'
+
+  return insertMany(
+    ids.map(recipientId => ({
+      recipient_id: recipientId,
+      type: 'task_added',
+      title: 'New task added',
+
+      body:
+        `${actorName || 'Someone'} added "${taskName}"` +
+        `${projectName ? ` to ${projectName}` : ''}.`,
+
+      link,
+
+      actor_id: actorId,
+      actor_name: actorName || null,
+    }))
+  )
+}
+
 export async function notifyTaskCompleted({
   recipientId,
   actorId,
@@ -616,7 +650,7 @@ const TYPE_TO_CATEGORY = {
   // schedule
   interval_released: 'schedule', no_show: 'schedule',
   // projects
-  task_assigned: 'projects', task_completed: 'projects', task_mention: 'projects',
+  task_assigned: 'projects', task_added: 'projects', task_completed: 'projects', task_mention: 'projects',
   // hiring (types created by the hiring module / edge fn)
   application_received: 'hiring', assessment_submitted: 'hiring',
   mock_requested: 'hiring', hire_stage_changed: 'hiring',
