@@ -28,6 +28,7 @@ const NAV = [
     // Daily drivers, pinned at the top. Single-tap for the pages people live in.
     group: 'Main',
     items: [
+      { type: 'link', to: '/home', label: 'Opsis Weekly', ic: '🏠', perm: null },  // everyone; page scopes itself by tag/role
       { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, perm: 'dashboard' },
       { type: 'link', to: '/updates', label: 'Updates', ic: '📣', perm: null },  // everyone; RLS gates audience
       {
