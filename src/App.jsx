@@ -26,7 +26,6 @@ import Projects from './modules/Projects'
 import Clients from './modules/Clients'
 import Reporting from './modules/Reporting'
 import HourlyReports from './modules/HourlyReports'
-import HoursReport from './modules/HoursReport'
 import Updates from './modules/Updates'
 import OpsisWeekly from './modules/OpsisWeekly'
 import Notes from './modules/Notes'
@@ -130,7 +129,6 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/notes" element={<Notes />} />
               {canAny(appRole, 'reporting') && <Route path="/reporting" element={<Reporting />} />}
               {canAny(appRole, 'reporting') && <Route path="/reporting/hourly" element={<HourlyReports />} />}
-              {canAny(appRole, 'reporting') && <Route path="/reporting/hours" element={<HoursReport />} />}
               {canAny(appRole, 'people_and_tags.view_only') && <Route path="/people" element={<PeopleTags />} />}
               {canAny(appRole, 'hiring') && <Route path="/hiring" element={<HiringDashboard />} />}
               {/* Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
@@ -155,7 +153,7 @@ function titleFor(path) {
     '/': 'Dashboard', '/certifications': 'Certifications',
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
-    '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/reporting/hours': 'Hourly Schedule Report', '/weekly-sync': 'Weekly Sync',
+    '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales', '/help': 'Help Center',
   }
   return map[path] || 'Command Center'
