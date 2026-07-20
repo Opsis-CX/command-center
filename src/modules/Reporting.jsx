@@ -386,14 +386,17 @@ export default function Reporting() {
           <button onClick={() => setView('compare')} style={tabBtn(view === 'compare')}>Scheduled vs Worked</button>
           <button onClick={() => setView('quality')} style={tabBtn(view === 'quality')}>Quality</button>
           <button onClick={() => setView('people')} style={tabBtn(view === 'people')}>People</button>
+          <button onClick={() => setView('schedule')} style={tabBtn(view === 'schedule')}>Schedule Hours</button>
         </div>
-        <button className="btn btn-primary" style={{ marginLeft: 'auto' }}
-          onClick={view === 'person' ? exportPersonCSV : view === 'client' ? exportClientCSV : view === 'quality' ? exportQualityCSV : view === 'people' ? exportPeopleCSV : exportCompareCSV}>
-          Export {view === 'person' ? 'Payroll' : view === 'client' ? 'Invoicing' : view === 'quality' ? 'Quality' : view === 'people' ? 'Roster' : 'Comparison'} CSV
-        </button>
+        {view !== 'schedule' && (
+          <button className="btn btn-primary" style={{ marginLeft: 'auto' }}
+            onClick={view === 'person' ? exportPersonCSV : view === 'client' ? exportClientCSV : view === 'quality' ? exportQualityCSV : view === 'people' ? exportPeopleCSV : exportCompareCSV}>
+            Export {view === 'person' ? 'Payroll' : view === 'client' ? 'Invoicing' : view === 'quality' ? 'Quality' : view === 'people' ? 'Roster' : 'Comparison'} CSV
+          </button>
+        )}
       </div>
 
-      {loading ? <p className="page-sub">Loading…</p> : view === 'quality' ? (
+      {view === 'schedule' ? <ScheduleHoursView range={range} setRange={setRange} /> : loading ? <p className="page-sub">Loading…</p> : view === 'quality' ? (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
             <div className="card" style={{ padding: '12px 16px' }}>
@@ -692,6 +695,114 @@ const inp = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius
 const cellL = { padding: '9px 16px', borderBottom: '1px solid var(--line-soft)', fontSize: 13 }
 const cellR = { padding: '9px 16px', borderBottom: '1px solid var(--line-soft)', fontSize: 13, fontWeight: 600, textAlign: 'right', whiteSpace: 'nowrap' }
 const meetingTag = { marginLeft: 8, background: 'var(--accent-bg, var(--line-soft))', color: 'var(--accent)', fontSize: 10, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', padding: '1px 6px', borderRadius: 8, verticalAlign: 'middle' }
+// ---- Schedule Hours: hourly coverage + roster, scoped by client/role ----
+function hourLabel(h) { const ap = h < 12 ? 'AM' : 'PM'; return `${h % 12 || 12}:00 ${ap}` }
+function weekdayShort(d) { return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' }) }
+
+function ScheduleHoursView({ range }) {
+  const [clients, setClients] = useState([])
+  const [roles, setRoles] = useState([])
+  const [clientId, setClientId] = useState('')
+  const [role, setRole] = useState('')
+  const [mode, setMode] = useState('coverage')
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    supabase.from('clients').select('id, name').order('name').then(({ data }) => setClients(data || []))
+    supabase.from('shift_blocks').select('role').then(({ data }) => {
+      setRoles([...new Set((data || []).map(r => (r.role || '').trim()).filter(Boolean))].sort())
+    })
+  }, [])
+
+  const run = useCallback(async () => {
+    setLoading(true); setErr('')
+    const { data: res, error } = await supabase.rpc('get_schedule_hours_report', {
+      p_start: range.from, p_end: range.to, p_client: clientId || null, p_role: role || null,
+    })
+    setLoading(false)
+    if (error) { setErr(error.message); return }
+    if (!res) { setErr('You don’t have access to this report.'); return }
+    setData(res)
+  }, [range.from, range.to, clientId, role])
+
+  useEffect(() => { run() }, [range.from, range.to]) // eslint-disable-line
+
+  const rows = data ? (mode === 'coverage' ? data.coverage : data.roster) : []
+
+  function exportCsv() {
+    if (!rows.length) return
+    const header = mode === 'coverage'
+      ? ['Date', 'Day', 'Hour', 'Slots Available', 'Slots Filled', 'Slots Open', 'Fill %']
+      : ['Date', 'Day', 'Hour', 'Agent', 'Role', 'Client']
+    const out = [header]
+    rows.forEach(r => out.push(mode === 'coverage'
+      ? [r.date, weekdayShort(r.date), hourLabel(r.hour), r.available, r.filled, r.open, r.available ? Math.round(r.filled / r.available * 100) + '%' : '']
+      : [r.date, weekdayShort(r.date), hourLabel(r.hour), r.agent, r.role, r.client]))
+    const scope = clientId ? (clients.find(c => c.id === clientId)?.name || 'client') : role || 'all'
+    downloadCSV(`hourly-${mode}-${scope}-${range.from}_to_${range.to}.csv`.replace(/[^a-z0-9._-]/gi, '-'), out)
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={lbl}>Client</label>
+          <select value={clientId} onChange={e => { setClientId(e.target.value); if (e.target.value) setRole('') }} style={inp}>
+            <option value="">All clients</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={lbl}>Role / position</label>
+          <select value={role} onChange={e => { setRole(e.target.value); if (e.target.value) setClientId('') }} style={inp}>
+            <option value="">All roles</option>
+            {roles.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+        <button className="btn btn-primary" onClick={run} disabled={loading} style={{ height: 36 }}>{loading ? 'Running…' : 'Run report'}</button>
+        <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
+          <button onClick={() => setMode('coverage')} style={tabBtn(mode === 'coverage')}>Coverage</button>
+          <button onClick={() => setMode('roster')} style={tabBtn(mode === 'roster')}>Roster</button>
+        </div>
+        <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={exportCsv} disabled={!rows.length}>Export CSV</button>
+      </div>
+
+      {err && <div style={{ color: 'var(--failed)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
+
+      <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+        {loading ? <p className="page-sub" style={{ padding: 20 }}>Loading…</p>
+          : rows.length === 0 ? <p className="page-sub" style={{ padding: 20 }}>No scheduled data for these filters.</p>
+          : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead><tr>{(mode === 'coverage'
+                ? ['Date', 'Day', 'Hour', 'Slots Available', 'Slots Filled', 'Slots Open', 'Fill %']
+                : ['Date', 'Day', 'Hour', 'Agent', 'Role', 'Client']).map(h =>
+                <th key={h} style={{ textAlign: 'left', padding: '10px 12px', background: 'var(--canvas)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', color: 'var(--ink-soft)' }}>{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.map((r, i) => mode === 'coverage' ? (
+                  <tr key={i} style={{ borderTop: '1px solid var(--line-soft)' }}>
+                    <td style={cellL}>{r.date}</td><td style={cellL}>{weekdayShort(r.date)}</td><td style={cellC}>{hourLabel(r.hour)}</td>
+                    <td style={cellC}>{r.available}</td><td style={cellC}>{r.filled}</td><td style={cellC}>{r.open}</td>
+                    <td style={{ ...cellC, fontWeight: 600, color: r.available && r.filled >= r.available ? 'var(--passed)' : (r.available && r.filled / r.available >= 0.8) ? 'var(--needed)' : 'var(--failed)' }}>{r.available ? Math.round(r.filled / r.available * 100) : 0}%</td>
+                  </tr>
+                ) : (
+                  <tr key={i} style={{ borderTop: '1px solid var(--line-soft)' }}>
+                    <td style={cellL}>{r.date}</td><td style={cellL}>{weekdayShort(r.date)}</td><td style={cellC}>{hourLabel(r.hour)}</td>
+                    <td style={{ ...cellL, fontWeight: 600 }}>{r.agent}</td><td style={cellL}>{r.role}</td><td style={cellL}>{r.client}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+      </div>
+      {rows.length > 0 && <p className="page-sub" style={{ fontSize: 12, marginTop: 8 }}>{rows.length} rows · Slots Available = total scheduled capacity that hour.</p>}
+    </div>
+  )
+}
+const cellC = { padding: '9px 16px', borderBottom: '1px solid var(--line-soft)', fontSize: 13, textAlign: 'center' }
+
 function tabBtn(active) {
   return { padding: '8px 14px', border: 0, background: active ? 'var(--accent)' : 'var(--surface)', color: active ? '#fff' : 'var(--ink-soft)', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }
 }
