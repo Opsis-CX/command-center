@@ -94,7 +94,7 @@ export default function QualityReporting() {
     try {
       if (system === 'internal') {
         const { data, error } = await supabase.from('qa_audits')
-          .select('id, agent_name, auditor_id, audit_type, campaign, brand, call_date, created_at, clean_qa_score, auto_fail, feedback, answers, edit_count, editor_name')
+          .select('id, agent_name, auditor_id, audit_type, campaign, brand, call_id, call_date, created_at, clean_qa_score, auto_fail, feedback, answers, edit_count, editor_name')
           .gte('call_date', range.from).lte('call_date', range.to)
           .order('call_date', { ascending: false })
         if (error) throw error
@@ -112,6 +112,7 @@ export default function QualityReporting() {
           campaign: a.campaign || '',
           auditor: names[a.auditor_id] || '—',
           date: a.call_date,
+          callId: a.call_id || '',
           auditDate: a.created_at ? String(a.created_at).slice(0, 10) : '',
           score: a.auto_fail ? 0 : (a.clean_qa_score == null ? null : Number(a.clean_qa_score)),
           rawScore: a.clean_qa_score == null ? null : Number(a.clean_qa_score),
@@ -215,32 +216,33 @@ export default function QualityReporting() {
       r.edited ? 'yes' : '', r.notes])
     downloadCSV(`quality-audits-${system}-${range.from}-to-${range.to}.csv`, [head, ...body])
   }
-  // Per-question answers (internal only): one row per audit × question, plus the
-  // exact sub-items missed. Score-only imports (no stored answers) get one row
-  // each so nothing silently drops out of the report.
+  // Per-question answers (internal only): ONE ROW PER AUDIT, one column per
+  // question (header carries the question text), Yes/No/N/A per cell, plus the
+  // agent, auditor, both dates, call ID, and final score. Columns are the union
+  // of every question seen across the shown audits, ordered by form + sort order.
   function exportAnswers() {
-    const head = ['Call date', 'Audit date', 'Agent', 'Auditor', 'Brand', 'Form', 'Score %', 'Auto-fail',
-      'Q #', 'Question', 'Points possible', 'Answer', 'Items missed']
-    const body = []
+    // 1) collect the questions that appear in the shown audits, in a stable order
+    const qids = []
+    const seen = new Set()
     filtered.forEach(r => {
-      const entries = Object.entries(r.answers || {})
-      const base = [r.date, r.auditDate, r.person, r.auditor, r.brand, r.campaign || r.brand,
-        r.rawScore ?? '', r.autoFail ? 'yes' : '']
-      if (!entries.length) {
-        body.push([...base, '', '(no per-question answers stored — score only)', '', '', ''])
-        return
-      }
-      entries
-        .map(([qid, obj]) => {
-          const q = qMap[qid] || {}
-          return { sort: q.sort ?? 999, label: q.label || qid, points: q.points ?? '',
-            value: ANSWER_LABEL[obj?.value] || obj?.value || '',
-            missed: (obj?.missed || []).map(m => subMap[m] || m).join('; ') }
-        })
-        .sort((a, b) => a.sort - b.sort)
-        .forEach((q, i) => {
-          body.push([...base, i + 1, q.label, q.points, q.value, q.missed])
-        })
+      Object.keys(r.answers || {}).forEach(qid => { if (!seen.has(qid)) { seen.add(qid); qids.push(qid) } })
+    })
+    qids.sort((a, b) => {
+      const qa = qMap[a] || {}, qb = qMap[b] || {}
+      return String(qa.campaign || '').localeCompare(String(qb.campaign || '')) || ((qa.sort ?? 999) - (qb.sort ?? 999))
+    })
+    // 2) header: Q1..Qn each labelled with the question text
+    const head = ['Agent Name', 'Auditor Name', 'Date of audit', 'Date of call', 'Call ID',
+      ...qids.map((qid, i) => `Q${i + 1} - ${(qMap[qid]?.label) || qid}`), 'Score']
+    // 3) one row per audit
+    const body = filtered.map(r => {
+      const cells = [r.person, r.auditor, r.auditDate, r.date, r.callId || '']
+      qids.forEach(qid => {
+        const o = (r.answers || {})[qid]
+        cells.push(o ? (ANSWER_LABEL[o.value] || o.value || '') : '')
+      })
+      cells.push(r.rawScore ?? '')
+      return cells
     })
     downloadCSV(`quality-answers-${range.from}-to-${range.to}.csv`, [head, ...body])
   }
