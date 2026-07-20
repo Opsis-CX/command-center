@@ -46,6 +46,7 @@ const NAV = [
         children: [
           { to: '/reporting', label: 'Reporting', perm: 'reporting' },
           { to: '/reporting/hourly', label: 'Hourly', perm: 'reporting' },
+          { to: '/reporting/hours', label: 'Schedule Hours', perm: 'reporting' },
         ],
       },
       { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
