@@ -185,7 +185,7 @@ function OpenInvoicesView() {
       <ControlsBar day={day} setDay={setDay} data={data} syncing={syncing} onRefresh={refresh} onCopy={copyUpdate} copied={copied} onPost={postToReporting} posting={posting} posted={posted} />
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
 
-      <div style={SECTION}>This Hour · {hourLabel(data.current_hour)}{data.is_today ? '' : ' (latest)'}</div>
+      <div style={SECTION}>Previous Hour · {hourLabel(data.current_hour)}{data.is_today ? '' : ' (latest)'}</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 18 }}>
         <StatCard label="Calls" big={String(h.calls)} delta={<Delta cur={h.calls} prev={lh.calls} />} />
         <StatCard label="Live Contacts" big={String(h.live_contacts)} delta={<Delta cur={h.live_contacts} prev={lh.live_contacts} />} />
@@ -338,7 +338,7 @@ function AffiliateView() {
       <ControlsBar day={day} setDay={setDay} data={data} syncing={syncing} onRefresh={refresh} onCopy={copyUpdate} copied={copied} onPost={postToReporting} posting={posting} posted={posted} />
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
 
-      <div style={SECTION}>This Hour · {hourLabel(data.current_hour)}{data.is_today ? '' : ' (latest)'}</div>
+      <div style={SECTION}>Previous Hour · {hourLabel(data.current_hour)}{data.is_today ? '' : ' (latest)'}</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 18 }}>
         <StatCard label="New Leads" big={String(h.new_leads)} delta={<Delta cur={h.new_leads} prev={lh.new_leads} />} />
         <StatCard label="Dials" big={String(h.dials)} delta={<Delta cur={h.dials} prev={lh.dials} />} />
