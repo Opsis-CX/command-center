@@ -23,6 +23,8 @@ const ALLOWED_TAGS = new Set([
   // block
   'P', 'DIV', 'H1', 'H2', 'H3', 'BLOCKQUOTE', 'PRE', 'HR',
   'UL', 'OL', 'LI',
+  // media — pasted/uploaded images (src is validated to https or data:image below)
+  'IMG',
   // tables
   'TABLE', 'THEAD', 'TBODY', 'TR', 'TD', 'TH', 'COLGROUP', 'COL',
 ])
@@ -43,7 +45,17 @@ const ALLOWED_ATTRS = {
   TH:    ['colspan', 'rowspan', 'colwidth', 'style'],
   COL:   ['style'],
   TABLE: ['style'],
+  IMG:   ['src', 'alt', 'width', 'height'],
   P: [], DIV: [], H1: [], H2: [], H3: [],
+}
+
+// Image sources: only https URLs or base64 data URLs for raster image types.
+// data:image/svg+xml is EXCLUDED — SVG can carry scripts.
+function safeImgSrc(raw) {
+  const v = String(raw || '').trim()
+  if (/^https:\/\//i.test(v)) return v
+  if (/^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(v)) return v
+  return null
 }
 
 // ---- href ----------------------------------------------------------------
@@ -120,6 +132,9 @@ function scrubAttributes(el) {
 
     let clean = null
     if (name === 'href')          clean = safeHref(attr.value)
+    else if (name === 'src')      clean = safeImgSrc(attr.value)
+    else if (name === 'width')    clean = safeInt(attr.value, 8000)
+    else if (name === 'height')   clean = safeInt(attr.value, 8000)
     else if (name === 'style')    clean = safeStyle(attr.value)
     else if (name === 'colspan')  clean = safeInt(attr.value, 100)
     else if (name === 'rowspan')  clean = safeInt(attr.value, 100)
