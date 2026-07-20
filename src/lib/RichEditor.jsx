@@ -11,6 +11,7 @@ import { Color } from '@tiptap/extension-color'
 import Highlight from '@tiptap/extension-highlight'
 import Placeholder from '@tiptap/extension-placeholder'
 import Mention from '@tiptap/extension-mention'
+import Image from '@tiptap/extension-image'
 
 import { sanitizeHtml, htmlToText, isEmptyHtml } from './sanitize'
 import { mentionSuggestion } from './mentionSuggestion'
@@ -204,6 +205,9 @@ export function RichEditor({
       Color,
       Highlight.configure({ multicolor: true }),
       TableKit.configure({ table: { resizable: true } }),
+      // Images: full documents (KB, certifications) can hold pasted/dropped
+      // images. Chat keeps files as uploaded attachments, so it skips this.
+      ...(variant !== 'chat' ? [Image.configure({ allowBase64: true })] : []),
       Placeholder.configure({ placeholder }),
       // Only when a profiles list is supplied. Certification has no @mentions.
       ...(profiles ? [Mention.configure({
@@ -240,6 +244,21 @@ export function RichEditor({
       },
       handlePaste(view, event) {
         const files = Array.from(event.clipboardData?.files || [])
+        // Pasted screenshots/images → inline image node (full variant only).
+        const imgs = files.filter(f => (f.type || '').startsWith('image/'))
+        if (imgs.length && view.state.schema.nodes.image) {
+          event.preventDefault()
+          for (const file of imgs) {
+            const reader = new FileReader()
+            reader.onload = () => {
+              if (typeof reader.result !== 'string') return
+              const node = view.state.schema.nodes.image.create({ src: reader.result })
+              view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView())
+            }
+            reader.readAsDataURL(file)
+          }
+          return true
+        }
         if (files.length && onPasteFiles) { event.preventDefault(); onPasteFiles(files); return true }
         return false
       },
