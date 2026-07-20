@@ -706,11 +706,18 @@ const meetingTag = { marginLeft: 8, background: 'var(--accent-bg, var(--line-sof
 function hourLabel(h) { const ap = h < 12 ? 'AM' : 'PM'; return `${h % 12 || 12}:00 ${ap}` }
 function weekdayShort(d) { return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' }) }
 
+// Friendly names for profiles.role. "Agents" is what people actually search for,
+// even though agents are scheduled under position labels like "GarageCo: Appointment Setter".
+const STAFF_ROLE_LABELS = { agent: 'Agents', asc: 'Agent Support (ASC)', support: 'Support', certification: 'Certification', marketing: 'Marketing', admin: 'Admin' }
+const staffRoleLabel = (r) => STAFF_ROLE_LABELS[r] || (r ? r.charAt(0).toUpperCase() + r.slice(1) : r)
+
 function ScheduleHoursView({ range }) {
   const [clients, setClients] = useState([])
   const [roles, setRoles] = useState([])
+  const [staffRoles, setStaffRoles] = useState([])
   const [clientId, setClientId] = useState('')
   const [role, setRole] = useState('')
+  const [staffRole, setStaffRole] = useState('')
   const [mode, setMode] = useState('coverage')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -721,18 +728,21 @@ function ScheduleHoursView({ range }) {
     supabase.from('shift_blocks').select('role').then(({ data }) => {
       setRoles([...new Set((data || []).map(r => (r.role || '').trim()).filter(Boolean))].sort())
     })
+    supabase.from('profiles').select('role').then(({ data }) => {
+      setStaffRoles([...new Set((data || []).map(r => (r.role || '').trim()).filter(Boolean))].sort())
+    })
   }, [])
 
   const run = useCallback(async () => {
     setLoading(true); setErr('')
     const { data: res, error } = await supabase.rpc('get_schedule_hours_report', {
-      p_start: range.from, p_end: range.to, p_client: clientId || null, p_role: role || null,
+      p_start: range.from, p_end: range.to, p_client: clientId || null, p_role: role || null, p_staff_role: staffRole || null,
     })
     setLoading(false)
     if (error) { setErr(error.message); return }
     if (!res) { setErr('You don’t have access to this report.'); return }
     setData(res)
-  }, [range.from, range.to, clientId, role])
+  }, [range.from, range.to, clientId, role, staffRole])
 
   useEffect(() => { run() }, [range.from, range.to]) // eslint-disable-line
 
@@ -747,7 +757,7 @@ function ScheduleHoursView({ range }) {
     rows.forEach(r => out.push(mode === 'coverage'
       ? [r.date, weekdayShort(r.date), hourLabel(r.hour), r.available, r.filled, r.open, r.available ? Math.round(r.filled / r.available * 100) + '%' : '']
       : [r.date, weekdayShort(r.date), hourLabel(r.hour), r.agent, r.role, r.client]))
-    const scope = clientId ? (clients.find(c => c.id === clientId)?.name || 'client') : role || 'all'
+    const scope = staffRole ? staffRoleLabel(staffRole) : clientId ? (clients.find(c => c.id === clientId)?.name || 'client') : role || 'all'
     downloadCSV(`hourly-${mode}-${scope}-${range.from}_to_${range.to}.csv`.replace(/[^a-z0-9._-]/gi, '-'), out)
   }
 
@@ -755,16 +765,23 @@ function ScheduleHoursView({ range }) {
     <div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 14 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={lbl}>Staff role</label>
+          <select value={staffRole} onChange={e => setStaffRole(e.target.value)} style={inp}>
+            <option value="">All staff</option>
+            {staffRoles.map(r => <option key={r} value={r}>{staffRoleLabel(r)}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={lbl}>Client</label>
-          <select value={clientId} onChange={e => { setClientId(e.target.value); if (e.target.value) setRole('') }} style={inp}>
+          <select value={clientId} onChange={e => setClientId(e.target.value)} style={inp}>
             <option value="">All clients</option>
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={lbl}>Role / position</label>
-          <select value={role} onChange={e => { setRole(e.target.value); if (e.target.value) setClientId('') }} style={inp}>
-            <option value="">All roles</option>
+          <label style={lbl}>Position</label>
+          <select value={role} onChange={e => setRole(e.target.value)} style={inp}>
+            <option value="">All positions</option>
             {roles.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
@@ -940,6 +957,9 @@ function AttendanceReport({ range }) {
   const [blocks, setBlocks] = useState([])
   const [claims, setClaims] = useState([])
   const [names, setNames] = useState({})
+  const [roleById, setRoleById] = useState({})
+  const [staffRoles, setStaffRoles] = useState([])
+  const [staffRole, setStaffRole] = useState('')
   const [loading, setLoading] = useState(true)
   const [mode, setMode] = useState('agent') // 'agent' | 'hour'
 
@@ -952,17 +972,21 @@ function AttendanceReport({ range }) {
       const { data: c } = await supabase.from('shift_claims').select('shift_block_id, profile_id, status, checked_in_at, checked_out_at').in('shift_block_id', ids)
       clms = c || []
     }
-    const { data: profs } = await supabase.from('profiles').select('id, full_name')
-    const nm = {}; (profs || []).forEach(p => nm[p.id] = p.full_name)
-    setBlocks(blks || []); setClaims(clms || []); setNames(nm); setLoading(false)
+    const { data: profs } = await supabase.from('profiles').select('id, full_name, role')
+    const nm = {}, rm = {}; (profs || []).forEach(p => { nm[p.id] = p.full_name; rm[p.id] = p.role })
+    setBlocks(blks || []); setClaims(clms || []); setNames(nm); setRoleById(rm)
+    setStaffRoles([...new Set((profs || []).map(p => (p.role || '').trim()).filter(Boolean))].sort())
+    setLoading(false)
   })() }, [range.from, range.to])
 
   const bm = useMemo(() => { const m = {}; blocks.forEach(b => m[b.id] = b); return m }, [blocks])
+  // Claims narrowed to the chosen staff role (by the person's actual role).
+  const fClaims = useMemo(() => staffRole ? claims.filter(c => roleById[c.profile_id] === staffRole) : claims, [claims, roleById, staffRole])
 
   // ---- By Agent aggregate ----
   const rows = useMemo(() => {
     const per = {}
-    claims.forEach(c => {
+    fClaims.forEach(c => {
       const b = bm[c.shift_block_id]; if (!b) return
       const a = per[c.profile_id] = per[c.profile_id] || { name: names[c.profile_id] || 'Unknown', shifts: 0, checkedIn: 0, noShow: 0, late: 0, schedH: 0, workedH: 0 }
       a.shifts++
@@ -977,7 +1001,7 @@ function AttendanceReport({ range }) {
       }
     })
     return Object.values(per).sort((x, y) => y.schedH - x.schedH)
-  }, [claims, bm, names])
+  }, [fClaims, bm, names])
 
   // ---- By Hour aggregate ----
   // Expand every claim across the clock hours its block overlaps, then per
@@ -985,7 +1009,7 @@ function AttendanceReport({ range }) {
   // and their worked window covers that hour), no-shows and late arrivals.
   const hourRows = useMemo(() => {
     const buckets = {} // `${date}|${hour}` -> {date, hour, scheduled, present, noShow, late}
-    claims.forEach(c => {
+    fClaims.forEach(c => {
       const b = bm[c.shift_block_id]; if (!b) return
       const [sh, sm] = b.start_time.slice(0, 5).split(':').map(Number)
       const [eh, em] = b.end_time.slice(0, 5).split(':').map(Number)
@@ -1013,7 +1037,7 @@ function AttendanceReport({ range }) {
       }
     })
     return Object.values(buckets).sort((a, b) => a.date.localeCompare(b.date) || a.hour - b.hour)
-  }, [claims, bm])
+  }, [fClaims, bm])
 
   function exportCsv() {
     if (mode === 'hour') {
@@ -1034,6 +1058,13 @@ function AttendanceReport({ range }) {
         <Tile label="People scheduled" value={rows.length} />
         <Tile label="No-shows" value={tot.ns} />
         <Tile label="Late check-ins" value={tot.late} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={lbl}>Staff role</label>
+          <select value={staffRole} onChange={e => setStaffRole(e.target.value)} style={inp}>
+            <option value="">All staff</option>
+            {staffRoles.map(r => <option key={r} value={r}>{staffRoleLabel(r)}</option>)}
+          </select>
+        </div>
         <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
           <button onClick={() => setMode('agent')} style={tabBtn(mode === 'agent')}>By Agent</button>
           <button onClick={() => setMode('hour')} style={tabBtn(mode === 'hour')}>By Hour</button>
