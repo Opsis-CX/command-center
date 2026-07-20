@@ -514,6 +514,8 @@ a{color:inherit;text-decoration:none;}
 
 .re-content p, .re-rendered p { margin: 0 0 6px; }
 .re-content p:last-child, .re-rendered p:last-child { margin-bottom: 0; }
+.re-content img, .re-rendered img { max-width: 100%; height: auto; border-radius: 6px; margin: 6px 0; display: block; }
+.re-content img.ProseMirror-selectednode { outline: 2px solid var(--accent); }
 
 .re-content h1, .re-rendered h1 { font-size: 21px; font-weight: 700; margin: 14px 0 6px; letter-spacing: -.01em; }
 .re-content h2, .re-rendered h2 { font-size: 17px; font-weight: 700; margin: 12px 0 5px; }
