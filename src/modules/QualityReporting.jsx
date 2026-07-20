@@ -9,6 +9,8 @@ import { supabase } from '../lib/supabase'
 // common row here rather than forcing one schema on both.
 // Filters: date range, person, brand/client, auditor, score band, outcome.
 // Summary by person on top, every audit listed below, CSV export of either.
+// Internal audits also support a per-question "Answers" export (each QA-form
+// question, the Yes/No/N/A answer, and the specific items missed).
 // ============================================================
 
 function csvEscape(v) {
@@ -18,7 +20,7 @@ function csvEscape(v) {
 }
 function downloadCSV(filename, rows) {
   const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n')
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url; a.download = filename
@@ -33,6 +35,8 @@ function defaultRange() {
   const iso = d => d.toISOString().slice(0, 10)
   return { from: iso(from), to: iso(to) }
 }
+
+const ANSWER_LABEL = { yes: 'Yes', no: 'No', na: 'N/A' }
 
 const SCORE_BANDS = [
   { key: 'all', label: 'Any score' },
@@ -57,6 +61,10 @@ export default function QualityReporting() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
 
+  // QA-form definitions (for the per-question answers export). Loaded once.
+  const [qMap, setQMap] = useState({})     // question_id -> { sort, label, points, campaign }
+  const [subMap, setSubMap] = useState({}) // sub_item_id -> label
+
   // filters
   const [person, setPerson] = useState('all')
   const [brand, setBrand] = useState('all')
@@ -64,12 +72,29 @@ export default function QualityReporting() {
   const [band, setBand] = useState('all')
   const [outcome, setOutcome] = useState('all')
 
+  // Load the QA form question + sub-item labels once, so the answers export can
+  // translate the stored ids into readable questions and "items missed".
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const [{ data: qs }, { data: subs }] = await Promise.all([
+        supabase.from('qa_questions').select('id, sort_order, label, points, campaign'),
+        supabase.from('qa_sub_items').select('id, label'),
+      ])
+      if (!alive) return
+      const qm = {}; (qs || []).forEach(q => { qm[q.id] = { sort: q.sort_order, label: q.label, points: q.points, campaign: q.campaign } })
+      const sm = {}; (subs || []).forEach(s => { sm[s.id] = s.label })
+      setQMap(qm); setSubMap(sm)
+    })()
+    return () => { alive = false }
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     try {
       if (system === 'internal') {
         const { data, error } = await supabase.from('qa_audits')
-          .select('id, agent_name, auditor_id, audit_type, campaign, brand, call_date, created_at, clean_qa_score, auto_fail, feedback, edit_count, editor_name')
+          .select('id, agent_name, auditor_id, audit_type, campaign, brand, call_date, created_at, clean_qa_score, auto_fail, feedback, answers, edit_count, editor_name')
           .gte('call_date', range.from).lte('call_date', range.to)
           .order('call_date', { ascending: false })
         if (error) throw error
@@ -84,13 +109,17 @@ export default function QualityReporting() {
           id: a.id,
           person: a.agent_name || '—',
           brand: a.brand || a.campaign || '—',
+          campaign: a.campaign || '',
           auditor: names[a.auditor_id] || '—',
           date: a.call_date,
+          auditDate: a.created_at ? String(a.created_at).slice(0, 10) : '',
           score: a.auto_fail ? 0 : (a.clean_qa_score == null ? null : Number(a.clean_qa_score)),
+          rawScore: a.clean_qa_score == null ? null : Number(a.clean_qa_score),
           autoFail: !!a.auto_fail,
           kind: (a.audit_type || '').replace('_', ' '),
           outcome: null,
           notes: a.feedback || '',
+          answers: a.answers && typeof a.answers === 'object' ? a.answers : {},
           edited: (a.edit_count || 0) > 0,
           editor: a.editor_name || null,
         })))
@@ -167,6 +196,12 @@ export default function QualityReporting() {
     }
   }, [filtered])
 
+  // how many of the shown audits actually carry per-question answers
+  const answeredCount = useMemo(
+    () => filtered.filter(r => r.answers && Object.keys(r.answers).length).length,
+    [filtered]
+  )
+
   function exportSummary() {
     const head = ['Person', 'Audits', 'Avg score %', 'Low %', 'High %', ...(system === 'external' ? ['Booked %'] : ['Auto-fails'])]
     const body = summary.map(s => [s.person, s.n, s.avg ?? '', s.min ?? '', s.max ?? '',
@@ -179,6 +214,35 @@ export default function QualityReporting() {
       r.autoFail ? 'AUTO-FAIL' : (r.score ?? ''), system === 'external' ? (r.outcome || '') : r.kind,
       r.edited ? 'yes' : '', r.notes])
     downloadCSV(`quality-audits-${system}-${range.from}-to-${range.to}.csv`, [head, ...body])
+  }
+  // Per-question answers (internal only): one row per audit × question, plus the
+  // exact sub-items missed. Score-only imports (no stored answers) get one row
+  // each so nothing silently drops out of the report.
+  function exportAnswers() {
+    const head = ['Call date', 'Audit date', 'Agent', 'Auditor', 'Brand', 'Form', 'Score %', 'Auto-fail',
+      'Q #', 'Question', 'Points possible', 'Answer', 'Items missed']
+    const body = []
+    filtered.forEach(r => {
+      const entries = Object.entries(r.answers || {})
+      const base = [r.date, r.auditDate, r.person, r.auditor, r.brand, r.campaign || r.brand,
+        r.rawScore ?? '', r.autoFail ? 'yes' : '']
+      if (!entries.length) {
+        body.push([...base, '', '(no per-question answers stored — score only)', '', '', ''])
+        return
+      }
+      entries
+        .map(([qid, obj]) => {
+          const q = qMap[qid] || {}
+          return { sort: q.sort ?? 999, label: q.label || qid, points: q.points ?? '',
+            value: ANSWER_LABEL[obj?.value] || obj?.value || '',
+            missed: (obj?.missed || []).map(m => subMap[m] || m).join('; ') }
+        })
+        .sort((a, b) => a.sort - b.sort)
+        .forEach((q, i) => {
+          body.push([...base, i + 1, q.label, q.points, q.value, q.missed])
+        })
+    })
+    downloadCSV(`quality-answers-${range.from}-to-${range.to}.csv`, [head, ...body])
   }
 
   const anyFilter = person !== 'all' || brand !== 'all' || auditor !== 'all' || band !== 'all' || outcome !== 'all'
@@ -280,9 +344,18 @@ export default function QualityReporting() {
 
               {/* every audit */}
               <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--line)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--line)', gap: 8, flexWrap: 'wrap' }}>
                   <b style={{ fontSize: 14 }}>All audits ({filtered.length})</b>
-                  <button className="btn btn-ghost" style={{ marginLeft: 'auto', fontSize: 12, padding: '4px 10px' }} onClick={exportDetail}>⬇ CSV</button>
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    {system === 'internal' && (
+                      <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }}
+                        title="Every question on the QA form, the Yes/No/N/A answer, and the specific items missed — one row per audit per question."
+                        disabled={!answeredCount} onClick={exportAnswers}>
+                        ⬇ Answers (per question){answeredCount ? '' : ' — none in range'}
+                      </button>
+                    )}
+                    <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={exportDetail}>⬇ CSV</button>
+                  </div>
                 </div>
                 <div style={{ overflowX: 'auto', maxHeight: 520, overflowY: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, minWidth: 720 }}>
