@@ -505,7 +505,7 @@ function ArticleReader({ id, canAuthor, onBack, onEdit }) {
   )
 
   return (
-    <div style={{ maxWidth: 760 }}>
+    <div style={{ maxWidth: 1100 }}>
       <button className="btn btn-ghost" style={{ marginBottom: 16, fontSize: 13 }} onClick={onBack}>← Back</button>
       <div className="card" style={{ padding: '28px 32px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
@@ -635,7 +635,7 @@ function ArticleEditor({ id, folderId, onDone, onCancel }) {
   const inputStyle = { width: '100%', padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', background: 'var(--canvas)' }
 
   return (
-    <div style={{ maxWidth: 760 }}>
+    <div style={{ maxWidth: 1100 }}>
       <button className="btn btn-ghost" style={{ marginBottom: 16, fontSize: 13 }} onClick={onCancel}>← Cancel</button>
       {err && <div className="card" style={{ padding: '10px 14px', marginBottom: 14, borderColor: 'var(--failed)', color: 'var(--failed)', fontSize: 13 }}>{err}</div>}
 
