@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { ROLES } from '../lib/permissions'
+import RawDataExport from './RawDataExport'
 
 const ROLE_LABELS = Object.fromEntries(ROLES.map(r => [r.key, r.label]))
 
@@ -368,7 +369,7 @@ export default function Reporting() {
 
       {/* controls */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 20 }}>
-        {view !== 'people' && (
+        {view !== 'people' && view !== 'rawdata' && (
           <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={lbl}>From</label>
@@ -390,8 +391,9 @@ export default function Reporting() {
           <button onClick={() => setView('support')} style={tabBtn(view === 'support')}>Support</button>
           <button onClick={() => setView('projects')} style={tabBtn(view === 'projects')}>Projects</button>
           <button onClick={() => setView('attendance')} style={tabBtn(view === 'attendance')}>Attendance</button>
+          <button onClick={() => setView('rawdata')} style={tabBtn(view === 'rawdata')}>Raw Data</button>
         </div>
-        {!['schedule', 'support', 'projects', 'attendance'].includes(view) && (
+        {!['schedule', 'support', 'projects', 'attendance', 'rawdata'].includes(view) && (
           <button className="btn btn-primary" style={{ marginLeft: 'auto' }}
             onClick={view === 'person' ? exportPersonCSV : view === 'client' ? exportClientCSV : view === 'quality' ? exportQualityCSV : view === 'people' ? exportPeopleCSV : exportCompareCSV}>
             Export {view === 'person' ? 'Payroll' : view === 'client' ? 'Invoicing' : view === 'quality' ? 'Quality' : view === 'people' ? 'Roster' : 'Comparison'} CSV
@@ -403,6 +405,7 @@ export default function Reporting() {
         : view === 'support' ? <SupportReport range={range} />
         : view === 'projects' ? <ProjectsReport range={range} />
         : view === 'attendance' ? <AttendanceReport range={range} />
+        : view === 'rawdata' ? <RawDataExport range={range} />
         : loading ? <p className="page-sub">Loading…</p> : view === 'quality' ? (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -562,11 +565,11 @@ export default function Reporting() {
           </div>
 
           <p className="page-sub" style={{ marginTop: 14, fontSize: 12 }}>
-            A current snapshot — the date range above doesn’t apply here. Use <b>Export Roster CSV</b> for the full list with contact info and tags.
+            A current snapshot — the date range above doesn't apply here. Use <b>Export Roster CSV</b> for the full list with contact info and tags.
           </p>
         </>
       ) : null}
-      {loading || view === 'quality' || view === 'people' ? null : (
+      {loading || view === 'quality' || view === 'people' || view === 'rawdata' ? null : (
         <>
           <div className="card" style={{ padding: '12px 16px', marginBottom: 16, display: 'inline-block' }}>
             <span style={{ fontSize: 12, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Total tracked</span>
@@ -706,18 +709,11 @@ const meetingTag = { marginLeft: 8, background: 'var(--accent-bg, var(--line-sof
 function hourLabel(h) { const ap = h < 12 ? 'AM' : 'PM'; return `${h % 12 || 12}:00 ${ap}` }
 function weekdayShort(d) { return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' }) }
 
-// Friendly names for profiles.role. "Agents" is what people actually search for,
-// even though agents are scheduled under position labels like "GarageCo: Appointment Setter".
-const STAFF_ROLE_LABELS = { agent: 'Agents', asc: 'Agent Support (ASC)', support: 'Support', certification: 'Certification', marketing: 'Marketing', admin: 'Admin' }
-const staffRoleLabel = (r) => STAFF_ROLE_LABELS[r] || (r ? r.charAt(0).toUpperCase() + r.slice(1) : r)
-
 function ScheduleHoursView({ range }) {
   const [clients, setClients] = useState([])
   const [roles, setRoles] = useState([])
-  const [staffRoles, setStaffRoles] = useState([])
   const [clientId, setClientId] = useState('')
   const [role, setRole] = useState('')
-  const [staffRole, setStaffRole] = useState('')
   const [mode, setMode] = useState('coverage')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -728,21 +724,18 @@ function ScheduleHoursView({ range }) {
     supabase.from('shift_blocks').select('role').then(({ data }) => {
       setRoles([...new Set((data || []).map(r => (r.role || '').trim()).filter(Boolean))].sort())
     })
-    supabase.from('profiles').select('role').then(({ data }) => {
-      setStaffRoles([...new Set((data || []).map(r => (r.role || '').trim()).filter(Boolean))].sort())
-    })
   }, [])
 
   const run = useCallback(async () => {
     setLoading(true); setErr('')
     const { data: res, error } = await supabase.rpc('get_schedule_hours_report', {
-      p_start: range.from, p_end: range.to, p_client: clientId || null, p_role: role || null, p_staff_role: staffRole || null,
+      p_start: range.from, p_end: range.to, p_client: clientId || null, p_role: role || null,
     })
     setLoading(false)
     if (error) { setErr(error.message); return }
-    if (!res) { setErr('You don’t have access to this report.'); return }
+    if (!res) { setErr("You don't have access to this report."); return }
     setData(res)
-  }, [range.from, range.to, clientId, role, staffRole])
+  }, [range.from, range.to, clientId, role])
 
   useEffect(() => { run() }, [range.from, range.to]) // eslint-disable-line
 
@@ -757,7 +750,7 @@ function ScheduleHoursView({ range }) {
     rows.forEach(r => out.push(mode === 'coverage'
       ? [r.date, weekdayShort(r.date), hourLabel(r.hour), r.available, r.filled, r.open, r.available ? Math.round(r.filled / r.available * 100) + '%' : '']
       : [r.date, weekdayShort(r.date), hourLabel(r.hour), r.agent, r.role, r.client]))
-    const scope = staffRole ? staffRoleLabel(staffRole) : clientId ? (clients.find(c => c.id === clientId)?.name || 'client') : role || 'all'
+    const scope = clientId ? (clients.find(c => c.id === clientId)?.name || 'client') : role || 'all'
     downloadCSV(`hourly-${mode}-${scope}-${range.from}_to_${range.to}.csv`.replace(/[^a-z0-9._-]/gi, '-'), out)
   }
 
@@ -765,23 +758,16 @@ function ScheduleHoursView({ range }) {
     <div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 14 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={lbl}>Staff role</label>
-          <select value={staffRole} onChange={e => setStaffRole(e.target.value)} style={inp}>
-            <option value="">All staff</option>
-            {staffRoles.map(r => <option key={r} value={r}>{staffRoleLabel(r)}</option>)}
-          </select>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={lbl}>Client</label>
-          <select value={clientId} onChange={e => setClientId(e.target.value)} style={inp}>
+          <select value={clientId} onChange={e => { setClientId(e.target.value); if (e.target.value) setRole('') }} style={inp}>
             <option value="">All clients</option>
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={lbl}>Position</label>
-          <select value={role} onChange={e => setRole(e.target.value)} style={inp}>
-            <option value="">All positions</option>
+          <label style={lbl}>Role / position</label>
+          <select value={role} onChange={e => { setRole(e.target.value); if (e.target.value) setClientId('') }} style={inp}>
+            <option value="">All roles</option>
             {roles.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
@@ -948,47 +934,24 @@ function ProjectsReport({ range }) {
 }
 
 // ================= Attendance / Adherence =================
-// Two modes, both driven off the same shift_blocks + shift_claims pull:
-//   • By Agent — one row per person: shifts, check-ins, no-shows, late, hours.
-//   • By Hour  — one row per Date+clock-hour: scheduled vs actually present,
-//                no-shows and late arrivals, so adherence is reportable down
-//                to the interval (matches the Schedule Hours Coverage view).
 function AttendanceReport({ range }) {
-  const [blocks, setBlocks] = useState([])
-  const [claims, setClaims] = useState([])
-  const [names, setNames] = useState({})
-  const [roleById, setRoleById] = useState({})
-  const [staffRoles, setStaffRoles] = useState([])
-  const [staffRole, setStaffRole] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [mode, setMode] = useState('agent') // 'agent' | 'hour'
-
+  const [rows, setRows] = useState([]); const [loading, setLoading] = useState(true)
   useEffect(() => { (async () => {
     setLoading(true)
-    const { data: blks } = await supabase.from('shift_blocks').select('id, block_date, start_time, end_time').gte('block_date', range.from).lte('block_date', range.to)
-    const ids = (blks || []).map(b => b.id)
-    let clms = []
+    const { data: blocks } = await supabase.from('shift_blocks').select('id, block_date, start_time, end_time').gte('block_date', range.from).lte('block_date', range.to)
+    const ids = (blocks || []).map(b => b.id)
+    const bm = {}; (blocks || []).forEach(b => bm[b.id] = b)
+    let claims = []
     if (ids.length) {
       const { data: c } = await supabase.from('shift_claims').select('shift_block_id, profile_id, status, checked_in_at, checked_out_at').in('shift_block_id', ids)
-      clms = c || []
+      claims = c || []
     }
-    const { data: profs } = await supabase.from('profiles').select('id, full_name, role')
-    const nm = {}, rm = {}; (profs || []).forEach(p => { nm[p.id] = p.full_name; rm[p.id] = p.role })
-    setBlocks(blks || []); setClaims(clms || []); setNames(nm); setRoleById(rm)
-    setStaffRoles([...new Set((profs || []).map(p => (p.role || '').trim()).filter(Boolean))].sort())
-    setLoading(false)
-  })() }, [range.from, range.to])
-
-  const bm = useMemo(() => { const m = {}; blocks.forEach(b => m[b.id] = b); return m }, [blocks])
-  // Claims narrowed to the chosen staff role (by the person's actual role).
-  const fClaims = useMemo(() => staffRole ? claims.filter(c => roleById[c.profile_id] === staffRole) : claims, [claims, roleById, staffRole])
-
-  // ---- By Agent aggregate ----
-  const rows = useMemo(() => {
+    const { data: profs } = await supabase.from('profiles').select('id, full_name')
+    const nm = {}; (profs || []).forEach(p => nm[p.id] = p.full_name)
     const per = {}
-    fClaims.forEach(c => {
+    claims.forEach(c => {
       const b = bm[c.shift_block_id]; if (!b) return
-      const a = per[c.profile_id] = per[c.profile_id] || { name: names[c.profile_id] || 'Unknown', shifts: 0, checkedIn: 0, noShow: 0, late: 0, schedH: 0, workedH: 0 }
+      const a = per[c.profile_id] = per[c.profile_id] || { name: nm[c.profile_id] || 'Unknown', shifts: 0, checkedIn: 0, noShow: 0, late: 0, schedH: 0, workedH: 0 }
       a.shifts++
       const dur = (new Date('1970-01-01T' + b.end_time) - new Date('1970-01-01T' + b.start_time)) / 3600000
       a.schedH += Math.max(0, dur)
@@ -1000,97 +963,26 @@ function AttendanceReport({ range }) {
         if (c.checked_out_at) a.workedH += Math.max(0, (new Date(c.checked_out_at) - new Date(c.checked_in_at)) / 3600000)
       }
     })
-    return Object.values(per).sort((x, y) => y.schedH - x.schedH)
-  }, [fClaims, bm, names])
-
-  // ---- By Hour aggregate ----
-  // Expand every claim across the clock hours its block overlaps, then per
-  // (date, hour) count who was scheduled, who was actually present (clocked in
-  // and their worked window covers that hour), no-shows and late arrivals.
-  const hourRows = useMemo(() => {
-    const buckets = {} // `${date}|${hour}` -> {date, hour, scheduled, present, noShow, late}
-    fClaims.forEach(c => {
-      const b = bm[c.shift_block_id]; if (!b) return
-      const [sh, sm] = b.start_time.slice(0, 5).split(':').map(Number)
-      const [eh, em] = b.end_time.slice(0, 5).split(':').map(Number)
-      const startMin = sh * 60 + sm, endMin = eh * 60 + em
-      if (endMin <= startMin) return
-      const firstH = Math.floor(startMin / 60), lastH = Math.ceil(endMin / 60) // [firstH, lastH)
-      const isNoShow = c.status === 'no_show'
-      const ci = c.checked_in_at ? new Date(c.checked_in_at) : null
-      const co = c.checked_out_at ? new Date(c.checked_out_at) : null
-      // worked window: check-in → check-out (or scheduled block end if still open)
-      const wStart = ci
-      const wEnd = co || (ci ? new Date(b.block_date + 'T' + b.end_time) : null)
-      const lateArrival = ci && ci > new Date(new Date(b.block_date + 'T' + b.start_time).getTime() + 5 * 60000)
-      for (let h = firstH; h < lastH; h++) {
-        const key = `${b.block_date}|${h}`
-        const k = buckets[key] = buckets[key] || { date: b.block_date, hour: h, scheduled: 0, present: 0, noShow: 0, late: 0 }
-        k.scheduled++
-        if (isNoShow) k.noShow++
-        if (wStart && wEnd) {
-          const hStart = new Date(b.block_date + 'T00:00:00'); hStart.setHours(h, 0, 0, 0)
-          const hEnd = new Date(hStart.getTime() + 60 * 60000)
-          if (wStart < hEnd && wEnd > hStart) k.present++
-        }
-        if (lateArrival && h === firstH) k.late++
-      }
-    })
-    return Object.values(buckets).sort((a, b) => a.date.localeCompare(b.date) || a.hour - b.hour)
-  }, [fClaims, bm])
+    setRows(Object.values(per).sort((x, y) => y.schedH - x.schedH)); setLoading(false)
+  })() }, [range.from, range.to])
 
   function exportCsv() {
-    if (mode === 'hour') {
-      const out = [['Date', 'Day', 'Hour', 'Scheduled', 'Present', 'No-shows', 'Late', 'Present %']]
-      hourRows.forEach(r => out.push([r.date, weekdayShort(r.date), hourLabel(r.hour), r.scheduled, r.present, r.noShow, r.late, r.scheduled ? Math.round(r.present / r.scheduled * 100) + '%' : '']))
-      downloadCSV(`attendance-by-hour-${range.from}_to_${range.to}.csv`, out)
-      return
-    }
     const out = [['Agent', 'Shifts', 'Checked in', 'No-shows', 'Late', 'Scheduled hrs', 'Worked hrs']]
     rows.forEach(a => out.push([a.name, a.shifts, a.checkedIn, a.noShow, a.late, a.schedH.toFixed(1), a.workedH.toFixed(1)]))
-    downloadCSV(`attendance-by-agent-${range.from}_to_${range.to}.csv`, out)
+    downloadCSV(`attendance-${range.from}_to_${range.to}.csv`, out)
   }
   if (loading) return <p className="page-sub">Loading…</p>
   const tot = rows.reduce((s, a) => ({ ns: s.ns + a.noShow, late: s.late + a.late }), { ns: 0, late: 0 })
   return (
     <div>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14, alignItems: 'flex-end' }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <Tile label="People scheduled" value={rows.length} />
         <Tile label="No-shows" value={tot.ns} />
         <Tile label="Late check-ins" value={tot.late} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={lbl}>Staff role</label>
-          <select value={staffRole} onChange={e => setStaffRole(e.target.value)} style={inp}>
-            <option value="">All staff</option>
-            {staffRoles.map(r => <option key={r} value={r}>{staffRoleLabel(r)}</option>)}
-          </select>
-        </div>
-        <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
-          <button onClick={() => setMode('agent')} style={tabBtn(mode === 'agent')}>By Agent</button>
-          <button onClick={() => setMode('hour')} style={tabBtn(mode === 'hour')}>By Hour</button>
-        </div>
-        <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={exportCsv} disabled={mode === 'hour' ? !hourRows.length : !rows.length}>Export CSV</button>
+        <button className="btn btn-primary" style={{ marginLeft: 'auto', alignSelf: 'flex-end' }} onClick={exportCsv} disabled={!rows.length}>Export CSV</button>
       </div>
       <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-        {mode === 'hour' ? (
-          hourRows.length === 0 ? <p className="page-sub" style={{ padding: 20 }}>No scheduled shifts in this range.</p> : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead><tr><Th>Date</Th><Th>Day</Th><Th>Hour</Th><Th r>Scheduled</Th><Th r>Present</Th><Th r>No-shows</Th><Th r>Late</Th><Th r>Present %</Th></tr></thead>
-              <tbody>{hourRows.map((r, i) => {
-                const pct = r.scheduled ? Math.round(r.present / r.scheduled * 100) : 0
-                return (
-                  <tr key={i} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                    <td style={cellL}>{r.date}</td><td style={cellL}>{weekdayShort(r.date)}</td><td style={cellC}>{hourLabel(r.hour)}</td>
-                    <td style={cellR}>{r.scheduled}</td><td style={cellR}>{r.present}</td>
-                    <td style={{ ...cellR, color: r.noShow ? 'var(--failed)' : 'inherit' }}>{r.noShow || '—'}</td>
-                    <td style={{ ...cellR, color: r.late ? 'var(--needed)' : 'inherit' }}>{r.late || '—'}</td>
-                    <td style={{ ...cellR, fontWeight: 600, color: pct >= 100 ? 'var(--passed)' : pct >= 80 ? 'var(--needed)' : 'var(--failed)' }}>{pct}%</td>
-                  </tr>
-                )
-              })}</tbody>
-            </table>
-          )
-        ) : rows.length === 0 ? <p className="page-sub" style={{ padding: 20 }}>No scheduled shifts in this range.</p> : (
+        {rows.length === 0 ? <p className="page-sub" style={{ padding: 20 }}>No scheduled shifts in this range.</p> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr><Th>Agent</Th><Th r>Shifts</Th><Th r>Checked in</Th><Th r>No-shows</Th><Th r>Late</Th><Th r>Scheduled hrs</Th><Th r>Worked hrs</Th></tr></thead>
             <tbody>{rows.map((a, i) => (
@@ -1101,11 +993,7 @@ function AttendanceReport({ range }) {
           </table>
         )}
       </div>
-      <p className="page-sub" style={{ fontSize: 12, marginTop: 8 }}>
-        {mode === 'hour'
-          ? <>One row per date &amp; clock hour. <b>Present</b> = clocked in and working that hour. <b>Present %</b> = present ÷ scheduled. Late counted at the shift’s first hour.</>
-          : <>Late = checked in more than 5 min after shift start. Worked hrs = check-in to check-out where recorded.</>}
-      </p>
+      <p className="page-sub" style={{ fontSize: 12, marginTop: 8 }}>Late = checked in more than 5 min after shift start. Worked hrs = check-in to check-out where recorded.</p>
     </div>
   )
 }
