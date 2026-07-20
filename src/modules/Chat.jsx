@@ -580,6 +580,9 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   const [reactorsFor, setReactorsFor] = useState(null) // {messageId, emoji} whose reactor list is open
   const [pinned, setPinned] = useState([])         // pinned messages in this channel (newest pin first)
   const [showPinned, setShowPinned] = useState(false) // is the pinned drawer expanded
+  const [scheduled, setScheduled] = useState([])   // my pending scheduled messages in this channel
+  const [schedOpen, setSchedOpen] = useState(false) // schedule picker open
+  const [schedAt, setSchedAt] = useState('')        // datetime-local value
   const composerRef = useRef(null)
   const htmlRef = useRef('')
 
@@ -617,6 +620,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         await loadReadState()
         await loadThreadReads()
         await loadPinned()
+        await loadScheduled()
       } catch (e) { if (active) setErr(e.message) } finally { if (active) setLoading(false) }
     })()
     return () => { active = false }
@@ -801,6 +805,41 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     setHighlightId(id)
     setTimeout(() => { document.getElementById('chat-msg-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }, 60)
     setTimeout(() => setHighlightId(null), 5000)
+  }
+
+  // ---- Scheduled messages ----
+  // Compose now, deliver later. A per-minute DB job posts due ones as you and
+  // notifies the channel. Attachments aren't scheduled — text only.
+  async function loadScheduled() {
+    const { data } = await supabase.from('scheduled_messages')
+      .select('*').eq('channel_id', channelId).eq('sender_id', me.id)
+      .is('sent_at', null).is('canceled_at', null).order('send_at')
+    setScheduled(data || [])
+  }
+  async function scheduleMessage() {
+    const rawHtml = htmlRef.current || ''
+    const plain = htmlToText(rawHtml)
+    const body = sanitizeHtml(rawHtml)
+    if (!plain) { setErr('Write a message before scheduling it.'); return }
+    if (!schedAt) return
+    const when = new Date(schedAt)
+    if (isNaN(when.getTime()) || when.getTime() < Date.now() + 30000) { setErr('Pick a time at least a minute in the future.'); return }
+    const { error } = await supabase.from('scheduled_messages')
+      .insert({ channel_id: channelId, sender_id: me.id, body, send_at: when.toISOString() })
+    if (error) { setErr('Could not schedule: ' + error.message); return }
+    composerRef.current?.clear(); htmlRef.current = ''
+    setSchedOpen(false); setSchedAt(''); setErr('')
+    loadScheduled()
+  }
+  async function cancelScheduled(id) {
+    setScheduled(prev => prev.filter(s => s.id !== id))
+    await supabase.from('scheduled_messages').update({ canceled_at: new Date().toISOString() }).eq('id', id)
+  }
+  // A sensible default when opening the picker: tomorrow 8:00 AM local.
+  function defaultSchedAt() {
+    const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(8, 0, 0, 0)
+    const pad = (n) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
 
   function addFiles(fileList) {
@@ -1374,6 +1413,37 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       <TypingLine names={typerNames} />
 
       <div style={{ borderTop: '1px solid var(--line)', padding: '10px 16px', flex: 'none', background: 'var(--surface)' }}>
+        {/* Pending scheduled messages you've queued for this conversation. */}
+        {scheduled.length > 0 && (
+          <div style={{ marginBottom: 8, border: '1px solid var(--line)', borderRadius: 8, padding: '6px 8px', background: 'var(--canvas)' }}>
+            {scheduled.map(s => (
+              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 2px' }}>
+                <span style={{ fontSize: 12.5 }}>🕗</span>
+                <span style={{ fontSize: 12, color: 'var(--ink-soft)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <b style={{ color: 'var(--ink)' }}>{new Date(s.send_at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</b> · {htmlToText(s.body)}
+                </span>
+                <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 8px', color: 'var(--failed)' }} onClick={() => cancelScheduled(s.id)}>Cancel</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Schedule-send control. Any member can queue the composed message. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: schedOpen ? 8 : 6 }}>
+          <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }}
+            onClick={() => { setSchedOpen(o => { const n = !o; if (n && !schedAt) setSchedAt(defaultSchedAt()); return n }) }}>
+            🕗 {schedOpen ? 'Cancel schedule' : 'Schedule send'}
+          </button>
+          {schedOpen && (
+            <>
+              <input type="datetime-local" value={schedAt} onChange={e => setSchedAt(e.target.value)}
+                style={{ padding: '5px 8px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }} />
+              <button className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={scheduleMessage} disabled={!schedAt}>Schedule</button>
+              <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>Delivers at your chosen time. (Text only — no attachments.)</span>
+            </>
+          )}
+        </div>
+
         {isAdmin && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, fontSize: 12.5, color: requireAck ? 'var(--accent)' : 'var(--ink-soft)', cursor: 'pointer', fontWeight: requireAck ? 600 : 400 }}>
             <input type="checkbox" checked={requireAck} onChange={e => setRequireAck(e.target.checked)} style={{ flex: 'none' }} />
