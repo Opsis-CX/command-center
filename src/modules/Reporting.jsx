@@ -387,8 +387,11 @@ export default function Reporting() {
           <button onClick={() => setView('quality')} style={tabBtn(view === 'quality')}>Quality</button>
           <button onClick={() => setView('people')} style={tabBtn(view === 'people')}>People</button>
           <button onClick={() => setView('schedule')} style={tabBtn(view === 'schedule')}>Schedule Hours</button>
+          <button onClick={() => setView('support')} style={tabBtn(view === 'support')}>Support</button>
+          <button onClick={() => setView('projects')} style={tabBtn(view === 'projects')}>Projects</button>
+          <button onClick={() => setView('attendance')} style={tabBtn(view === 'attendance')}>Attendance</button>
         </div>
-        {view !== 'schedule' && (
+        {!['schedule', 'support', 'projects', 'attendance'].includes(view) && (
           <button className="btn btn-primary" style={{ marginLeft: 'auto' }}
             onClick={view === 'person' ? exportPersonCSV : view === 'client' ? exportClientCSV : view === 'quality' ? exportQualityCSV : view === 'people' ? exportPeopleCSV : exportCompareCSV}>
             Export {view === 'person' ? 'Payroll' : view === 'client' ? 'Invoicing' : view === 'quality' ? 'Quality' : view === 'people' ? 'Roster' : 'Comparison'} CSV
@@ -396,7 +399,11 @@ export default function Reporting() {
         )}
       </div>
 
-      {view === 'schedule' ? <ScheduleHoursView range={range} setRange={setRange} /> : loading ? <p className="page-sub">Loading…</p> : view === 'quality' ? (
+      {view === 'schedule' ? <ScheduleHoursView range={range} setRange={setRange} />
+        : view === 'support' ? <SupportReport range={range} />
+        : view === 'projects' ? <ProjectsReport range={range} />
+        : view === 'attendance' ? <AttendanceReport range={range} />
+        : loading ? <p className="page-sub">Loading…</p> : view === 'quality' ? (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
             <div className="card" style={{ padding: '12px 16px' }}>
@@ -802,6 +809,191 @@ function ScheduleHoursView({ range }) {
   )
 }
 const cellC = { padding: '9px 16px', borderBottom: '1px solid var(--line-soft)', fontSize: 13, textAlign: 'center' }
+
+// shared bits for the report tabs below
+function Tile({ label, value }) {
+  return (
+    <div className="card" style={{ padding: '12px 16px' }}>
+      <span style={{ fontSize: 12, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>{label}</span>
+      <div style={{ fontSize: 24, fontWeight: 700 }}>{value}</div>
+    </div>
+  )
+}
+function Th({ children, r }) {
+  return <th style={{ textAlign: r ? 'right' : 'left', padding: '10px 16px', background: 'var(--canvas)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', color: 'var(--ink-soft)' }}>{children}</th>
+}
+const dayStart = (d) => d + 'T00:00:00'
+const dayEnd = (d) => d + 'T23:59:59'
+const mins = (a, b) => (a && b) ? Math.max(0, Math.round((new Date(a) - new Date(b)) / 60000)) : null
+
+// ================= Support / Help Desk =================
+function SupportReport({ range }) {
+  const [tickets, setTickets] = useState([]); const [names, setNames] = useState({}); const [loading, setLoading] = useState(true)
+  useEffect(() => { (async () => {
+    setLoading(true)
+    const [{ data: t }, { data: p }] = await Promise.all([
+      supabase.from('help_tickets').select('*').gte('created_at', dayStart(range.from)).lte('created_at', dayEnd(range.to)).order('created_at'),
+      supabase.from('profiles').select('id, full_name'),
+    ])
+    const m = {}; (p || []).forEach(x => m[x.id] = x.full_name); setNames(m); setTickets(t || []); setLoading(false)
+  })() }, [range.from, range.to])
+
+  const CAT = { payments: 'Payments', schedule: 'Schedule', technical: 'Technical', training: 'Training', other: 'Other' }
+  const frs = tickets.map(t => mins(t.first_response_at, t.created_at)).filter(v => v != null)
+  const avgFr = frs.length ? Math.round(frs.reduce((a, b) => a + b, 0) / frs.length) : null
+  const resolved = tickets.filter(t => t.resolved_at || t.status === 'resolved' || t.status === 'closed').length
+  const byCat = {}
+  tickets.forEach(t => { const k = t.category || 'other'; byCat[k] = byCat[k] || { n: 0, resolved: 0, fr: [] }; byCat[k].n++; if (t.resolved_at) byCat[k].resolved++; const f = mins(t.first_response_at, t.created_at); if (f != null) byCat[k].fr.push(f) })
+
+  function exportCsv() {
+    const rows = [['Ticket #', 'Created', 'Subject', 'Category', 'Status', 'Requester', 'Assignee', 'First response (min)', 'Resolution (hrs)']]
+    tickets.forEach(t => rows.push([t.ticket_number, (t.created_at || '').slice(0, 16).replace('T', ' '), t.subject, CAT[t.category] || t.category, t.status,
+      names[t.requester_id] || '', names[t.assignee_id] || '', mins(t.first_response_at, t.created_at) ?? '', t.resolved_at ? (mins(t.resolved_at, t.created_at) / 60).toFixed(1) : '']))
+    downloadCSV(`support-${range.from}_to_${range.to}.csv`, rows)
+  }
+  if (loading) return <p className="page-sub">Loading…</p>
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+        <Tile label="Tickets created" value={tickets.length} />
+        <Tile label="Resolved / closed" value={resolved} />
+        <Tile label="Avg first response" value={avgFr == null ? '—' : avgFr + ' min'} />
+        <Tile label="Still open" value={tickets.filter(t => t.status === 'open' || t.status === 'pending').length} />
+        <button className="btn btn-primary" style={{ marginLeft: 'auto', alignSelf: 'flex-end' }} onClick={exportCsv} disabled={!tickets.length}>Export CSV</button>
+      </div>
+      <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+        {tickets.length === 0 ? <p className="page-sub" style={{ padding: 20 }}>No tickets created in this range.</p> : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr><Th>Category</Th><Th r>Created</Th><Th r>Resolved</Th><Th r>Avg first response</Th></tr></thead>
+            <tbody>{Object.entries(byCat).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => (
+              <tr key={k}><td style={cellL}>{CAT[k] || k}</td><td style={cellR}>{v.n}</td><td style={cellR}>{v.resolved}</td>
+                <td style={cellR}>{v.fr.length ? Math.round(v.fr.reduce((a, b) => a + b, 0) / v.fr.length) + ' min' : '—'}</td></tr>
+            ))}</tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ================= Projects / Tasks =================
+function ProjectsReport({ range }) {
+  const [tasks, setTasks] = useState([]); const [projects, setProjects] = useState({}); const [asg, setAsg] = useState({}); const [names, setNames] = useState({}); const [loading, setLoading] = useState(true)
+  useEffect(() => { (async () => {
+    setLoading(true)
+    const [{ data: t }, { data: pr }, { data: a }, { data: p }] = await Promise.all([
+      supabase.from('tasks').select('*').is('deleted_at', null).gte('created_at', dayStart(range.from)).lte('created_at', dayEnd(range.to)).order('created_at'),
+      supabase.from('projects').select('id, name'),
+      supabase.from('task_assignees').select('task_id, profile_id'),
+      supabase.from('profiles').select('id, full_name'),
+    ])
+    const pm = {}; (pr || []).forEach(x => pm[x.id] = x.name); setProjects(pm)
+    const am = {}; (a || []).forEach(x => { (am[x.task_id] = am[x.task_id] || []).push(x.profile_id) }); setAsg(am)
+    const nm = {}; (p || []).forEach(x => nm[x.id] = x.full_name); setNames(nm)
+    setTasks(t || []); setLoading(false)
+  })() }, [range.from, range.to])
+
+  const today = new Date().toISOString().slice(0, 10)
+  const done = tasks.filter(t => t.status === 'done').length
+  const overdue = tasks.filter(t => t.due_date && t.due_date < today && t.status !== 'done').length
+  const byProj = {}
+  tasks.forEach(t => { const k = projects[t.project_id] || '— No project —'; byProj[k] = byProj[k] || { n: 0, done: 0, overdue: 0 }; byProj[k].n++; if (t.status === 'done') byProj[k].done++; if (t.due_date && t.due_date < today && t.status !== 'done') byProj[k].overdue++ })
+
+  function exportCsv() {
+    const rows = [['Created', 'Task', 'Project', 'Assignees', 'Status', 'Priority', 'Due date', 'Overdue']]
+    tasks.forEach(t => rows.push([(t.created_at || '').slice(0, 10), t.name, projects[t.project_id] || '', (asg[t.id] || []).map(id => names[id]).filter(Boolean).join('; '),
+      t.status, t.priority, t.due_date || '', (t.due_date && t.due_date < today && t.status !== 'done') ? 'Yes' : '']))
+    downloadCSV(`projects-tasks-${range.from}_to_${range.to}.csv`, rows)
+  }
+  if (loading) return <p className="page-sub">Loading…</p>
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+        <Tile label="Tasks created" value={tasks.length} />
+        <Tile label="Done" value={done} />
+        <Tile label="Overdue (open)" value={overdue} />
+        <button className="btn btn-primary" style={{ marginLeft: 'auto', alignSelf: 'flex-end' }} onClick={exportCsv} disabled={!tasks.length}>Export CSV</button>
+      </div>
+      <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+        {tasks.length === 0 ? <p className="page-sub" style={{ padding: 20 }}>No tasks created in this range.</p> : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr><Th>Project</Th><Th r>Tasks</Th><Th r>Done</Th><Th r>Overdue</Th></tr></thead>
+            <tbody>{Object.entries(byProj).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => (
+              <tr key={k}><td style={cellL}>{k}</td><td style={cellR}>{v.n}</td><td style={cellR}>{v.done}</td>
+                <td style={{ ...cellR, color: v.overdue ? 'var(--failed)' : 'inherit' }}>{v.overdue}</td></tr>
+            ))}</tbody>
+          </table>
+        )}
+      </div>
+      <p className="page-sub" style={{ fontSize: 12, marginTop: 8 }}>Counts tasks <b>created</b> in the range. Overdue = due date passed and not done (current status).</p>
+    </div>
+  )
+}
+
+// ================= Attendance / Adherence =================
+function AttendanceReport({ range }) {
+  const [rows, setRows] = useState([]); const [loading, setLoading] = useState(true)
+  useEffect(() => { (async () => {
+    setLoading(true)
+    const { data: blocks } = await supabase.from('shift_blocks').select('id, block_date, start_time, end_time').gte('block_date', range.from).lte('block_date', range.to)
+    const ids = (blocks || []).map(b => b.id)
+    const bm = {}; (blocks || []).forEach(b => bm[b.id] = b)
+    let claims = []
+    if (ids.length) {
+      const { data: c } = await supabase.from('shift_claims').select('shift_block_id, profile_id, status, checked_in_at, checked_out_at').in('shift_block_id', ids)
+      claims = c || []
+    }
+    const { data: profs } = await supabase.from('profiles').select('id, full_name')
+    const nm = {}; (profs || []).forEach(p => nm[p.id] = p.full_name)
+    const per = {}
+    claims.forEach(c => {
+      const b = bm[c.shift_block_id]; if (!b) return
+      const a = per[c.profile_id] = per[c.profile_id] || { name: nm[c.profile_id] || 'Unknown', shifts: 0, checkedIn: 0, noShow: 0, late: 0, schedH: 0, workedH: 0 }
+      a.shifts++
+      const dur = (new Date('1970-01-01T' + b.end_time) - new Date('1970-01-01T' + b.start_time)) / 3600000
+      a.schedH += Math.max(0, dur)
+      if (c.status === 'no_show') a.noShow++
+      if (c.checked_in_at) {
+        a.checkedIn++
+        const startTs = new Date(b.block_date + 'T' + b.start_time)
+        if (new Date(c.checked_in_at) > new Date(startTs.getTime() + 5 * 60000)) a.late++
+        if (c.checked_out_at) a.workedH += Math.max(0, (new Date(c.checked_out_at) - new Date(c.checked_in_at)) / 3600000)
+      }
+    })
+    setRows(Object.values(per).sort((x, y) => y.schedH - x.schedH)); setLoading(false)
+  })() }, [range.from, range.to])
+
+  function exportCsv() {
+    const out = [['Agent', 'Shifts', 'Checked in', 'No-shows', 'Late', 'Scheduled hrs', 'Worked hrs']]
+    rows.forEach(a => out.push([a.name, a.shifts, a.checkedIn, a.noShow, a.late, a.schedH.toFixed(1), a.workedH.toFixed(1)]))
+    downloadCSV(`attendance-${range.from}_to_${range.to}.csv`, out)
+  }
+  if (loading) return <p className="page-sub">Loading…</p>
+  const tot = rows.reduce((s, a) => ({ ns: s.ns + a.noShow, late: s.late + a.late }), { ns: 0, late: 0 })
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+        <Tile label="People scheduled" value={rows.length} />
+        <Tile label="No-shows" value={tot.ns} />
+        <Tile label="Late check-ins" value={tot.late} />
+        <button className="btn btn-primary" style={{ marginLeft: 'auto', alignSelf: 'flex-end' }} onClick={exportCsv} disabled={!rows.length}>Export CSV</button>
+      </div>
+      <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+        {rows.length === 0 ? <p className="page-sub" style={{ padding: 20 }}>No scheduled shifts in this range.</p> : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr><Th>Agent</Th><Th r>Shifts</Th><Th r>Checked in</Th><Th r>No-shows</Th><Th r>Late</Th><Th r>Scheduled hrs</Th><Th r>Worked hrs</Th></tr></thead>
+            <tbody>{rows.map((a, i) => (
+              <tr key={i}><td style={cellL}>{a.name}</td><td style={cellR}>{a.shifts}</td><td style={cellR}>{a.checkedIn}</td>
+                <td style={{ ...cellR, color: a.noShow ? 'var(--failed)' : 'inherit' }}>{a.noShow}</td><td style={cellR}>{a.late}</td>
+                <td style={cellR}>{a.schedH.toFixed(1)}</td><td style={cellR}>{a.workedH.toFixed(1)}</td></tr>
+            ))}</tbody>
+          </table>
+        )}
+      </div>
+      <p className="page-sub" style={{ fontSize: 12, marginTop: 8 }}>Late = checked in more than 5 min after shift start. Worked hrs = check-in to check-out where recorded.</p>
+    </div>
+  )
+}
 
 function tabBtn(active) {
   return { padding: '8px 14px', border: 0, background: active ? 'var(--accent)' : 'var(--surface)', color: active ? '#fff' : 'var(--ink-soft)', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }
