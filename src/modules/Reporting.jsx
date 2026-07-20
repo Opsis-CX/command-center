@@ -931,24 +931,40 @@ function ProjectsReport({ range }) {
 }
 
 // ================= Attendance / Adherence =================
+// Two modes, both driven off the same shift_blocks + shift_claims pull:
+//   • By Agent — one row per person: shifts, check-ins, no-shows, late, hours.
+//   • By Hour  — one row per Date+clock-hour: scheduled vs actually present,
+//                no-shows and late arrivals, so adherence is reportable down
+//                to the interval (matches the Schedule Hours Coverage view).
 function AttendanceReport({ range }) {
-  const [rows, setRows] = useState([]); const [loading, setLoading] = useState(true)
+  const [blocks, setBlocks] = useState([])
+  const [claims, setClaims] = useState([])
+  const [names, setNames] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [mode, setMode] = useState('agent') // 'agent' | 'hour'
+
   useEffect(() => { (async () => {
     setLoading(true)
-    const { data: blocks } = await supabase.from('shift_blocks').select('id, block_date, start_time, end_time').gte('block_date', range.from).lte('block_date', range.to)
-    const ids = (blocks || []).map(b => b.id)
-    const bm = {}; (blocks || []).forEach(b => bm[b.id] = b)
-    let claims = []
+    const { data: blks } = await supabase.from('shift_blocks').select('id, block_date, start_time, end_time').gte('block_date', range.from).lte('block_date', range.to)
+    const ids = (blks || []).map(b => b.id)
+    let clms = []
     if (ids.length) {
       const { data: c } = await supabase.from('shift_claims').select('shift_block_id, profile_id, status, checked_in_at, checked_out_at').in('shift_block_id', ids)
-      claims = c || []
+      clms = c || []
     }
     const { data: profs } = await supabase.from('profiles').select('id, full_name')
     const nm = {}; (profs || []).forEach(p => nm[p.id] = p.full_name)
+    setBlocks(blks || []); setClaims(clms || []); setNames(nm); setLoading(false)
+  })() }, [range.from, range.to])
+
+  const bm = useMemo(() => { const m = {}; blocks.forEach(b => m[b.id] = b); return m }, [blocks])
+
+  // ---- By Agent aggregate ----
+  const rows = useMemo(() => {
     const per = {}
     claims.forEach(c => {
       const b = bm[c.shift_block_id]; if (!b) return
-      const a = per[c.profile_id] = per[c.profile_id] || { name: nm[c.profile_id] || 'Unknown', shifts: 0, checkedIn: 0, noShow: 0, late: 0, schedH: 0, workedH: 0 }
+      const a = per[c.profile_id] = per[c.profile_id] || { name: names[c.profile_id] || 'Unknown', shifts: 0, checkedIn: 0, noShow: 0, late: 0, schedH: 0, workedH: 0 }
       a.shifts++
       const dur = (new Date('1970-01-01T' + b.end_time) - new Date('1970-01-01T' + b.start_time)) / 3600000
       a.schedH += Math.max(0, dur)
@@ -960,26 +976,90 @@ function AttendanceReport({ range }) {
         if (c.checked_out_at) a.workedH += Math.max(0, (new Date(c.checked_out_at) - new Date(c.checked_in_at)) / 3600000)
       }
     })
-    setRows(Object.values(per).sort((x, y) => y.schedH - x.schedH)); setLoading(false)
-  })() }, [range.from, range.to])
+    return Object.values(per).sort((x, y) => y.schedH - x.schedH)
+  }, [claims, bm, names])
+
+  // ---- By Hour aggregate ----
+  // Expand every claim across the clock hours its block overlaps, then per
+  // (date, hour) count who was scheduled, who was actually present (clocked in
+  // and their worked window covers that hour), no-shows and late arrivals.
+  const hourRows = useMemo(() => {
+    const buckets = {} // `${date}|${hour}` -> {date, hour, scheduled, present, noShow, late}
+    claims.forEach(c => {
+      const b = bm[c.shift_block_id]; if (!b) return
+      const [sh, sm] = b.start_time.slice(0, 5).split(':').map(Number)
+      const [eh, em] = b.end_time.slice(0, 5).split(':').map(Number)
+      const startMin = sh * 60 + sm, endMin = eh * 60 + em
+      if (endMin <= startMin) return
+      const firstH = Math.floor(startMin / 60), lastH = Math.ceil(endMin / 60) // [firstH, lastH)
+      const isNoShow = c.status === 'no_show'
+      const ci = c.checked_in_at ? new Date(c.checked_in_at) : null
+      const co = c.checked_out_at ? new Date(c.checked_out_at) : null
+      // worked window: check-in → check-out (or scheduled block end if still open)
+      const wStart = ci
+      const wEnd = co || (ci ? new Date(b.block_date + 'T' + b.end_time) : null)
+      const lateArrival = ci && ci > new Date(new Date(b.block_date + 'T' + b.start_time).getTime() + 5 * 60000)
+      for (let h = firstH; h < lastH; h++) {
+        const key = `${b.block_date}|${h}`
+        const k = buckets[key] = buckets[key] || { date: b.block_date, hour: h, scheduled: 0, present: 0, noShow: 0, late: 0 }
+        k.scheduled++
+        if (isNoShow) k.noShow++
+        if (wStart && wEnd) {
+          const hStart = new Date(b.block_date + 'T00:00:00'); hStart.setHours(h, 0, 0, 0)
+          const hEnd = new Date(hStart.getTime() + 60 * 60000)
+          if (wStart < hEnd && wEnd > hStart) k.present++
+        }
+        if (lateArrival && h === firstH) k.late++
+      }
+    })
+    return Object.values(buckets).sort((a, b) => a.date.localeCompare(b.date) || a.hour - b.hour)
+  }, [claims, bm])
 
   function exportCsv() {
+    if (mode === 'hour') {
+      const out = [['Date', 'Day', 'Hour', 'Scheduled', 'Present', 'No-shows', 'Late', 'Present %']]
+      hourRows.forEach(r => out.push([r.date, weekdayShort(r.date), hourLabel(r.hour), r.scheduled, r.present, r.noShow, r.late, r.scheduled ? Math.round(r.present / r.scheduled * 100) + '%' : '']))
+      downloadCSV(`attendance-by-hour-${range.from}_to_${range.to}.csv`, out)
+      return
+    }
     const out = [['Agent', 'Shifts', 'Checked in', 'No-shows', 'Late', 'Scheduled hrs', 'Worked hrs']]
     rows.forEach(a => out.push([a.name, a.shifts, a.checkedIn, a.noShow, a.late, a.schedH.toFixed(1), a.workedH.toFixed(1)]))
-    downloadCSV(`attendance-${range.from}_to_${range.to}.csv`, out)
+    downloadCSV(`attendance-by-agent-${range.from}_to_${range.to}.csv`, out)
   }
   if (loading) return <p className="page-sub">Loading…</p>
   const tot = rows.reduce((s, a) => ({ ns: s.ns + a.noShow, late: s.late + a.late }), { ns: 0, late: 0 })
   return (
     <div>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14, alignItems: 'flex-end' }}>
         <Tile label="People scheduled" value={rows.length} />
         <Tile label="No-shows" value={tot.ns} />
         <Tile label="Late check-ins" value={tot.late} />
-        <button className="btn btn-primary" style={{ marginLeft: 'auto', alignSelf: 'flex-end' }} onClick={exportCsv} disabled={!rows.length}>Export CSV</button>
+        <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
+          <button onClick={() => setMode('agent')} style={tabBtn(mode === 'agent')}>By Agent</button>
+          <button onClick={() => setMode('hour')} style={tabBtn(mode === 'hour')}>By Hour</button>
+        </div>
+        <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={exportCsv} disabled={mode === 'hour' ? !hourRows.length : !rows.length}>Export CSV</button>
       </div>
       <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-        {rows.length === 0 ? <p className="page-sub" style={{ padding: 20 }}>No scheduled shifts in this range.</p> : (
+        {mode === 'hour' ? (
+          hourRows.length === 0 ? <p className="page-sub" style={{ padding: 20 }}>No scheduled shifts in this range.</p> : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead><tr><Th>Date</Th><Th>Day</Th><Th>Hour</Th><Th r>Scheduled</Th><Th r>Present</Th><Th r>No-shows</Th><Th r>Late</Th><Th r>Present %</Th></tr></thead>
+              <tbody>{hourRows.map((r, i) => {
+                const pct = r.scheduled ? Math.round(r.present / r.scheduled * 100) : 0
+                return (
+                  <tr key={i} style={{ borderTop: '1px solid var(--line-soft)' }}>
+                    <td style={cellL}>{r.date}</td><td style={cellL}>{weekdayShort(r.date)}</td><td style={cellC}>{hourLabel(r.hour)}</td>
+                    <td style={cellR}>{r.scheduled}</td><td style={cellR}>{r.present}</td>
+                    <td style={{ ...cellR, color: r.noShow ? 'var(--failed)' : 'inherit' }}>{r.noShow || '—'}</td>
+                    <td style={{ ...cellR, color: r.late ? 'var(--needed)' : 'inherit' }}>{r.late || '—'}</td>
+                    <td style={{ ...cellR, fontWeight: 600, color: pct >= 100 ? 'var(--passed)' : pct >= 80 ? 'var(--needed)' : 'var(--failed)' }}>{pct}%</td>
+                  </tr>
+                )
+              })}</tbody>
+            </table>
+          )
+        ) : rows.length === 0 ? <p className="page-sub" style={{ padding: 20 }}>No scheduled shifts in this range.</p> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr><Th>Agent</Th><Th r>Shifts</Th><Th r>Checked in</Th><Th r>No-shows</Th><Th r>Late</Th><Th r>Scheduled hrs</Th><Th r>Worked hrs</Th></tr></thead>
             <tbody>{rows.map((a, i) => (
@@ -990,7 +1070,11 @@ function AttendanceReport({ range }) {
           </table>
         )}
       </div>
-      <p className="page-sub" style={{ fontSize: 12, marginTop: 8 }}>Late = checked in more than 5 min after shift start. Worked hrs = check-in to check-out where recorded.</p>
+      <p className="page-sub" style={{ fontSize: 12, marginTop: 8 }}>
+        {mode === 'hour'
+          ? <>One row per date &amp; clock hour. <b>Present</b> = clocked in and working that hour. <b>Present %</b> = present ÷ scheduled. Late counted at the shift’s first hour.</>
+          : <>Late = checked in more than 5 min after shift start. Worked hrs = check-in to check-out where recorded.</>}
+      </p>
     </div>
   )
 }
