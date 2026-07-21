@@ -27,6 +27,7 @@ import Reporting from './modules/Reporting'
 import HourlyReports from './modules/HourlyReports'
 import Updates from './modules/Updates'
 import OpsisWeekly from './modules/OpsisWeekly'
+import EndOfDayReport from './modules/EndOfDayReport'
 import Notes from './modules/Notes'
 import Calendar from './modules/Calendar'
 import WeeklySync from './modules/WeeklySync'
@@ -135,6 +136,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
                   everyone temporarily, replace this line with:
                   <Route path="/sales" element={<SalesDashboard />} /> */}
               {canAny(appRole, 'sales') && <Route path="/sales" element={<SalesDashboard />} />}
+              {canAny(appRole, 'dashboard') && <Route path="/eod" element={<EndOfDayReport />} />}
               {canAny(appRole, 'weekly_sync') && <Route path="/weekly-sync" element={<WeeklySync />} />}
               {canAny(appRole, 'schedule.create_schedules') && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
               {canAny(appRole, 'positions.view_only') && <Route path="/positions" element={<Positions />} />}
@@ -153,7 +155,7 @@ function titleFor(path) {
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Home Base', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
-    '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales', '/help': 'Help Center',
+    '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales', '/help': 'Help Center', '/eod': 'End of Day Report',
   }
   return map[path] || 'Command Center'
 }
