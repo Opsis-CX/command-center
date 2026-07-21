@@ -58,6 +58,8 @@ const NAV = [
       {
         type: 'section', key: 'operations', label: 'Operations', ic: '🧰',
         children: [
+          // End-of-day report — non-agent staff only (same audience as the old Dashboard).
+          { to: '/eod', label: 'End of Day Report', perm: 'dashboard' },
           { to: '/weekly-sync', label: 'Weekly Sync', perm: 'weekly_sync' },
           { to: '/projects', label: 'Project Management', perm: 'project_management' },
           { to: '/hiring', label: 'Hiring', perm: 'hiring' },
