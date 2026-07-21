@@ -25,71 +25,63 @@ import ChangePassword from './ChangePassword'
 // group, add another { group, items } block. Order in this array = order shown.
 const NAV = [
   {
-    // Daily drivers, pinned at the top. Single-tap for the pages people live in.
-    group: 'Main',
+    // One flat list in Becky's order (2026-07-21). No group label — collapsible
+    // sections (Schedule, Certifications, Reporting, Operations, Backend) provide
+    // the structure. Every item still carries a `perm`, so roles auto-filter:
+    // an agent only sees the handful they're allowed, in this same order.
+    group: '',
     items: [
       { type: 'link', to: '/', label: 'Home Base', ic: '🏠', end: true, perm: null },  // everyone; page scopes itself by tag/role
       { type: 'link', to: '/updates', label: 'Updates', ic: '📣', perm: null },  // everyone; RLS gates audience
       { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },  // everyone; private per-user notebook
+      { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
+      { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
       {
         type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
         children: [
-          { to: '/schedule', label: 'Schedule', perm: 'schedule.view_my_schedule' },
-          { to: '/schedule-builder', label: 'Schedule builder', perm: 'schedule.create_schedules' },
-          { to: '/insights', label: 'Schedule insights', perm: 'schedule.view_insights_assigned' },
+          { to: '/schedule', label: 'Schedule Board', perm: 'schedule.view_my_schedule' },
+          { to: '/insights', label: 'Schedule Insights', perm: 'schedule.view_insights_assigned' },
+          { to: '/schedule-builder', label: 'Schedule Builder', perm: 'schedule.create_schedules' },
         ],
       },
       { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
+      { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
+      { type: 'link', to: '/tokens', label: 'Tokens', ic: '🪙', perm: 'tokens.view_own' },  // everyone; rewards wallet
       {
-        type: 'section', key: 'reporting', label: 'Reporting', ic: '📈',
+        type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
         children: [
-          { to: '/reporting', label: 'Reporting', perm: 'reporting' },
-          { to: '/reporting/hourly', label: 'Hourly', perm: 'reporting' },
+          { to: '/my-certifications', label: 'My Certifications', perm: 'certifications.view_personal_score_and_content_assigned' },
+          // INTERIM: kept reachable until the certifications rework nests courses
+          // inside My Certifications. Remove this line once that ships.
+          { to: '/my-courses', label: 'My Courses', perm: 'certifications.assigned_to_complete' },
+          { to: '/certifications', label: 'Certifications', perm: 'certifications.all' },
+          { to: '/courses', label: 'Course Builder', perm: 'certifications.builder' },
         ],
       },
       { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
-      { type: 'link', to: '/tokens', label: 'Tokens', ic: '🪙', perm: 'tokens.view_own' },  // everyone; rewards wallet
-      { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
-    ],
-  },
-  {
-    // Everything secondary, folded into collapsible sections so the list stays short.
-    group: 'More',
-    items: [
+      { type: 'link', to: '/help', label: 'Help Center', ic: '🛟', perm: null },  // everyone; tickets are private per RLS
+      {
+        type: 'section', key: 'reporting', label: 'Reporting', ic: '📈',
+        children: [
+          { to: '/reporting', label: 'Reporting Hub', perm: 'reporting' },
+          { to: '/reporting/hourly', label: 'Hourly', perm: 'reporting' },
+        ],
+      },
       {
         type: 'section', key: 'operations', label: 'Operations', ic: '🧰',
         children: [
           // End-of-day report — non-agent staff only (same audience as the old Dashboard).
           { to: '/eod', label: 'End of Day Report', perm: 'dashboard' },
           { to: '/weekly-sync', label: 'Weekly Sync', perm: 'weekly_sync' },
-          { to: '/projects', label: 'Project Management', perm: 'project_management' },
-          { to: '/hiring', label: 'Hiring', perm: 'hiring' },
-          // Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
-          // and grant it to the right roles, like 'hiring'.
-          { to: '/sales', label: 'Sales', perm: 'sales' },
         ],
       },
+      { type: 'link', to: '/sales', label: 'Sales', ic: '💼', perm: 'sales' },
+      { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧑‍💼', perm: 'hiring' },
+      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },  // everyone gets calendar
       {
-        type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
+        type: 'section', key: 'backend', label: 'Backend', ic: '⚙',
         children: [
-          { to: '/certifications', label: 'Certifications', perm: 'certifications.all' },
-          { to: '/my-certifications', label: 'My certifications', perm: 'certifications.view_personal_score_and_content_assigned' },
-          { to: '/courses', label: 'Course builder', perm: 'certifications.builder' },
-          { to: '/my-courses', label: 'My courses', perm: 'certifications.assigned_to_complete' },
-        ],
-      },
-      { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
-      {
-        type: 'section', key: 'resources', label: 'Resources', ic: '🛟', perm: null,
-        children: [
-          { to: '/help', label: 'Help Center', perm: null },     // everyone; tickets are private per RLS
-          { to: '/calendar', label: 'Calendar', perm: null },    // everyone gets calendar
-        ],
-      },
-      {
-        type: 'section', key: 'backend', label: 'Backend', ic: '⚙', perm: null,
-        children: [
-          { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
+          { to: '/people', label: 'People & Tags', perm: 'people_and_tags.view_only' },
           { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
           { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
         ],
@@ -213,11 +205,13 @@ export default function Sidebar({ open, onNavigate }) {
           const anyVisible = grp.items.some(itemVisible)
           if (!anyVisible) return null
           return (
-            <div key={grp.group} className="nav-group">
-              <div className="nav-group-label"
-                style={{ padding: '14px 12px 4px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', opacity: .45 }}>
-                {grp.group}
-              </div>
+            <div key={grp.group || 'all'} className="nav-group">
+              {grp.group && (
+                <div className="nav-group-label"
+                  style={{ padding: '14px 12px 4px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', opacity: .45 }}>
+                  {grp.group}
+                </div>
+              )}
               {grp.items.map(renderItem)}
             </div>
           )
