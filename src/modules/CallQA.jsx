@@ -497,8 +497,9 @@ function RecordingBtn({ callId }) {
     try {
       const { data, error } = await supabase.functions.invoke('callqa-recording', { body: { call_id: callId } })
       if (error) throw error
-      const blob = data instanceof Blob ? data : new Blob([data], { type: 'audio/mpeg' })
-      setUrl(URL.createObjectURL(blob))
+      // proxy returns either {url} (signed, seekable) or the audio bytes as a Blob
+      if (data && !(data instanceof Blob) && data.url) setUrl(data.url)
+      else { const blob = data instanceof Blob ? data : new Blob([data], { type: 'audio/mpeg' }); setUrl(URL.createObjectURL(blob)) }
     } catch (e) { setErr(true) }
     setLoading(false)
   }
