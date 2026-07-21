@@ -27,7 +27,7 @@ import Reporting from './modules/Reporting'
 import HourlyReports from './modules/HourlyReports'
 import Updates from './modules/Updates'
 import OpsisWeekly from './modules/OpsisWeekly'
-import EndOfDayReport from './modules/EndOfDayReport'
+import EodReportCard from './modules/EodReports'
 import Notes from './modules/Notes'
 import Calendar from './modules/Calendar'
 import WeeklySync from './modules/WeeklySync'
@@ -49,6 +49,21 @@ import { useParams } from 'react-router-dom'
 function AssessmentRoute() {
   const { appId } = useParams()
   return <AssessmentForm applicationId={appId} />
+}
+// End of Day Report page (Operations → End of Day Report). Wraps the existing
+// role-aware EodReportCard (from EodReports.jsx) with a page title. Admins get
+// their own report + the team roll-up; other non-agents get their own report;
+// agents can't reach this route (gated by the 'dashboard' page-key).
+function EodReportPage() {
+  return (
+    <div>
+      <div style={{ marginBottom: 4 }}>
+        <h1 className="page-title">End of Day Report</h1>
+        <p className="page-sub">Your tracked tasks fill in automatically — add anything the tracker can't capture, then submit before you sign off.</p>
+      </div>
+      <EodReportCard />
+    </div>
+  )
 }
 export default function App() {
   const { session, loading, isAdmin, appRole } = useAuth()
@@ -136,7 +151,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
                   everyone temporarily, replace this line with:
                   <Route path="/sales" element={<SalesDashboard />} /> */}
               {canAny(appRole, 'sales') && <Route path="/sales" element={<SalesDashboard />} />}
-              {canAny(appRole, 'dashboard') && <Route path="/eod" element={<EndOfDayReport />} />}
+              {canAny(appRole, 'dashboard') && <Route path="/eod" element={<EodReportPage />} />}
               {canAny(appRole, 'weekly_sync') && <Route path="/weekly-sync" element={<WeeklySync />} />}
               {canAny(appRole, 'schedule.create_schedules') && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
               {canAny(appRole, 'positions.view_only') && <Route path="/positions" element={<Positions />} />}
