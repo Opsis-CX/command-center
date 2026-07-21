@@ -128,6 +128,7 @@ function RedeemTab({ user }) {
   const [redemptions, setRedemptions] = useState([])
   const [loading, setLoading] = useState(true)
   const [picking, setPicking] = useState(null) // reward being redeemed
+  const [q, setQ] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -144,27 +145,37 @@ function RedeemTab({ user }) {
   if (loading) return <div className="card">Loading…</div>
   return (
     <div>
-      <div style={{ marginBottom: 14, fontSize: 14 }}>
-        Balance: <b>{balance} tokens</b> <span style={{ color: 'var(--ink-soft)' }}>({usd(balance)})</span>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+        <div style={{ fontSize: 14 }}>Balance: <b>{balance} tokens</b> <span style={{ color: 'var(--ink-soft)' }}>({usd(balance)})</span></div>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder={`Search ${catalog.length} gift cards…`}
+          style={{ marginLeft: 'auto', minWidth: 240, padding: '9px 12px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, background: 'var(--surface)', color: 'var(--ink)', outline: 'none' }} />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12, marginBottom: 22 }}>
-        {catalog.map(rw => {
-          const affordable = balance >= rw.min_tokens
-          return (
-            <div key={rw.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6, opacity: affordable ? 1 : 0.6 }}>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{rw.brand}</div>
-              {rw.description && <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>{rw.description}</div>}
-              <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginTop: 2 }}>
-                From {rw.min_tokens} tokens ({usd(rw.min_tokens)})
-              </div>
-              <button className="btn btn-primary" style={{ marginTop: 8 }} disabled={!affordable} onClick={() => setPicking(rw)}>
-                {affordable ? 'Redeem' : 'Not enough tokens'}
-              </button>
+      {(() => {
+        const filtered = catalog.filter(rw => rw.brand.toLowerCase().includes(q.trim().toLowerCase()))
+        return (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12, marginBottom: 22 }}>
+              {filtered.map(rw => {
+                const affordable = balance >= rw.min_tokens
+                return (
+                  <div key={rw.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6, opacity: affordable ? 1 : 0.55, padding: 14 }}>
+                    {rw.image_url
+                      ? <img src={rw.image_url} alt={rw.brand} loading="lazy" style={{ width: '100%', height: 92, objectFit: 'contain', borderRadius: 8, background: '#fff', border: '1px solid var(--line)' }} />
+                      : <div style={{ height: 92, borderRadius: 8, background: 'var(--canvas)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, textAlign: 'center', padding: 6 }}>{rw.brand}</div>}
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{rw.brand}</div>
+                    <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 'auto' }}>From {rw.min_tokens} tokens ({usd(rw.min_tokens)})</div>
+                    <button className="btn btn-primary" disabled={!affordable} onClick={() => setPicking(rw)}>
+                      {affordable ? 'Redeem' : 'Not enough tokens'}
+                    </button>
+                  </div>
+                )
+              })}
             </div>
-          )
-        })}
-        {catalog.length === 0 && <div className="card">No rewards available yet.</div>}
-      </div>
+            {catalog.length === 0 && <div className="card">No rewards available yet.</div>}
+            {catalog.length > 0 && filtered.length === 0 && <div className="card">No gift cards match “{q}”.</div>}
+          </>
+        )
+      })()}
 
       <div className="card">
         <div style={{ fontWeight: 700, marginBottom: 10 }}>My redemptions</div>
