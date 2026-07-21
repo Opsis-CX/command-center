@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth'
 import { RichContent } from '../lib/RichEditor'
 
 // ============================================================
-// OPSIS WEEKLY — the company "home" page.
+// HOME BASE — the company "home" page (formerly Opsis Weekly).
 //
 // One page, tailored to WHO is looking, driven entirely by their tags & role:
 //   * Company Wins (incl. fill rate) — non-agent AND non-support only
@@ -15,6 +15,11 @@ import { RichContent } from '../lib/RichEditor'
 //   * Updates — announcements, audience-scoped by RLS (my_tag_ids()).
 //   * Spotlight / Tip / Quote — admin-curated weekly_picks, team-scoped by RLS.
 //   * Upcoming / Need Help — calendar + static links.
+//
+// Card visibility: a card only renders when it actually has something in it.
+// Empty cards (no company numbers yet, no updates, nothing on the calendar,
+// no spotlight/tip/quote, no open intervals) are hidden entirely rather than
+// showing an empty placeholder — so the page never looks padded out.
 //
 // Nothing here is per-client hard-coded: onboard a client, tag that team, and
 // their agents automatically start seeing their own spotlight, updates, and
@@ -157,22 +162,18 @@ export default function OpsisWeekly() {
 
       <div className="ow-grid">
 
-        {/* Company Wins — non-agent, non-support only */}
-        {canSeeCompany && (
+        {/* Company Wins — non-agent, non-support only; hidden until there are numbers */}
+        {canSeeCompany && coStats && (
           <Card span2 title="Yesterday's Wins" ico="📈" tag="All clients">
-            {coStats ? (
-              <>
-                <div className="ow-metrics">
-                  <Stat val={coStats.bookings} lbl="Appointments booked" prev={coStats.bookings_prev} />
-                  <Stat val={fmtPct(coStats.fill_rate)} lbl="Schedule fill rate" prev={coStats.fill_rate_prev} cur={coStats.fill_rate} pct />
-                  <Stat val={coStats.contacts} lbl="Contacts reached" prev={coStats.contacts_prev} />
-                  <Stat val={fmtPct(coStats.qa)} lbl="Avg. QA (7-day)" prev={coStats.qa_prev} cur={coStats.qa} pct />
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 12, paddingTop: 10, borderTop: '1px dashed var(--line)' }}>
-                  🔒 Fill rate & floor totals are visible to leads & admins only — never to agents or support.
-                </div>
-              </>
-            ) : <Empty>No numbers for this day yet.</Empty>}
+            <div className="ow-metrics">
+              <Stat val={coStats.bookings} lbl="Appointments booked" prev={coStats.bookings_prev} />
+              <Stat val={fmtPct(coStats.fill_rate)} lbl="Schedule fill rate" prev={coStats.fill_rate_prev} cur={coStats.fill_rate} pct />
+              <Stat val={coStats.contacts} lbl="Contacts reached" prev={coStats.contacts_prev} />
+              <Stat val={fmtPct(coStats.qa)} lbl="Avg. QA (7-day)" prev={coStats.qa_prev} cur={coStats.qa} pct />
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 12, paddingTop: 10, borderTop: '1px dashed var(--line)' }}>
+              🔒 Fill rate & floor totals are visible to leads & admins only — never to agents or support.
+            </div>
           </Card>
         )}
 
@@ -206,26 +207,28 @@ export default function OpsisWeekly() {
           </Card>
         )}
 
-        {/* Updates */}
-        <Card span2 title="Updates" ico="📣" tag={canSeeCompany ? 'All clients' : 'Your teams + general'}>
-          {anns.length === 0 ? <Empty>No updates right now.</Empty> : anns.map(a => {
-            const c = CAT[a.category] || CAT.general
-            return (
-              <div key={a.id} style={{ padding: '11px 0', borderTop: '1px solid var(--line-soft)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', padding: '2px 8px', borderRadius: 20, background: c.color + '22', color: c.color }}>{c.label}</span>
-                  {a.pinned && <span title="Pinned" style={{ fontSize: 11 }}>📌</span>}
+        {/* Updates — hidden until there is at least one */}
+        {anns.length > 0 && (
+          <Card span2 title="Updates" ico="📣" tag={canSeeCompany ? 'All clients' : 'Your teams + general'}>
+            {anns.map(a => {
+              const c = CAT[a.category] || CAT.general
+              return (
+                <div key={a.id} style={{ padding: '11px 0', borderTop: '1px solid var(--line-soft)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', padding: '2px 8px', borderRadius: 20, background: c.color + '22', color: c.color }}>{c.label}</span>
+                    {a.pinned && <span title="Pinned" style={{ fontSize: 11 }}>📌</span>}
+                  </div>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, margin: '6px 0 2px' }}>{a.title}</div>
+                  {a.body && <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}><RichContent html={a.body} /></div>}
+                  <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 5, opacity: .85 }}>
+                    {names[a.author_id] || 'Someone'} · {new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </div>
                 </div>
-                <div style={{ fontSize: 13.5, fontWeight: 600, margin: '6px 0 2px' }}>{a.title}</div>
-                {a.body && <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}><RichContent html={a.body} /></div>}
-                <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 5, opacity: .85 }}>
-                  {names[a.author_id] || 'Someone'} · {new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                </div>
-              </div>
-            )
-          })}
-          <div style={{ marginTop: 12 }}><a href="/updates" style={link}>See all updates →</a></div>
-        </Card>
+              )
+            })}
+            <div style={{ marginTop: 12 }}><a href="/updates" style={link}>See all updates →</a></div>
+          </Card>
+        )}
 
         {/* Spotlight */}
         {spotlights.length > 0 && (
@@ -242,24 +245,26 @@ export default function OpsisWeekly() {
           </Card>
         )}
 
-        {/* Upcoming */}
-        <Card title="Upcoming This Week" ico="🗓️" tag="Auto">
-          {events.length === 0 ? <Empty>Nothing on the calendar this week.</Empty> : events.map(e => {
-            const d = new Date(e.event_date + 'T00:00:00')
-            return (
-              <div key={e.id} style={{ display: 'flex', gap: 12, padding: '9px 0', borderTop: '1px solid var(--line-soft)', alignItems: 'center' }}>
-                <div style={{ flex: 'none', width: 44, textAlign: 'center' }}>
-                  <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1 }}>{d.getDate()}</div>
-                  <div style={{ fontSize: 10, textTransform: 'uppercase', color: 'var(--ink-soft)', letterSpacing: '.04em' }}>{d.toLocaleDateString('en-US', { weekday: 'short' })}</div>
+        {/* Upcoming — hidden until there is something on the calendar */}
+        {events.length > 0 && (
+          <Card title="Upcoming This Week" ico="🗓️" tag="Auto">
+            {events.map(e => {
+              const d = new Date(e.event_date + 'T00:00:00')
+              return (
+                <div key={e.id} style={{ display: 'flex', gap: 12, padding: '9px 0', borderTop: '1px solid var(--line-soft)', alignItems: 'center' }}>
+                  <div style={{ flex: 'none', width: 44, textAlign: 'center' }}>
+                    <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1 }}>{d.getDate()}</div>
+                    <div style={{ fontSize: 10, textTransform: 'uppercase', color: 'var(--ink-soft)', letterSpacing: '.04em' }}>{d.toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{e.title}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>{e.all_day ? 'All day' : timeLabel(e.start_time)}</div>
+                  </div>
                 </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{e.title}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>{e.all_day ? 'All day' : timeLabel(e.start_time)}</div>
-                </div>
-              </div>
-            )
-          })}
-        </Card>
+              )
+            })}
+          </Card>
+        )}
 
         {/* Tip */}
         {tip?.body && (
@@ -272,7 +277,7 @@ export default function OpsisWeekly() {
         {quote?.body && (
           <Card title="Daily Inspiration" ico="🌟" tag="Weekly pick">
             <div style={{ fontSize: 15, fontStyle: 'italic', lineHeight: 1.55 }}>
-              “{quote.body}”
+              "{quote.body}"
               {quote.author && <span style={{ display: 'block', fontStyle: 'normal', fontSize: 12, color: 'var(--ink-soft)', marginTop: 8, fontWeight: 600 }}>— {quote.author}</span>}
             </div>
           </Card>
