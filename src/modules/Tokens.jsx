@@ -14,7 +14,7 @@ import { useAuth } from '../lib/auth'
 
 const RATE = 10 // tokens per USD
 export const usd = (tokens) => `$${(Number(tokens || 0) / RATE).toFixed(2)}`
-const AWARD_ROLES = ['asc', 'certification', 'quality', 'marketing'] // + admin (always)
+const AWARD_ROLES = ['asc', 'certification'] // + admin (always). Budget-limited; admin is unlimited.
 const REASONS = ['Recognition', 'Performance', 'Attendance', 'Contest', 'Milestone', 'Other']
 
 function tabBtn(active) {
