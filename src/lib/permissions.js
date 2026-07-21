@@ -69,6 +69,15 @@ const MATRIX = {
   'project_management.all': ['admin'],
   'project_management.create_projects': ['certification', 'quality', 'marketing', 'admin'],
   'project_management.add_tasks_to_projects_assigned_to': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
+  // Tokens (employee rewards). Everyone sees their own wallet + can redeem;
+  // managers can award (drawing from a per-manager budget); admins manage
+  // budgets, catalog, adjustments and the Tremendous connection.
+  'tokens.view_own': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
+  'tokens.award': ['asc', 'certification', 'quality', 'marketing', 'admin'],
+  'tokens.admin': ['admin'],
+  // Who's On — live check-ins + current task (floor oversight). Restores the
+  // old Dashboard's "On now" view.
+  'live_status': ['admin', 'asc', 'certification', 'quality'],
 }
 // can(role, "schedule.create_schedules") -> boolean
 export function can(role, perm) {
