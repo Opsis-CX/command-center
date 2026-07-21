@@ -1143,13 +1143,14 @@ function rateColor(v) { return v == null ? 'var(--ink)' : v >= 95 ? '#1b5e20' : 
 function FillRateView() {
   const [day, setDay] = useState(() => isoDate(etNow()))
   const [data, setData] = useState(null)
+  const [selKey, setSelKey] = useState(null)   // selected client name for the detail panel
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [copied, setCopied] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
-    const { data, error } = await supabase.rpc('get_asc_fill_rate', { p_day: day })
+    const { data, error } = await supabase.rpc('get_fill_rate_by_client', { p_day: day })
     if (error) { setErr(error.message); setData(null) } else { setData(data) }
     setLoading(false)
   }, [day])
@@ -1157,24 +1158,22 @@ function FillRateView() {
 
   const nowEt = new Date().toLocaleString('en-US', { timeZone: COMPANY_TZ, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-  const tiers = (data?.tier_mix || []).slice().sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier))
-  const opens = data?.open_intervals || []
+  const clients = data?.clients || []
+  const sel = clients.find(c => c.client === selKey) || clients[0] || null
+  const tiers = (sel?.tier_mix || []).slice().sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier))
+  const opens = sel?.open_intervals || []
 
   function buildUpdate() {
-    if (!data) return ''
-    const fr = data.fill_rate == null ? 'n/a (schedule-only)' : data.fill_rate + '%'
+    if (!sel) return ''
     const openStr = opens.length ? opens.map(o => `${o.start}–${o.end} (${o.open})`).join(', ') : 'none — fully covered'
     const tierStr = tiers.length ? tiers.map(t => `${t.tier.replace(' Performer', '')} ${t.pct}%`).join(' · ') : 'n/a'
-    return [
-      `GarageCo Fill Rate — ${dayLabel}${data.is_today ? ` · as of ${nowEt}` : ''}`,
-      ``,
-      `Fill rate: ${fr}  (${data.occupancy_hours_todate} / ${data.scheduled_hours_todate} staffed hrs to-date)`,
-      `Coverage: ${data.coverage_pct ?? 'n/a'}%  (${data.filled_spots} of ${data.total_spots} slots · ${data.open_spots} open)`,
-      `Open intervals: ${openStr}`,
-      `Tier mix: ${tierStr}`,
-      ``,
-      `@Corinne Kerper @Becky Jackson @Brittney Thompson`,
-    ].join('\n')
+    const lines = [`${sel.client} Fill Rate — ${dayLabel}${data.is_today ? ` · as of ${nowEt}` : ''}`, ``]
+    if (sel.uses_five9) lines.push(`Fill rate: ${sel.fill_rate == null ? 'n/a' : sel.fill_rate + '%'}  (${sel.occupancy_hours_todate} / ${sel.scheduled_hours_todate} staffed hrs to-date)`)
+    lines.push(`Coverage: ${sel.coverage_pct ?? 'n/a'}%  (${sel.filled_spots} of ${sel.total_spots} slots · ${sel.open_spots} open)`)
+    lines.push(`Open intervals: ${openStr}`)
+    lines.push(`Tier mix: ${tierStr}`)
+    lines.push(``, `@Corinne Kerper @Becky Jackson @Brittney Thompson`)
+    return lines.join('\n')
   }
   async function copyUpdate() {
     try { await navigator.clipboard.writeText(buildUpdate()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { setErr('Could not copy — select and copy manually.') }
@@ -1191,58 +1190,110 @@ function FillRateView() {
           style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--canvas)' }} />
         <button className="btn btn-ghost" onClick={load}>↻ Refresh</button>
         {data.is_today && <span className="page-sub" style={{ fontSize: 12 }}>as of {nowEt} · occupancy synced {data.occupancy_updated_at ? new Date(data.occupancy_updated_at).toLocaleTimeString('en-US', { timeZone: COMPANY_TZ, hour: 'numeric', minute: '2-digit' }) : '—'}</span>}
-        <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={copyUpdate}>{copied ? '✓ Copied' : '📋 Copy update'}</button>
       </div>
 
-      {/* Headline metrics */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 14 }}>
-        <StatCard label="Fill Rate (staffed ÷ scheduled)" big={data.fill_rate == null ? '—' : data.fill_rate + '%'} bigColor={rateColor(data.fill_rate)}
-          sub={data.is_today ? `${data.occupancy_hours_todate} / ${data.scheduled_hours_todate} hrs to-date` : 'today only'} />
-        <StatCard label="Coverage (slots claimed)" big={(data.coverage_pct ?? '—') + '%'} bigColor={rateColor(data.coverage_pct)}
-          sub={`${data.filled_spots} of ${data.total_spots} slots`} />
-        <StatCard label="Open Slots" big={String(data.open_spots)} bigColor={data.open_spots > 0 ? '#b71c1c' : '#1b5e20'}
-          sub={opens.length ? `${opens.length} interval${opens.length > 1 ? 's' : ''}` : 'fully covered'} />
-        <StatCard label="Scheduled Hours" big={String(data.scheduled_hours_full)} sub="planned slot-hours today" />
+      {/* ALL-CLIENTS OVERVIEW — one row per client. Click a row to drill in below. */}
+      <div className="card" style={{ marginBottom: 16, padding: 0, overflow: 'hidden' }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--accent)', padding: '12px 14px 8px' }}>Fill rate by client — {dayLabel}</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+            <thead>
+              <tr style={{ color: 'var(--ink-soft)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.03em' }}>
+                <th style={{ padding: '6px 14px', textAlign: 'left' }}>Client</th>
+                <th style={{ padding: '6px 10px', textAlign: 'right' }}>Coverage</th>
+                <th style={{ padding: '6px 10px', textAlign: 'right' }}>Filled</th>
+                <th style={{ padding: '6px 10px', textAlign: 'right' }}>Open</th>
+                <th style={{ padding: '6px 10px', textAlign: 'right' }}>Sched hrs</th>
+                <th style={{ padding: '6px 14px', textAlign: 'right' }}>Staffed fill</th>
+              </tr>
+            </thead>
+            <tbody>
+              {clients.map(c => {
+                const isSel = c.client === sel?.client
+                return (
+                  <tr key={c.client} onClick={() => setSelKey(c.client)}
+                    style={{ cursor: 'pointer', borderTop: '1px solid var(--line)', background: isSel ? 'var(--canvas)' : 'transparent' }}>
+                    <td style={{ padding: '9px 14px', fontWeight: 600 }}>{c.client}{c.uses_five9 && <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--accent)', letterSpacing: '.04em' }}>FIVE9</span>}</td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: rateColor(c.coverage_pct) }}>{c.coverage_pct ?? '—'}%</td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right' }}>{c.filled_spots}/{c.total_spots}</td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', color: c.open_spots > 0 ? '#b71c1c' : 'inherit', fontWeight: c.open_spots > 0 ? 700 : 400 }}>{c.open_spots}</td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right' }}>{c.scheduled_hours_full}</td>
+                    <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700, color: c.uses_five9 ? rateColor(c.fill_rate) : 'var(--ink-soft)' }}>{c.uses_five9 ? (c.fill_rate == null ? '—' : c.fill_rate + '%') : '—'}</td>
+                  </tr>
+                )
+              })}
+              {clients.length === 0 && <tr><td colSpan={6} style={{ padding: 14, color: 'var(--ink-soft)' }}>No schedules for this day.</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
-        {/* Open intervals to chase */}
-        <div className="card">
-          <div style={{ fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--accent)', marginBottom: 10 }}>Unassigned Intervals</div>
-          {opens.length === 0 ? (
-            <p className="page-sub" style={{ fontSize: 13, margin: 0 }}>Every interval is fully covered. 🎉</p>
-          ) : opens.map((o, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderTop: i ? '1px solid var(--line-soft)' : 'none', fontSize: 13.5 }}>
-              <span style={{ fontWeight: 600 }}>{o.start}–{o.end}</span>
-              <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: '#fdecea', color: '#b71c1c' }}>{o.open} of {o.spots} open</span>
-            </div>
-          ))}
+      {/* DETAIL for the selected client */}
+      {sel && (
+        <>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+          <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-soft)' }}>Detail for</label>
+          <select value={sel.client} onChange={e => setSelKey(e.target.value)}
+            style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }}>
+            {clients.map(c => <option key={c.client} value={c.client}>{c.client}</option>)}
+          </select>
+          <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={copyUpdate}>{copied ? '✓ Copied' : '📋 Copy update'}</button>
         </div>
 
-        {/* Tier mix of scheduled hours */}
-        <div className="card">
-          <div style={{ fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--accent)', marginBottom: 10 }}>Tier Mix (scheduled hours)</div>
-          {tiers.length === 0 ? (
-            <p className="page-sub" style={{ fontSize: 13, margin: 0 }}>No claimed intervals yet.</p>
-          ) : (
-            <div>
-              <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', marginBottom: 12 }}>
-                {tiers.map((t, i) => <div key={i} title={`${t.tier} ${t.pct}%`} style={{ width: t.pct + '%', background: TIER_COLOR[t.tier] || '#6b7280' }} />)}
-              </div>
-              {tiers.map((t, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', fontSize: 13.5 }}>
-                  <span><span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 2, background: TIER_COLOR[t.tier] || '#6b7280', marginRight: 8 }} />{t.tier}</span>
-                  <span style={{ fontWeight: 600 }}>{t.pct}% <span style={{ color: 'var(--ink-soft)', fontWeight: 400, fontSize: 12 }}>({t.hours}h)</span></span>
-                </div>
-              ))}
-            </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 14 }}>
+          {sel.uses_five9 && (
+            <StatCard label="Fill Rate (staffed ÷ scheduled)" big={sel.fill_rate == null ? '—' : sel.fill_rate + '%'} bigColor={rateColor(sel.fill_rate)}
+              sub={data.is_today ? `${sel.occupancy_hours_todate} / ${sel.scheduled_hours_todate} hrs to-date` : 'today only'} />
           )}
+          <StatCard label="Coverage (slots claimed)" big={(sel.coverage_pct ?? '—') + '%'} bigColor={rateColor(sel.coverage_pct)}
+            sub={`${sel.filled_spots} of ${sel.total_spots} slots`} />
+          <StatCard label="Open Slots" big={String(sel.open_spots)} bigColor={sel.open_spots > 0 ? '#b71c1c' : '#1b5e20'}
+            sub={opens.length ? `${opens.length} interval${opens.length > 1 ? 's' : ''}` : 'fully covered'} />
+          <StatCard label="Scheduled Hours" big={String(sel.scheduled_hours_full)} sub="planned slot-hours today" />
         </div>
-      </div>
 
-      <p className="page-sub" style={{ fontSize: 11.5, marginTop: 12 }}>
-        Fill rate = actual Five9 staffed hours ÷ scheduled slot-hours, counted up to now. Occupancy refreshes hourly from Five9 → BigQuery; make that export more frequent for finer intraday accuracy.
-      </p>
+        {!sel.uses_five9 && <p className="page-sub" style={{ fontSize: 12, marginTop: -4, marginBottom: 14 }}>{sel.client} isn't a Five9 dialer role, so “fill rate” here means <b>coverage</b> (slots claimed). There's no staffed-hours data for these roles.</p>}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+          {/* Open intervals to chase */}
+          <div className="card">
+            <div style={{ fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--accent)', marginBottom: 10 }}>Unassigned Intervals</div>
+            {opens.length === 0 ? (
+              <p className="page-sub" style={{ fontSize: 13, margin: 0 }}>Every interval is fully covered. 🎉</p>
+            ) : opens.map((o, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderTop: i ? '1px solid var(--line-soft)' : 'none', fontSize: 13.5 }}>
+                <span style={{ fontWeight: 600 }}>{o.start}–{o.end}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: '#fdecea', color: '#b71c1c' }}>{o.open} of {o.spots} open</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Tier mix of scheduled hours */}
+          <div className="card">
+            <div style={{ fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--accent)', marginBottom: 10 }}>Tier Mix (scheduled hours)</div>
+            {tiers.length === 0 ? (
+              <p className="page-sub" style={{ fontSize: 13, margin: 0 }}>No claimed intervals yet.</p>
+            ) : (
+              <div>
+                <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', marginBottom: 12 }}>
+                  {tiers.map((t, i) => <div key={i} title={`${t.tier} ${t.pct}%`} style={{ width: t.pct + '%', background: TIER_COLOR[t.tier] || '#6b7280' }} />)}
+                </div>
+                {tiers.map((t, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', fontSize: 13.5 }}>
+                    <span><span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 2, background: TIER_COLOR[t.tier] || '#6b7280', marginRight: 8 }} />{t.tier}</span>
+                    <span style={{ fontWeight: 600 }}>{t.pct}% <span style={{ color: 'var(--ink-soft)', fontWeight: 400, fontSize: 12 }}>({t.hours}h)</span></span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <p className="page-sub" style={{ fontSize: 11.5, marginTop: 12 }}>
+          Staffed fill rate (Five9 clients) = actual Five9 staffed hours ÷ scheduled slot-hours, to-date. Coverage = slots claimed ÷ total slots. Occupancy refreshes hourly from Five9 → BigQuery; make that export more frequent for finer intraday accuracy.
+        </p>
+        </>
+      )}
     </div>
   )
 }
