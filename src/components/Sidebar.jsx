@@ -40,6 +40,7 @@ const NAV = [
         type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
         children: [
           { to: '/schedule', label: 'Schedule Board', perm: 'schedule.view_my_schedule' },
+          { to: '/live', label: "Who's On", perm: 'live_status' },   // live check-ins + current task
           { to: '/insights', label: 'Schedule Insights', perm: 'schedule.view_insights_assigned' },
           { to: '/schedule-builder', label: 'Schedule Builder', perm: 'schedule.create_schedules' },
         ],
