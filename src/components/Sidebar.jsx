@@ -48,6 +48,7 @@ const NAV = [
         ],
       },
       { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
+      { type: 'link', to: '/tokens', label: 'Tokens', ic: '🪙', perm: 'tokens.view_own' },  // everyone; rewards wallet
       { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
     ],
   },
