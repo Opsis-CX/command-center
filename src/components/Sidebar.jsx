@@ -61,6 +61,7 @@ const NAV = [
         ],
       },
       { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
+      { type: 'link', to: '/call-qa', label: 'Call QA (AI)', ic: '🤖', perm: 'quality_audit.call_reviews' },
       { type: 'link', to: '/help', label: 'Help Center', ic: '🛟', perm: null },  // everyone; tickets are private per RLS
       {
         type: 'section', key: 'reporting', label: 'Reporting', ic: '📈',
