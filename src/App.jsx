@@ -43,6 +43,8 @@ import AssessmentForm from './modules/AssessmentForm'
 import HiringDashboard from './modules/HiringDashboard'
 // --- sales pipeline ---
 import SalesDashboard from './modules/SalesDashboard'
+// --- tokens / rewards ---
+import Tokens from './modules/Tokens'
 // A tiny wrapper so the assessment route can read :appId from the URL and
 // pass it into the form as a prop.
 import { useParams } from 'react-router-dom'
@@ -151,6 +153,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
                   everyone temporarily, replace this line with:
                   <Route path="/sales" element={<SalesDashboard />} /> */}
               {canAny(appRole, 'sales') && <Route path="/sales" element={<SalesDashboard />} />}
+              {canAny(appRole, 'tokens') && <Route path="/tokens" element={<Tokens />} />}
               {canAny(appRole, 'dashboard') && <Route path="/eod" element={<EodReportPage />} />}
               {canAny(appRole, 'weekly_sync') && <Route path="/weekly-sync" element={<WeeklySync />} />}
               {canAny(appRole, 'schedule.create_schedules') && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
@@ -170,7 +173,7 @@ function titleFor(path) {
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Home Base', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
-    '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales', '/help': 'Help Center', '/eod': 'End of Day Report',
+    '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales', '/help': 'Help Center', '/eod': 'End of Day Report', '/tokens': 'Tokens',
   }
   return map[path] || 'Command Center'
 }
