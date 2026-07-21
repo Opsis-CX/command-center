@@ -25,7 +25,6 @@ const scoreBg = (v) => (v == null ? '#f1f5f9' : v >= 85 ? '#e8f5e9' : v >= 70 ? 
 const pct = (v) => (v == null ? '—' : `${Number(v).toFixed(1)}%`)
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—')
 const fmtDur = (s) => (s == null ? '—' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`)
-const SENTIMENT = { positive: { t: '🙂 Positive', c: '#1b5e20' }, neutral: { t: '😐 Neutral', c: '#8d6e00' }, negative: { t: '🙁 Negative', c: '#b71c1c' } }
 const OUTCOME_STYLE = {
   'Booked': { bg: '#e8f5e9', fg: '#1b5e20' }, 'Not Booked': { bg: '#fdecea', fg: '#b71c1c' },
   'Transferred': { bg: '#e3f2fd', fg: '#0d47a1' }, 'No Opportunity': { bg: '#f1f5f9', fg: '#64748b' }, 'Other': { bg: '#f1f5f9', fg: '#64748b' },
@@ -63,7 +62,7 @@ export default function CallQA() {
     setLoading(true); setErr('')
     const { data, error } = await supabase
       .from('ai_qa_reviews')
-      .select('id, campaign, score_pct, auto_fail, section_scores, answers, strengths, improvements, coaching_note, sentiment, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, transcript)')
+      .select('id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, answers, strengths, improvements, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, transcript)')
       .order('created_at', { ascending: false }).limit(3000)
     if (error) { setErr(error.message); setLoading(false); return }
     setRows(data || [])
@@ -101,10 +100,9 @@ export default function CallQA() {
     const conv = opps.length ? (booked.length / opps.length) * 100 : null
     const sec = {}
     for (const s of SECTIONS) { const v = filtered.map((r) => r.section_scores?.[s.key]?.pct).filter((x) => x != null); sec[s.key] = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null }
-    const sentiments = { positive: 0, neutral: 0, negative: 0 }; filtered.forEach((r) => { if (sentiments[r.sentiment] != null) sentiments[r.sentiment]++ })
     const outcomes = {}; filtered.forEach((r) => { if (r.outcome) outcomes[r.outcome] = (outcomes[r.outcome] || 0) + 1 })
     const reasons = {}; opps.filter((r) => r.outcome === 'Not Booked').forEach((r) => { const k = r.not_booked_reason || 'Unspecified'; reasons[k] = (reasons[k] || 0) + 1 })
-    return { n, avg, opps: opps.length, booked: booked.length, conv, sec, sentiments, outcomes, reasons, flags: filtered.filter((r) => (r.risk_flags || []).length).length }
+    return { n, avg, opps: opps.length, booked: booked.length, conv, sec, outcomes, reasons, flags: filtered.filter((r) => (r.risk_flags || []).length).length }
   }, [filtered])
 
   const trend = useMemo(() => {
@@ -134,6 +132,34 @@ export default function CallQA() {
   async function setReviewStatus(reviewId, status) { await supabase.from('ai_qa_reviews').update({ status, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', reviewId); await load() }
   async function saveSetting(s) { setBusy('settings'); await supabase.from('ai_qa_settings').upsert(s, { onConflict: 'campaign' }); await load(); setBusy('') }
 
+  function exportCSV() {
+    const cols = ['call_date', 'brand', 'agent', 'source', 'direction', 'duration_sec', 'disposition', 'score_pct', 'earned', 'max',
+      'opportunity', 'outcome', 'not_booked_reason', 'opportunity_context',
+      'sec_greeting_compliance', 'sec_discovery_needs', 'sec_solution_pitch', 'sec_close_next_steps',
+      ...RUBRIC_ORDER, ...RUBRIC_ORDER.map((k) => k + '_missed'),
+      'strengths', 'improvements', 'coaching_note', 'risk_flags', 'summary', 'recording_url', 'status', 'review_id', 'call_id']
+    const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
+    const lines = [cols.join(',')]
+    filtered.forEach((r) => {
+      const c = r.call || {}, a = r.answers || {}, ss = r.section_scores || {}
+      const row = {
+        call_date: c.call_date, brand: c.brand, agent: agentOf(r), source: c.source, direction: c.direction,
+        duration_sec: c.duration_seconds, disposition: c.disposition, score_pct: r.score_pct, earned: r.earned_points, max: r.max_points,
+        opportunity: r.opportunity, outcome: r.outcome, not_booked_reason: r.not_booked_reason, opportunity_context: r.opportunity_context,
+        sec_greeting_compliance: ss.greeting_compliance?.pct, sec_discovery_needs: ss.discovery_needs?.pct,
+        sec_solution_pitch: ss.solution_pitch?.pct, sec_close_next_steps: ss.close_next_steps?.pct,
+        strengths: (r.strengths || []).join(' | '), improvements: (r.improvements || []).join(' | '),
+        coaching_note: r.coaching_note, risk_flags: (r.risk_flags || []).join(' | '), summary: r.summary,
+        recording_url: c.recording_url, status: r.status, review_id: r.id, call_id: c.id,
+      }
+      RUBRIC_ORDER.forEach((k) => { row[k] = a[k]?.answer || ''; row[k + '_missed'] = (a[k]?.misses || []).join('; ') })
+      lines.push(cols.map((k) => esc(row[k])).join(','))
+    })
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob); const link = document.createElement('a')
+    link.href = url; link.download = `call-qa-export-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url)
+  }
+
   const base = import.meta.env.VITE_SUPABASE_URL || ''
   const inFlight = (pipeline.needs_transcription || 0) + (pipeline.transcribing || 0) + (pipeline.ready || 0) + (pipeline.scoring || 0)
   const TABS = [['overview', 'Overview'], ['opportunities', 'Opportunities'], ['calls', 'Calls'], ['coaching', 'Coaching'], ...(viewAll ? [['settings', 'Settings']] : [])]
@@ -147,6 +173,7 @@ export default function CallQA() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {inFlight > 0 && <Pill bg="#fff8e1" fg="#8d6e00">⏳ {inFlight} in queue</Pill>}
+          <button onClick={exportCSV} style={btn('ghost')}>⬇ Export CSV</button>
           <button onClick={load} style={btn('ghost')}>↻ Refresh</button>
         </div>
       </div>
@@ -177,7 +204,6 @@ export default function CallQA() {
 
 function Overview({ agg, trend }) {
   const maxN = Math.max(1, ...trend.map((t) => t.n))
-  const sTotal = agg.sentiments.positive + agg.sentiments.neutral + agg.sentiments.negative || 1
   const topReasons = Object.entries(agg.reasons).sort((a, b) => b[1] - a[1]).slice(0, 6)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -281,7 +307,7 @@ function Calls({ rows, onOpen, viewAll }) {
   return (
     <Card style={{ padding: 0, overflow: 'hidden' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-        <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'Opp.', 'Outcome', 'Sentiment', 'Score', ''].map((h) => <th key={h} style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+        <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'Opp.', 'Outcome', 'Score', ''].map((h) => <th key={h} style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
         <tbody>{rows.map((r) => {
           const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
           return (
@@ -291,7 +317,6 @@ function Calls({ rows, onOpen, viewAll }) {
               <td style={{ padding: '9px 12px' }}>{c.brand || '—'}</td>
               <td style={{ padding: '9px 12px' }}>{r.opportunity ? '✅' : '—'}</td>
               <td style={{ padding: '9px 12px' }}>{r.outcome ? <Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill> : '—'}</td>
-              <td style={{ padding: '9px 12px', color: SENTIMENT[r.sentiment]?.c }}>{SENTIMENT[r.sentiment]?.t.split(' ')[0] || '—'}</td>
               <td style={{ padding: '9px 12px' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 9px', borderRadius: 8 }}>{r.auto_fail ? 'FAIL' : pct(r.score_pct)}</span></td>
               <td style={{ padding: '9px 12px', color: '#94a3b8' }}>›</td>
             </tr>
@@ -394,7 +419,7 @@ function Detail({ row, onClose, onRescore, onStatus, busy, viewAll }) {
           <Card style={{ background: '#f0fdfa', border: '1px solid #99f6e4' }}><div style={{ fontWeight: 700, marginBottom: 4, color: TEAL }}>Coaching note</div><div style={{ fontSize: 13.5, color: '#134e4a' }}>{row.coaching_note || '—'}</div></Card>
 
           <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}><div style={{ fontWeight: 700 }}>Transcript</div>{c.recording_url && <a href={c.recording_url} target="_blank" rel="noreferrer" style={{ color: TEAL, fontSize: 13 }}>▶ Recording</a>}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}><div style={{ fontWeight: 700 }}>Transcript</div>{c.recording_url && <RecordingBtn callId={c.id} />}</div>
             <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#334155', margin: 0, maxHeight: 320, overflowY: 'auto' }}>{c.transcript || 'No transcript.'}</pre>
           </Card>
 
@@ -464,6 +489,21 @@ function Select({ label, value, onChange, opts }) {
       <select value={value} onChange={(e) => onChange(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', fontSize: 13 }}>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
     </label>
   )
+}
+function RecordingBtn({ callId }) {
+  const [url, setUrl] = useState(null); const [loading, setLoading] = useState(false); const [err, setErr] = useState(false)
+  async function loadRec() {
+    setLoading(true); setErr(false)
+    try {
+      const { data, error } = await supabase.functions.invoke('callqa-recording', { body: { call_id: callId } })
+      if (error) throw error
+      const blob = data instanceof Blob ? data : new Blob([data], { type: 'audio/mpeg' })
+      setUrl(URL.createObjectURL(blob))
+    } catch (e) { setErr(true) }
+    setLoading(false)
+  }
+  if (url) return <audio controls autoPlay src={url} style={{ height: 34 }} />
+  return <button onClick={loadRec} disabled={loading} style={{ ...btn('ghost'), padding: '4px 10px', fontSize: 13 }}>{loading ? 'Loading…' : (err ? '↻ Retry' : '▶ Recording')}</button>
 }
 const inp = (w) => ({ padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', width: w, fontSize: 13 })
 function btn(kind) {
