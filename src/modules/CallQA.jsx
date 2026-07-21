@@ -25,6 +25,14 @@ const scoreBg = (v) => (v == null ? '#f1f5f9' : v >= 85 ? '#e8f5e9' : v >= 70 ? 
 const pct = (v) => (v == null ? '—' : `${Number(v).toFixed(1)}%`)
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—')
 const fmtDur = (s) => (s == null ? '—' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`)
+// Put each speaker turn on its own line with a blank line between, for readability.
+const formatTranscript = (t) => {
+  if (!t) return ''
+  return t
+    .replace(/\s*\b(Agent|Caller|Customer|Rep|Speaker\s*\d+)\s*:\s*/g, '\n\n$1: ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
 const OUTCOME_STYLE = {
   'Booked': { bg: '#e8f5e9', fg: '#1b5e20' }, 'Not Booked': { bg: '#fdecea', fg: '#b71c1c' },
   'Transferred': { bg: '#e3f2fd', fg: '#0d47a1' }, 'No Opportunity': { bg: '#f1f5f9', fg: '#64748b' }, 'Other': { bg: '#f1f5f9', fg: '#64748b' },
@@ -420,7 +428,7 @@ function Detail({ row, onClose, onRescore, onStatus, busy, viewAll }) {
 
           <Card>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}><div style={{ fontWeight: 700 }}>Transcript</div>{c.recording_url && <RecordingBtn callId={c.id} />}</div>
-            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#334155', margin: 0, maxHeight: 320, overflowY: 'auto' }}>{c.transcript || 'No transcript.'}</pre>
+            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#334155', margin: 0, maxHeight: 320, overflowY: 'auto', lineHeight: 1.5 }}>{formatTranscript(c.transcript) || 'No transcript.'}</pre>
           </Card>
 
           {viewAll && (
