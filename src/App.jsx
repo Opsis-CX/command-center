@@ -11,7 +11,6 @@ import Sidebar from './components/Sidebar'
 import Certifications from './modules/Certifications'
 import MyCertifications from './modules/MyCertifications'
 import MyCourses from './modules/MyCourses'
-import Dashboard from './modules/Dashboard'
 import { Placeholder } from './modules/Placeholders'
 import PeopleTags from './modules/PeopleTags'
 import CourseBuilder from './modules/CourseBuilder'
@@ -108,7 +107,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
           </div>
           <div className="content">
             <Routes>
-              <Route path="/" element={<Dashboard />} />
+              <Route path="/" element={<OpsisWeekly />} />
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/notifications" element={<Notifications />} />
@@ -140,7 +139,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {canAny(appRole, 'schedule.create_schedules') && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
               {canAny(appRole, 'positions.view_only') && <Route path="/positions" element={<Positions />} />}
               {(canAny(appRole, 'schedule.all') || canAny(appRole, 'schedule.view_insights_assigned')) && <Route path="/insights" element={<ScheduleInsights />} />}
-              <Route path="*" element={<Dashboard />} />
+              <Route path="*" element={<OpsisWeekly />} />
             </Routes>
           </div>
         </main>
@@ -150,10 +149,10 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
 }
 function titleFor(path) {
   const map = {
-    '/': 'Dashboard', '/certifications': 'Certifications',
+    '/': 'Home Base', '/certifications': 'Certifications',
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
-    '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
+    '/chat': 'Chat', '/updates': 'Updates', '/home': 'Home Base', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales', '/help': 'Help Center',
   }
   return map[path] || 'Command Center'
