@@ -75,6 +75,9 @@ const MATRIX = {
   'tokens.view_own': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
   'tokens.award': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'tokens.admin': ['admin'],
+  // Who's On — live check-ins + current task (floor oversight). Restores the
+  // old Dashboard's "On now" view.
+  'live_status': ['admin', 'asc', 'certification', 'quality'],
 }
 // can(role, "schedule.create_schedules") -> boolean
 export function can(role, perm) {
