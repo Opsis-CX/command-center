@@ -43,6 +43,9 @@ import AssessmentForm from './modules/AssessmentForm'
 import HiringDashboard from './modules/HiringDashboard'
 // --- sales pipeline ---
 import SalesDashboard from './modules/SalesDashboard'
+// --- RSN pipeline (tag-gated variant of Sales with LinkedIn stages) ---
+import RsnPipeline from './modules/RsnPipeline'
+import { useRsnAccess } from './lib/rsnAccess'
 // --- tokens / rewards ---
 import Tokens from './modules/Tokens'
 // --- live "who's on" status (restored from the old Dashboard) ---
@@ -111,6 +114,8 @@ export default function App() {
 // Everything behind the login gate. Split out so the must-change-password
 // check can run with a session guaranteed to exist.
 function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location }) {
+  // RSN pipeline visibility (admins + anyone with the 'access/rsn' tag).
+  const rsnOk = useRsnAccess()
   // Agents handed the shared temporary password must set their own before
   // they can use the app. Checked once, on load.
   const [mustChange, setMustChange] = useState(null) // null = still checking
@@ -170,6 +175,9 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
                   everyone temporarily, replace this line with:
                   <Route path="/sales" element={<SalesDashboard />} /> */}
               {canAny(appRole, 'sales') && <Route path="/sales" element={<SalesDashboard />} />}
+              {/* RSN pipeline — tag-gated (admins + 'access/rsn' tag). Same board
+                  as Sales with LinkedIn Message 1/2/3; RsnPipeline re-checks access. */}
+              {rsnOk && <Route path="/rsn" element={<RsnPipeline />} />}
               {canAny(appRole, 'tokens') && <Route path="/tokens" element={<Tokens />} />}
               {canAny(appRole, 'live_status') && <Route path="/live" element={<LiveStatusPage />} />}
               {canAny(appRole, 'dashboard') && <Route path="/eod" element={<EodReportPage />} />}
@@ -191,7 +199,7 @@ function titleFor(path) {
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Home Base', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
-    '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales', '/help': 'Help Center', '/eod': 'End of Day Report', '/tokens': 'Tokens', '/live': "Who's On",
+    '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales', '/rsn': 'RSN Pipeline', '/help': 'Help Center', '/eod': 'End of Day Report', '/tokens': 'Tokens', '/live': "Who's On",
   }
   return map[path] || 'Command Center'
 }
