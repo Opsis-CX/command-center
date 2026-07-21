@@ -63,6 +63,7 @@ export default function ScheduleBuilder() {
   const [copyFor, setCopyFor] = useState(null)             // schedule obj for copy modal
   const [viewBySchedule, setViewBySchedule] = useState({}) // scheduleId -> 'list' | 'grid'
   const [tab, setTab] = useState('schedules')              // 'schedules' | 'review'
+  const [schedSearch, setSchedSearch] = useState('')       // filter the schedules list
   const [meId, setMeId] = useState(null)
 
   const load = useCallback(async () => {
@@ -143,7 +144,23 @@ export default function ScheduleBuilder() {
           onDone={(msg) => { setToast(msg); load(); setTimeout(() => setToast(''), 2500) }} />
       ) : schedules.length === 0 ? (
         <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 24 }}>No schedules yet. Click <b>+ New schedule</b> to create one.</div></div>
-      ) : schedules.map(s => {
+      ) : (
+        <>
+        <div style={{ marginBottom: 14 }}>
+          <input value={schedSearch} onChange={e => setSchedSearch(e.target.value)}
+            placeholder="Search schedules by name, client, or position…"
+            style={{ width: '100%', maxWidth: 440, padding: '9px 12px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, background: 'var(--surface)', color: 'var(--ink)', outline: 'none' }} />
+        </div>
+        {(() => {
+          const q = schedSearch.trim().toLowerCase()
+          const visible = schedules.filter(s => {
+            if (!q) return true
+            const cn = (clients.find(cl => cl.id === s.client_id)?.name || '').toLowerCase()
+            const ctn = (callTypes.find(ct => ct.id === s.call_type_id)?.name || '').toLowerCase()
+            return (s.title || '').toLowerCase().includes(q) || cn.includes(q) || ctn.includes(q)
+          }).slice().sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }))
+          if (!visible.length) return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 20 }}>No schedules match “{schedSearch}”.</div></div>
+          return visible.map(s => {
         const sBlocks = blocks.filter(b => b.schedule_id === s.id).sort((a, b) => (a.block_date + a.start_time).localeCompare(b.block_date + b.start_time))
         const totalSpots = sBlocks.reduce((sum, b) => sum + b.total_spots, 0)
         const totalClaimed = sBlocks.reduce((sum, b) => sum + claims.filter(c => c.shift_block_id === b.id).length, 0)
@@ -204,7 +221,10 @@ export default function ScheduleBuilder() {
             })}
           </div>
         )
-      })}
+          })
+        })()}
+        </>
+      )}
 
       {editSchedule && <ScheduleModal schedule={editSchedule} callTypes={callTypes} clients={clients} profiles={profiles} audience={audience}
         onClose={() => setEditSchedule(null)} onSaved={() => { setEditSchedule(null); load(); flash('Schedule saved') }} />}
@@ -381,6 +401,7 @@ function ScheduleModal({ schedule, callTypes, clients, profiles, audience, onClo
   const [callTypeId, setCallTypeId] = useState(schedule.call_type_id || (callTypes.filter(c => c.active !== false)[0]?.id || ''))
   const [clientId, setClientId] = useState(schedule.client_id || '')
   const [picked, setPicked] = useState(() => new Set(audience.filter(a => a.schedule_id === schedule.id).map(a => a.profile_id)))
+  const [audQ, setAudQ] = useState('')   // filter the audience people list
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -451,8 +472,10 @@ function ScheduleModal({ schedule, callTypes, clients, profiles, audience, onClo
 
         <div className="field">
           <label>Audience <span style={{ fontWeight: 400 }}>(who can see this schedule)</span></label>
+          <input value={audQ} onChange={e => setAudQ(e.target.value)} placeholder="Search people…"
+            style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13.5, marginBottom: 6, background: 'var(--surface)', color: 'var(--ink)', outline: 'none', boxSizing: 'border-box' }} />
           <div style={{ border: '1px solid var(--line)', borderRadius: 8, padding: 8, maxHeight: 220, overflow: 'auto' }}>
-            {profiles.map(p => (
+            {profiles.filter(p => (p.full_name || '').toLowerCase().includes(audQ.trim().toLowerCase())).map(p => (
               <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', borderRadius: 6, cursor: 'pointer', background: picked.has(p.id) ? 'var(--accent-bg)' : 'transparent' }}>
                 <input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePerson(p.id)} />
                 <span style={{ fontSize: 13.5, fontWeight: 500 }}>{p.full_name}</span>
