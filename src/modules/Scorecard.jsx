@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { can } from '../lib/permissions'
 
 // Google Calendar appointment schedule for 1:1 coaching sessions.
 const COACHING_BOOKING_URL = 'https://calendar.google.com/calendar/u/0/appointments/schedules/AcZssZ3P6W-GsPBWhYjGd6hZ0Tc-QZbGsL09mvQEIhQM7F-VyBeCtt4S4THBAJTMolouBe7YF1lfztrl'
@@ -14,8 +15,11 @@ const COACHING_BOOKING_URL = 'https://calendar.google.com/calendar/u/0/appointme
 // tier/rank/schedule-release are computed by the sc_scorecard view.
 // ============================================================
 
-const MANAGER_ROLES = ['asc', 'certification', 'marketing', 'admin']
-const isManager = (r) => MANAGER_ROLES.includes(String(r || 'agent').trim().toLowerCase())
+// Who can see the WHOLE team's scorecards vs. only their own. Sourced from the
+// permission matrix (view_all_scorecards = asc/certification/quality/marketing/admin).
+// Everyone else — agents included — may only ever see their own card. This is also
+// enforced server-side by the sc_scorecard view (can_view_all_scorecards()).
+const canViewAll = (r) => can(r, 'service_performance_scorecard.view_all_scorecards')
 const isAdmin = (r) => String(r || 'agent').trim().toLowerCase() === 'admin'
 // Notes & Anecdotal Feedback is limited to ASC and admins (plus the agent
 // viewing their own card). Certification/marketing managers can open the rest
@@ -39,7 +43,7 @@ const TIER_STYLE = {
 
 export default function Scorecard() {
   const { appRole, user } = useAuth()
-  const manager = isManager(appRole)
+  const viewAll = canViewAll(appRole)
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
@@ -47,7 +51,11 @@ export default function Scorecard() {
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
-    const { data, error } = await supabase.from('sc_scorecard').select('*')
+    // Agents may only ever load their OWN row (also enforced by the sc_scorecard
+    // view server-side); managers/admins load the whole team.
+    let query = supabase.from('sc_scorecard').select('*')
+    if (!viewAll) query = query.eq('profile_id', user?.id)
+    const { data, error } = await query
     if (error) { setErr(error.message); setLoading(false); return }
     // sort: active by rank, then others
     const sorted = (data || []).slice().sort((a, b) => {
@@ -57,13 +65,13 @@ export default function Scorecard() {
       return a.agent_rank - b.agent_rank
     })
     setRows(sorted)
-    // an agent viewing their own: auto-open their card
-    if (!isManager(appRole)) {
-      const mine = sorted.find(r => r.profile_id === user?.id)
+    // Non-managers always land straight on their own card (never the team table).
+    if (!viewAll) {
+      const mine = sorted.find(r => r.profile_id === user?.id) || sorted[0] || null
       setSelected(mine ? mine.agent_name : null)
     }
     setLoading(false)
-  }, [appRole, user])
+  }, [viewAll, user])
   useEffect(() => { load() }, [load])
 
   if (loading) return <div><h1 className="page-title">Service Performance Scorecard</h1><p className="page-sub">Loading…</p></div>
@@ -73,7 +81,20 @@ export default function Scorecard() {
     const row = rows.find(r => r.agent_name === selected)
     const coach = canCoachNotes(appRole)
     const ownCard = row?.profile_id === user?.id
-    return <AgentScorecard row={row} canCoach={coach} canSeeNotes={coach || ownCard} onBack={manager ? () => setSelected(null) : null} />
+    return <AgentScorecard row={row} canCoach={coach} canSeeNotes={coach || ownCard} onBack={viewAll ? () => setSelected(null) : null} />
+  }
+
+  // Agents never see the team table. If their row isn't available yet, show an
+  // empty own-state rather than falling through to the full-team view.
+  if (!viewAll) {
+    return (
+      <div>
+        <h1 className="page-title">Service Performance Scorecard</h1>
+        <div className="card" style={{ marginTop: 16 }}>
+          <p className="page-sub">Your scorecard isn't available yet. Once you've been scheduled and started taking calls, your personal scorecard will appear here.</p>
+        </div>
+      </div>
+    )
   }
 
   // Manager team view
