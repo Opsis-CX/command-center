@@ -73,7 +73,7 @@ const MATRIX = {
   // managers can award (drawing from a per-manager budget); admins manage
   // budgets, catalog, adjustments and the Tremendous connection.
   'tokens.view_own': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
-  'tokens.award': ['asc', 'certification', 'quality', 'marketing', 'admin'],
+  'tokens.award': ['asc', 'certification', 'admin'],
   'tokens.admin': ['admin'],
   // Who's On — live check-ins + current task (floor oversight). Restores the
   // old Dashboard's "On now" view.
