@@ -206,14 +206,21 @@ function StaffingView({ dateFilter, label, publishedBlocks, clientNameForBlock, 
       <TierFillBar breakdown={tierBreakdown(set)} tiers={tiers} />
       {Object.keys(byClient).sort().map(clientName => {
         const cBlocks = byClient[clientName]
+        // per-client fill rate (coverage: claimed ÷ total spots)
+        const cTotal = cBlocks.reduce((s, b) => s + b.total_spots, 0)
+        const cFilled = cBlocks.reduce((s, b) => s + claimsFor(b.id).length, 0)
+        const cPct = cTotal ? Math.round((cFilled / cTotal) * 100) : 0
         // group by hour
         const byHour = {}
         cBlocks.forEach(b => { const hk = b.start_time.slice(0, 5); (byHour[hk] = byHour[hk] || []).push(b) })
         return (
           <div className="card" key={clientName} style={{ marginBottom: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
               <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{clientName}</h3>
-              <span className="page-sub" style={{ fontSize: 12 }}>{cBlocks.length} interval{cBlocks.length !== 1 ? 's' : ''}</span>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span className="badge" style={{ background: cPct >= 95 ? 'var(--passed-bg)' : cPct >= 90 ? 'var(--needed-bg)' : 'var(--failed-bg)', color: cPct >= 95 ? 'var(--passed)' : cPct >= 90 ? 'var(--needed)' : 'var(--failed)' }}>Fill rate {cFilled}/{cTotal} ({cPct}%)</span>
+                <span className="page-sub" style={{ fontSize: 12 }}>{cBlocks.length} interval{cBlocks.length !== 1 ? 's' : ''}</span>
+              </div>
             </div>
             {Object.keys(byHour).sort().map(hk => (
               <div key={hk} style={{ borderTop: '1px solid var(--line-soft)', padding: '10px 0' }}>
