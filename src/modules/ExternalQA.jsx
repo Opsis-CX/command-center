@@ -27,7 +27,7 @@ const NOT_BOOKED_REASONS = [
 // possible points (standard QA math), so scores stay fair.
 export const QA_SECTIONS = [
   { key: 'greeting', label: 'Did the agent use an appropriate greeting?', points: 5, na: false,
-    misses: ['Branding', 'Name', 'Offering Assistance', 'Acknowledged the reason for the call'] },
+    misses: ['Branding', 'Name', 'Offering Assistance', 'Acknowledged the reason for the call', 'Delayed Greeting'] },
   { key: 'verify', label: "Did the agent verify the customer's information?", points: 10, na: true,
     misses: ['Name', 'Phone Number', 'Email', 'Address', 'Preferred contact method — New Customer Only', 'How they heard about GarageCo — New Customer Only'] },
   { key: 'callflow', label: 'Did the agent follow the correct call flow and set expectations?', points: 15, na: false,
