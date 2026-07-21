@@ -35,6 +35,7 @@ import Notifications from './modules/Notifications'
 import KnowledgeBase from './modules/KnowledgeBase'
 import Scorecard from './modules/Scorecard'
 import QualityAudit from './modules/QualityAudit'
+import CallQA from './modules/CallQA'
 import HelpCenter from './modules/HelpCenter'
 import { UnreadProvider } from './lib/unread'
 // --- hiring pipeline ---
@@ -155,6 +156,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {canAny(appRole, 'service_performance_scorecard') && <Route path="/scorecard" element={<Scorecard />} />}
               <Route path="/help" element={<HelpCenter />} />
               <Route path="/quality" element={(canAny(appRole, 'quality_audit.view_own') || canAny(appRole, 'quality_audit.call_reviews')) ? <QualityAudit /> : <Placeholder title="No access" note="You don't have access to this area." />} />
+              <Route path="/call-qa" element={canAny(appRole, 'quality_audit.call_reviews') ? <CallQA /> : <Placeholder title="No access" note="You don't have access to this area." />} />
               <Route path="/schedule" element={<Schedule />} />
               <Route path="/chat" element={canAny(appRole, 'chat') ? <Chat /> : <Placeholder title="No access" note="You don't have access to this area." />} />
               {canAny(appRole, 'certifications.all') && <Route path="/certifications" element={<Certifications />} />}
@@ -199,7 +201,7 @@ function titleFor(path) {
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Home Base', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
-    '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales', '/rsn': 'RSN Pipeline', '/help': 'Help Center', '/eod': 'End of Day Report', '/tokens': 'Tokens', '/live': "Who's On",
+    '/hiring': 'Hiring', '/quality': 'Quality', '/call-qa': 'Call QA', '/sales': 'Sales', '/rsn': 'RSN Pipeline', '/help': 'Help Center', '/eod': 'End of Day Report', '/tokens': 'Tokens', '/live': "Who's On",
   }
   return map[path] || 'Command Center'
 }
