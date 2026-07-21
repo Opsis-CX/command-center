@@ -21,7 +21,7 @@ const MATRIX = {
   'quality_audit': ['certification', 'admin'],
   'quality_audit.enter_audits': ['certification', 'admin'],
   'quality_audit.view_own': ['certification', 'admin'],
-  'quality_audit.call_reviews': ['agent', 'certification', 'admin'],
+  'quality_audit.call_reviews': ['certification', 'admin'],
   'service_performance_scorecard.view_personal_scorecard': ['agent', 'admin'],
   'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard.edit_scorecard': ['admin'],
