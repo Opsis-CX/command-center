@@ -45,6 +45,8 @@ import HiringDashboard from './modules/HiringDashboard'
 import SalesDashboard from './modules/SalesDashboard'
 // --- tokens / rewards ---
 import Tokens from './modules/Tokens'
+// --- live "who's on" status (restored from the old Dashboard) ---
+import LiveStatus from './modules/LiveStatus'
 // A tiny wrapper so the assessment route can read :appId from the URL and
 // pass it into the form as a prop.
 import { useParams } from 'react-router-dom'
@@ -64,6 +66,21 @@ function EodReportPage() {
         <p className="page-sub">Your tracked tasks fill in automatically — add anything the tracker can't capture, then submit before you sign off.</p>
       </div>
       <EodReportCard />
+    </div>
+  )
+}
+// Who's On — restores the live check-in / current-task view (the old Dashboard's
+// "On now" panel). LiveStatus self-scopes: admins/managers see the whole team,
+// agents see themselves. Gated to the floor-oversight roles by the 'live_status'
+// page-key.
+function LiveStatusPage() {
+  return (
+    <div>
+      <div style={{ marginBottom: 12 }}>
+        <h1 className="page-title">Who's On</h1>
+        <p className="page-sub">Live check-ins and what each person is working on right now.</p>
+      </div>
+      <LiveStatus />
     </div>
   )
 }
@@ -154,6 +171,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
                   <Route path="/sales" element={<SalesDashboard />} /> */}
               {canAny(appRole, 'sales') && <Route path="/sales" element={<SalesDashboard />} />}
               {canAny(appRole, 'tokens') && <Route path="/tokens" element={<Tokens />} />}
+              {canAny(appRole, 'live_status') && <Route path="/live" element={<LiveStatusPage />} />}
               {canAny(appRole, 'dashboard') && <Route path="/eod" element={<EodReportPage />} />}
               {canAny(appRole, 'weekly_sync') && <Route path="/weekly-sync" element={<WeeklySync />} />}
               {canAny(appRole, 'schedule.create_schedules') && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
@@ -173,7 +191,7 @@ function titleFor(path) {
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Home Base', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
-    '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales', '/help': 'Help Center', '/eod': 'End of Day Report', '/tokens': 'Tokens',
+    '/hiring': 'Hiring', '/quality': 'Quality', '/sales': 'Sales', '/help': 'Help Center', '/eod': 'End of Day Report', '/tokens': 'Tokens', '/live': "Who's On",
   }
   return map[path] || 'Command Center'
 }
