@@ -5,6 +5,7 @@ import { useUnread } from '../lib/unread'
 import { supabase } from '../lib/supabase'
 import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
 import { canAny } from '../lib/permissions'
+import { useRsnAccess } from '../lib/rsnAccess'
 import ChangePassword from './ChangePassword'
 
 // Sidebar navigation, organized into labelled GROUPS.
@@ -77,6 +78,7 @@ const NAV = [
         ],
       },
       { type: 'link', to: '/sales', label: 'Sales', ic: '💼', perm: 'sales' },
+      { type: 'link', to: '/rsn', label: 'RSN Pipeline', ic: '🔗', perm: null, rsnGate: true },
       { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧑‍💼', perm: 'hiring' },
       { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },  // everyone gets calendar
       {
@@ -93,6 +95,7 @@ const NAV = [
 
 export default function Sidebar({ open, onNavigate }) {
   const { isAdmin, level, roles, user, signOut, appRole } = useAuth()
+  const rsnOk = useRsnAccess()   // RSN pipeline link: admins + 'access/rsn' tag
   const { total: unreadTotal } = useUnread()
   const location = useLocation()
 
@@ -142,7 +145,10 @@ export default function Sidebar({ open, onNavigate }) {
   // Is a single item visible to this person? Used to decide whether a group
   // header should render at all.
   const itemVisible = (item) => {
-    if (item.type === 'link') return !item.perm || canAny(appRole, item.perm)
+    if (item.type === 'link') {
+      if (item.rsnGate) return !!rsnOk
+      return !item.perm || canAny(appRole, item.perm)
+    }
     return item.children.some(c => !c.perm || canAny(appRole, c.perm))
   }
 
@@ -150,7 +156,7 @@ export default function Sidebar({ open, onNavigate }) {
   const renderItem = (item) => {
     // --- single top-level link ---
     if (item.type === 'link') {
-      if (item.perm && !canAny(appRole, item.perm)) return null
+      if (item.rsnGate ? !rsnOk : (item.perm && !canAny(appRole, item.perm))) return null
       return (
         <NavLink key={item.to} to={item.to} end={item.end}
           onClick={() => onNavigate && onNavigate()}
