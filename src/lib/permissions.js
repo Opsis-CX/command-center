@@ -1,6 +1,9 @@
 // Permissions matrix — generated from the Command Center Roles sheet (updated Jul 2026).
 // Each key is page or page.capability; value lists which roles have it.
 // Roles: agent, asc (Agent Support Coordinator), support, certification, quality, marketing, sales, admin
+// Plus 'client' — an EXTERNAL client-portal login. Not an Opsis staff role: it
+// grants access to exactly one thing (the Call QA reviews for that client's own
+// data) and nothing else. Never add 'client' to any other permission key.
 export const ROLES = [
   { key: 'admin', label: 'Admin' },
   { key: 'asc', label: 'Agent Support Coordinator' },
@@ -10,6 +13,7 @@ export const ROLES = [
   { key: 'marketing', label: 'Marketing' },
   { key: 'sales', label: 'Sales' },
   { key: 'agent', label: 'Agent' },
+  { key: 'client', label: 'Client (Portal)' },
 ]
 // For each permission, the set of roles that have it.
 const MATRIX = {
@@ -18,10 +22,11 @@ const MATRIX = {
   'service_performance_scorecard': ['agent'],
   // Quality Audit isn't on the roles sheet — left as-is. Confirm whether the new
   // "quality" role should be added here (and to is_qa_auditor() in Supabase).
-  'quality_audit': ['certification', 'admin'],
+  'quality_audit': ['certification', 'admin', 'client'],
   'quality_audit.enter_audits': ['certification', 'admin'],
   'quality_audit.view_own': ['certification', 'admin'],
-  'quality_audit.call_reviews': ['certification', 'admin'],
+  // 'client' can view the AI Call QA reviews (their own data only, enforced by RLS).
+  'quality_audit.call_reviews': ['certification', 'admin', 'client'],
   'service_performance_scorecard.view_personal_scorecard': ['agent', 'admin'],
   'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard.edit_scorecard': ['admin'],
