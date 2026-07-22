@@ -89,7 +89,7 @@ function LiveStatusPage() {
   )
 }
 export default function App() {
-  const { session, loading, isAdmin, appRole } = useAuth()
+  const { session, loading, isAdmin, appRole, clientId } = useAuth()
   const [navOpen, setNavOpen] = useState(false)
   const location = useLocation()
   // apply the saved light/dark/system theme as early as possible
@@ -110,8 +110,61 @@ export default function App() {
     )
   }
   if (!session) return <Login />
+  // External client-portal login: a branded, single-purpose shell that shows ONLY
+  // Call QA (their own data, RLS-enforced). No sidebar, no other modules.
+  if (appRole === 'client') return <ClientPortal session={session} clientId={clientId} />
   return <AuthedApp session={session} isAdmin={isAdmin} appRole={appRole} navOpen={navOpen} setNavOpen={setNavOpen} location={location} />
 }
+// External client portal — a branded, single-page shell that renders ONLY the
+// Call QA module in portal mode. Clients see their own calls (RLS-enforced),
+// can export and add notes, but never manager controls or any other module.
+function ClientPortal({ session, clientId }) {
+  const { signOut } = useAuth()
+  const [brand, setBrand] = useState(null)          // { portal_name, portal_accent, portal_logo_url, name }
+  const [mustChange, setMustChange] = useState(null) // null = still checking
+
+  useEffect(() => {
+    let active = true
+    supabase.from('profiles').select('must_change_password').eq('id', session.user.id).single()
+      .then(({ data }) => { if (active) setMustChange(!!data?.must_change_password) })
+      .catch(() => { if (active) setMustChange(false) })
+    return () => { active = false }
+  }, [session.user.id])
+
+  useEffect(() => {
+    let active = true
+    if (!clientId) { setBrand({}); return }
+    supabase.from('clients').select('name, portal_name, portal_accent, portal_logo_url').eq('id', clientId).maybeSingle()
+      .then(({ data }) => { if (active) setBrand(data || {}) })
+      .catch(() => { if (active) setBrand({}) })
+    return () => { active = false }
+  }, [clientId])
+
+  if (mustChange === null || brand === null) return <div className="loading-screen">Loading…</div>
+  if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
+
+  const accent = brand.portal_accent || '#0f766e'
+  const name = brand.portal_name || brand.name || 'Call QA'
+  return (
+    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+      <header style={{ background: accent, color: '#fff', padding: '0 20px', height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {brand.portal_logo_url
+            ? <img src={brand.portal_logo_url} alt={name} style={{ height: 32, width: 'auto', borderRadius: 4, background: '#fff', padding: 2 }} />
+            : <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: 0.3 }}>{name}</div>}
+          <span style={{ fontSize: 13, opacity: 0.85 }}>Call Quality &amp; Conversion</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <span style={{ fontSize: 13, opacity: 0.9 }}>{session.user.email}</span>
+          <button onClick={() => signOut()} style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Sign out</button>
+        </div>
+      </header>
+      <CallQA portal />
+      <footer style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: '24px 0 32px' }}>Powered by Opsis CX</footer>
+    </div>
+  )
+}
+
 // Everything behind the login gate. Split out so the must-change-password
 // check can run with a session guaranteed to exist.
 function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location }) {
