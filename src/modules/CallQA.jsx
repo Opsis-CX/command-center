@@ -38,6 +38,23 @@ const OUTCOME_STYLE = {
   'Transferred': { bg: '#e3f2fd', fg: '#0d47a1' }, 'No Opportunity': { bg: '#f1f5f9', fg: '#64748b' }, 'Other': { bg: '#f1f5f9', fg: '#64748b' },
 }
 const agentOf = (r) => r.call?.agent_name || r.extracted_agent_name || 'Unknown'
+// A review counts toward scores only if it's a real conversation and not manually excluded.
+const isScored = (r) => r.scoreable !== false && !r.excluded && r.score_pct != null
+const CLASS_LABEL = { wrong_number: 'Wrong number', ivr_only: 'IVR only', voicemail: 'Voicemail', no_agent: 'No agent', spam: 'Spam' }
+// Recompute a review's totals from (possibly manager-edited) answers.
+function recomputeReview(answers) {
+  let earned = 0, max = 0; const sec = {}
+  Object.values(answers || {}).forEach((a) => {
+    const na = a.na || a.answer === 'na'
+    const itemMax = Number(a.max) || 0
+    const got = na ? 0 : (a.answer === 'yes' ? itemMax : (a.answer === 'no' ? 0 : Number(a.points) || 0))
+    if (!na) { max += itemMax; earned += got }
+    const s = a.section || 'other'; sec[s] ??= { earned: 0, max: 0 }; if (!na) { sec[s].max += itemMax; sec[s].earned += got }
+  })
+  const pct = max > 0 ? Math.round((earned / max) * 1000) / 10 : 0
+  const section_scores = {}; for (const [s, v] of Object.entries(sec)) section_scores[s] = { earned: v.earned, max: v.max, pct: v.max ? Math.round((v.earned / v.max) * 1000) / 10 : null }
+  return { earned, max, pct, section_scores }
+}
 
 const Card = ({ children, style }) => <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16, ...style }}>{children}</div>
 const Tile = ({ label, value, sub, color }) => (
@@ -70,7 +87,7 @@ export default function CallQA() {
     setLoading(true); setErr('')
     const { data, error } = await supabase
       .from('ai_qa_reviews')
-      .select('id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, answers, strengths, improvements, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, transcript)')
+      .select('id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, answers, strengths, improvements, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, transcript)')
       .order('created_at', { ascending: false }).limit(3000)
     if (error) { setErr(error.message); setLoading(false); return }
     setRows(data || [])
@@ -101,21 +118,22 @@ export default function CallQA() {
   const brands = useMemo(() => Array.from(new Set(rows.map((r) => r.call?.brand).filter(Boolean))).sort(), [rows])
 
   const agg = useMemo(() => {
-    const n = filtered.length
-    const avg = n ? filtered.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / n : null
+    const scored = filtered.filter(isScored)
+    const n = scored.length
+    const avg = n ? scored.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / n : null
     const opps = filtered.filter((r) => r.opportunity)
     const booked = opps.filter((r) => r.outcome === 'Booked')
     const conv = opps.length ? (booked.length / opps.length) * 100 : null
     const sec = {}
-    for (const s of SECTIONS) { const v = filtered.map((r) => r.section_scores?.[s.key]?.pct).filter((x) => x != null); sec[s.key] = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null }
+    for (const s of SECTIONS) { const v = scored.map((r) => r.section_scores?.[s.key]?.pct).filter((x) => x != null); sec[s.key] = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null }
     const outcomes = {}; filtered.forEach((r) => { if (r.outcome) outcomes[r.outcome] = (outcomes[r.outcome] || 0) + 1 })
     const reasons = {}; opps.filter((r) => r.outcome === 'Not Booked').forEach((r) => { const k = r.not_booked_reason || 'Unspecified'; reasons[k] = (reasons[k] || 0) + 1 })
-    return { n, avg, opps: opps.length, booked: booked.length, conv, sec, outcomes, reasons, flags: filtered.filter((r) => (r.risk_flags || []).length).length }
+    return { n, avg, total: filtered.length, excluded: filtered.length - n, opps: opps.length, booked: booked.length, conv, sec, outcomes, reasons, flags: filtered.filter((r) => (r.risk_flags || []).length).length }
   }, [filtered])
 
   const trend = useMemo(() => {
     const m = new Map()
-    filtered.forEach((r) => { const d = (r.call?.call_date) || r.created_at.slice(0, 10); if (!m.has(d)) m.set(d, []); m.get(d).push(Number(r.score_pct) || 0) })
+    filtered.filter(isScored).forEach((r) => { const d = (r.call?.call_date) || r.created_at.slice(0, 10); if (!m.has(d)) m.set(d, []); m.get(d).push(Number(r.score_pct) || 0) })
     return Array.from(m.entries()).map(([d, arr]) => ({ d, avg: arr.reduce((a, b) => a + b, 0) / arr.length, n: arr.length })).sort((a, b) => a.d.localeCompare(b.d))
   }, [filtered])
 
@@ -123,21 +141,28 @@ export default function CallQA() {
     const m = new Map()
     filtered.forEach((r) => {
       const a = agentOf(r); if (!m.has(a)) m.set(a, { name: a, scores: [], improvements: {}, strengths: {}, calls: 0, opps: 0, booked: 0 })
-      const o = m.get(a); o.calls++; o.scores.push(Number(r.score_pct) || 0)
+      const o = m.get(a); o.calls++
+      if (isScored(r)) o.scores.push(Number(r.score_pct) || 0)
       if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') o.booked++ }
-      ;(r.improvements || []).forEach((i) => o.improvements[i] = (o.improvements[i] || 0) + 1)
-      ;(r.strengths || []).forEach((i) => o.strengths[i] = (o.strengths[i] || 0) + 1)
+      if (isScored(r)) { (r.improvements || []).forEach((i) => o.improvements[i] = (o.improvements[i] || 0) + 1); (r.strengths || []).forEach((i) => o.strengths[i] = (o.strengths[i] || 0) + 1) }
     })
     return Array.from(m.values()).map((o) => ({
-      ...o, avg: o.scores.reduce((a, b) => a + b, 0) / o.scores.length,
+      ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
       conv: o.opps ? (o.booked / o.opps) * 100 : null,
       topWeak: Object.entries(o.improvements).sort((a, b) => b[1] - a[1]).slice(0, 3),
       topStrong: Object.entries(o.strengths).sort((a, b) => b[1] - a[1]).slice(0, 3),
-    })).sort((a, b) => b.avg - a.avg)
+    })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
   }, [filtered])
 
   async function rescore(callId) { setBusy(callId); try { const { error } = await supabase.functions.invoke('callqa-score', { body: { call_id: callId } }); if (error) throw error; await load() } catch (e) { alert('Re-score failed: ' + (e.message || e)) } setBusy('') }
   async function setReviewStatus(reviewId, status) { await supabase.from('ai_qa_reviews').update({ status, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', reviewId); await load() }
+  async function setExcluded(reviewId, val) { setBusy(reviewId); await supabase.from('ai_qa_reviews').update({ excluded: val, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', reviewId); await load(); setBusy('') }
+  async function saveAdjustment(reviewId, answers, note) {
+    setBusy(reviewId)
+    const { earned, max, pct, section_scores } = recomputeReview(answers)
+    await supabase.from('ai_qa_reviews').update({ answers, earned_points: earned, max_points: max, score_pct: pct, section_scores, manager_adjusted: true, adjustment_note: note || null, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', reviewId)
+    await load(); setBusy('')
+  }
   async function saveSetting(s) { setBusy('settings'); await supabase.from('ai_qa_settings').upsert(s, { onConflict: 'campaign' }); await load(); setBusy('') }
 
   function exportCSV() {
@@ -205,7 +230,7 @@ export default function CallQA() {
           {tab === 'settings' && viewAll && <SettingsTab settings={settings} secretKeys={secretKeys} pipeline={pipeline} base={base} onSave={saveSetting} busy={busy} />}
         </>
       )}
-      {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onStatus={setReviewStatus} busy={busy} viewAll={viewAll} />}
+      {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onExclude={setExcluded} onAdjust={saveAdjustment} busy={busy} viewAll={viewAll} />}
     </div>
   )
 }
@@ -217,6 +242,7 @@ function Overview({ agg, trend }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Tile label="Calls scored" value={agg.n} />
+        <Tile label="Not scored" value={agg.excluded} sub="wrong # / IVR / excluded" />
         <Tile label="Avg QA score" value={agg.avg == null ? '—' : pct(agg.avg)} color={scoreColor(agg.avg)} />
         <Tile label="Opportunities" value={agg.opps} sub="calls with a booking/sale chance" />
         <Tile label="Booked" value={agg.booked} color="#1b5e20" />
@@ -325,7 +351,9 @@ function Calls({ rows, onOpen, viewAll }) {
               <td style={{ padding: '9px 12px' }}>{c.brand || '—'}</td>
               <td style={{ padding: '9px 12px' }}>{r.opportunity ? '✅' : '—'}</td>
               <td style={{ padding: '9px 12px' }}>{r.outcome ? <Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill> : '—'}</td>
-              <td style={{ padding: '9px 12px' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 9px', borderRadius: 8 }}>{r.auto_fail ? 'FAIL' : pct(r.score_pct)}</span></td>
+              <td style={{ padding: '9px 12px' }}>{isScored(r)
+                ? <span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 9px', borderRadius: 8 }}>{r.auto_fail ? 'FAIL' : pct(r.score_pct)}{r.manager_adjusted ? ' *' : ''}</span>
+                : <Pill bg="#f1f5f9" fg="#64748b">{r.excluded ? 'Excluded' : (CLASS_LABEL[r.call_class] || 'Not scored')}</Pill>}</td>
               <td style={{ padding: '9px 12px', color: '#94a3b8' }}>›</td>
             </tr>
           )
@@ -343,7 +371,7 @@ function Coaching({ byAgent }) {
       {byAgent.map((a) => (
         <Card key={a.name} style={{ padding: 0 }}>
           <div onClick={() => setOpen(open === a.name ? null : a.name)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, cursor: 'pointer' }}>
-            <div style={{ width: 46, textAlign: 'center' }}><div style={{ fontSize: 20, fontWeight: 700, color: scoreColor(a.avg) }}>{Math.round(a.avg)}</div><div style={{ fontSize: 10, color: '#94a3b8' }}>avg</div></div>
+            <div style={{ width: 46, textAlign: 'center' }}><div style={{ fontSize: 20, fontWeight: 700, color: scoreColor(a.avg) }}>{a.avg == null ? '—' : Math.round(a.avg)}</div><div style={{ fontSize: 10, color: '#94a3b8' }}>avg</div></div>
             <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{a.name}</div><div style={{ fontSize: 12, color: '#64748b' }}>{a.calls} calls · {a.opps} opportunities · {a.booked} booked{a.conv != null ? ` (${pct(a.conv)})` : ''}</div></div>
             <span style={{ color: '#94a3b8' }}>{open === a.name ? '▾' : '›'}</span>
           </div>
@@ -365,13 +393,21 @@ function Coaching({ byAgent }) {
   )
 }
 
-function Detail({ row, onClose, onRescore, onStatus, busy, viewAll }) {
+function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, viewAll }) {
   const c = row.call || {}
   const os = OUTCOME_STYLE[row.outcome] || OUTCOME_STYLE.Other
-  const items = Object.entries(row.answers || {}).sort((a, b) => {
+  const [ans, setAns] = useState(row.answers || {})
+  const [note, setNote] = useState(row.adjustment_note || '')
+  const dirty = JSON.stringify(ans) !== JSON.stringify(row.answers || {})
+  const preview = recomputeReview(ans)
+  const notScored = row.scoreable === false || row.excluded
+  const setItem = (k, answer) => setAns((p) => ({ ...p, [k]: { ...p[k], answer, na: answer === 'na', points: answer === 'yes' ? (Number(p[k].max) || 0) : 0 } }))
+  const items = Object.entries(ans).sort((a, b) => {
     const ia = RUBRIC_ORDER.indexOf(a[0]), ib = RUBRIC_ORDER.indexOf(b[0])
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
   })
+  const shownPct = dirty ? preview.pct : row.score_pct
+  const headerText = row.excluded ? 'Excluded' : (row.scoreable === false ? (CLASS_LABEL[row.call_class] || 'Not scored') : (row.auto_fail && !dirty ? 'FAIL' : pct(shownPct)))
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 50, display: 'flex', justifyContent: 'flex-end' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(720px, 100%)', background: '#f8fafc', height: '100%', overflowY: 'auto', boxShadow: '-8px 0 24px rgba(0,0,0,0.12)' }}>
@@ -381,13 +417,18 @@ function Detail({ row, onClose, onRescore, onStatus, busy, viewAll }) {
             <div style={{ fontSize: 12, color: '#64748b' }}>{fmtDate(c.call_date)} · {c.source} · {c.direction} · {fmtDur(c.duration_seconds)}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 26, fontWeight: 800, color: scoreColor(row.score_pct) }}>{row.auto_fail ? 'FAIL' : pct(row.score_pct)}</div>
+            <div style={{ fontSize: notScored ? 15 : 26, fontWeight: 800, color: notScored ? '#64748b' : scoreColor(shownPct) }}>{headerText}</div>
+            {dirty && !notScored && <div style={{ fontSize: 11, color: '#8d6e00' }}>adjusted preview</div>}
+            {row.manager_adjusted && !dirty && <div style={{ fontSize: 11, color: '#8d6e00' }}>manager-adjusted</div>}
             <button onClick={onClose} style={{ ...btn('ghost'), padding: '2px 8px', marginTop: 2 }}>Close ✕</button>
           </div>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {notScored && <Card style={{ background: '#f1f5f9', border: '1px solid #e2e8f0' }}><b style={{ color: '#475569' }}>Not counted toward the agent's score</b> <span style={{ fontSize: 13, color: '#64748b' }}>— {row.excluded ? 'manually excluded' : (CLASS_LABEL[row.call_class] || 'non-conversation')}. Still shown here for reporting.</span></Card>}
+
           <Card style={{ background: os.bg, border: `1px solid ${os.fg}33` }}>
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+              <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CALL TYPE</div><div style={{ fontWeight: 700 }}>{CLASS_LABEL[row.call_class] || 'Conversation'}</div></div>
               <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>OPPORTUNITY</div><div style={{ fontWeight: 700 }}>{row.opportunity ? 'Yes' : 'No'}</div></div>
               <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>OUTCOME</div><div style={{ fontWeight: 700, color: os.fg }}>{row.outcome || '—'}</div></div>
               {row.outcome === 'Not Booked' && <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>REASON</div><div style={{ fontWeight: 700 }}>{row.not_booked_reason || '—'}</div></div>}
@@ -400,19 +441,23 @@ function Detail({ row, onClose, onRescore, onStatus, busy, viewAll }) {
           <Card><div style={{ fontWeight: 700, marginBottom: 4 }}>Summary</div><div style={{ fontSize: 13.5, color: '#334155' }}>{row.summary || '—'}</div></Card>
 
           <Card>
-            <div style={{ fontWeight: 700, marginBottom: 12 }}>Detailed scoring</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}><div style={{ fontWeight: 700 }}>Detailed scoring</div>{viewAll && <span style={{ fontSize: 12, color: '#94a3b8' }}>managers can change any item ↓</span>}</div>
             {items.map(([k, a]) => {
-              const isNa = a.na; const isYes = a.answer === 'yes' || (a.answer == null && a.score === a.max && a.max > 0)
+              const isNa = a.na || a.answer === 'na'; const isYes = a.answer === 'yes'
               const col = isNa ? '#64748b' : isYes ? '#1b5e20' : '#b71c1c'
-              const mark = isNa ? 'N/A' : (a.answer ? (isYes ? '✓' : '✗') : `${a.score}/${a.max}`)
               return (
                 <div key={k} style={{ padding: '8px 0', borderTop: '1px solid #f1f5f9' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
                     <div style={{ fontSize: 13.5, fontWeight: 600 }}>{a.label || k}</div>
-                    <div style={{ fontWeight: 700, color: col, whiteSpace: 'nowrap' }}>{mark} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({a.na ? 0 : a.max} pts)</span></div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
+                      {viewAll
+                        ? <select value={isNa ? 'na' : (isYes ? 'yes' : 'no')} onChange={(e) => setItem(k, e.target.value)} style={{ fontSize: 12, padding: '3px 6px', borderRadius: 6, border: '1px solid #cbd5e1', color: col, fontWeight: 700 }}><option value="yes">✓ Yes</option><option value="no">✗ No</option><option value="na">N/A</option></select>
+                        : <span style={{ fontWeight: 700, color: col }}>{isNa ? 'N/A' : (isYes ? '✓' : '✗')}</span>}
+                      <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>({isNa ? 0 : a.max} pts)</span>
+                    </div>
                   </div>
                   {a.rationale && <div style={{ fontSize: 12.5, color: '#475569', marginTop: 2 }}>{a.rationale}</div>}
-                  {(a.misses || []).length > 0 && <div style={{ fontSize: 12, color: '#b71c1c', marginTop: 2 }}>Missed: {a.misses.join(', ')}</div>}
+                  {(a.misses || []).length > 0 && !isNa && !isYes && <div style={{ fontSize: 12, color: '#b71c1c', marginTop: 2 }}>Missed: {a.misses.join(', ')}</div>}
                   {a.evidence && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, fontStyle: 'italic' }}>“{a.evidence}”</div>}
                 </div>
               )
@@ -432,12 +477,16 @@ function Detail({ row, onClose, onRescore, onStatus, busy, viewAll }) {
           </Card>
 
           {viewAll && (
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button disabled={busy === c.id} onClick={() => onRescore(c.id)} style={btn('primary')}>{busy === c.id ? 'Scoring…' : '↻ Re-score'}</button>
-              <button onClick={() => onStatus(row.id, 'approved')} style={btn('ghost')}>✓ Approve</button>
-              <button onClick={() => onStatus(row.id, 'rejected')} style={btn('ghost')}>Dismiss</button>
-              <Pill bg="#eef2f7" fg="#475569">status: {row.status}</Pill>
-            </div>
+            <Card>
+              {dirty && <input placeholder="Why are you adjusting this? (optional note)" value={note} onChange={(e) => setNote(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, marginBottom: 10, boxSizing: 'border-box' }} />}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {dirty && <button disabled={busy === row.id} onClick={() => onAdjust(row.id, ans, note)} style={btn('primary')}>{busy === row.id ? 'Saving…' : `Save adjustments → ${pct(preview.pct)}`}</button>}
+                <button disabled={busy === c.id} onClick={() => onRescore(c.id)} style={btn('ghost')}>{busy === c.id ? 'Scoring…' : '↻ Re-score with AI'}</button>
+                {row.excluded
+                  ? <button disabled={busy === row.id} onClick={() => onExclude(row.id, false)} style={btn('ghost')}>Include in scoring</button>
+                  : <button disabled={busy === row.id} onClick={() => onExclude(row.id, true)} style={btn('ghost')}>Exclude from scoring</button>}
+              </div>
+            </Card>
           )}
         </div>
       </div>
