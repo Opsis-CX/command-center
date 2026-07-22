@@ -41,6 +41,7 @@ const agentOf = (r) => r.call?.agent_name || r.extracted_agent_name || 'Unknown'
 // A review counts toward scores only if it's a real conversation and not manually excluded.
 const isScored = (r) => r.scoreable !== false && !r.excluded && r.score_pct != null
 const CLASS_LABEL = { wrong_number: 'Wrong number', ivr_only: 'IVR only', voicemail: 'Voicemail', no_agent: 'No agent', spam: 'Spam' }
+const ynLabel = (v) => (v === 'yes' ? 'Yes' : v === 'no' ? 'No' : v === 'na' ? 'N/A' : '—')
 // Recompute a review's totals from (possibly manager-edited) answers.
 function recomputeReview(answers) {
   let earned = 0, max = 0; const sec = {}
@@ -88,7 +89,7 @@ export default function CallQA() {
     setLoading(true); setErr('')
     // Supabase caps a single response at 1000 rows, so page through ALL reviews.
     // Transcript is fetched lazily in the detail drawer to keep this payload light.
-    const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, answers, strengths, improvements, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, topics, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url)'
+    const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, answers, strengths, improvements, strength_tags, improvement_tags, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, winnable, revenue_tip, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url)'
     const page = 1000; let from = 0; let all = []
     for (;;) {
       const { data, error } = await supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(from, from + page - 1)
@@ -185,6 +186,7 @@ export default function CallQA() {
     const cols = ['call_date', 'brand', 'agent', 'source', 'direction', 'duration_sec', 'disposition',
       'call_class', 'scoreable', 'excluded', 'manager_adjusted', 'topics',
       'score_pct', 'earned', 'max', 'opportunity', 'outcome', 'not_booked_reason', 'opportunity_context',
+      'objections', 'asked_for_booking', 'info_before_pricing', 'set_fee_expectations', 'winnable', 'revenue_tip',
       'sec_greeting_compliance', 'sec_discovery_needs', 'sec_solution_pitch', 'sec_close_next_steps',
       ...RUBRIC_ORDER, ...RUBRIC_ORDER.map((k) => k + '_missed'),
       'strengths', 'improvements', 'coaching_note', 'risk_flags', 'summary', 'recording_url', 'status', 'review_id', 'call_id']
@@ -198,6 +200,8 @@ export default function CallQA() {
         call_class: r.call_class, scoreable: r.scoreable, excluded: r.excluded, manager_adjusted: r.manager_adjusted, topics: (r.topics || []).join(' | '),
         score_pct: r.score_pct, earned: r.earned_points, max: r.max_points,
         opportunity: r.opportunity, outcome: r.outcome, not_booked_reason: r.not_booked_reason, opportunity_context: r.opportunity_context,
+        objections: (r.objections || []).join(' | '), asked_for_booking: r.asked_for_booking, info_before_pricing: r.info_before_pricing,
+        set_fee_expectations: r.set_fee_expectations, winnable: r.winnable, revenue_tip: r.revenue_tip,
         sec_greeting_compliance: ss.greeting_compliance?.pct, sec_discovery_needs: ss.discovery_needs?.pct,
         sec_solution_pitch: ss.solution_pitch?.pct, sec_close_next_steps: ss.close_next_steps?.pct,
         strengths: (r.strengths || []).join(' | '), improvements: (r.improvements || []).join(' | '),
@@ -214,7 +218,7 @@ export default function CallQA() {
 
   const base = import.meta.env.VITE_SUPABASE_URL || ''
   const inFlight = (pipeline.needs_transcription || 0) + (pipeline.transcribing || 0) + (pipeline.ready || 0) + (pipeline.scoring || 0)
-  const TABS = [['overview', 'Overview'], ['opportunities', 'Opportunities'], ['calls', 'Calls'], ['coaching', 'Coaching'], ...(viewAll ? [['settings', 'Settings']] : [])]
+  const TABS = [['overview', 'Overview'], ['opportunities', 'Opportunities'], ['conversion', 'Conversion'], ['calls', 'Calls'], ['coaching', 'Coaching'], ...(viewAll ? [['settings', 'Settings']] : [])]
 
   return (
     <div style={{ padding: 20, maxWidth: 1180, margin: '0 auto' }}>
@@ -245,6 +249,7 @@ export default function CallQA() {
         <>
           {tab === 'overview' && <Overview agg={agg} trend={trend} />}
           {tab === 'opportunities' && <Opportunities rows={filtered} agg={agg} onOpen={setSelected} viewAll={viewAll} />}
+          {tab === 'conversion' && <Conversion rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'calls' && <Calls rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'coaching' && <Coaching byAgent={byAgent} />}
           {tab === 'settings' && viewAll && <SettingsTab settings={settings} secretKeys={secretKeys} pipeline={pipeline} base={base} onSave={saveSetting} busy={busy} />}
@@ -368,6 +373,125 @@ function Opportunities({ rows, agg, onOpen, viewAll }) {
   )
 }
 
+// ---- Conversion: revenue intelligence (win/loss drivers + leaks) ----
+function Conversion({ rows, onOpen, viewAll }) {
+  const opps = rows.filter((r) => r.opportunity)
+  const booked = opps.filter((r) => r.outcome === 'Booked')
+  const lost = opps.filter((r) => r.outcome !== 'Booked')
+  const conv = opps.length ? (booked.length / opps.length) * 100 : 0
+  const pctOf = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : 0)
+
+  const noAsk = opps.filter((r) => r.asked_for_booking === false).length
+  const priceBeforeInfo = rows.filter((r) => r.info_before_pricing === 'no').length
+  const noFee = rows.filter((r) => r.set_fee_expectations === 'no').length
+  const winnableLost = lost.filter((r) => r.winnable).length
+
+  const objections = {}; opps.forEach((r) => (r.objections || []).forEach((o) => { objections[o] = (objections[o] || 0) + 1 }))
+  const topObj = Object.entries(objections).sort((a, b) => b[1] - a[1]).slice(0, 8)
+  const maxObj = Math.max(1, ...topObj.map((t) => t[1]))
+  const tags = {}; rows.forEach((r) => (r.improvement_tags || []).forEach((t) => { tags[t] = (tags[t] || 0) + 1 }))
+  const topTags = Object.entries(tags).sort((a, b) => b[1] - a[1]).slice(0, 10)
+  const maxTag = Math.max(1, ...topTags.map((t) => t[1]))
+
+  const am = new Map()
+  opps.forEach((r) => { const a = agentOf(r); if (!am.has(a)) am.set(a, { name: a, opps: 0, booked: 0, asked: 0 }); const o = am.get(a); o.opps++; if (r.outcome === 'Booked') o.booked++; if (r.asked_for_booking) o.asked++ })
+  const agents = Array.from(am.values()).map((o) => ({ ...o, conv: pctOf(o.booked, o.opps), askRate: pctOf(o.asked, o.opps) })).sort((a, b) => b.opps - a.opps)
+
+  const winList = lost.filter((r) => r.winnable)
+  const Leak = ({ label, n, sub, of }) => (
+    <Card style={{ flex: 1, minWidth: 180 }}>
+      <div style={{ fontSize: 26, fontWeight: 800, color: '#b71c1c' }}>{n}</div>
+      <div style={{ fontWeight: 600, fontSize: 13, marginTop: 2 }}>{label}</div>
+      <div style={{ fontSize: 12, color: '#64748b' }}>{of ? `${pctOf(n, of)}% of ${sub}` : sub}</div>
+    </Card>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* funnel */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Tile label="Opportunities" value={opps.length} />
+        <div style={{ color: '#94a3b8', fontSize: 20 }}>→</div>
+        <Tile label="Booked / Sold" value={booked.length} color="#1b5e20" />
+        <div style={{ color: '#94a3b8', fontSize: 20 }}>→</div>
+        <Tile label="Conversion" value={`${conv.toFixed(1)}%`} color={TEAL} />
+        <Tile label="Winnable lost" value={winnableLost} color="#b71c1c" sub="recoverable revenue" />
+      </div>
+
+      <Card style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>Where revenue is leaking</div>
+        <div style={{ fontSize: 12.5, color: '#9a3412', marginBottom: 12 }}>The biggest, most fixable gaps across these calls — each one is money left on the table.</div>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <Leak label="Didn't ask for the booking" n={noAsk} of={opps.length} sub="opportunities" />
+          <Leak label="Quoted price before collecting info" n={priceBeforeInfo} sub="calls — lost follow-up leads" />
+          <Leak label="Fee expectations not set" n={noFee} sub="calls" />
+          <Leak label="Winnable calls lost" n={winnableLost} of={lost.length} sub="lost opps" />
+        </div>
+      </Card>
+
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <Card style={{ flex: 1, minWidth: 300 }}>
+          <div style={{ fontWeight: 700, marginBottom: 14 }}>What's stopping the sale (objections)</div>
+          {topObj.length === 0 ? <div style={{ color: '#64748b' }}>No objections captured yet.</div> : topObj.map(([o, v]) => (
+            <div key={o} style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{o}</span><b>{v}</b></div>
+              <Bar v={(v / maxObj) * 100} color="#c2410c" />
+            </div>
+          ))}
+        </Card>
+        <Card style={{ flex: 1, minWidth: 300 }}>
+          <div style={{ fontWeight: 700, marginBottom: 14 }}>Biggest revenue coaching gaps</div>
+          {topTags.length === 0 ? <div style={{ color: '#64748b' }}>No coaching data yet.</div> : topTags.map(([t, v]) => (
+            <div key={t} style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{t}</span><b>{v}</b></div>
+              <Bar v={(v / maxTag) * 100} color={TEAL} />
+            </div>
+          ))}
+        </Card>
+      </div>
+
+      {viewAll && (
+        <Card style={{ padding: 0 }}>
+          <div style={{ fontWeight: 700, padding: 14 }}>Conversion by agent</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Agent', 'Opportunities', 'Booked', 'Conversion', 'Asked for booking'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
+            <tbody>{agents.map((a) => (
+              <tr key={a.name} style={{ borderTop: '1px solid #eef2f7' }}>
+                <td style={{ padding: '8px 12px', fontWeight: 600 }}>{a.name}</td>
+                <td style={{ padding: '8px 12px' }}>{a.opps}</td>
+                <td style={{ padding: '8px 12px' }}>{a.booked}</td>
+                <td style={{ padding: '8px 12px' }}><b style={{ color: a.conv >= 50 ? '#1b5e20' : a.conv >= 30 ? '#8d6e00' : '#b71c1c' }}>{a.conv.toFixed(0)}%</b></td>
+                <td style={{ padding: '8px 12px', color: a.askRate < 50 ? '#b71c1c' : '#334155' }}>{a.askRate.toFixed(0)}%</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </Card>
+      )}
+
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ fontWeight: 700, padding: 14 }}>Winnable calls you lost <span style={{ color: '#94a3b8', fontWeight: 400 }}>— recoverable with better handling</span></div>
+        {winList.length === 0 ? <div style={{ padding: 14, color: '#64748b' }}>None flagged in range.</div> : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'What would have won it'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
+            <tbody>{winList.map((r) => {
+              const c = r.call || {}
+              return (
+                <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
+                  {viewAll && <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{agentOf(r)}</td>}
+                  <td style={{ padding: '8px 12px' }}>{c.brand}</td>
+                  <td style={{ padding: '8px 12px', maxWidth: 180, color: '#475569' }}>{r.opportunity_context || '—'}</td>
+                  <td style={{ padding: '8px 12px', maxWidth: 320, color: TEAL }}>{r.revenue_tip || '—'}</td>
+                </tr>
+              )
+            })}</tbody>
+          </table>
+        )}
+      </Card>
+    </div>
+  )
+}
+
 function Calls({ rows, onOpen, viewAll }) {
   if (!rows.length) return <Card style={{ color: '#64748b' }}>No scored calls in this range.</Card>
   return (
@@ -475,6 +599,20 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, viewAll })
             {(row.topics || []).length > 0 && <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{row.topics.map((t, i) => <Pill key={i} bg="#e0f2fe" fg="#075985">🏷 {t}</Pill>)}</div>}
           </Card>
 
+          {(row.opportunity || row.revenue_tip) && (
+            <Card style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
+              <div style={{ fontWeight: 700, marginBottom: 8, color: '#9a3412' }}>Revenue &amp; conversion</div>
+              <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 13 }}>
+                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>ASKED FOR BOOKING</div><b style={{ color: row.asked_for_booking ? '#1b5e20' : '#b71c1c' }}>{row.asked_for_booking == null ? '—' : (row.asked_for_booking ? 'Yes' : 'No')}</b></div>
+                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>INFO BEFORE PRICING</div><b>{ynLabel(row.info_before_pricing)}</b></div>
+                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>FEE EXPECTATIONS SET</div><b>{ynLabel(row.set_fee_expectations)}</b></div>
+                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>WINNABLE</div><b>{row.winnable == null ? '—' : (row.winnable ? 'Yes' : 'No')}</b></div>
+              </div>
+              {(row.objections || []).length > 0 && <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{row.objections.map((o, i) => <Pill key={i} bg="#fee2e2" fg="#991b1b">⛔ {o}</Pill>)}</div>}
+              {row.revenue_tip && <div style={{ marginTop: 10, fontSize: 13.5, color: '#7c2d12' }}><b>Biggest revenue lever:</b> {row.revenue_tip}</div>}
+            </Card>
+          )}
+
           {(row.risk_flags || []).length > 0 && <Card style={{ background: '#fdecea', border: '1px solid #f5c6cb' }}><b style={{ color: '#b71c1c' }}>⚠ Risk flags</b><ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{row.risk_flags.map((f, i) => <li key={i} style={{ fontSize: 13 }}>{f}</li>)}</ul></Card>}
 
           <Card><div style={{ fontWeight: 700, marginBottom: 4 }}>Summary</div><div style={{ fontSize: 13.5, color: '#334155' }}>{row.summary || '—'}</div></Card>
@@ -505,7 +643,7 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, viewAll })
 
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
             <Card style={{ flex: 1, minWidth: 240 }}><div style={{ fontWeight: 700, marginBottom: 6, color: '#1b5e20' }}>What went well</div><ul style={{ margin: 0, paddingLeft: 18 }}>{(row.strengths || []).map((s, i) => <li key={i} style={{ fontSize: 13, marginBottom: 4 }}>{s}</li>)}</ul></Card>
-            <Card style={{ flex: 1, minWidth: 240 }}><div style={{ fontWeight: 700, marginBottom: 6, color: '#b71c1c' }}>Opportunities</div><ul style={{ margin: 0, paddingLeft: 18 }}>{(row.improvements || []).map((s, i) => <li key={i} style={{ fontSize: 13, marginBottom: 4 }}>{s}</li>)}</ul></Card>
+            <Card style={{ flex: 1, minWidth: 240 }}><div style={{ fontWeight: 700, marginBottom: 6, color: '#b71c1c' }}>Coaching focus (revenue)</div><ul style={{ margin: 0, paddingLeft: 18 }}>{(row.improvements || []).map((s, i) => <li key={i} style={{ fontSize: 13, marginBottom: 4 }}>{s}</li>)}</ul></Card>
           </div>
 
           <Card style={{ background: '#f0fdfa', border: '1px solid #99f6e4' }}><div style={{ fontWeight: 700, marginBottom: 4, color: TEAL }}>Coaching note</div><div style={{ fontSize: 13.5, color: '#134e4a' }}>{row.coaching_note || '—'}</div></Card>
