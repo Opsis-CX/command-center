@@ -86,19 +86,31 @@ export default function CallQA() {
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
-    const { data, error } = await supabase
-      .from('ai_qa_reviews')
-      .select('id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, answers, strengths, improvements, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, topics, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, transcript)')
-      .order('created_at', { ascending: false }).limit(3000)
-    if (error) { setErr(error.message); setLoading(false); return }
-    setRows(data || [])
-    const [{ data: st }, { data: sk }, { data: pc }] = await Promise.all([
+    // Supabase caps a single response at 1000 rows, so page through ALL reviews.
+    // Transcript is fetched lazily in the detail drawer to keep this payload light.
+    const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, answers, strengths, improvements, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, topics, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url)'
+    const page = 1000; let from = 0; let all = []
+    for (;;) {
+      const { data, error } = await supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(from, from + page - 1)
+      if (error) { setErr(error.message); setLoading(false); return }
+      all = all.concat(data || [])
+      if (!data || data.length < page) break
+      from += page
+    }
+    setRows(all)
+    const [{ data: st }, { data: sk }] = await Promise.all([
       supabase.from('ai_qa_settings').select('*').order('campaign'),
       supabase.from('integration_secrets').select('key'),
-      supabase.from('ai_qa_calls').select('status'),
     ])
     setSettings(st || []); setSecretKeys((sk || []).map((r) => r.key))
-    const counts = {}; (pc || []).forEach((r) => counts[r.status] = (counts[r.status] || 0) + 1); setPipeline(counts)
+    // exact pipeline counts (head:true transfers no rows, so no 1000-row cap)
+    const statuses = ['ingested', 'needs_transcription', 'transcribing', 'ready', 'scoring', 'scored', 'error']
+    const counts = {}
+    await Promise.all(statuses.map(async (s) => {
+      const { count } = await supabase.from('ai_qa_calls').select('id', { count: 'exact', head: true }).eq('status', s)
+      counts[s] = count || 0
+    }))
+    setPipeline(counts)
     setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
@@ -416,6 +428,12 @@ function Coaching({ byAgent }) {
 function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, viewAll }) {
   const c = row.call || {}
   const os = OUTCOME_STYLE[row.outcome] || OUTCOME_STYLE.Other
+  const [transcript, setTranscript] = useState(c.transcript ?? null)
+  useEffect(() => {
+    let active = true
+    if (transcript == null && c.id) supabase.from('ai_qa_calls').select('transcript').eq('id', c.id).single().then(({ data }) => { if (active) setTranscript(data?.transcript || '') })
+    return () => { active = false }
+  }, [c.id])
   const [ans, setAns] = useState(row.answers || {})
   const [note, setNote] = useState(row.adjustment_note || '')
   const dirty = JSON.stringify(ans) !== JSON.stringify(row.answers || {})
@@ -494,7 +512,7 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, viewAll })
 
           <Card>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}><div style={{ fontWeight: 700 }}>Transcript</div>{c.recording_url && <RecordingBtn callId={c.id} />}</div>
-            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#334155', margin: 0, maxHeight: 320, overflowY: 'auto', lineHeight: 1.5 }}>{formatTranscript(c.transcript) || 'No transcript.'}</pre>
+            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#334155', margin: 0, maxHeight: 320, overflowY: 'auto', lineHeight: 1.5 }}>{transcript == null ? 'Loading transcript…' : (formatTranscript(transcript) || 'No transcript.')}</pre>
           </Card>
 
           {viewAll && (
