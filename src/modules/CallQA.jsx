@@ -82,12 +82,13 @@ export default function CallQA() {
   const [days, setDays] = useState(30)
   const [brand, setBrand] = useState('all')
   const [agent, setAgent] = useState('all')
+  const [topic, setTopic] = useState('all')
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     const { data, error } = await supabase
       .from('ai_qa_reviews')
-      .select('id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, answers, strengths, improvements, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, transcript)')
+      .select('id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, answers, strengths, improvements, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, topics, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, transcript)')
       .order('created_at', { ascending: false }).limit(3000)
     if (error) { setErr(error.message); setLoading(false); return }
     setRows(data || [])
@@ -110,12 +111,14 @@ export default function CallQA() {
       if (d < cutoff) return false
       if (brand !== 'all' && c.brand !== brand) return false
       if (agent !== 'all' && agentOf(r) !== agent) return false
+      if (topic !== 'all' && !(r.topics || []).includes(topic)) return false
       return true
     })
-  }, [rows, days, brand, agent])
+  }, [rows, days, brand, agent, topic])
 
   const agents = useMemo(() => Array.from(new Set(rows.map(agentOf).filter(Boolean))).sort(), [rows])
   const brands = useMemo(() => Array.from(new Set(rows.map((r) => r.call?.brand).filter(Boolean))).sort(), [rows])
+  const topicList = useMemo(() => Array.from(new Set(rows.flatMap((r) => r.topics || []))).sort(), [rows])
 
   const agg = useMemo(() => {
     const scored = filtered.filter(isScored)
@@ -128,7 +131,8 @@ export default function CallQA() {
     for (const s of SECTIONS) { const v = scored.map((r) => r.section_scores?.[s.key]?.pct).filter((x) => x != null); sec[s.key] = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null }
     const outcomes = {}; filtered.forEach((r) => { if (r.outcome) outcomes[r.outcome] = (outcomes[r.outcome] || 0) + 1 })
     const reasons = {}; opps.filter((r) => r.outcome === 'Not Booked').forEach((r) => { const k = r.not_booked_reason || 'Unspecified'; reasons[k] = (reasons[k] || 0) + 1 })
-    return { n, avg, total: filtered.length, excluded: filtered.length - n, opps: opps.length, booked: booked.length, conv, sec, outcomes, reasons, flags: filtered.filter((r) => (r.risk_flags || []).length).length }
+    const topics = {}; filtered.forEach((r) => (r.topics || []).forEach((t) => { topics[t] = (topics[t] || 0) + 1 }))
+    return { n, avg, total: filtered.length, excluded: filtered.length - n, opps: opps.length, booked: booked.length, conv, sec, outcomes, reasons, topics, flags: filtered.filter((r) => (r.risk_flags || []).length).length }
   }, [filtered])
 
   const trend = useMemo(() => {
@@ -166,8 +170,9 @@ export default function CallQA() {
   async function saveSetting(s) { setBusy('settings'); await supabase.from('ai_qa_settings').upsert(s, { onConflict: 'campaign' }); await load(); setBusy('') }
 
   function exportCSV() {
-    const cols = ['call_date', 'brand', 'agent', 'source', 'direction', 'duration_sec', 'disposition', 'score_pct', 'earned', 'max',
-      'opportunity', 'outcome', 'not_booked_reason', 'opportunity_context',
+    const cols = ['call_date', 'brand', 'agent', 'source', 'direction', 'duration_sec', 'disposition',
+      'call_class', 'scoreable', 'excluded', 'manager_adjusted', 'topics',
+      'score_pct', 'earned', 'max', 'opportunity', 'outcome', 'not_booked_reason', 'opportunity_context',
       'sec_greeting_compliance', 'sec_discovery_needs', 'sec_solution_pitch', 'sec_close_next_steps',
       ...RUBRIC_ORDER, ...RUBRIC_ORDER.map((k) => k + '_missed'),
       'strengths', 'improvements', 'coaching_note', 'risk_flags', 'summary', 'recording_url', 'status', 'review_id', 'call_id']
@@ -177,7 +182,9 @@ export default function CallQA() {
       const c = r.call || {}, a = r.answers || {}, ss = r.section_scores || {}
       const row = {
         call_date: c.call_date, brand: c.brand, agent: agentOf(r), source: c.source, direction: c.direction,
-        duration_sec: c.duration_seconds, disposition: c.disposition, score_pct: r.score_pct, earned: r.earned_points, max: r.max_points,
+        duration_sec: c.duration_seconds, disposition: c.disposition,
+        call_class: r.call_class, scoreable: r.scoreable, excluded: r.excluded, manager_adjusted: r.manager_adjusted, topics: (r.topics || []).join(' | '),
+        score_pct: r.score_pct, earned: r.earned_points, max: r.max_points,
         opportunity: r.opportunity, outcome: r.outcome, not_booked_reason: r.not_booked_reason, opportunity_context: r.opportunity_context,
         sec_greeting_compliance: ss.greeting_compliance?.pct, sec_discovery_needs: ss.discovery_needs?.pct,
         sec_solution_pitch: ss.solution_pitch?.pct, sec_close_next_steps: ss.close_next_steps?.pct,
@@ -214,6 +221,7 @@ export default function CallQA() {
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '16px 0' }}>
         <Select label="Range" value={days} onChange={(v) => setDays(Number(v))} opts={[[7, 'Last 7 days'], [30, 'Last 30 days'], [90, 'Last 90 days'], [3650, 'All time']]} />
         <Select label="Brand" value={brand} onChange={setBrand} opts={[['all', 'All brands'], ...brands.map((c) => [c, c])]} />
+        <Select label="Topic" value={topic} onChange={setTopic} opts={[['all', 'All topics'], ...topicList.map((t) => [t, t])]} />
         {viewAll && <Select label="Agent" value={agent} onChange={setAgent} opts={[['all', 'All agents'], ...agents.map((a) => [a, a])]} />}
       </div>
 
@@ -238,6 +246,8 @@ export default function CallQA() {
 function Overview({ agg, trend }) {
   const maxN = Math.max(1, ...trend.map((t) => t.n))
   const topReasons = Object.entries(agg.reasons).sort((a, b) => b[1] - a[1]).slice(0, 6)
+  const topTopics = Object.entries(agg.topics).sort((a, b) => b[1] - a[1]).slice(0, 12)
+  const maxTopic = Math.max(1, ...topTopics.map((t) => t[1]))
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -265,6 +275,16 @@ function Overview({ agg, trend }) {
           )) : <div style={{ color: '#64748b', fontSize: 13 }}>No missed opportunities in range.</div>}
         </Card>
       </div>
+      <Card>
+        <div style={{ fontWeight: 700, marginBottom: 14 }}>What calls are about</div>
+        {topTopics.length === 0 ? <div style={{ color: '#64748b' }}>No topics yet.</div> : topTopics.map(([t, v]) => (
+          <div key={t} style={{ marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{t}</span><b>{v}</b></div>
+            <Bar v={(v / maxTopic) * 100} color={TEAL} />
+          </div>
+        ))}
+      </Card>
+
       <Card>
         <div style={{ fontWeight: 700, marginBottom: 14 }}>Daily QA score trend</div>
         {trend.length === 0 ? <div style={{ color: '#64748b' }}>No calls in range.</div> : (
@@ -348,7 +368,7 @@ function Calls({ rows, onOpen, viewAll }) {
             <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
               <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
               {viewAll && <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{agentOf(r)}</td>}
-              <td style={{ padding: '9px 12px' }}>{c.brand || '—'}</td>
+              <td style={{ padding: '9px 12px' }}>{c.brand || '—'}{(r.topics || [])[0] && <div style={{ fontSize: 11, color: '#94a3b8' }}>🏷 {r.topics[0]}</div>}</td>
               <td style={{ padding: '9px 12px' }}>{r.opportunity ? '✅' : '—'}</td>
               <td style={{ padding: '9px 12px' }}>{r.outcome ? <Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill> : '—'}</td>
               <td style={{ padding: '9px 12px' }}>{isScored(r)
@@ -434,6 +454,7 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, viewAll })
               {row.outcome === 'Not Booked' && <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>REASON</div><div style={{ fontWeight: 700 }}>{row.not_booked_reason || '—'}</div></div>}
               {row.opportunity_context && <div style={{ flex: 1, minWidth: 180 }}><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CALLER WANTED</div><div>{row.opportunity_context}</div></div>}
             </div>
+            {(row.topics || []).length > 0 && <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{row.topics.map((t, i) => <Pill key={i} bg="#e0f2fe" fg="#075985">🏷 {t}</Pill>)}</div>}
           </Card>
 
           {(row.risk_flags || []).length > 0 && <Card style={{ background: '#fdecea', border: '1px solid #f5c6cb' }}><b style={{ color: '#b71c1c' }}>⚠ Risk flags</b><ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{row.risk_flags.map((f, i) => <li key={i} style={{ fontSize: 13 }}>{f}</li>)}</ul></Card>}
