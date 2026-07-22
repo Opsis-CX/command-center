@@ -77,6 +77,7 @@ export default function CallQA({ portal = false } = {}) {
   const canManage = canViewAll(appRole) && !portalMode   // Opsis manager edit rights
   const viewAll = canViewAll(appRole) || portalMode       // see all rows + agent names + agent filter
   const [meName, setMeName] = useState('')
+  const [exporting, setExporting] = useState(false)
   const [tab, setTab] = useState('overview')
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -94,8 +95,10 @@ export default function CallQA({ portal = false } = {}) {
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     // Supabase caps a single response at 1000 rows, so page through ALL reviews.
-    // Transcript is fetched lazily in the detail drawer to keep this payload light.
-    const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, answers, strengths, improvements, strength_tags, improvement_tags, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, winnable, revenue_tip, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url)'
+    // The heavy per-question `answers` blob and the `transcript` are fetched lazily
+    // (in the detail drawer, and on demand at CSV-export time) to keep this initial
+    // payload light — it makes the first load noticeably faster at scale.
+    const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, strengths, improvements, strength_tags, improvement_tags, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, winnable, revenue_tip, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url)'
     const page = 1000; let from = 0; let all = []
     for (;;) {
       const { data, error } = await supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(from, from + page - 1)
@@ -197,7 +200,19 @@ export default function CallQA({ portal = false } = {}) {
   }
   async function saveSetting(s) { setBusy('settings'); await supabase.from('ai_qa_settings').upsert(s, { onConflict: 'campaign' }); await load(); setBusy('') }
 
-  function exportCSV() {
+  async function exportCSV() {
+    // `answers` is no longer in the bulk load, so pull it just for the rows being
+    // exported (batched to stay under URL limits), then merge for the per-item columns.
+    setExporting(true)
+    const ansById = {}
+    try {
+      const ids = filtered.map((r) => r.id)
+      for (let i = 0; i < ids.length; i += 400) {
+        const chunk = ids.slice(i, i + 400)
+        const { data } = await supabase.from('ai_qa_reviews').select('id, answers').in('id', chunk)
+        ;(data || []).forEach((r) => { ansById[r.id] = r.answers || {} })
+      }
+    } catch { /* fall through — per-item columns just come out blank */ }
     const cols = ['call_date', 'brand', 'agent', 'source', 'direction', 'duration_sec', 'disposition',
       'call_class', 'scoreable', 'excluded', 'manager_adjusted', 'topics',
       'score_pct', 'earned', 'max', 'opportunity', 'outcome', 'not_booked_reason', 'opportunity_context',
@@ -208,7 +223,7 @@ export default function CallQA({ portal = false } = {}) {
     const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
     const lines = [cols.join(',')]
     filtered.forEach((r) => {
-      const c = r.call || {}, a = r.answers || {}, ss = r.section_scores || {}
+      const c = r.call || {}, a = ansById[r.id] || r.answers || {}, ss = r.section_scores || {}
       const row = {
         call_date: c.call_date, brand: c.brand, agent: agentOf(r), source: c.source, direction: c.direction,
         duration_sec: c.duration_seconds, disposition: c.disposition,
@@ -229,6 +244,7 @@ export default function CallQA({ portal = false } = {}) {
     const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob); const link = document.createElement('a')
     link.href = url; link.download = `call-qa-export-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url)
+    setExporting(false)
   }
 
   const base = import.meta.env.VITE_SUPABASE_URL || ''
@@ -244,7 +260,7 @@ export default function CallQA({ portal = false } = {}) {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {inFlight > 0 && <Pill bg="#fff8e1" fg="#8d6e00">⏳ {inFlight} in queue</Pill>}
-          <button onClick={exportCSV} style={btn('ghost')}>⬇ Export CSV</button>
+          <button onClick={exportCSV} disabled={exporting} style={{ ...btn('ghost'), opacity: exporting ? 0.6 : 1 }}>{exporting ? 'Preparing…' : '⬇ Export CSV'}</button>
           <button onClick={load} style={btn('ghost')}>↻ Refresh</button>
         </div>
       </div>
@@ -576,13 +592,22 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, canManage,
     if (transcript == null && c.id) supabase.from('ai_qa_calls').select('transcript').eq('id', c.id).single().then(({ data }) => { if (active) setTranscript(data?.transcript || '') })
     return () => { active = false }
   }, [c.id])
-  const [ans, setAns] = useState(row.answers || {})
+  // Per-question answers are lazy-loaded (they're excluded from the list payload
+  // to keep the initial load fast). null = not yet fetched.
+  const [ans, setAns] = useState(row.answers ?? null)
+  const [origAns, setOrigAns] = useState(row.answers ?? null)
+  useEffect(() => {
+    let active = true
+    if (ans == null && row.id) supabase.from('ai_qa_reviews').select('answers').eq('id', row.id).single()
+      .then(({ data }) => { if (active) { const v = data?.answers || {}; setAns(v); setOrigAns(v) } })
+    return () => { active = false }
+  }, [row.id])
   const [note, setNote] = useState(row.adjustment_note || '')
-  const dirty = JSON.stringify(ans) !== JSON.stringify(row.answers || {})
+  const dirty = origAns != null && JSON.stringify(ans) !== JSON.stringify(origAns)
   const preview = recomputeReview(ans)
   const notScored = row.scoreable === false || row.excluded
   const setItem = (k, answer) => setAns((p) => ({ ...p, [k]: { ...p[k], answer, na: answer === 'na', points: answer === 'yes' ? (Number(p[k].max) || 0) : 0 } }))
-  const items = Object.entries(ans).sort((a, b) => {
+  const items = Object.entries(ans || {}).sort((a, b) => {
     const ia = RUBRIC_ORDER.indexOf(a[0]), ib = RUBRIC_ORDER.indexOf(b[0])
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
   })
@@ -636,7 +661,8 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, canManage,
           <Card><div style={{ fontWeight: 700, marginBottom: 4 }}>Summary</div><div style={{ fontSize: 13.5, color: '#334155' }}>{row.summary || '—'}</div></Card>
 
           <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}><div style={{ fontWeight: 700 }}>Detailed scoring</div>{canManage && <span style={{ fontSize: 12, color: '#94a3b8' }}>managers can change any item ↓</span>}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}><div style={{ fontWeight: 700 }}>Detailed scoring</div>{canManage && ans != null && <span style={{ fontSize: 12, color: '#94a3b8' }}>managers can change any item ↓</span>}</div>
+            {ans == null && <div style={{ fontSize: 13, color: '#94a3b8' }}>Loading detailed scoring…</div>}
             {items.map(([k, a]) => {
               const isNa = a.na || a.answer === 'na'; const isYes = a.answer === 'yes'
               const col = isNa ? '#64748b' : isYes ? '#1b5e20' : '#b71c1c'
