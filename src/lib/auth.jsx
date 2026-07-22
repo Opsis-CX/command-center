@@ -6,17 +6,19 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [role, setRole] = useState({ isAdmin: false, level: 0, roles: [] })
-  const [appRole, setAppRole] = useState('agent')   // the 6-role permission role from profiles
+  const [appRole, setAppRole] = useState('agent')   // the permission role from profiles
+  const [clientId, setClientId] = useState(null)    // set only for external client-portal users
   const [loading, setLoading] = useState(true)
   const activeChannelRef = useRef(null)
 
   async function loadAppRole(sess) {
     const uid = sess?.user?.id
-    if (!uid) { setAppRole('agent'); return }
+    if (!uid) { setAppRole('agent'); setClientId(null); return }
     try {
-      const { data } = await supabase.from('profiles').select('role').eq('id', uid).maybeSingle()
+      const { data } = await supabase.from('profiles').select('role, client_id').eq('id', uid).maybeSingle()
       setAppRole(data?.role || 'agent')
-    } catch { setAppRole('agent') }
+      setClientId(data?.client_id || null)
+    } catch { setAppRole('agent'); setClientId(null) }
   }
 
   // If this user has been made inactive on People & Tags, kick them out now.
@@ -78,6 +80,8 @@ export function AuthProvider({ children }) {
     user: session?.user ?? null,
     ...role,
     appRole,
+    clientId,
+    isClientPortal: appRole === 'client' || !!clientId,
     loading,
     signOut: () => supabase.auth.signOut(),
   }
