@@ -68,9 +68,15 @@ const Tile = ({ label, value, sub, color }) => (
 const Bar = ({ v, color }) => <div style={{ background: '#eef2f7', borderRadius: 6, height: 8, overflow: 'hidden' }}><div style={{ width: `${Math.max(0, Math.min(100, v || 0))}%`, height: '100%', background: color || TEAL }} /></div>
 const Pill = ({ children, bg, fg }) => <span style={{ background: bg, color: fg, fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap' }}>{children}</span>
 
-export default function CallQA() {
-  const { appRole, user } = useAuth()
-  const viewAll = canViewAll(appRole)
+export default function CallQA({ portal = false } = {}) {
+  const { appRole, user, isClientPortal } = useAuth()
+  // Portal mode = an external client login. They see ALL of their client's calls
+  // and the agent names (their own reception staff), can export and add notes —
+  // but never the manager controls (re-score / exclude / adjust) or Settings.
+  const portalMode = portal || isClientPortal || appRole === 'client'
+  const canManage = canViewAll(appRole) && !portalMode   // Opsis manager edit rights
+  const viewAll = canViewAll(appRole) || portalMode       // see all rows + agent names + agent filter
+  const [meName, setMeName] = useState('')
   const [tab, setTab] = useState('overview')
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -115,6 +121,15 @@ export default function CallQA() {
     setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
+  // Current user's display name, used when they add a note.
+  useEffect(() => {
+    let active = true
+    if (!user?.id) return
+    supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle()
+      .then(({ data }) => { if (active) setMeName(data?.full_name || user.email || 'User') })
+      .catch(() => { if (active) setMeName(user.email || 'User') })
+    return () => { active = false }
+  }, [user?.id])
 
   const filtered = useMemo(() => {
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days)
@@ -218,7 +233,7 @@ export default function CallQA() {
 
   const base = import.meta.env.VITE_SUPABASE_URL || ''
   const inFlight = (pipeline.needs_transcription || 0) + (pipeline.transcribing || 0) + (pipeline.ready || 0) + (pipeline.scoring || 0)
-  const TABS = [['overview', 'Overview'], ['opportunities', 'Opportunities'], ['conversion', 'Conversion'], ['calls', 'Calls'], ['coaching', 'Coaching'], ...(viewAll ? [['settings', 'Settings']] : [])]
+  const TABS = [['overview', 'Overview'], ['opportunities', 'Opportunities'], ['conversion', 'Conversion'], ['calls', 'Calls'], ['coaching', 'Coaching'], ...(canManage ? [['settings', 'Settings']] : [])]
 
   return (
     <div style={{ padding: 20, maxWidth: 1180, margin: '0 auto' }}>
@@ -252,10 +267,10 @@ export default function CallQA() {
           {tab === 'conversion' && <Conversion rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'calls' && <Calls rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'coaching' && <Coaching byAgent={byAgent} />}
-          {tab === 'settings' && viewAll && <SettingsTab settings={settings} secretKeys={secretKeys} pipeline={pipeline} base={base} onSave={saveSetting} busy={busy} />}
+          {tab === 'settings' && canManage && <SettingsTab settings={settings} secretKeys={secretKeys} pipeline={pipeline} base={base} onSave={saveSetting} busy={busy} />}
         </>
       )}
-      {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onExclude={setExcluded} onAdjust={saveAdjustment} busy={busy} viewAll={viewAll} />}
+      {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onExclude={setExcluded} onAdjust={saveAdjustment} busy={busy} canManage={canManage} meName={meName} userId={user?.id} />}
     </div>
   )
 }
@@ -552,7 +567,7 @@ function Coaching({ byAgent }) {
   )
 }
 
-function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, viewAll }) {
+function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, canManage, meName, userId }) {
   const c = row.call || {}
   const os = OUTCOME_STYLE[row.outcome] || OUTCOME_STYLE.Other
   const [transcript, setTranscript] = useState(c.transcript ?? null)
@@ -621,7 +636,7 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, viewAll })
           <Card><div style={{ fontWeight: 700, marginBottom: 4 }}>Summary</div><div style={{ fontSize: 13.5, color: '#334155' }}>{row.summary || '—'}</div></Card>
 
           <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}><div style={{ fontWeight: 700 }}>Detailed scoring</div>{viewAll && <span style={{ fontSize: 12, color: '#94a3b8' }}>managers can change any item ↓</span>}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}><div style={{ fontWeight: 700 }}>Detailed scoring</div>{canManage && <span style={{ fontSize: 12, color: '#94a3b8' }}>managers can change any item ↓</span>}</div>
             {items.map(([k, a]) => {
               const isNa = a.na || a.answer === 'na'; const isYes = a.answer === 'yes'
               const col = isNa ? '#64748b' : isYes ? '#1b5e20' : '#b71c1c'
@@ -630,7 +645,7 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, viewAll })
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
                     <div style={{ fontSize: 13.5, fontWeight: 600 }}>{a.label || k}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
-                      {viewAll
+                      {canManage
                         ? <select value={isNa ? 'na' : (isYes ? 'yes' : 'no')} onChange={(e) => setItem(k, e.target.value)} style={{ fontSize: 12, padding: '3px 6px', borderRadius: 6, border: '1px solid #cbd5e1', color: col, fontWeight: 700 }}><option value="yes">✓ Yes</option><option value="no">✗ No</option><option value="na">N/A</option></select>
                         : <span style={{ fontWeight: 700, color: col }}>{isNa ? 'N/A' : (isYes ? '✓' : '✗')}</span>}
                       <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>({isNa ? 0 : a.max} pts)</span>
@@ -656,7 +671,9 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, viewAll })
             <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#334155', margin: 0, maxHeight: 320, overflowY: 'auto', lineHeight: 1.5 }}>{transcript == null ? 'Loading transcript…' : (formatTranscript(transcript) || 'No transcript.')}</pre>
           </Card>
 
-          {viewAll && (
+          <NotesCard callId={c.id} meName={meName} userId={userId} canDelete={canManage} />
+
+          {canManage && (
             <Card>
               {dirty && <input placeholder="Why are you adjusting this? (optional note)" value={note} onChange={(e) => setNote(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, marginBottom: 10, boxSizing: 'border-box' }} />}
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -671,6 +688,60 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, viewAll })
         </div>
       </div>
     </div>
+  )
+}
+
+// Notes thread on a single call. Shared between managers and the client portal:
+// anyone who can see the call can read and add notes; only managers can delete.
+// Backed by ai_qa_notes (RLS-scoped to the caller's client / staff role).
+function NotesCard({ callId, meName, userId, canDelete }) {
+  const [notes, setNotes] = useState(null)
+  const [body, setBody] = useState('')
+  const [saving, setSaving] = useState(false)
+  const loadNotes = useCallback(async () => {
+    if (!callId) return
+    const { data } = await supabase.from('ai_qa_notes').select('*').eq('call_id', callId).order('created_at', { ascending: true })
+    setNotes(data || [])
+  }, [callId])
+  useEffect(() => { loadNotes() }, [loadNotes])
+  async function add() {
+    const text = body.trim(); if (!text || !callId) return
+    setSaving(true)
+    const { error } = await supabase.from('ai_qa_notes').insert({ call_id: callId, author_id: userId || null, author_name: meName || 'User', body: text })
+    setSaving(false)
+    if (error) { alert('Could not save note: ' + error.message); return }
+    setBody(''); loadNotes()
+  }
+  async function del(id) {
+    setSaving(true)
+    await supabase.from('ai_qa_notes').delete().eq('id', id)
+    setSaving(false); loadNotes()
+  }
+  return (
+    <Card>
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>Notes {notes && notes.length > 0 && <span style={{ color: '#94a3b8', fontWeight: 600 }}>({notes.length})</span>}</div>
+      {notes == null ? <div style={{ fontSize: 13, color: '#94a3b8' }}>Loading…</div> : notes.length === 0
+        ? <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 10 }}>No notes yet. Add the first one below.</div>
+        : <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
+            {notes.map((n) => (
+              <div key={n.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>{n.author_name || 'User'}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 11, color: '#94a3b8' }}>{n.created_at ? new Date(n.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}</span>
+                    {canDelete && <button onClick={() => del(n.id)} style={{ border: 'none', background: 'none', color: '#b71c1c', cursor: 'pointer', fontSize: 12, padding: 0 }}>Delete</button>}
+                  </div>
+                </div>
+                <div style={{ fontSize: 13.5, color: '#0f172a', marginTop: 3, whiteSpace: 'pre-wrap' }}>{n.body}</div>
+              </div>
+            ))}
+          </div>}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Add a note about this call…" rows={2}
+          style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }} />
+        <button disabled={saving || !body.trim()} onClick={add} style={{ ...btn('primary'), opacity: saving || !body.trim() ? 0.5 : 1 }}>{saving ? 'Saving…' : 'Add note'}</button>
+      </div>
+    </Card>
   )
 }
 
