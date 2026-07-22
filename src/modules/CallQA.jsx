@@ -385,6 +385,9 @@ function Conversion({ rows, onOpen, viewAll }) {
   const priceBeforeInfo = rows.filter((r) => r.info_before_pricing === 'no').length
   const noFee = rows.filter((r) => r.set_fee_expectations === 'no').length
   const winnableLost = lost.filter((r) => r.winnable).length
+  const priceDiscussed = rows.filter((r) => r.info_before_pricing === 'yes' || r.info_before_pricing === 'no').length
+  const feeApplicable = rows.filter((r) => r.set_fee_expectations === 'yes' || r.set_fee_expectations === 'no').length
+  const scoredCount = rows.filter(isScored).length
 
   const objections = {}; opps.forEach((r) => (r.objections || []).forEach((o) => { objections[o] = (objections[o] || 0) + 1 }))
   const topObj = Object.entries(objections).sort((a, b) => b[1] - a[1]).slice(0, 8)
@@ -414,8 +417,8 @@ function Conversion({ rows, onOpen, viewAll }) {
         <div style={{ color: '#94a3b8', fontSize: 20 }}>→</div>
         <Tile label="Booked / Sold" value={booked.length} color="#1b5e20" />
         <div style={{ color: '#94a3b8', fontSize: 20 }}>→</div>
-        <Tile label="Conversion" value={`${conv.toFixed(1)}%`} color={TEAL} />
-        <Tile label="Winnable lost" value={winnableLost} color="#b71c1c" sub="recoverable revenue" />
+        <Tile label="Conversion" value={`${conv.toFixed(1)}%`} color={TEAL} sub={`${booked.length} of ${opps.length} opps`} />
+        <Tile label="Winnable lost" value={winnableLost} color="#b71c1c" sub={`${pctOf(winnableLost, lost.length)}% of lost · recoverable`} />
       </div>
 
       <Card style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
@@ -423,8 +426,8 @@ function Conversion({ rows, onOpen, viewAll }) {
         <div style={{ fontSize: 12.5, color: '#9a3412', marginBottom: 12 }}>The biggest, most fixable gaps across these calls — each one is money left on the table.</div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <Leak label="Didn't ask for the booking" n={noAsk} of={opps.length} sub="opportunities" />
-          <Leak label="Quoted price before collecting info" n={priceBeforeInfo} sub="calls — lost follow-up leads" />
-          <Leak label="Fee expectations not set" n={noFee} sub="calls" />
+          <Leak label="Quoted price before collecting info" n={priceBeforeInfo} of={priceDiscussed} sub="calls where price came up" />
+          <Leak label="Fee expectations not set" n={noFee} of={feeApplicable} sub="calls where a fee applied" />
           <Leak label="Winnable calls lost" n={winnableLost} of={lost.length} sub="lost opps" />
         </div>
       </Card>
@@ -434,7 +437,7 @@ function Conversion({ rows, onOpen, viewAll }) {
           <div style={{ fontWeight: 700, marginBottom: 14 }}>What's stopping the sale (objections)</div>
           {topObj.length === 0 ? <div style={{ color: '#64748b' }}>No objections captured yet.</div> : topObj.map(([o, v]) => (
             <div key={o} style={{ marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{o}</span><b>{v}</b></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{o}</span><b>{v} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({pctOf(v, opps.length)}% of opps)</span></b></div>
               <Bar v={(v / maxObj) * 100} color="#c2410c" />
             </div>
           ))}
@@ -443,7 +446,7 @@ function Conversion({ rows, onOpen, viewAll }) {
           <div style={{ fontWeight: 700, marginBottom: 14 }}>Biggest revenue coaching gaps</div>
           {topTags.length === 0 ? <div style={{ color: '#64748b' }}>No coaching data yet.</div> : topTags.map(([t, v]) => (
             <div key={t} style={{ marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{t}</span><b>{v}</b></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{t}</span><b>{v} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({pctOf(v, scoredCount)}% of calls)</span></b></div>
               <Bar v={(v / maxTag) * 100} color={TEAL} />
             </div>
           ))}
