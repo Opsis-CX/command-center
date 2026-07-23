@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import ExternalQA, { ClientRecaps } from './ExternalQA'
-import QualityReporting from './QualityReporting'
 import { canAny } from '../lib/permissions'
 import { notifyCallReviewAssigned, notifyCallReviewSubmitted } from '../lib/notify'
 
@@ -79,7 +78,6 @@ export default function QualityAudit() {
         <button className={'btn ' + (tab === 'reviews' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('reviews')}>Call reviews</button>
         {isAuditor && <button className={'btn ' + (tab === 'external' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('external')}>External QA</button>}
         {isAuditor && <button className={'btn ' + (tab === 'recaps' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('recaps')}>Client recaps</button>}
-        {isAuditor && <button className={'btn ' + (tab === 'reporting' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('reporting')}>Reporting</button>}
       </div>
 
       {tab === 'new' && isAuditor && (
@@ -96,7 +94,6 @@ export default function QualityAudit() {
       {tab === 'reviews' && <CallReviews isAuditor={isAuditor} />}
       {tab === 'external' && isAuditor && <ExternalQA />}
       {tab === 'recaps' && isAuditor && <ClientRecaps />}
-      {tab === 'reporting' && isAuditor && <QualityReporting />}
     </div>
   )
 }
