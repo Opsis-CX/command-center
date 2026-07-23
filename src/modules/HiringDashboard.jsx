@@ -508,6 +508,17 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, busy }) {
               <button disabled={busy} onClick={() => onDeny(app)} style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#DC2626', fontSize: 14, fontWeight: 700, padding: '10px 0', cursor: 'pointer', fontFamily: 'inherit' }}>Deny</button>
             </div>
           )}
+          {SCREENED_OUT.includes(app.status) && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 8 }}>
+                This applicant was screened out{app.screen_reason ? ` (${app.screen_reason})` : ''}. You can override that and put them back into review.
+              </div>
+              <button disabled={busy} onClick={() => onTransition(app, 'pending_review', { email: null, note: 'manually reinstated' })}
+                style={{ width: '100%', border: 0, borderRadius: 8, background: '#16A34A', color: '#fff', fontSize: 14, fontWeight: 700, padding: '10px 0', cursor: 'pointer', fontFamily: 'inherit' }}>
+                ✋ Reinstate to review
+              </button>
+            </div>
+          )}
           {adv && (
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
