@@ -70,16 +70,19 @@ export default function Tokens() {
 function WalletTab({ user, onRedeem }) {
   const [wallet, setWallet] = useState(null)
   const [txns, setTxns] = useState([])
+  const [budget, setBudget] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: w }, { data: t }] = await Promise.all([
+    const [{ data: w }, { data: t }, { data: b }] = await Promise.all([
       supabase.from('token_wallets').select('*').eq('profile_id', user.id).maybeSingle(),
       supabase.from('token_transactions').select('*').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(60),
+      supabase.from('token_budgets').select('allocated, spent').eq('manager_id', user.id).maybeSingle(),
     ])
     setWallet(w || { balance: 0, lifetime_earned: 0, lifetime_redeemed: 0 })
     setTxns(t || [])
+    setBudget(b)
     setLoading(false)
   }, [user.id])
   useEffect(() => { load() }, [load])
@@ -91,6 +94,7 @@ function WalletTab({ user, onRedeem }) {
         <Stat label="Balance" value={wallet.balance} sub={`${usd(wallet.balance)} to redeem`} />
         <Stat label="Lifetime earned" value={wallet.lifetime_earned} sub={usd(wallet.lifetime_earned)} />
         <Stat label="Lifetime redeemed" value={wallet.lifetime_redeemed} sub={usd(wallet.lifetime_redeemed)} />
+        {budget && <Stat label="Team budget left" value={budget.allocated - budget.spent} sub={`${usd(budget.allocated - budget.spent)} of ${budget.allocated} to award`} />}
       </div>
       <button className="btn btn-cta" style={{ marginBottom: 18 }} onClick={onRedeem} disabled={wallet.balance <= 0}>
         Redeem tokens →
