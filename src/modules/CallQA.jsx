@@ -88,6 +88,8 @@ export default function CallQA({ portal = false } = {}) {
   const [selected, setSelected] = useState(null)
   const [busy, setBusy] = useState('')
   const [days, setDays] = useState(30)
+  const [startDate, setStartDate] = useState('') // YYYY-MM-DD; when set (with endDate) overrides the Range preset
+  const [endDate, setEndDate] = useState('')
   const [brand, setBrand] = useState('all')
   const [agent, setAgent] = useState('all')
   const [topic, setTopic] = useState('all')
@@ -134,18 +136,26 @@ export default function CallQA({ portal = false } = {}) {
     return () => { active = false }
   }, [user?.id])
 
+  const customRange = Boolean(startDate || endDate) // explicit calendar dates take over from the Range preset
   const filtered = useMemo(() => {
+    // Default window from the "Range" preset…
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days)
+    // …unless a start and/or end date is chosen on the calendar, which overrides it.
+    const start = startDate ? new Date(startDate + 'T00:00:00') : null
+    const end = endDate ? new Date(endDate + 'T23:59:59.999') : null
     return rows.filter((r) => {
       const c = r.call || {}
       const d = c.call_date ? new Date(c.call_date) : new Date(r.created_at)
-      if (d < cutoff) return false
+      if (customRange) {
+        if (start && d < start) return false
+        if (end && d > end) return false
+      } else if (d < cutoff) return false
       if (brand !== 'all' && c.brand !== brand) return false
       if (agent !== 'all' && agentOf(r) !== agent) return false
       if (topic !== 'all' && !(r.topics || []).includes(topic)) return false
       return true
     })
-  }, [rows, days, brand, agent, topic])
+  }, [rows, days, startDate, endDate, customRange, brand, agent, topic])
 
   const agents = useMemo(() => Array.from(new Set(rows.map(agentOf).filter(Boolean))).sort(), [rows])
   const brands = useMemo(() => Array.from(new Set(rows.map((r) => r.call?.brand).filter(Boolean))).sort(), [rows])
@@ -249,6 +259,7 @@ export default function CallQA({ portal = false } = {}) {
 
   const base = import.meta.env.VITE_SUPABASE_URL || ''
   const inFlight = (pipeline.needs_transcription || 0) + (pipeline.transcribing || 0) + (pipeline.ready || 0) + (pipeline.scoring || 0)
+  const todayStr = new Date().toISOString().slice(0, 10)
   const TABS = [['overview', 'Overview'], ['opportunities', 'Opportunities'], ['conversion', 'Conversion'], ['calls', 'Calls'], ['coaching', 'Coaching'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings']] : [])]
 
   return (
@@ -265,8 +276,11 @@ export default function CallQA({ portal = false } = {}) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '16px 0' }}>
-        <Select label="Range" value={days} onChange={(v) => setDays(Number(v))} opts={[[7, 'Last 7 days'], [30, 'Last 30 days'], [90, 'Last 90 days'], [3650, 'All time']]} />
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', margin: '16px 0' }}>
+        <Select label="Range" value={days} onChange={(v) => setDays(Number(v))} opts={[[7, 'Last 7 days'], [30, 'Last 30 days'], [90, 'Last 90 days'], [3650, 'All time']]} disabled={customRange} title={customRange ? 'Using the custom date range below' : undefined} />
+        <DateField label="Start date" value={startDate} max={endDate || todayStr} onChange={setStartDate} />
+        <DateField label="End date" value={endDate} min={startDate || undefined} max={todayStr} onChange={setEndDate} />
+        {customRange && <button onClick={() => { setStartDate(''); setEndDate('') }} style={{ ...btn('ghost'), padding: '7px 10px' }}>✕ Clear dates</button>}
         <Select label="Brand" value={brand} onChange={setBrand} opts={[['all', 'All brands'], ...brands.map((c) => [c, c])]} />
         <Select label="Topic" value={topic} onChange={setTopic} opts={[['all', 'All topics'], ...topicList.map((t) => [t, t])]} />
         {viewAll && <Select label="Agent" value={agent} onChange={setAgent} opts={[['all', 'All agents'], ...agents.map((a) => [a, a])]} />}
@@ -955,11 +969,19 @@ function SettingRow({ s, onSave, busy }) {
   )
 }
 
-function Select({ label, value, onChange, opts }) {
+function Select({ label, value, onChange, opts, disabled = false, title }) {
+  return (
+    <label style={{ fontSize: 12, color: '#64748b', opacity: disabled ? 0.5 : 1 }} title={title}>
+      <div style={{ marginBottom: 3, fontWeight: 600 }}>{label}</div>
+      <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: disabled ? '#f1f5f9' : '#fff', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer' }}>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+    </label>
+  )
+}
+function DateField({ label, value, onChange, min, max }) {
   return (
     <label style={{ fontSize: 12, color: '#64748b' }}>
       <div style={{ marginBottom: 3, fontWeight: 600 }}>{label}</div>
-      <select value={value} onChange={(e) => onChange(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', fontSize: 13 }}>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+      <input type="date" value={value} min={min} max={max} onChange={(e) => onChange(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', fontSize: 13, fontFamily: 'inherit', color: value ? '#0f172a' : '#94a3b8' }} />
     </label>
   )
 }
