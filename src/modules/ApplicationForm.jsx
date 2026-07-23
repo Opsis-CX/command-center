@@ -14,7 +14,7 @@ import { supabase } from '../lib/supabase'
 // States we do NOT contract in. Anyone here is screened out automatically.
 const EXCLUDED_STATES = [
   'AK', 'AR', 'CA', 'CT', 'DE', 'HI', 'IL', 'IN', 'KS', 'LA', 'ME', 'MD',
-  'MA', 'NE', 'NV', 'NH', 'NJ', 'NM', 'OH', 'OR', 'RI', 'TN', 'UT', 'VT',
+  'MA', 'NE', 'NH', 'NJ', 'NM', 'NY', 'OH', 'OR', 'RI', 'TN', 'UT', 'VT',
   'WA', 'WV',
 ]
 // All US states + DC for the dropdown.
