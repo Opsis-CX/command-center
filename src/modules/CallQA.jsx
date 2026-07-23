@@ -98,7 +98,7 @@ export default function CallQA({ portal = false } = {}) {
     // The heavy per-question `answers` blob and the `transcript` are fetched lazily
     // (in the detail drawer, and on demand at CSV-export time) to keep this initial
     // payload light — it makes the first load noticeably faster at scale.
-    const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, strengths, improvements, strength_tags, improvement_tags, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, winnable, revenue_tip, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url)'
+    const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, strengths, improvements, strength_tags, improvement_tags, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, winnable, revenue_tip, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, customer_name, customer_number)'
     const page = 1000; let from = 0; let all = []
     for (;;) {
       const { data, error } = await supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(from, from + page - 1)
@@ -619,7 +619,7 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, canManage,
         <div style={{ position: 'sticky', top: 0, background: '#fff', borderBottom: '1px solid #e2e8f0', padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 1 }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{agentOf(row)} · {c.brand}</div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>{fmtDate(c.call_date)} · {c.source} · {c.direction} · {fmtDur(c.duration_seconds)}</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>{fmtDate(c.call_date)} · {c.source} · {c.direction} · {fmtDur(c.duration_seconds)}{c.customer_number ? ` · 📞 ${c.customer_number}` : ''}{c.customer_name ? ` · ${c.customer_name}` : ''}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: notScored ? 15 : 26, fontWeight: 800, color: notScored ? '#64748b' : scoreColor(shownPct) }}>{headerText}</div>
