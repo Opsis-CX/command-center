@@ -7,6 +7,7 @@ import { notifyChatMessage, notifyAckNudge, notifyChannelAdded, notifyIncomingCa
 import { useUnread } from '../lib/unread'
 import EmojiPicker from 'emoji-picker-react'
 import { RichEditor, RichContent, sanitizeHtml, htmlToText } from '../lib/RichEditor'
+import { needsTranscode, transcodeToMp3 } from '../lib/audioTranscode'
 
 // ============================================================
 // CHAT — Stage 1 + @update acknowledgments + @here
@@ -118,11 +119,50 @@ function humanSize(bytes) {
   return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${u[i]}`
 }
 
+// Plays audio attachments inline. Phone-system WAVs (GSM etc.) can't be decoded
+// by the browser (they show 0:00), so on Play we fetch the file and, if needed,
+// transcode it to mp3 first. Works for both already-posted files and new ones.
+function AudioAttachment({ att }) {
+  const [phase, setPhase] = useState('idle')   // idle | working | ready | error
+  const [src, setSrc] = useState(null)
+  const [msg, setMsg] = useState('')
+  async function play() {
+    if (phase === 'working') return
+    setPhase('working'); setMsg('Loading…')
+    try {
+      const blob = await fetch(att.public_url).then(r => { if (!r.ok) throw new Error('fetch failed'); return r.blob() })
+      let playable = blob
+      if (await needsTranscode(blob)) { setMsg('Phone-system recording — converting so it plays (the first one this session takes a moment)…'); playable = await transcodeToMp3(blob) }
+      setSrc(URL.createObjectURL(playable)); setPhase('ready'); setMsg('')
+    } catch (e) { setPhase('error'); setMsg('Couldn’t play this recording here — use Download to save it.') }
+  }
+  return (
+    <div style={{ marginTop: 6, padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--canvas)', maxWidth: 340 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 20 }}>🎧</span>
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{att.file_name}</div>
+          <a href={att.public_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{humanSize(att.file_size)} · Download</a>
+        </span>
+        {phase !== 'ready' && (
+          <button onClick={play} disabled={phase === 'working'}
+            style={{ border: 0, background: '#16A34A', color: '#fff', borderRadius: 6, padding: '5px 12px', fontSize: 12.5, fontWeight: 600, cursor: phase === 'working' ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
+            {phase === 'working' ? '…' : '▶ Play'}
+          </button>
+        )}
+      </div>
+      {msg && <div style={{ fontSize: 11.5, color: phase === 'error' ? 'var(--failed)' : 'var(--ink-soft)', marginTop: 6 }}>{msg}</div>}
+      {phase === 'ready' && src && <audio controls autoPlay src={src} style={{ width: '100%', marginTop: 8, height: 36 }} />}
+    </div>
+  )
+}
+
 // onLoad → re-pin the scroller, since images change list height after paint.
 function AttachmentView({ att, onMediaLoad, onOpenImage }) {
   const type = att.file_type || ''
   const isImg = type.startsWith('image/')
   const isVid = type.startsWith('video/')
+  const isAudio = type.startsWith('audio/') || /\.(wav|mp3|m4a|ogg|aac|amr)$/i.test(att.file_name || '')
 
   if (isImg) {
     return (
@@ -137,6 +177,8 @@ function AttachmentView({ att, onMediaLoad, onOpenImage }) {
         style={{ maxWidth: 320, maxHeight: 260, borderRadius: 8, border: '1px solid var(--line)', marginTop: 6, display: 'block' }} />
     )
   }
+  if (isAudio) return <AudioAttachment att={att} />
+
   // generic file card
   return (
     <a href={att.public_url} target="_blank" rel="noreferrer"
