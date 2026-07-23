@@ -249,7 +249,7 @@ export default function CallQA({ portal = false } = {}) {
 
   const base = import.meta.env.VITE_SUPABASE_URL || ''
   const inFlight = (pipeline.needs_transcription || 0) + (pipeline.transcribing || 0) + (pipeline.ready || 0) + (pipeline.scoring || 0)
-  const TABS = [['overview', 'Overview'], ['opportunities', 'Opportunities'], ['conversion', 'Conversion'], ['calls', 'Calls'], ['coaching', 'Coaching'], ...(canManage ? [['settings', 'Settings']] : [])]
+  const TABS = [['overview', 'Overview'], ['opportunities', 'Opportunities'], ['conversion', 'Conversion'], ['calls', 'Calls'], ['coaching', 'Coaching'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings']] : [])]
 
   return (
     <div style={{ padding: 20, maxWidth: 1180, margin: '0 auto' }}>
@@ -283,7 +283,8 @@ export default function CallQA({ portal = false } = {}) {
           {tab === 'conversion' && <Conversion rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'calls' && <Calls rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'coaching' && <Coaching byAgent={byAgent} />}
-          {tab === 'settings' && canManage && <SettingsTab settings={settings} secretKeys={secretKeys} pipeline={pipeline} base={base} onSave={saveSetting} busy={busy} />}
+          {tab === 'rubric' && canManage && <RubricTab campaigns={settings.map((s) => s.campaign)} />}
+        {tab === 'settings' && canManage && <SettingsTab settings={settings} secretKeys={secretKeys} pipeline={pipeline} base={base} onSave={saveSetting} busy={busy} />}
         </>
       )}
       {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onExclude={setExcluded} onAdjust={saveAdjustment} busy={busy} canManage={canManage} meName={meName} userId={user?.id} />}
@@ -771,6 +772,125 @@ function NotesCard({ callId, meName, userId, canDelete }) {
   )
 }
 
+// ---- Rubric editor: the criteria the AI scores each call on. Edits write to
+// ai_qa_rubric (RLS: managers only) and take effect on the next scoring run.
+function RubricTab({ campaigns }) {
+  const list = (campaigns && campaigns.length ? Array.from(new Set(campaigns)) : ['garagedoor'])
+  const [campaign, setCampaign] = useState(list[0])
+  const [rows, setRows] = useState(null)
+  const [err, setErr] = useState('')
+  const [msg, setMsg] = useState('')
+
+  const load = useCallback(async () => {
+    setErr(''); setRows(null)
+    const { data, error } = await supabase.from('ai_qa_rubric').select('*').eq('campaign', campaign).order('sort_order')
+    if (error) setErr(error.message); else setRows(data || [])
+  }, [campaign])
+  useEffect(() => { load() }, [load])
+  function flash(m) { setMsg(m); setTimeout(() => setMsg(''), 1800) }
+
+  async function saveRow(r, d) {
+    setRows((rs) => rs.map((x) => (x.key === r.key ? { ...x, ...d } : x)))
+    const { error } = await supabase.from('ai_qa_rubric')
+      .update({ label: d.label, section: d.section || null, points: Number(d.points) || 0, allow_na: !!d.allow_na, misses: d.misses || [] })
+      .eq('campaign', campaign).eq('key', r.key)
+    if (error) { setErr(error.message); load() } else flash('Saved')
+  }
+  async function move(i, dir) {
+    const j = i + dir
+    if (j < 0 || j >= rows.length) return
+    const a = rows[i], b = rows[j]
+    const na = { ...a, sort_order: b.sort_order }, nb = { ...b, sort_order: a.sort_order }
+    setRows(rows.map((x) => (x.key === a.key ? na : x.key === b.key ? nb : x)).sort((p, q) => p.sort_order - q.sort_order))
+    const res = await Promise.all([
+      supabase.from('ai_qa_rubric').update({ sort_order: na.sort_order }).eq('campaign', campaign).eq('key', a.key),
+      supabase.from('ai_qa_rubric').update({ sort_order: nb.sort_order }).eq('campaign', campaign).eq('key', b.key),
+    ])
+    const bad = res.find((r) => r.error); if (bad) { setErr(bad.error.message); load() }
+  }
+  async function addRow() {
+    const key = 'c_' + Math.random().toString(36).slice(2, 8)
+    const sort_order = rows.length ? Math.max(...rows.map((r) => r.sort_order || 0)) + 1 : 1
+    const row = { campaign, key, label: 'New criterion', section: rows[rows.length - 1]?.section || 'general', points: 5, allow_na: true, sort_order, misses: [] }
+    setRows((rs) => [...rs, row])
+    const { error } = await supabase.from('ai_qa_rubric').insert(row)
+    if (error) { setErr(error.message); load() }
+  }
+  async function removeRow(r) {
+    if (!window.confirm(`Delete criterion "${r.label}"? This changes how future calls are scored.`)) return
+    setRows((rs) => rs.filter((x) => x.key !== r.key))
+    const { error } = await supabase.from('ai_qa_rubric').delete().eq('campaign', campaign).eq('key', r.key)
+    if (error) { setErr(error.message); load() }
+  }
+
+  const total = (rows || []).reduce((s, r) => s + (Number(r.points) || 0), 0)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <Card>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <div style={{ fontWeight: 700 }}>Scoring rubric</div>
+            <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 2 }}>These are the criteria the AI grades every call against. Edits apply to the next scoring run — use Re-score on a call to apply them immediately.</div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            {msg && <span style={{ color: '#1b5e20', fontSize: 13 }}>{msg}</span>}
+            <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Campaign{' '}
+              <select value={campaign} onChange={(e) => setCampaign(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}>
+                {list.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+          </div>
+        </div>
+      </Card>
+      {err && <Card style={{ borderColor: '#f5c6cb' }}><span style={{ color: '#b71c1c', fontSize: 13 }}>{err}</span></Card>}
+      {rows == null ? <Card><span style={{ color: '#64748b' }}>Loading rubric…</span></Card> : (
+        <>
+          {rows.map((r, i) => (
+            <Card key={r.key}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 2 }}>
+                  <button title="Move up" disabled={i === 0} onClick={() => move(i, -1)} style={{ ...btn('ghost'), padding: '2px 7px', color: i === 0 ? '#cbd5e1' : '#475569' }}>▲</button>
+                  <button title="Move down" disabled={i === rows.length - 1} onClick={() => move(i, 1)} style={{ ...btn('ghost'), padding: '2px 7px', color: i === rows.length - 1 ? '#cbd5e1' : '#475569' }}>▼</button>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}><RubricRow r={r} onSave={saveRow} onDelete={removeRow} /></div>
+              </div>
+            </Card>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <button onClick={addRow} style={btn('primary')}>+ Add criterion</button>
+            <span style={{ fontSize: 13, color: '#64748b' }}>Total points possible: <b>{total}</b></span>
+          </div>
+        </>
+      )}
+      <datalist id="rubric-sections">
+        <option value="greeting_compliance" /><option value="discovery_needs" /><option value="solution_pitch" /><option value="close_next_steps" />
+      </datalist>
+    </div>
+  )
+}
+function RubricRow({ r, onSave, onDelete }) {
+  const [d, setD] = useState(r)
+  useEffect(() => { setD(r) }, [r.key])
+  const dirty = JSON.stringify({ ...d, sort_order: 0 }) !== JSON.stringify({ ...r, sort_order: 0 })
+  const missesText = (d.misses || []).join('\n')
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input value={d.label} onChange={(e) => setD({ ...d, label: e.target.value })} placeholder="What the AI checks for on the call" style={{ ...inp(360), flex: 1, minWidth: 220 }} />
+        <label style={{ fontSize: 12, color: '#64748b' }}>Points <input type="number" value={d.points} onChange={(e) => setD({ ...d, points: e.target.value })} style={inp(60)} /></label>
+        <label style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}><input type="checkbox" checked={!!d.allow_na} onChange={(e) => setD({ ...d, allow_na: e.target.checked })} /> Allow N/A</label>
+        <input value={d.section || ''} list="rubric-sections" onChange={(e) => setD({ ...d, section: e.target.value })} placeholder="section" style={inp(150)} />
+      </div>
+      <textarea value={missesText} onChange={(e) => setD({ ...d, misses: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
+        placeholder="Miss reasons the AI can cite when the answer is 'No' — one per line (optional)"
+        style={{ ...inp('100%'), width: '100%', minHeight: 48, resize: 'vertical', fontFamily: 'inherit' }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <button onClick={() => onDelete(r)} style={{ ...btn('ghost'), color: '#b71c1c', padding: '4px 10px' }}>Delete</button>
+        {dirty && <button onClick={() => onSave(r, d)} style={{ ...btn('primary'), padding: '4px 12px' }}>Save changes</button>}
+      </div>
+    </div>
+  )
+}
 function SettingsTab({ settings, secretKeys, pipeline, base, onSave, busy }) {
   const required = [['callqa_webhook_secret', 'Inbound webhook secret'], ['anthropic_api_key', 'Claude scoring'], ['deepgram_api_key', 'Deepgram transcription'], ['callrail_api_key', 'CallRail API']]
   return (
