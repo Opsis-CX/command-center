@@ -839,21 +839,39 @@ const stageToStatus = (text) => LABEL_TO_STATUS[(text || '').toLowerCase().trim(
 
 const IMPORT_FIELDS = [
   { key: 'organization',   label: 'Organization', required: true, match: ['organization', 'company', 'account'] },
-  { key: 'contact_person', label: 'Contact person', match: ['contact person', 'person - name', 'contact name', 'full name', 'name'] },
+  { key: 'contact_person', label: 'Contact person', match: ['contact person', 'person - name', 'contact name', 'full name', 'name'], avoid: ['date', 'time'] },
   { key: 'title',          label: 'Role / title', match: ['title', 'role', 'job'] },
   { key: 'status',         label: 'Stage', match: ['stage'] },
-  { key: 'contact_email',  label: 'Email', match: ['email', 'e-mail'] },
-  { key: 'contact_phone',  label: 'Phone', match: ['phone', 'mobile', 'tel'] },
+  { key: 'contact_email',  label: 'Email', match: ['email', 'e-mail'], avoid: ['date', 'time', 'sent', 'opened', 'clicked', 'count', 'status'] },
+  { key: 'contact_phone',  label: 'Phone', match: ['phone', 'mobile', 'tel'], avoid: ['date', 'time', 'count'] },
   { key: 'value',          label: 'Value', match: ['value', 'amount'] },
   { key: 'owner_name',     label: 'Owner', match: ['owner'] },
   { key: 'source',         label: 'Source', match: ['source', 'channel'] },
 ]
+// Guess a column for each field. We rank candidates: an exact header match wins
+// over a prefix match, which wins over a loose substring match — and a column is
+// never reused for two fields. `avoid` terms disqualify a header outright, so a
+// CRM column like "Email 1 Sent Date" can't get grabbed for the Email field
+// ahead of the real "Email" address column.
 function autoMap(headers) {
-  const norm = headers.map(h => h.toLowerCase())
+  const norm = headers.map(h => h.toLowerCase().trim())
+  const taken = new Set()
+  const pick = (f, test) => {
+    for (const m of f.match) {
+      const idx = norm.findIndex((h, i) =>
+        !taken.has(i) &&
+        !(f.avoid || []).some(a => h.includes(a)) &&
+        test(h, m))
+      if (idx >= 0) return idx
+    }
+    return -1
+  }
+  const tiers = [(h, m) => h === m, (h, m) => h.startsWith(m), (h, m) => h.includes(m)]
   const map = {}
   for (const f of IMPORT_FIELDS) {
     let idx = -1
-    for (const m of f.match) { idx = norm.findIndex(h => h.includes(m)); if (idx >= 0) break }
+    for (const test of tiers) { idx = pick(f, test); if (idx >= 0) break }
+    if (idx >= 0) taken.add(idx)
     map[f.key] = idx
   }
   return map
