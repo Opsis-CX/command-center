@@ -356,6 +356,27 @@ function LessonEditor({ courseId, onBack }) {
     } catch (e) { setErr(e.message) }
   }
 
+  // Move a lesson up (dir=-1) or down (dir=1) by swapping sort_order with its
+  // neighbor. Optimistic: reorder locally first, then persist both rows.
+  async function moveLesson(i, dir) {
+    const j = i + dir
+    if (j < 0 || j >= lessons.length) return
+    const a = lessons[i], b = lessons[j]
+    const na = { ...a, sort_order: b.sort_order }
+    const nb = { ...b, sort_order: a.sort_order }
+    const next = lessons.map(x => x.id === a.id ? na : (x.id === b.id ? nb : x))
+      .sort((p, q) => p.sort_order - q.sort_order)
+    setLessons(next)
+    try {
+      const res = await Promise.all([
+        supabase.from('lessons').update({ sort_order: na.sort_order }).eq('id', a.id),
+        supabase.from('lessons').update({ sort_order: nb.sort_order }).eq('id', b.id),
+      ])
+      const bad = res.find(r => r.error)
+      if (bad) throw bad.error
+    } catch (e) { setErr(e.message); load() }
+  }
+
   async function saveLesson(lesson) {
     try {
       const { error } = await supabase.from('lessons')
@@ -443,6 +464,10 @@ function LessonEditor({ courseId, onBack }) {
                   style={{ flex: 1, minWidth: 0, textAlign: 'left', border: 0, background: 'transparent', color: l.id === activeLesson ? 'var(--accent)' : 'var(--ink)', padding: '9px 10px', fontSize: 13.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {i + 1}. {l.title || 'Untitled'}
                 </button>
+                <button title="Move up" disabled={i === 0} onClick={() => moveLesson(i, -1)}
+                  style={{ border: 0, background: 'transparent', color: i === 0 ? 'var(--line)' : 'var(--ink-soft)', cursor: i === 0 ? 'default' : 'pointer', fontSize: 11, padding: '4px 3px', borderRadius: 6, fontFamily: 'inherit' }}>▲</button>
+                <button title="Move down" disabled={i === lessons.length - 1} onClick={() => moveLesson(i, 1)}
+                  style={{ border: 0, background: 'transparent', color: i === lessons.length - 1 ? 'var(--line)' : 'var(--ink-soft)', cursor: i === lessons.length - 1 ? 'default' : 'pointer', fontSize: 11, padding: '4px 3px', borderRadius: 6, fontFamily: 'inherit' }}>▼</button>
                 <button className="lesson-del" title="Delete lesson" onClick={() => deleteLesson(l)}
                   style={{ border: 0, background: 'transparent', color: 'var(--ink-soft)', cursor: 'pointer', fontSize: 13, padding: '4px 8px', borderRadius: 6, fontFamily: 'inherit' }}>✕</button>
               </div>
