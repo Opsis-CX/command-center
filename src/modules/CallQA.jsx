@@ -780,11 +780,18 @@ function RubricTab({ campaigns }) {
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
+  const [guidance, setGuidance] = useState('')
+  const [guidanceOrig, setGuidanceOrig] = useState('')
 
   const load = useCallback(async () => {
     setErr(''); setRows(null)
-    const { data, error } = await supabase.from('ai_qa_rubric').select('*').eq('campaign', campaign).order('sort_order')
+    const [{ data, error }, { data: st }] = await Promise.all([
+      supabase.from('ai_qa_rubric').select('*').eq('campaign', campaign).order('sort_order'),
+      supabase.from('ai_qa_settings').select('scoring_guidance').eq('campaign', campaign).maybeSingle(),
+    ])
     if (error) setErr(error.message); else setRows(data || [])
+    const g = st?.scoring_guidance || ''
+    setGuidance(g); setGuidanceOrig(g)
   }, [campaign])
   useEffect(() => { load() }, [load])
   function flash(m) { setMsg(m); setTimeout(() => setMsg(''), 1800) }
@@ -823,6 +830,11 @@ function RubricTab({ campaigns }) {
     if (error) { setErr(error.message); load() }
   }
 
+  async function saveGuidance() {
+    const { error } = await supabase.from('ai_qa_settings').upsert({ campaign, scoring_guidance: guidance }, { onConflict: 'campaign' })
+    if (error) setErr(error.message); else { setGuidanceOrig(guidance); flash('Guidance saved') }
+  }
+
   const total = (rows || []).reduce((s, r) => s + (Number(r.points) || 0), 0)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -841,6 +853,13 @@ function RubricTab({ campaigns }) {
             </label>
           </div>
         </div>
+      </Card>
+      <Card>
+        <div style={{ fontWeight: 700, marginBottom: 2 }}>Scoring guidance</div>
+        <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 8 }}>Plain-language instructions the AI follows when scoring this campaign — how strict to be, what counts as pass/fail, phrases to watch for. Applies on the next scoring run.</div>
+        <textarea value={guidance} onChange={(e) => setGuidance(e.target.value)} placeholder="e.g. Mark Next Steps N/A (don't deduct) when no appointment was booked. Reward confident language; flag phrases like 'I don't know.'"
+          style={{ width: '100%', minHeight: 90, resize: 'vertical', border: '1px solid #cbd5e1', borderRadius: 8, padding: 10, fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+        {guidance !== guidanceOrig && <div style={{ marginTop: 8 }}><button onClick={saveGuidance} style={btn('primary')}>Save guidance</button></div>}
       </Card>
       {err && <Card style={{ borderColor: '#f5c6cb' }}><span style={{ color: '#b71c1c', fontSize: 13 }}>{err}</span></Card>}
       {rows == null ? <Card><span style={{ color: '#64748b' }}>Loading rubric…</span></Card> : (
