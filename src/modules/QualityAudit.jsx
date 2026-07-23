@@ -27,7 +27,7 @@ const CAMPAIGNS = [
 ]
 const BRANDS = {
   lavin: ['Apple', 'Cedar Park', 'Cheney', 'Cunningham', 'Genson', 'Omaha', 'TVG', 'Quality', 'PDQ', 'Inbound - No Brand'],
-  open_invoices: ['Cedar Park', 'Inbound - No Brand'],
+  open_invoices: ['Cedar Park', 'Omaha', 'Inbound - No Brand'],
 }
 const AUDIT_TYPES = [
   ['conversation', 'Conversation'],

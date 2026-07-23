@@ -34,14 +34,15 @@ const US_STATES = [
   ['WI', 'Wisconsin'], ['WY', 'Wyoming'],
 ]
 const ROLES = [
-  'Outbound Sales Representative',
-  'Inbound Customer Service',
   'Appointment Setter',
-  'Retention Specialist',
-  'Other / Not sure',
+  'Agent Support Coordinator',
+  'Quality',
+  'Operations Assistant',
+  'Executive Assistant',
+  'Client Acquisition Specialist',
 ]
 const EMPLOYMENT_TYPES = ['Full-time', 'Part-time', 'Either', '1099 Contractor']
-const MAX_RESUME_BYTES = 15 * 1024 * 1024 // 15MB
+const MAX_RESUME_BYTES = 25 * 1024 * 1024 // 25MB
 
 // --- STUB: replace with a real email send (Edge Function) later ---
 async function sendHiringEmail(kind, to, data) {
@@ -271,10 +272,10 @@ export default function ApplicationForm() {
 
       <Section title="Wrap-up">
         <div>
-          <label style={labelStyle}>Upload your resume</label>
-          <input ref={resumeRef} type="file" accept=".pdf,.doc,.docx" onChange={e => setResume(e.target.files?.[0] || null)}
+          <label style={labelStyle}>Upload your resume <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}>(optional)</span></label>
+          <input ref={resumeRef} type="file" accept=".pdf,.doc,.docx,.rtf,.odt,.txt,.pages" onChange={e => setResume(e.target.files?.[0] || null)}
             style={{ ...inputStyle, padding: '8px 11px' }} />
-          <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>PDF or Word, up to 15MB.</div>
+          <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>PDF, Word, Pages, or plain text — up to 25MB. Optional; you can submit without one.</div>
         </div>
         <div><label style={labelStyle}>LinkedIn profile</label><input style={inputStyle} value={f.linkedin_url} onChange={set('linkedin_url')} placeholder="linkedin.com/in/you" /></div>
         <div><label style={labelStyle}>Why are you interested in working with Opsis?</label>
