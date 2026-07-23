@@ -5,6 +5,7 @@ import ExternalQA, { ClientRecaps } from './ExternalQA'
 import QualityReporting from './QualityReporting'
 import { canAny } from '../lib/permissions'
 import { notifyCallReviewAssigned, notifyCallReviewSubmitted } from '../lib/notify'
+import { downloadCSV } from './projectCsv'
 
 // ============================================================
 // QUALITY AUDIT
@@ -530,14 +531,19 @@ function Queue({ onPick }) {
 // ---------------- RESULTS ----------------
 function Results({ isAuditor, onEdit }) {
   const [audits, setAudits] = useState([])
+  const [auditorMap, setAuditorMap] = useState({})
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
-    const { data, error } = await supabase.from('qa_audits').select('*').order('created_at', { ascending: false }).limit(500)
+    const [{ data, error }, { data: profs }] = await Promise.all([
+      supabase.from('qa_audits').select('*').order('created_at', { ascending: false }).limit(500),
+      supabase.from('profiles').select('id, full_name'),
+    ])
     if (error) setErr(error.message)
     setAudits(data || [])
+    const m = {}; (profs || []).forEach(p => { m[p.id] = p.full_name }); setAuditorMap(m)
     setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
@@ -551,12 +557,37 @@ function Results({ isAuditor, onEdit }) {
     })).sort((a, b) => b.avg - a.avg)
   }, [audits])
 
+  const dispRows = () => audits.filter(a => a.correct_disposition && String(a.correct_disposition).trim())
+  const exportDay = () => new Date().toISOString().slice(0, 10)
+  function exportFull() {
+    const header = ['Audited On', 'Agent', 'Auditor', 'Campaign', 'Brand', 'Call Date', 'Current Disposition', 'Correct Disposition', 'Changed?', 'QA Score', 'Feedback', 'Call ID', 'Recording']
+    const rows = dispRows().map(a => [
+      a.created_at ? a.created_at.slice(0, 10) : '', a.agent_name || '', auditorMap[a.auditor_id] || '',
+      a.campaign || '', a.brand || '', a.call_date || '', a.current_disposition || '', a.correct_disposition || '',
+      ((a.current_disposition || '') !== (a.correct_disposition || '')) ? 'Yes' : 'No',
+      a.clean_qa_score == null ? '' : a.clean_qa_score, a.feedback || '', a.call_id || '', a.recording_link || '',
+    ])
+    downloadCSV(`disposition-corrections-${exportDay()}.csv`, [header, ...rows])
+  }
+  function exportSlim() {
+    const header = ['Call ID', 'Current Disposition', 'Correct Disposition']
+    const rows = dispRows().map(a => [a.call_id || '', a.current_disposition || '', a.correct_disposition || ''])
+    downloadCSV(`disposition-corrections-slim-${exportDay()}.csv`, [header, ...rows])
+  }
+
   if (loading) return <p className="page-sub">Loading results…</p>
   if (err) return <div className="card" style={{ borderColor: 'var(--failed)' }}><b style={{ color: 'var(--failed)' }}>Couldn't load.</b> <span className="page-sub">{err}</span></div>
   if (!audits.length) return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 24 }}>No audits yet.</div></div>
 
   return (
     <div>
+      {isAuditor && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 12.5, color: 'var(--ink-soft)', fontWeight: 600 }}>Disposition corrections ({dispRows().length}):</span>
+          <button className="btn btn-ghost" onClick={exportFull}>⭳ Export (full)</button>
+          <button className="btn btn-ghost" onClick={exportSlim}>⭳ Export (Call ID + dispositions)</button>
+        </div>
+      )}
       {isAuditor && byAgent.length > 0 && (
         <div className="card" style={{ marginBottom: 16 }}>
           <SectionTitle>Average clean score by agent (conversation audits)</SectionTitle>
