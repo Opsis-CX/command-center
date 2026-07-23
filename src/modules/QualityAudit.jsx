@@ -101,6 +101,52 @@ export default function QualityAudit() {
   )
 }
 
+// Manager-only editor for the Brand / Location dropdown options (qa_brands).
+// Changes apply immediately for everyone; RLS limits writes to managers.
+function BrandManager({ campaign, onClose, onChanged }) {
+  const [rows, setRows] = useState(null)
+  const [name, setName] = useState('')
+  const [err, setErr] = useState('')
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.from('qa_brands').select('*').eq('campaign', campaign).order('sort_order')
+    if (error) setErr(error.message); else setRows(data || [])
+  }, [campaign])
+  useEffect(() => { load() }, [load])
+  async function add() {
+    const n = name.trim(); if (!n) return
+    const sort_order = rows && rows.length ? Math.max(...rows.map(r => r.sort_order || 0)) + 1 : 1
+    const { error } = await supabase.from('qa_brands').insert({ campaign, name: n, sort_order })
+    if (error) setErr(error.message); else { setName(''); await load(); onChanged && onChanged() }
+  }
+  async function remove(r) {
+    const { error } = await supabase.from('qa_brands').delete().eq('id', r.id)
+    if (error) setErr(error.message); else { await load(); onChanged && onChanged() }
+  }
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 200, display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div style={{ width: 420, maxWidth: '100%', maxHeight: '85vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, padding: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <b>Manage brands · {campaign}</b>
+          <button onClick={onClose} style={{ border: 0, background: 'none', fontSize: 20, cursor: 'pointer', color: 'var(--ink-soft)', lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 12 }}>Options in the Brand / Location dropdown for this campaign. Changes apply immediately for everyone.</div>
+        {err && <div style={{ color: 'var(--failed)', fontSize: 12.5, marginBottom: 8 }}>{err}</div>}
+        {rows == null ? <div style={{ color: 'var(--ink-soft)' }}>Loading…</div> : rows.map(r => (
+          <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--line)' }}>
+            <span style={{ fontSize: 14 }}>{r.name}</span>
+            <button onClick={() => remove(r)} style={{ border: 0, background: 'none', color: 'var(--failed)', cursor: 'pointer', fontSize: 12.5, fontFamily: 'inherit' }}>Remove</button>
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add() }} placeholder="Add a brand / location…" style={{ ...inputStyle, flex: 1 }} />
+          <button className="btn btn-primary" onClick={add} disabled={!name.trim()}>Add</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ---------------- NEW AUDIT ----------------
 function NewAudit({ prefill, editAudit, onDone }) {
   const { user } = useAuth()
@@ -112,6 +158,8 @@ function NewAudit({ prefill, editAudit, onDone }) {
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState('')
   const [meName, setMeName] = useState('')
+  const [brandsByCampaign, setBrandsByCampaign] = useState({})
+  const [managingBrands, setManagingBrands] = useState(false)
 
   // editAudit = a submitted audit being corrected; prefill = a queued call.
   const [campaign, setCampaign] = useState(editAudit?.campaign || 'lavin')
@@ -132,17 +180,19 @@ function NewAudit({ prefill, editAudit, onDone }) {
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     try {
-      const [qRes, sRes, aRes, meRes] = await Promise.all([
+      const [qRes, sRes, aRes, meRes, brRes] = await Promise.all([
         supabase.from('qa_questions').select('*').eq('active', true).order('sort_order'),
         supabase.from('qa_sub_items').select('*').eq('active', true).order('sort_order'),
         supabase.from('profiles').select('id, full_name, role, is_active').eq('role', 'agent').order('full_name'),
         supabase.from('profiles').select('full_name').eq('id', user?.id).maybeSingle(),
+        supabase.from('qa_brands').select('campaign, name').eq('active', true).order('sort_order'),
       ])
       setMeName(meRes.data?.full_name || '')
       if (qRes.error) throw qRes.error
       setQuestions(qRes.data || [])
       setSubItems(sRes.error ? [] : (sRes.data || []))
       setAgents((aRes.data || []).map(p => ({ agent_name: p.full_name, profile_id: p.id, status: p.is_active ? 'Active' : 'Inactive' })))
+      const bmap = {}; (brRes.data || []).forEach(r => { if (!bmap[r.campaign]) bmap[r.campaign] = []; bmap[r.campaign].push(r.name) }); setBrandsByCampaign(bmap)
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }, [user?.id])
   useEffect(() => { load() }, [load])
@@ -326,8 +376,10 @@ function NewAudit({ prefill, editAudit, onDone }) {
           <Field label="Brand / Location">
             <select value={brand} onChange={e => setBrand(e.target.value)} style={inputStyle}>
               <option value="">Select…</option>
-              {(BRANDS[campaign] || []).map(b => <option key={b} value={b}>{b}</option>)}
+              {((brandsByCampaign[campaign] && brandsByCampaign[campaign].length) ? brandsByCampaign[campaign] : (BRANDS[campaign] || [])).map(b => <option key={b} value={b}>{b}</option>)}
             </select>
+            {auditType === 'conversation' && <button type="button" onClick={() => setManagingBrands(true)} style={{ marginTop: 5, background: 'none', border: 0, color: 'var(--accent)', fontSize: 12, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>+ Manage brands…</button>}
+            {managingBrands && <BrandManager campaign={campaign} onClose={() => setManagingBrands(false)} onChanged={load} />}
           </Field>
           <Field label="Call recording">
             <input type="file" accept="audio/*,video/*" onChange={e => uploadRecording(e.target.files?.[0])} disabled={uploadingRec}
