@@ -39,6 +39,69 @@ function defaultRange() {
   const iso = d => d.toISOString().slice(0, 10)
   return { from: iso(monday), to: iso(sunday) }
 }
+const isoDay = (d) => d.toISOString().slice(0, 10)
+// Shared time-frame presets used across every report.
+function presetRange(preset) {
+  const now = new Date()
+  if (preset === 'last7') { const f = new Date(now); f.setDate(now.getDate() - 6); return { from: isoDay(f), to: isoDay(now) } }
+  if (preset === 'last30') { const f = new Date(now); f.setDate(now.getDate() - 29); return { from: isoDay(f), to: isoDay(now) } }
+  if (preset === 'month') { const f = new Date(now.getFullYear(), now.getMonth(), 1); return { from: isoDay(f), to: isoDay(now) } }
+  if (preset === 'week') return defaultRange()
+  return null // 'custom'
+}
+
+// ---- Five9-style report catalog. Each leaf key maps to a `view`. Adding a
+// report = one entry here + one render branch/component. ----
+const CATALOG = [
+  { label: 'Time & Payroll', items: [
+    { key: 'person', name: 'Hours by Person (Payroll)', q: 'How many hours did each person work, by client?' },
+    { key: 'client', name: 'Hours by Client (Invoicing)', q: 'How many hours did we deliver to each client?' },
+    { key: 'compare', name: 'Scheduled vs Worked', q: 'How do scheduled, clocked and tracked hours compare per person?' },
+  ] },
+  { label: 'Schedule', items: [
+    { key: 'schedule', name: 'Schedule Hours', q: 'What is hourly coverage, and who is on each hour?' },
+    { key: 'attendance', name: 'Attendance', q: 'Who showed up, was late, or no-showed against their schedule?' },
+  ] },
+  { label: 'Chat', items: [
+    { key: 'chat', name: 'Messages by Person', q: 'How many messages is each person sending, by channel and DM?' },
+  ] },
+  { label: 'Project Management', items: [
+    { key: 'projects', name: 'Tasks', q: 'How many tasks were created, completed, and are overdue?' },
+  ] },
+  { label: 'Quality', items: [
+    { key: 'quality', name: 'QA Audits', q: 'How did agents score on QA audits?' },
+  ] },
+  { label: 'Help Center', items: [
+    { key: 'support', name: 'Support Tickets', q: 'Ticket volume, first-response and resolution times, by category.' },
+  ] },
+  { label: 'Tokens', items: [
+    { key: 'tokens', name: 'Token Activity', q: 'How many tokens did each person receive, use, and bank?' },
+  ] },
+  { label: 'Sales', items: [
+    { key: 'sales', name: 'Sales Pipeline', q: 'How many deals are in each stage, and what needs action?' },
+  ] },
+  { label: 'RSN Pipeline', items: [
+    { key: 'rsn', name: 'RSN Pipeline', q: 'How many RSN deals are in each stage, and what needs action?' },
+  ] },
+  { label: 'Hiring', items: [
+    { key: 'hiring', name: 'Hiring Pipeline', q: 'How many applicants are in each stage?' },
+  ] },
+  { label: 'People & Tags', items: [
+    { key: 'people', name: 'People & Tags', q: 'Headcount by role and tag; who is untagged or inactive.' },
+  ] },
+  { label: 'Raw Data', items: [
+    { key: 'rawdata', name: 'Raw Data Export', q: 'Export raw records for your own analysis.' },
+  ] },
+]
+const REPORT_META = Object.fromEntries(CATALOG.flatMap(c => c.items.map(it => [it.key, { ...it, category: c.label }])))
+// Reports that don't use the shared date range.
+const NO_RANGE = new Set(['people', 'rawdata'])
+// Reports that expose the shared person/tag filter (newer sections).
+const FILTERABLE = new Set(['chat', 'tokens', 'sales', 'rsn'])
+// Reports whose CSV export is the parent-owned shared button (older inline reports).
+const SHARED_EXPORT = new Set(['person', 'client', 'compare', 'quality', 'people'])
+// Reports rendered by their own standalone component.
+const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring'])
 
 export default function Reporting() {
   const { isAdmin } = useAuth()
@@ -56,6 +119,13 @@ export default function Reporting() {
   const [peopleFull, setPeopleFull] = useState([])
   const [tags, setTags] = useState([])
   const [taggables, setTaggables] = useState([])
+  // Five9-style catalog UI state
+  const [mode, setMode] = useState('standard')       // 'standard' | 'custom'
+  const [pickerOpen, setPickerOpen] = useState(true)  // catalog / saved-report picker visible
+  const [expanded, setExpanded] = useState({})        // category label -> open?
+  const [filters, setFilters] = useState({ personId: 'all', tagId: 'all' })
+  const [savedReports, setSavedReports] = useState([])
+  const [savingReport, setSavingReport] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -72,6 +142,49 @@ export default function Reporting() {
     })()
     return () => { active = false }
   }, [])
+
+  // Saved custom reports (report_definitions): own + shared.
+  const loadSaved = useCallback(async () => {
+    const { data } = await supabase.from('report_definitions').select('*').order('created_at', { ascending: false })
+    setSavedReports(data || [])
+  }, [])
+  useEffect(() => { loadSaved() }, [loadSaved])
+
+  // Resolve the person/tag filter to a set of allowed profile ids (null = everyone).
+  const allowedIds = useMemo(() => {
+    if (filters.personId !== 'all') return new Set([filters.personId])
+    if (filters.tagId !== 'all') return new Set(taggables.filter(t => t.tag_id === filters.tagId).map(t => t.entity_id))
+    return null
+  }, [filters, taggables])
+
+  function selectReport(key) { setView(key); if (NO_RANGE.has(key)) { /* range ignored */ } }
+
+  async function saveAsCustom() {
+    const name = window.prompt('Name this report:', `${REPORT_META[view]?.name || view} — ${range.from} to ${range.to}`)
+    if (!name) return
+    setSavingReport(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    const shared = window.confirm('Share this report with the whole team?\n\nOK = shared · Cancel = just me')
+    const { error } = await supabase.from('report_definitions').insert({
+      owner_id: user?.id, owner_name: undefined, name, folder: shared ? 'Shared Reports' : 'My Reports',
+      report_key: view, is_shared: shared,
+      config: { range, filters: FILTERABLE.has(view) ? filters : undefined },
+    })
+    setSavingReport(false)
+    if (error) { window.alert('Could not save: ' + error.message); return }
+    await loadSaved(); setMode('custom')
+  }
+  function openSaved(r) {
+    setView(r.report_key)
+    if (r.config?.range) setRange(r.config.range)
+    if (r.config?.filters) setFilters(r.config.filters)
+    setMode('standard'); setPickerOpen(false)
+  }
+  async function deleteSaved(r) {
+    if (!window.confirm(`Delete saved report "${r.name}"?`)) return
+    await supabase.from('report_definitions').delete().eq('id', r.id)
+    await loadSaved()
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -367,10 +480,65 @@ export default function Reporting() {
         <p className="page-sub">Tracked task &amp; meeting time by person (payroll) and by client (invoicing). Client meetings sync automatically from Fathom. Hours only — apply your own rates.</p>
       </div>
 
-      {/* controls */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 20 }}>
-        {view !== 'people' && view !== 'rawdata' && (
+      {/* Five9-style report catalog */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--line)', paddingBottom: 12, marginBottom: 14 }}>
+        <button onClick={() => setMode('standard')} style={pill(mode === 'standard')}>Standard Reports</button>
+        <button onClick={() => setMode('custom')} style={pill(mode === 'custom')}>Custom Reports{savedReports.length ? ` (${savedReports.length})` : ''}</button>
+        <button onClick={() => setPickerOpen(o => !o)} style={{ ...tabBtn(false), marginLeft: 'auto', border: '1px solid var(--line)', borderRadius: 8 }}>{pickerOpen ? 'Hide list' : 'Choose report'}</button>
+      </div>
+
+      {pickerOpen && mode === 'standard' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, marginBottom: 16, alignItems: 'start' }}>
+          {CATALOG.map(cat => {
+            const open = expanded[cat.label] != null ? expanded[cat.label] : cat.items.some(it => it.key === view)
+            return (
+              <div key={cat.label} className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                <button onClick={() => setExpanded(e => ({ ...e, [cat.label]: !open }))}
+                  style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 0, background: 'var(--surface)', cursor: 'pointer', fontWeight: 600, fontSize: 13.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'inherit', color: 'var(--ink)' }}>
+                  <span>{cat.label}</span><span style={{ color: 'var(--ink-soft)' }}>{open ? '▾' : '▸'}</span>
+                </button>
+                {open && cat.items.map(it => (
+                  <button key={it.key} onClick={() => selectReport(it.key)}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', border: 0, borderTop: '1px solid var(--line-soft)', background: view === it.key ? 'var(--accent-bg, var(--line-soft))' : 'transparent', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <div style={{ fontSize: 13, fontWeight: view === it.key ? 700 : 600, color: view === it.key ? 'var(--accent)' : 'var(--ink)' }}>{it.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 2 }}>{it.q}</div>
+                  </button>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {pickerOpen && mode === 'custom' && (
+        <div className="card" style={{ padding: 0, marginBottom: 16, overflow: 'hidden' }}>
+          {savedReports.length === 0 ? (
+            <div style={{ padding: 16, color: 'var(--ink-soft)', fontSize: 13 }}>No saved reports yet. Open any report, set the time frame and filters, then <b>☆ Save as report</b>.</div>
+          ) : savedReports.map(r => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--line-soft)' }}>
+              <button onClick={() => openSaved(r)} style={{ flex: 1, textAlign: 'left', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{r.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 2 }}>{REPORT_META[r.report_key]?.name || r.report_key} · {r.folder}{r.is_shared ? ' · shared' : ''}</div>
+              </button>
+              <button onClick={() => deleteSaved(r)} title="Delete" style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 15 }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* selected report + shared time frame / filters / actions */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
+        <div style={{ marginRight: 'auto' }}>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600 }}>{REPORT_META[view]?.category || ''}</div>
+          <div style={{ fontSize: 17, fontWeight: 700 }}>{REPORT_META[view]?.name || 'Report'}</div>
+        </div>
+        {!NO_RANGE.has(view) && (
           <>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[['week', 'This week'], ['last7', 'Last 7'], ['last30', 'Last 30'], ['month', 'This month']].map(([p, l]) => (
+                <button key={p} onClick={() => setRange(presetRange(p))} style={{ ...tabBtn(false), border: '1px solid var(--line)', borderRadius: 8 }}>{l}</button>
+              ))}
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={lbl}>From</label>
               <input type="date" value={range.from} onChange={e => setRange(r => ({ ...r, from: e.target.value }))} style={inp} />
@@ -381,20 +549,27 @@ export default function Reporting() {
             </div>
           </>
         )}
-        <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden', flexWrap: 'wrap' }}>
-          <button onClick={() => setView('person')} style={tabBtn(view === 'person')}>By Person (Payroll)</button>
-          <button onClick={() => setView('client')} style={tabBtn(view === 'client')}>By Client (Invoicing)</button>
-          <button onClick={() => setView('compare')} style={tabBtn(view === 'compare')}>Scheduled vs Worked</button>
-          <button onClick={() => setView('quality')} style={tabBtn(view === 'quality')}>Quality</button>
-          <button onClick={() => setView('people')} style={tabBtn(view === 'people')}>People</button>
-          <button onClick={() => setView('schedule')} style={tabBtn(view === 'schedule')}>Schedule Hours</button>
-          <button onClick={() => setView('support')} style={tabBtn(view === 'support')}>Support</button>
-          <button onClick={() => setView('projects')} style={tabBtn(view === 'projects')}>Projects</button>
-          <button onClick={() => setView('attendance')} style={tabBtn(view === 'attendance')}>Attendance</button>
-          <button onClick={() => setView('rawdata')} style={tabBtn(view === 'rawdata')}>Raw Data</button>
-        </div>
-        {!['schedule', 'support', 'projects', 'attendance', 'rawdata'].includes(view) && (
-          <button className="btn btn-primary" style={{ marginLeft: 'auto' }}
+        {FILTERABLE.has(view) && (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={lbl}>Person</label>
+              <select value={filters.personId} onChange={e => setFilters(f => ({ ...f, personId: e.target.value }))} style={inp}>
+                <option value="all">All people</option>
+                {peopleFull.slice().sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')).map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={lbl}>Tag</label>
+              <select value={filters.tagId} onChange={e => setFilters(f => ({ ...f, tagId: e.target.value }))} style={inp}>
+                <option value="all">All tags</option>
+                {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+          </>
+        )}
+        <button onClick={saveAsCustom} disabled={savingReport} style={{ ...tabBtn(false), border: '1px solid var(--line)', borderRadius: 8 }}>☆ Save as report</button>
+        {SHARED_EXPORT.has(view) && (
+          <button className="btn btn-primary"
             onClick={view === 'person' ? exportPersonCSV : view === 'client' ? exportClientCSV : view === 'quality' ? exportQualityCSV : view === 'people' ? exportPeopleCSV : exportCompareCSV}>
             Export {view === 'person' ? 'Payroll' : view === 'client' ? 'Invoicing' : view === 'quality' ? 'Quality' : view === 'people' ? 'Roster' : 'Comparison'} CSV
           </button>
@@ -406,6 +581,11 @@ export default function Reporting() {
         : view === 'projects' ? <ProjectsReport range={range} />
         : view === 'attendance' ? <AttendanceReport range={range} />
         : view === 'rawdata' ? <RawDataExport range={range} />
+        : view === 'chat' ? <ChatReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
+        : view === 'tokens' ? <TokensReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
+        : view === 'sales' ? <DealsReport range={range} pipeline="sales" allowedIds={allowedIds} />
+        : view === 'rsn' ? <DealsReport range={range} pipeline="rsn" allowedIds={allowedIds} />
+        : view === 'hiring' ? <HiringReport range={range} />
         : loading ? <p className="page-sub">Loading…</p> : view === 'quality' ? (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -1000,4 +1180,280 @@ function AttendanceReport({ range }) {
 
 function tabBtn(active) {
   return { padding: '8px 14px', border: 0, background: active ? 'var(--accent)' : 'var(--surface)', color: active ? '#fff' : 'var(--ink-soft)', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }
+}
+function pill(active) {
+  return { padding: '8px 16px', border: active ? '1px solid var(--accent)' : '1px solid var(--line)', borderRadius: 999, background: active ? 'var(--accent)' : 'var(--surface)', color: active ? '#fff' : 'var(--ink-soft)', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }
+}
+const prettyStatus = (s) => (s || '—').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
+// ================= Chat: messages per person / channel / DM =================
+function ChatReport({ range, profiles, allowedIds }) {
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setData(null); setErr('')
+    // Aggregate counts via SECURITY DEFINER RPC (org-wide despite per-channel RLS; counts only).
+    supabase.rpc('report_message_counts', { p_from: range.from, p_to: range.to })
+      .then(({ data, error }) => { if (!active) return; if (error) setErr(error.message); else setData(data) })
+    return () => { active = false }
+  }, [range.from, range.to])
+
+  const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || '—'
+  const perPerson = useMemo(() => (data?.per_person || []).filter(r => !allowedIds || allowedIds.has(r.sender_id)), [data, allowedIds])
+  const perChannel = useMemo(() => (data?.per_channel || []), [data])
+  const totals = useMemo(() => {
+    let dm = 0, chn = 0
+    for (const r of perPerson) { dm += (r.dm || 0); chn += (r.chan || 0) }
+    return { dm, chn, total: dm + chn, people: perPerson.length }
+  }, [perPerson])
+
+  function exportCsv() {
+    const out = [['Person', 'Total messages', 'DMs', 'Channel messages']]
+    perPerson.slice().sort((a, b) => b.total - a.total).forEach(r => out.push([nameOf(r.sender_id), r.total, r.dm, r.chan]))
+    downloadCSV(`chat-messages-${range.from}_to_${range.to}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err === 'not authorized' ? 'This report is available to managers only.' : err}</div>
+  if (data == null) return <p className="page-sub">Loading…</p>
+  const personRows = perPerson.slice().sort((a, b) => b.total - a.total)
+  const channelRows = perChannel.slice().sort((a, b) => b.count - a.count)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Total messages" value={totals.total} />
+        <Tile label="Channel messages" value={totals.chn} />
+        <Tile label="Direct messages" value={totals.dm} />
+        <Tile label="Active senders" value={totals.people} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By person</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><Th>Person</Th><Th r>Total</Th><Th r>DMs</Th><Th r>Channel</Th></tr></thead>
+          <tbody>
+            {personRows.length === 0 && <tr><td style={cellL} colSpan={4}><span className="page-sub">No messages in this range.</span></td></tr>}
+            {personRows.map(r => (
+              <tr key={r.sender_id}><td style={{ ...cellL, fontWeight: 600 }}>{nameOf(r.sender_id)}</td><td style={cellR}>{r.total}</td><td style={cellR}>{r.dm}</td><td style={cellR}>{r.chan}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By channel</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><Th>Channel</Th><Th r>Messages</Th><Th r>Senders</Th></tr></thead>
+          <tbody>
+            {channelRows.length === 0 && <tr><td style={cellL} colSpan={3}><span className="page-sub">No channel messages in this range.</span></td></tr>}
+            {channelRows.map(c => (
+              <tr key={c.channel_id}><td style={{ ...cellL, fontWeight: 600 }}>{c.name || 'Channel'}</td><td style={cellR}>{c.count}</td><td style={cellR}>{c.senders}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>Counts come from an aggregate view (message text is never exposed). DMs are per sender; deleted messages excluded. The channel table shows all senders regardless of the person filter.</p>
+    </div>
+  )
+}
+
+// ================= Tokens: received / used / banked per person =================
+function TokensReport({ range, profiles, allowedIds }) {
+  const [txns, setTxns] = useState(null)
+  const [wallets, setWallets] = useState([])
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setTxns(null); setErr('')
+    ;(async () => {
+      const [{ data: tx, error }, { data: w }] = await Promise.all([
+        supabase.from('token_transactions').select('profile_id, delta, kind, created_at').gte('created_at', dayStart(range.from)).lte('created_at', dayEnd(range.to)),
+        supabase.from('token_wallets').select('profile_id, balance'),
+      ])
+      if (!active) return
+      if (error) { setErr(error.message); return }
+      setTxns(tx || []); setWallets(w || [])
+    })()
+    return () => { active = false }
+  }, [range.from, range.to])
+
+  const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || '—'
+  const bankedOf = useMemo(() => Object.fromEntries(wallets.map(w => [w.profile_id, w.balance || 0])), [wallets])
+  const { per, totals } = useMemo(() => {
+    const p = {}; let recv = 0, used = 0
+    for (const t of (txns || [])) {
+      if (allowedIds && !allowedIds.has(t.profile_id)) continue
+      if (!p[t.profile_id]) p[t.profile_id] = { received: 0, used: 0 }
+      if (t.kind === 'award') { p[t.profile_id].received += (t.delta || 0); recv += (t.delta || 0) }
+      else if (t.kind === 'redeem') { p[t.profile_id].used += Math.abs(t.delta || 0); used += Math.abs(t.delta || 0) }
+    }
+    return { per: p, totals: { recv, used, people: Object.keys(p).length } }
+  }, [txns, allowedIds])
+
+  function exportCsv() {
+    const out = [['Person', 'Received', 'Used', 'Net', 'Banked (current)']]
+    Object.entries(per).sort((a, b) => b[1].received - a[1].received).forEach(([pid, d]) => out.push([nameOf(pid), d.received, d.used, d.received - d.used, bankedOf[pid] || 0]))
+    downloadCSV(`tokens-${range.from}_to_${range.to}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
+  if (txns == null) return <p className="page-sub">Loading…</p>
+  const rows = Object.entries(per).sort((a, b) => b[1].received - a[1].received)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Tokens awarded" value={totals.recv} />
+        <Tile label="Tokens redeemed" value={totals.used} />
+        <Tile label="People active" value={totals.people} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><Th>Person</Th><Th r>Received</Th><Th r>Used</Th><Th r>Net</Th><Th r>Banked (now)</Th></tr></thead>
+          <tbody>
+            {rows.length === 0 && <tr><td style={cellL} colSpan={5}><span className="page-sub">No token activity in this range.</span></td></tr>}
+            {rows.map(([pid, d]) => (
+              <tr key={pid}><td style={{ ...cellL, fontWeight: 600 }}>{nameOf(pid)}</td><td style={cellR}>{d.received}</td><td style={cellR}>{d.used}</td><td style={cellR}>{d.received - d.used}</td><td style={{ ...cellR, color: 'var(--accent)' }}>{bankedOf[pid] || 0}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>Received &amp; Used are within the selected range. <b>Banked</b> is each person's current wallet balance (all-time), independent of the range.</p>
+    </div>
+  )
+}
+
+// ================= Sales / RSN pipeline (deals) =================
+const DEAL_STATUS_LABELS = { new_lead: 'New lead', email_1_sent: 'Email sent', email_unreachable: 'Unreachable', proposal_sent: 'Proposal sent', lost: 'Lost' }
+function DealsReport({ range, pipeline, allowedIds }) {
+  const [rows, setRows] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setRows(null); setErr('')
+    ;(async () => {
+      const { data, error } = await supabase.from('deals')
+        .select('id, title, status, value, owner_id, owner_name, next_activity, last_emailed_at, created_at, lost_reason')
+        .eq('pipeline', pipeline)
+        .gte('created_at', dayStart(range.from)).lte('created_at', dayEnd(range.to))
+      if (!active) return
+      if (error) { setErr(error.message); return }
+      setRows(data || [])
+    })()
+    return () => { active = false }
+  }, [range.from, range.to, pipeline])
+
+  const filtered = useMemo(() => (rows || []).filter(d => !allowedIds || (d.owner_id && allowedIds.has(d.owner_id))), [rows, allowedIds])
+  const byStatus = useMemo(() => {
+    const m = {}
+    for (const d of filtered) { const k = d.status || '—'; if (!m[k]) m[k] = { count: 0, value: 0 }; m[k].count++; m[k].value += Number(d.value) || 0 }
+    return m
+  }, [filtered])
+  const totals = useMemo(() => ({
+    total: filtered.length,
+    active: filtered.filter(d => d.status !== 'lost').length,
+    needEmail: filtered.filter(d => d.status === 'new_lead').length,
+    unreachable: filtered.filter(d => d.status === 'email_unreachable').length,
+    lost: filtered.filter(d => d.status === 'lost').length,
+    value: filtered.reduce((s, d) => s + (Number(d.value) || 0), 0),
+  }), [filtered])
+
+  function exportCsv() {
+    const out = [['Deal', 'Status', 'Value', 'Owner', 'Next activity', 'Last emailed', 'Created', 'Lost reason']]
+    filtered.forEach(d => out.push([d.title || '', DEAL_STATUS_LABELS[d.status] || d.status || '', d.value || '', d.owner_name || '', d.next_activity || '', d.last_emailed_at ? new Date(d.last_emailed_at).toLocaleDateString() : '', d.created_at ? new Date(d.created_at).toLocaleDateString() : '', d.lost_reason || '']))
+    downloadCSV(`${pipeline}-pipeline-${range.from}_to_${range.to}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
+  if (rows == null) return <p className="page-sub">Loading…</p>
+  const fmt$ = (n) => '$' + Math.round(n).toLocaleString()
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Deals (in range)" value={totals.total} />
+        <Tile label="Active" value={totals.active} />
+        <Tile label="Needs email" value={totals.needEmail} />
+        <Tile label="Unreachable" value={totals.unreachable} />
+        <Tile label="Lost" value={totals.lost} />
+        <Tile label="Pipeline value" value={fmt$(totals.value)} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><Th>Stage</Th><Th r>Deals</Th><Th r>Value</Th></tr></thead>
+          <tbody>
+            {Object.keys(byStatus).length === 0 && <tr><td style={cellL} colSpan={3}><span className="page-sub">No deals created in this range.</span></td></tr>}
+            {Object.entries(byStatus).sort((a, b) => b[1].count - a[1].count).map(([s, d]) => (
+              <tr key={s}><td style={{ ...cellL, fontWeight: 600 }}>{DEAL_STATUS_LABELS[s] || prettyStatus(s)}</td><td style={cellR}>{d.count}</td><td style={cellR}>{fmt$(d.value)}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>Deals <b>created</b> in the selected range, grouped by current stage. "Needs email" = new leads; "Unreachable" = marked email-unreachable.</p>
+    </div>
+  )
+}
+
+// ================= Hiring pipeline =================
+function HiringReport({ range }) {
+  const [rows, setRows] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setRows(null); setErr('')
+    ;(async () => {
+      const { data, error } = await supabase.from('hiring_applications').select('id, full_name, status, role_applying, created_at').gte('created_at', dayStart(range.from)).lte('created_at', dayEnd(range.to))
+      if (!active) return
+      if (error) { setErr(error.message); return }
+      setRows(data || [])
+    })()
+    return () => { active = false }
+  }, [range.from, range.to])
+
+  const byStatus = useMemo(() => { const m = {}; for (const a of (rows || [])) { const k = a.status || '—'; m[k] = (m[k] || 0) + 1 } return m }, [rows])
+  const byRole = useMemo(() => { const m = {}; for (const a of (rows || [])) { const k = a.role_applying || '—'; m[k] = (m[k] || 0) + 1 } return m }, [rows])
+  const totals = useMemo(() => ({
+    total: (rows || []).length,
+    approved: (rows || []).filter(a => a.status === 'approved').length,
+    denied: (rows || []).filter(a => ['denied', 'out_of_area', 'mock_failed'].includes(a.status)).length,
+  }), [rows])
+
+  function exportCsv() {
+    const out = [['Applicant', 'Status', 'Role', 'Applied']]
+    ;(rows || []).forEach(a => out.push([a.full_name || '', prettyStatus(a.status), a.role_applying || '', a.created_at ? new Date(a.created_at).toLocaleDateString() : '']))
+    downloadCSV(`hiring-${range.from}_to_${range.to}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
+  if (rows == null) return <p className="page-sub">Loading…</p>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Applicants (in range)" value={totals.total} />
+        <Tile label="Approved" value={totals.approved} />
+        <Tile label="Denied / out" value={totals.denied} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By stage</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><Th>Stage</Th><Th r>Applicants</Th></tr></thead>
+            <tbody>
+              {Object.keys(byStatus).length === 0 && <tr><td style={cellL} colSpan={2}><span className="page-sub">No applicants in this range.</span></td></tr>}
+              {Object.entries(byStatus).sort((a, b) => b[1] - a[1]).map(([s, n]) => (
+                <tr key={s}><td style={{ ...cellL, fontWeight: 600 }}>{prettyStatus(s)}</td><td style={cellR}>{n}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By role applied</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><Th>Role</Th><Th r>Applicants</Th></tr></thead>
+            <tbody>
+              {Object.entries(byRole).sort((a, b) => b[1] - a[1]).map(([s, n]) => (
+                <tr key={s}><td style={{ ...cellL, fontWeight: 600 }}>{s}</td><td style={cellR}>{n}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
 }
