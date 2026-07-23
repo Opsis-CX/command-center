@@ -70,6 +70,13 @@ const CATALOG = [
   ] },
   { label: 'Quality', items: [
     { key: 'quality', name: 'QA Audits', q: 'How did agents score on QA audits?' },
+    { key: 'cert_quiz', name: 'Cert Quiz Questions', q: 'Which certification quiz questions are most missed?' },
+  ] },
+  { label: 'Certifications', items: [
+    { key: 'certifications', name: 'Certification Scores', q: 'What are quiz scores by person and course, and the average?' },
+  ] },
+  { label: 'Scorecard', items: [
+    { key: 'scorecard', name: 'Agent Productivity', q: 'Per-agent Five9 calls, AHT, bookings and hours (rolling 7 / 30 day).' },
   ] },
   { label: 'Help Center', items: [
     { key: 'support', name: 'Support Tickets', q: 'Ticket volume, first-response and resolution times, by category.' },
@@ -89,19 +96,25 @@ const CATALOG = [
   { label: 'People & Tags', items: [
     { key: 'people', name: 'People & Tags', q: 'Headcount by role and tag; who is untagged or inactive.' },
   ] },
+  { label: 'Clients', items: [
+    { key: 'clients', name: 'Clients', q: 'How many clients, which use Five9, and who was added when?' },
+  ] },
+  { label: 'Positions', items: [
+    { key: 'positions', name: 'Positions', q: 'How many people hold each role/position?' },
+  ] },
   { label: 'Raw Data', items: [
     { key: 'rawdata', name: 'Raw Data Export', q: 'Export raw records for your own analysis.' },
   ] },
 ]
 const REPORT_META = Object.fromEntries(CATALOG.flatMap(c => c.items.map(it => [it.key, { ...it, category: c.label }])))
 // Reports that don't use the shared date range.
-const NO_RANGE = new Set(['people', 'rawdata'])
+const NO_RANGE = new Set(['people', 'rawdata', 'scorecard', 'positions'])
 // Reports that expose the shared person/tag filter (newer sections).
-const FILTERABLE = new Set(['chat', 'tokens', 'sales', 'rsn'])
+const FILTERABLE = new Set(['chat', 'tokens', 'sales', 'rsn', 'certifications', 'cert_quiz'])
 // Reports whose CSV export is the parent-owned shared button (older inline reports).
 const SHARED_EXPORT = new Set(['person', 'client', 'compare', 'quality', 'people'])
 // Reports rendered by their own standalone component.
-const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring'])
+const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions'])
 
 export default function Reporting() {
   const { isAdmin } = useAuth()
@@ -586,6 +599,11 @@ export default function Reporting() {
         : view === 'sales' ? <DealsReport range={range} pipeline="sales" allowedIds={allowedIds} />
         : view === 'rsn' ? <DealsReport range={range} pipeline="rsn" allowedIds={allowedIds} />
         : view === 'hiring' ? <HiringReport range={range} />
+        : view === 'certifications' ? <CertificationsReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
+        : view === 'cert_quiz' ? <CertQuizReport range={range} allowedIds={allowedIds} />
+        : view === 'scorecard' ? <ScorecardReport />
+        : view === 'clients' ? <ClientsReport range={range} />
+        : view === 'positions' ? <PositionsReport />
         : loading ? <p className="page-sub">Loading…</p> : view === 'quality' ? (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -1454,6 +1472,309 @@ function HiringReport({ range }) {
           </table>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ================= Certifications: quiz scores by person / course =================
+function CertificationsReport({ range, profiles, allowedIds }) {
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setData(null); setErr('')
+    const ids = allowedIds ? Array.from(allowedIds) : null
+    supabase.rpc('report_cert', { p_from: range.from, p_to: range.to, p_profile_ids: ids })
+      .then(({ data, error }) => { if (!active) return; if (error) setErr(error.message); else setData(data) })
+    return () => { active = false }
+  }, [range.from, range.to, allowedIds])
+
+  const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || '—'
+  const perPerson = useMemo(() => (data?.per_person || []).slice().sort((a, b) => (b.avg || 0) - (a.avg || 0)), [data])
+  const perCourse = useMemo(() => (data?.per_course || []).slice().sort((a, b) => b.attempts - a.attempts), [data])
+  const overall = useMemo(() => {
+    const attempts = perPerson.reduce((s, r) => s + r.attempts, 0)
+    const passes = perPerson.reduce((s, r) => s + r.passes, 0)
+    const wsum = perPerson.reduce((s, r) => s + (r.avg || 0) * r.attempts, 0)
+    return { attempts, avg: attempts ? Math.round(wsum / attempts) : null, passRate: attempts ? Math.round(passes / attempts * 100) : null, people: perPerson.length }
+  }, [perPerson])
+
+  function exportCsv() {
+    const out = [['Person', 'Attempts', 'Avg score', 'Best', 'Passed']]
+    perPerson.forEach(r => out.push([nameOf(r.profile_id), r.attempts, r.avg, r.best, r.passes]))
+    downloadCSV(`certifications-${range.from}_to_${range.to}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err === 'not authorized' ? 'This report is available to managers only.' : err}</div>
+  if (data == null) return <p className="page-sub">Loading…</p>
+  const scoreColor = (v) => v == null ? 'var(--ink-soft)' : v >= 90 ? 'var(--passed)' : v >= 80 ? 'var(--accent)' : v >= 70 ? 'var(--needed)' : 'var(--failed)'
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Quiz attempts" value={overall.attempts} />
+        <Tile label="Avg score" value={overall.avg == null ? '—' : overall.avg + '%'} />
+        <Tile label="Pass rate" value={overall.passRate == null ? '—' : overall.passRate + '%'} />
+        <Tile label="People" value={overall.people} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By person</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><Th>Person</Th><Th r>Attempts</Th><Th r>Avg</Th><Th r>Best</Th><Th r>Passed</Th></tr></thead>
+          <tbody>
+            {perPerson.length === 0 && <tr><td style={cellL} colSpan={5}><span className="page-sub">No quiz attempts in this range.</span></td></tr>}
+            {perPerson.map(r => (
+              <tr key={r.profile_id}><td style={{ ...cellL, fontWeight: 600 }}>{nameOf(r.profile_id)}</td><td style={cellR}>{r.attempts}</td><td style={{ ...cellR, color: scoreColor(r.avg), fontWeight: 700 }}>{r.avg == null ? '—' : r.avg + '%'}</td><td style={cellR}>{r.best}%</td><td style={cellR}>{r.passes}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By course</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><Th>Course</Th><Th r>Attempts</Th><Th r>Avg score</Th><Th r>Pass rate</Th></tr></thead>
+          <tbody>
+            {perCourse.length === 0 && <tr><td style={cellL} colSpan={4}><span className="page-sub">No quiz attempts in this range.</span></td></tr>}
+            {perCourse.map(r => (
+              <tr key={r.course_id}><td style={{ ...cellL, fontWeight: 600 }}>{r.title || 'Course'}</td><td style={cellR}>{r.attempts}</td><td style={{ ...cellR, color: scoreColor(r.avg), fontWeight: 700 }}>{r.avg == null ? '—' : r.avg + '%'}</td><td style={cellR}>{r.attempts ? Math.round(r.passes / r.attempts * 100) : 0}%</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ================= Cert quiz questions: most missed / most correct =================
+function CertQuizReport({ range, allowedIds }) {
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setData(null); setErr('')
+    const ids = allowedIds ? Array.from(allowedIds) : null
+    supabase.rpc('report_cert', { p_from: range.from, p_to: range.to, p_profile_ids: ids })
+      .then(({ data, error }) => { if (!active) return; if (error) setErr(error.message); else setData(data) })
+    return () => { active = false }
+  }, [range.from, range.to, allowedIds])
+
+  const rows = useMemo(() => (data?.per_question || []).map(r => ({
+    qid: r.question_id, prompt: r.prompt, total: r.total, correct: r.correct,
+    correctPct: r.total ? Math.round(r.correct / r.total * 100) : 0,
+  })), [data])
+
+  const overall = useMemo(() => {
+    const total = rows.reduce((s, r) => s + r.total, 0)
+    const correct = rows.reduce((s, r) => s + r.correct, 0)
+    return { answered: total, questions: rows.length, correctPct: total ? Math.round(correct / total * 100) : null }
+  }, [rows])
+
+  function exportCsv() {
+    const out = [['Question', 'Times answered', 'Correct', 'Correct %']]
+    rows.slice().sort((a, b) => a.correctPct - b.correctPct).forEach(r => out.push([r.prompt, r.total, r.correct, r.correctPct + '%']))
+    downloadCSV(`cert-quiz-questions-${range.from}_to_${range.to}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err === 'not authorized' ? 'This report is available to managers only.' : err}</div>
+  if (data == null) return <p className="page-sub">Loading…</p>
+  const missed = rows.slice().sort((a, b) => a.correctPct - b.correctPct).slice(0, 15)
+  const best = rows.slice().sort((a, b) => b.correctPct - a.correctPct).slice(0, 15)
+  const QTable = ({ title, list }) => (
+    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>{title}</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead><tr><Th>Question</Th><Th r>Answered</Th><Th r>Correct %</Th></tr></thead>
+        <tbody>
+          {list.length === 0 && <tr><td style={cellL} colSpan={3}><span className="page-sub">No quiz answers in this range.</span></td></tr>}
+          {list.map(r => (
+            <tr key={r.qid}><td style={{ ...cellL, fontWeight: 500 }}>{r.prompt}</td><td style={cellR}>{r.total}</td><td style={{ ...cellR, color: r.correctPct >= 80 ? 'var(--passed)' : r.correctPct >= 60 ? 'var(--needed)' : 'var(--failed)', fontWeight: 700 }}>{r.correctPct}%</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Answers scored" value={overall.answered} />
+        <Tile label="Distinct questions" value={overall.questions} />
+        <Tile label="Overall correct" value={overall.correctPct == null ? '—' : overall.correctPct + '%'} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <QTable title="Most missed (lowest correct %)" list={missed} />
+      <QTable title="Most correct (highest correct %)" list={best} />
+      <p className="page-sub" style={{ fontSize: 12 }}>A question is "correct" when the selected option is flagged correct. Ranked across all attempts in the range; top 15 each.</p>
+    </div>
+  )
+}
+
+// ================= Scorecard: agent Five9 productivity (rolling snapshot) =================
+function ScorecardReport() {
+  const [calls, setCalls] = useState(null)
+  const [occ, setOcc] = useState([])
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setCalls(null); setErr('')
+    ;(async () => {
+      const [{ data: c, error }, { data: o }] = await Promise.all([
+        supabase.from('sc_calls').select('agent_name, calls_handled_last_7_days, calls_handled_last_30_days, avg_aht_minutes_last_30_days, bookings_last_30_days, conversion_rate_last_30_days, serviced_hours_last_30_days'),
+        supabase.from('sc_occupancy').select('agent_name, total_actual_hours_last_30_days, acw_pct_last_30_days, nr_pct_last_30_days'),
+      ])
+      if (!active) return
+      if (error) { setErr(error.message); return }
+      setCalls(c || []); setOcc(o || [])
+    })()
+    return () => { active = false }
+  }, [])
+
+  const occByName = useMemo(() => Object.fromEntries(occ.map(o => [o.agent_name, o])), [occ])
+  const rows = useMemo(() => (calls || []).map(c => ({ ...c, ...(occByName[c.agent_name] || {}) })).sort((a, b) => (b.calls_handled_last_30_days || 0) - (a.calls_handled_last_30_days || 0)), [calls, occByName])
+  const totals = useMemo(() => ({
+    agents: rows.length,
+    calls30: rows.reduce((s, r) => s + (r.calls_handled_last_30_days || 0), 0),
+    conv: rows.length ? Math.round(rows.reduce((s, r) => s + (Number(r.conversion_rate_last_30_days) || 0), 0) / rows.length) : null,
+  }), [rows])
+
+  function exportCsv() {
+    const out = [['Agent', 'Calls 7d', 'Calls 30d', 'AHT (min) 30d', 'Bookings 30d', 'Conversion % 30d', 'Serviced hrs 30d', 'Actual hrs 30d', 'ACW % 30d', 'NR % 30d']]
+    rows.forEach(r => out.push([r.agent_name, r.calls_handled_last_7_days || 0, r.calls_handled_last_30_days || 0, r.avg_aht_minutes_last_30_days ?? '', r.bookings_last_30_days || 0, r.conversion_rate_last_30_days ?? '', r.serviced_hours_last_30_days ?? '', r.total_actual_hours_last_30_days ?? '', r.acw_pct_last_30_days ?? '', r.nr_pct_last_30_days ?? '']))
+    downloadCSV(`scorecard-agent-productivity-${isoDay(new Date())}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
+  if (calls == null) return <p className="page-sub">Loading…</p>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Agents" value={totals.agents} />
+        <Tile label="Calls (30d)" value={totals.calls30} />
+        <Tile label="Avg conversion (30d)" value={totals.conv == null ? '—' : totals.conv + '%'} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+          <thead><tr><Th>Agent</Th><Th r>Calls 7d</Th><Th r>Calls 30d</Th><Th r>AHT min</Th><Th r>Bookings</Th><Th r>Conv %</Th><Th r>Serviced hrs</Th><Th r>ACW %</Th><Th r>NR %</Th></tr></thead>
+          <tbody>
+            {rows.length === 0 && <tr><td style={cellL} colSpan={9}><span className="page-sub">No scorecard data synced.</span></td></tr>}
+            {rows.map(r => (
+              <tr key={r.agent_name}>
+                <td style={{ ...cellL, fontWeight: 600 }}>{r.agent_name}</td>
+                <td style={cellR}>{r.calls_handled_last_7_days || 0}</td>
+                <td style={cellR}>{r.calls_handled_last_30_days || 0}</td>
+                <td style={cellR}>{r.avg_aht_minutes_last_30_days ?? '—'}</td>
+                <td style={cellR}>{r.bookings_last_30_days || 0}</td>
+                <td style={cellR}>{r.conversion_rate_last_30_days == null ? '—' : r.conversion_rate_last_30_days + '%'}</td>
+                <td style={cellR}>{r.serviced_hours_last_30_days ?? '—'}</td>
+                <td style={cellR}>{r.acw_pct_last_30_days == null ? '—' : r.acw_pct_last_30_days + '%'}</td>
+                <td style={cellR}>{r.nr_pct_last_30_days == null ? '—' : r.nr_pct_last_30_days + '%'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>Rolling Five9 snapshots (last 7 / 30 days) synced from BigQuery — not bound to the date range above. Arbitrary-range agent time is a later BigQuery add.</p>
+    </div>
+  )
+}
+
+// ================= Clients =================
+function ClientsReport({ range }) {
+  const [rows, setRows] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setRows(null); setErr('')
+    supabase.from('clients').select('id, name, uses_five9, created_at').order('name')
+      .then(({ data, error }) => { if (!active) return; if (error) setErr(error.message); else setRows(data || []) })
+    return () => { active = false }
+  }, [])
+
+  const inRange = (r) => r.created_at && r.created_at.slice(0, 10) >= range.from && r.created_at.slice(0, 10) <= range.to
+  const totals = useMemo(() => ({
+    total: (rows || []).length,
+    five9: (rows || []).filter(r => r.uses_five9).length,
+    added: (rows || []).filter(inRange).length,
+  }), [rows, range.from, range.to])
+
+  function exportCsv() {
+    const out = [['Client', 'Uses Five9', 'Added']]
+    ;(rows || []).forEach(r => out.push([r.name, r.uses_five9 ? 'Yes' : 'No', r.created_at ? new Date(r.created_at).toLocaleDateString() : '']))
+    downloadCSV(`clients-${isoDay(new Date())}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
+  if (rows == null) return <p className="page-sub">Loading…</p>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Clients" value={totals.total} />
+        <Tile label="Use Five9" value={totals.five9} />
+        <Tile label="Added in range" value={totals.added} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><Th>Client</Th><Th>Five9</Th><Th r>Added</Th></tr></thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.id}><td style={{ ...cellL, fontWeight: 600 }}>{r.name}</td><td style={cellL}>{r.uses_five9 ? 'Yes' : '—'}</td><td style={cellR}>{r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>"Added in range" uses the date range above; the list shows all current clients.</p>
+    </div>
+  )
+}
+
+// ================= Positions (roles + headcount) =================
+function PositionsReport() {
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setData(null); setErr('')
+    ;(async () => {
+      const [{ data: roles, error }, { data: pr }] = await Promise.all([
+        supabase.from('roles').select('id, key, name, level').order('level', { ascending: false }),
+        supabase.from('profile_roles').select('role_id, profile_id'),
+      ])
+      if (!active) return
+      if (error) { setErr(error.message); return }
+      setData({ roles: roles || [], pr: pr || [] })
+    })()
+    return () => { active = false }
+  }, [])
+
+  const counts = useMemo(() => {
+    const m = {}
+    for (const x of (data?.pr || [])) m[x.role_id] = (m[x.role_id] || 0) + 1
+    return m
+  }, [data])
+
+  function exportCsv() {
+    const out = [['Position', 'Level', 'People']]
+    ;(data?.roles || []).forEach(r => out.push([r.name, r.level ?? '', counts[r.id] || 0]))
+    downloadCSV(`positions-${isoDay(new Date())}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
+  if (data == null) return <p className="page-sub">Loading…</p>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Positions" value={data.roles.length} />
+        <Tile label="Role assignments" value={data.pr.length} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><Th>Position</Th><Th r>Level</Th><Th r>People</Th></tr></thead>
+          <tbody>
+            {data.roles.length === 0 && <tr><td style={cellL} colSpan={3}><span className="page-sub">No positions defined.</span></td></tr>}
+            {data.roles.map(r => (
+              <tr key={r.id}><td style={{ ...cellL, fontWeight: 600 }}>{r.name}</td><td style={cellR}>{r.level ?? '—'}</td><td style={cellR}>{counts[r.id] || 0}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>Headcount by role from the roles directory (profile → role assignments). Snapshot — not date-bound.</p>
     </div>
   )
 }
