@@ -622,6 +622,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   const [reactorsFor, setReactorsFor] = useState(null) // {messageId, emoji} whose reactor list is open
   const [pinned, setPinned] = useState([])         // pinned messages in this channel (newest pin first)
   const [showPinned, setShowPinned] = useState(false) // is the pinned drawer expanded
+  const [expandedPins, setExpandedPins] = useState(() => new Set()) // pin ids shown in full
   const [scheduled, setScheduled] = useState([])   // my pending scheduled messages in this channel
   const [schedOpen, setSchedOpen] = useState(false) // schedule picker open
   const [schedAt, setSchedAt] = useState('')        // datetime-local value
@@ -840,13 +841,16 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     if (error) { setErr('Could not update pin: ' + error.message); loadPinned() }
   }
 
-  // Bring a pinned message into view and flash it, reusing the deep-link flash.
-  function jumpToPinned(id) {
-    setShowPinned(false)
-    stickToBottom.current = false
-    setHighlightId(id)
-    setTimeout(() => { document.getElementById('chat-msg-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }, 60)
-    setTimeout(() => setHighlightId(null), 5000)
+  // Show/hide a pinned message's full body inline in the drawer. No scrolling —
+  // the message stays at the top and just displays when clicked (links inside it
+  // work normally). This replaces the old "jump to message" behaviour, which
+  // broke whenever the pinned message was outside the loaded message window.
+  function togglePinExpand(id) {
+    setExpandedPins(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
   }
 
   // ---- Scheduled messages ----
@@ -1295,25 +1299,35 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             <span style={{ marginLeft: 'auto', fontSize: 11, opacity: .7, transition: 'transform .15s ease', transform: showPinned ? 'rotate(90deg)' : 'rotate(0deg)' }}>▸</span>
           </button>
           {showPinned && (
-            <div style={{ maxHeight: 220, overflowY: 'auto', padding: '2px 12px 10px' }}>
+            <div style={{ maxHeight: 320, overflowY: 'auto', padding: '2px 12px 10px' }}>
               {pinned.map(p => {
                 const pName = p.sender_id === me.id ? 'You' : (senders[p.sender_id] || 'Someone')
+                const isOpen = expandedPins.has(p.id)
                 return (
-                  <div key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 6px', borderTop: '1px solid var(--line)' }}>
-                    <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => jumpToPinned(p.id)}>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 2 }}>
-                        <b style={{ fontSize: 12 }}>{pName}</b>
-                        <span style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>{timeLabel(p.created_at)}</span>
+                  <div key={p.id} style={{ padding: '8px 6px', borderTop: '1px solid var(--line)' }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => togglePinExpand(p.id)}
+                        title={isOpen ? 'Hide message' : 'Show message'}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 2 }}>
+                          <span style={{ fontSize: 10, color: 'var(--ink-soft)', transition: 'transform .15s ease', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>▸</span>
+                          <b style={{ fontSize: 12 }}>{pName}</b>
+                          <span style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>{timeLabel(p.created_at)}</span>
+                        </div>
+                        {!isOpen && (
+                          <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', paddingLeft: 16 }}>
+                            {htmlToText(p.body) || '(no text)'}
+                          </div>
+                        )}
                       </div>
-                      <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                        {htmlToText(p.body) || '(no text)'}
-                      </div>
+                      {canModerate && (
+                        <button onClick={() => togglePin(p)} title="Unpin"
+                          className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 7px', flex: 'none', color: 'var(--ink-soft)' }}>Unpin</button>
+                      )}
                     </div>
-                    <button onClick={() => jumpToPinned(p.id)} title="Jump to message"
-                      className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 7px', flex: 'none' }}>Jump</button>
-                    {canModerate && (
-                      <button onClick={() => togglePin(p)} title="Unpin"
-                        className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 7px', flex: 'none', color: 'var(--ink-soft)' }}>Unpin</button>
+                    {isOpen && (
+                      <div style={{ fontSize: 13, marginTop: 4, paddingLeft: 16 }}>
+                        <RichContent html={p.body} highlightMentions />
+                      </div>
                     )}
                   </div>
                 )
