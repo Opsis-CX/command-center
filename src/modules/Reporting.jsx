@@ -60,6 +60,7 @@ const CATALOG = [
   ] },
   { label: 'Schedule', items: [
     { key: 'schedule', name: 'Schedule Hours', q: 'What is hourly coverage, and who is on each hour?' },
+    { key: 'sched_agent', name: 'Agent Schedule Summary', q: 'Per person: intervals, scheduled, checked-in, on-task, and Five9 time.' },
     { key: 'attendance', name: 'Attendance', q: 'Who showed up, was late, or no-showed against their schedule?' },
   ] },
   { label: 'Chat', items: [
@@ -67,6 +68,8 @@ const CATALOG = [
   ] },
   { label: 'Project Management', items: [
     { key: 'projects', name: 'Tasks', q: 'How many tasks were created, completed, and are overdue?' },
+    { key: 'tasks_person', name: 'Tasks by Person', q: 'How many tasks per person — assigned, open, overdue, and per day?' },
+    { key: 'offclock', name: 'Off-Clock Task Time', q: 'How much task time is tracked while not checked in?' },
   ] },
   { label: 'Quality', items: [
     { key: 'quality', name: 'QA Audits', q: 'How did agents score on QA audits?' },
@@ -80,6 +83,9 @@ const CATALOG = [
   ] },
   { label: 'Help Center', items: [
     { key: 'support', name: 'Support Tickets', q: 'Ticket volume, first-response and resolution times, by category.' },
+  ] },
+  { label: 'Knowledge Base', items: [
+    { key: 'kb', name: 'Article Reads', q: 'How many articles has each person read — and not read?' },
   ] },
   { label: 'Tokens', items: [
     { key: 'tokens', name: 'Token Activity', q: 'How many tokens did each person receive, use, and bank?' },
@@ -108,13 +114,13 @@ const CATALOG = [
 ]
 const REPORT_META = Object.fromEntries(CATALOG.flatMap(c => c.items.map(it => [it.key, { ...it, category: c.label }])))
 // Reports that don't use the shared date range.
-const NO_RANGE = new Set(['people', 'rawdata', 'scorecard', 'positions'])
-// Reports that expose the shared person/tag filter (newer sections).
-const FILTERABLE = new Set(['chat', 'tokens', 'sales', 'rsn', 'certifications', 'cert_quiz'])
+const NO_RANGE = new Set(['people', 'rawdata', 'scorecard', 'positions', 'kb'])
+// Reports that expose the shared person/tag filter.
+const FILTERABLE = new Set(['person', 'client', 'compare', 'quality', 'chat', 'tokens', 'sales', 'rsn', 'certifications', 'cert_quiz', 'sched_agent', 'tasks_person', 'offclock', 'kb'])
 // Reports whose CSV export is the parent-owned shared button (older inline reports).
 const SHARED_EXPORT = new Set(['person', 'client', 'compare', 'quality', 'people'])
 // Reports rendered by their own standalone component.
-const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions'])
+const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb'])
 
 export default function Reporting() {
   const { isAdmin } = useAuth()
@@ -169,6 +175,8 @@ export default function Reporting() {
     if (filters.tagId !== 'all') return new Set(taggables.filter(t => t.tag_id === filters.tagId).map(t => t.entity_id))
     return null
   }, [filters, taggables])
+  // Same filter as display names, for reports keyed on agent_name (QA audits).
+  const allowedNames = useMemo(() => allowedIds ? new Set(peopleFull.filter(p => allowedIds.has(p.id)).map(p => p.full_name)) : null, [allowedIds, peopleFull])
 
   function selectReport(key) { setView(key); if (NO_RANGE.has(key)) { /* range ignored */ } }
 
@@ -247,6 +255,7 @@ export default function Reporting() {
     const byClient = {}   // clientId -> { total, people: {personId: minutes} }
     const clientLabel = {}
     for (const e of entries) {
+      if (allowedIds && !allowedIds.has(e.user_id)) continue
       const min = e.duration_minutes || 0
       if (!min) continue
       const cl = clientOfEntry(e)
@@ -262,9 +271,9 @@ export default function Reporting() {
       byClient[clientKey].people[e.user_id] = (byClient[clientKey].people[e.user_id] || 0) + min
     }
     return { byPerson, byClient, clientLabel }
-  }, [entries, clientOfEntry])
+  }, [entries, clientOfEntry, allowedIds])
 
-  const grandTotal = useMemo(() => hoursFromMinutes(entries.reduce((s, e) => s + (e.duration_minutes || 0), 0)), [entries])
+  const grandTotal = useMemo(() => hoursFromMinutes(entries.filter(e => !allowedIds || allowedIds.has(e.user_id)).reduce((s, e) => s + (e.duration_minutes || 0), 0)), [entries, allowedIds])
 
   // COMPARE: per-person scheduled vs clock vs task minutes
   const comparison = useMemo(() => {
@@ -281,6 +290,7 @@ export default function Reporting() {
     const ensure = (pid) => (per[pid] = per[pid] || { sched: 0, clock: 0, task: 0, pending: 0 })
     // scheduled + clock from claims
     for (const c of claims) {
+      if (allowedIds && !allowedIds.has(c.profile_id)) continue
       if (c.status === 'no_show') continue
       const b = blockById[c.shift_block_id]
       ensure(c.profile_id).sched += schedMinsOf(b)
@@ -297,9 +307,9 @@ export default function Reporting() {
       }
     }
     // task minutes from time_entries
-    for (const e of entries) ensure(e.user_id).task += (e.duration_minutes || 0)
+    for (const e of entries) { if (allowedIds && !allowedIds.has(e.user_id)) continue; ensure(e.user_id).task += (e.duration_minutes || 0) }
     return per
-  }, [claims, sblocks, entries])
+  }, [claims, sblocks, entries, allowedIds])
 
   // task name lookup
   const taskName = useCallback((taskId) => {
@@ -318,6 +328,7 @@ export default function Reporting() {
   const lineItems = useMemo(() => {
     const map = {}
     for (const e of entries) {
+      if (allowedIds && !allowedIds.has(e.user_id)) continue
       const min = e.duration_minutes || 0
       if (!min) continue
       const cl = clientOfEntry(e)
@@ -329,7 +340,7 @@ export default function Reporting() {
       map[key].minutes += min
     }
     return Object.values(map)
-  }, [entries, clientOfEntry])
+  }, [entries, clientOfEntry, allowedIds])
 
   function exportPersonCSV() {
     const header = ['Person', 'Client', 'Task', 'Hours']
@@ -394,6 +405,7 @@ export default function Reporting() {
   const qaByAgent = useMemo(() => {
     const m = {}
     for (const a of qaAudits) {
+      if (allowedNames && !allowedNames.has(a.agent_name)) continue
       const key = a.agent_name || '—'
       if (!m[key]) m[key] = { total: 0, conv: 0, convScoreSum: 0, autoFails: 0, byType: {} }
       m[key].total += 1
@@ -414,13 +426,14 @@ export default function Reporting() {
         byType: d.byType,
       }))
       .sort((a, b) => (b.avgScore ?? -1) - (a.avgScore ?? -1) || a.name.localeCompare(b.name))
-  }, [qaAudits])
+  }, [qaAudits, allowedNames])
 
   const qaTotals = useMemo(() => {
-    const conv = qaAudits.filter(a => a.audit_type === 'conversation' && a.clean_qa_score != null)
+    const conv = qaAudits.filter(a => (!allowedNames || allowedNames.has(a.agent_name)) && a.audit_type === 'conversation' && a.clean_qa_score != null)
     const avg = conv.length ? Math.round(conv.reduce((s, a) => s + Number(a.clean_qa_score), 0) / conv.length) : null
-    return { audits: qaAudits.length, avg, autoFails: qaAudits.filter(a => a.auto_fail).length }
-  }, [qaAudits])
+    const scoped = allowedNames ? qaAudits.filter(a => allowedNames.has(a.agent_name)) : qaAudits
+    return { audits: scoped.length, avg, autoFails: scoped.filter(a => a.auto_fail).length }
+  }, [qaAudits, allowedNames])
 
   function exportQualityCSV() {
     const header = ['Agent', 'Audits', 'Conversation audits', 'Avg clean score %', 'Auto-fails']
@@ -604,6 +617,10 @@ export default function Reporting() {
         : view === 'scorecard' ? <ScorecardReport />
         : view === 'clients' ? <ClientsReport range={range} />
         : view === 'positions' ? <PositionsReport />
+        : view === 'sched_agent' ? <SchedAgentReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
+        : view === 'tasks_person' ? <TasksByPersonReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
+        : view === 'offclock' ? <OffClockReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
+        : view === 'kb' ? <KbReport profiles={peopleFull} allowedIds={allowedIds} />
         : loading ? <p className="page-sub">Loading…</p> : view === 'quality' ? (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -1775,6 +1792,350 @@ function PositionsReport() {
         </table>
       </div>
       <p className="page-sub" style={{ fontSize: 12 }}>Headcount by role from the roles directory (profile → role assignments). Snapshot — not date-bound.</p>
+    </div>
+  )
+}
+
+// ================= Schedule: per-agent summary (intervals, check-in, on-task, Five9) =================
+function schedMins(b) {
+  if (!b) return 0
+  const [sh, sm] = (b.start_time || '00:00').slice(0, 5).split(':').map(Number)
+  const [eh, em] = (b.end_time || '00:00').slice(0, 5).split(':').map(Number)
+  return Math.max(0, (eh * 60 + em) - (sh * 60 + sm))
+}
+function SchedAgentReport({ range, profiles, allowedIds }) {
+  const [d, setD] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setD(null); setErr('')
+    ;(async () => {
+      const { data: blocks, error: be } = await supabase.from('shift_blocks').select('id, block_date, start_time, end_time').gte('block_date', range.from).lte('block_date', range.to)
+      if (be) { if (active) setErr(be.message); return }
+      const ids = (blocks || []).map(b => b.id)
+      let claims = []
+      for (let i = 0; i < ids.length; i += 500) {
+        const { data: c } = await supabase.from('shift_claims').select('shift_block_id, profile_id, status, checked_in_at, checked_out_at').in('shift_block_id', ids.slice(i, i + 500))
+        claims = claims.concat(c || [])
+      }
+      const [{ data: te }, { data: agents }, { data: occ }] = await Promise.all([
+        supabase.from('time_entries').select('user_id, duration_minutes, started_at').not('duration_minutes', 'is', null).gte('started_at', dayStart(range.from)).lte('started_at', dayEnd(range.to)),
+        supabase.from('sc_agents').select('agent_name, profile_id'),
+        supabase.from('sc_occupancy').select('agent_name, total_actual_hours_last_30_days'),
+      ])
+      if (!active) return
+      setD({ blocks: blocks || [], claims, te: te || [], agents: agents || [], occ: occ || [] })
+    })()
+    return () => { active = false }
+  }, [range.from, range.to])
+
+  const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || '—'
+  const roleOf = (id) => (profiles.find(p => p.id === id) || {}).role || '—'
+  const rows = useMemo(() => {
+    if (!d) return []
+    const blockById = Object.fromEntries(d.blocks.map(b => [b.id, b]))
+    const five9ByProfile = {}
+    const occByName = Object.fromEntries(d.occ.map(o => [o.agent_name, o.total_actual_hours_last_30_days]))
+    for (const a of d.agents) if (a.profile_id && occByName[a.agent_name] != null) five9ByProfile[a.profile_id] = occByName[a.agent_name]
+    const per = {}
+    const ensure = (pid) => (per[pid] = per[pid] || { intervals: 0, schedMin: 0, clockMin: 0, taskMin: 0 })
+    for (const c of d.claims) {
+      if (c.status === 'no_show') continue
+      const p = ensure(c.profile_id)
+      p.intervals++
+      p.schedMin += schedMins(blockById[c.shift_block_id])
+      if (c.checked_in_at && c.checked_out_at && (c.status === 'completed' || c.status === 'approved')) {
+        p.clockMin += Math.max(0, Math.round((new Date(c.checked_out_at) - new Date(c.checked_in_at)) / 60000))
+      }
+    }
+    for (const e of d.te) ensure(e.user_id).taskMin += (e.duration_minutes || 0)
+    return Object.entries(per)
+      .filter(([pid]) => !allowedIds || allowedIds.has(pid))
+      .map(([pid, v]) => ({ pid, ...v, five9: five9ByProfile[pid] }))
+      .sort((a, b) => b.schedMin - a.schedMin)
+  }, [d, allowedIds])
+
+  function exportCsv() {
+    const out = [['Person', 'Role', 'Intervals', 'Scheduled hrs', 'Checked-in hrs', 'On-task hrs', 'Five9 hrs (30d)']]
+    rows.forEach(r => out.push([nameOf(r.pid), roleOf(r.pid), r.intervals, hoursFromMinutes(r.schedMin), hoursFromMinutes(r.clockMin), hoursFromMinutes(r.taskMin), r.five9 ?? '']))
+    downloadCSV(`agent-schedule-${range.from}_to_${range.to}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
+  if (d == null) return <p className="page-sub">Loading…</p>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="People scheduled" value={rows.length} />
+        <Tile label="Intervals" value={rows.reduce((s, r) => s + r.intervals, 0)} />
+        <Tile label="Scheduled hrs" value={hoursFromMinutes(rows.reduce((s, r) => s + r.schedMin, 0))} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
+          <thead><tr><Th>Person</Th><Th>Role</Th><Th r>Intervals</Th><Th r>Scheduled</Th><Th r>Checked-in</Th><Th r>On-task</Th><Th r>Five9 30d</Th></tr></thead>
+          <tbody>
+            {rows.length === 0 && <tr><td style={cellL} colSpan={7}><span className="page-sub">No scheduled intervals in this range.</span></td></tr>}
+            {rows.map(r => (
+              <tr key={r.pid}>
+                <td style={{ ...cellL, fontWeight: 600 }}>{nameOf(r.pid)}</td>
+                <td style={cellL}>{ROLE_LABELS[roleOf(r.pid)] || roleOf(r.pid)}</td>
+                <td style={cellR}>{r.intervals}</td>
+                <td style={cellR}>{hoursFromMinutes(r.schedMin)}</td>
+                <td style={cellR}>{hoursFromMinutes(r.clockMin)}</td>
+                <td style={cellR}>{hoursFromMinutes(r.taskMin)}</td>
+                <td style={{ ...cellR, color: r.five9 == null ? 'var(--ink-soft)' : 'var(--accent)' }}>{r.five9 == null ? '—' : r.five9}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>Intervals/Scheduled/Checked-in/On-task use the date range. <b>On-task</b> = time tracked to tasks (support). <b>Five9 30d</b> = rolling actual staffed hours (agents) — a 30-day snapshot, not range-bound. Arbitrary-range Five9 time is a later BigQuery add.</p>
+    </div>
+  )
+}
+
+// ================= Project Management: tasks by person =================
+function TasksByPersonReport({ range, profiles, allowedIds }) {
+  const [d, setD] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setD(null); setErr('')
+    ;(async () => {
+      const [{ data: tasks, error }, { data: asg }] = await Promise.all([
+        supabase.from('tasks').select('id, status, due_date, created_at').is('deleted_at', null).gte('created_at', dayStart(range.from)).lte('created_at', dayEnd(range.to)),
+        supabase.from('task_assignees').select('task_id, profile_id'),
+      ])
+      if (!active) return
+      if (error) { setErr(error.message); return }
+      setD({ tasks: tasks || [], asg: asg || [] })
+    })()
+    return () => { active = false }
+  }, [range.from, range.to])
+
+  const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || '—'
+  const days = Math.max(1, Math.round((new Date(range.to) - new Date(range.from)) / 86400000) + 1)
+  const rows = useMemo(() => {
+    if (!d) return []
+    const taskById = Object.fromEntries(d.tasks.map(t => [t.id, t]))
+    const today = isoDay(new Date())
+    const per = {}
+    for (const a of d.asg) {
+      const t = taskById[a.task_id]
+      if (!t) continue // task not in range
+      if (allowedIds && !allowedIds.has(a.profile_id)) continue
+      const p = (per[a.profile_id] = per[a.profile_id] || { assigned: 0, open: 0, overdue: 0, done: 0 })
+      p.assigned++
+      if (t.status === 'done') p.done++
+      else {
+        p.open++
+        if (t.due_date && t.due_date < today) p.overdue++
+      }
+    }
+    return Object.entries(per).map(([pid, v]) => ({ pid, ...v, perDay: Math.round(v.assigned / days * 10) / 10 })).sort((a, b) => b.assigned - a.assigned)
+  }, [d, allowedIds, days])
+
+  function exportCsv() {
+    const out = [['Person', 'Assigned', 'Open', 'Overdue', 'Done', 'Avg/day']]
+    rows.forEach(r => out.push([nameOf(r.pid), r.assigned, r.open, r.overdue, r.done, r.perDay]))
+    downloadCSV(`tasks-by-person-${range.from}_to_${range.to}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
+  if (d == null) return <p className="page-sub">Loading…</p>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Tasks (in range)" value={d.tasks.length} />
+        <Tile label="People with tasks" value={rows.length} />
+        <Tile label="Overdue" value={rows.reduce((s, r) => s + r.overdue, 0)} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><Th>Person</Th><Th r>Assigned</Th><Th r>Open</Th><Th r>Overdue</Th><Th r>Done</Th><Th r>Avg/day</Th></tr></thead>
+          <tbody>
+            {rows.length === 0 && <tr><td style={cellL} colSpan={6}><span className="page-sub">No assigned tasks created in this range.</span></td></tr>}
+            {rows.map(r => (
+              <tr key={r.pid}>
+                <td style={{ ...cellL, fontWeight: 600 }}>{nameOf(r.pid)}</td>
+                <td style={cellR}>{r.assigned}</td>
+                <td style={cellR}>{r.open}</td>
+                <td style={{ ...cellR, color: r.overdue ? 'var(--failed)' : 'var(--ink-soft)' }}>{r.overdue || '—'}</td>
+                <td style={cellR}>{r.done}</td>
+                <td style={cellR}>{r.perDay}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>Counts tasks <b>created</b> in the range and assigned to each person. Overdue = past due date and not done. Avg/day = assigned ÷ {days} days.</p>
+    </div>
+  )
+}
+
+// ================= Project Management: off-clock task time =================
+function OffClockReport({ range, profiles, allowedIds }) {
+  const [d, setD] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setD(null); setErr('')
+    ;(async () => {
+      // widen the claim window by a day on each side so an entry near a shift edge still matches.
+      const cFrom = new Date(range.from + 'T00:00:00'); cFrom.setDate(cFrom.getDate() - 1)
+      const cTo = new Date(range.to + 'T23:59:59'); cTo.setDate(cTo.getDate() + 1)
+      const [{ data: te, error }, { data: claims }] = await Promise.all([
+        supabase.from('time_entries').select('user_id, duration_minutes, started_at').not('duration_minutes', 'is', null).gte('started_at', dayStart(range.from)).lte('started_at', dayEnd(range.to)),
+        supabase.from('shift_claims').select('profile_id, checked_in_at, checked_out_at').not('checked_in_at', 'is', null).gte('checked_in_at', cFrom.toISOString()).lte('checked_in_at', cTo.toISOString()),
+      ])
+      if (!active) return
+      if (error) { setErr(error.message); return }
+      setD({ te: te || [], claims: claims || [] })
+    })()
+    return () => { active = false }
+  }, [range.from, range.to])
+
+  const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || '—'
+  const rows = useMemo(() => {
+    if (!d) return []
+    // Windows per user: [checked_in, checked_out || +12h fallback].
+    const winByUser = {}
+    for (const c of d.claims) {
+      const start = new Date(c.checked_in_at).getTime()
+      const end = c.checked_out_at ? new Date(c.checked_out_at).getTime() : start + 12 * 3600000
+      ;(winByUser[c.profile_id] = winByUser[c.profile_id] || []).push([start, end])
+    }
+    const onClock = (uid, ts) => {
+      const t = new Date(ts).getTime()
+      return (winByUser[uid] || []).some(([s, e]) => t >= s && t <= e)
+    }
+    const per = {}
+    for (const e of d.te) {
+      if (allowedIds && !allowedIds.has(e.user_id)) continue
+      const p = (per[e.user_id] = per[e.user_id] || { total: 0, on: 0, off: 0 })
+      const m = e.duration_minutes || 0
+      p.total += m
+      if (onClock(e.user_id, e.started_at)) p.on += m; else p.off += m
+    }
+    return Object.entries(per).map(([pid, v]) => ({ pid, ...v, offPct: v.total ? Math.round(v.off / v.total * 100) : 0 })).sort((a, b) => b.off - a.off)
+  }, [d, allowedIds])
+
+  function exportCsv() {
+    const out = [['Person', 'Total task hrs', 'On-clock hrs', 'Off-clock hrs', 'Off-clock %']]
+    rows.forEach(r => out.push([nameOf(r.pid), hoursFromMinutes(r.total), hoursFromMinutes(r.on), hoursFromMinutes(r.off), r.offPct + '%']))
+    downloadCSV(`off-clock-task-time-${range.from}_to_${range.to}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
+  if (d == null) return <p className="page-sub">Loading…</p>
+  const totalOff = rows.reduce((s, r) => s + r.off, 0)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Total task hrs" value={hoursFromMinutes(rows.reduce((s, r) => s + r.total, 0))} />
+        <Tile label="Off-clock hrs" value={hoursFromMinutes(totalOff)} />
+        <Tile label="People" value={rows.length} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><Th>Person</Th><Th r>Total task</Th><Th r>On-clock</Th><Th r>Off-clock</Th><Th r>Off-clock %</Th></tr></thead>
+          <tbody>
+            {rows.length === 0 && <tr><td style={cellL} colSpan={5}><span className="page-sub">No tracked task time in this range.</span></td></tr>}
+            {rows.map(r => (
+              <tr key={r.pid}>
+                <td style={{ ...cellL, fontWeight: 600 }}>{nameOf(r.pid)}</td>
+                <td style={cellR}>{hoursFromMinutes(r.total)}</td>
+                <td style={cellR}>{hoursFromMinutes(r.on)}</td>
+                <td style={{ ...cellR, color: r.off ? 'var(--needed)' : 'var(--ink-soft)', fontWeight: 600 }}>{hoursFromMinutes(r.off)}</td>
+                <td style={{ ...cellR, color: r.offPct >= 25 ? 'var(--failed)' : 'var(--ink-soft)' }}>{r.offPct}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>A task entry is "on-clock" when it starts inside a checked-in shift window (open shifts assume a 12-hour cap); otherwise it's off-clock. Classified by the entry's start time.</p>
+    </div>
+  )
+}
+
+// ================= Knowledge Base: article reads / unread per person =================
+function KbReport({ profiles, allowedIds }) {
+  const [d, setD] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setD(null); setErr('')
+    ;(async () => {
+      const [{ data: arts, error }, { data: reads }] = await Promise.all([
+        supabase.from('kb_articles').select('id, title, status').eq('status', 'published'),
+        supabase.from('kb_article_reads').select('article_id, profile_id'),
+      ])
+      if (!active) return
+      if (error) { setErr(error.message); return }
+      setD({ arts: arts || [], reads: reads || [] })
+    })()
+    return () => { active = false }
+  }, [])
+
+  const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || '—'
+  const model = useMemo(() => {
+    if (!d) return null
+    const byPerson = {}, byArticle = {}
+    const pubIds = new Set(d.arts.map(a => a.id))
+    for (const r of d.reads) {
+      if (allowedIds && !allowedIds.has(r.profile_id)) continue
+      if (!pubIds.has(r.article_id)) continue
+      ;(byPerson[r.profile_id] = byPerson[r.profile_id] || new Set()).add(r.article_id)
+      ;(byArticle[r.article_id] = byArticle[r.article_id] || new Set()).add(r.profile_id)
+    }
+    return { totalPub: d.arts.length, byPerson, byArticle, titleOf: (id) => (d.arts.find(a => a.id === id) || {}).title || 'Article' }
+  }, [d, allowedIds])
+  const roster = useMemo(() => profiles.filter(p => p.is_active !== false && (!allowedIds || allowedIds.has(p.id))).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')), [profiles, allowedIds])
+
+  function exportCsv() {
+    const out = [['Person', 'Read', 'Unread', 'Read %']]
+    roster.forEach(p => { const read = model.byPerson[p.id]?.size || 0; const pct = model.totalPub ? Math.round(read / model.totalPub * 100) : 0; out.push([p.full_name, read, Math.max(0, model.totalPub - read), pct + '%']) })
+    downloadCSV(`kb-reads-${isoDay(new Date())}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
+  if (d == null) return <p className="page-sub">Loading…</p>
+  const readers = Object.keys(model.byPerson).length
+  const avgPct = roster.length && model.totalPub ? Math.round(roster.reduce((s, p) => s + (model.byPerson[p.id]?.size || 0), 0) / (roster.length * model.totalPub) * 100) : 0
+  const articleRows = d.arts.map(a => ({ id: a.id, title: a.title, readers: model.byArticle[a.id]?.size || 0 })).sort((x, y) => y.readers - x.readers)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Published articles" value={model.totalPub} />
+        <Tile label="People who've read ≥1" value={readers} />
+        <Tile label="Avg read coverage" value={avgPct + '%'} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By person</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><Th>Person</Th><Th r>Read</Th><Th r>Unread</Th><Th r>Read %</Th></tr></thead>
+          <tbody>
+            {roster.length === 0 && <tr><td style={cellL} colSpan={4}><span className="page-sub">No people.</span></td></tr>}
+            {roster.map(p => {
+              const read = model.byPerson[p.id]?.size || 0
+              const unread = Math.max(0, model.totalPub - read)
+              const pct = model.totalPub ? Math.round(read / model.totalPub * 100) : 0
+              return <tr key={p.id}><td style={{ ...cellL, fontWeight: 600 }}>{p.full_name}</td><td style={cellR}>{read}</td><td style={{ ...cellR, color: unread ? 'var(--needed)' : 'var(--ink-soft)' }}>{unread}</td><td style={{ ...cellR, color: pct >= 66 ? 'var(--passed)' : pct >= 33 ? 'var(--needed)' : 'var(--failed)', fontWeight: 700 }}>{pct}%</td></tr>
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By article</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><Th>Article</Th><Th r>Readers</Th></tr></thead>
+          <tbody>
+            {articleRows.length === 0 && <tr><td style={cellL} colSpan={2}><span className="page-sub">No published articles.</span></td></tr>}
+            {articleRows.map(a => <tr key={a.id}><td style={{ ...cellL, fontWeight: 600 }}>{a.title}</td><td style={{ ...cellR, color: a.readers ? 'var(--ink)' : 'var(--ink-soft)' }}>{a.readers}</td></tr>)}
+          </tbody>
+        </table>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>Reads are logged when someone opens an article. Data began accruing when this shipped, so early numbers reflect reads since then. "Unread" = published articles minus those the person has opened.</p>
     </div>
   )
 }
