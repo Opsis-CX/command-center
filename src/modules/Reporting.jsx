@@ -82,6 +82,8 @@ const CATALOG = [
   ] },
   { label: 'Scorecard', items: [
     { key: 'scorecard', name: 'Agent Productivity', q: 'Per-agent Five9 calls, AHT, bookings and hours (rolling 7 / 30 day).' },
+  ] },
+  { label: 'Calls', items: [
     { key: 'dispositions', name: 'Call Dispositions', q: 'How are calls dispositioned, by disposition and by agent (recent)?' },
   ] },
   { label: 'Help Center', items: [
@@ -121,6 +123,7 @@ const REPORT_META = Object.fromEntries(CATALOG.flatMap(c => c.items.map(it => [i
 // categories not listed are visible to anyone who can reach the Reporting page.
 const CAT_PERM = {
   'Chat': 'service_performance_scorecard',
+  'Calls': 'service_performance_scorecard',
   'Project Management': 'project_management',
   'Quality': 'quality_audit',
   'Certifications': 'certifications',
@@ -172,6 +175,7 @@ export default function Reporting() {
   const [mode, setMode] = useState('standard')       // 'standard' | 'custom'
   const [pickerOpen, setPickerOpen] = useState(true)  // catalog / saved-report picker visible
   const [expanded, setExpanded] = useState({})        // category label -> open?
+  const [search, setSearch] = useState('')            // report-tree search
   const [filters, setFilters] = useState({ personId: 'all', tagId: 'all' })
   const [savedReports, setSavedReports] = useState([])
   const [savingReport, setSavingReport] = useState(false)
@@ -551,81 +555,82 @@ export default function Reporting() {
     <div>
       <div style={{ marginBottom: 20 }}>
         <h1 className="page-title">Reporting</h1>
-        <p className="page-sub">Tracked task &amp; meeting time by person (payroll) and by client (invoicing). Client meetings sync automatically from Fathom. Hours only — apply your own rates.</p>
+        <p className="page-sub">Report on anything across the app — search or browse on the left, set your time frame and filters, then export or save. Every report is CSV-exportable.</p>
       </div>
 
-      {view === null ? (
-      <>
-      {/* landing: choose a report from the catalog */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--line)', paddingBottom: 12, marginBottom: 14 }}>
-        <button onClick={() => setMode('standard')} style={pill(mode === 'standard')}>Standard Reports</button>
-        <button onClick={() => setMode('custom')} style={pill(mode === 'custom')}>Custom Reports{savedReports.length ? ` (${savedReports.length})` : ''}</button>
-      </div>
-
-      {mode === 'standard' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, marginBottom: 16, alignItems: 'start' }}>
-          {CATALOG.filter(cat => isAdmin || catAllowed(appRole, cat.label)).map(cat => {
-            const open = expanded[cat.label] != null ? expanded[cat.label] : false
-            return (
-              <div key={cat.label} className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                <button onClick={() => setExpanded(e => ({ ...e, [cat.label]: !open }))}
-                  style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 0, background: 'var(--surface)', cursor: 'pointer', fontWeight: 600, fontSize: 13.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'inherit', color: 'var(--ink)' }}>
-                  <span>{cat.label}</span><span style={{ color: 'var(--ink-soft)' }}>{open ? '▾' : '▸'}</span>
-                </button>
-                {open && cat.items.map(it => (
-                  <button key={it.key} onClick={() => selectReport(it.key)}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', border: 0, borderTop: '1px solid var(--line-soft)', background: view === it.key ? 'var(--accent-bg, var(--line-soft))' : 'transparent', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    <div style={{ fontSize: 13, fontWeight: view === it.key ? 700 : 600, color: view === it.key ? 'var(--accent)' : 'var(--ink)' }}>{it.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 2 }}>{it.q}</div>
-                  </button>
+      <div style={{ display: 'flex', alignItems: 'stretch', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', background: 'var(--surface)' }}>
+        {/* LEFT RAIL — searchable report tree */}
+        <aside style={{ width: 272, flexShrink: 0, borderRight: '1px solid var(--line)', background: 'var(--canvas, #f8fafc)', display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
+          <div style={{ padding: 12, borderBottom: '1px solid var(--line)' }}>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+              <button onClick={() => setMode('standard')} style={railTab(mode === 'standard')}>Standard</button>
+              <button onClick={() => setMode('custom')} style={railTab(mode === 'custom')}>Custom{savedReports.length ? ` (${savedReports.length})` : ''}</button>
+            </div>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search reports…"
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)', boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ overflowY: 'auto', flex: 1, padding: '8px 0' }}>
+            {mode === 'standard' ? (() => {
+              const q = search.trim().toLowerCase()
+              const cats = CATALOG.filter(cat => isAdmin || catAllowed(appRole, cat.label))
+                .map(cat => ({ cat, items: cat.items.filter(it => !q || it.name.toLowerCase().includes(q) || (it.q || '').toLowerCase().includes(q) || cat.label.toLowerCase().includes(q)) }))
+                .filter(x => x.items.length)
+              if (!cats.length) return <div style={{ padding: '10px 16px', color: 'var(--ink-soft)', fontSize: 13 }}>No reports match “{search}”.</div>
+              return cats.map(({ cat, items }) => (
+                <div key={cat.label} style={{ marginBottom: 8 }}>
+                  <div style={{ padding: '4px 16px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--ink-soft)' }}>{cat.label}</div>
+                  {items.map(it => (
+                    <button key={it.key} onClick={() => selectReport(it.key)} title={it.q} style={railItem(view === it.key)}>{it.name}</button>
+                  ))}
+                </div>
+              ))
+            })() : (
+              <div>
+                <button onClick={newCustomReport} style={{ ...railItem(view === 'builder'), fontWeight: 700, color: 'var(--accent)' }}>＋ New custom report</button>
+                <div style={{ padding: '8px 16px 4px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--ink-soft)' }}>Saved</div>
+                {savedReports.filter(r => r.report_key === 'builder' || isAdmin || reportAllowed(appRole, r.report_key)).length === 0 && <div style={{ padding: '6px 16px', color: 'var(--ink-soft)', fontSize: 12.5 }}>Nothing saved yet.</div>}
+                {savedReports.filter(r => r.report_key === 'builder' || isAdmin || reportAllowed(appRole, r.report_key)).map(r => (
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center' }}>
+                    <button onClick={() => openSaved(r)} style={{ ...railItem(false), flex: 1 }}>{r.name}<div style={{ fontSize: 10.5, color: 'var(--ink-soft)', fontWeight: 400 }}>{r.report_key === 'builder' ? 'Custom report' : (REPORT_META[r.report_key]?.name || r.report_key)}{r.is_shared ? ' · shared' : ''}</div></button>
+                    <button onClick={() => deleteSaved(r)} title="Delete" style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 14, padding: '0 12px' }}>✕</button>
+                  </div>
                 ))}
               </div>
-            )
-          })}
-        </div>
-      )}
-
-      {mode === 'custom' && (
-        <div className="card" style={{ padding: 0, marginBottom: 16, overflow: 'hidden' }}>
-          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontWeight: 600, fontSize: 13 }}>Saved &amp; custom reports</span>
-            <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={newCustomReport}>＋ New custom report</button>
+            )}
           </div>
-          {savedReports.filter(r => r.report_key === 'builder' || isAdmin || reportAllowed(appRole, r.report_key)).length === 0 ? (
-            <div style={{ padding: 16, color: 'var(--ink-soft)', fontSize: 13 }}>No saved reports yet. Build one with <b>＋ New custom report</b>, or open any standard report, set the time frame/filters, and <b>☆ Save as report</b>.</div>
-          ) : savedReports.filter(r => r.report_key === 'builder' || isAdmin || reportAllowed(appRole, r.report_key)).map(r => (
-            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--line-soft)' }}>
-              <button onClick={() => openSaved(r)} style={{ flex: 1, textAlign: 'left', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit' }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{r.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 2 }}>{r.report_key === 'builder' ? 'Custom' : (REPORT_META[r.report_key]?.name || r.report_key)} · {r.folder}{r.is_shared ? ' · shared' : ''}</div>
-              </button>
-              <button onClick={() => deleteSaved(r)} title="Delete" style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 15 }}>✕</button>
-            </div>
-          ))}
-        </div>
-      )}
-      </>
-      ) : !(view === 'builder' || isAdmin || reportAllowed(appRole, view)) ? (
-        <>
-          <div style={{ marginBottom: 14 }}><button onClick={backToCatalog} style={{ ...tabBtn(false), border: '1px solid var(--line)', borderRadius: 8 }}>‹ All reports</button></div>
-          <div className="card" style={{ padding: 24, color: 'var(--ink-soft)' }}>You don't have access to this report.</div>
-        </>
-      ) : (
-        <>
-          <div style={{ marginBottom: 14 }}><button onClick={backToCatalog} style={{ ...tabBtn(false), border: '1px solid var(--line)', borderRadius: 8 }}>‹ All reports</button></div>
+        </aside>
 
-      {/* selected report + shared time frame / filters / actions */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
-        <div style={{ marginRight: 'auto' }}>
-          <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600 }}>{view === 'builder' ? 'Custom' : (REPORT_META[view]?.category || '')}</div>
-          <div style={{ fontSize: 17, fontWeight: 700 }}>{view === 'builder' ? 'Custom Report Builder' : (REPORT_META[view]?.name || 'Report')}</div>
-        </div>
+        {/* MAIN — the selected report */}
+        <main style={{ flex: 1, minWidth: 0, padding: 20, maxHeight: '80vh', overflowY: 'auto' }}>
+          {view === null ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 340, textAlign: 'center', color: 'var(--ink-soft)' }}>
+              <div style={{ fontSize: 38, marginBottom: 8 }}>📊</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>Pick a report to begin</div>
+              <div style={{ fontSize: 13, maxWidth: 360, marginTop: 6, lineHeight: 1.5 }}>Browse the categories on the left or search by name. Need something specific? Switch to <b>Custom</b> and build your own.</div>
+            </div>
+          ) : !(view === 'builder' || isAdmin || reportAllowed(appRole, view)) ? (
+            <div className="card" style={{ padding: 24, color: 'var(--ink-soft)' }}>You don't have access to this report.</div>
+          ) : (
+        <>
+
+      {/* report title */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 11, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>{view === 'builder' ? 'Custom' : (REPORT_META[view]?.category || '')}</div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink)', marginTop: 2 }}>{view === 'builder' ? 'Custom Report Builder' : (REPORT_META[view]?.name || 'Report')}</div>
+        {(view !== 'builder' && REPORT_META[view]?.q) && <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginTop: 3 }}>{REPORT_META[view].q}</div>}
+      </div>
+
+      {/* controls bar */}
+      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16, padding: '12px 14px', background: 'var(--canvas, #f8fafc)', border: '1px solid var(--line)', borderRadius: 10 }}>
         {!NO_RANGE.has(view) && (
           <>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {[['week', 'This week'], ['last7', 'Last 7'], ['last30', 'Last 30'], ['month', 'This month']].map(([p, l]) => (
-                <button key={p} onClick={() => setRange(presetRange(p))} style={{ ...tabBtn(false), border: '1px solid var(--line)', borderRadius: 8 }}>{l}</button>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={lbl}>Quick range</label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[['week', 'This week'], ['last7', 'Last 7'], ['last30', 'Last 30'], ['month', 'This month']].map(([p, l]) => (
+                  <button key={p} onClick={() => setRange(presetRange(p))} style={{ ...tabBtn(false), border: '1px solid var(--line)', borderRadius: 8 }}>{l}</button>
+                ))}
+              </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={lbl}>From</label>
@@ -655,13 +660,15 @@ export default function Reporting() {
             </div>
           </>
         )}
-        {view !== 'builder' && <button onClick={saveAsCustom} disabled={savingReport} style={{ ...tabBtn(false), border: '1px solid var(--line)', borderRadius: 8 }}>☆ Save as report</button>}
-        {SHARED_EXPORT.has(view) && (
-          <button className="btn btn-primary"
-            onClick={view === 'person' ? exportPersonCSV : view === 'client' ? exportClientCSV : view === 'quality' ? exportQualityCSV : view === 'people' ? exportPeopleCSV : exportCompareCSV}>
-            Export {view === 'person' ? 'Payroll' : view === 'client' ? 'Invoicing' : view === 'quality' ? 'Quality' : view === 'people' ? 'Roster' : 'Comparison'} CSV
-          </button>
-        )}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          {view !== 'builder' && <button onClick={saveAsCustom} disabled={savingReport} style={{ ...tabBtn(false), border: '1px solid var(--line)', borderRadius: 8 }}>☆ Save as report</button>}
+          {SHARED_EXPORT.has(view) && (
+            <button className="btn btn-primary"
+              onClick={view === 'person' ? exportPersonCSV : view === 'client' ? exportClientCSV : view === 'quality' ? exportQualityCSV : view === 'people' ? exportPeopleCSV : exportCompareCSV}>
+              Export {view === 'person' ? 'Payroll' : view === 'client' ? 'Invoicing' : view === 'quality' ? 'Quality' : view === 'people' ? 'Roster' : 'Comparison'} CSV
+            </button>
+          )}
+        </div>
       </div>
 
       {view === 'schedule' ? <ScheduleHoursView range={range} setRange={setRange} />
@@ -975,12 +982,16 @@ export default function Reporting() {
           )}
         </>
       )}
-        </>
-      )}
+            </>
+          )}
+        </main>
+      </div>
     </div>
   )
 }
 
+const railTab = (a) => ({ flex: 1, padding: '6px 8px', borderRadius: 7, border: '1px solid ' + (a ? 'var(--accent)' : 'var(--line)'), background: a ? 'var(--accent)' : 'var(--surface)', color: a ? '#fff' : 'var(--ink-soft)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit' })
+const railItem = (a) => ({ display: 'block', width: '100%', textAlign: 'left', padding: '8px 16px', border: 0, borderLeft: '3px solid ' + (a ? 'var(--accent)' : 'transparent'), background: a ? 'var(--accent-bg, #eef4ff)' : 'transparent', color: a ? 'var(--accent)' : 'var(--ink)', cursor: 'pointer', fontSize: 13, fontWeight: a ? 700 : 500, fontFamily: 'inherit' })
 const lbl = { fontSize: 12, fontWeight: 600, color: 'var(--ink-soft)' }
 const inp = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }
 const cellL = { padding: '9px 16px', borderBottom: '1px solid var(--line-soft)', fontSize: 13 }
@@ -2412,12 +2423,108 @@ const BUILDER_SOURCES = {
       return (data || []).map(t => ({ _pid: t.profile_id, person: nameById[t.profile_id] || '—', kind: t.kind || '', date: t.created_at ? t.created_at.slice(0, 10) : '', amount: Number(t.delta) || 0 }))
     },
   },
+  schedule: {
+    label: 'Schedule (intervals)', usesRange: true,
+    fields: [
+      { key: 'person', label: 'Person', kind: 'dim' },
+      { key: 'date', label: 'Date', kind: 'dim' },
+      { key: 'role', label: 'Role', kind: 'dim' },
+      { key: 'status', label: 'Status', kind: 'dim' },
+      { key: 'checkedIn', label: 'Checked in', kind: 'dim' },
+      { key: 'schedHrs', label: 'Scheduled hrs', kind: 'num' },
+      { key: 'clockHrs', label: 'Clock hrs', kind: 'num' },
+    ],
+    load: async (range, ctx) => {
+      const { data: blocks } = await supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role').gte('block_date', range.from).lte('block_date', range.to)
+      const bById = Object.fromEntries((blocks || []).map(b => [b.id, b]))
+      const ids = (blocks || []).map(b => b.id)
+      let claims = []
+      for (let i = 0; i < ids.length; i += 500) {
+        const { data: c } = await supabase.from('shift_claims').select('shift_block_id, profile_id, status, checked_in_at, checked_out_at').in('shift_block_id', ids.slice(i, i + 500))
+        claims = claims.concat(c || [])
+      }
+      const nameById = Object.fromEntries((ctx.profiles || []).map(p => [p.id, p.full_name]))
+      return claims.map(c => {
+        const b = bById[c.shift_block_id] || {}
+        const sm = schedMins(b)
+        const clock = (c.checked_in_at && c.checked_out_at) ? Math.max(0, Math.round((new Date(c.checked_out_at) - new Date(c.checked_in_at)) / 60000)) : 0
+        return { _pid: c.profile_id, person: nameById[c.profile_id] || '—', date: b.block_date || '', role: b.role || '', status: c.status || '', checkedIn: c.checked_in_at ? 'Yes' : 'No', schedHrs: Math.round(sm / 60 * 100) / 100, clockHrs: Math.round(clock / 60 * 100) / 100 }
+      })
+    },
+  },
+  support: {
+    label: 'Support tickets', usesRange: true,
+    fields: [
+      { key: 'category', label: 'Category', kind: 'dim' },
+      { key: 'status', label: 'Status', kind: 'dim' },
+      { key: 'priority', label: 'Priority', kind: 'dim' },
+      { key: 'created', label: 'Created', kind: 'dim' },
+      { key: 'firstRespMin', label: 'First response (min)', kind: 'num' },
+      { key: 'resolveMin', label: 'Resolution (min)', kind: 'num' },
+    ],
+    load: async (range) => {
+      const { data } = await supabase.from('help_tickets').select('category, status, priority, created_at, first_response_at, resolved_at, closed_at').gte('created_at', dayStart(range.from)).lte('created_at', dayEnd(range.to))
+      const diffMin = (a, b) => (a && b) ? Math.max(0, Math.round((new Date(b) - new Date(a)) / 60000)) : 0
+      return (data || []).map(t => ({ category: t.category || '—', status: t.status || '—', priority: t.priority || '—', created: t.created_at ? t.created_at.slice(0, 10) : '', firstRespMin: diffMin(t.created_at, t.first_response_at), resolveMin: diffMin(t.created_at, t.resolved_at || t.closed_at) }))
+    },
+  },
+  dispositions: {
+    label: 'Call dispositions (Five9, recent)', usesRange: false,
+    fields: [
+      { key: 'agent', label: 'Agent', kind: 'dim' },
+      { key: 'disposition', label: 'Disposition', kind: 'dim' },
+      { key: 'campaign', label: 'Campaign', kind: 'dim' },
+      { key: 'brand', label: 'Brand', kind: 'dim' },
+      { key: 'date', label: 'Date', kind: 'dim' },
+      { key: 'talkMin', label: 'Talk (min)', kind: 'num' },
+      { key: 'calls', label: 'Calls', kind: 'num' },
+    ],
+    load: async () => {
+      const pageN = 1000; let from = 0; let all = []
+      for (;;) {
+        const { data } = await supabase.from('f9_calls_today').select('agent_name, disposition, campaign, brand, work_date, talk_sec').range(from, from + pageN - 1)
+        all = all.concat(data || [])
+        if (!data || data.length < pageN) break
+        from += pageN
+      }
+      return all.map(c => ({ agent: c.agent_name || '—', disposition: c.disposition || '—', campaign: c.campaign || '—', brand: c.brand || '—', date: c.work_date || '', talkMin: Math.round((Number(c.talk_sec) || 0) / 60 * 100) / 100, calls: 1 }))
+    },
+  },
+  scorecard: {
+    label: 'Scorecard (agent, rolling 30d)', usesRange: false,
+    fields: [
+      { key: 'agent', label: 'Agent', kind: 'dim' },
+      { key: 'calls30', label: 'Calls 30d', kind: 'num' },
+      { key: 'ahtMin', label: 'AHT min', kind: 'num' },
+      { key: 'bookings30', label: 'Bookings 30d', kind: 'num' },
+      { key: 'conv30', label: 'Conversion %', kind: 'num' },
+      { key: 'serviced30', label: 'Serviced hrs 30d', kind: 'num' },
+    ],
+    load: async () => {
+      const { data } = await supabase.from('sc_calls').select('agent_name, calls_handled_last_30_days, avg_aht_minutes_last_30_days, bookings_last_30_days, conversion_rate_last_30_days, serviced_hours_last_30_days')
+      return (data || []).map(c => ({ agent: c.agent_name || '—', calls30: Number(c.calls_handled_last_30_days) || 0, ahtMin: Number(c.avg_aht_minutes_last_30_days) || 0, bookings30: Number(c.bookings_last_30_days) || 0, conv30: Number(c.conversion_rate_last_30_days) || 0, serviced30: Number(c.serviced_hours_last_30_days) || 0 }))
+    },
+  },
+  clients: {
+    label: 'Clients', usesRange: false,
+    fields: [
+      { key: 'name', label: 'Client', kind: 'dim' },
+      { key: 'usesFive9', label: 'Uses Five9', kind: 'dim' },
+      { key: 'created', label: 'Added', kind: 'dim' },
+    ],
+    load: async () => {
+      const { data } = await supabase.from('clients').select('name, uses_five9, created_at').order('name')
+      return (data || []).map(c => ({ name: c.name || '', usesFive9: c.uses_five9 ? 'Yes' : 'No', created: c.created_at ? c.created_at.slice(0, 10) : '' }))
+    },
+  },
 }
 
 function CustomBuilder({ range, profiles, allowedIds, initial, onSaved }) {
   const [source, setSource] = useState(initial?.source || 'time')
   const [cols, setCols] = useState(() => new Set(initial?.columns || BUILDER_SOURCES[initial?.source || 'time'].fields.map(f => f.key)))
   const [groupBy, setGroupBy] = useState(initial?.groupBy || '')
+  const [sortKey, setSortKey] = useState(initial?.sortKey || '')
+  const [sortDir, setSortDir] = useState(initial?.sortDir || 'desc')
   const [rows, setRows] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -2428,7 +2535,7 @@ function CustomBuilder({ range, profiles, allowedIds, initial, onSaved }) {
   const nums = src.fields.filter(f => f.kind === 'num')
 
   function pickSource(k) {
-    setSource(k); setCols(new Set(BUILDER_SOURCES[k].fields.map(f => f.key))); setGroupBy(''); setRows(null); setRan(false)
+    setSource(k); setCols(new Set(BUILDER_SOURCES[k].fields.map(f => f.key))); setGroupBy(''); setSortKey(''); setRows(null); setRan(false)
   }
   function toggleCol(k) { setCols(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n }) }
 
@@ -2446,10 +2553,20 @@ function CustomBuilder({ range, profiles, allowedIds, initial, onSaved }) {
   useEffect(() => { if (initial) run() }, []) // eslint-disable-line
 
   const selectedFields = src.fields.filter(f => cols.has(f.key))
+  // Generic sort comparator (numbers numerically, everything else as text).
+  const cmp = (a, b, dir) => {
+    const na = Number(a), nb = Number(b)
+    let r
+    if (!isNaN(na) && !isNaN(nb) && a !== '' && b !== '') r = na - nb
+    else r = String(a ?? '').localeCompare(String(b ?? ''))
+    return dir === 'asc' ? r : -r
+  }
   const output = useMemo(() => {
     if (!rows) return null
     if (!groupBy) {
-      return { grouped: false, columns: selectedFields, data: rows }
+      let data = rows
+      if (sortKey) data = rows.slice().sort((a, b) => cmp(a[sortKey], b[sortKey], sortDir))
+      return { grouped: false, columns: selectedFields, data }
     }
     const gLabel = (src.fields.find(f => f.key === groupBy) || {}).label || groupBy
     const selNums = nums.filter(f => cols.has(f.key))
@@ -2460,11 +2577,15 @@ function CustomBuilder({ range, profiles, allowedIds, initial, onSaved }) {
       const o = m.get(key); o.__count++
       selNums.forEach(f => { o[f.key] += Number(r[f.key]) || 0 })
     }
-    const data = Array.from(m.values()).sort((a, b) => b.__count - a.__count)
+    let data = Array.from(m.values())
+    // Sort grouped rows: by chosen numeric column, or Count, or the group label.
+    if (sortKey === '__g') data.sort((a, b) => cmp(a.__g, b.__g, sortDir))
+    else if (sortKey && (sortKey === '__count' || selNums.some(f => f.key === sortKey))) data.sort((a, b) => cmp(a[sortKey], b[sortKey], sortDir))
+    else data.sort((a, b) => b.__count - a.__count)
     const totals = { __g: 'Total', __count: rows.length }
     selNums.forEach(f => totals[f.key] = data.reduce((s, o) => s + o[f.key], 0))
     return { grouped: true, gLabel, selNums, data, totals }
-  }, [rows, groupBy, selectedFields, nums, cols, src])
+  }, [rows, groupBy, selectedFields, nums, cols, src, sortKey, sortDir])
 
   function exportCsv() {
     if (!output) return
@@ -2488,7 +2609,7 @@ function CustomBuilder({ range, profiles, allowedIds, initial, onSaved }) {
     const { error } = await supabase.from('report_definitions').insert({
       owner_id: user?.id, name, folder: shared ? 'Shared Reports' : 'My Reports',
       report_key: 'builder', is_shared: shared,
-      config: { source, columns: Array.from(cols), groupBy, range },
+      config: { source, columns: Array.from(cols), groupBy, sortKey, sortDir, range },
     })
     if (error) { window.alert('Could not save: ' + error.message); return }
     onSaved && onSaved()
@@ -2525,6 +2646,23 @@ function CustomBuilder({ range, profiles, allowedIds, initial, onSaved }) {
             {dims.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
           </select>
           {groupBy && <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--ink-soft)' }}>numeric columns are summed; a Count column and Total row are added.</span>}
+        </div>
+        {/* Step 4: sort */}
+        <div>
+          <div style={stepLbl}>4 · Sort by</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <select value={sortKey} onChange={e => setSortKey(e.target.value)} style={{ ...inp, maxWidth: 240 }}>
+              <option value="">Default</option>
+              {(groupBy
+                ? [['__g', dims.find(f => f.key === groupBy)?.label || 'Group'], ['__count', 'Count'], ...nums.filter(f => cols.has(f.key)).map(f => [f.key, f.label])]
+                : selectedFields.map(f => [f.key, f.label])
+              ).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <select value={sortDir} onChange={e => setSortDir(e.target.value)} style={{ ...inp, maxWidth: 170 }}>
+              <option value="desc">High → Low / Z → A</option>
+              <option value="asc">Low → High / A → Z</option>
+            </select>
+          </div>
         </div>
         {/* Actions */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
