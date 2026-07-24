@@ -318,7 +318,7 @@ export default function CallQA({ portal = false } = {}) {
   const base = import.meta.env.VITE_SUPABASE_URL || ''
   const inFlight = (pipeline.needs_transcription || 0) + (pipeline.transcribing || 0) + (pipeline.ready || 0) + (pipeline.scoring || 0)
   const todayStr = new Date().toISOString().slice(0, 10)
-  const TABS = [['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['calls', 'Calls'], ['fails', 'Epic Fails'], ['coaching', 'Coaching'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings']] : [])]
+  const TABS = [['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['calls', 'Calls'], ['fails', 'Epic Fails'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings']] : [])]
 
   return (
     <div style={{ padding: 20, maxWidth: 1180, margin: '0 auto' }}>
@@ -357,7 +357,6 @@ export default function CallQA({ portal = false } = {}) {
           {tab === 'conversion' && <Conversion rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'calls' && <Calls rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'fails' && <EpicFails rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
-          {tab === 'coaching' && <Coaching byAgent={byAgent} />}
           {tab === 'rubric' && canManage && <RubricTab campaigns={settings.map((s) => s.campaign)} />}
         {tab === 'settings' && canManage && <SettingsTab settings={settings} secretKeys={secretKeys} pipeline={pipeline} base={base} onSave={saveSetting} busy={busy} />}
         </>
@@ -1295,6 +1294,8 @@ function ExportBar({ name, title, subtitle, build }) {
 
 function Scorecards({ rows, viewAll, onOpen }) {
   const [tier, setTier] = useState('exec')
+  const [mgrBrand, setMgrBrand] = useState('')
+  const [agentKey, setAgentKey] = useState('')
   const P = (n, d) => (d ? (n / d) * 100 : null)
   const data = useMemo(() => {
     const scored = rows.filter(isScored)
@@ -1347,20 +1348,27 @@ function Scorecards({ rows, viewAll, onOpen }) {
 
   const seg = (k, l) => <button key={k} onClick={() => setTier(k)} style={{ border: 'none', background: tier === k ? TEAL : '#fff', color: tier === k ? '#fff' : '#334155', padding: '8px 16px', borderRadius: 999, cursor: 'pointer', fontWeight: 700, fontSize: 13, boxShadow: tier === k ? 'none' : 'inset 0 0 0 1px #cbd5e1' }}>{l}</button>
 
+  // Selected brand/agent fall back to the top-ranked one until the user picks
+  // (or drills in via a click).
+  const brand = (mgrBrand && data.brands.some((x) => x.brand === mgrBrand)) ? mgrBrand : (data.brands[0]?.brand || '')
+  const aKey = (agentKey && data.agents.some((x) => (x.name + '|||' + x.brand) === agentKey)) ? agentKey : (data.agents[0] ? data.agents[0].name + '|||' + data.agents[0].brand : '')
+  const goBrand = (b) => { setMgrBrand(b); setTier('mgr') }
+  const goAgent = (name, br) => { setAgentKey(name + '|||' + br); setTier('agent') }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         {seg('exec', 'Executive')}{seg('mgr', 'Manager')}{seg('agent', 'Agent')}
-        <span style={{ color: '#94a3b8', fontSize: 12.5, marginLeft: 4 }}>Feedback scorecards — export any view as PDF, Excel, or CSV.</span>
+        <span style={{ color: '#94a3b8', fontSize: 12.5, marginLeft: 4 }}>Click a brand or agent to drill in · export any view as PDF, Excel, or CSV.</span>
       </div>
-      {tier === 'exec' && <ScExec data={data} />}
-      {tier === 'mgr' && <ScMgr data={data} onOpen={onOpen} />}
-      {tier === 'agent' && <ScAgent data={data} />}
+      {tier === 'exec' && <ScExec data={data} onBrand={goBrand} />}
+      {tier === 'mgr' && <ScMgr data={data} brand={brand} setBrand={setMgrBrand} onAgent={goAgent} onOpen={onOpen} />}
+      {tier === 'agent' && <ScAgent data={data} rows={rows} aKey={aKey} setKey={setAgentKey} onOpen={onOpen} />}
     </div>
   )
 }
 
-function ScExec({ data }) {
+function ScExec({ data, onBrand }) {
   const o = data.overall; const cv = P100(o.booked, o.opps)
   const gaps = data.gaps(null).slice(0, 8)
   const gmax = Math.max(1, ...gaps.map((g) => g[1]))
@@ -1390,8 +1398,8 @@ function ScExec({ data }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Brand', 'Calls', 'Avg QA', 'QA', 'Conversion', 'Missed', 'Large missed'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
           <tbody>{data.brands.map((b) => (
-            <tr key={b.brand} style={{ borderTop: '1px solid #eef2f7' }}>
-              <td style={{ padding: '8px 12px', fontWeight: 600 }}>{b.brand}</td>
+            <tr key={b.brand} onClick={() => onBrand(b.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+              <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{b.brand} <span style={{ color: '#cbd5e1' }}>›</span></td>
               <td style={{ padding: '8px 12px' }}>{b.calls}</td>
               <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(b.avg), color: scoreColor(b.avg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(b.avg)}</span></td>
               <td style={{ padding: '8px 12px', width: 130 }}><Bar v={b.avg} color={scoreColor(b.avg)} /></td>
@@ -1415,8 +1423,7 @@ function ScExec({ data }) {
   )
 }
 
-function ScMgr({ data, onOpen }) {
-  const [brand, setBrand] = useState(data.brands[0]?.brand || '')
+function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
   const b = data.brands.find((x) => x.brand === brand) || data.brands[0]
   const roster = data.agents.filter((a) => a.brand === (b?.brand))
   const gaps = data.gaps(b?.brand).slice(0, 6); const gmax = Math.max(1, ...gaps.map((g) => g[1]))
@@ -1446,9 +1453,9 @@ function ScMgr({ data, onOpen }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['#', 'Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Coaching focus'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
           <tbody>{roster.map((a, i) => (
-            <tr key={a.name} style={{ borderTop: '1px solid #eef2f7' }}>
+            <tr key={a.name} onClick={() => onAgent(a.name, a.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
               <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{i + 1}</td>
-              <td style={{ padding: '8px 12px', fontWeight: 600 }}>{a.name}</td>
+              <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{a.name} <span style={{ color: '#cbd5e1' }}>›</span></td>
               <td style={{ padding: '8px 12px' }}>{a.calls}</td>
               <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(a.avg), color: scoreColor(a.avg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(a.avg)}</span></td>
               <td style={{ padding: '8px 12px', fontWeight: 700, color: a.conv >= 50 ? '#1b5e20' : a.conv >= 35 ? '#8d6e00' : '#b71c1c' }}>{pct(a.conv)}</td>
@@ -1471,23 +1478,27 @@ function ScMgr({ data, onOpen }) {
   )
 }
 
-function ScAgent({ data }) {
+function ScAgent({ data, rows, aKey, setKey, onOpen }) {
   const opts = [...data.agents].sort((a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name))
-  const [key, setKey] = useState(opts[0] ? opts[0].name + '|||' + opts[0].brand : '')
-  const a = data.agents.find((x) => (x.name + '|||' + x.brand) === key) || opts[0]
+  const a = data.agents.find((x) => (x.name + '|||' + x.brand) === aKey) || opts[0]
   if (!a) return <Card style={{ color: '#64748b' }}>No agent data in range.</Card>
   const win = a.topWin[0] || '—'; const f0 = a.topFocus[0] || '—'; const f1 = a.topFocus[1]
+  // This agent's own scored calls — clickable through to the full Detail drawer
+  // (10-section breakdown, transcript, recording playback).
+  const myCalls = (rows || []).filter((r) => agentOf(r) === a.name && (r.call?.brand || '—') === a.brand)
+    .slice().sort((x, y) => String(y.call?.call_date || y.created_at).localeCompare(String(x.call?.call_date || x.created_at)))
   const build = () => ([
     { title: a.name + ' (' + a.brand + ') — scorecard', sheet: 'Scorecard', cols: ['Metric', 'Value'], rows: [
       ['Agent', a.name], ['Brand', a.brand], ['Calls scored', a.calls], ['Avg QA %', r1(a.avg)],
       ['Conversion %', r1(a.conv)], ['Asked for booking %', r1(a.askRate)],
       ['What they do best', win], ['Focus this week', f0], ['Then', f1 || ''],
     ] },
+    { title: 'QA reviews', sheet: 'Calls', cols: ['Date', 'Score %', 'Scoreable', 'Opportunity', 'Outcome', 'Not booked reason', 'Topic', 'Summary'], rows: myCalls.map((r) => [r.call?.call_date || '', r.score_pct == null ? '' : r.score_pct, isScored(r) ? 'yes' : 'no', r.opportunity ? 'yes' : 'no', r.outcome || '', r.not_booked_reason || '', (r.topics || [])[0] || '', r.summary || '']) },
   ])
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <Select label="Agent" value={key} onChange={setKey} opts={opts.map((o) => [o.name + '|||' + o.brand, o.name + ' · ' + o.brand])} />
+        <Select label="Agent" value={aKey} onChange={setKey} opts={opts.map((o) => [o.name + '|||' + o.brand, o.name + ' · ' + o.brand])} />
         <ExportBar name={'callqa-agent-' + a.name.replace(/\W+/g, '-').toLowerCase()} title={a.name + ' — Scorecard'} subtitle={a.brand + ' · ' + a.calls + ' calls'} build={build} />
       </div>
       <Card>
@@ -1507,6 +1518,8 @@ function ScAgent({ data }) {
         <Tile label="Avg QA" value={pct(a.avg)} color={scoreColor(a.avg)} />
         <Tile label="Conversion" value={pct(a.conv)} color={TEAL} sub={a.booked + ' booked'} />
         <Tile label="Asked for booking" value={pct(a.askRate)} color={a.askRate < 50 ? '#b71c1c' : '#1b5e20'} sub="on opportunities" />
+        <Tile label="AHT" value="—" color="#94a3b8" sub="Lightspeed · pending" />
+        <Tile label="ACW" value="—" color="#94a3b8" sub="Lightspeed · pending" />
       </div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
         <Card style={{ flex: 1, minWidth: 240, background: '#f0fdf4', border: '1px solid #bbf7d0' }}><div style={{ fontWeight: 700, color: '#166534', marginBottom: 4 }}>🌟 What you're great at</div><div>{win}</div></Card>
@@ -1516,6 +1529,29 @@ function ScAgent({ data }) {
         <div style={{ fontWeight: 700, marginBottom: 8 }}>Asked for the booking</div>
         <div style={{ height: 10, borderRadius: 6, background: '#eef2f7', overflow: 'hidden' }}><div style={{ height: '100%', width: (a.askRate || 0) + '%', background: a.askRate < 50 ? '#b71c1c' : '#1b5e20' }} /></div>
         <div style={{ color: '#64748b', fontSize: 12.5, marginTop: 6 }}>{pct(a.askRate)} of your opportunity calls. Next cycle this shows your movement — that's the loop.</div>
+      </Card>
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ fontWeight: 700, padding: 14 }}>Their QA reviews <span style={{ color: '#94a3b8', fontWeight: 400 }}>— click any call to see the full breakdown, transcript &amp; recording</span></div>
+        {myCalls.length === 0 ? <div style={{ padding: 14, color: '#64748b' }}>No calls in range.</div> : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Date', 'Score', 'Opp.', 'Outcome', 'Topic', ''].map((h) => <th key={h} style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+            <tbody>{myCalls.map((r) => {
+              const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
+              return (
+                <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
+                  <td style={{ padding: '8px 12px' }}>{isScored(r)
+                    ? <span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{r.auto_fail ? 'FAIL' : pct(r.score_pct)}</span>
+                    : <Pill bg="#f1f5f9" fg="#64748b">{r.excluded ? 'Excluded' : (CLASS_LABEL[r.call_class] || 'Not scored')}</Pill>}</td>
+                  <td style={{ padding: '8px 12px' }}>{r.opportunity ? '✅' : '—'}</td>
+                  <td style={{ padding: '8px 12px' }}>{r.outcome ? <Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill> : '—'}</td>
+                  <td style={{ padding: '8px 12px', maxWidth: 220, color: '#475569' }}>{(r.topics || [])[0] || '—'}</td>
+                  <td style={{ padding: '8px 12px', color: '#94a3b8' }}>›</td>
+                </tr>
+              )
+            })}</tbody>
+          </table>
+        )}
       </Card>
     </>
   )
