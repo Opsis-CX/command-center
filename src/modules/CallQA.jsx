@@ -38,6 +38,21 @@ const OUTCOME_STYLE = {
   'Transferred': { bg: '#e3f2fd', fg: '#0d47a1' }, 'No Opportunity': { bg: '#f1f5f9', fg: '#64748b' }, 'Other': { bg: '#f1f5f9', fg: '#64748b' },
 }
 const agentOf = (r) => r.call?.agent_name || r.extracted_agent_name || 'Unknown'
+// Seconds → m:ss for transcript timestamps.
+const clockOf = (t) => { const s = Math.max(0, Math.round(Number(t) || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
+// On-screen timestamped transcript (one line per Deepgram utterance).
+function TimedTranscript({ segments }) {
+  return (
+    <div style={{ maxHeight: 340, overflowY: 'auto', fontSize: 13, lineHeight: 1.5 }}>
+      {segments.map((seg, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 5 }}>
+          <span style={{ color: TEAL, fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', minWidth: 32 }}>{clockOf(seg.t)}</span>
+          <span style={{ color: '#334155' }}><b style={{ color: '#475569' }}>{seg.s}:</b> {seg.text}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
 // A review counts toward scores only if it's a real conversation and not manually excluded.
 const isScored = (r) => r.scoreable !== false && !r.excluded && r.score_pct != null
 const CLASS_LABEL = { wrong_number: 'Wrong number', ivr_only: 'IVR only', voicemail: 'Voicemail', no_agent: 'No agent', spam: 'Spam' }
@@ -767,9 +782,12 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, canManage,
   const c = row.call || {}
   const os = OUTCOME_STYLE[row.outcome] || OUTCOME_STYLE.Other
   const [transcript, setTranscript] = useState(c.transcript ?? null)
+  // Timestamped, speaker-labeled lines from Deepgram (null = not yet fetched,
+  // [] = call has no timing data → fall back to the plain transcript).
+  const [segments, setSegments] = useState(c.transcript_segments ?? null)
   useEffect(() => {
     let active = true
-    if (transcript == null && c.id) supabase.from('ai_qa_calls').select('transcript').eq('id', c.id).single().then(({ data }) => { if (active) setTranscript(data?.transcript || '') })
+    if (transcript == null && c.id) supabase.from('ai_qa_calls').select('transcript, transcript_segments').eq('id', c.id).single().then(({ data }) => { if (active) { setTranscript(data?.transcript || ''); setSegments(data?.transcript_segments || []) } })
     return () => { active = false }
   }, [c.id])
   // Per-question answers are lazy-loaded (they're excluded from the list payload
@@ -786,16 +804,16 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, canManage,
   const [downloading, setDownloading] = useState(false)
   // Build a clean, print-ready one-call report and open it for Save-as-PDF.
   // Answers / transcript / notes may be lazy-loaded, so make sure we have them.
-  async function downloadPdf() {
+  async function downloadPdf(includeTranscript = false) {
     setDownloading(true)
     try {
       let answers = ans
       if (answers == null && row.id) { const { data } = await supabase.from('ai_qa_reviews').select('answers').eq('id', row.id).single(); answers = data?.answers || {} }
-      let tx = transcript
-      if (tx == null && c.id) { const { data } = await supabase.from('ai_qa_calls').select('transcript').eq('id', c.id).single(); tx = data?.transcript || '' }
+      let tx = transcript, segs = segments
+      if (includeTranscript && (tx == null || segs == null) && c.id) { const { data } = await supabase.from('ai_qa_calls').select('transcript, transcript_segments').eq('id', c.id).single(); tx = data?.transcript || ''; segs = data?.transcript_segments || [] }
       let notes = []
       if (c.id) { const { data } = await supabase.from('ai_qa_notes').select('*').eq('call_id', c.id).order('created_at', { ascending: true }); notes = data || [] }
-      const html = buildCallReportHtml(row, c, answers || {}, tx || '', notes)
+      const html = buildCallReportHtml(row, c, answers || {}, includeTranscript ? (tx || '') : '', notes, includeTranscript, includeTranscript ? (segs || []) : [])
       const w = window.open('', '_blank')
       if (!w) { alert('Please allow pop-ups for this site to download the PDF.'); setDownloading(false); return }
       w.document.write(html); w.document.close(); w.focus()
@@ -824,8 +842,9 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, canManage,
             <div style={{ fontSize: notScored ? 15 : 26, fontWeight: 800, color: notScored ? '#64748b' : scoreColor(shownPct) }}>{headerText}</div>
             {dirty && !notScored && <div style={{ fontSize: 11, color: '#8d6e00' }}>adjusted preview</div>}
             {row.manager_adjusted && !dirty && <div style={{ fontSize: 11, color: '#8d6e00' }}>manager-adjusted</div>}
-            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
-              <button onClick={downloadPdf} disabled={downloading} style={{ ...btn('ghost'), padding: '2px 8px', opacity: downloading ? 0.6 : 1 }}>{downloading ? 'Preparing…' : '⬇ PDF'}</button>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4, flexWrap: 'wrap' }}>
+              <button onClick={() => downloadPdf(false)} disabled={downloading} title="One-page summary (no transcript)" style={{ ...btn('ghost'), padding: '2px 8px', opacity: downloading ? 0.6 : 1 }}>{downloading ? 'Preparing…' : '⬇ PDF'}</button>
+              <button onClick={() => downloadPdf(true)} disabled={downloading} title="Full report including the transcript" style={{ ...btn('ghost'), padding: '2px 8px', opacity: downloading ? 0.6 : 1 }}>⬇ + Transcript</button>
               <button onClick={onClose} style={{ ...btn('ghost'), padding: '2px 8px' }}>Close ✕</button>
             </div>
           </div>
@@ -896,7 +915,10 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, canManage,
 
           <Card>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}><div style={{ fontWeight: 700 }}>Transcript</div>{c.recording_url && <RecordingBtn callId={c.id} />}</div>
-            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#334155', margin: 0, maxHeight: 320, overflowY: 'auto', lineHeight: 1.5 }}>{transcript == null ? 'Loading transcript…' : (formatTranscript(transcript) || 'No transcript.')}</pre>
+            {transcript == null && segments == null ? <div style={{ fontSize: 13, color: '#94a3b8' }}>Loading transcript…</div>
+              : (segments && segments.length)
+                ? <TimedTranscript segments={segments} />
+                : <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#334155', margin: 0, maxHeight: 320, overflowY: 'auto', lineHeight: 1.5 }}>{formatTranscript(transcript) || 'No transcript.'}</pre>}
           </Card>
 
           <NotesCard callId={c.id} meName={meName} userId={userId} canDelete={canManage} />
@@ -1190,8 +1212,12 @@ function RecordingBtn({ callId }) {
 }
 // Build a self-contained, print-optimized HTML report for a single call and
 // auto-open the browser print dialog (Save as PDF). No external dependencies.
-function buildCallReportHtml(row, c, answers, transcript, notes) {
+// Layout: page 1 = the analysis (score, context, revenue, risks, summary,
+// coaching, full 10-point scoring); page 2 = transcript + notes.
+function buildCallReportHtml(row, c, answers, transcript, notes, includeTranscript = false, segments = []) {
   const esc = (v) => (v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'))
+  // Short, print-friendly names for the rubric items (full questions are long).
+  const SHORT = { greeting: 'Greeting', verify: 'Verify customer info', callflow: 'Call flow & expectations', knowledge: 'Product knowledge', appointment: 'Offer appointment', professionalism: 'Professionalism', rebuttals: 'Rebuttals to book', hold: 'Hold policy', nextsteps: 'Clear next steps', closing: 'Proper closing' }
   const items = Object.entries(answers || {}).sort((a, b) => {
     const ia = RUBRIC_ORDER.indexOf(a[0]), ib = RUBRIC_ORDER.indexOf(b[0])
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
@@ -1200,93 +1226,113 @@ function buildCallReportHtml(row, c, answers, transcript, notes) {
   const scoreStr = row.excluded ? 'Excluded' : (row.scoreable === false ? (CLASS_LABEL[row.call_class] || 'Not scored') : (row.auto_fail ? 'FAIL' : pct(row.score_pct)))
   const scoreCol = notScored ? '#64748b' : scoreColor(row.score_pct)
   const chip = (label, val) => `<div class="fld"><div class="lbl">${esc(label)}</div><div class="val">${esc(val)}</div></div>`
-  const section = (title, inner, cls = '') => `<div class="card ${cls}"><div class="h">${esc(title)}</div>${inner}</div>`
 
   const metaBits = [agentOf(row), c.brand, fmtDate(c.call_date), c.source, c.direction, fmtDur(c.duration_seconds),
     c.customer_number ? '☎ ' + c.customer_number : '', c.customer_name].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ')
 
-  const context = section('Call context', `<div class="grid">
+  const contextCard = `<div class="card"><div class="h">Call context</div><div class="grid">
     ${chip('Call type', CLASS_LABEL[row.call_class] || 'Conversation')}
     ${chip('Opportunity', row.opportunity ? 'Yes' : 'No')}
     ${chip('Outcome', row.outcome || '—')}
     ${row.outcome === 'Not Booked' ? chip('Reason', row.not_booked_reason || '—') : ''}
-    ${row.opportunity_context ? chip('Caller wanted', row.opportunity_context) : ''}
-  </div>${(row.topics || []).length ? `<div class="tags">${row.topics.map((t) => `<span class="tag">🏷 ${esc(t)}</span>`).join('')}</div>` : ''}`)
+  </div>${row.opportunity_context ? `<div class="ln"><b>Caller wanted:</b> ${esc(row.opportunity_context)}</div>` : ''}${(row.topics || []).length ? `<div class="tags">${row.topics.map((t) => `<span class="tag">🏷 ${esc(t)}</span>`).join('')}</div>` : ''}</div>`
 
-  const revenue = (row.opportunity || row.revenue_tip) ? section('Revenue & conversion', `<div class="grid">
+  const revenueCard = (row.opportunity || row.revenue_tip) ? `<div class="card amber"><div class="h">Revenue &amp; conversion</div><div class="grid">
     ${chip('Asked for booking', row.asked_for_booking == null ? '—' : (row.asked_for_booking ? 'Yes' : 'No'))}
     ${chip('Info before pricing', ynLabel(row.info_before_pricing))}
-    ${chip('Fee expectations set', ynLabel(row.set_fee_expectations))}
+    ${chip('Fee expectations', ynLabel(row.set_fee_expectations))}
     ${chip('Winnable', row.winnable == null ? '—' : (row.winnable ? 'Yes' : 'No'))}
-  </div>${(row.objections || []).length ? `<div class="tags">${row.objections.map((o) => `<span class="tag red">⛔ ${esc(o)}</span>`).join('')}</div>` : ''}${row.revenue_tip ? `<div class="lever"><b>Biggest revenue lever:</b> ${esc(row.revenue_tip)}</div>` : ''}`, 'amber') : ''
+  </div>${(row.objections || []).length ? `<div class="tags">${row.objections.map((o) => `<span class="tag red">⛔ ${esc(o)}</span>`).join('')}</div>` : ''}${row.revenue_tip ? `<div class="ln lever"><b>Biggest revenue lever:</b> ${esc(row.revenue_tip)}</div>` : ''}</div>` : ''
 
-  const risks = (row.risk_flags || []).length ? section('⚠ Risk flags', `<ul>${row.risk_flags.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>`, 'red') : ''
-  const summary = section('Summary', `<div class="body">${esc(row.summary) || '—'}</div>`)
+  const risks = (row.risk_flags || []).length ? `<div class="card red"><span class="rh">⚠ Risk flags:</span> ${row.risk_flags.map((f) => esc(f)).join(' &nbsp;•&nbsp; ')}</div>` : ''
 
-  const scoring = section('Detailed scoring', items.length ? items.map(([k, a]) => {
+  const summaryCard = `<div class="card"><div class="h">Summary</div><div class="body">${esc(row.summary) || '—'}</div></div>`
+  const coachInner = `${row.coaching_note ? `<div class="body">${esc(row.coaching_note)}</div>` : ''}${(row.improvements || []).length ? `<div class="ln"><b>Focus:</b> ${row.improvements.map((s) => esc(s)).join(' · ')}</div>` : ''}${(row.strengths || []).length ? `<div class="ln" style="color:#1b5e20"><b>Strengths:</b> ${row.strengths.map((s) => esc(s)).join(' · ')}</div>` : ''}`
+  const coachingCard = `<div class="card teal"><div class="h">Coaching</div>${coachInner || '<div class="body">—</div>'}</div>`
+
+  const scoringItems = items.length ? items.map(([k, a]) => {
     const isNa = a.na || a.answer === 'na'; const isYes = a.answer === 'yes'
     const mark = isNa ? 'N/A' : (isYes ? '✓' : '✗'); const mc = isNa ? '#64748b' : (isYes ? '#1b5e20' : '#b71c1c')
-    return `<div class="item"><div class="itemhd"><span>${esc(a.label || k)}</span><span class="mark" style="color:${mc}">${mark} <span class="pts">(${isNa ? 0 : (a.max || 0)} pts)</span></span></div>
-      ${a.rationale ? `<div class="rat">${esc(a.rationale)}</div>` : ''}
-      ${(a.misses || []).length && !isNa && !isYes ? `<div class="miss">Missed: ${esc(a.misses.join(', '))}</div>` : ''}
-      ${a.evidence ? `<div class="ev">“${esc(a.evidence)}”</div>` : ''}</div>`
-  }).join('') : '<div class="body">No detailed scoring available.</div>')
+    const earned = isNa ? 'N/A' : `${isYes ? (a.max || 0) : 0}/${a.max || 0}`
+    const misses = (a.misses || []).length && !isNa && !isYes ? esc(a.misses.join(', ')) : ''
+    return `<div class="s"><div class="sh"><span class="mk" style="color:${mc}">${mark}</span> <b>${esc(SHORT[k] || a.label || k)}</b> <span class="pts">${earned}</span></div>${a.rationale ? `<div class="rat">${esc(a.rationale)}</div>` : ''}${misses ? `<div class="miss">Missed: ${misses}</div>` : ''}</div>`
+  }).join('') : '<div class="body">No detailed scoring available.</div>'
+  const scoreTotal = (row.earned_points != null && row.max_points != null) ? `${row.earned_points} / ${row.max_points}` : ''
+  const scoringCard = `<div class="card flow"><div class="h">Detailed scoring${scoreTotal ? ` <span class="pts" style="font-size:12px">${esc(scoreTotal)} pts</span>` : ''}</div><div class="scores">${scoringItems}</div></div>`
 
-  const lists = `<div class="two">
-    <div class="card"><div class="h green">What went well</div>${(row.strengths || []).length ? `<ul>${row.strengths.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` : '<div class="body">—</div>'}</div>
-    <div class="card"><div class="h red-t">Coaching focus (revenue)</div>${(row.improvements || []).length ? `<ul>${row.improvements.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` : '<div class="body">—</div>'}</div>
-  </div>`
-  const coaching = section('Coaching note', `<div class="body">${esc(row.coaching_note) || '—'}</div>`, 'teal')
-  const tx = section('Transcript', `<pre>${esc(formatTranscript(transcript)) || 'No transcript.'}</pre>`)
-  const notesHtml = (notes && notes.length) ? section(`Notes (${notes.length})`, notes.map((n) => `<div class="note"><div class="notehd"><b>${esc(n.author_name || 'User')}</b><span>${n.created_at ? esc(new Date(n.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })) : ''}</span></div><div class="body">${esc(n.body)}</div></div>`).join('')) : ''
+  const notesHtml = (notes && notes.length) ? `<div class="card"><div class="h">Notes (${notes.length})</div>${notes.map((n) => `<div class="note"><div class="notehd"><b>${esc(n.author_name || 'User')}</b><span>${n.created_at ? esc(new Date(n.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })) : ''}</span></div><div class="body">${esc(n.body)}</div></div>`).join('')}</div>` : ''
+  // Optional: full transcript, forced onto its own page(s) after the summary.
+  // Timestamped table when we have Deepgram segments; plain text otherwise.
+  const txBody = (segments && segments.length)
+    ? `<table class="tx">${segments.map((seg) => `<tr><td class="ts">${clockOf(seg.t)}</td><td class="sp">${esc(seg.s)}</td><td>${esc(seg.text)}</td></tr>`).join('')}</table>`
+    : `<pre>${esc(formatTranscript(transcript)) || 'No transcript.'}</pre>`
+  const txSection = includeTranscript ? `<div class="pg2"><div class="card"><div class="h">Transcript</div>${txBody}</div></div>` : ''
 
   const genDate = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
   const title = `Call QA Report — ${agentOf(row)} · ${c.brand || ''} · ${fmtDate(c.call_date)}`
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
 <style>
+  @page { margin: 12mm; }
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; padding: 28px 32px; font-size: 13px; line-height: 1.5; }
-  .top { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid ${TEAL}; padding-bottom: 12px; margin-bottom: 6px; }
-  .top h1 { font-size: 19px; margin: 0 0 4px; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; padding: 12px 26px; font-size: 11.5px; line-height: 1.35; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid ${TEAL}; padding-bottom: 8px; margin-bottom: 6px; }
+  .top h1 { font-size: 18px; margin: 0 0 3px; }
   .brand { color: ${TEAL}; font-weight: 800; letter-spacing: .3px; }
-  .meta { color: #64748b; font-size: 12px; }
-  .score { text-align: right; }
-  .score .n { font-size: 30px; font-weight: 800; color: ${scoreCol}; line-height: 1; }
-  .score .c { font-size: 11px; color: #64748b; }
-  .card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-top: 12px; page-break-inside: avoid; }
+  .meta { color: #64748b; font-size: 11px; }
+  .score { text-align: right; white-space: nowrap; }
+  .score .n { font-size: 28px; font-weight: 800; color: ${scoreCol}; line-height: 1; }
+  .score .c { font-size: 10.5px; color: #64748b; }
+  .row { display: flex; gap: 10px; align-items: stretch; }
+  .row > .card { flex: 1; }
+  .card { border: 1px solid #e2e8f0; border-radius: 9px; padding: 8px 11px; margin-top: 7px; page-break-inside: avoid; }
+  .card.flow { page-break-inside: auto; }
   .card.amber { background: #fffbeb; border-color: #fde68a; }
-  .card.red { background: #fdecea; border-color: #f5c6cb; }
+  .card.red { background: #fdecea; border-color: #f5c6cb; color: #7f1d1d; }
   .card.teal { background: #f0fdfa; border-color: #99f6e4; }
-  .h { font-weight: 700; margin-bottom: 8px; }
-  .h.green { color: #1b5e20; } .h.red-t { color: #b71c1c; }
-  .grid { display: flex; flex-wrap: wrap; gap: 14px 24px; }
-  .fld .lbl { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .4px; }
-  .fld .val { font-weight: 600; }
-  .tags { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
-  .tag { background: #e0f2fe; color: #075985; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+  .h { font-weight: 700; margin-bottom: 6px; }
+  .rh { font-weight: 700; color: #b71c1c; }
+  .grid { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+  .fld .lbl { font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .4px; }
+  .fld .val { font-weight: 700; font-size: 12px; }
+  .ln { margin-top: 6px; color: #334155; }
+  .lever { color: #7c2d12; }
+  .tags { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .tag { background: #e0f2fe; color: #075985; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; }
   .tag.red { background: #fee2e2; color: #991b1b; }
-  .lever { margin-top: 10px; color: #7c2d12; }
   .body { color: #334155; }
-  ul { margin: 4px 0 0; padding-left: 18px; } li { margin-bottom: 3px; }
-  .two { display: flex; gap: 12px; } .two .card { flex: 1; margin-top: 12px; }
-  .item { padding: 8px 0; border-top: 1px solid #f1f5f9; }
-  .itemhd { display: flex; justify-content: space-between; gap: 10px; font-weight: 600; }
-  .mark { white-space: nowrap; font-weight: 700; } .pts { color: #94a3b8; font-weight: 400; }
-  .rat { color: #475569; margin-top: 2px; } .miss { color: #b71c1c; margin-top: 2px; } .ev { color: #64748b; font-style: italic; margin-top: 2px; }
-  pre { white-space: pre-wrap; font-family: inherit; font-size: 12.5px; color: #334155; margin: 0; }
-  .note { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
-  .notehd { display: flex; justify-content: space-between; font-size: 11px; color: #64748b; }
-  .foot { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 11px; display: flex; justify-content: space-between; }
-  .noprint { text-align: center; margin-bottom: 14px; }
+  /* Detailed scoring — two compact columns */
+  .scores { column-count: 2; column-gap: 20px; }
+  .s { break-inside: avoid; padding: 3px 0; border-top: 1px solid #f1f5f9; }
+  .s:first-child { border-top: none; }
+  .sh { display: flex; align-items: baseline; gap: 5px; }
+  .mk { font-weight: 800; width: 12px; display: inline-block; }
+  .sh b { flex: 1; }
+  .pts { color: #94a3b8; font-weight: 600; font-size: 10.5px; white-space: nowrap; }
+  .rat { color: #475569; margin: 1px 0 0 17px; }
+  .miss { color: #b71c1c; margin: 1px 0 0 17px; }
+  pre { white-space: pre-wrap; font-family: inherit; font-size: 11.5px; color: #334155; margin: 0; }
+  .tx { width: 100%; border-collapse: collapse; }
+  .tx td { vertical-align: top; padding: 2px 0; color: #334155; }
+  .tx .ts { color: ${TEAL}; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; padding-right: 9px; width: 30px; }
+  .tx .sp { font-weight: 700; color: #475569; white-space: nowrap; padding-right: 9px; width: 44px; }
+  .note { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 7px 9px; margin-bottom: 7px; }
+  .notehd { display: flex; justify-content: space-between; font-size: 10.5px; color: #64748b; }
+  .pg2 { page-break-before: always; }
+  .foot { margin-top: 10px; padding-top: 7px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 10.5px; display: flex; justify-content: space-between; }
+  .noprint { text-align: center; margin-bottom: 12px; }
   .noprint button { background: ${TEAL}; color: #fff; border: none; padding: 9px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
   @media print { .noprint { display: none; } body { padding: 0; } }
 </style></head><body>
   <div class="noprint"><button onclick="window.print()">⬇ Save as PDF / Print</button></div>
   <div class="top">
     <div><h1>Call QA <span class="brand">(AI)</span> Report</h1><div class="meta">${metaBits}</div></div>
-    <div class="score"><div class="n">${esc(scoreStr)}</div><div class="c">${notScored ? 'not counted toward score' : 'QA score'}${row.manager_adjusted ? ' · manager-adjusted' : ''}</div></div>
+    <div class="score"><div class="n">${esc(scoreStr)}</div><div class="c">${notScored ? 'not counted toward score' : 'QA score'}${row.manager_adjusted ? ' · adjusted' : ''}</div></div>
   </div>
-  ${context}${revenue}${risks}${summary}${scoring}${lists}${coaching}${tx}${notesHtml}
+  <div class="row">${contextCard}${revenueCard}</div>
+  ${risks}
+  <div class="row">${summaryCard}${coachingCard}</div>
+  ${scoringCard}
+  ${notesHtml}${txSection}
   <div class="foot"><span>Generated ${esc(genDate)}</span><span>Powered by Opsis CX</span></div>
   <script>window.onload=function(){setTimeout(function(){window.print()},350)};window.onafterprint=function(){setTimeout(function(){window.close()},100)};</script>
 </body></html>`
