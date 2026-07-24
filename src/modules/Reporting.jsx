@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { ROLES } from '../lib/permissions'
+import { ROLES, can, canAny } from '../lib/permissions'
 import RawDataExport from './RawDataExport'
 
 const ROLE_LABELS = Object.fromEntries(ROLES.map(r => [r.key, r.label]))
@@ -37,15 +37,19 @@ function defaultRange() {
   const monday = new Date(now); monday.setDate(now.getDate() - day)
   const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
   const iso = d => d.toISOString().slice(0, 10)
-  return { from: iso(monday), to: iso(sunday) }
+  const today = iso(new Date())
+  // Never report into the future — cap the end at today.
+  return { from: iso(monday), to: iso(sunday) > today ? today : iso(sunday) }
 }
 const isoDay = (d) => d.toISOString().slice(0, 10)
+const TODAY_ISO = isoDay(new Date())
+const capToday = (r) => ({ from: r.from, to: r.to > TODAY_ISO ? TODAY_ISO : r.to })
 // Shared time-frame presets used across every report.
 function presetRange(preset) {
   const now = new Date()
   if (preset === 'last7') { const f = new Date(now); f.setDate(now.getDate() - 6); return { from: isoDay(f), to: isoDay(now) } }
   if (preset === 'last30') { const f = new Date(now); f.setDate(now.getDate() - 29); return { from: isoDay(f), to: isoDay(now) } }
-  if (preset === 'month') { const f = new Date(now.getFullYear(), now.getMonth(), 1); return { from: isoDay(f), to: isoDay(now) } }
+  if (preset === 'month') { const f = new Date(now.getFullYear(), now.getMonth(), 1); return capToday({ from: isoDay(f), to: isoDay(now) }) }
   if (preset === 'week') return defaultRange()
   return null // 'custom'
 }
@@ -73,13 +77,14 @@ const CATALOG = [
   ] },
   { label: 'Quality', items: [
     { key: 'quality', name: 'QA Audits', q: 'How did agents score on QA audits?' },
-    { key: 'cert_quiz', name: 'Cert Quiz Questions', q: 'Which certification quiz questions are most missed?' },
   ] },
   { label: 'Certifications', items: [
     { key: 'certifications', name: 'Certification Scores', q: 'What are quiz scores by person and course, and the average?' },
+    { key: 'cert_quiz', name: 'Cert Quiz Questions', q: 'Which certification quiz questions are most missed?' },
   ] },
   { label: 'Scorecard', items: [
     { key: 'scorecard', name: 'Agent Productivity', q: 'Per-agent Five9 calls, AHT, bookings and hours (rolling 7 / 30 day).' },
+    { key: 'dispositions', name: 'Call Dispositions', q: 'How are calls dispositioned, by disposition and by agent (recent)?' },
   ] },
   { label: 'Help Center', items: [
     { key: 'support', name: 'Support Tickets', q: 'Ticket volume, first-response and resolution times, by category.' },
@@ -113,19 +118,46 @@ const CATALOG = [
   ] },
 ]
 const REPORT_META = Object.fromEntries(CATALOG.flatMap(c => c.items.map(it => [it.key, { ...it, category: c.label }])))
+// Permission gate per category — a user only sees/pulls reports they have access to.
+// Value is a permission prefix (canAny) or specific key (can); '__admin__' = admins only;
+// categories not listed are visible to anyone who can reach the Reporting page.
+const CAT_PERM = {
+  'Schedule': 'schedule',
+  'Chat': 'service_performance_scorecard',
+  'Project Management': 'project_management',
+  'Quality': 'quality_audit',
+  'Certifications': 'certifications',
+  'Scorecard': 'service_performance_scorecard',
+  'Tokens': 'tokens.award',
+  'Sales': 'sales',
+  'RSN Pipeline': 'sales',
+  'Hiring': 'hiring',
+  'People & Tags': 'people_and_tags',
+  'Clients': 'clients',
+  'Positions': 'positions',
+  'Raw Data': '__admin__',
+}
+function catAllowed(role, label) {
+  const perm = CAT_PERM[label]
+  if (!perm) return true
+  if (perm === '__admin__') return String(role || '').trim().toLowerCase() === 'admin'
+  return perm.includes('.') ? can(role, perm) : canAny(role, perm)
+}
+const reportAllowed = (role, key) => { const c = REPORT_META[key]?.category; return !c || catAllowed(role, c) }
 // Reports that don't use the shared date range.
-const NO_RANGE = new Set(['people', 'rawdata', 'scorecard', 'positions', 'kb'])
+const NO_RANGE = new Set(['people', 'rawdata', 'scorecard', 'positions', 'kb', 'dispositions'])
 // Reports that expose the shared person/tag filter.
-const FILTERABLE = new Set(['person', 'client', 'compare', 'quality', 'chat', 'tokens', 'sales', 'rsn', 'certifications', 'cert_quiz', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'builder'])
+// (Sales/RSN excluded: deals carry no staff owner_id, so a person/tag filter would wrongly zero them out.)
+const FILTERABLE = new Set(['person', 'client', 'compare', 'quality', 'chat', 'tokens', 'certifications', 'cert_quiz', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'builder'])
 // Reports whose CSV export is the parent-owned shared button (older inline reports).
 const SHARED_EXPORT = new Set(['person', 'client', 'compare', 'quality', 'people'])
 // Reports rendered by their own standalone component.
-const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb'])
+const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions'])
 
 export default function Reporting() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, appRole } = useAuth()
   const [range, setRange] = useState(defaultRange())
-  const [view, setView] = useState('person') // 'person' | 'client' | 'compare'
+  const [view, setView] = useState(null) // null = catalog landing; otherwise a report key
   const [loading, setLoading] = useState(true)
   const [entries, setEntries] = useState([])
   const [profiles, setProfiles] = useState([])
@@ -180,7 +212,8 @@ export default function Reporting() {
   // Same filter as display names, for reports keyed on agent_name (QA audits).
   const allowedNames = useMemo(() => allowedIds ? new Set(peopleFull.filter(p => allowedIds.has(p.id)).map(p => p.full_name)) : null, [allowedIds, peopleFull])
 
-  function selectReport(key) { setView(key); if (NO_RANGE.has(key)) { /* range ignored */ } }
+  function selectReport(key) { setView(key) }
+  function backToCatalog() { setView(null); setFilters({ personId: 'all', tagId: 'all' }) }
 
   async function saveAsCustom() {
     const name = window.prompt('Name this report:', `${REPORT_META[view]?.name || view} — ${range.from} to ${range.to}`)
@@ -510,17 +543,18 @@ export default function Reporting() {
         <p className="page-sub">Tracked task &amp; meeting time by person (payroll) and by client (invoicing). Client meetings sync automatically from Fathom. Hours only — apply your own rates.</p>
       </div>
 
-      {/* Five9-style report catalog */}
+      {view === null ? (
+      <>
+      {/* landing: choose a report from the catalog */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--line)', paddingBottom: 12, marginBottom: 14 }}>
         <button onClick={() => setMode('standard')} style={pill(mode === 'standard')}>Standard Reports</button>
         <button onClick={() => setMode('custom')} style={pill(mode === 'custom')}>Custom Reports{savedReports.length ? ` (${savedReports.length})` : ''}</button>
-        <button onClick={() => setPickerOpen(o => !o)} style={{ ...tabBtn(false), marginLeft: 'auto', border: '1px solid var(--line)', borderRadius: 8 }}>{pickerOpen ? 'Hide list' : 'Choose report'}</button>
       </div>
 
-      {pickerOpen && mode === 'standard' && (
+      {mode === 'standard' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, marginBottom: 16, alignItems: 'start' }}>
-          {CATALOG.map(cat => {
-            const open = expanded[cat.label] != null ? expanded[cat.label] : cat.items.some(it => it.key === view)
+          {CATALOG.filter(cat => isAdmin || catAllowed(appRole, cat.label)).map(cat => {
+            const open = expanded[cat.label] != null ? expanded[cat.label] : false
             return (
               <div key={cat.label} className="card" style={{ padding: 0, overflow: 'hidden' }}>
                 <button onClick={() => setExpanded(e => ({ ...e, [cat.label]: !open }))}
@@ -540,25 +574,34 @@ export default function Reporting() {
         </div>
       )}
 
-      {pickerOpen && mode === 'custom' && (
+      {mode === 'custom' && (
         <div className="card" style={{ padding: 0, marginBottom: 16, overflow: 'hidden' }}>
           <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontWeight: 600, fontSize: 13 }}>Saved &amp; custom reports</span>
             <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={newCustomReport}>＋ New custom report</button>
           </div>
-          {savedReports.length === 0 ? (
+          {savedReports.filter(r => r.report_key === 'builder' || isAdmin || reportAllowed(appRole, r.report_key)).length === 0 ? (
             <div style={{ padding: 16, color: 'var(--ink-soft)', fontSize: 13 }}>No saved reports yet. Build one with <b>＋ New custom report</b>, or open any standard report, set the time frame/filters, and <b>☆ Save as report</b>.</div>
-          ) : savedReports.map(r => (
+          ) : savedReports.filter(r => r.report_key === 'builder' || isAdmin || reportAllowed(appRole, r.report_key)).map(r => (
             <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--line-soft)' }}>
               <button onClick={() => openSaved(r)} style={{ flex: 1, textAlign: 'left', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit' }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{r.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 2 }}>{REPORT_META[r.report_key]?.name || r.report_key} · {r.folder}{r.is_shared ? ' · shared' : ''}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 2 }}>{r.report_key === 'builder' ? 'Custom' : (REPORT_META[r.report_key]?.name || r.report_key)} · {r.folder}{r.is_shared ? ' · shared' : ''}</div>
               </button>
               <button onClick={() => deleteSaved(r)} title="Delete" style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 15 }}>✕</button>
             </div>
           ))}
         </div>
       )}
+      </>
+      ) : !(view === 'builder' || isAdmin || reportAllowed(appRole, view)) ? (
+        <>
+          <div style={{ marginBottom: 14 }}><button onClick={backToCatalog} style={{ ...tabBtn(false), border: '1px solid var(--line)', borderRadius: 8 }}>‹ All reports</button></div>
+          <div className="card" style={{ padding: 24, color: 'var(--ink-soft)' }}>You don't have access to this report.</div>
+        </>
+      ) : (
+        <>
+          <div style={{ marginBottom: 14 }}><button onClick={backToCatalog} style={{ ...tabBtn(false), border: '1px solid var(--line)', borderRadius: 8 }}>‹ All reports</button></div>
 
       {/* selected report + shared time frame / filters / actions */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -575,11 +618,11 @@ export default function Reporting() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={lbl}>From</label>
-              <input type="date" value={range.from} onChange={e => setRange(r => ({ ...r, from: e.target.value }))} style={inp} />
+              <input type="date" max={TODAY_ISO} value={range.from} onChange={e => setRange(r => ({ ...r, from: e.target.value }))} style={inp} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={lbl}>To</label>
-              <input type="date" value={range.to} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} style={inp} />
+              <input type="date" max={TODAY_ISO} value={range.to} onChange={e => setRange(r => ({ ...r, to: e.target.value > TODAY_ISO ? TODAY_ISO : e.target.value }))} style={inp} />
             </div>
           </>
         )}
@@ -623,6 +666,7 @@ export default function Reporting() {
         : view === 'certifications' ? <CertificationsReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
         : view === 'cert_quiz' ? <CertQuizReport range={range} allowedIds={allowedIds} />
         : view === 'scorecard' ? <ScorecardReport />
+        : view === 'dispositions' ? <DispositionsReport />
         : view === 'clients' ? <ClientsReport range={range} />
         : view === 'positions' ? <PositionsReport />
         : view === 'sched_agent' ? <SchedAgentReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
@@ -921,6 +965,8 @@ export default function Reporting() {
           )}
         </>
       )}
+        </>
+      )}
     </div>
   )
 }
@@ -953,8 +999,9 @@ function ScheduleHoursView({ range }) {
 
   const run = useCallback(async () => {
     setLoading(true); setErr('')
+    // Pass all 5 params (incl. p_staff_role) to disambiguate the two RPC overloads.
     const { data: res, error } = await supabase.rpc('get_schedule_hours_report', {
-      p_start: range.from, p_end: range.to, p_client: clientId || null, p_role: role || null,
+      p_start: range.from, p_end: range.to, p_client: clientId || null, p_role: role || null, p_staff_role: null,
     })
     setLoading(false)
     if (error) { setErr(error.message); return }
@@ -1384,7 +1431,8 @@ function DealsReport({ range, pipeline, allowedIds }) {
     return () => { active = false }
   }, [range.from, range.to, pipeline])
 
-  const filtered = useMemo(() => (rows || []).filter(d => !allowedIds || (d.owner_id && allowedIds.has(d.owner_id))), [rows, allowedIds])
+  // Deals have no staff owner_id in this data, so no person/tag filter is applied here.
+  const filtered = useMemo(() => (rows || []), [rows])
   const byStatus = useMemo(() => {
     const m = {}
     for (const d of filtered) { const k = d.status || '—'; if (!m[k]) m[k] = { count: 0, value: 0 }; m[k].count++; m[k].value += Number(d.value) || 0 }
@@ -1452,11 +1500,18 @@ function HiringReport({ range }) {
 
   const byStatus = useMemo(() => { const m = {}; for (const a of (rows || [])) { const k = a.status || '—'; m[k] = (m[k] || 0) + 1 } return m }, [rows])
   const byRole = useMemo(() => { const m = {}; for (const a of (rows || [])) { const k = a.role_applying || '—'; m[k] = (m[k] || 0) + 1 } return m }, [rows])
-  const totals = useMemo(() => ({
-    total: (rows || []).length,
-    approved: (rows || []).filter(a => a.status === 'approved').length,
-    denied: (rows || []).filter(a => ['denied', 'out_of_area', 'mock_failed'].includes(a.status)).length,
-  }), [rows])
+  // No 'approved' status exists in the pipeline. Group the real stages into buckets.
+  const ADVANCING = ['assessment_passed', 'mock_passed', 'certifying']
+  const REJECTED = ['denied', 'out_of_area', 'mock_failed']
+  const totals = useMemo(() => {
+    const rs = rows || []
+    return {
+      total: rs.length,
+      advancing: rs.filter(a => ADVANCING.includes(a.status)).length,
+      rejected: rs.filter(a => REJECTED.includes(a.status)).length,
+      inReview: rs.filter(a => !ADVANCING.includes(a.status) && !REJECTED.includes(a.status)).length,
+    }
+  }, [rows])
 
   function exportCsv() {
     const out = [['Applicant', 'Status', 'Role', 'Applied']]
@@ -1470,8 +1525,9 @@ function HiringReport({ range }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Tile label="Applicants (in range)" value={totals.total} />
-        <Tile label="Approved" value={totals.approved} />
-        <Tile label="Denied / out" value={totals.denied} />
+        <Tile label="In review" value={totals.inReview} />
+        <Tile label="Advancing" value={totals.advancing} />
+        <Tile label="Rejected / out" value={totals.rejected} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
@@ -1702,6 +1758,84 @@ function ScorecardReport() {
   )
 }
 
+// ================= Call Dispositions (Five9, recent) =================
+function DispositionsReport() {
+  const [rows, setRows] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setRows(null); setErr('')
+    ;(async () => {
+      const page = 1000; let from = 0; let all = []
+      for (;;) {
+        const { data, error } = await supabase.from('f9_calls_today').select('agent_name, disposition, work_date').range(from, from + page - 1)
+        if (error) { if (active) setErr(error.message); return }
+        all = all.concat(data || [])
+        if (!data || data.length < page) break
+        from += page
+      }
+      if (!active) return
+      setRows(all)
+    })()
+    return () => { active = false }
+  }, [])
+
+  const model = useMemo(() => {
+    const byDisp = {}, byAgent = {}
+    const dateSet = new Set()
+    for (const c of (rows || [])) {
+      const d = c.disposition || '—'
+      byDisp[d] = (byDisp[d] || 0) + 1
+      const a = c.agent_name || '—'
+      byAgent[a] = (byAgent[a] || 0) + 1
+      if (c.work_date) dateSet.add(c.work_date)
+    }
+    return { byDisp, byAgent, total: (rows || []).length, days: dateSet.size }
+  }, [rows])
+
+  function exportCsv() {
+    const out = [['Disposition', 'Calls', '%']]
+    Object.entries(model.byDisp).sort((a, b) => b[1] - a[1]).forEach(([d, n]) => out.push([d, n, model.total ? Math.round(n / model.total * 100) + '%' : '0%']))
+    downloadCSV(`call-dispositions-${isoDay(new Date())}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err === 'permission denied for table f9_calls_today' ? 'This report is available to managers only.' : err}</div>
+  if (rows == null) return <p className="page-sub">Loading…</p>
+  const dispRows = Object.entries(model.byDisp).sort((a, b) => b[1] - a[1])
+  const agentRows = Object.entries(model.byAgent).sort((a, b) => b[1] - a[1])
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Calls" value={model.total} />
+        <Tile label="Dispositions" value={dispRows.length} />
+        <Tile label="Agents" value={agentRows.length} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By disposition</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><Th>Disposition</Th><Th r>Calls</Th><Th r>%</Th></tr></thead>
+            <tbody>
+              {dispRows.length === 0 && <tr><td style={cellL} colSpan={3}><span className="page-sub">No recent call data.</span></td></tr>}
+              {dispRows.map(([d, n]) => <tr key={d}><td style={{ ...cellL, fontWeight: 600 }}>{d}</td><td style={cellR}>{n}</td><td style={cellR}>{model.total ? Math.round(n / model.total * 100) : 0}%</td></tr>)}
+            </tbody>
+          </table>
+        </div>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By agent</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><Th>Agent</Th><Th r>Calls</Th></tr></thead>
+            <tbody>
+              {agentRows.map(([a, n]) => <tr key={a}><td style={{ ...cellL, fontWeight: 600 }}>{a}</td><td style={cellR}>{n}</td></tr>)}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>Live Five9 dispositions from the rolling ~3-day window ({model.days} day{model.days === 1 ? '' : 's'} loaded). Full history by date range needs the BigQuery pull (planned).</p>
+    </div>
+  )
+}
+
 // ================= Clients =================
 function ClientsReport({ range }) {
   const [rows, setRows] = useState(null)
@@ -1758,26 +1892,38 @@ function PositionsReport() {
   useEffect(() => {
     let active = true; setData(null); setErr('')
     ;(async () => {
-      const [{ data: roles, error }, { data: pr }] = await Promise.all([
-        supabase.from('roles').select('id, key, name, level').order('level', { ascending: false }),
-        supabase.from('profile_roles').select('role_id, profile_id'),
+      // Count by the person's ACTUAL role (profiles.role) — the authoritative field
+      // the app uses for permissions. The roles table just supplies labels + levels.
+      const [{ data: profs, error }, { data: roles }] = await Promise.all([
+        supabase.from('profiles').select('role, is_active'),
+        supabase.from('roles').select('key, name, level'),
       ])
       if (!active) return
       if (error) { setErr(error.message); return }
-      setData({ roles: roles || [], pr: pr || [] })
+      setData({ profs: profs || [], roles: roles || [] })
     })()
     return () => { active = false }
   }, [])
 
-  const counts = useMemo(() => {
+  const rows = useMemo(() => {
+    if (!data) return []
+    const meta = Object.fromEntries(data.roles.map(r => [r.key, r]))
     const m = {}
-    for (const x of (data?.pr || [])) m[x.role_id] = (m[x.role_id] || 0) + 1
-    return m
+    for (const p of data.profs) {
+      if (!p.is_active) continue
+      const key = (p.role || 'unassigned')
+      if (key === 'client') continue // external portal logins aren't staff positions
+      m[key] = (m[key] || 0) + 1
+    }
+    return Object.entries(m).map(([key, count]) => ({
+      key, count, label: ROLE_LABELS[key] || meta[key]?.name || key, level: meta[key]?.level ?? null,
+    })).sort((a, b) => (b.level ?? -1) - (a.level ?? -1) || b.count - a.count)
   }, [data])
+  const totalPeople = rows.reduce((s, r) => s + r.count, 0)
 
   function exportCsv() {
     const out = [['Position', 'Level', 'People']]
-    ;(data?.roles || []).forEach(r => out.push([r.name, r.level ?? '', counts[r.id] || 0]))
+    rows.forEach(r => out.push([r.label, r.level ?? '', r.count]))
     downloadCSV(`positions-${isoDay(new Date())}.csv`, out)
   }
 
@@ -1786,22 +1932,22 @@ function PositionsReport() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Tile label="Positions" value={data.roles.length} />
-        <Tile label="Role assignments" value={data.pr.length} />
+        <Tile label="Positions in use" value={rows.length} />
+        <Tile label="Active staff" value={totalPeople} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr><Th>Position</Th><Th r>Level</Th><Th r>People</Th></tr></thead>
           <tbody>
-            {data.roles.length === 0 && <tr><td style={cellL} colSpan={3}><span className="page-sub">No positions defined.</span></td></tr>}
-            {data.roles.map(r => (
-              <tr key={r.id}><td style={{ ...cellL, fontWeight: 600 }}>{r.name}</td><td style={cellR}>{r.level ?? '—'}</td><td style={cellR}>{counts[r.id] || 0}</td></tr>
+            {rows.length === 0 && <tr><td style={cellL} colSpan={3}><span className="page-sub">No active staff.</span></td></tr>}
+            {rows.map(r => (
+              <tr key={r.key}><td style={{ ...cellL, fontWeight: 600 }}>{r.label}</td><td style={cellR}>{r.level ?? '—'}</td><td style={cellR}>{r.count}</td></tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="page-sub" style={{ fontSize: 12 }}>Headcount by role from the roles directory (profile → role assignments). Snapshot — not date-bound.</p>
+      <p className="page-sub" style={{ fontSize: 12 }}>Headcount by each person's active role (excludes external client logins). Snapshot — not date-bound.</p>
     </div>
   )
 }
