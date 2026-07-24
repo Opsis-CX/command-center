@@ -200,6 +200,21 @@ export default function CallQA({ portal = false } = {}) {
     })
   }, [rows, days, startDate, endDate, customRange, brand, agent, topic])
 
+  // Date-range-only view (ignores the brand/agent/topic pickers) — the Scorecards
+  // hub has its own brand/agent selectors, so it works off this wider set.
+  const dateFiltered = useMemo(() => {
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days)
+    const start = startDate ? new Date(startDate + 'T00:00:00') : null
+    const end = endDate ? new Date(endDate + 'T23:59:59.999') : null
+    return rows.filter((r) => {
+      const c = r.call || {}
+      const d = c.call_date ? new Date(c.call_date) : new Date(r.created_at)
+      if (customRange) { if (start && d < start) return false; if (end && d > end) return false }
+      else if (d < cutoff) return false
+      return true
+    })
+  }, [rows, days, startDate, endDate, customRange])
+
   const agents = useMemo(() => Array.from(new Set(rows.map(agentOf).filter(Boolean))).sort(), [rows])
   const brands = useMemo(() => Array.from(new Set(rows.map((r) => r.call?.brand).filter(Boolean))).sort(), [rows])
   const topicList = useMemo(() => Array.from(new Set(rows.flatMap((r) => r.topics || []))).sort(), [rows])
@@ -303,7 +318,7 @@ export default function CallQA({ portal = false } = {}) {
   const base = import.meta.env.VITE_SUPABASE_URL || ''
   const inFlight = (pipeline.needs_transcription || 0) + (pipeline.transcribing || 0) + (pipeline.ready || 0) + (pipeline.scoring || 0)
   const todayStr = new Date().toISOString().slice(0, 10)
-  const TABS = [['overview', 'Overview'], ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['calls', 'Calls'], ['fails', 'Epic Fails'], ['coaching', 'Coaching'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings']] : [])]
+  const TABS = [['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['calls', 'Calls'], ['fails', 'Epic Fails'], ['coaching', 'Coaching'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings']] : [])]
 
   return (
     <div style={{ padding: 20, maxWidth: 1180, margin: '0 auto' }}>
@@ -336,6 +351,7 @@ export default function CallQA({ portal = false } = {}) {
       {loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
         <>
           {tab === 'overview' && <Overview agg={agg} trend={trend} />}
+          {tab === 'scorecards' && <Scorecards rows={dateFiltered} viewAll={viewAll} onOpen={setSelected} />}
           {tab === 'opportunities' && <Opportunities rows={filtered} agg={agg} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'missed' && <MissedOpps rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'conversion' && <Conversion rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
@@ -1210,6 +1226,302 @@ function RecordingBtn({ callId }) {
   if (url) return <audio controls autoPlay src={url} style={{ height: 34 }} />
   return <button onClick={loadRec} disabled={loading} style={{ ...btn('ghost'), padding: '4px 10px', fontSize: 13 }}>{loading ? 'Loading…' : (err ? '↻ Retry' : '▶ Recording')}</button>
 }
+// ===================== Scorecards hub (3-tier feedback loop) =================
+// Executive (portfolio) / Manager (per brand) / Agent (personal) views computed
+// live from the loaded reviews. Each tier is exportable to PDF, Excel, and CSV.
+// Renders for managers and the client portal (viewAll). Agent-login scoping +
+// read-receipts come later; this is the read side of the loop.
+
+const r1 = (v) => (v == null ? '' : Math.round(Number(v) * 10) / 10)
+const csvEsc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
+function downloadBlob(filename, blob) { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url) }
+// sheets = [{ title, sheet, cols:[], rows:[[...]] }]
+function exportCSVsheets(filename, sheets) {
+  const parts = sheets.map((s) => {
+    const lines = [(s.title ? csvEsc(s.title) : ''), s.cols.map(csvEsc).join(','), ...s.rows.map((r) => r.map(csvEsc).join(','))].filter((x) => x !== '')
+    return lines.join('\n')
+  })
+  downloadBlob(filename + '.csv', new Blob([parts.join('\n\n')], { type: 'text/csv;charset=utf-8;' }))
+}
+let _xlsxPromise = null
+function ensureXLSX() {
+  if (typeof window !== 'undefined' && window.XLSX) return Promise.resolve(window.XLSX)
+  if (!_xlsxPromise) _xlsxPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+    s.onload = () => resolve(window.XLSX); s.onerror = () => reject(new Error('Could not load the Excel library'))
+    document.head.appendChild(s)
+  })
+  return _xlsxPromise
+}
+async function exportXLSXsheets(filename, sheets) {
+  const XLSX = await ensureXLSX()
+  const wb = XLSX.utils.book_new()
+  sheets.forEach((s, i) => {
+    const ws = XLSX.utils.aoa_to_sheet([s.cols, ...s.rows])
+    XLSX.utils.book_append_sheet(wb, ws, String(s.sheet || s.title || ('Sheet' + (i + 1))).slice(0, 31))
+  })
+  XLSX.writeFile(wb, filename + '.xlsx')
+}
+function exportPDFsheets(title, subtitle, sheets) {
+  const e = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const body = sheets.map((s) => '<h2>' + e(s.title || '') + '</h2><table><thead><tr>' + s.cols.map((c) => '<th>' + e(c) + '</th>').join('') + '</tr></thead><tbody>' + s.rows.map((r) => '<tr>' + r.map((c) => '<td>' + e(c) + '</td>').join('') + '</tr>').join('') + '</tbody></table>').join('')
+  const gen = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const html = '<!doctype html><html><head><meta charset="utf-8"><title>' + e(title) + '</title><style>'
+    + '@page{margin:12mm}*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#0f172a;padding:6px 10px;font-size:12px}'
+    + 'h1{font-size:18px;margin:0 0 2px;border-bottom:3px solid ' + TEAL + ';padding-bottom:8px}h1 span{color:' + TEAL + '}'
+    + '.sub{color:#64748b;font-size:11px;margin:6px 0 4px}h2{font-size:13px;margin:16px 0 6px}'
+    + 'table{width:100%;border-collapse:collapse;margin-bottom:8px}th{background:#f1f5f9;text-align:left;padding:5px 7px;font-size:10.5px;color:#475569}td{padding:4px 7px;border-top:1px solid #eef2f7}tr{page-break-inside:avoid}'
+    + '.foot{margin-top:14px;border-top:1px solid #e2e8f0;padding-top:6px;color:#94a3b8;font-size:10px;display:flex;justify-content:space-between}'
+    + '.noprint{text-align:center;margin-bottom:10px}.noprint button{background:' + TEAL + ';color:#fff;border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer}'
+    + '@media print{.noprint{display:none}body{padding:0}}'
+    + '</style></head><body><div class="noprint"><button onclick="window.print()">⬇ Save as PDF / Print</button></div>'
+    + '<h1>Call QA <span>(AI)</span> — ' + e(title) + '</h1><div class="sub">' + e(subtitle || '') + '</div>' + body
+    + '<div class="foot"><span>Generated ' + e(gen) + '</span><span>Powered by Opsis CX</span></div>'
+    + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}</scr' + 'ipt></body></html>'
+  const w = window.open('', '_blank'); if (!w) { alert('Please allow pop-ups to export the PDF.'); return }
+  w.document.write(html); w.document.close(); w.focus()
+}
+function ExportBar({ name, title, subtitle, build }) {
+  const [busy, setBusy] = useState('')
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      <button style={{ ...btn('ghost'), padding: '6px 10px' }} onClick={() => exportPDFsheets(title, subtitle, build())}>⬇ PDF</button>
+      <button style={{ ...btn('ghost'), padding: '6px 10px', opacity: busy ? 0.6 : 1 }} disabled={!!busy} onClick={async () => { setBusy('x'); try { await exportXLSXsheets(name, build()) } catch (e) { alert(e.message || e) } setBusy('') }}>{busy ? 'Preparing…' : '⬇ Excel'}</button>
+      <button style={{ ...btn('ghost'), padding: '6px 10px' }} onClick={() => exportCSVsheets(name, build())}>⬇ CSV</button>
+    </div>
+  )
+}
+
+function Scorecards({ rows, viewAll, onOpen }) {
+  const [tier, setTier] = useState('exec')
+  const P = (n, d) => (d ? (n / d) * 100 : null)
+  const data = useMemo(() => {
+    const scored = rows.filter(isScored)
+    const overall = {
+      scored: scored.length,
+      avg: scored.length ? scored.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / scored.length : null,
+      opps: rows.filter((r) => r.opportunity).length,
+      booked: rows.filter((r) => r.opportunity && r.outcome === 'Booked').length,
+      missed: rows.filter(isMissedOpp).length,
+      winnable: rows.filter((r) => isMissedOpp(r) && r.winnable).length,
+      large: rows.filter((r) => isMissedOpp(r) && valueTier(r) === 3).length,
+    }
+    const bm = new Map()
+    rows.forEach((r) => {
+      const b = r.call?.brand || '—'
+      if (!bm.has(b)) bm.set(b, { brand: b, scores: [], opps: 0, booked: 0, missed: 0, winnable: 0, large: 0, agents: new Set() })
+      const o = bm.get(b); if (isScored(r)) o.scores.push(Number(r.score_pct) || 0)
+      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') o.booked++ }
+      if (isMissedOpp(r)) { o.missed++; if (r.winnable) o.winnable++; if (valueTier(r) === 3) o.large++ }
+      const an = agentOf(r); if (an) o.agents.add(an)
+    })
+    const brands = Array.from(bm.values()).map((o) => ({
+      ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
+      conv: P(o.booked, o.opps), calls: o.scores.length, nAgents: o.agents.size,
+    })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
+
+    const am = new Map()
+    rows.forEach((r) => {
+      const an = agentOf(r); const b = r.call?.brand || '—'; const k = an + '|||' + b
+      if (!am.has(k)) am.set(k, { name: an, brand: b, scores: [], opps: 0, booked: 0, asked: 0, focus: {}, win: {} })
+      const o = am.get(k); if (isScored(r)) o.scores.push(Number(r.score_pct) || 0)
+      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') o.booked++; if (r.asked_for_booking) o.asked++ }
+      ;(r.improvement_tags || []).forEach((t) => o.focus[t] = (o.focus[t] || 0) + 1)
+      ;(r.strength_tags || []).forEach((t) => o.win[t] = (o.win[t] || 0) + 1)
+    })
+    const top = (m) => Object.entries(m).sort((a, b) => b[1] - a[1]).map((x) => x[0])
+    const agents = Array.from(am.values()).filter((o) => o.scores.length >= 1 && o.name && o.name !== 'Unknown').map((o) => ({
+      ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
+      calls: o.scores.length, conv: P(o.booked, o.opps), askRate: P(o.asked, o.opps),
+      topFocus: top(o.focus), topWin: top(o.win),
+    })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
+
+    const gaps = (brand) => {
+      const m = {}
+      agents.filter((a) => !brand || a.brand === brand).forEach((a) => { (a.topFocus.slice(0, 2)).forEach((t) => m[t] = (m[t] || 0) + 1) })
+      return Object.entries(m).sort((a, b) => b[1] - a[1])
+    }
+    return { overall, brands, agents, gaps }
+  }, [rows])
+
+  const seg = (k, l) => <button key={k} onClick={() => setTier(k)} style={{ border: 'none', background: tier === k ? TEAL : '#fff', color: tier === k ? '#fff' : '#334155', padding: '8px 16px', borderRadius: 999, cursor: 'pointer', fontWeight: 700, fontSize: 13, boxShadow: tier === k ? 'none' : 'inset 0 0 0 1px #cbd5e1' }}>{l}</button>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {seg('exec', 'Executive')}{seg('mgr', 'Manager')}{seg('agent', 'Agent')}
+        <span style={{ color: '#94a3b8', fontSize: 12.5, marginLeft: 4 }}>Feedback scorecards — export any view as PDF, Excel, or CSV.</span>
+      </div>
+      {tier === 'exec' && <ScExec data={data} />}
+      {tier === 'mgr' && <ScMgr data={data} onOpen={onOpen} />}
+      {tier === 'agent' && <ScAgent data={data} />}
+    </div>
+  )
+}
+
+function ScExec({ data }) {
+  const o = data.overall; const cv = P100(o.booked, o.opps)
+  const gaps = data.gaps(null).slice(0, 8)
+  const gmax = Math.max(1, ...gaps.map((g) => g[1]))
+  const build = () => ([
+    { title: 'Portfolio summary', sheet: 'Summary', cols: ['Metric', 'Value'], rows: [
+      ['Calls scored', o.scored], ['Avg QA %', r1(o.avg)], ['Opportunities', o.opps], ['Booked', o.booked],
+      ['Conversion %', r1(cv)], ['Missed opportunities', o.missed], ['Winnable lost', o.winnable], ['Large missed opps', o.large],
+    ] },
+    { title: 'Brand ranking', sheet: 'Brands', cols: ['Brand', 'Calls', 'Avg QA %', 'Conversion %', 'Missed', 'Large missed', 'Agents'], rows: data.brands.map((b) => [b.brand, b.calls, r1(b.avg), r1(b.conv), b.missed, b.large, b.nAgents]) },
+    { title: 'Systemic coaching gaps', sheet: 'Gaps', cols: ['Coaching gap', 'Agents affected'], rows: data.gaps(null).map((g) => [g[0], g[1]]) },
+  ])
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>Executive — portfolio</div>
+        <ExportBar name="callqa-executive-scorecard" title="Executive Scorecard" subtitle={'All brands · ' + o.scored + ' calls scored'} build={build} />
+      </div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Calls scored" value={o.scored} sub="all brands" />
+        <Tile label="Avg QA score" value={pct(o.avg)} color={scoreColor(o.avg)} />
+        <Tile label="Conversion" value={pct(cv)} color={TEAL} sub={o.booked + ' of ' + o.opps + ' opps'} />
+        <Tile label="Winnable lost" value={o.winnable} color="#b71c1c" />
+        <Tile label="Large missed opps" value={o.large} color="#92400e" sub="install / commercial" />
+      </div>
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ fontWeight: 700, padding: 14 }}>Brand ranking</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Brand', 'Calls', 'Avg QA', 'QA', 'Conversion', 'Missed', 'Large missed'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
+          <tbody>{data.brands.map((b) => (
+            <tr key={b.brand} style={{ borderTop: '1px solid #eef2f7' }}>
+              <td style={{ padding: '8px 12px', fontWeight: 600 }}>{b.brand}</td>
+              <td style={{ padding: '8px 12px' }}>{b.calls}</td>
+              <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(b.avg), color: scoreColor(b.avg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(b.avg)}</span></td>
+              <td style={{ padding: '8px 12px', width: 130 }}><Bar v={b.avg} color={scoreColor(b.avg)} /></td>
+              <td style={{ padding: '8px 12px', fontWeight: 700, color: b.conv >= 50 ? '#1b5e20' : b.conv >= 35 ? '#8d6e00' : '#b71c1c' }}>{pct(b.conv)}</td>
+              <td style={{ padding: '8px 12px' }}>{b.missed}</td>
+              <td style={{ padding: '8px 12px', color: '#92400e', fontWeight: 700 }}>{b.large}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </Card>
+      <Card>
+        <div style={{ fontWeight: 700, marginBottom: 12 }}>Biggest systemic coaching gaps <span style={{ color: '#94a3b8', fontWeight: 400 }}>— across all brands</span></div>
+        {gaps.map((g) => (
+          <div key={g[0]} style={{ marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{g[0]}</span><b>{g[1]} agents</b></div>
+            <Bar v={(g[1] / gmax) * 100} color="#c2410c" />
+          </div>
+        ))}
+      </Card>
+    </>
+  )
+}
+
+function ScMgr({ data, onOpen }) {
+  const [brand, setBrand] = useState(data.brands[0]?.brand || '')
+  const b = data.brands.find((x) => x.brand === brand) || data.brands[0]
+  const roster = data.agents.filter((a) => a.brand === (b?.brand))
+  const gaps = data.gaps(b?.brand).slice(0, 6); const gmax = Math.max(1, ...gaps.map((g) => g[1]))
+  const build = () => ([
+    { title: (b.brand + ' — team summary'), sheet: 'Summary', cols: ['Metric', 'Value'], rows: [
+      ['Brand', b.brand], ['Calls scored', b.calls], ['Avg QA %', r1(b.avg)], ['Conversion %', r1(b.conv)],
+      ['Missed opportunities', b.missed], ['Large missed opps', b.large], ['Agents', b.nAgents],
+    ] },
+    { title: 'Agent leaderboard', sheet: 'Agents', cols: ['#', 'Agent', 'Calls', 'Avg QA %', 'Conversion %', 'Asked for booking %', 'Coaching focus'], rows: roster.map((a, i) => [i + 1, a.name, a.calls, r1(a.avg), r1(a.conv), r1(a.askRate), a.topFocus[0] || '']) },
+    { title: 'Team coaching gaps', sheet: 'Gaps', cols: ['Coaching gap', 'Agents affected'], rows: data.gaps(b?.brand).map((g) => [g[0], g[1]]) },
+  ])
+  if (!b) return <Card style={{ color: '#64748b' }}>No brand data in range.</Card>
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <Select label="Brand" value={brand} onChange={setBrand} opts={data.brands.map((x) => [x.brand, x.brand])} />
+        <ExportBar name={'callqa-manager-' + b.brand.replace(/\W+/g, '-').toLowerCase()} title={b.brand + ' — Team Scorecard'} subtitle={b.calls + ' calls · ' + b.nAgents + ' agents'} build={build} />
+      </div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Team avg QA" value={pct(b.avg)} color={scoreColor(b.avg)} sub={b.calls + ' calls'} />
+        <Tile label="Conversion" value={pct(b.conv)} color={TEAL} sub={b.booked + ' of ' + b.opps} />
+        <Tile label="Winnable lost" value={b.winnable} color="#b71c1c" sub="recoverable" />
+        <Tile label="Large missed" value={b.large} color="#92400e" sub="install / commercial" />
+      </div>
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ fontWeight: 700, padding: 14 }}>Agent leaderboard</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['#', 'Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Coaching focus'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
+          <tbody>{roster.map((a, i) => (
+            <tr key={a.name} style={{ borderTop: '1px solid #eef2f7' }}>
+              <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{i + 1}</td>
+              <td style={{ padding: '8px 12px', fontWeight: 600 }}>{a.name}</td>
+              <td style={{ padding: '8px 12px' }}>{a.calls}</td>
+              <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(a.avg), color: scoreColor(a.avg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(a.avg)}</span></td>
+              <td style={{ padding: '8px 12px', fontWeight: 700, color: a.conv >= 50 ? '#1b5e20' : a.conv >= 35 ? '#8d6e00' : '#b71c1c' }}>{pct(a.conv)}</td>
+              <td style={{ padding: '8px 12px', color: a.askRate < 50 ? '#b71c1c' : '#334155' }}>{pct(a.askRate)}</td>
+              <td style={{ padding: '8px 12px', maxWidth: 240, color: '#475569' }}>{a.topFocus[0] || '—'}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </Card>
+      <Card>
+        <div style={{ fontWeight: 700, marginBottom: 12 }}>Top team coaching gaps <span style={{ color: '#94a3b8', fontWeight: 400 }}>— coach the pattern</span></div>
+        {gaps.length === 0 ? <div style={{ color: '#64748b' }}>No data.</div> : gaps.map((g) => (
+          <div key={g[0]} style={{ marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{g[0]}</span><b>{g[1]} agents</b></div>
+            <Bar v={(g[1] / gmax) * 100} color="#c2410c" />
+          </div>
+        ))}
+      </Card>
+    </>
+  )
+}
+
+function ScAgent({ data }) {
+  const opts = [...data.agents].sort((a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name))
+  const [key, setKey] = useState(opts[0] ? opts[0].name + '|||' + opts[0].brand : '')
+  const a = data.agents.find((x) => (x.name + '|||' + x.brand) === key) || opts[0]
+  if (!a) return <Card style={{ color: '#64748b' }}>No agent data in range.</Card>
+  const win = a.topWin[0] || '—'; const f0 = a.topFocus[0] || '—'; const f1 = a.topFocus[1]
+  const build = () => ([
+    { title: a.name + ' (' + a.brand + ') — scorecard', sheet: 'Scorecard', cols: ['Metric', 'Value'], rows: [
+      ['Agent', a.name], ['Brand', a.brand], ['Calls scored', a.calls], ['Avg QA %', r1(a.avg)],
+      ['Conversion %', r1(a.conv)], ['Asked for booking %', r1(a.askRate)],
+      ['What they do best', win], ['Focus this week', f0], ['Then', f1 || ''],
+    ] },
+  ])
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <Select label="Agent" value={key} onChange={setKey} opts={opts.map((o) => [o.name + '|||' + o.brand, o.name + ' · ' + o.brand])} />
+        <ExportBar name={'callqa-agent-' + a.name.replace(/\W+/g, '-').toLowerCase()} title={a.name + ' — Scorecard'} subtitle={a.brand + ' · ' + a.calls + ' calls'} build={build} />
+      </div>
+      <Card>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ width: 92, height: 92, borderRadius: '50%', background: scoreColor(a.avg), color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{a.avg == null ? '—' : Math.round(a.avg)}</div><div style={{ fontSize: 10, opacity: 0.9 }}>avg QA</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{a.name} <span style={{ color: '#64748b', fontWeight: 500 }}>· {a.brand}</span></div>
+            <div style={{ color: '#64748b', fontSize: 12.5 }}>{a.calls} calls scored in range</div>
+            <div style={{ marginTop: 8, fontSize: 13 }}>{a.avg >= 80 ? '⭐ One of the strongest voices on the team. ' : ''}One focus this week — small change, real money.</div>
+          </div>
+        </div>
+      </Card>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Calls scored" value={a.calls} />
+        <Tile label="Avg QA" value={pct(a.avg)} color={scoreColor(a.avg)} />
+        <Tile label="Conversion" value={pct(a.conv)} color={TEAL} sub={a.booked + ' booked'} />
+        <Tile label="Asked for booking" value={pct(a.askRate)} color={a.askRate < 50 ? '#b71c1c' : '#1b5e20'} sub="on opportunities" />
+      </div>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+        <Card style={{ flex: 1, minWidth: 240, background: '#f0fdf4', border: '1px solid #bbf7d0' }}><div style={{ fontWeight: 700, color: '#166534', marginBottom: 4 }}>🌟 What you're great at</div><div>{win}</div></Card>
+        <Card style={{ flex: 1, minWidth: 240, background: '#fff7ed', border: '1px solid #fed7aa' }}><div style={{ fontWeight: 700, color: '#9a3412', marginBottom: 4 }}>🎯 Your focus this week</div><div style={{ fontWeight: 600 }}>{f0}</div>{f1 ? <div style={{ color: '#64748b', fontSize: 12.5, marginTop: 4 }}>Then: {f1}</div> : null}</Card>
+      </div>
+      <Card>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>Asked for the booking</div>
+        <div style={{ height: 10, borderRadius: 6, background: '#eef2f7', overflow: 'hidden' }}><div style={{ height: '100%', width: (a.askRate || 0) + '%', background: a.askRate < 50 ? '#b71c1c' : '#1b5e20' }} /></div>
+        <div style={{ color: '#64748b', fontSize: 12.5, marginTop: 6 }}>{pct(a.askRate)} of your opportunity calls. Next cycle this shows your movement — that's the loop.</div>
+      </Card>
+    </>
+  )
+}
+const P100 = (n, d) => (d ? (n / d) * 100 : null)
+
 // Build a self-contained, print-optimized HTML report for a single call and
 // auto-open the browser print dialog (Save as PDF). No external dependencies.
 // Layout: page 1 = the analysis (score, context, revenue, risks, summary,
