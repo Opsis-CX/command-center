@@ -501,7 +501,7 @@ function MissedOpps({ rows, onOpen, viewAll }) {
             <col style={{ width: '25%' }} />
             <col style={{ width: 96 }} />
             <col />
-            <col style={{ width: 62 }} />
+            <col style={{ width: 78 }} />
           </colgroup>
           <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Size', 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Outcome', 'What would have won it', 'Score'].map((h) => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}</tr></thead>
           <tbody>{shown.map(({ r, tier }) => {
@@ -516,7 +516,7 @@ function MissedOpps({ rows, onOpen, viewAll }) {
                 <td style={{ ...cell, color: '#475569' }}>{r.opportunity_context || (r.topics || [])[0] || '—'}</td>
                 <td style={cell}><Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill></td>
                 <td style={{ ...cell, color: TEAL }}>{r.revenue_tip || (r.not_booked_reason ? `Reason: ${r.not_booked_reason}` : '—')}</td>
-                <td style={cell}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(r.score_pct)}</span></td>
+                <td style={{ ...cell, whiteSpace: 'nowrap' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8, whiteSpace: 'nowrap' }}>{pct(r.score_pct)}</span></td>
               </tr>
             )
           })}</tbody>
