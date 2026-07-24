@@ -487,7 +487,12 @@ function ArticleReader({ id, canAuthor, onBack, onEdit }) {
     supabase.from('kb_files').select('*').eq('article_id', id).order('created_at').then(({ data }) => setFiles(data || []))
     if (user) supabase.from('kb_feedback').select('helpful').eq('article_id', id).eq('profile_id', user.id).maybeSingle()
       .then(({ data }) => setMyFeedback(data ? data.helpful : null))
-    if (!countedRef.current) { countedRef.current = true; supabase.rpc('kb_increment_view', { article: id }).then(() => {}) }
+    if (!countedRef.current) {
+      countedRef.current = true
+      supabase.rpc('kb_increment_view', { article: id }).then(() => {})
+      // Log a per-user read for Reporting → Knowledge Base (one row per person/article).
+      if (user) supabase.from('kb_article_reads').upsert({ article_id: id, profile_id: user.id, read_at: new Date().toISOString() }, { onConflict: 'article_id,profile_id' }).then(() => {})
+    }
   })() }, [id, user])
 
   async function sendFeedback(helpful) {
