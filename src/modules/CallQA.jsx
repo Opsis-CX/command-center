@@ -491,24 +491,37 @@ function MissedOpps({ rows, onOpen, viewAll }) {
         </div>
       </Card>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Size', 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Outcome', 'What would have won it', 'Score'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
+        <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
+          <colgroup>
+            <col style={{ width: 66 }} />
+            <col style={{ width: 66 }} />
+            {viewAll && <col style={{ width: 110 }} />}
+            <col style={{ width: 108 }} />
+            <col style={{ width: '25%' }} />
+            <col style={{ width: 96 }} />
+            <col />
+            <col style={{ width: 62 }} />
+          </colgroup>
+          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Size', 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Outcome', 'What would have won it', 'Score'].map((h) => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}</tr></thead>
           <tbody>{shown.map(({ r, tier }) => {
             const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other; const tm = TIER_META[tier]
+            const cell = { padding: '8px 12px', verticalAlign: 'top', whiteSpace: 'normal', overflowWrap: 'anywhere' }
             return (
               <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
-                <td style={{ padding: '8px 12px' }}><Pill bg={tm.bg} fg={tm.fg}>{tm.label}</Pill></td>
-                <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
-                {viewAll && <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{agentOf(r)}</td>}
-                <td style={{ padding: '8px 12px' }}>{c.brand}</td>
-                <td style={{ padding: '8px 12px', maxWidth: 220, color: '#475569' }}>{r.opportunity_context || (r.topics || [])[0] || '—'}</td>
-                <td style={{ padding: '8px 12px' }}><Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill></td>
-                <td style={{ padding: '8px 12px', maxWidth: 300, color: TEAL }}>{r.revenue_tip || (r.not_booked_reason ? `Reason: ${r.not_booked_reason}` : '—')}</td>
-                <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(r.score_pct)}</span></td>
+                <td style={cell}><Pill bg={tm.bg} fg={tm.fg}>{tm.label}</Pill></td>
+                <td style={{ ...cell, whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
+                {viewAll && <td style={cell}>{agentOf(r)}</td>}
+                <td style={cell}>{c.brand}</td>
+                <td style={{ ...cell, color: '#475569' }}>{r.opportunity_context || (r.topics || [])[0] || '—'}</td>
+                <td style={cell}><Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill></td>
+                <td style={{ ...cell, color: TEAL }}>{r.revenue_tip || (r.not_booked_reason ? `Reason: ${r.not_booked_reason}` : '—')}</td>
+                <td style={cell}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(r.score_pct)}</span></td>
               </tr>
             )
           })}</tbody>
         </table>
+        </div>
       </Card>
     </div>
   )
@@ -537,23 +550,35 @@ function EpicFails({ rows, onOpen, viewAll }) {
         <div style={{ fontSize: 12.5, color: '#7f1d1d', marginTop: 2 }}>Every scored call in range, ranked lowest QA score to highest. Start at the top for the calls that need attention most.</div>
       </Card>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['#', 'Score', 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'Biggest issue', 'Outcome'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
+        <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
+          <colgroup>
+            <col style={{ width: 44 }} />
+            <col style={{ width: 74 }} />
+            <col style={{ width: 66 }} />
+            {viewAll && <col style={{ width: 120 }} />}
+            <col style={{ width: 130 }} />
+            <col />
+            <col style={{ width: 104 }} />
+          </colgroup>
+          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['#', 'Score', 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'Biggest issue', 'Outcome'].map((h) => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}</tr></thead>
           <tbody>{scored.map((r, i) => {
             const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
+            const cell = { padding: '8px 12px', verticalAlign: 'top', whiteSpace: 'normal', overflowWrap: 'anywhere' }
             return (
               <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
-                <td style={{ padding: '8px 12px', color: '#94a3b8', fontWeight: 600 }}>{i + 1}</td>
-                <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(r.score_pct)}{r.manager_adjusted ? ' *' : ''}</span></td>
-                <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
-                {viewAll && <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{agentOf(r)}</td>}
-                <td style={{ padding: '8px 12px' }}>{c.brand || '—'}</td>
-                <td style={{ padding: '8px 12px', maxWidth: 340, color: '#b71c1c' }}>{topIssue(r)}</td>
-                <td style={{ padding: '8px 12px' }}>{r.outcome ? <Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill> : '—'}</td>
+                <td style={{ ...cell, color: '#94a3b8', fontWeight: 600 }}>{i + 1}</td>
+                <td style={{ ...cell, whiteSpace: 'nowrap' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(r.score_pct)}{r.manager_adjusted ? ' *' : ''}</span></td>
+                <td style={{ ...cell, whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
+                {viewAll && <td style={cell}>{agentOf(r)}</td>}
+                <td style={cell}>{c.brand || '—'}</td>
+                <td style={{ ...cell, color: '#b71c1c' }}>{topIssue(r)}</td>
+                <td style={cell}>{r.outcome ? <Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill> : '—'}</td>
               </tr>
             )
           })}</tbody>
         </table>
+        </div>
       </Card>
     </div>
   )
