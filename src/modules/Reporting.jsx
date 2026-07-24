@@ -76,6 +76,7 @@ const CATALOG = [
   { label: 'Quality', items: [
     { key: 'quality', name: 'QA Audits', q: 'How did agents score on QA audits?' },
     { key: 'dispositions', name: 'Call Dispositions', q: 'How are calls dispositioned — by disposition, deal and agent (recent)?' },
+    { key: 'dispo_corrections', name: 'Disposition Corrections', q: 'Which call dispositions did QA correct — current vs correct disposition?' },
   ] },
   { label: 'Certifications', items: [
     { key: 'certifications', name: 'Certification Scores', q: 'What are quiz scores by person and course, and the average?' },
@@ -149,7 +150,7 @@ const FILTERABLE = new Set(['person', 'client', 'compare', 'quality', 'chat', 't
 // Reports whose CSV export is the parent-owned shared button (older inline reports).
 const SHARED_EXPORT = new Set(['person', 'client', 'compare', 'quality', 'people'])
 // Reports rendered by their own standalone component.
-const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions'])
+const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions', 'dispo_corrections'])
 
 export default function Reporting() {
   const { isAdmin, appRole } = useAuth()
@@ -701,6 +702,7 @@ export default function Reporting() {
         : view === 'cert_quiz' ? <CertQuizReport range={range} allowedIds={allowedIds} />
         : view === 'scorecard' ? <ScorecardReport />
         : view === 'dispositions' ? <DispositionsReport />
+        : view === 'dispo_corrections' ? <DispoCorrectionsReport range={range} />
         : view === 'clients' ? <ClientsReport range={range} />
         : view === 'positions' ? <PositionsReport />
         : view === 'sched_agent' ? <SchedAgentReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
@@ -1923,6 +1925,100 @@ function DispositionsReport() {
         </div>
       </div>
       <p className="page-sub" style={{ fontSize: 12 }}>Live Five9 dispositions from the rolling ~3-day window ({model.days} day{model.days === 1 ? '' : 's'} loaded). Deal is derived from the Five9 campaign (Open Invoices vs Affiliate). Full history by date range needs the BigQuery pull (planned).</p>
+    </div>
+  )
+}
+
+// ================= Disposition Corrections (from QA audits) =================
+// Surfaces the QA "disposition correction" set inside Reporting so it's easy to
+// find. Same source as the Quality Audit module: qa_audits rows where the auditor
+// entered a correct_disposition. Two exports: full and Call-ID-only (for Five9).
+function DispoCorrectionsReport({ range }) {
+  const [audits, setAudits] = useState(null)
+  const [auditorMap, setAuditorMap] = useState({})
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setAudits(null); setErr('')
+    const fromISO = new Date(range.from + 'T00:00:00').toISOString()
+    const toISO = new Date(range.to + 'T23:59:59').toISOString()
+    ;(async () => {
+      const [{ data, error }, { data: profs }] = await Promise.all([
+        supabase.from('qa_audits').select('*').gte('created_at', fromISO).lte('created_at', toISO).order('created_at', { ascending: false }),
+        supabase.from('profiles').select('id, full_name'),
+      ])
+      if (!active) return
+      if (error) { setErr(error.message); return }
+      const m = {}; (profs || []).forEach(p => { m[p.id] = p.full_name }); setAuditorMap(m)
+      setAudits(data || [])
+    })()
+    return () => { active = false }
+  }, [range.from, range.to])
+
+  const rows = useMemo(() => (audits || []).filter(a => a.correct_disposition && String(a.correct_disposition).trim()), [audits])
+  const changed = useMemo(() => rows.filter(a => (a.current_disposition || '') !== (a.correct_disposition || '')).length, [rows])
+  const agentCount = useMemo(() => new Set(rows.map(a => a.agent_name).filter(Boolean)).size, [rows])
+
+  function exportFull() {
+    const header = ['Audited On', 'Agent', 'Auditor', 'Campaign', 'Brand', 'Call Date', 'Current Disposition', 'Correct Disposition', 'Changed?', 'QA Score', 'Feedback', 'Call ID', 'Recording']
+    const out = [header, ...rows.map(a => [
+      a.created_at ? a.created_at.slice(0, 10) : '', a.agent_name || '', auditorMap[a.auditor_id] || '',
+      a.campaign || '', a.brand || '', a.call_date || '', a.current_disposition || '', a.correct_disposition || '',
+      ((a.current_disposition || '') !== (a.correct_disposition || '')) ? 'Yes' : 'No',
+      a.clean_qa_score == null ? '' : a.clean_qa_score, a.feedback || '', a.call_id || '', a.recording_link || '',
+    ])]
+    downloadCSV(`disposition-corrections-${isoDay(new Date())}.csv`, out)
+  }
+  function exportSlim() {
+    const header = ['Call ID', 'Current Disposition', 'Correct Disposition']
+    const out = [header, ...rows.map(a => [a.call_id || '', a.current_disposition || '', a.correct_disposition || ''])]
+    downloadCSV(`disposition-corrections-slim-${isoDay(new Date())}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err === 'permission denied for table qa_audits' ? 'This report is available to auditors and managers only.' : err}</div>
+  if (audits == null) return <p className="page-sub">Loading…</p>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Corrections" value={rows.length} />
+        <Tile label="Disposition changed" value={changed} />
+        <Tile label="Agents" value={agentCount} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button className="btn btn-primary" onClick={exportFull}>Export CSV (full)</button>
+        <button className="btn btn-primary" onClick={exportSlim}>Export CSV (Call ID + dispositions)</button>
+      </div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Disposition corrections</span>
+          <span className="page-sub" style={{ fontSize: 12, fontWeight: 400 }}>{rows.length} correction{rows.length === 1 ? '' : 's'} in range</span>
+        </div>
+        <div style={{ maxHeight: 560, overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead style={{ position: 'sticky', top: 0, background: 'var(--bg, #fff)', zIndex: 1 }}>
+              <tr><Th>Audited</Th><Th>Agent</Th><Th>Brand</Th><Th>Call date</Th><Th>Current disposition</Th><Th>Correct disposition</Th><Th>Changed?</Th><Th>Call ID</Th></tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && <tr><td style={cellL} colSpan={8}><span className="page-sub">No disposition corrections in this date range.</span></td></tr>}
+              {rows.map((a, i) => {
+                const chg = (a.current_disposition || '') !== (a.correct_disposition || '')
+                return (
+                  <tr key={a.id || i}>
+                    <td style={cellL}>{a.created_at ? a.created_at.slice(0, 10) : '—'}</td>
+                    <td style={{ ...cellL, fontWeight: 600 }}>{a.agent_name || '—'}</td>
+                    <td style={cellL}>{a.brand || '—'}</td>
+                    <td style={cellL}>{a.call_date || '—'}</td>
+                    <td style={cellL}>{a.current_disposition || '—'}</td>
+                    <td style={{ ...cellL, fontWeight: 600 }}>{a.correct_disposition || '—'}</td>
+                    <td style={cellL}>{chg ? <span className="badge" style={{ background: 'var(--failed-bg, #fde8e8)', color: 'var(--failed, #b42318)', fontWeight: 700 }}>Yes</span> : '—'}</td>
+                    <td style={{ ...cellL, fontFamily: 'monospace', fontSize: 12 }}>{a.call_id || '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>From QA audits where the auditor entered a corrected disposition (same source as the Quality Audit module). The slim export (Call ID + Current + Correct) is the one for re-dispositioning in Five9.</p>
     </div>
   )
 }
