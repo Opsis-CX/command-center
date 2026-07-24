@@ -1800,6 +1800,16 @@ function ScorecardReport() {
 }
 
 // ================= Call Dispositions (Five9, recent) =================
+// Deal segment from the Five9 campaign (per the Hourly dashboards mapping):
+// "Open Invoices%" → Open Invoices; Lavin/Kashurba/Web Leads → Affiliate; else Other.
+function dealOf(campaign) {
+  const c = String(campaign || '').trim()
+  if (/^open invoices/i.test(c)) return 'Open Invoices'
+  if (/^(lavin|kashurba|web ?leads)/i.test(c)) return 'Affiliate'
+  return 'Other'
+}
+const DISPO_DETAIL_CAP = 500
+
 function DispositionsReport() {
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState('')
@@ -1808,7 +1818,7 @@ function DispositionsReport() {
     ;(async () => {
       const page = 1000; let from = 0; let all = []
       for (;;) {
-        const { data, error } = await supabase.from('f9_calls_today').select('agent_name, disposition, work_date').range(from, from + page - 1)
+        const { data, error } = await supabase.from('f9_calls_today').select('agent_name, disposition, work_date, hour_int, brand, campaign').range(from, from + page - 1)
         if (error) { if (active) setErr(error.message); return }
         all = all.concat(data || [])
         if (!data || data.length < page) break
@@ -1821,21 +1831,28 @@ function DispositionsReport() {
   }, [])
 
   const model = useMemo(() => {
-    const byDisp = {}, byAgent = {}
+    const byDisp = {}, byAgent = {}, byDeal = {}
     const dateSet = new Set()
     for (const c of (rows || [])) {
       const d = c.disposition || '—'
       byDisp[d] = (byDisp[d] || 0) + 1
       const a = c.agent_name || '—'
       byAgent[a] = (byAgent[a] || 0) + 1
+      byDeal[dealOf(c.campaign)] = (byDeal[dealOf(c.campaign)] || 0) + 1
       if (c.work_date) dateSet.add(c.work_date)
     }
-    return { byDisp, byAgent, total: (rows || []).length, days: dateSet.size }
+    // Call-level detail, most recent first (by date then hour).
+    const detail = (rows || []).slice().sort((a, b) => {
+      const dc = String(b.work_date || '').localeCompare(String(a.work_date || ''))
+      if (dc) return dc
+      return (b.hour_int ?? -1) - (a.hour_int ?? -1)
+    })
+    return { byDisp, byAgent, byDeal, detail, total: (rows || []).length, days: dateSet.size }
   }, [rows])
 
   function exportCsv() {
-    const out = [['Disposition', 'Calls', '%']]
-    Object.entries(model.byDisp).sort((a, b) => b[1] - a[1]).forEach(([d, n]) => out.push([d, n, model.total ? Math.round(n / model.total * 100) + '%' : '0%']))
+    const out = [['Call Date', 'Agent', 'Brand', 'Deal', 'Disposition']]
+    model.detail.forEach(c => out.push([c.work_date || '', c.agent_name || '', c.brand || '', dealOf(c.campaign), c.disposition || '']))
     downloadCSV(`call-dispositions-${isoDay(new Date())}.csv`, out)
   }
 
@@ -1843,12 +1860,15 @@ function DispositionsReport() {
   if (rows == null) return <p className="page-sub">Loading…</p>
   const dispRows = Object.entries(model.byDisp).sort((a, b) => b[1] - a[1])
   const agentRows = Object.entries(model.byAgent).sort((a, b) => b[1] - a[1])
+  const dealRows = Object.entries(model.byDeal).sort((a, b) => b[1] - a[1])
+  const shown = model.detail.slice(0, DISPO_DETAIL_CAP)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Tile label="Calls" value={model.total} />
         <Tile label="Dispositions" value={dispRows.length} />
         <Tile label="Agents" value={agentRows.length} />
+        <Tile label="Deals" value={dealRows.length} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
@@ -1863,6 +1883,16 @@ function DispositionsReport() {
           </table>
         </div>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By deal</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><Th>Deal</Th><Th r>Calls</Th><Th r>%</Th></tr></thead>
+            <tbody>
+              {dealRows.length === 0 && <tr><td style={cellL} colSpan={3}><span className="page-sub">No recent call data.</span></td></tr>}
+              {dealRows.map(([d, n]) => <tr key={d}><td style={{ ...cellL, fontWeight: 600 }}>{d}</td><td style={cellR}>{n}</td><td style={cellR}>{model.total ? Math.round(n / model.total * 100) : 0}%</td></tr>)}
+            </tbody>
+          </table>
+        </div>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By agent</div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr><Th>Agent</Th><Th r>Calls</Th></tr></thead>
@@ -1872,7 +1902,30 @@ function DispositionsReport() {
           </table>
         </div>
       </div>
-      <p className="page-sub" style={{ fontSize: 12 }}>Live Five9 dispositions from the rolling ~3-day window ({model.days} day{model.days === 1 ? '' : 's'} loaded). Full history by date range needs the BigQuery pull (planned).</p>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Call detail</span>
+          <span className="page-sub" style={{ fontSize: 12, fontWeight: 400 }}>{shown.length < model.total ? `Showing ${shown.length} of ${model.total} — Export CSV for all` : `${model.total} call${model.total === 1 ? '' : 's'}`}</span>
+        </div>
+        <div style={{ maxHeight: 520, overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead style={{ position: 'sticky', top: 0, background: 'var(--bg, #fff)', zIndex: 1 }}><tr><Th>Call date</Th><Th>Agent</Th><Th>Brand</Th><Th>Deal</Th><Th>Disposition</Th></tr></thead>
+            <tbody>
+              {shown.length === 0 && <tr><td style={cellL} colSpan={5}><span className="page-sub">No recent call data.</span></td></tr>}
+              {shown.map((c, i) => (
+                <tr key={i}>
+                  <td style={cellL}>{c.work_date || '—'}</td>
+                  <td style={{ ...cellL, fontWeight: 600 }}>{c.agent_name || '—'}</td>
+                  <td style={cellL}>{c.brand || '—'}</td>
+                  <td style={cellL}>{dealOf(c.campaign)}</td>
+                  <td style={cellL}>{c.disposition || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>Live Five9 dispositions from the rolling ~3-day window ({model.days} day{model.days === 1 ? '' : 's'} loaded). Deal is derived from the Five9 campaign (Open Invoices vs Affiliate). Full history by date range needs the BigQuery pull (planned).</p>
     </div>
   )
 }
