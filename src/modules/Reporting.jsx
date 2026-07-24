@@ -116,7 +116,7 @@ const REPORT_META = Object.fromEntries(CATALOG.flatMap(c => c.items.map(it => [i
 // Reports that don't use the shared date range.
 const NO_RANGE = new Set(['people', 'rawdata', 'scorecard', 'positions', 'kb'])
 // Reports that expose the shared person/tag filter.
-const FILTERABLE = new Set(['person', 'client', 'compare', 'quality', 'chat', 'tokens', 'sales', 'rsn', 'certifications', 'cert_quiz', 'sched_agent', 'tasks_person', 'offclock', 'kb'])
+const FILTERABLE = new Set(['person', 'client', 'compare', 'quality', 'chat', 'tokens', 'sales', 'rsn', 'certifications', 'cert_quiz', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'builder'])
 // Reports whose CSV export is the parent-owned shared button (older inline reports).
 const SHARED_EXPORT = new Set(['person', 'client', 'compare', 'quality', 'people'])
 // Reports rendered by their own standalone component.
@@ -145,6 +145,8 @@ export default function Reporting() {
   const [filters, setFilters] = useState({ personId: 'all', tagId: 'all' })
   const [savedReports, setSavedReports] = useState([])
   const [savingReport, setSavingReport] = useState(false)
+  const [builderInitial, setBuilderInitial] = useState(null) // config when opening a saved custom-built report
+  const [builderKey, setBuilderKey] = useState(0)             // bump to remount the builder on open/new
 
   useEffect(() => {
     let active = true
@@ -196,11 +198,13 @@ export default function Reporting() {
     await loadSaved(); setMode('custom')
   }
   function openSaved(r) {
-    setView(r.report_key)
     if (r.config?.range) setRange(r.config.range)
     if (r.config?.filters) setFilters(r.config.filters)
+    if (r.report_key === 'builder') { setBuilderInitial(r.config || {}); setBuilderKey(k => k + 1); setView('builder'); setPickerOpen(false); return }
+    setView(r.report_key)
     setMode('standard'); setPickerOpen(false)
   }
+  function newCustomReport() { setBuilderInitial(null); setBuilderKey(k => k + 1); setView('builder'); setPickerOpen(false) }
   async function deleteSaved(r) {
     if (!window.confirm(`Delete saved report "${r.name}"?`)) return
     await supabase.from('report_definitions').delete().eq('id', r.id)
@@ -538,8 +542,12 @@ export default function Reporting() {
 
       {pickerOpen && mode === 'custom' && (
         <div className="card" style={{ padding: 0, marginBottom: 16, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>Saved &amp; custom reports</span>
+            <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={newCustomReport}>＋ New custom report</button>
+          </div>
           {savedReports.length === 0 ? (
-            <div style={{ padding: 16, color: 'var(--ink-soft)', fontSize: 13 }}>No saved reports yet. Open any report, set the time frame and filters, then <b>☆ Save as report</b>.</div>
+            <div style={{ padding: 16, color: 'var(--ink-soft)', fontSize: 13 }}>No saved reports yet. Build one with <b>＋ New custom report</b>, or open any standard report, set the time frame/filters, and <b>☆ Save as report</b>.</div>
           ) : savedReports.map(r => (
             <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--line-soft)' }}>
               <button onClick={() => openSaved(r)} style={{ flex: 1, textAlign: 'left', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -555,8 +563,8 @@ export default function Reporting() {
       {/* selected report + shared time frame / filters / actions */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
         <div style={{ marginRight: 'auto' }}>
-          <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600 }}>{REPORT_META[view]?.category || ''}</div>
-          <div style={{ fontSize: 17, fontWeight: 700 }}>{REPORT_META[view]?.name || 'Report'}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600 }}>{view === 'builder' ? 'Custom' : (REPORT_META[view]?.category || '')}</div>
+          <div style={{ fontSize: 17, fontWeight: 700 }}>{view === 'builder' ? 'Custom Report Builder' : (REPORT_META[view]?.name || 'Report')}</div>
         </div>
         {!NO_RANGE.has(view) && (
           <>
@@ -593,7 +601,7 @@ export default function Reporting() {
             </div>
           </>
         )}
-        <button onClick={saveAsCustom} disabled={savingReport} style={{ ...tabBtn(false), border: '1px solid var(--line)', borderRadius: 8 }}>☆ Save as report</button>
+        {view !== 'builder' && <button onClick={saveAsCustom} disabled={savingReport} style={{ ...tabBtn(false), border: '1px solid var(--line)', borderRadius: 8 }}>☆ Save as report</button>}
         {SHARED_EXPORT.has(view) && (
           <button className="btn btn-primary"
             onClick={view === 'person' ? exportPersonCSV : view === 'client' ? exportClientCSV : view === 'quality' ? exportQualityCSV : view === 'people' ? exportPeopleCSV : exportCompareCSV}>
@@ -621,6 +629,8 @@ export default function Reporting() {
         : view === 'tasks_person' ? <TasksByPersonReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
         : view === 'offclock' ? <OffClockReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
         : view === 'kb' ? <KbReport profiles={peopleFull} allowedIds={allowedIds} />
+        : view === 'builder' ? <CustomBuilder key={builderKey} range={range} profiles={peopleFull} allowedIds={allowedIds} initial={builderInitial} onSaved={() => { loadSaved(); setMode('custom'); setPickerOpen(true) }} />
+
         : loading ? <p className="page-sub">Loading…</p> : view === 'quality' ? (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -2139,3 +2149,270 @@ function KbReport({ profiles, allowedIds }) {
     </div>
   )
 }
+
+// ================= Custom Report Builder =================
+// Each data source returns FLAT rows already mapped to its field keys, plus a
+// `_pid` (profile id) where a person filter applies. Fields are dim (group/label)
+// or num (summed when grouped). Adding a source = one entry here.
+const BUILDER_SOURCES = {
+  roster: {
+    label: 'People (roster)', usesRange: false,
+    fields: [
+      { key: 'person', label: 'Name', kind: 'dim' },
+      { key: 'role', label: 'Role', kind: 'dim' },
+      { key: 'status', label: 'Status', kind: 'dim' },
+      { key: 'email', label: 'Email', kind: 'dim' },
+      { key: 'created', label: 'Created', kind: 'dim' },
+    ],
+    load: async (range, ctx) => (ctx.profiles || []).map(p => ({
+      _pid: p.id, person: p.full_name || '', role: ROLE_LABELS[p.role] || p.role || '',
+      status: p.is_active ? 'Active' : 'Inactive', email: p.email || '', created: p.created_at ? p.created_at.slice(0, 10) : '',
+    })),
+  },
+  time: {
+    label: 'Time tracking', usesRange: true,
+    fields: [
+      { key: 'person', label: 'Person', kind: 'dim' },
+      { key: 'client', label: 'Client', kind: 'dim' },
+      { key: 'task', label: 'Task', kind: 'dim' },
+      { key: 'date', label: 'Date', kind: 'dim' },
+      { key: 'hours', label: 'Hours', kind: 'num' },
+    ],
+    load: async (range, ctx) => {
+      const [{ data: te }, { data: tasks }, { data: clients }] = await Promise.all([
+        supabase.from('time_entries').select('user_id, task_id, client_id, duration_minutes, started_at, note').not('duration_minutes', 'is', null).gte('started_at', dayStart(range.from)).lte('started_at', dayEnd(range.to)),
+        supabase.from('tasks').select('id, name, client_id'),
+        supabase.from('clients').select('id, name'),
+      ])
+      const taskById = Object.fromEntries((tasks || []).map(t => [t.id, t]))
+      const cliById = Object.fromEntries((clients || []).map(c => [c.id, c]))
+      const nameById = Object.fromEntries((ctx.profiles || []).map(p => [p.id, p.full_name]))
+      return (te || []).map(e => {
+        const t = taskById[e.task_id]
+        const cid = e.client_id || t?.client_id
+        return { _pid: e.user_id, person: nameById[e.user_id] || '—', client: cid ? (cliById[cid]?.name || '—') : 'No client', task: t ? t.name : (e.task_id ? '(deleted task)' : (e.note || 'Meeting')), date: e.started_at ? e.started_at.slice(0, 10) : '', hours: Math.round((e.duration_minutes || 0) / 60 * 100) / 100 }
+      })
+    },
+  },
+  tasks: {
+    label: 'Tasks', usesRange: true,
+    fields: [
+      { key: 'person', label: 'Assignee', kind: 'dim' },
+      { key: 'status', label: 'Status', kind: 'dim' },
+      { key: 'overdue', label: 'Overdue', kind: 'dim' },
+      { key: 'created', label: 'Created', kind: 'dim' },
+    ],
+    load: async (range, ctx) => {
+      const [{ data: tasks }, { data: asg }] = await Promise.all([
+        supabase.from('tasks').select('id, status, due_date, created_at').is('deleted_at', null).gte('created_at', dayStart(range.from)).lte('created_at', dayEnd(range.to)),
+        supabase.from('task_assignees').select('task_id, profile_id'),
+      ])
+      const nameById = Object.fromEntries((ctx.profiles || []).map(p => [p.id, p.full_name]))
+      const taskById = Object.fromEntries((tasks || []).map(t => [t.id, t]))
+      const today = isoDay(new Date())
+      return (asg || []).filter(a => taskById[a.task_id]).map(a => {
+        const t = taskById[a.task_id]
+        return { _pid: a.profile_id, person: nameById[a.profile_id] || '—', status: t.status || '', overdue: (t.due_date && t.due_date < today && t.status !== 'done') ? 'Yes' : 'No', created: t.created_at ? t.created_at.slice(0, 10) : '' }
+      })
+    },
+  },
+  deals: {
+    label: 'Deals (sales + RSN)', usesRange: true,
+    fields: [
+      { key: 'pipeline', label: 'Pipeline', kind: 'dim' },
+      { key: 'status', label: 'Stage', kind: 'dim' },
+      { key: 'owner', label: 'Owner', kind: 'dim' },
+      { key: 'created', label: 'Created', kind: 'dim' },
+      { key: 'value', label: 'Value', kind: 'num' },
+    ],
+    load: async (range) => {
+      const { data } = await supabase.from('deals').select('pipeline, status, owner_id, owner_name, value, created_at').gte('created_at', dayStart(range.from)).lte('created_at', dayEnd(range.to))
+      return (data || []).map(dl => ({ _pid: dl.owner_id, pipeline: dl.pipeline || '', status: DEAL_STATUS_LABELS[dl.status] || dl.status || '', owner: dl.owner_name || '', created: dl.created_at ? dl.created_at.slice(0, 10) : '', value: Number(dl.value) || 0 }))
+    },
+  },
+  hiring: {
+    label: 'Hiring applications', usesRange: true,
+    fields: [
+      { key: 'status', label: 'Stage', kind: 'dim' },
+      { key: 'role', label: 'Role applied', kind: 'dim' },
+      { key: 'created', label: 'Applied', kind: 'dim' },
+    ],
+    load: async (range) => {
+      const { data } = await supabase.from('hiring_applications').select('status, role_applying, created_at').gte('created_at', dayStart(range.from)).lte('created_at', dayEnd(range.to))
+      return (data || []).map(a => ({ status: prettyStatus(a.status), role: a.role_applying || '', created: a.created_at ? a.created_at.slice(0, 10) : '' }))
+    },
+  },
+  tokens: {
+    label: 'Tokens', usesRange: true,
+    fields: [
+      { key: 'person', label: 'Person', kind: 'dim' },
+      { key: 'kind', label: 'Type', kind: 'dim' },
+      { key: 'date', label: 'Date', kind: 'dim' },
+      { key: 'amount', label: 'Amount (± )', kind: 'num' },
+    ],
+    load: async (range, ctx) => {
+      const { data } = await supabase.from('token_transactions').select('profile_id, delta, kind, created_at').gte('created_at', dayStart(range.from)).lte('created_at', dayEnd(range.to))
+      const nameById = Object.fromEntries((ctx.profiles || []).map(p => [p.id, p.full_name]))
+      return (data || []).map(t => ({ _pid: t.profile_id, person: nameById[t.profile_id] || '—', kind: t.kind || '', date: t.created_at ? t.created_at.slice(0, 10) : '', amount: Number(t.delta) || 0 }))
+    },
+  },
+}
+
+function CustomBuilder({ range, profiles, allowedIds, initial, onSaved }) {
+  const [source, setSource] = useState(initial?.source || 'time')
+  const [cols, setCols] = useState(() => new Set(initial?.columns || BUILDER_SOURCES[initial?.source || 'time'].fields.map(f => f.key)))
+  const [groupBy, setGroupBy] = useState(initial?.groupBy || '')
+  const [rows, setRows] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [ran, setRan] = useState(false)
+
+  const src = BUILDER_SOURCES[source]
+  const dims = src.fields.filter(f => f.kind === 'dim')
+  const nums = src.fields.filter(f => f.kind === 'num')
+
+  function pickSource(k) {
+    setSource(k); setCols(new Set(BUILDER_SOURCES[k].fields.map(f => f.key))); setGroupBy(''); setRows(null); setRan(false)
+  }
+  function toggleCol(k) { setCols(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n }) }
+
+  const run = useCallback(async () => {
+    setBusy(true); setErr(''); setRan(true)
+    try {
+      let data = await src.load(range, { profiles })
+      if (allowedIds) data = data.filter(r => r._pid == null ? true : allowedIds.has(r._pid))
+      setRows(data)
+    } catch (e) { setErr(e.message || String(e)) }
+    setBusy(false)
+  }, [src, range, profiles, allowedIds])
+
+  // Auto-run once when opened from a saved report.
+  useEffect(() => { if (initial) run() }, []) // eslint-disable-line
+
+  const selectedFields = src.fields.filter(f => cols.has(f.key))
+  const output = useMemo(() => {
+    if (!rows) return null
+    if (!groupBy) {
+      return { grouped: false, columns: selectedFields, data: rows }
+    }
+    const gLabel = (src.fields.find(f => f.key === groupBy) || {}).label || groupBy
+    const selNums = nums.filter(f => cols.has(f.key))
+    const m = new Map()
+    for (const r of rows) {
+      const key = r[groupBy] ?? '—'
+      if (!m.has(key)) { const o = { __g: key, __count: 0 }; selNums.forEach(f => o[f.key] = 0); m.set(key, o) }
+      const o = m.get(key); o.__count++
+      selNums.forEach(f => { o[f.key] += Number(r[f.key]) || 0 })
+    }
+    const data = Array.from(m.values()).sort((a, b) => b.__count - a.__count)
+    const totals = { __g: 'Total', __count: rows.length }
+    selNums.forEach(f => totals[f.key] = data.reduce((s, o) => s + o[f.key], 0))
+    return { grouped: true, gLabel, selNums, data, totals }
+  }, [rows, groupBy, selectedFields, nums, cols, src])
+
+  function exportCsv() {
+    if (!output) return
+    let out
+    if (!output.grouped) {
+      out = [output.columns.map(f => f.label)]
+      output.data.forEach(r => out.push(output.columns.map(f => r[f.key])))
+    } else {
+      out = [[output.gLabel, 'Count', ...output.selNums.map(f => f.label)]]
+      output.data.forEach(o => out.push([o.__g, o.__count, ...output.selNums.map(f => Math.round(o[f.key] * 100) / 100)]))
+      out.push([output.totals.__g, output.totals.__count, ...output.selNums.map(f => Math.round(output.totals[f.key] * 100) / 100)])
+    }
+    downloadCSV(`custom-${source}-${range.from}_to_${range.to}.csv`, out)
+  }
+
+  async function save() {
+    const name = window.prompt('Name this custom report:', `${src.label} — ${groupBy ? 'by ' + (dims.find(f => f.key === groupBy)?.label || groupBy) : 'detail'}`)
+    if (!name) return
+    const { data: { user } } = await supabase.auth.getUser()
+    const shared = window.confirm('Share with the whole team?\n\nOK = shared · Cancel = just me')
+    const { error } = await supabase.from('report_definitions').insert({
+      owner_id: user?.id, name, folder: shared ? 'Shared Reports' : 'My Reports',
+      report_key: 'builder', is_shared: shared,
+      config: { source, columns: Array.from(cols), groupBy, range },
+    })
+    if (error) { window.alert('Could not save: ' + error.message); return }
+    onSaved && onSaved()
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Step 1: source */}
+        <div>
+          <div style={stepLbl}>1 · Data source</div>
+          <select value={source} onChange={e => pickSource(e.target.value)} style={{ ...inp, maxWidth: 320 }}>
+            {Object.entries(BUILDER_SOURCES).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}
+          </select>
+          {!src.usesRange && <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--ink-soft)' }}>(snapshot — ignores the date range)</span>}
+        </div>
+        {/* Step 2: columns */}
+        <div>
+          <div style={stepLbl}>2 · Columns</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            {src.fields.map(f => (
+              <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13 }}>
+                <input type="checkbox" checked={cols.has(f.key)} onChange={() => toggleCol(f.key)} />
+                {f.label}<span style={{ fontSize: 10, color: 'var(--ink-soft)' }}>{f.kind === 'num' ? '#' : ''}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        {/* Step 3: grouping */}
+        <div>
+          <div style={stepLbl}>3 · Group by</div>
+          <select value={groupBy} onChange={e => setGroupBy(e.target.value)} style={{ ...inp, maxWidth: 320 }}>
+            <option value="">None — show detail rows</option>
+            {dims.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+          </select>
+          {groupBy && <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--ink-soft)' }}>numeric columns are summed; a Count column and Total row are added.</span>}
+        </div>
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={run} disabled={busy}>{busy ? 'Running…' : 'Run report'}</button>
+          <button className="btn btn-ghost" onClick={exportCsv} disabled={!output} style={{ opacity: output ? 1 : 0.5 }}>Export CSV</button>
+          <button className="btn btn-ghost" onClick={save} disabled={!ran}>☆ Save report</button>
+        </div>
+      </div>
+
+      {err && <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>}
+      {output && (
+        <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
+            {output.grouped ? (
+              <>
+                <thead><tr><Th>{output.gLabel}</Th><Th r>Count</Th>{output.selNums.map(f => <Th key={f.key} r>{f.label}</Th>)}</tr></thead>
+                <tbody>
+                  {output.data.length === 0 && <tr><td style={cellL} colSpan={2 + output.selNums.length}><span className="page-sub">No rows.</span></td></tr>}
+                  {output.data.map((o, i) => (
+                    <tr key={i}><td style={{ ...cellL, fontWeight: 600 }}>{String(o.__g)}</td><td style={cellR}>{o.__count}</td>{output.selNums.map(f => <td key={f.key} style={cellR}>{Math.round(o[f.key] * 100) / 100}</td>)}</tr>
+                  ))}
+                  {output.data.length > 0 && (
+                    <tr style={{ background: 'var(--canvas)' }}><td style={{ ...cellL, fontWeight: 700 }}>Total</td><td style={{ ...cellR, fontWeight: 700 }}>{output.totals.__count}</td>{output.selNums.map(f => <td key={f.key} style={{ ...cellR, fontWeight: 700 }}>{Math.round(output.totals[f.key] * 100) / 100}</td>)}</tr>
+                  )}
+                </tbody>
+              </>
+            ) : (
+              <>
+                <thead><tr>{output.columns.map(f => <Th key={f.key} r={f.kind === 'num'}>{f.label}</Th>)}</tr></thead>
+                <tbody>
+                  {output.columns.length === 0 && <tr><td style={cellL}><span className="page-sub">Pick at least one column.</span></td></tr>}
+                  {output.data.length === 0 && output.columns.length > 0 && <tr><td style={cellL} colSpan={output.columns.length}><span className="page-sub">No rows for these settings.</span></td></tr>}
+                  {output.data.slice(0, 500).map((r, i) => (
+                    <tr key={i}>{output.columns.map(f => <td key={f.key} style={f.kind === 'num' ? cellR : cellL}>{String(r[f.key] ?? '')}</td>)}</tr>
+                  ))}
+                </tbody>
+              </>
+            )}
+          </table>
+          {!output.grouped && output.data.length > 500 && <div style={{ padding: '8px 16px', fontSize: 12, color: 'var(--ink-soft)' }}>Showing first 500 of {output.data.length} rows — Export CSV for the full set.</div>}
+        </div>
+      )}
+      {!output && !err && <p className="page-sub">Choose a source and columns, then <b>Run report</b>.</p>}
+    </div>
+  )
+}
+const stepLbl = { fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }
