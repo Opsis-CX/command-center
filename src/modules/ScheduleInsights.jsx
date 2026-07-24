@@ -132,8 +132,10 @@ export default function ScheduleInsights() {
     <div>
       <div style={{ marginBottom: 18 }}>
         <h1 className="page-title">Schedule insights</h1>
-        <p className="page-sub">Coverage by client and hour, fill rate by tier, and the full activity log.{!viewAll ? ' Showing schedules assigned to you.' : ''}</p>
+        <p className="page-sub">Coverage by client and hour, fill rate by tier and role, and the full activity log.{!viewAll ? ' Showing schedules assigned to you.' : ''}</p>
       </div>
+
+      <ApptSetterPost />
 
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
 
@@ -148,6 +150,49 @@ export default function ScheduleInsights() {
       {tab === 'all' && <StaffingView dateFilter={null} label="All published intervals" {...{ publishedBlocks, clientNameForBlock, positionForBlock, claimsFor, profiles, tierOf, tierBreakdown, tiers }} />}
       {tab === 'unassigned' && <UnassignedView {...{ publishedBlocks, clientNameForBlock, positionForBlock, claimsFor, tierBreakdown, tiers }} />}
       {tab === 'activity' && <ActivityView activity={visibleActivity} profiles={profiles} />}
+    </div>
+  )
+}
+
+// ---------- APPT SETTER FILL-RATE: one-click post to #GarageCo Reporting ----------
+// Mirrors the hourly report: shows today's GarageCo Appointment Setter fill rate and
+// posts a formatted message to the Reporting channel. Only reporting staff see it
+// (the RPC is gated; a non-authorized preview simply hides this card).
+function ApptSetterPost() {
+  const [preview, setPreview] = useState(null)
+  const [hidden, setHidden] = useState(false)
+  const [posting, setPosting] = useState(false)
+  const [posted, setPosted] = useState(false)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true
+    supabase.rpc('appt_setter_fill_rate', { p_day: null, p_post: false })
+      .then(({ data, error }) => { if (!active) return; if (error) setHidden(true); else setPreview(data) })
+    return () => { active = false }
+  }, [])
+  async function post() {
+    setPosting(true); setErr(''); setPosted(false)
+    const { data, error } = await supabase.rpc('appt_setter_fill_rate', { p_day: null, p_post: true })
+    setPosting(false)
+    if (error) { setErr(error.message); return }
+    setPreview(data); setPosted(true); setTimeout(() => setPosted(false), 4000)
+  }
+  if (hidden) return null
+  const pctColor = preview ? (preview.pct >= 95 ? 'var(--passed)' : preview.pct >= 90 ? 'var(--needed)' : 'var(--failed)') : 'var(--ink)'
+  return (
+    <div className="card" style={{ marginBottom: 18, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+      <div style={{ flex: 1, minWidth: 240 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700 }}>GarageCo · Appointment Setter — today's fill rate</div>
+        {preview ? (
+          <div className="page-sub" style={{ fontSize: 12.5, marginTop: 3 }}>
+            <b style={{ color: pctColor }}>{preview.filled}/{preview.total} ({preview.pct}%)</b> · {preview.open} open · {preview.open_list}
+          </div>
+        ) : <div className="page-sub" style={{ fontSize: 12.5, marginTop: 3 }}>Loading…</div>}
+        {err && <div style={{ color: 'var(--failed)', fontSize: 12, marginTop: 4 }}>{err}</div>}
+      </div>
+      <button className="btn btn-primary" onClick={post} disabled={posting || !preview}>
+        {posted ? '✓ Posted to Reporting' : posting ? 'Posting…' : '📣 Post to #GarageCo Reporting'}
+      </button>
     </div>
   )
 }
