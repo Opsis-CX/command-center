@@ -42,6 +42,34 @@ const agentOf = (r) => r.call?.agent_name || r.extracted_agent_name || 'Unknown'
 const isScored = (r) => r.scoreable !== false && !r.excluded && r.score_pct != null
 const CLASS_LABEL = { wrong_number: 'Wrong number', ivr_only: 'IVR only', voicemail: 'Voicemail', no_agent: 'No agent', spam: 'Spam' }
 const ynLabel = (v) => (v === 'yes' ? 'Yes' : v === 'no' ? 'No' : v === 'na' ? 'N/A' : '—')
+
+// ---- Inferred deal size --------------------------------------------------
+// There's no dollar/value field on a call, so we infer "how big" from what the
+// caller wanted (the AI's controlled `topics` vocab). New-door installs and
+// commercial jobs are the big-ticket work → "Large"; most repairs → "Medium";
+// status/info calls → "Small". Used by the Large Missed Opps tab.
+const HIGH_VALUE_TOPICS = new Set(['New Door / Installation Quote', 'Commercial'])
+const MED_VALUE_TOPICS = new Set([
+  'Repair - Spring', 'Repair - Opener', 'Repair - Cable', 'Repair - Off Track',
+  'Repair - Panel/Section', 'Repair - Other', 'Emergency', 'Maintenance / Tune-up',
+  'Quote Request', 'Accessory / Keypad Purchase', 'Warranty',
+])
+const valueTier = (r) => {
+  const t = r.topics || []
+  if (t.some((x) => HIGH_VALUE_TOPICS.has(x))) return 3
+  if (t.some((x) => MED_VALUE_TOPICS.has(x))) return 2
+  return 1
+}
+const TIER_META = {
+  3: { label: 'Large', bg: '#fef3c7', fg: '#92400e' },
+  2: { label: 'Medium', bg: '#e0f2fe', fg: '#075985' },
+  1: { label: 'Small', bg: '#f1f5f9', fg: '#64748b' },
+}
+// A missed opportunity = a real sales/booking chance that didn't get booked.
+// Matches how the Opportunities tab counts "Missed" (anything not Booked).
+const isMissedOpp = (r) => Boolean(r.opportunity) && r.outcome && r.outcome !== 'Booked'
+// Best single "why this call was bad / what to fix" line for a row.
+const topIssue = (r) => (r.risk_flags || [])[0] || (r.improvements || [])[0] || r.not_booked_reason || (r.coaching_note ? r.coaching_note.slice(0, 90) : '') || '—'
 // Recompute a review's totals from (possibly manager-edited) answers.
 function recomputeReview(answers) {
   let earned = 0, max = 0; const sec = {}
@@ -260,7 +288,7 @@ export default function CallQA({ portal = false } = {}) {
   const base = import.meta.env.VITE_SUPABASE_URL || ''
   const inFlight = (pipeline.needs_transcription || 0) + (pipeline.transcribing || 0) + (pipeline.ready || 0) + (pipeline.scoring || 0)
   const todayStr = new Date().toISOString().slice(0, 10)
-  const TABS = [['overview', 'Overview'], ['opportunities', 'Opportunities'], ['conversion', 'Conversion'], ['calls', 'Calls'], ['coaching', 'Coaching'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings']] : [])]
+  const TABS = [['overview', 'Overview'], ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['calls', 'Calls'], ['fails', 'Epic Fails'], ['coaching', 'Coaching'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings']] : [])]
 
   return (
     <div style={{ padding: 20, maxWidth: 1180, margin: '0 auto' }}>
@@ -294,8 +322,10 @@ export default function CallQA({ portal = false } = {}) {
         <>
           {tab === 'overview' && <Overview agg={agg} trend={trend} />}
           {tab === 'opportunities' && <Opportunities rows={filtered} agg={agg} onOpen={setSelected} viewAll={viewAll} />}
+          {tab === 'missed' && <MissedOpps rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'conversion' && <Conversion rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'calls' && <Calls rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
+          {tab === 'fails' && <EpicFails rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'coaching' && <Coaching byAgent={byAgent} />}
           {tab === 'rubric' && canManage && <RubricTab campaigns={settings.map((s) => s.campaign)} />}
         {tab === 'settings' && canManage && <SettingsTab settings={settings} secretKeys={secretKeys} pipeline={pipeline} base={base} onSave={saveSetting} busy={busy} />}
@@ -410,6 +440,116 @@ function Opportunities({ rows, agg, onOpen, viewAll }) {
                 <td style={{ padding: '8px 12px' }}><Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill></td>
                 <td style={{ padding: '8px 12px', color: '#64748b' }}>{r.outcome === 'Not Booked' ? (r.not_booked_reason || '—') : ''}</td>
                 <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(r.score_pct)}</span></td>
+              </tr>
+            )
+          })}</tbody>
+        </table>
+      </Card>
+    </div>
+  )
+}
+
+// ---- Large Missed Opps: every missed opportunity, ranked by inferred deal size ----
+// "Large" is inferred from what the caller wanted (no dollar field exists):
+// new-door installs + commercial = Large, most repairs = Medium, info/status = Small.
+function MissedOpps({ rows, onOpen, viewAll }) {
+  const [highOnly, setHighOnly] = useState(false)
+  const allMissed = useMemo(
+    () => rows.filter(isMissedOpp).map((r) => ({ r, tier: valueTier(r) })),
+    [rows]
+  )
+  const large = allMissed.filter((x) => x.tier === 3).length
+  const medium = allMissed.filter((x) => x.tier === 2).length
+  const winnable = allMissed.filter((x) => x.r.winnable).length
+  const shown = useMemo(() => {
+    return allMissed
+      .filter((x) => (highOnly ? x.tier === 3 : true))
+      // Biggest first, then recoverable ones, then most recent.
+      .sort((a, b) => (b.tier - a.tier)
+        || (Number(Boolean(b.r.winnable)) - Number(Boolean(a.r.winnable)))
+        || String(b.r.call?.call_date || b.r.created_at).localeCompare(String(a.r.call?.call_date || a.r.created_at)))
+  }, [allMissed, highOnly])
+
+  if (!allMissed.length) return <Card style={{ color: '#64748b' }}>No missed opportunities in this range.</Card>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Large missed" value={large} color="#92400e" sub="new-door / commercial" />
+        <Tile label="Medium missed" value={medium} color="#075985" sub="repairs / service" />
+        <Tile label="Total missed" value={allMissed.length} color="#b71c1c" sub="opps not booked" />
+        <Tile label="Winnable" value={winnable} color={TEAL} sub="recoverable with better handling" />
+      </div>
+      <Card style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <div style={{ fontWeight: 700, color: '#92400e' }}>Biggest deals that got away</div>
+            <div style={{ fontSize: 12.5, color: '#9a3412', marginTop: 2 }}>Missed opportunities ranked by inferred deal size. Deal size is estimated from the call topic (there's no dollar value on the call) — new-door installs and commercial jobs rank highest.</div>
+          </div>
+          <label style={{ fontSize: 13, color: '#92400e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+            <input type="checkbox" checked={highOnly} onChange={(e) => setHighOnly(e.target.checked)} /> Large only
+          </label>
+        </div>
+      </Card>
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Size', 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Outcome', 'What would have won it', 'Score'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
+          <tbody>{shown.map(({ r, tier }) => {
+            const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other; const tm = TIER_META[tier]
+            return (
+              <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+                <td style={{ padding: '8px 12px' }}><Pill bg={tm.bg} fg={tm.fg}>{tm.label}</Pill></td>
+                <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
+                {viewAll && <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{agentOf(r)}</td>}
+                <td style={{ padding: '8px 12px' }}>{c.brand}</td>
+                <td style={{ padding: '8px 12px', maxWidth: 220, color: '#475569' }}>{r.opportunity_context || (r.topics || [])[0] || '—'}</td>
+                <td style={{ padding: '8px 12px' }}><Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill></td>
+                <td style={{ padding: '8px 12px', maxWidth: 300, color: TEAL }}>{r.revenue_tip || (r.not_booked_reason ? `Reason: ${r.not_booked_reason}` : '—')}</td>
+                <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(r.score_pct)}</span></td>
+              </tr>
+            )
+          })}</tbody>
+        </table>
+      </Card>
+    </div>
+  )
+}
+
+// ---- Epic Fails: every scored call ranked worst-first ----
+function EpicFails({ rows, onOpen, viewAll }) {
+  const scored = useMemo(
+    () => rows.filter(isScored).slice().sort((a, b) => (Number(a.score_pct) || 0) - (Number(b.score_pct) || 0)),
+    [rows]
+  )
+  const under50 = scored.filter((r) => Number(r.score_pct) < 50).length
+  const under60 = scored.filter((r) => Number(r.score_pct) < 60).length
+  const worst = scored.length ? Number(scored[0].score_pct) : null
+  if (!scored.length) return <Card style={{ color: '#64748b' }}>No scored calls in this range.</Card>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Lowest score" value={worst == null ? '—' : pct(worst)} color="#b71c1c" />
+        <Tile label="Under 50%" value={under50} color="#b71c1c" />
+        <Tile label="Under 60%" value={under60} color="#8d6e00" />
+        <Tile label="Scored calls" value={scored.length} sub="in this range" />
+      </div>
+      <Card style={{ background: '#fdecea', border: '1px solid #f5c6cb' }}>
+        <div style={{ fontWeight: 700, color: '#b71c1c' }}>Worst calls first</div>
+        <div style={{ fontSize: 12.5, color: '#7f1d1d', marginTop: 2 }}>Every scored call in range, ranked lowest QA score to highest. Start at the top for the calls that need attention most.</div>
+      </Card>
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['#', 'Score', 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'Biggest issue', 'Outcome'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
+          <tbody>{scored.map((r, i) => {
+            const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
+            return (
+              <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+                <td style={{ padding: '8px 12px', color: '#94a3b8', fontWeight: 600 }}>{i + 1}</td>
+                <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(r.score_pct)}{r.manager_adjusted ? ' *' : ''}</span></td>
+                <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
+                {viewAll && <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{agentOf(r)}</td>}
+                <td style={{ padding: '8px 12px' }}>{c.brand || '—'}</td>
+                <td style={{ padding: '8px 12px', maxWidth: 340, color: '#b71c1c' }}>{topIssue(r)}</td>
+                <td style={{ padding: '8px 12px' }}>{r.outcome ? <Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill> : '—'}</td>
               </tr>
             )
           })}</tbody>
