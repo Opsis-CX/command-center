@@ -57,12 +57,10 @@ function presetRange(preset) {
 // ---- Five9-style report catalog. Each leaf key maps to a `view`. Adding a
 // report = one entry here + one render branch/component. ----
 const CATALOG = [
-  { label: 'Time & Payroll', items: [
+  { label: 'Time & Schedule', items: [
     { key: 'person', name: 'Hours by Person (Payroll)', q: 'How many hours did each person work, by client?' },
     { key: 'client', name: 'Hours by Client (Invoicing)', q: 'How many hours did we deliver to each client?' },
-    { key: 'compare', name: 'Scheduled vs Worked', q: 'How do scheduled, clocked and tracked hours compare per person?' },
-  ] },
-  { label: 'Schedule', items: [
+    { key: 'compare', name: 'Scheduled vs Worked', q: 'Scheduled vs worked per person — Five9 time for agents, clock for everyone else.' },
     { key: 'schedule', name: 'Schedule Hours', q: 'What is hourly coverage, and who is on each hour?' },
     { key: 'sched_agent', name: 'Agent Schedule Summary', q: 'Per person: intervals, scheduled, checked-in, on-task, and Five9 time.' },
     { key: 'attendance', name: 'Attendance', q: 'Who showed up, was late, or no-showed against their schedule?' },
@@ -122,7 +120,6 @@ const REPORT_META = Object.fromEntries(CATALOG.flatMap(c => c.items.map(it => [i
 // Value is a permission prefix (canAny) or specific key (can); '__admin__' = admins only;
 // categories not listed are visible to anyone who can reach the Reporting page.
 const CAT_PERM = {
-  'Schedule': 'schedule',
   'Chat': 'service_performance_scorecard',
   'Project Management': 'project_management',
   'Quality': 'quality_audit',
@@ -166,6 +163,7 @@ export default function Reporting() {
   const [claims, setClaims] = useState([])
   const [sblocks, setSblocks] = useState([])
   const [qaAudits, setQaAudits] = useState([])
+  const [five9ByProfile, setFive9ByProfile] = useState({}) // profileId -> Five9 talk seconds in range (agents)
   // People & Tags report data — a current snapshot, independent of the date range.
   const [peopleFull, setPeopleFull] = useState([])
   const [tags, setTags] = useState([])
@@ -249,22 +247,28 @@ export default function Reporting() {
     // inclusive of the whole 'to' day
     const fromISO = new Date(range.from + 'T00:00:00').toISOString()
     const toISO = new Date(range.to + 'T23:59:59').toISOString()
-    const [teRes, profRes, taskRes, cliRes, clmRes, blkRes, qaRes] = await Promise.all([
+    const [teRes, profRes, taskRes, cliRes, clmRes, blkRes, qaRes, agRes, f9Res] = await Promise.all([
       supabase.from('time_entries').select('*')
         .not('duration_minutes', 'is', null)
         .gte('started_at', fromISO).lte('started_at', toISO),
-      supabase.from('profiles').select('id, full_name'),
+      supabase.from('profiles').select('id, full_name, role'),
       supabase.from('tasks').select('id, name, client_id'),
       supabase.from('clients').select('id, name'),
       supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at, checked_out_at'),
       supabase.from('shift_blocks').select('id, block_date, start_time, end_time'),
       supabase.from('qa_audits').select('*').gte('created_at', fromISO).lte('created_at', toISO),
+      supabase.from('sc_agents').select('agent_name, profile_id'),
+      supabase.from('f9_calls_today').select('agent_name, talk_sec, work_date').gte('work_date', range.from).lte('work_date', range.to),
     ])
     setEntries(teRes.data || [])
     setProfiles(profRes.data || [])
     setTasks(taskRes.data || [])
     setClients(cliRes.data || [])
     setQaAudits(qaRes.error ? [] : (qaRes.data || []))
+    // Agent Five9 talk-time for the range, mapped to profile via sc_agents.
+    const agByName = {}; for (const a of (agRes.data || [])) if (a.profile_id) agByName[a.agent_name] = a.profile_id
+    const five9 = {}; for (const c of (f9Res.error ? [] : (f9Res.data || []))) { const pid = agByName[c.agent_name]; if (pid) five9[pid] = (five9[pid] || 0) + (Number(c.talk_sec) || 0) }
+    setFive9ByProfile(five9)
     // keep only claims whose block falls in range
     const blocks = blkRes.data || []
     const inRange = (blocks).filter(b => b.block_date >= range.from && b.block_date <= range.to)
@@ -323,30 +327,36 @@ export default function Reporting() {
       const [eh, em] = b.end_time.slice(0, 5).split(':').map(Number)
       return Math.max(0, (eh * 60 + em) - (sh * 60 + sm))
     }
-    const per = {} // personId -> {sched, clock, task, pending}
-    const ensure = (pid) => (per[pid] = per[pid] || { sched: 0, clock: 0, task: 0, pending: 0 })
-    // scheduled + clock from claims
+    const per = {} // personId -> {sched, clock, task, over, autoOut}
+    const ensure = (pid) => (per[pid] = per[pid] || { sched: 0, clock: 0, task: 0, over: 0, autoOut: 0 })
+    // Scheduled end datetime for a block, used to auto-close missing checkouts.
+    const schedEnd = (b) => (b && b.block_date && b.end_time) ? new Date(`${b.block_date}T${b.end_time.slice(0, 5)}:00`) : null
     for (const c of claims) {
       if (allowedIds && !allowedIds.has(c.profile_id)) continue
       if (c.status === 'no_show') continue
       const b = blockById[c.shift_block_id]
-      ensure(c.profile_id).sched += schedMinsOf(b)
-      // Only 'completed' and 'approved' clock time counts for payroll.
-      // 'pending_review' (out-of-window or never-checked-out) is excluded until an admin approves it.
-      if (c.checked_in_at && c.checked_out_at) {
-        if (c.status === 'completed' || c.status === 'approved') {
-          ensure(c.profile_id).clock += mins(c.checked_in_at, c.checked_out_at)
-        } else if (c.status === 'pending_review') {
-          ensure(c.profile_id).pending += 1
-        }
-      } else if (c.checked_in_at && !c.checked_out_at) {
-        ensure(c.profile_id).pending += 1   // forgot to check out
+      const schedM = schedMinsOf(b)
+      ensure(c.profile_id).sched += schedM
+      if (c.checked_in_at) {
+        // If they never checked out, auto-check-out at the scheduled interval end.
+        let out = c.checked_out_at
+        if (!out) { const e = schedEnd(b); out = e ? e.toISOString() : c.checked_in_at; ensure(c.profile_id).autoOut += 1 }
+        const worked = mins(c.checked_in_at, out) || 0
+        ensure(c.profile_id).clock += worked
+        // Time worked beyond the scheduled interval needs admin approval.
+        if (schedM && worked > schedM) ensure(c.profile_id).over += (worked - schedM)
       }
     }
-    // task minutes from time_entries
+    // task minutes from time_entries (used for non-agents' "worked" fallback)
     for (const e of entries) { if (allowedIds && !allowedIds.has(e.user_id)) continue; ensure(e.user_id).task += (e.duration_minutes || 0) }
+    // Agents are judged on Five9 talk time, not task/clock time.
+    const roleById = Object.fromEntries(profiles.map(p => [p.id, p.role]))
+    for (const pid of Object.keys(per)) {
+      per[pid].isAgent = roleById[pid] === 'agent'
+      per[pid].five9 = Math.round(((five9ByProfile[pid] || 0) / 60))
+    }
     return per
-  }, [claims, sblocks, entries, allowedIds])
+  }, [claims, sblocks, entries, allowedIds, profiles, five9ByProfile])
 
   // task name lookup
   const taskName = useCallback((taskId) => {
@@ -426,13 +436,14 @@ export default function Reporting() {
   }
 
   function exportCompareCSV() {
-    const header = ['Person', 'Scheduled hrs', 'Clock hrs', 'Task hrs', 'Clock − Scheduled', 'Clock − Task']
+    const header = ['Person', 'Basis', 'Scheduled hrs', 'Worked hrs', 'Over-interval hrs (needs approval)', 'Worked − Scheduled', 'Auto-checked-out intervals']
     const rows = [header]
     compareRows.forEach(([pid, d]) => {
+      const worked = d.isAgent ? d.five9 : d.clock
       rows.push([
-        nameOf(pid, profiles),
-        hoursFromMinutes(d.sched), hoursFromMinutes(d.clock), hoursFromMinutes(d.task),
-        hoursFromMinutes(d.clock - d.sched), hoursFromMinutes(d.clock - d.task),
+        nameOf(pid, profiles), d.isAgent ? 'Five9' : 'Clock',
+        hoursFromMinutes(d.sched), hoursFromMinutes(worked), hoursFromMinutes(d.over),
+        hoursFromMinutes(worked - d.sched), d.autoOut || 0,
       ])
     })
     downloadCSV(`scheduled-vs-worked-${range.from}_to_${range.to}.csv`, rows)
@@ -858,36 +869,35 @@ export default function Reporting() {
                     <tr style={{ borderBottom: '1px solid var(--line)' }}>
                       <th style={{ ...cellL, fontWeight: 700 }}>Person</th>
                       <th style={{ ...cellR, fontWeight: 700 }}>Scheduled</th>
-                      <th style={{ ...cellR, fontWeight: 700 }}>Clock</th>
-                      <th style={{ ...cellR, fontWeight: 700 }}>Task</th>
-                      <th style={{ ...cellR, fontWeight: 700 }} title="Clock hours minus scheduled hours">vs Sched</th>
-                      <th style={{ ...cellR, fontWeight: 700 }} title="Clock hours minus task-tracked hours">vs Task</th>
+                      <th style={{ ...cellR, fontWeight: 700 }} title="Agents: Five9 talk time. Everyone else: clock (check-in → check-out).">Worked</th>
+                      <th style={{ ...cellR, fontWeight: 700 }} title="Time worked beyond the scheduled interval — needs admin approval">Over</th>
+                      <th style={{ ...cellR, fontWeight: 700 }} title="Worked minus scheduled">vs Sched</th>
                     </tr>
                   </thead>
                   <tbody>
                     {compareRows.map(([pid, d]) => {
-                      const vsSched = d.clock - d.sched
-                      const vsTask = d.clock - d.task
+                      const worked = d.isAgent ? d.five9 : d.clock
+                      const vsSched = worked - d.sched
                       const vColor = (v) => Math.abs(v) < 6 ? 'var(--ink-soft)' : v < 0 ? 'var(--failed)' : 'var(--needed)'
                       const fmt = (v) => (v > 0 ? '+' : '') + hoursFromMinutes(v)
                       return (
                         <tr key={pid} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                           <td style={{ ...cellL, fontWeight: 600 }}>
                             {nameOf(pid, profiles)}
-                            {d.pending > 0 && <span title="Intervals awaiting admin review — not counted in Clock hours" style={{ marginLeft: 8, background: 'var(--needed-bg)', color: 'var(--needed)', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>{d.pending} pending</span>}
+                            <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, letterSpacing: '.03em', color: d.isAgent ? 'var(--accent)' : 'var(--ink-soft)' }}>{d.isAgent ? 'FIVE9' : 'CLOCK'}</span>
+                            {d.autoOut > 0 && <span title="Intervals auto-checked-out at the scheduled end time (no manual check-out)" style={{ marginLeft: 8, background: 'var(--line-soft)', color: 'var(--ink-soft)', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>{d.autoOut} auto-out</span>}
                           </td>
                           <td style={cellR}>{hoursFromMinutes(d.sched)}</td>
-                          <td style={cellR}>{hoursFromMinutes(d.clock)}</td>
-                          <td style={cellR}>{hoursFromMinutes(d.task)}</td>
+                          <td style={cellR}>{hoursFromMinutes(worked)}</td>
+                          <td style={{ ...cellR, color: d.over ? 'var(--needed)' : 'var(--ink-soft)', fontWeight: 600 }}>{d.over ? hoursFromMinutes(d.over) : '—'}</td>
                           <td style={{ ...cellR, color: vColor(vsSched), fontWeight: 600 }}>{fmt(vsSched)}</td>
-                          <td style={{ ...cellR, color: vColor(vsTask), fontWeight: 600 }}>{fmt(vsTask)}</td>
                         </tr>
                       )
                     })}
                   </tbody>
                 </table>
                 <div style={{ padding: '10px 16px', fontSize: 11.5, color: 'var(--ink-soft)', borderTop: '1px solid var(--line)' }}>
-                  <b>Clock</b> = checked-in → checked-out. <b>Task</b> = time tracked to tasks. <b>vs Sched</b> flags attendance gaps; <b>vs Task</b> flags on-the-clock time not tracked to a task. Green = over, red = under.
+                  <b>Worked</b> = Five9 talk time for agents, clock (check-in → check-out) for everyone else. Missing check-outs auto-close at the scheduled interval end. <b>Over</b> = time beyond the scheduled interval — needs admin approval. Agent Five9 currently covers only the last ~3 days (full history comes with the BigQuery pull).
                 </div>
               </div>
             )
