@@ -559,7 +559,7 @@ function EpicFails({ rows, onOpen, viewAll }) {
             {viewAll && <col style={{ width: 120 }} />}
             <col style={{ width: 130 }} />
             <col />
-            <col style={{ width: 104 }} />
+            <col style={{ width: 132 }} />
           </colgroup>
           <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['#', 'Score', 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'Biggest issue', 'Outcome'].map((h) => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}</tr></thead>
           <tbody>{scored.map((r, i) => {
@@ -783,6 +783,25 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, canManage,
     return () => { active = false }
   }, [row.id])
   const [note, setNote] = useState(row.adjustment_note || '')
+  const [downloading, setDownloading] = useState(false)
+  // Build a clean, print-ready one-call report and open it for Save-as-PDF.
+  // Answers / transcript / notes may be lazy-loaded, so make sure we have them.
+  async function downloadPdf() {
+    setDownloading(true)
+    try {
+      let answers = ans
+      if (answers == null && row.id) { const { data } = await supabase.from('ai_qa_reviews').select('answers').eq('id', row.id).single(); answers = data?.answers || {} }
+      let tx = transcript
+      if (tx == null && c.id) { const { data } = await supabase.from('ai_qa_calls').select('transcript').eq('id', c.id).single(); tx = data?.transcript || '' }
+      let notes = []
+      if (c.id) { const { data } = await supabase.from('ai_qa_notes').select('*').eq('call_id', c.id).order('created_at', { ascending: true }); notes = data || [] }
+      const html = buildCallReportHtml(row, c, answers || {}, tx || '', notes)
+      const w = window.open('', '_blank')
+      if (!w) { alert('Please allow pop-ups for this site to download the PDF.'); setDownloading(false); return }
+      w.document.write(html); w.document.close(); w.focus()
+    } catch (e) { alert('Could not build the report: ' + (e.message || e)) }
+    setDownloading(false)
+  }
   const dirty = origAns != null && JSON.stringify(ans) !== JSON.stringify(origAns)
   const preview = recomputeReview(ans)
   const notScored = row.scoreable === false || row.excluded
@@ -805,7 +824,10 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, canManage,
             <div style={{ fontSize: notScored ? 15 : 26, fontWeight: 800, color: notScored ? '#64748b' : scoreColor(shownPct) }}>{headerText}</div>
             {dirty && !notScored && <div style={{ fontSize: 11, color: '#8d6e00' }}>adjusted preview</div>}
             {row.manager_adjusted && !dirty && <div style={{ fontSize: 11, color: '#8d6e00' }}>manager-adjusted</div>}
-            <button onClick={onClose} style={{ ...btn('ghost'), padding: '2px 8px', marginTop: 2 }}>Close ✕</button>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
+              <button onClick={downloadPdf} disabled={downloading} style={{ ...btn('ghost'), padding: '2px 8px', opacity: downloading ? 0.6 : 1 }}>{downloading ? 'Preparing…' : '⬇ PDF'}</button>
+              <button onClick={onClose} style={{ ...btn('ghost'), padding: '2px 8px' }}>Close ✕</button>
+            </div>
           </div>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1165,6 +1187,109 @@ function RecordingBtn({ callId }) {
   }
   if (url) return <audio controls autoPlay src={url} style={{ height: 34 }} />
   return <button onClick={loadRec} disabled={loading} style={{ ...btn('ghost'), padding: '4px 10px', fontSize: 13 }}>{loading ? 'Loading…' : (err ? '↻ Retry' : '▶ Recording')}</button>
+}
+// Build a self-contained, print-optimized HTML report for a single call and
+// auto-open the browser print dialog (Save as PDF). No external dependencies.
+function buildCallReportHtml(row, c, answers, transcript, notes) {
+  const esc = (v) => (v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'))
+  const items = Object.entries(answers || {}).sort((a, b) => {
+    const ia = RUBRIC_ORDER.indexOf(a[0]), ib = RUBRIC_ORDER.indexOf(b[0])
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
+  })
+  const notScored = row.scoreable === false || row.excluded
+  const scoreStr = row.excluded ? 'Excluded' : (row.scoreable === false ? (CLASS_LABEL[row.call_class] || 'Not scored') : (row.auto_fail ? 'FAIL' : pct(row.score_pct)))
+  const scoreCol = notScored ? '#64748b' : scoreColor(row.score_pct)
+  const chip = (label, val) => `<div class="fld"><div class="lbl">${esc(label)}</div><div class="val">${esc(val)}</div></div>`
+  const section = (title, inner, cls = '') => `<div class="card ${cls}"><div class="h">${esc(title)}</div>${inner}</div>`
+
+  const metaBits = [agentOf(row), c.brand, fmtDate(c.call_date), c.source, c.direction, fmtDur(c.duration_seconds),
+    c.customer_number ? '☎ ' + c.customer_number : '', c.customer_name].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ')
+
+  const context = section('Call context', `<div class="grid">
+    ${chip('Call type', CLASS_LABEL[row.call_class] || 'Conversation')}
+    ${chip('Opportunity', row.opportunity ? 'Yes' : 'No')}
+    ${chip('Outcome', row.outcome || '—')}
+    ${row.outcome === 'Not Booked' ? chip('Reason', row.not_booked_reason || '—') : ''}
+    ${row.opportunity_context ? chip('Caller wanted', row.opportunity_context) : ''}
+  </div>${(row.topics || []).length ? `<div class="tags">${row.topics.map((t) => `<span class="tag">🏷 ${esc(t)}</span>`).join('')}</div>` : ''}`)
+
+  const revenue = (row.opportunity || row.revenue_tip) ? section('Revenue & conversion', `<div class="grid">
+    ${chip('Asked for booking', row.asked_for_booking == null ? '—' : (row.asked_for_booking ? 'Yes' : 'No'))}
+    ${chip('Info before pricing', ynLabel(row.info_before_pricing))}
+    ${chip('Fee expectations set', ynLabel(row.set_fee_expectations))}
+    ${chip('Winnable', row.winnable == null ? '—' : (row.winnable ? 'Yes' : 'No'))}
+  </div>${(row.objections || []).length ? `<div class="tags">${row.objections.map((o) => `<span class="tag red">⛔ ${esc(o)}</span>`).join('')}</div>` : ''}${row.revenue_tip ? `<div class="lever"><b>Biggest revenue lever:</b> ${esc(row.revenue_tip)}</div>` : ''}`, 'amber') : ''
+
+  const risks = (row.risk_flags || []).length ? section('⚠ Risk flags', `<ul>${row.risk_flags.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>`, 'red') : ''
+  const summary = section('Summary', `<div class="body">${esc(row.summary) || '—'}</div>`)
+
+  const scoring = section('Detailed scoring', items.length ? items.map(([k, a]) => {
+    const isNa = a.na || a.answer === 'na'; const isYes = a.answer === 'yes'
+    const mark = isNa ? 'N/A' : (isYes ? '✓' : '✗'); const mc = isNa ? '#64748b' : (isYes ? '#1b5e20' : '#b71c1c')
+    return `<div class="item"><div class="itemhd"><span>${esc(a.label || k)}</span><span class="mark" style="color:${mc}">${mark} <span class="pts">(${isNa ? 0 : (a.max || 0)} pts)</span></span></div>
+      ${a.rationale ? `<div class="rat">${esc(a.rationale)}</div>` : ''}
+      ${(a.misses || []).length && !isNa && !isYes ? `<div class="miss">Missed: ${esc(a.misses.join(', '))}</div>` : ''}
+      ${a.evidence ? `<div class="ev">“${esc(a.evidence)}”</div>` : ''}</div>`
+  }).join('') : '<div class="body">No detailed scoring available.</div>')
+
+  const lists = `<div class="two">
+    <div class="card"><div class="h green">What went well</div>${(row.strengths || []).length ? `<ul>${row.strengths.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` : '<div class="body">—</div>'}</div>
+    <div class="card"><div class="h red-t">Coaching focus (revenue)</div>${(row.improvements || []).length ? `<ul>${row.improvements.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` : '<div class="body">—</div>'}</div>
+  </div>`
+  const coaching = section('Coaching note', `<div class="body">${esc(row.coaching_note) || '—'}</div>`, 'teal')
+  const tx = section('Transcript', `<pre>${esc(formatTranscript(transcript)) || 'No transcript.'}</pre>`)
+  const notesHtml = (notes && notes.length) ? section(`Notes (${notes.length})`, notes.map((n) => `<div class="note"><div class="notehd"><b>${esc(n.author_name || 'User')}</b><span>${n.created_at ? esc(new Date(n.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })) : ''}</span></div><div class="body">${esc(n.body)}</div></div>`).join('')) : ''
+
+  const genDate = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const title = `Call QA Report — ${agentOf(row)} · ${c.brand || ''} · ${fmtDate(c.call_date)}`
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; padding: 28px 32px; font-size: 13px; line-height: 1.5; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid ${TEAL}; padding-bottom: 12px; margin-bottom: 6px; }
+  .top h1 { font-size: 19px; margin: 0 0 4px; }
+  .brand { color: ${TEAL}; font-weight: 800; letter-spacing: .3px; }
+  .meta { color: #64748b; font-size: 12px; }
+  .score { text-align: right; }
+  .score .n { font-size: 30px; font-weight: 800; color: ${scoreCol}; line-height: 1; }
+  .score .c { font-size: 11px; color: #64748b; }
+  .card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-top: 12px; page-break-inside: avoid; }
+  .card.amber { background: #fffbeb; border-color: #fde68a; }
+  .card.red { background: #fdecea; border-color: #f5c6cb; }
+  .card.teal { background: #f0fdfa; border-color: #99f6e4; }
+  .h { font-weight: 700; margin-bottom: 8px; }
+  .h.green { color: #1b5e20; } .h.red-t { color: #b71c1c; }
+  .grid { display: flex; flex-wrap: wrap; gap: 14px 24px; }
+  .fld .lbl { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .4px; }
+  .fld .val { font-weight: 600; }
+  .tags { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { background: #e0f2fe; color: #075985; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+  .tag.red { background: #fee2e2; color: #991b1b; }
+  .lever { margin-top: 10px; color: #7c2d12; }
+  .body { color: #334155; }
+  ul { margin: 4px 0 0; padding-left: 18px; } li { margin-bottom: 3px; }
+  .two { display: flex; gap: 12px; } .two .card { flex: 1; margin-top: 12px; }
+  .item { padding: 8px 0; border-top: 1px solid #f1f5f9; }
+  .itemhd { display: flex; justify-content: space-between; gap: 10px; font-weight: 600; }
+  .mark { white-space: nowrap; font-weight: 700; } .pts { color: #94a3b8; font-weight: 400; }
+  .rat { color: #475569; margin-top: 2px; } .miss { color: #b71c1c; margin-top: 2px; } .ev { color: #64748b; font-style: italic; margin-top: 2px; }
+  pre { white-space: pre-wrap; font-family: inherit; font-size: 12.5px; color: #334155; margin: 0; }
+  .note { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+  .notehd { display: flex; justify-content: space-between; font-size: 11px; color: #64748b; }
+  .foot { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 11px; display: flex; justify-content: space-between; }
+  .noprint { text-align: center; margin-bottom: 14px; }
+  .noprint button { background: ${TEAL}; color: #fff; border: none; padding: 9px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  @media print { .noprint { display: none; } body { padding: 0; } }
+</style></head><body>
+  <div class="noprint"><button onclick="window.print()">⬇ Save as PDF / Print</button></div>
+  <div class="top">
+    <div><h1>Call QA <span class="brand">(AI)</span> Report</h1><div class="meta">${metaBits}</div></div>
+    <div class="score"><div class="n">${esc(scoreStr)}</div><div class="c">${notScored ? 'not counted toward score' : 'QA score'}${row.manager_adjusted ? ' · manager-adjusted' : ''}</div></div>
+  </div>
+  ${context}${revenue}${risks}${summary}${scoring}${lists}${coaching}${tx}${notesHtml}
+  <div class="foot"><span>Generated ${esc(genDate)}</span><span>Powered by Opsis CX</span></div>
+  <script>window.onload=function(){setTimeout(function(){window.print()},350)};window.onafterprint=function(){setTimeout(function(){window.close()},100)};</script>
+</body></html>`
 }
 const inp = (w) => ({ padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', width: w, fontSize: 13 })
 function btn(kind) {
