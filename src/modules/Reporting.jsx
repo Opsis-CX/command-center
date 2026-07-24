@@ -166,7 +166,7 @@ export default function Reporting() {
   const [claims, setClaims] = useState([])
   const [sblocks, setSblocks] = useState([])
   const [qaAudits, setQaAudits] = useState([])
-  const [five9ByProfile, setFive9ByProfile] = useState({}) // profileId -> Five9 talk seconds in range (agents)
+  const [five9ByProfile, setFive9ByProfile] = useState({}) // profileId -> occupancy minutes (login−NR) in range (agents)
   // People & Tags report data — a current snapshot, independent of the date range.
   const [peopleFull, setPeopleFull] = useState([])
   const [tags, setTags] = useState([])
@@ -262,16 +262,16 @@ export default function Reporting() {
       supabase.from('shift_blocks').select('id, block_date, start_time, end_time'),
       supabase.from('qa_audits').select('*').gte('created_at', fromISO).lte('created_at', toISO),
       supabase.from('sc_agents').select('agent_name, profile_id'),
-      supabase.from('f9_calls_today').select('agent_name, talk_sec, work_date').gte('work_date', range.from).lte('work_date', range.to),
+      supabase.from('sc_occupancy_day').select('agent_name, login_hours, nr_hours, work_date').gte('work_date', range.from).lte('work_date', range.to),
     ])
     setEntries(teRes.data || [])
     setProfiles(profRes.data || [])
     setTasks(taskRes.data || [])
     setClients(cliRes.data || [])
     setQaAudits(qaRes.error ? [] : (qaRes.data || []))
-    // Agent Five9 talk-time for the range, mapped to profile via sc_agents.
+    // Agent OCCUPANCY (login − not ready) for the range, in MINUTES, mapped to profile via sc_agents.
     const agByName = {}; for (const a of (agRes.data || [])) if (a.profile_id) agByName[a.agent_name] = a.profile_id
-    const five9 = {}; for (const c of (f9Res.error ? [] : (f9Res.data || []))) { const pid = agByName[c.agent_name]; if (pid) five9[pid] = (five9[pid] || 0) + (Number(c.talk_sec) || 0) }
+    const five9 = {}; for (const o of (f9Res.error ? [] : (f9Res.data || []))) { const pid = agByName[o.agent_name]; if (pid) five9[pid] = (five9[pid] || 0) + Math.max(0, (Number(o.login_hours) || 0) - (Number(o.nr_hours) || 0)) * 60 }
     setFive9ByProfile(five9)
     // keep only claims whose block falls in range
     const blocks = blkRes.data || []
@@ -357,7 +357,7 @@ export default function Reporting() {
     const roleById = Object.fromEntries(profiles.map(p => [p.id, p.role]))
     for (const pid of Object.keys(per)) {
       per[pid].isAgent = roleById[pid] === 'agent'
-      per[pid].five9 = Math.round(((five9ByProfile[pid] || 0) / 60))
+      per[pid].five9 = Math.round(five9ByProfile[pid] || 0) // occupancy minutes (login − not ready)
     }
     return per
   }, [claims, sblocks, entries, allowedIds, profiles, five9ByProfile])
@@ -905,7 +905,7 @@ export default function Reporting() {
                   </tbody>
                 </table>
                 <div style={{ padding: '10px 16px', fontSize: 11.5, color: 'var(--ink-soft)', borderTop: '1px solid var(--line)' }}>
-                  <b>Worked</b> = Five9 talk time for agents, clock (check-in → check-out) for everyone else. Missing check-outs auto-close at the scheduled interval end. <b>Over</b> = time beyond the scheduled interval — needs admin approval. Agent Five9 currently covers only the last ~3 days (full history comes with the BigQuery pull).
+                  <b>Worked</b> = Five9 occupancy (login − not-ready) for agents, clock (check-in → check-out) for everyone else. Missing check-outs auto-close at the scheduled interval end. <b>Over</b> = time beyond the scheduled interval — needs admin approval. Agent occupancy covers the last ~31 days.
                 </div>
               </div>
             )
@@ -2012,14 +2012,13 @@ function SchedAgentReport({ range, profiles, allowedIds }) {
         const { data: c } = await supabase.from('shift_claims').select('shift_block_id, profile_id, status, checked_in_at, checked_out_at').in('shift_block_id', ids.slice(i, i + 500))
         claims = claims.concat(c || [])
       }
-      const [{ data: te }, { data: agents }, { data: occ }, { data: f9 }] = await Promise.all([
+      const [{ data: te }, { data: agents }, { data: occDay }] = await Promise.all([
         supabase.from('time_entries').select('user_id, duration_minutes, started_at').not('duration_minutes', 'is', null).gte('started_at', dayStart(range.from)).lte('started_at', dayEnd(range.to)),
         supabase.from('sc_agents').select('agent_name, profile_id'),
-        supabase.from('sc_occupancy').select('agent_name, total_actual_hours_last_30_days'),
-        supabase.from('f9_calls_today').select('agent_name, work_date, hour_int, talk_sec').gte('work_date', range.from).lte('work_date', range.to),
+        supabase.from('sc_occupancy_day').select('agent_name, work_date, login_hours, nr_hours').gte('work_date', range.from).lte('work_date', range.to),
       ])
       if (!active) return
-      setD({ blocks: blocks || [], claims, te: te || [], agents: agents || [], occ: occ || [], f9: f9 || [] })
+      setD({ blocks: blocks || [], claims, te: te || [], agents: agents || [], occDay: occDay || [] })
     })()
     return () => { active = false }
   }, [range.from, range.to])
@@ -2030,11 +2029,9 @@ function SchedAgentReport({ range, profiles, allowedIds }) {
     if (!d) return []
     const blockById = Object.fromEntries(d.blocks.map(b => [b.id, b]))
     const agByName = {}; d.agents.forEach(a => { if (a.profile_id) agByName[a.agent_name] = a.profile_id })
-    const occByName = Object.fromEntries(d.occ.map(o => [o.agent_name, o.total_actual_hours_last_30_days]))
-    const five930 = {}; d.agents.forEach(a => { if (a.profile_id && occByName[a.agent_name] != null) five930[a.profile_id] = occByName[a.agent_name] })
-    // Five9 talk minutes keyed by pid|date and pid|date|hour.
-    const f9Day = {}, f9Hour = {}
-    for (const c of d.f9) { const pid = agByName[c.agent_name]; if (!pid) continue; const m = (Number(c.talk_sec) || 0) / 60; f9Day[pid + '|' + c.work_date] = (f9Day[pid + '|' + c.work_date] || 0) + m; f9Hour[pid + '|' + c.work_date + '|' + c.hour_int] = (f9Hour[pid + '|' + c.work_date + '|' + c.hour_int] || 0) + m }
+    // Agent OCCUPANCY (login − not ready), in hours, keyed by pid|date and summed per pid.
+    const occByDate = {}, occSum = {}
+    for (const o of (d.occDay || [])) { const pid = agByName[o.agent_name]; if (!pid) continue; const occ = Math.max(0, (Number(o.login_hours) || 0) - (Number(o.nr_hours) || 0)); occByDate[pid + '|' + o.work_date] = (occByDate[pid + '|' + o.work_date] || 0) + occ; occSum[pid] = (occSum[pid] || 0) + occ }
 
     const per = new Map()
     const keyFor = (pid, date, hour) => gran === 'summary' ? pid : gran === 'day' ? pid + '|' + date : pid + '|' + date + '|' + hour
@@ -2064,9 +2061,10 @@ function SchedAgentReport({ range, profiles, allowedIds }) {
       else ensure(en.user_id, gran === 'day' ? isoLocalDate(st) : null, null).taskMin += (en.duration_minutes || 0)
     }
     for (const v of per.values()) {
-      if (gran === 'summary') v.five9 = five930[v.pid]                                   // rolling 30d hours
-      else if (gran === 'day') v.five9 = f9Day[v.pid + '|' + v.date] != null ? Math.round(f9Day[v.pid + '|' + v.date] / 60 * 100) / 100 : null
-      else v.five9 = f9Hour[v.pid + '|' + v.date + '|' + v.hour] != null ? Math.round(f9Hour[v.pid + '|' + v.date + '|' + v.hour] / 60 * 100) / 100 : null
+      // Occupancy = login − not ready (Five9). It's a DAILY figure, so the hour view can't split it (—).
+      if (gran === 'summary') v.five9 = occSum[v.pid] != null ? Math.round(occSum[v.pid] * 100) / 100 : null
+      else if (gran === 'day') v.five9 = occByDate[v.pid + '|' + v.date] != null ? Math.round(occByDate[v.pid + '|' + v.date] * 100) / 100 : null
+      else v.five9 = null
     }
     return Array.from(per.values())
       .filter(r => !allowedIds || allowedIds.has(r.pid))
@@ -2074,18 +2072,20 @@ function SchedAgentReport({ range, profiles, allowedIds }) {
         : (nameOf(a.pid).localeCompare(nameOf(b.pid)) || String(a.date || '').localeCompare(String(b.date || '')) || (a.hour ?? 0) - (b.hour ?? 0)))
   }, [d, allowedIds, gran])
 
-  const showDate = gran !== 'summary', showHour = gran === 'hour'
+  // "Intervals" (a whole scheduled shift) only makes sense at summary/day level;
+  // at the hour level it's confusing, so we drop that column and show scheduled hrs.
+  const showDate = gran !== 'summary', showHour = gran === 'hour', showIntervals = gran !== 'hour'
   function exportCsv() {
-    const head = ['Person', 'Role', ...(showDate ? ['Date'] : []), ...(showHour ? ['Hour'] : []), 'Intervals', 'Scheduled hrs', 'Checked-in hrs', 'On-task hrs', gran === 'summary' ? 'Five9 hrs (30d)' : 'Five9 hrs']
+    const head = ['Person', 'Role', ...(showDate ? ['Date'] : []), ...(showHour ? ['Hour'] : []), ...(showIntervals ? ['Intervals'] : []), 'Scheduled hrs', 'Checked-in hrs', 'On-task hrs', 'Occupancy hrs']
     const out = [head]
-    rows.forEach(r => out.push([nameOf(r.pid), ROLE_LABELS[roleOf(r.pid)] || roleOf(r.pid), ...(showDate ? [r.date] : []), ...(showHour ? [hourLabel(r.hour)] : []), r.intervals, hoursFromMinutes(r.schedMin), hoursFromMinutes(r.clockMin), hoursFromMinutes(r.taskMin), r.five9 ?? '']))
+    rows.forEach(r => out.push([nameOf(r.pid), ROLE_LABELS[roleOf(r.pid)] || roleOf(r.pid), ...(showDate ? [r.date] : []), ...(showHour ? [hourLabel(r.hour)] : []), ...(showIntervals ? [r.intervals] : []), hoursFromMinutes(r.schedMin), hoursFromMinutes(r.clockMin), hoursFromMinutes(r.taskMin), r.five9 ?? '']))
     downloadCSV(`agent-schedule-${gran}-${range.from}_to_${range.to}.csv`, out)
   }
 
   if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
   if (d == null) return <p className="page-sub">Loading…</p>
   const people = new Set(rows.map(r => r.pid)).size
-  const colSpan = 5 + (showDate ? 1 : 0) + (showHour ? 1 : 0)
+  const colSpan = 6 + (showDate ? 1 : 0) + (showHour ? 1 : 0) + (showIntervals ? 1 : 0)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -2101,7 +2101,7 @@ function SchedAgentReport({ range, profiles, allowedIds }) {
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
       <div className="card" style={{ padding: 0, overflow: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
-          <thead><tr><Th>Person</Th><Th>Role</Th>{showDate && <Th>Date</Th>}{showHour && <Th>Hour</Th>}<Th r>Intervals</Th><Th r>Scheduled</Th><Th r>Checked-in</Th><Th r>On-task</Th><Th r>{gran === 'summary' ? 'Five9 30d' : 'Five9'}</Th></tr></thead>
+          <thead><tr><Th>Person</Th><Th>Role</Th>{showDate && <Th>Date</Th>}{showHour && <Th>Hour</Th>}{showIntervals && <Th r>Intervals</Th>}<Th r>Scheduled</Th><Th r>Checked-in</Th><Th r>On-task</Th><Th r title="Five9 occupancy = login − not ready">Occupancy</Th></tr></thead>
           <tbody>
             {rows.length === 0 && <tr><td style={cellL} colSpan={colSpan}><span className="page-sub">No scheduled intervals in this range.</span></td></tr>}
             {rows.map((r, i) => (
@@ -2110,7 +2110,7 @@ function SchedAgentReport({ range, profiles, allowedIds }) {
                 <td style={cellL}>{ROLE_LABELS[roleOf(r.pid)] || roleOf(r.pid)}</td>
                 {showDate && <td style={cellL}>{r.date}</td>}
                 {showHour && <td style={cellL}>{hourLabel(r.hour)}</td>}
-                <td style={cellR}>{r.intervals || '—'}</td>
+                {showIntervals && <td style={cellR}>{r.intervals || '—'}</td>}
                 <td style={cellR}>{hoursFromMinutes(r.schedMin)}</td>
                 <td style={cellR}>{hoursFromMinutes(r.clockMin)}</td>
                 <td style={cellR}>{hoursFromMinutes(r.taskMin)}</td>
@@ -2121,8 +2121,8 @@ function SchedAgentReport({ range, profiles, allowedIds }) {
         </table>
       </div>
       <p className="page-sub" style={{ fontSize: 12 }}>
-        <b>Summary</b> totals the whole range per person; <b>By day</b> / <b>By hour</b> break it out. Scheduled &amp; checked-in time is split across hours; on-task is bucketed by start time.
-        {gran === 'summary' ? ' Five9 30d = rolling staffed hours (agents).' : ' Five9 = talk hours from the live feed (recent ~3 days; full history needs the BigQuery pull).'}
+        <b>Interval</b> = one scheduled shift; <b>Scheduled</b> = the hours in that shift. In <b>By hour</b>, scheduled &amp; checked-in time is split across the hours a shift spans (so a row can show scheduled hours with no shift <i>starting</i> that hour). A row with 0 scheduled but check-in or Five9 time means the person was active <i>outside</i> their scheduled interval (e.g. checked in early). On-task is bucketed by start time.
+        {' '}<b>Occupancy</b> = Five9 login hours − not-ready hours (agents), covering the last ~31 days. It's a daily figure, so the <b>By hour</b> view can't split it (shows —); use <b>By day</b> or <b>Summary</b> for occupancy.
       </p>
     </div>
   )
