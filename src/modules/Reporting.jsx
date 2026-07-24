@@ -176,7 +176,7 @@ export default function Reporting() {
   const [pickerOpen, setPickerOpen] = useState(true)  // catalog / saved-report picker visible
   const [expanded, setExpanded] = useState({})        // category label -> open?
   const [search, setSearch] = useState('')            // report-tree search
-  const [filters, setFilters] = useState({ personId: 'all', tagId: 'all' })
+  const [filters, setFilters] = useState({ personId: 'all', tagId: 'all', role: 'all' })
   const [savedReports, setSavedReports] = useState([])
   const [savingReport, setSavingReport] = useState(false)
   const [builderInitial, setBuilderInitial] = useState(null) // config when opening a saved custom-built report
@@ -207,15 +207,27 @@ export default function Reporting() {
 
   // Resolve the person/tag filter to a set of allowed profile ids (null = everyone).
   const allowedIds = useMemo(() => {
-    if (filters.personId !== 'all') return new Set([filters.personId])
-    if (filters.tagId !== 'all') return new Set(taggables.filter(t => t.tag_id === filters.tagId).map(t => t.entity_id))
-    return null
-  }, [filters, taggables])
+    let ids = null
+    if (filters.personId !== 'all') ids = new Set([filters.personId])
+    else if (filters.tagId !== 'all') ids = new Set(taggables.filter(t => t.tag_id === filters.tagId).map(t => t.entity_id))
+    if (filters.role && filters.role !== 'all') {
+      const roleIds = new Set(peopleFull.filter(p => p.role === filters.role).map(p => p.id))
+      ids = ids ? new Set([...ids].filter(x => roleIds.has(x))) : roleIds
+    }
+    return ids
+  }, [filters, taggables, peopleFull])
   // Same filter as display names, for reports keyed on agent_name (QA audits).
   const allowedNames = useMemo(() => allowedIds ? new Set(peopleFull.filter(p => allowedIds.has(p.id)).map(p => p.full_name)) : null, [allowedIds, peopleFull])
+  // Distinct roles present on the roster, ordered by the canonical ROLES list.
+  const roleOptions = useMemo(() => {
+    const present = new Set(peopleFull.map(p => p.role).filter(Boolean))
+    const ordered = ROLES.map(r => r.key).filter(k => present.has(k))
+    const extras = [...present].filter(k => !ROLES.some(r => r.key === k)).sort()
+    return [...ordered, ...extras]
+  }, [peopleFull])
 
   function selectReport(key) { setView(key) }
-  function backToCatalog() { setView(null); setFilters({ personId: 'all', tagId: 'all' }) }
+  function backToCatalog() { setView(null); setFilters({ personId: 'all', tagId: 'all', role: 'all' }) }
 
   async function saveAsCustom() {
     const name = window.prompt('Name this report:', `${REPORT_META[view]?.name || view} — ${range.from} to ${range.to}`)
@@ -656,6 +668,13 @@ export default function Reporting() {
               <select value={filters.tagId} onChange={e => setFilters(f => ({ ...f, tagId: e.target.value }))} style={inp}>
                 <option value="all">All tags</option>
                 {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={lbl}>Role</label>
+              <select value={filters.role} onChange={e => setFilters(f => ({ ...f, role: e.target.value }))} style={inp}>
+                <option value="all">All roles</option>
+                {roleOptions.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
               </select>
             </div>
           </>
