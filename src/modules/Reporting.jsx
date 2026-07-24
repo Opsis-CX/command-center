@@ -1981,9 +1981,26 @@ function schedMins(b) {
   const [eh, em] = (b.end_time || '00:00').slice(0, 5).split(':').map(Number)
   return Math.max(0, (eh * 60 + em) - (sh * 60 + sm))
 }
+const isoLocalDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+// Split a [start,end] time span into per-hour buckets: [{date,hour,mins}].
+function hourSplit(start, end) {
+  const out = []
+  let cur = start instanceof Date ? new Date(start) : new Date(start)
+  const e = end instanceof Date ? end : new Date(end)
+  let guard = 0
+  while (cur < e && guard++ < 100000) {
+    const nb = new Date(cur); nb.setMinutes(0, 0, 0); nb.setHours(cur.getHours() + 1)
+    const segEnd = nb < e ? nb : e
+    const mins = Math.max(0, Math.round((segEnd - cur) / 60000))
+    if (mins > 0) out.push({ date: isoLocalDate(cur), hour: cur.getHours(), mins })
+    cur = segEnd
+  }
+  return out
+}
 function SchedAgentReport({ range, profiles, allowedIds }) {
   const [d, setD] = useState(null)
   const [err, setErr] = useState('')
+  const [gran, setGran] = useState('summary') // 'summary' | 'day' | 'hour'
   useEffect(() => {
     let active = true; setD(null); setErr('')
     ;(async () => {
@@ -1995,13 +2012,14 @@ function SchedAgentReport({ range, profiles, allowedIds }) {
         const { data: c } = await supabase.from('shift_claims').select('shift_block_id, profile_id, status, checked_in_at, checked_out_at').in('shift_block_id', ids.slice(i, i + 500))
         claims = claims.concat(c || [])
       }
-      const [{ data: te }, { data: agents }, { data: occ }] = await Promise.all([
+      const [{ data: te }, { data: agents }, { data: occ }, { data: f9 }] = await Promise.all([
         supabase.from('time_entries').select('user_id, duration_minutes, started_at').not('duration_minutes', 'is', null).gte('started_at', dayStart(range.from)).lte('started_at', dayEnd(range.to)),
         supabase.from('sc_agents').select('agent_name, profile_id'),
         supabase.from('sc_occupancy').select('agent_name, total_actual_hours_last_30_days'),
+        supabase.from('f9_calls_today').select('agent_name, work_date, hour_int, talk_sec').gte('work_date', range.from).lte('work_date', range.to),
       ])
       if (!active) return
-      setD({ blocks: blocks || [], claims, te: te || [], agents: agents || [], occ: occ || [] })
+      setD({ blocks: blocks || [], claims, te: te || [], agents: agents || [], occ: occ || [], f9: f9 || [] })
     })()
     return () => { active = false }
   }, [range.from, range.to])
@@ -2011,53 +2029,88 @@ function SchedAgentReport({ range, profiles, allowedIds }) {
   const rows = useMemo(() => {
     if (!d) return []
     const blockById = Object.fromEntries(d.blocks.map(b => [b.id, b]))
-    const five9ByProfile = {}
+    const agByName = {}; d.agents.forEach(a => { if (a.profile_id) agByName[a.agent_name] = a.profile_id })
     const occByName = Object.fromEntries(d.occ.map(o => [o.agent_name, o.total_actual_hours_last_30_days]))
-    for (const a of d.agents) if (a.profile_id && occByName[a.agent_name] != null) five9ByProfile[a.profile_id] = occByName[a.agent_name]
-    const per = {}
-    const ensure = (pid) => (per[pid] = per[pid] || { intervals: 0, schedMin: 0, clockMin: 0, taskMin: 0 })
+    const five930 = {}; d.agents.forEach(a => { if (a.profile_id && occByName[a.agent_name] != null) five930[a.profile_id] = occByName[a.agent_name] })
+    // Five9 talk minutes keyed by pid|date and pid|date|hour.
+    const f9Day = {}, f9Hour = {}
+    for (const c of d.f9) { const pid = agByName[c.agent_name]; if (!pid) continue; const m = (Number(c.talk_sec) || 0) / 60; f9Day[pid + '|' + c.work_date] = (f9Day[pid + '|' + c.work_date] || 0) + m; f9Hour[pid + '|' + c.work_date + '|' + c.hour_int] = (f9Hour[pid + '|' + c.work_date + '|' + c.hour_int] || 0) + m }
+
+    const per = new Map()
+    const keyFor = (pid, date, hour) => gran === 'summary' ? pid : gran === 'day' ? pid + '|' + date : pid + '|' + date + '|' + hour
+    const ensure = (pid, date, hour) => { const k = keyFor(pid, date, hour); if (!per.has(k)) per.set(k, { pid, date, hour, intervals: 0, schedMin: 0, clockMin: 0, taskMin: 0 }); return per.get(k) }
+
     for (const c of d.claims) {
       if (c.status === 'no_show') continue
-      const p = ensure(c.profile_id)
-      p.intervals++
-      p.schedMin += schedMins(blockById[c.shift_block_id])
+      const b = blockById[c.shift_block_id]; if (!b) continue
+      if (gran === 'hour') {
+        const bStart = new Date(`${b.block_date}T${(b.start_time || '00:00').slice(0, 5)}:00`)
+        const bEnd = new Date(`${b.block_date}T${(b.end_time || '00:00').slice(0, 5)}:00`)
+        hourSplit(bStart, bEnd).forEach(seg => { ensure(c.profile_id, seg.date, seg.hour).schedMin += seg.mins })
+        ensure(c.profile_id, b.block_date, bStart.getHours()).intervals++
+      } else {
+        const e = ensure(c.profile_id, gran === 'day' ? b.block_date : null, null)
+        e.schedMin += schedMins(b); e.intervals++
+      }
       if (c.checked_in_at && c.checked_out_at && (c.status === 'completed' || c.status === 'approved')) {
-        p.clockMin += Math.max(0, Math.round((new Date(c.checked_out_at) - new Date(c.checked_in_at)) / 60000))
+        const ci = new Date(c.checked_in_at), co = new Date(c.checked_out_at)
+        if (gran === 'hour') hourSplit(ci, co).forEach(seg => { ensure(c.profile_id, seg.date, seg.hour).clockMin += seg.mins })
+        else ensure(c.profile_id, gran === 'day' ? isoLocalDate(ci) : null, null).clockMin += Math.max(0, Math.round((co - ci) / 60000))
       }
     }
-    for (const e of d.te) ensure(e.user_id).taskMin += (e.duration_minutes || 0)
-    return Object.entries(per)
-      .filter(([pid]) => !allowedIds || allowedIds.has(pid))
-      .map(([pid, v]) => ({ pid, ...v, five9: five9ByProfile[pid] }))
-      .sort((a, b) => b.schedMin - a.schedMin)
-  }, [d, allowedIds])
+    for (const en of d.te) {
+      const st = new Date(en.started_at)
+      if (gran === 'hour') ensure(en.user_id, isoLocalDate(st), st.getHours()).taskMin += (en.duration_minutes || 0)
+      else ensure(en.user_id, gran === 'day' ? isoLocalDate(st) : null, null).taskMin += (en.duration_minutes || 0)
+    }
+    for (const v of per.values()) {
+      if (gran === 'summary') v.five9 = five930[v.pid]                                   // rolling 30d hours
+      else if (gran === 'day') v.five9 = f9Day[v.pid + '|' + v.date] != null ? Math.round(f9Day[v.pid + '|' + v.date] / 60 * 100) / 100 : null
+      else v.five9 = f9Hour[v.pid + '|' + v.date + '|' + v.hour] != null ? Math.round(f9Hour[v.pid + '|' + v.date + '|' + v.hour] / 60 * 100) / 100 : null
+    }
+    return Array.from(per.values())
+      .filter(r => !allowedIds || allowedIds.has(r.pid))
+      .sort((a, b) => gran === 'summary' ? b.schedMin - a.schedMin
+        : (nameOf(a.pid).localeCompare(nameOf(b.pid)) || String(a.date || '').localeCompare(String(b.date || '')) || (a.hour ?? 0) - (b.hour ?? 0)))
+  }, [d, allowedIds, gran])
 
+  const showDate = gran !== 'summary', showHour = gran === 'hour'
   function exportCsv() {
-    const out = [['Person', 'Role', 'Intervals', 'Scheduled hrs', 'Checked-in hrs', 'On-task hrs', 'Five9 hrs (30d)']]
-    rows.forEach(r => out.push([nameOf(r.pid), roleOf(r.pid), r.intervals, hoursFromMinutes(r.schedMin), hoursFromMinutes(r.clockMin), hoursFromMinutes(r.taskMin), r.five9 ?? '']))
-    downloadCSV(`agent-schedule-${range.from}_to_${range.to}.csv`, out)
+    const head = ['Person', 'Role', ...(showDate ? ['Date'] : []), ...(showHour ? ['Hour'] : []), 'Intervals', 'Scheduled hrs', 'Checked-in hrs', 'On-task hrs', gran === 'summary' ? 'Five9 hrs (30d)' : 'Five9 hrs']
+    const out = [head]
+    rows.forEach(r => out.push([nameOf(r.pid), ROLE_LABELS[roleOf(r.pid)] || roleOf(r.pid), ...(showDate ? [r.date] : []), ...(showHour ? [hourLabel(r.hour)] : []), r.intervals, hoursFromMinutes(r.schedMin), hoursFromMinutes(r.clockMin), hoursFromMinutes(r.taskMin), r.five9 ?? '']))
+    downloadCSV(`agent-schedule-${gran}-${range.from}_to_${range.to}.csv`, out)
   }
 
   if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
   if (d == null) return <p className="page-sub">Loading…</p>
+  const people = new Set(rows.map(r => r.pid)).size
+  const colSpan = 5 + (showDate ? 1 : 0) + (showHour ? 1 : 0)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Tile label="People scheduled" value={rows.length} />
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
+          {[['summary', 'Summary'], ['day', 'By day'], ['hour', 'By hour']].map(([g, l]) => (
+            <button key={g} onClick={() => setGran(g)} style={{ padding: '7px 14px', border: 0, background: gran === g ? 'var(--accent)' : 'var(--surface)', color: gran === g ? '#fff' : 'var(--ink-soft)', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }}>{l}</button>
+          ))}
+        </div>
+        <Tile label="People scheduled" value={people} />
         <Tile label="Intervals" value={rows.reduce((s, r) => s + r.intervals, 0)} />
         <Tile label="Scheduled hrs" value={hoursFromMinutes(rows.reduce((s, r) => s + r.schedMin, 0))} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
       <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
-          <thead><tr><Th>Person</Th><Th>Role</Th><Th r>Intervals</Th><Th r>Scheduled</Th><Th r>Checked-in</Th><Th r>On-task</Th><Th r>Five9 30d</Th></tr></thead>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+          <thead><tr><Th>Person</Th><Th>Role</Th>{showDate && <Th>Date</Th>}{showHour && <Th>Hour</Th>}<Th r>Intervals</Th><Th r>Scheduled</Th><Th r>Checked-in</Th><Th r>On-task</Th><Th r>{gran === 'summary' ? 'Five9 30d' : 'Five9'}</Th></tr></thead>
           <tbody>
-            {rows.length === 0 && <tr><td style={cellL} colSpan={7}><span className="page-sub">No scheduled intervals in this range.</span></td></tr>}
-            {rows.map(r => (
-              <tr key={r.pid}>
+            {rows.length === 0 && <tr><td style={cellL} colSpan={colSpan}><span className="page-sub">No scheduled intervals in this range.</span></td></tr>}
+            {rows.map((r, i) => (
+              <tr key={i}>
                 <td style={{ ...cellL, fontWeight: 600 }}>{nameOf(r.pid)}</td>
                 <td style={cellL}>{ROLE_LABELS[roleOf(r.pid)] || roleOf(r.pid)}</td>
-                <td style={cellR}>{r.intervals}</td>
+                {showDate && <td style={cellL}>{r.date}</td>}
+                {showHour && <td style={cellL}>{hourLabel(r.hour)}</td>}
+                <td style={cellR}>{r.intervals || '—'}</td>
                 <td style={cellR}>{hoursFromMinutes(r.schedMin)}</td>
                 <td style={cellR}>{hoursFromMinutes(r.clockMin)}</td>
                 <td style={cellR}>{hoursFromMinutes(r.taskMin)}</td>
@@ -2067,7 +2120,10 @@ function SchedAgentReport({ range, profiles, allowedIds }) {
           </tbody>
         </table>
       </div>
-      <p className="page-sub" style={{ fontSize: 12 }}>Intervals/Scheduled/Checked-in/On-task use the date range. <b>On-task</b> = time tracked to tasks (support). <b>Five9 30d</b> = rolling actual staffed hours (agents) — a 30-day snapshot, not range-bound. Arbitrary-range Five9 time is a later BigQuery add.</p>
+      <p className="page-sub" style={{ fontSize: 12 }}>
+        <b>Summary</b> totals the whole range per person; <b>By day</b> / <b>By hour</b> break it out. Scheduled &amp; checked-in time is split across hours; on-task is bucketed by start time.
+        {gran === 'summary' ? ' Five9 30d = rolling staffed hours (agents).' : ' Five9 = talk hours from the live feed (recent ~3 days; full history needs the BigQuery pull).'}
+      </p>
     </div>
   )
 }
