@@ -856,7 +856,8 @@ export default function Reporting() {
           </p>
         </>
       ) : null}
-      {loading || view === 'quality' || view === 'people' || view === 'rawdata' ? null : (
+      {/* Hours body: ONLY the three time-tracking reports render this (Payroll / Invoicing / Scheduled vs Worked). */}
+      {(!['person', 'client', 'compare'].includes(view) || loading) ? null : (
         <>
           <div className="card" style={{ padding: '12px 16px', marginBottom: 16, display: 'inline-block' }}>
             <span style={{ fontSize: 12, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Total tracked</span>
