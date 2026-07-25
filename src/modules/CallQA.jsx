@@ -1292,6 +1292,12 @@ function ExportBar({ name, title, subtitle, build }) {
   )
 }
 
+// AI CSRs (virtual agents) — audited for quality like anyone else, but never
+// coached (there's no 1:1 with an AI) and kept out of the human baseline so they
+// don't inflate it. Extend this list as more AI agents come online.
+const AI_CSRS = new Set(['Dane', 'Sophia', 'Jason'])
+const isAiCsr = (name) => AI_CSRS.has((name || '').trim())
+
 function Scorecards({ rows, viewAll, onOpen }) {
   const [tier, setTier] = useState('exec')
   const [mgrBrand, setMgrBrand] = useState('')
@@ -1335,12 +1341,13 @@ function Scorecards({ rows, viewAll, onOpen }) {
     const agents = Array.from(am.values()).filter((o) => o.scores.length >= 1 && o.name && o.name !== 'Unknown').map((o) => ({
       ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
       calls: o.scores.length, conv: P(o.booked, o.opps), askRate: P(o.asked, o.opps),
-      topFocus: top(o.focus), topWin: top(o.win),
+      topFocus: top(o.focus), topWin: top(o.win), ai: isAiCsr(o.name),
     })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
 
+    // Coaching gaps are a human-only view (we don't coach AI CSRs).
     const gaps = (brand) => {
       const m = {}
-      agents.filter((a) => !brand || a.brand === brand).forEach((a) => { (a.topFocus.slice(0, 2)).forEach((t) => m[t] = (m[t] || 0) + 1) })
+      agents.filter((a) => (!brand || a.brand === brand) && !a.ai).forEach((a) => { (a.topFocus.slice(0, 2)).forEach((t) => m[t] = (m[t] || 0) + 1) })
       return Object.entries(m).sort((a, b) => b[1] - a[1])
     }
     return { overall, brands, agents, gaps }
@@ -1393,6 +1400,21 @@ function ScExec({ data, onBrand }) {
         <Tile label="Winnable lost" value={o.winnable} color="#b71c1c" />
         <Tile label="Large missed opps" value={o.large} color="#92400e" sub="install / commercial" />
       </div>
+      {(() => {
+        const humans = data.agents.filter((a) => !a.ai); const ais = data.agents.filter((a) => a.ai)
+        const wavg = (arr) => { const c = arr.reduce((s, a) => s + a.calls, 0); return c ? arr.reduce((s, a) => s + (a.avg || 0) * a.calls, 0) / c : null }
+        const hc = humans.reduce((s, a) => s + a.calls, 0); const ac = ais.reduce((s, a) => s + a.calls, 0)
+        if (!ais.length) return null
+        return (
+          <Card style={{ background: '#f8fafc' }}>
+            <div style={{ fontWeight: 700, marginBottom: 10 }}>Human vs AI performance <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12.5 }}>— AI CSRs are audited for quality, not coached</span></div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <Tile label="Human CSRs — avg QA" value={pct(wavg(humans))} color={scoreColor(wavg(humans))} sub={humans.length + ' CSRs · ' + hc.toLocaleString() + ' scored calls'} />
+              <Tile label="AI CSRs — avg QA" value={pct(wavg(ais))} color={scoreColor(wavg(ais))} sub={ais.length + ' AI agents · ' + ac.toLocaleString() + ' scored calls · audit only'} />
+            </div>
+          </Card>
+        )
+      })()}
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ fontWeight: 700, padding: 14 }}>Brand ranking</div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -1425,7 +1447,8 @@ function ScExec({ data, onBrand }) {
 
 function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
   const b = data.brands.find((x) => x.brand === brand) || data.brands[0]
-  const roster = data.agents.filter((a) => a.brand === (b?.brand))
+  const roster = data.agents.filter((a) => a.brand === (b?.brand) && !a.ai)   // coachable humans
+  const aiRoster = data.agents.filter((a) => a.brand === (b?.brand) && a.ai)  // audit-only AI
   const gaps = data.gaps(b?.brand).slice(0, 6); const gmax = Math.max(1, ...gaps.map((g) => g[1]))
   const build = () => ([
     { title: (b.brand + ' — team summary'), sheet: 'Summary', cols: ['Metric', 'Value'], rows: [
@@ -1465,8 +1488,25 @@ function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
           ))}</tbody>
         </table>
       </Card>
+      {aiRoster.length > 0 && (
+        <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ fontWeight: 700, padding: 14 }}>AI CSRs <span style={{ color: '#94a3b8', fontWeight: 400 }}>— audited for quality, not coached</span></div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
+            <tbody>{aiRoster.map((a) => (
+              <tr key={a.name} onClick={() => onAgent(a.name, a.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+                <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{a.name} <Pill bg="#ede9fe" fg="#6d28d9">AI</Pill> <span style={{ color: '#cbd5e1' }}>›</span></td>
+                <td style={{ padding: '8px 12px' }}>{a.calls}</td>
+                <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(a.avg), color: scoreColor(a.avg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(a.avg)}</span></td>
+                <td style={{ padding: '8px 12px', fontWeight: 700, color: a.conv >= 50 ? '#1b5e20' : a.conv >= 35 ? '#8d6e00' : '#b71c1c' }}>{pct(a.conv)}</td>
+                <td style={{ padding: '8px 12px', color: '#334155' }}>{pct(a.askRate)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </Card>
+      )}
       <Card>
-        <div style={{ fontWeight: 700, marginBottom: 12 }}>Top team coaching gaps <span style={{ color: '#94a3b8', fontWeight: 400 }}>— coach the pattern</span></div>
+        <div style={{ fontWeight: 700, marginBottom: 12 }}>Top team coaching gaps <span style={{ color: '#94a3b8', fontWeight: 400 }}>— coach the pattern (human CSRs)</span></div>
         {gaps.length === 0 ? <div style={{ color: '#64748b' }}>No data.</div> : gaps.map((g) => (
           <div key={g[0]} style={{ marginBottom: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{g[0]}</span><b>{g[1]} agents</b></div>
@@ -1482,6 +1522,7 @@ function ScAgent({ data, rows, aKey, setKey, onOpen }) {
   const opts = [...data.agents].sort((a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name))
   const a = data.agents.find((x) => (x.name + '|||' + x.brand) === aKey) || opts[0]
   if (!a) return <Card style={{ color: '#64748b' }}>No agent data in range.</Card>
+  const isAi = a.ai
   const win = a.topWin[0] || '—'; const f0 = a.topFocus[0] || '—'; const f1 = a.topFocus[1]
   // This agent's own scored calls — clickable through to the full Detail drawer
   // (10-section breakdown, transcript, recording playback).
@@ -1498,7 +1539,7 @@ function ScAgent({ data, rows, aKey, setKey, onOpen }) {
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <Select label="Agent" value={aKey} onChange={setKey} opts={opts.map((o) => [o.name + '|||' + o.brand, o.name + ' · ' + o.brand])} />
+        <Select label="Agent" value={aKey} onChange={setKey} opts={opts.map((o) => [o.name + '|||' + o.brand, o.name + ' · ' + o.brand + (o.ai ? ' (AI)' : '')])} />
         <ExportBar name={'callqa-agent-' + a.name.replace(/\W+/g, '-').toLowerCase()} title={a.name + ' — Scorecard'} subtitle={a.brand + ' · ' + a.calls + ' calls'} build={build} />
       </div>
       <Card>
@@ -1507,9 +1548,9 @@ function ScAgent({ data, rows, aKey, setKey, onOpen }) {
             <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{a.avg == null ? '—' : Math.round(a.avg)}</div><div style={{ fontSize: 10, opacity: 0.9 }}>avg QA</div>
           </div>
           <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{a.name} <span style={{ color: '#64748b', fontWeight: 500 }}>· {a.brand}</span></div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{a.name} {isAi ? <Pill bg="#ede9fe" fg="#6d28d9">AI CSR</Pill> : null} <span style={{ color: '#64748b', fontWeight: 500 }}>· {a.brand}</span></div>
             <div style={{ color: '#64748b', fontSize: 12.5 }}>{a.calls} calls scored in range</div>
-            <div style={{ marginTop: 8, fontSize: 13 }}>{a.avg >= 80 ? '⭐ One of the strongest voices on the team. ' : ''}One focus this week — small change, real money.</div>
+            <div style={{ marginTop: 8, fontSize: 13 }}>{isAi ? 'Virtual agent — audited for quality and tuned, not coached.' : ((a.avg >= 80 ? '⭐ One of the strongest voices on the team. ' : '') + 'One focus this week — small change, real money.')}</div>
           </div>
         </div>
       </Card>
@@ -1521,15 +1562,24 @@ function ScAgent({ data, rows, aKey, setKey, onOpen }) {
         <Tile label="AHT" value="—" color="#94a3b8" sub="Lightspeed · pending" />
         <Tile label="ACW" value="—" color="#94a3b8" sub="Lightspeed · pending" />
       </div>
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        <Card style={{ flex: 1, minWidth: 240, background: '#f0fdf4', border: '1px solid #bbf7d0' }}><div style={{ fontWeight: 700, color: '#166534', marginBottom: 4 }}>🌟 What you're great at</div><div>{win}</div></Card>
-        <Card style={{ flex: 1, minWidth: 240, background: '#fff7ed', border: '1px solid #fed7aa' }}><div style={{ fontWeight: 700, color: '#9a3412', marginBottom: 4 }}>🎯 Your focus this week</div><div style={{ fontWeight: 600 }}>{f0}</div>{f1 ? <div style={{ color: '#64748b', fontSize: 12.5, marginTop: 4 }}>Then: {f1}</div> : null}</Card>
-      </div>
-      <Card>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Asked for the booking</div>
-        <div style={{ height: 10, borderRadius: 6, background: '#eef2f7', overflow: 'hidden' }}><div style={{ height: '100%', width: (a.askRate || 0) + '%', background: a.askRate < 50 ? '#b71c1c' : '#1b5e20' }} /></div>
-        <div style={{ color: '#64748b', fontSize: 12.5, marginTop: 6 }}>{pct(a.askRate)} of your opportunity calls. Next cycle this shows your movement — that's the loop.</div>
-      </Card>
+      {!isAi ? (
+        <>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            <Card style={{ flex: 1, minWidth: 240, background: '#f0fdf4', border: '1px solid #bbf7d0' }}><div style={{ fontWeight: 700, color: '#166534', marginBottom: 4 }}>🌟 What you're great at</div><div>{win}</div></Card>
+            <Card style={{ flex: 1, minWidth: 240, background: '#fff7ed', border: '1px solid #fed7aa' }}><div style={{ fontWeight: 700, color: '#9a3412', marginBottom: 4 }}>🎯 Your focus this week</div><div style={{ fontWeight: 600 }}>{f0}</div>{f1 ? <div style={{ color: '#64748b', fontSize: 12.5, marginTop: 4 }}>Then: {f1}</div> : null}</Card>
+          </div>
+          <Card>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Asked for the booking</div>
+            <div style={{ height: 10, borderRadius: 6, background: '#eef2f7', overflow: 'hidden' }}><div style={{ height: '100%', width: (a.askRate || 0) + '%', background: a.askRate < 50 ? '#b71c1c' : '#1b5e20' }} /></div>
+            <div style={{ color: '#64748b', fontSize: 12.5, marginTop: 6 }}>{pct(a.askRate)} of your opportunity calls. Next cycle this shows your movement — that's the loop.</div>
+          </Card>
+        </>
+      ) : (
+        <Card style={{ background: '#faf5ff', border: '1px solid #e9d5ff' }}>
+          <div style={{ fontWeight: 700, color: '#6d28d9', marginBottom: 4 }}>🤖 AI CSR — audit only</div>
+          <div style={{ fontSize: 13, color: '#334155' }}>This is a virtual agent. Its calls are scored for quality monitoring and tuning, not coached. It asked for the booking on <b>{pct(a.askRate)}</b> of opportunity calls, with <b>{pct(a.conv)}</b> conversion. Use the calls below to spot-check and tune the AI.</div>
+        </Card>
+      )}
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ fontWeight: 700, padding: 14 }}>Their QA reviews <span style={{ color: '#94a3b8', fontWeight: 400 }}>— click any call to see the full breakdown, transcript &amp; recording</span></div>
         {myCalls.length === 0 ? <div style={{ padding: 14, color: '#64748b' }}>No calls in range.</div> : (
