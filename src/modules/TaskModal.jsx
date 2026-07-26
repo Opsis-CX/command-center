@@ -68,30 +68,33 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
 
   async function save() {
     if (!name.trim()) { setNameError(true); return }
+    if (recurring && frequency === 'custom_days' && !customDays.length) { window.alert('Pick at least one day for the recurring task.'); return }
 
-    // Recurring: create a recurring_tasks definition instead of a one-off task.
-    // The scheduled generator then creates the actual task instances.
+    // Build a recurring_tasks definition from the current fields.
+    const recurringPayload = () => ({
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      project_id: projectId || null,
+      client_id: clientId || null,
+      priority,
+      due_offset_days: parseInt(dueOffset, 10) || 0,
+      frequency,
+      weekly_day: frequency === 'weekly' ? parseInt(weeklyDay, 10) : null,
+      custom_days: frequency === 'custom_days' ? [...customDays].sort() : null,
+      monthly_day: frequency === 'monthly' ? parseInt(monthlyDay, 10) : null,
+      yearly_month: frequency === 'yearly' ? parseInt(yearlyMonth, 10) : null,
+      yearly_day: frequency === 'yearly' ? parseInt(yearlyDay, 10) : null,
+      notes: notes.trim() || null,
+      assignee_ids: assignees,
+      is_active: true,
+      created_by: userId,
+    })
+
+    // NEW task + recurring: create only the recurring definition (no one-off task);
+    // the scheduled generator then creates the actual task instances.
     if (!taskId && recurring) {
-      if (frequency === 'custom_days' && !customDays.length) { window.alert('Pick at least one day for the recurring task.'); return }
       setBusy(true)
-      const { error } = await supabase.from('recurring_tasks').insert({
-        id: crypto.randomUUID(),
-        name: name.trim(),
-        project_id: projectId || null,
-        client_id: clientId || null,
-        priority,
-        due_offset_days: parseInt(dueOffset, 10) || 0,
-        frequency,
-        weekly_day: frequency === 'weekly' ? parseInt(weeklyDay, 10) : null,
-        custom_days: frequency === 'custom_days' ? [...customDays].sort() : null,
-        monthly_day: frequency === 'monthly' ? parseInt(monthlyDay, 10) : null,
-        yearly_month: frequency === 'yearly' ? parseInt(yearlyMonth, 10) : null,
-        yearly_day: frequency === 'yearly' ? parseInt(yearlyDay, 10) : null,
-        notes: notes.trim() || null,
-        assignee_ids: assignees,
-        is_active: true,
-        created_by: userId,
-      })
+      const { error } = await supabase.from('recurring_tasks').insert(recurringPayload())
       if (error) { window.alert('Could not create recurring task: ' + error.message); setBusy(false); return }
       setBusy(false); await refresh(); onClose(true); return
     }
@@ -159,6 +162,12 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
       }
     }
 
+    // EXISTING task turned recurring: also create a recurring schedule going forward.
+    if (taskId && recurring) {
+      const { error } = await supabase.from('recurring_tasks').insert(recurringPayload())
+      if (error) window.alert('Task saved, but the recurring schedule could not be created: ' + error.message)
+    }
+
     setBusy(false)
     await refresh()
     onClose(true)
@@ -223,14 +232,15 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
               </Grp>
             </Row>
 
-            {!taskId && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
-                <input type="checkbox" checked={recurring} onChange={e => setRecurring(e.target.checked)} style={{ width: 16, height: 16 }} />
-                🔁 Make this a recurring task
-              </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
+              <input type="checkbox" checked={recurring} onChange={e => setRecurring(e.target.checked)} style={{ width: 16, height: 16 }} />
+              🔁 {taskId ? 'Set this up to repeat' : 'Make this a recurring task'}
+            </label>
+            {taskId && recurring && (
+              <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: -8 }}>Creates a recurring schedule going forward; this task stays as-is.</div>
             )}
 
-            {(!taskId && recurring) ? (
+            {recurring ? (
               <>
                 <Row>
                   <Grp label="Repeats">
