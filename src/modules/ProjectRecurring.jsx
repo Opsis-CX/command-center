@@ -74,16 +74,15 @@ export default function ProjectRecurring() {
         <div>
           <h2 style={{ fontSize: 18, fontWeight: 600 }}>Recurring Tasks</h2>
           <p className="page-sub" style={{ marginTop: 2, maxWidth: 620 }}>
-            These automatically create a new task on their schedule — daily, weekly, monthly, or yearly — even if nobody opens the app that day.
+            These automatically create a new task on their schedule — daily, weekly, monthly, or yearly — even if nobody opens the app that day. To make a new one, use <b>+ Add task</b> and tick “Make this a recurring task.” Manage existing schedules here — edit, pause, or delete.
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => setModalId(null)}>+ New recurring task</button>
       </div>
 
       {recurring.length === 0 ? (
         <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
           <h3 style={{ fontSize: 14, marginBottom: 4 }}>No recurring tasks yet</h3>
-          <p style={{ fontSize: 13 }}>Set one up to automatically create a task on a schedule.</p>
+          <p style={{ fontSize: 13 }}>Create one from the <b>+ Add task</b> button — tick “Make this a recurring task” to set a schedule.</p>
         </div>
       ) : (
       <>
