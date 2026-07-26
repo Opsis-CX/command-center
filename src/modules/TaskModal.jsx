@@ -35,6 +35,17 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
   const [busy, setBusy] = useState(false)
   const [nameError, setNameError] = useState(false)
 
+  // Recurring options (offered only when creating a new task)
+  const [recurring, setRecurring] = useState(false)
+  const [frequency, setFrequency] = useState('weekly')
+  const [weeklyDay, setWeeklyDay] = useState(1)
+  const [customDays, setCustomDays] = useState([])
+  const [monthlyDay, setMonthlyDay] = useState(1)
+  const [yearlyMonth, setYearlyMonth] = useState(1)
+  const [yearlyDay, setYearlyDay] = useState(1)
+  const [dueOffset, setDueOffset] = useState(0)
+  const toggleCustomDay = (d) => setCustomDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
+
   useEffect(() => {
     if (existing) {
       setName(existing.name || '')
@@ -57,6 +68,34 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
 
   async function save() {
     if (!name.trim()) { setNameError(true); return }
+
+    // Recurring: create a recurring_tasks definition instead of a one-off task.
+    // The scheduled generator then creates the actual task instances.
+    if (!taskId && recurring) {
+      if (frequency === 'custom_days' && !customDays.length) { window.alert('Pick at least one day for the recurring task.'); return }
+      setBusy(true)
+      const { error } = await supabase.from('recurring_tasks').insert({
+        id: crypto.randomUUID(),
+        name: name.trim(),
+        project_id: projectId || null,
+        client_id: clientId || null,
+        priority,
+        due_offset_days: parseInt(dueOffset, 10) || 0,
+        frequency,
+        weekly_day: frequency === 'weekly' ? parseInt(weeklyDay, 10) : null,
+        custom_days: frequency === 'custom_days' ? [...customDays].sort() : null,
+        monthly_day: frequency === 'monthly' ? parseInt(monthlyDay, 10) : null,
+        yearly_month: frequency === 'yearly' ? parseInt(yearlyMonth, 10) : null,
+        yearly_day: frequency === 'yearly' ? parseInt(yearlyDay, 10) : null,
+        notes: notes.trim() || null,
+        assignee_ids: assignees,
+        is_active: true,
+        created_by: userId,
+      })
+      if (error) { window.alert('Could not create recurring task: ' + error.message); setBusy(false); return }
+      setBusy(false); await refresh(); onClose(true); return
+    }
+
     setBusy(true)
     const notesHtml = notes.trim()
       ? notes.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
@@ -134,6 +173,12 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
     onClose(true)
   }
 
+  // Assignee options: exclude agents (they have no project-management access) and
+  // deactivated users. Anyone already assigned stays listed so they can be removed.
+  const assignable = profiles.filter(p =>
+    assignees.includes(p.id) || (p.role !== 'agent' && p.is_active !== false)
+  )
+
   return (
     <>
       <div onClick={() => onClose(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000 }} />
@@ -178,14 +223,79 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
               </Grp>
             </Row>
 
-            <Grp label="Due date">
-              <input type="date" value={due} onChange={e => setDue(e.target.value)} style={inp} />
-            </Grp>
+            {!taskId && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
+                <input type="checkbox" checked={recurring} onChange={e => setRecurring(e.target.checked)} style={{ width: 16, height: 16 }} />
+                🔁 Make this a recurring task
+              </label>
+            )}
+
+            {(!taskId && recurring) ? (
+              <>
+                <Row>
+                  <Grp label="Repeats">
+                    <select value={frequency} onChange={e => setFrequency(e.target.value)} style={inp}>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly (one day)</option>
+                      <option value="custom_days">Custom (specific days)</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="yearly">Yearly</option>
+                    </select>
+                  </Grp>
+                  <Grp label="Due (days after it's created)">
+                    <input type="number" min="0" value={dueOffset} onChange={e => setDueOffset(e.target.value)} style={inp} />
+                  </Grp>
+                </Row>
+
+                {frequency === 'weekly' && (
+                  <Grp label="Day of the week">
+                    <select value={weeklyDay} onChange={e => setWeeklyDay(e.target.value)} style={inp}>
+                      {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((d, i) => <option key={i} value={i}>{d}</option>)}
+                    </select>
+                  </Grp>
+                )}
+                {frequency === 'custom_days' && (
+                  <Grp label="Repeats on">
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {['S','M','T','W','T','F','S'].map((lbl, i) => (
+                        <button key={i} type="button" onClick={() => toggleCustomDay(i)}
+                          style={{ width: 40, height: 36, borderRadius: 8, border: '1px solid ' + (customDays.includes(i) ? 'var(--accent)' : 'var(--line)'), background: customDays.includes(i) ? 'var(--accent)' : 'var(--surface)', color: customDays.includes(i) ? '#fff' : 'var(--ink-soft)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          {lbl}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>Click to toggle each day (e.g. Mon–Fri for every weekday).</div>
+                  </Grp>
+                )}
+                {frequency === 'monthly' && (
+                  <Grp label="Day of the month">
+                    <input type="number" min="1" max="31" value={monthlyDay} onChange={e => setMonthlyDay(e.target.value)} style={inp} />
+                    <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>If a month is shorter, it runs on that month's last day.</div>
+                  </Grp>
+                )}
+                {frequency === 'yearly' && (
+                  <Row>
+                    <Grp label="Month">
+                      <select value={yearlyMonth} onChange={e => setYearlyMonth(e.target.value)} style={inp}>
+                        {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                      </select>
+                    </Grp>
+                    <Grp label="Day">
+                      <input type="number" min="1" max="31" value={yearlyDay} onChange={e => setYearlyDay(e.target.value)} style={inp} />
+                    </Grp>
+                  </Row>
+                )}
+              </>
+            ) : (
+              <Grp label="Due date">
+                <input type="date" value={due} onChange={e => setDue(e.target.value)} style={inp} />
+              </Grp>
+            )}
 
             <Grp label="Assign to">
               <div style={{ border: '1px solid var(--line)', borderRadius: 8, padding: 6, maxHeight: 200, overflowY: 'auto' }}>
-                {profiles.length === 0 ? <div style={{ fontSize: 12, color: 'var(--ink-soft)', padding: 8 }}>No team members yet.</div> :
-                  profiles.map(p => {
+                {assignable.length === 0 ? <div style={{ fontSize: 12, color: 'var(--ink-soft)', padding: 8 }}>No team members yet.</div> :
+                  assignable.map(p => {
                     const sel = assignees.includes(p.id)
                     return (
                       <div key={p.id} onClick={() => toggleAssignee(p.id)}
