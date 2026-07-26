@@ -11,8 +11,10 @@ import { PROJECT_COLORS } from './projectHelpers'
 // ============================================================
 
 export default function ProjectModal({ projectId, onClose }) {
-  const { projects, projectMembers, profiles, userId, refresh } = useProjectsData()
+  const { projects, projectMembers, profiles, userId, isAdmin, refresh } = useProjectsData()
   const existing = projectId ? projects.find(p => p.id === projectId) : null
+  // Only an admin or the project's owner (creator) may delete it.
+  const canDelete = !!projectId && (isAdmin || existing?.created_by === userId)
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -133,7 +135,7 @@ export default function ProjectModal({ projectId, onClose }) {
           </div>
 
           <div style={{ padding: '14px 24px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
-            {projectId && <button onClick={del} className="btn btn-ghost" style={{ marginRight: 'auto', color: 'var(--failed)' }}>Delete project</button>}
+            {canDelete && <button onClick={del} className="btn btn-ghost" style={{ marginRight: 'auto', color: 'var(--failed)' }}>Delete project</button>}
             <button onClick={() => onClose(false)} className="btn btn-ghost">Cancel</button>
             <button onClick={save} disabled={busy} className="btn btn-primary">{busy ? 'Saving…' : 'Save project'}</button>
           </div>
