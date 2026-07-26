@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { RichContent } from '../lib/RichEditor'
+import { notifySpotlight } from '../lib/notify'
 
 // ============================================================
 // HOME BASE — the company "home" page (formerly Opsis Weekly).
@@ -300,6 +301,7 @@ export default function OpsisWeekly() {
 
 // ---- weekly picks admin editor (admins only) ----
 function PicksAdmin({ onChanged, spotlights, tip, quote, names }) {
+  const { user } = useAuth()
   const [open, setOpen] = useState(false)
   const [profiles, setProfiles] = useState([])
   const [teams, setTeams] = useState([])
@@ -327,6 +329,11 @@ function PicksAdmin({ onChanged, spotlights, tip, quote, names }) {
       kind: 'spotlight', spotlight_profile_id: spPid, blurb: spBlurb.trim() || null,
       audience_tags: spTeam ? [spTeam] : [],
     })
+    // Let the spotlighted person know they were picked.
+    try {
+      const actorName = profiles.find(p => p.id === user?.id)?.full_name || null
+      await notifySpotlight({ recipientId: spPid, actorId: user?.id, actorName, blurb: spBlurb.trim() || null })
+    } catch (e) { console.error('spotlight notify failed:', e) }
     setSpPid(''); setSpBlurb(''); setSpTeam(''); setBusy(''); onChanged()
   }
   async function removePick(id) {
