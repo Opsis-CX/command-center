@@ -183,7 +183,8 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
             <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setAssigneeEditorOpen(o => !o)}>+ Edit assignees</button>
             {assigneeEditorOpen && (
               <div style={{ marginTop: 8, border: '1px solid var(--line)', borderRadius: 8, padding: 6, maxHeight: 220, overflowY: 'auto' }}>
-                {profiles.map(p => {
+                {/* Hide agents (no PM access) and deactivated users; keep anyone already assigned. */}
+                {profiles.filter(p => aIds.includes(p.id) || (p.role !== 'agent' && p.is_active !== false)).map(p => {
                   const sel = aIds.includes(p.id)
                   return (
                     <div key={p.id} onClick={() => toggleAssignee(p.id)}
