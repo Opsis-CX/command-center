@@ -102,12 +102,23 @@ export default function LiveStatus() {
 
   useEffect(() => { load() }, [load])
 
-  const checkOut = useCallback(async (claimId) => {
+  const checkOut = useCallback(async (claimId, pid) => {
     if (!claimId) return
     const nowISO = new Date().toISOString()
-    await supabase.from('shift_claims').update({ checked_out_at: nowISO, status: 'completed' }).eq('id', claimId)
+    const { error } = await supabase.from('shift_claims').update({ checked_out_at: nowISO, status: 'completed' }).eq('id', claimId)
+    if (error) { alert('Could not check this person out: ' + error.message); return }
     // If they were on a break, the checkout ends it too.
     await supabase.from('shift_breaks').update({ ended_at: nowISO }).eq('claim_id', claimId).is('ended_at', null)
+    // Stop any running timer for this person — otherwise a running time entry keeps
+    // them showing as "active" on the board and the check-out looks like it did nothing.
+    if (pid) {
+      const { data: openEntries } = await supabase
+        .from('time_entries').select('id, started_at').eq('user_id', pid).is('ended_at', null)
+      for (const te of openEntries || []) {
+        const mins = Math.max(0, Math.round((new Date(nowISO) - new Date(te.started_at)) / 60000))
+        await supabase.from('time_entries').update({ ended_at: nowISO, duration_minutes: mins }).eq('id', te.id)
+      }
+    }
     load(true)
   }, [load])
 
@@ -340,7 +351,7 @@ function StatusRow({ row, last, isAdmin, onCheckOut, onNudge, nudged, meId }) {
           </button>
         )}
         {canCheckOut && (
-          <button onClick={() => onCheckOut(row.claimId)} title="Check this person out"
+          <button onClick={() => onCheckOut(row.claimId, row.pid)} title="Check this person out"
             style={{ border: '1px solid var(--line)', background: 'var(--canvas)', borderRadius: 6, padding: '4px 9px', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: 'var(--ink-soft)', whiteSpace: 'nowrap' }}>
             Check out
           </button>
