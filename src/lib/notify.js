@@ -821,6 +821,28 @@ export async function notifyPickTaskNudge({
   }])
 }
 
+// ---- Weekly spotlight ----
+
+export async function notifySpotlight({
+  recipientId,
+  actorId,
+  actorName,
+  blurb = null,
+}) {
+  if (!recipientId) return []
+  return insertMany([{
+    recipient_id: recipientId,
+    type: 'spotlight',
+    title: "🌟 You're the Team Spotlight this week!",
+    body: blurb
+      ? `${actorName || 'The team'} spotlighted you: "${blurb}"`
+      : `${actorName || 'The team'} named you this week's Team Spotlight. Nice work!`,
+    link: '/home',
+    actor_id: actorId || null,
+    actor_name: actorName || null,
+  }])
+}
+
 // ---- Video calls ----
 
 export async function notifyIncomingCall({
