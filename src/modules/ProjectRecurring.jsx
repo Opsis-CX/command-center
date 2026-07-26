@@ -332,7 +332,8 @@ function RecurringModal({ recurringId, onClose }) {
 
             <Grp label="Assign to">
               <div style={{ border: '1px solid var(--line)', borderRadius: 8, padding: 6, maxHeight: 200, overflowY: 'auto' }}>
-                {profiles.map(p => {
+                {/* Hide agents (no PM access) and deactivated users; keep anyone already assigned. */}
+                {profiles.filter(p => assignees.includes(p.id) || (p.role !== 'agent' && p.is_active !== false)).map(p => {
                   const sel = assignees.includes(p.id)
                   return (
                     <div key={p.id} onClick={() => toggleAssignee(p.id)}
