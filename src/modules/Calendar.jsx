@@ -73,6 +73,7 @@ export default function Calendar() {
   const [feedEvents, setFeedEvents] = useState([])
   const [showSubs, setShowSubs] = useState(false)
   const [gcalConn, setGcalConn] = useState(null)
+  const [gcalAccounts, setGcalAccounts] = useState([])
   const [gcalEvents, setGcalEvents] = useState([])
   const [timeEntries, setTimeEntries] = useState([])
   const [sharedWithMe, setSharedWithMe] = useState([])   // shares where I'm the viewer
@@ -100,7 +101,7 @@ export default function Calendar() {
       supabase.from('profiles').select('id, full_name'),
       supabase.from('calendar_subscriptions').select('*'),
       supabase.from('calendar_feed_events').select('*'),
-      supabase.from('google_calendar_tokens').select('google_email, connected_at, color').maybeSingle(),
+      supabase.from('calendar_accounts').select('id, provider, account_email, color, is_default, target_calendar_name, last_synced_at, last_error, sync_enabled, connected_at').eq('provider', 'google'),
       supabase.from('google_calendar_events').select('*'),
       supabase.from('time_entries').select('id, task_id, user_id, started_at, ended_at, duration_minutes'),
       supabase.from('calendar_shares').select('*').eq('viewer_id', uid),
@@ -114,7 +115,12 @@ export default function Calendar() {
     setProfiles(profRes.data || [])
     setSubs(subRes.data || [])
     setFeedEvents(feedRes.data || [])
-    setGcalConn(gtRes.data || null)
+    // Multi-account Google: gtRes is now a list of connected google accounts.
+    const gAccts = gtRes.data || []
+    setGcalAccounts(gAccts)
+    const defAcct = gAccts.find(a => a.is_default) || gAccts[0] || null
+    // Keep gcalConn in the legacy shape so push-gating / color display keep working.
+    setGcalConn(defAcct ? { google_email: defAcct.account_email, connected_at: defAcct.connected_at, color: defAcct.color } : null)
     setGcalEvents(geRes.data || [])
     setTimeEntries(timeRes.data || [])
     setSharedWithMe(shareInRes.data || [])
@@ -273,7 +279,7 @@ export default function Calendar() {
       )}
 
       {showSubs && (
-        <SubscriptionsModal subs={subs} userId={userId} gcalConn={gcalConn} setGcalConn={setGcalConn} setSubs={setSubs}
+        <SubscriptionsModal subs={subs} userId={userId} gcalConn={gcalConn} setGcalConn={setGcalConn} gcalAccounts={gcalAccounts} setSubs={setSubs}
           onClose={() => setShowSubs(false)}
           onChanged={() => load()} />
       )}
@@ -902,7 +908,7 @@ function SharesModal({ userId, profiles, sharedWithMe, mySharedOut, hiddenShares
 }
 
 // ---------- CONNECTED CALENDARS (external .ics feeds) ----------
-function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, setSubs, onClose, onChanged }) {
+function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts = [], setSubs, onClose, onChanged }) {
   const [label, setLabel] = useState('')
   const [url, setUrl] = useState('')
   const [color, setColor] = useState('#7C3AED')
@@ -944,7 +950,9 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, setSubs, onCl
     authUrl.searchParams.set('response_type', 'code')
     authUrl.searchParams.set('scope', scope)
     authUrl.searchParams.set('access_type', 'offline')   // get a refresh token
-    authUrl.searchParams.set('prompt', 'consent')
+    // 'select_account' lets you pick WHICH Google account to add, so you can
+    // connect several (turritopsis, opsiscx, personal, etc.) one after another.
+    authUrl.searchParams.set('prompt', 'consent select_account')
     authUrl.searchParams.set('state', userId)
     window.location.href = authUrl.toString()
   }
@@ -958,9 +966,17 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, setSubs, onCl
     onChanged()
   }
 
-  async function disconnectGoogle() {
-    await supabase.from('google_calendar_tokens').delete().eq('owner_id', userId)
-    await supabase.from('google_calendar_events').delete().eq('owner_id', userId)
+  async function disconnectGoogle(acct) {
+    if (acct?.id) {
+      // Disconnect one specific account + drop its pulled events.
+      await supabase.from('calendar_accounts').delete().eq('id', acct.id)
+      await supabase.from('google_calendar_events').delete().eq('owner_id', userId).eq('account_email', acct.account_email)
+    } else {
+      // Fallback: disconnect everything Google for this user.
+      await supabase.from('calendar_accounts').delete().eq('owner_id', userId).eq('provider', 'google')
+      await supabase.from('google_calendar_tokens').delete().eq('owner_id', userId)
+      await supabase.from('google_calendar_events').delete().eq('owner_id', userId)
+    }
     onChanged()
   }
 
@@ -1003,28 +1019,47 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, setSubs, onCl
 
         {err && <div style={{ color: 'var(--failed)', fontSize: 12, marginBottom: 10 }}>{err}</div>}
 
-        {/* Google Calendar (OAuth) */}
+        {/* Google Calendar (OAuth) — multiple accounts */}
         <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', marginBottom: 16, background: 'var(--canvas)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ width: 10, height: 10, borderRadius: '50%', background: gcalConn?.color || '#EA4335', flexShrink: 0 }} />
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#EA4335', flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 700 }}>Google Calendar</div>
               <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
-                {gcalConn ? `Connected as ${gcalConn.google_email || 'your Google account'}` : 'Two-way sync via your Google account'}
+                {gcalAccounts.length ? `${gcalAccounts.length} account${gcalAccounts.length > 1 ? 's' : ''} connected · two-way sync` : 'Two-way sync across your Google accounts'}
               </div>
             </div>
-            {gcalConn ? (
-              <>
-                <button className="btn btn-ghost" style={{ fontSize: 12 }} disabled={gcalSyncing} onClick={syncGoogle}>{gcalSyncing ? 'Syncing…' : 'Sync'}</button>
-                <button className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--failed)' }} onClick={disconnectGoogle}>Disconnect</button>
-              </>
-            ) : (
-              <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={connectGoogle}>Connect Google</button>
+            {gcalAccounts.length > 0 && (
+              <button className="btn btn-ghost" style={{ fontSize: 12 }} disabled={gcalSyncing} onClick={syncGoogle}>{gcalSyncing ? 'Syncing…' : 'Sync all'}</button>
             )}
           </div>
+
+          {/* per-account rows */}
+          {gcalAccounts.map(a => (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line-soft)' }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: a.color || '#EA4335', flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {a.account_email}{a.is_default ? ' · default' : ''}
+                </div>
+                <div style={{ fontSize: 11, color: a.last_error ? 'var(--failed)' : 'var(--ink-soft)' }}>
+                  {a.last_error ? 'Sync error — reconnect' : a.last_synced_at ? `Synced ${new Date(a.last_synced_at).toLocaleString()}` : 'Not synced yet'}
+                </div>
+              </div>
+              <button className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--failed)' }} onClick={() => disconnectGoogle(a)}>Disconnect</button>
+            </div>
+          ))}
+
+          {/* connect another / first account */}
+          <div style={{ marginTop: 12 }}>
+            <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={connectGoogle}>
+              {gcalAccounts.length ? '+ Connect another Google account' : 'Connect Google'}
+            </button>
+          </div>
+
           {gcalConn && gcals && (
-            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line-soft)' }}>
-              <label style={{ fontSize: 11, color: 'var(--ink-soft)', fontWeight: 600 }}>Command Center events sync to:</label>
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--line-soft)' }}>
+              <label style={{ fontSize: 11, color: 'var(--ink-soft)', fontWeight: 600 }}>New Command Center events are added to ({gcalConn.google_email}):</label>
               <select value={target} onChange={e => setTargetCalendar(e.target.value)}
                 style={{ display: 'block', marginTop: 4, fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line)', width: '100%' }}>
                 {gcals.map(c => <option key={c.id} value={c.id}>{c.name}{c.primary ? ' (primary)' : ''}</option>)}
