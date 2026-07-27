@@ -26,23 +26,33 @@ export default function HeaderTaskBar() {
   const [timeEntries, setTimeEntries] = useState([])
   const [claims, setClaims] = useState([])
   const [blocks, setBlocks] = useState([])
+  const [projects, setProjects] = useState([])
+  const [clients, setClients] = useState([])
   const [picked, setPicked] = useState('')
+  // Type-in-a-new-task-to-track
+  const [newTaskName, setNewTaskName] = useState('')
+  const [newProject, setNewProject] = useState('')
+  const [newClient, setNewClient] = useState('')
   const [, tick] = useState(0)
 
   const load = useCallback(async () => {
     if (!userId) return
-    const [taskRes, taRes, timeRes, clmRes, blkRes] = await Promise.all([
+    const [taskRes, taRes, timeRes, clmRes, blkRes, projRes, cliRes] = await Promise.all([
       supabase.from('tasks').select('id, name, status').is('deleted_at', null),
       supabase.from('task_assignees').select('task_id, profile_id').eq('profile_id', userId),
       supabase.from('time_entries').select('id, task_id, user_id, started_at, ended_at').eq('user_id', userId),
       supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at, checked_out_at').eq('profile_id', userId),
       supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role'),
+      supabase.from('projects').select('id, name').order('name'),
+      supabase.from('clients').select('id, name').order('name'),
     ])
     setTasks(taskRes.data || [])
     setAssignees(taRes.data || [])
     setTimeEntries(timeRes.data || [])
     setClaims(clmRes.data || [])
     setBlocks(blkRes.data || [])
+    setProjects(projRes.data || [])
+    setClients(cliRes.data || [])
   }, [userId])
 
   useEffect(() => { load() }, [load])
@@ -91,11 +101,25 @@ export default function HeaderTaskBar() {
   const runningTask = runningEntry ? tasks.find(t => t.id === runningEntry.task_id) : null
 
   async function startTimer() {
-    const t = openTasks.find(x => x.id === picked)
-    if (!t) return
+    let taskId = picked
+    const typed = newTaskName.trim()
+    // Typed a new task name — create it (with the chosen project/client), assign it
+    // to me, then track time on it.
+    if (typed) {
+      const id = crypto.randomUUID()
+      const { error } = await supabase.from('tasks').insert({
+        id, name: typed, status: 'todo',
+        project_id: newProject || null, client_id: newClient || null,
+        created_by: userId,
+      })
+      if (error) { window.alert('Could not create task: ' + error.message); return }
+      await supabase.from('task_assignees').insert({ task_id: id, profile_id: userId })
+      taskId = id
+    }
+    if (!taskId) return
     if (runningEntry) await stopRunning()
-    await supabase.from('time_entries').insert({ task_id: t.id, user_id: userId, started_at: new Date().toISOString(), is_manual: false })
-    setPicked(''); load()
+    await supabase.from('time_entries').insert({ task_id: taskId, user_id: userId, client_id: (typed ? (newClient || null) : null), started_at: new Date().toISOString(), is_manual: false })
+    setPicked(''); setNewTaskName(''); setNewProject(''); setNewClient(''); load()
   }
   async function stopRunning() {
     if (!runningEntry) return
@@ -113,6 +137,7 @@ export default function HeaderTaskBar() {
   }
 
   const chip = { display: 'flex', alignItems: 'center', gap: 8 }
+  const selStyle = { fontSize: 12.5, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line, #ddd)', maxWidth: 140 }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
@@ -140,14 +165,25 @@ export default function HeaderTaskBar() {
             <button onClick={stopRunning} style={{ border: 'none', background: '#DC2626', color: '#fff', borderRadius: 6, padding: '3px 10px', fontSize: 12, cursor: 'pointer' }}>Stop</button>
           </div>
         ) : (
-          <div style={chip}>
-            <select value={picked} onChange={e => setPicked(e.target.value)}
-              style={{ fontSize: 12.5, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line, #ddd)', maxWidth: 200 }}>
-              <option value="">Start a task timer…</option>
+          <div style={{ ...chip, flexWrap: 'wrap' }}>
+            <input value={newTaskName} onChange={e => setNewTaskName(e.target.value)} placeholder="Type a task to track…"
+              onKeyDown={e => { if (e.key === 'Enter' && (newTaskName.trim() || picked)) startTimer() }}
+              style={{ fontSize: 12.5, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line, #ddd)', width: 160 }} />
+            <select value={newProject} onChange={e => setNewProject(e.target.value)} title="Project" style={selStyle}>
+              <option value="">Project…</option>
+              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <select value={newClient} onChange={e => setNewClient(e.target.value)} title="Client" style={selStyle}>
+              <option value="">Client…</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>or</span>
+            <select value={picked} onChange={e => setPicked(e.target.value)} title="Existing task" style={{ ...selStyle, maxWidth: 170 }}>
+              <option value="">Existing task…</option>
               {openTasks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
-            <button disabled={!picked} onClick={startTimer}
-              style={{ border: 'none', background: picked ? '#16A34A' : '#c3bfb5', color: '#fff', borderRadius: 6, padding: '5px 12px', fontSize: 12.5, cursor: picked ? 'pointer' : 'default' }}>▶ Start</button>
+            <button disabled={!newTaskName.trim() && !picked} onClick={startTimer}
+              style={{ border: 'none', background: (newTaskName.trim() || picked) ? '#16A34A' : '#c3bfb5', color: '#fff', borderRadius: 6, padding: '5px 12px', fontSize: 12.5, cursor: (newTaskName.trim() || picked) ? 'pointer' : 'default' }}>▶ Start</button>
           </div>
         )
       )}
