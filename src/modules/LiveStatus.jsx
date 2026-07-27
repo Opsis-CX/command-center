@@ -50,6 +50,40 @@ function avatarColor(name) {
   return colors[h % colors.length]
 }
 
+// ---- Check-in time helpers (Eastern, matching the app's TIME CONVENTION) ----
+// A <input type="datetime-local"> value is a NAIVE wall-clock string with no tz,
+// so we treat what the admin types as Eastern and convert to a real instant.
+function clockET(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })
+}
+function etOffsetMinutes(instant) {
+  // Eastern offset (minutes) at this instant, e.g. -240 during EDT.
+  const local = new Date(instant.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const utc = new Date(instant.toLocaleString('en-US', { timeZone: 'UTC' }))
+  return Math.round((local - utc) / 60000)
+}
+// ISO instant -> 'YYYY-MM-DDTHH:MM' in Eastern (for the input's default value).
+function isoToEtLocalInput(iso) {
+  const d = iso ? new Date(iso) : new Date()
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York', hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).formatToParts(d)
+  const g = {}; for (const p of parts) g[p.type] = p.value
+  const hour = g.hour === '24' ? '00' : g.hour
+  return `${g.year}-${g.month}-${g.day}T${hour}:${g.minute}`
+}
+// 'YYYY-MM-DDTHH:MM' typed as Eastern wall-clock -> UTC ISO instant.
+function etLocalInputToISO(str) {
+  const [datePart, timePart] = str.split('T')
+  const [y, mo, d] = datePart.split('-').map(Number)
+  const [h, mi] = timePart.split(':').map(Number)
+  const guess = Date.UTC(y, mo - 1, d, h, mi)          // treat wall-clock as UTC…
+  const off = etOffsetMinutes(new Date(guess))          // …then correct by ET offset
+  return new Date(guess - off * 60000).toISOString()
+}
+
 // Is a shift block happening right now, in Eastern Time?
 // block_date is a plain YYYY-MM-DD; start/end are HH:MM(:SS) with no tz.
 function intervalIsNow(block, now) {
@@ -119,6 +153,18 @@ export default function LiveStatus() {
         await supabase.from('time_entries').update({ ended_at: nowISO, duration_minutes: mins }).eq('id', te.id)
       }
     }
+    load(true)
+  }, [load])
+
+  // Admin: set/correct a person's check-in time on their claim.
+  // `wasCheckedIn` false means they were scheduled-but-absent, so we also flip
+  // their status to 'checked_in' (which puts them on the board as checked in).
+  const adjustCheckIn = useCallback(async (claimId, isoInstant, wasCheckedIn) => {
+    if (!claimId || !isoInstant) return
+    const patch = { checked_in_at: isoInstant }
+    if (!wasCheckedIn) patch.status = 'checked_in'
+    const { error } = await supabase.from('shift_claims').update(patch).eq('id', claimId)
+    if (error) { alert('Could not update check-in time: ' + error.message); return }
     load(true)
   }, [load])
 
@@ -226,7 +272,11 @@ export default function LiveStatus() {
 
     const interval = checkedIn?.block || scheduledNow?.block || null
     const claimId = checkedIn?.claim?.id || null
-    return { pid, name: profile?.full_name || 'Unknown', state, detail, interval, claimId }
+    // For adjusting check-in: works whether they're already checked in OR
+    // scheduled-now-but-absent (so an admin can check them in from here).
+    const adjClaimId = checkedIn?.claim?.id || scheduledNow?.claim?.id || null
+    const checkedInAt = checkedIn?.claim?.checked_in_at || scheduledNow?.claim?.checked_in_at || null
+    return { pid, name: profile?.full_name || 'Unknown', state, detail, interval, claimId, adjClaimId, checkedInAt }
   })
 
   // Agents only see themselves.
@@ -268,7 +318,7 @@ export default function LiveStatus() {
 
       <div>
         {rows.map((r, i) => (
-          <StatusRow key={r.pid} row={r} last={i === rows.length - 1} isAdmin={isAdmin} onCheckOut={checkOut} onNudge={nudge} nudged={!!nudged[r.pid]} meId={userId} />
+          <StatusRow key={r.pid} row={r} last={i === rows.length - 1} isAdmin={isAdmin} onCheckOut={checkOut} onAdjustCheckIn={adjustCheckIn} onNudge={nudge} nudged={!!nudged[r.pid]} meId={userId} />
         ))}
       </div>
 
@@ -279,7 +329,7 @@ export default function LiveStatus() {
   )
 }
 
-function StatusRow({ row, last, isAdmin, onCheckOut, onNudge, nudged, meId }) {
+function StatusRow({ row, last, isAdmin, onCheckOut, onAdjustCheckIn, onNudge, nudged, meId }) {
   const dot = { active: 'var(--passed)', break: '#0891B2', idle: 'var(--needed)', absent: 'var(--failed)' }[row.state]
   const bg = {
     active: 'var(--passed-bg)', break: '#E0F2FE', idle: 'var(--needed-bg)', absent: 'var(--failed-bg)',
@@ -288,6 +338,25 @@ function StatusRow({ row, last, isAdmin, onCheckOut, onNudge, nudged, meId }) {
   const canCheckOut = isAdmin && row.claimId && (row.state === 'active' || row.state === 'idle' || row.state === 'break')
   // admin can nudge: absent people to check in, idle people (not themselves) to pick a task
   const canNudge = isAdmin && row.pid !== meId && (row.state === 'absent' || row.state === 'idle')
+  // admin can set/correct check-in time on any current claim (checked in OR absent-now)
+  const canAdjust = isAdmin && !!row.adjClaimId
+
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  function openEditor() {
+    // default to their existing check-in, or "now" (ET) if they haven't checked in
+    setVal(isoToEtLocalInput(row.checkedInAt))
+    setEditing(true)
+  }
+  async function saveCheckIn() {
+    if (!val) return
+    setSaving(true)
+    await onAdjustCheckIn(row.adjClaimId, etLocalInputToISO(val), row.state !== 'absent')
+    setSaving(false)
+    setEditing(false)
+  }
 
   return (
     <div style={{
@@ -349,6 +418,28 @@ function StatusRow({ row, last, isAdmin, onCheckOut, onNudge, nudged, meId }) {
               borderRadius: 6, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: nudged ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
             {nudged ? 'Nudged ✓' : '👋 Nudge'}
           </button>
+        )}
+        {canAdjust && !editing && (
+          <button onClick={openEditor}
+            title={row.state === 'absent' ? 'Check this person in / set their check-in time' : 'Adjust check-in time (Eastern)'}
+            style={{ border: '1px solid var(--line)', background: 'var(--canvas)', borderRadius: 6, padding: '4px 9px', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: 'var(--ink-soft)', whiteSpace: 'nowrap' }}>
+            {row.state === 'absent' ? 'Check in' : `🕐 ${row.checkedInAt ? clockET(row.checkedInAt) : 'Set time'}`}
+          </button>
+        )}
+        {canAdjust && editing && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <input type="datetime-local" value={val} onChange={e => setVal(e.target.value)} disabled={saving}
+              title="Check-in time (Eastern)"
+              style={{ fontSize: 11, padding: '3px 5px', border: '1px solid var(--line)', borderRadius: 6, background: 'var(--canvas)', color: 'var(--ink)' }} />
+            <button onClick={saveCheckIn} disabled={saving || !val}
+              style={{ border: '1px solid var(--passed)', background: 'var(--passed-bg)', color: 'var(--passed)', borderRadius: 6, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: saving ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button onClick={() => setEditing(false)} disabled={saving}
+              style={{ border: '1px solid var(--line)', background: 'var(--canvas)', color: 'var(--ink-soft)', borderRadius: 6, padding: '4px 9px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </span>
         )}
         {canCheckOut && (
           <button onClick={() => onCheckOut(row.claimId, row.pid)} title="Check this person out"
