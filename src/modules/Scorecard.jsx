@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
@@ -31,6 +31,7 @@ const num = (v, dp = 2) => (v == null ? '—' : Number(v).toFixed(dp))
 // ACW% and NR% are "higher = worse": color low (good) → high (bad).
 const badColor = (v) => (v == null ? 'inherit' : v >= 0.20 ? '#b71c1c' : v >= 0.10 ? '#8d6e00' : '#1b5e20')
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—')
+const qaFilterInp = { padding: '6px 9px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }
 
 const TIER_STYLE = {
   'Top Performer': { bg: '#e8f5e9', fg: '#1b5e20' },
@@ -81,7 +82,7 @@ export default function Scorecard() {
     const row = rows.find(r => r.agent_name === selected)
     const coach = canCoachNotes(appRole)
     const ownCard = row?.profile_id === user?.id
-    return <AgentScorecard row={row} canCoach={coach} canSeeNotes={coach || ownCard} onBack={viewAll ? () => setSelected(null) : null} />
+    return <AgentScorecard row={row} canCoach={coach} canSeeNotes={coach || ownCard} isOwn={ownCard} onBack={viewAll ? () => setSelected(null) : null} />
   }
 
   // Agents never see the team table. If their row isn't available yet, show an
@@ -148,11 +149,62 @@ function Td({ children, right }) {
 }
 
 // ---------------- SINGLE AGENT SCORECARD ----------------
-function AgentScorecard({ row, canCoach, canSeeNotes, onBack }) {
+function AgentScorecard({ row, canCoach, canSeeNotes, isOwn, onBack }) {
   const [notes, setNotes] = useState([])
   const [loadingNotes, setLoadingNotes] = useState(true)
   const [qaAudits, setQaAudits] = useState([])
   const [subItemLabels, setSubItemLabels] = useState({})
+
+  // Quality Feedback: read-acknowledgment + search + "show only last 2"
+  const agentId = row?.profile_id
+  const [reads, setReads] = useState(new Set())   // audit_ids this agent has marked read
+  const [kw, setKw] = useState('')
+  const [dFrom, setDFrom] = useState('')
+  const [dTo, setDTo] = useState('')
+  const [showAllQa, setShowAllQa] = useState(false)
+
+  const loadReads = useCallback(async () => {
+    if (!agentId) return
+    const { data } = await supabase.from('qa_audit_reads').select('audit_id').eq('profile_id', agentId)
+    setReads(new Set((data || []).map(r => r.audit_id)))
+  }, [agentId])
+  useEffect(() => { loadReads() }, [loadReads])
+
+  async function toggleRead(auditId) {
+    if (!isOwn || !agentId) return
+    const has = reads.has(auditId)
+    setReads(prev => { const n = new Set(prev); has ? n.delete(auditId) : n.add(auditId); return n })
+    if (has) await supabase.from('qa_audit_reads').delete().eq('audit_id', auditId).eq('profile_id', agentId)
+    else await supabase.from('qa_audit_reads').insert({ audit_id: auditId, profile_id: agentId })
+  }
+
+  // labels of the sub-items an audit marked "missed" (used for display + search)
+  const missedFor = useCallback((a) => {
+    const out = []
+    Object.values(a.answers || {}).forEach(v => {
+      if (v && v.value === 'no' && Array.isArray(v.missed)) {
+        v.missed.forEach(id => { if (subItemLabels[id]) out.push(subItemLabels[id]) })
+      }
+    })
+    return out
+  }, [subItemLabels])
+
+  const filteredQa = useMemo(() => {
+    const k = kw.trim().toLowerCase()
+    return qaAudits.filter(a => {
+      const d = String(a.call_date || a.created_at || '').slice(0, 10)
+      if (dFrom && d && d < dFrom) return false
+      if (dTo && d && d > dTo) return false
+      if (k) {
+        const hay = [a.feedback, a.brand, a.audit_type, a.campaign, ...missedFor(a)].filter(Boolean).join(' ').toLowerCase()
+        if (!hay.includes(k)) return false
+      }
+      return true
+    })
+  }, [qaAudits, kw, dFrom, dTo, missedFor])
+
+  const filtersActive = !!(kw.trim() || dFrom || dTo)
+  const visibleQa = showAllQa ? filteredQa : filteredQa.slice(0, 2)
 
   const loadNotes = useCallback(async () => {
     if (!row) return
@@ -255,14 +307,33 @@ function AgentScorecard({ row, canCoach, canSeeNotes, onBack }) {
         </div>
       )}
 
-      {/* QA Feedback — the agent's own audited calls + written feedback */}
+      {/* QA Feedback — the agent's own audited calls + written feedback.
+          Shows the 2 most recent by default; search by keyword or date range;
+          the agent can acknowledge each with "I've read this feedback." */}
       <div className="card" style={{ marginTop: 14 }}>
         <SectionTitle>Quality Feedback</SectionTitle>
+
+        {qaAudits.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 8px' }}>
+            <input value={kw} onChange={e => { setKw(e.target.value); setShowAllQa(true) }} placeholder="Search feedback, brand, missed items…"
+              style={{ ...qaFilterInp, flex: '1 1 220px', minWidth: 150 }} />
+            <input type="date" value={dFrom} onChange={e => { setDFrom(e.target.value); setShowAllQa(true) }} title="From date" style={qaFilterInp} />
+            <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>to</span>
+            <input type="date" value={dTo} onChange={e => { setDTo(e.target.value); setShowAllQa(true) }} title="To date" style={qaFilterInp} />
+            {filtersActive && (
+              <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px' }}
+                onClick={() => { setKw(''); setDFrom(''); setDTo(''); setShowAllQa(false) }}>Clear</button>
+            )}
+          </div>
+        )}
+
         {qaAudits.length === 0 ? (
           <p className="page-sub" style={{ fontSize: 13 }}>No quality reviews yet.</p>
+        ) : filteredQa.length === 0 ? (
+          <p className="page-sub" style={{ fontSize: 13 }}>No quality reviews match your search.</p>
         ) : (
           <div>
-            {qaAudits.map(a => {
+            {visibleQa.map(a => {
               const s = a.clean_qa_score
               const col = a.auto_fail ? { bg: '#fdecea', fg: '#b71c1c' }
                 : s == null ? { bg: 'var(--line-soft)', fg: 'var(--ink-soft)' }
@@ -270,6 +341,8 @@ function AgentScorecard({ row, canCoach, canSeeNotes, onBack }) {
                 : s >= 80 ? { bg: '#fff8e1', fg: '#8d6e00' }
                 : s >= 70 ? { bg: '#e3f2fd', fg: '#0d47a1' }
                 : { bg: '#fdecea', fg: '#b71c1c' }
+              const missed = missedFor(a)
+              const isRead = reads.has(a.id)
               return (
                 <div key={a.id} style={{ padding: '10px 0', borderTop: '1px solid var(--line-soft)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -287,20 +360,28 @@ function AgentScorecard({ row, canCoach, canSeeNotes, onBack }) {
                     <span className="page-sub" style={{ fontSize: 12, marginLeft: 'auto' }}>{fmtDate(a.call_date || a.created_at)}</span>
                   </div>
                   {a.feedback && <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: '6px 0 0', color: 'var(--ink)' }}>{a.feedback}</p>}
-                  {(() => {
-                    const missed = []
-                    const ans = a.answers || {}
-                    Object.values(ans).forEach(v => {
-                      if (v && v.value === 'no' && Array.isArray(v.missed)) {
-                        v.missed.forEach(id => { if (subItemLabels[id]) missed.push(subItemLabels[id]) })
-                      }
-                    })
-                    if (!missed.length) return null
-                    return <p style={{ fontSize: 12.5, margin: '5px 0 0', color: 'var(--ink-soft)' }}><b>Missed:</b> {missed.join(', ')}</p>
-                  })()}
+                  {missed.length > 0 && <p style={{ fontSize: 12.5, margin: '5px 0 0', color: 'var(--ink-soft)' }}><b>Missed:</b> {missed.join(', ')}</p>}
+
+                  {isOwn ? (
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 8, fontSize: 12.5, cursor: 'pointer', color: isRead ? 'var(--passed)' : 'var(--ink-soft)', fontWeight: isRead ? 600 : 400 }}>
+                      <input type="checkbox" checked={isRead} onChange={() => toggleRead(a.id)} style={{ width: 15, height: 15 }} />
+                      {isRead ? '✓ I’ve read this feedback' : 'I’ve read this feedback'}
+                    </label>
+                  ) : canCoach ? (
+                    <div style={{ marginTop: 8, fontSize: 12, color: isRead ? 'var(--passed)' : 'var(--ink-soft)', fontWeight: isRead ? 600 : 400 }}>
+                      {isRead ? '✓ Agent marked as read' : 'Not yet read by agent'}
+                    </div>
+                  ) : null}
                 </div>
               )
             })}
+
+            {filteredQa.length > 2 && (
+              <button className="btn btn-ghost" style={{ marginTop: 10, fontSize: 12.5 }}
+                onClick={() => setShowAllQa(v => !v)}>
+                {showAllQa ? 'Show less' : `More… (${filteredQa.length - 2} more)`}
+              </button>
+            )}
           </div>
         )}
       </div>
