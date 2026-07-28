@@ -75,6 +75,7 @@ const CATALOG = [
   ] },
   { label: 'Quality', items: [
     { key: 'quality', name: 'QA Audits', q: 'How did agents score on QA audits?' },
+    { key: 'qa_by_question', name: 'QA by Question', q: 'Which QA questions are passed or missed most — plus every audit’s answers on one line?' },
     { key: 'dispositions', name: 'Call Dispositions', q: 'How are calls dispositioned — by disposition, deal and agent (recent)?' },
     { key: 'dispo_corrections', name: 'Disposition Corrections', q: 'Which call dispositions did QA correct — current vs correct disposition?' },
   ] },
@@ -146,16 +147,20 @@ const reportAllowed = (role, key) => { const c = REPORT_META[key]?.category; ret
 const NO_RANGE = new Set(['people', 'rawdata', 'scorecard', 'positions', 'kb', 'dispositions'])
 // Reports that expose the shared person/tag filter.
 // (Sales/RSN excluded: deals carry no staff owner_id, so a person/tag filter would wrongly zero them out.)
-const FILTERABLE = new Set(['person', 'client', 'compare', 'quality', 'chat', 'tokens', 'certifications', 'cert_quiz', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'builder'])
+const FILTERABLE = new Set(['person', 'client', 'compare', 'quality', 'qa_by_question', 'chat', 'tokens', 'certifications', 'cert_quiz', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'builder'])
 // Reports whose CSV export is the parent-owned shared button (older inline reports).
 const SHARED_EXPORT = new Set(['person', 'client', 'compare', 'quality', 'people'])
 // Reports rendered by their own standalone component.
-const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions', 'dispo_corrections'])
+const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions', 'dispo_corrections', 'qa_by_question'])
 
 export default function Reporting() {
   const { isAdmin, appRole } = useAuth()
   const [range, setRange] = useState(defaultRange())
-  const [view, setView] = useState(null) // null = catalog landing; otherwise a report key
+  // Opens straight to a report when deep-linked via ?report=<key> (e.g. the
+  // "QA by Question" link on the Quality tab); otherwise the catalog landing.
+  const [view, setView] = useState(() => {
+    try { const r = new URLSearchParams(window.location.search).get('report'); return r && REPORT_META[r] ? r : null } catch { return null }
+  })
   const [loading, setLoading] = useState(true)
   const [entries, setEntries] = useState([])
   const [profiles, setProfiles] = useState([])
@@ -700,6 +705,7 @@ export default function Reporting() {
         : view === 'hiring' ? <HiringReport range={range} />
         : view === 'certifications' ? <CertificationsReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
         : view === 'cert_quiz' ? <CertQuizReport range={range} allowedIds={allowedIds} />
+        : view === 'qa_by_question' ? <QaByQuestionReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
         : view === 'scorecard' ? <ScorecardReport />
         : view === 'dispositions' ? <DispositionsReport />
         : view === 'dispo_corrections' ? <DispoCorrectionsReport range={range} />
@@ -1725,6 +1731,203 @@ function CertQuizReport({ range, allowedIds }) {
       <QTable title="Most missed (lowest correct %)" list={missed} />
       <QTable title="Most correct (highest correct %)" list={best} />
       <p className="page-sub" style={{ fontSize: 12 }}>A question is "correct" when the selected option is flagged correct. Ranked across all attempts in the range; top 15 each.</p>
+    </div>
+  )
+}
+
+// ================= QA audits broken down by question =================
+// Restores the per-question QA reporting that was lost when Reporting became
+// its own tab. Two outputs from one screen:
+//   1. On-screen per-question performance (pass %, misses, most-missed sub-items)
+//   2. "Answers" CSV — ONE ROW PER AUDIT with every question answered on that line
+// Both respect the date range + shared agent filter + local brand/type filters.
+const QA_VAL_LABEL = { yes: 'Yes', no: 'No', na: 'N/A' }
+function QaByQuestionReport({ range, profiles, allowedIds }) {
+  const [audits, setAudits] = useState(null)
+  const [questions, setQuestions] = useState([])
+  const [subItems, setSubItems] = useState([])
+  const [err, setErr] = useState('')
+  const [brand, setBrand] = useState('all')
+  const [atype, setAtype] = useState('all')
+
+  useEffect(() => {
+    let active = true; setAudits(null); setErr('')
+    const fromISO = new Date(range.from + 'T00:00:00').toISOString()
+    const toISO = new Date(range.to + 'T23:59:59').toISOString()
+    ;(async () => {
+      const [aRes, qRes, sRes] = await Promise.all([
+        supabase.from('qa_audits')
+          .select('id, agent_name, profile_id, auditor_id, audit_type, brand, campaign, call_date, created_at, clean_qa_score, auto_fail, feedback, answers')
+          .gte('created_at', fromISO).lte('created_at', toISO),
+        supabase.from('qa_questions').select('id, label, points, sort_order, audit_type, campaign'),
+        supabase.from('qa_sub_items').select('id, label, question_id, sort_order'),
+      ])
+      if (!active) return
+      if (aRes.error) { setErr(aRes.error.message); return }
+      setAudits(aRes.data || []); setQuestions(qRes.data || []); setSubItems(sRes.data || [])
+    })()
+    return () => { active = false }
+  }, [range.from, range.to])
+
+  const qMeta = useMemo(() => Object.fromEntries(questions.map(q => [q.id, q])), [questions])
+  const subLabel = useMemo(() => Object.fromEntries(subItems.map(s => [s.id, s.label])), [subItems])
+  const nameOf = useMemo(() => Object.fromEntries((profiles || []).map(p => [p.id, p.full_name])), [profiles])
+
+  // audits after the shared agent filter (by profile_id) — brand/type applied on top.
+  const scoped = useMemo(() => {
+    let list = (audits || []).filter(a => a.answers && Object.keys(a.answers).length)
+    if (allowedIds) list = list.filter(a => a.profile_id && allowedIds.has(a.profile_id))
+    return list
+  }, [audits, allowedIds])
+
+  const brands = useMemo(() => Array.from(new Set(scoped.map(a => a.brand).filter(Boolean))).sort(), [scoped])
+  const types = useMemo(() => Array.from(new Set(scoped.map(a => a.audit_type).filter(Boolean))).sort(), [scoped])
+  const filtered = useMemo(() => scoped.filter(a =>
+    (brand === 'all' || a.brand === brand) && (atype === 'all' || a.audit_type === atype)
+  ), [scoped, brand, atype])
+
+  // ---- per-question rollup ----
+  const perQuestion = useMemo(() => {
+    const m = {}
+    for (const a of filtered) {
+      for (const [qid, ans] of Object.entries(a.answers || {})) {
+        if (!m[qid]) m[qid] = { qid, yes: 0, no: 0, na: 0, missed: {} }
+        const v = ans?.value
+        if (v === 'yes') m[qid].yes++
+        else if (v === 'no') m[qid].no++
+        else if (v === 'na') m[qid].na++
+        for (const sid of (ans?.missed || [])) m[qid].missed[sid] = (m[qid].missed[sid] || 0) + 1
+      }
+    }
+    return Object.values(m).map(r => {
+      const scoredN = r.yes + r.no
+      const meta = qMeta[r.qid] || {}
+      const topMissed = Object.entries(r.missed).sort((x, y) => y[1] - x[1])
+        .slice(0, 3).map(([sid, n]) => `${subLabel[sid] || 'item'} (${n})`)
+      return {
+        qid: r.qid,
+        label: meta.label || '(question no longer in the form)',
+        type: meta.audit_type || '—',
+        points: meta.points ?? null,
+        sort: meta.sort_order ?? 9999,
+        asked: r.yes + r.no + r.na,
+        scored: scoredN, passed: r.yes, missed: r.no, na: r.na,
+        passPct: scoredN ? Math.round((r.yes / scoredN) * 100) : null,
+        topMissed,
+      }
+    }).sort((a, b) => (a.passPct ?? 101) - (b.passPct ?? 101) || a.label.localeCompare(b.label))
+  }, [filtered, qMeta, subLabel])
+
+  const totals = useMemo(() => {
+    const scored = perQuestion.reduce((s, r) => s + r.scored, 0)
+    const passed = perQuestion.reduce((s, r) => s + r.passed, 0)
+    return { audits: filtered.length, questions: perQuestion.length, passPct: scored ? Math.round(passed / scored * 100) : null }
+  }, [perQuestion, filtered])
+
+  // ---- Export A: per-question summary ----
+  function exportSummary() {
+    const out = [['Question', 'Audit type', 'Points', 'Times scored', 'Passed', 'Missed', 'N/A', 'Pass %', 'Most-missed items']]
+    perQuestion.forEach(r => out.push([
+      r.label, r.type, r.points ?? '', r.scored, r.passed, r.missed, r.na,
+      r.passPct == null ? '' : r.passPct + '%', r.topMissed.join('; '),
+    ]))
+    downloadCSV(`qa-by-question-${range.from}_to_${range.to}.csv`, out)
+  }
+
+  // ---- Export B: one row per audit, every question on the same line ----
+  function exportAnswers() {
+    // Column order = questions present in the filtered set, by (type, sort_order).
+    const qids = Array.from(new Set(filtered.flatMap(a => Object.keys(a.answers || {}))))
+      .map(qid => ({ qid, meta: qMeta[qid] || {} }))
+      .sort((a, b) => (a.meta.audit_type || '').localeCompare(b.meta.audit_type || '')
+        || (a.meta.sort_order ?? 9999) - (b.meta.sort_order ?? 9999))
+    const header = ['Call date', 'Audit date', 'Agent', 'Auditor', 'Brand', 'Audit type', 'Score %', 'Auto-fail',
+      ...qids.map(({ meta }) => meta.label || 'Question'), 'Feedback']
+    const out = [header]
+    filtered.slice().sort((a, b) => (a.created_at || '').localeCompare(b.created_at || '')).forEach(a => {
+      const cells = qids.map(({ qid }) => {
+        const ans = (a.answers || {})[qid]
+        if (!ans) return ''
+        let cell = QA_VAL_LABEL[ans.value] || ans.value || ''
+        const miss = (ans.missed || []).map(sid => subLabel[sid] || 'item').filter(Boolean)
+        if (miss.length) cell += ` — missed: ${miss.join('; ')}`
+        return cell
+      })
+      out.push([
+        a.call_date || '', (a.created_at || '').slice(0, 10), a.agent_name || '',
+        nameOf[a.auditor_id] || '', a.brand || '', a.audit_type || '',
+        a.clean_qa_score == null ? '' : a.clean_qa_score, a.auto_fail ? 'Yes' : 'No',
+        ...cells, a.feedback || '',
+      ])
+    })
+    downloadCSV(`qa-answers-per-audit-${range.from}_to_${range.to}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
+  if (audits == null) return <p className="page-sub">Loading…</p>
+
+  const selStyle = { padding: '6px 10px', borderRadius: 8, border: '1px solid var(--line)', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)' }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Tile label="Audits in view" value={totals.audits} />
+        <Tile label="Questions" value={totals.questions} />
+        <Tile label="Overall pass %" value={totals.passPct == null ? '—' : totals.passPct + '%'} />
+        <div style={{ flex: 1 }} />
+        {brands.length > 0 && (
+          <label style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600 }}>Brand{' '}
+            <select value={brand} onChange={e => setBrand(e.target.value)} style={selStyle}>
+              <option value="all">All brands</option>
+              {brands.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </label>
+        )}
+        {types.length > 1 && (
+          <label style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600 }}>Type{' '}
+            <select value={atype} onChange={e => setAtype(e.target.value)} style={selStyle}>
+              <option value="all">All types</option>
+              {types.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+        <button className="btn btn-ghost" onClick={exportAnswers} disabled={!filtered.length} title="One row per audit — every question answered on the same line.">⬇ Answers (per audit)</button>
+        <button className="btn btn-primary" onClick={exportSummary} disabled={!perQuestion.length}>⬇ Per-question CSV</button>
+      </div>
+
+      {perQuestion.length === 0 ? (
+        <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
+          <h3 style={{ fontSize: 14, marginBottom: 4 }}>No per-question answers in this range</h3>
+          <p style={{ fontSize: 13 }}>In-app audits store each question's answer. Score-only imports won't appear here.</p>
+        </div>
+      ) : (
+        <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 720 }}>
+            <thead>
+              <tr>
+                <Th>Question</Th><Th>Type</Th><Th r>Scored</Th><Th r>Passed</Th><Th r>Missed</Th><Th r>N/A</Th><Th r>Pass %</Th><Th>Most-missed items</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {perQuestion.map(r => (
+                <tr key={r.qid} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                  <td style={{ ...cellL, fontWeight: 500 }}>{r.label}</td>
+                  <td style={{ ...cellL, color: 'var(--ink-soft)' }}>{r.type}</td>
+                  <td style={cellR}>{r.scored}</td>
+                  <td style={cellR}>{r.passed}</td>
+                  <td style={{ ...cellR, color: r.missed ? 'var(--failed)' : 'var(--ink-soft)' }}>{r.missed || '—'}</td>
+                  <td style={{ ...cellR, color: 'var(--ink-soft)' }}>{r.na || '—'}</td>
+                  <td style={{ ...cellR, color: r.passPct == null ? 'var(--ink-soft)' : r.passPct >= 90 ? 'var(--passed)' : r.passPct >= 75 ? 'var(--needed)' : 'var(--failed)', fontWeight: 700 }}>{r.passPct == null ? '—' : r.passPct + '%'}</td>
+                  <td style={{ ...cellL, color: 'var(--ink-soft)', fontSize: 12 }}>{r.topMissed.join(', ') || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="page-sub" style={{ fontSize: 12 }}>Pass % = "Yes" ÷ (Yes + No); N/A answers are excluded from the denominator. Questions ordered worst pass-rate first. "Answers (per audit)" exports every audit on one line with all its question answers.</p>
     </div>
   )
 }
