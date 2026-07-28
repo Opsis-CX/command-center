@@ -748,3 +748,42 @@ a{color:inherit;text-decoration:none;}
 .lesson-row:hover .lesson-del,
 .lesson-row .lesson-del:focus-visible { opacity: 1; }
 .lesson-row .lesson-del:hover { color: var(--failed); background: var(--failed-bg); }
+
+/* ============================================================
+   MOBILE RESPONSIVE PASS — lifts every screen on small viewports.
+   Purely additive and scoped to small widths; later CSS wins.
+   ============================================================ */
+@media (max-width: 768px) {
+  /* Contain the page so the whole app never scrolls sideways */
+  .main { overflow-x: hidden; }
+  .content { padding: 12px 12px calc(14px + env(safe-area-inset-bottom, 0px)); }
+  .topbar { padding: 0 12px; height: 54px; }
+  .crumb { font-size: 13px; }
+
+  .page-head { margin-bottom: 16px; }
+  .page-title { font-size: 19px; }
+  .page-sub { font-size: 13px; }
+
+  /* Stat/card grids collapse to a single column, edge to edge */
+  .cards { grid-template-columns: 1fr; gap: 12px; }
+  .card { padding: 14px; border-radius: 10px; }
+
+  /* Media never overflows its container */
+  img, video, canvas, svg { max-width: 100%; height: auto; }
+
+  /* Bigger, zoom-proof form controls (16px stops iOS auto-zoom on focus) */
+  .field input, .field textarea, .field select { font-size: 16px; padding: 11px 12px; }
+  .btn { padding: 11px 15px; font-size: 14px; }
+
+  /* Modals become bottom sheets that use the full width */
+  .modal-back { padding: 0; align-items: flex-end; }
+  .modal {
+    width: 100%; max-width: 100%; max-height: 92vh;
+    border-radius: 16px 16px 0 0;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Wide grids/tables stay swipeable instead of clipping off-screen */
+  .grid-scroll { -webkit-overflow-scrolling: touch; }
+  .re-rendered, .rich-full { overflow-x: auto; }
+}
