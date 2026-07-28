@@ -298,12 +298,35 @@ export default function Calendar() {
 
 // ---------- BOOK FRAME (leather cover + tabs) ----------
 function BookFrame({ view, setView, children }) {
+  const narrow = useNarrow(700)
+  const tabs = ['month', 'week', 'day']
+
+  // On phones the vertical "spine" tabs + big leather margins waste the little
+  // width there is. Switch to a compact horizontal tab bar above the page.
+  if (narrow) {
+    return (
+      <div style={{ background: '#4a6178', borderRadius: 12, padding: 8 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          {tabs.map(v => (
+            <button key={v} onClick={() => setView(v)}
+              style={{
+                flex: 1, border: 'none', cursor: 'pointer', borderRadius: 8,
+                background: view === v ? 'var(--cal-paper)' : 'var(--cal-panel)', color: 'var(--cal-ink)',
+                padding: '10px 6px', fontSize: 13, letterSpacing: 1, textTransform: 'uppercase', fontWeight: 600,
+              }}>{v}</button>
+          ))}
+        </div>
+        <div style={{ background: 'var(--cal-paper)', borderRadius: 8, overflow: 'hidden' }}>{children}</div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ background: '#4a6178', borderRadius: 16, padding: 18, boxShadow: 'inset 0 0 40px rgba(0,0,0,.22)', position: 'relative' }}>
       <div style={{ display: 'flex', background: 'var(--cal-paper)', borderRadius: 8, overflow: 'hidden', minHeight: 560 }}>
         <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '30px 0', background: '#4a6178' }}>
-          {['month', 'week', 'day'].map(v => (
+          {tabs.map(v => (
             <button key={v} onClick={() => setView(v)}
               style={{
                 writingMode: 'vertical-rl', textOrientation: 'mixed', border: 'none', cursor: 'pointer',
@@ -376,9 +399,10 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
   const days = Array.from({ length: weekCount * 7 }, (_, i) => addDays(gridStart, i))
   const todayStr = isoDate(etNow())
   const [dayPopup, setDayPopup] = React.useState(null) // {date, items}
+  const narrow = useNarrow(700)
 
-  const CELL_H = 132
-  const MAX_SHOWN = 4
+  const CELL_H = narrow ? 86 : 132
+  const MAX_SHOWN = narrow ? 2 : 4
 
   function openItem(i, e) {
     e.stopPropagation()
@@ -424,17 +448,20 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
 
   const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
+  const dayHeadNames = narrow ? ['M', 'T', 'W', 'T', 'F', 'S', 'S'] : dayNames
   return (
     <div style={{ display: 'flex' }}>
-      <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} itemsOn={itemsOn} tasksOn={tasksOn} />
-      <div style={{ flex: 1, padding: '16px 18px', minWidth: 0 }}>
+      {/* The "today" rail eats ~40% of a phone's width — hide it on mobile so
+          the month grid itself is actually legible. */}
+      {!narrow && <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} itemsOn={itemsOn} tasksOn={tasksOn} />}
+      <div style={{ flex: 1, padding: narrow ? '8px 8px' : '16px 18px', minWidth: 0 }}>
         <ViewNav cursor={cursor} setCursor={setCursor}
           label={`${MONTHS[cursor.getMonth()]} ${cursor.getFullYear()}`}
           onPrev={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}
           onNext={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>
-          {dayNames.map(d => (
-            <div key={d} style={{ textAlign: 'center', color: 'var(--cal-ink-soft)', fontSize: 11, letterSpacing: 1.5, paddingBottom: 8 }}>{d.toUpperCase()}</div>
+          {dayHeadNames.map((d, di) => (
+            <div key={di} style={{ textAlign: 'center', color: 'var(--cal-ink-soft)', fontSize: narrow ? 10 : 11, letterSpacing: narrow ? 0 : 1.5, paddingBottom: 8 }}>{narrow ? d : d.toUpperCase()}</div>
           ))}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1, background: 'var(--cal-panel)', border: '1px solid var(--cal-line-2)' }}>
