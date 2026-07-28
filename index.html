@@ -1,18 +1,854 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Command Center</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='34' fill='none' stroke='%2300E6E6' stroke-width='16'/%3E%3C/svg%3E" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#00E6E6" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpsisCX — Contact Center Execution + Operations Consulting</title>
+<meta name="description" content="The only contact center BPO that runs your operations, too — outbound appointment setting, inbound support, and U.S.-based operations consulting.">
+<link rel="canonical" href="https://www.opsiscx.com/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#021116">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="OpsisCX">
+<meta property="og:title" content="OpsisCX — Contact Center Execution + Operations Consulting">
+<meta property="og:description" content="The only contact center BPO that runs your operations, too — outbound appointment setting, inbound support, and U.S.-based operations consulting.">
+<meta property="og:url" content="https://www.opsiscx.com/">
+<meta property="og:image" content="https://www.opsiscx.com/images/logo.png">
+<meta property="og:image:alt" content="OpsisCX">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="OpsisCX — Contact Center Execution + Operations Consulting">
+<meta name="twitter:description" content="The only contact center BPO that runs your operations, too — outbound appointment setting, inbound support, and U.S.-based operations consulting.">
+<meta name="twitter:image" content="https://www.opsiscx.com/images/logo.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "ProfessionalService",
+      "@id": "https://www.opsiscx.com/#org",
+      "name": "OpsisCX",
+      "alternateName": "OpsisCX Solutions",
+      "legalName": "Turritopsis Consulting, LLC",
+      "url": "https://www.opsiscx.com/",
+      "logo": "https://www.opsiscx.com/images/logo.png",
+      "image": "https://www.opsiscx.com/images/logo.png",
+      "description": "Contact center execution and operations consulting for growing service businesses. 100% U.S.-based.",
+      "telephone": "+1-656-234-8009",
+      "email": "hello@opsiscx.com",
+      "areaServed": "US",
+      "address": {
+        "@type": "PostalAddress",
+        "addressCountry": "US"
+      },
+      "sameAs": [
+        "https://www.facebook.com/opsiscx/",
+        "https://www.instagram.com/opsis.cx/",
+        "https://www.linkedin.com/company/turritopsis-consulting/"
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://www.opsiscx.com/#website",
+      "url": "https://www.opsiscx.com/",
+      "name": "OpsisCX",
+      "publisher": {
+        "@id": "https://www.opsiscx.com/#org"
+      }
+    }
+  ]
+}
+</script>
+<link rel="icon" type="image/png" href="images/favicon-o.png">
+<link rel="apple-touch-icon" href="images/favicon-o.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --dark:#021116; --dark2:#010b0f; --panel:#071A20;
+    --cyan:#13D9E8; --cyan-soft:#7deef7; --teal:#0089A6; --teal-deep:#006986;
+    --ice:#e1f3fa; --coral:#FF7E6E; --coral-soft:#FFA79A;
+    --text:#D5E5EA; --text-dim:#a9c6cd; --text-mute:#8fb3bc; --navy:#0b3945;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  html,body{margin:0;padding:0;background:var(--dark);}
+  body{font-family:'Source Sans 3',sans-serif;color:var(--text);-webkit-font-smoothing:antialiased;}
+  a{color:var(--cyan);text-decoration:none;}
+  a:hover{color:var(--cyan-soft);}
+  ::selection{background:var(--cyan);color:var(--dark);}
+  h1,h2,h3{font-family:'Poppins',sans-serif;margin:0;}
+  .container{max-width:1200px;margin:0 auto;padding:0 24px;}
+  .eyebrow{font-family:'Poppins',sans-serif;font-size:13px;font-weight:700;letter-spacing:0.16em;color:var(--coral);text-transform:uppercase;}
+  .btn{display:inline-block;background:var(--cyan);color:var(--dark);font-family:'Poppins',sans-serif;font-weight:700;border-radius:999px;text-align:center;transition:all .2s ease;box-shadow:0 0 24px rgba(19,217,232,.35);}
+  .btn:hover{background:#ffffff;color:var(--dark);transform:translateY(-2px);}
+  @keyframes opsisGlow{0%,100%{opacity:.55;}50%{opacity:1;}}
+  @keyframes opsisFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-10px);}}
+  @keyframes opsisSweep{0%{background-position:0% 50%;}50%{background-position:100% 50%;}100%{background-position:0% 50%;}}
+
+  .topbar{background:var(--ice);font-size:13px;letter-spacing:.02em;color:#3d626e;}
+  .topbar .container{display:flex;justify-content:space-between;align-items:center;padding-top:8px;padding-bottom:8px;gap:20px;}
+  .topbar .group{display:flex;gap:20px;align-items:center;}
+  .topbar a{color:#3d626e;} .topbar a:hover{color:var(--teal);}
+  .topbar a.phone{color:var(--teal);font-weight:700;}
+  .sep{opacity:.35;}
+
+  .nav{position:sticky;top:0;z-index:50;background:var(--ice);}
+  .nav .container{display:flex;align-items:center;justify-content:space-between;padding-top:14px;padding-bottom:14px;gap:32px;}
+  .nav img{height:64px;width:auto;display:block;}
+  .nav .links{display:flex;align-items:center;gap:26px;font-size:15px;font-weight:600;}
+  .nav .links a{color:var(--navy);} .nav .links a:hover{color:var(--teal);}
+  .nav .btn-nav{background:var(--teal);color:#fff;font-family:'Poppins',sans-serif;font-weight:700;font-size:14px;padding:12px 22px;border-radius:999px;white-space:nowrap;box-shadow:0 4px 18px rgba(0,137,166,.35);transition:all .2s ease;}
+  .nav .btn-nav:hover{background:var(--teal-deep);color:#fff;transform:translateY(-2px);}
+  .nav-toggle{display:none;background:none;border:none;cursor:pointer;padding:8px;flex-direction:column;gap:5px;}
+  .nav-toggle span{display:block;width:26px;height:3px;border-radius:2px;background:var(--navy);}
+  .links .mobile-book{display:none;}
+  @media (max-width:980px){
+    .nav-toggle{display:flex;}
+    .nav .links.open{display:flex;position:absolute;top:100%;left:0;right:0;background:var(--ice);flex-direction:column;align-items:stretch;gap:0;padding:10px 24px 20px;border-bottom:1px solid rgba(4,48,60,.12);box-shadow:0 14px 30px rgba(2,17,22,.25);z-index:60;}
+    .nav .links.open a{padding:13px 4px;border-bottom:1px solid rgba(4,48,60,.08);font-size:16px;}
+    .links .mobile-book{font-weight:700;color:var(--teal);}
+  }
+  @media (max-width:640px){
+    .nav .btn-nav{display:none;}
+    .links.open .mobile-book{display:block;}
+  }
+
+  .hero{position:relative;overflow:hidden;border-bottom:1px solid rgba(19,217,232,.2);
+    background:radial-gradient(ellipse 60% 50% at 20% 90%,rgba(19,217,232,.12) 0%,rgba(2,17,22,0) 60%),
+    linear-gradient(180deg,#e1f3fa 0%,#b3dfec 8%,#5d9dad 17%,#1c5261 27%,#062b35 42%,#021116 68%);}
+  .hero .container{display:grid;grid-template-columns:1.05fr .95fr;gap:24px 56px;align-items:center;padding-top:84px;padding-bottom:72px;}
+  .hero .kicker{grid-column:1 / -1;font-family:'Poppins',sans-serif;font-size:14px;font-weight:700;letter-spacing:.2em;color:var(--navy);text-align:center;}
+  .hero .copy{display:flex;flex-direction:column;gap:22px;}
+  .hero h1{font-size:clamp(24px,7.1vw,58px);line-height:1.06;font-weight:800;text-wrap:pretty;overflow-wrap:break-word;
+    background:linear-gradient(110deg,#ffffff 20%,#13D9E8 50%,#ffffff 80%);background-size:200% auto;
+    -webkit-background-clip:text;background-clip:text;color:transparent;animation:opsisSweep 7s ease infinite;}
+  .hero p.sub{font-size:19px;line-height:1.65;margin:0;max-width:52ch;text-wrap:pretty;}
+  .hero .cta-row{display:flex;align-items:center;gap:22px;margin-top:8px;}
+  .hero .btn-main{font-size:16px;padding:16px 30px;box-shadow:0 0 32px rgba(19,217,232,.4);}
+  .hero .btn-ghost{font-weight:700;font-size:16px;color:var(--cyan);border:1px solid rgba(19,217,232,.5);padding:15px 26px;border-radius:999px;transition:all .2s ease;}
+  .hero .btn-ghost:hover{border-color:var(--cyan);box-shadow:0 0 20px rgba(19,217,232,.25);color:var(--cyan);}
+  .hero .map-col{display:flex;flex-direction:column;gap:16px;align-items:center;}
+  .hero .map-col .float{animation:opsisFloat 6s ease-in-out infinite;}
+  .hero .map-col img{width:100%;max-width:600px;height:auto;display:block;filter:drop-shadow(0 0 40px rgba(19,217,232,.35));transform:perspective(1100px) rotateX(28deg) rotate(-4deg) scale(1.22);}
+  .hero .map-caption{font-size:13px;color:var(--text-mute);letter-spacing:.06em;text-transform:uppercase;font-weight:600;animation:opsisGlow 4s ease-in-out infinite;}
+  .hero .stats{grid-column:1 / -1;display:flex;gap:48px;justify-content:center;margin-top:16px;padding-top:26px;border-top:1px solid rgba(19,217,232,.2);}
+  .hero .stat{display:flex;flex-direction:column;gap:2px;align-items:center;text-align:center;}
+  .hero .stat b{font-family:'Poppins',sans-serif;font-size:26px;font-weight:700;color:var(--cyan);white-space:nowrap;}
+  .hero .stat span{font-size:14px;color:var(--text-mute);white-space:nowrap;}
+  .hero .stat-sep{width:1px;background:rgba(19,217,232,.2);}
+
+  .trust{background:var(--dark2);}
+  .trust .container{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;padding-top:26px;padding-bottom:26px;}
+  .trust .item{display:flex;align-items:center;gap:14px;justify-content:center;}
+  .trust .item + .item{border-left:1px solid rgba(19,217,232,.2);}
+  .trust .dot{width:10px;height:10px;border-radius:50%;background:var(--cyan);box-shadow:0 0 12px rgba(19,217,232,.8);}
+  .trust .label{font-family:'Poppins',sans-serif;font-weight:600;font-size:16px;color:#fff;}
+
+  .section{padding:88px 0;}
+  .section-head{display:flex;flex-direction:column;gap:12px;max-width:680px;}
+  .section-head.center{align-items:center;text-align:center;max-width:950px;margin:0 auto;}
+  .section h2{font-size:38px;font-weight:700;color:#fff;line-height:1.15;}
+  .section .intro{font-size:17px;line-height:1.6;color:var(--text);margin:0;}
+
+  .card{background:rgba(255,255,255,.03);border:1px solid rgba(19,217,232,.3);border-radius:18px;transition:all .25s ease;}
+  .card:hover{border-color:var(--cyan);box-shadow:0 0 35px rgba(19,217,232,.15);transform:translateY(-4px);}
+
+  .pillars{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;margin-top:48px;}
+  .pillar{padding:30px 26px;display:flex;flex-direction:column;gap:12px;}
+  .pillar .num{font-family:'Poppins',sans-serif;font-size:13px;font-weight:700;color:var(--coral);}
+  .pillar h3{font-size:21px;font-weight:700;color:#fff;}
+  .pillar p{font-size:15px;line-height:1.55;color:var(--text-dim);margin:0;}
+
+  .services{background:var(--dark2);border-top:1px solid rgba(19,217,232,.18);border-bottom:1px solid rgba(19,217,232,.18);}
+  .svc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:40px;}
+  .svc{padding:30px 26px;display:flex;flex-direction:column;gap:12px;color:inherit;}
+  .svc:hover{color:inherit;}
+  .svc h3{font-size:19px;font-weight:700;color:#fff;line-height:1.25;}
+  .svc p{font-size:15px;line-height:1.55;color:var(--text-dim);margin:0;}
+  .svc .more{font-size:14px;font-weight:700;color:var(--cyan);margin-top:auto;}
+  .svc-cta{border-radius:18px;padding:30px 26px;display:flex;flex-direction:column;gap:12px;justify-content:center;
+    background:linear-gradient(135deg,rgba(19,217,232,.16),rgba(0,105,134,.25));border:1px solid var(--cyan);box-shadow:0 0 40px rgba(19,217,232,.12);}
+  .svc-cta h3{font-size:20px;font-weight:700;color:#fff;line-height:1.3;}
+  .svc-cta p{font-size:15px;line-height:1.55;color:var(--text);margin:0;}
+  .svc-cta .btn{font-size:14px;padding:12px 22px;align-self:flex-start;margin-top:6px;}
+
+  .calc{border-bottom:1px solid var(--cyan);}
+  .calc .section-head p{font-size:20px;line-height:1.6;color:var(--text);margin:0;}
+  .calc h2{font-size:50px;font-weight:800;line-height:1.1;}
+  .calc .kicker{color:var(--cyan);letter-spacing:.18em;}
+  .calc-grid{display:grid;grid-template-columns:1fr 1fr;gap:30px;align-items:start;margin-top:50px;}
+  .calc-card{background:rgba(255,255,255,.03);border:1px solid rgba(19,217,232,.4);border-radius:25px;padding:35px;box-shadow:0 0 35px rgba(19,217,232,.07);}
+  .calc-card h3{font-size:28px;font-weight:700;color:#fff;margin-bottom:7px;}
+  .calc-card label{display:block;margin-top:18px;margin-bottom:6px;font-weight:700;color:#fff;font-size:15px;}
+  .calc-card small{display:block;color:var(--text-dim);font-size:13px;line-height:1.4;margin-bottom:8px;}
+  .calc-card input{width:100%;padding:14px 18px;background:var(--panel);border:1px solid rgba(19,217,232,.5);border-radius:50px;color:#fff;font-size:16px;outline:none;font-family:'Source Sans 3',sans-serif;}
+  .calc-card input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(19,217,232,.16);}
+  .calc-results-card{position:sticky;top:110px;display:flex;flex-direction:column;gap:22px;}
+  .rate-box{padding:20px;background:rgba(19,217,232,.08);border:1px solid rgba(19,217,232,.4);border-radius:18px;font-size:18px;color:#fff;}
+  .rate-box strong{display:block;color:var(--cyan);margin-top:6px;}
+  .rate-box em{display:block;color:var(--cyan);font-size:14px;margin-top:6px;line-height:1.5;}
+  .results{display:flex;flex-direction:column;gap:15px;}
+  .result{padding:20px;border-radius:18px;background:var(--panel);border:1px solid rgba(19,217,232,.25);}
+  .result span{display:block;font-size:14px;color:var(--text);margin-bottom:8px;}
+  .result strong{font-family:'Poppins',sans-serif;font-size:32px;line-height:1.1;color:#fff;}
+  .result.rate strong{color:var(--coral);}
+  .result.highlight{background:rgba(19,217,232,.12);border-color:var(--cyan);}
+  .result.highlight strong{color:var(--cyan);font-size:36px;}
+  .result.highlight2{background:rgba(19,217,232,.06);border-color:rgba(19,217,232,.65);}
+  .result.highlight2 strong{color:var(--cyan);}
+  .calc-note{margin:0;line-height:1.7;color:var(--text);font-size:15px;}
+  .calc .btn-book{font-size:15px;padding:15px 26px;}
+
+  .testimonials{background:var(--dark2);}
+  .quote-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:40px;}
+  .quote{padding:34px 32px;display:flex;flex-direction:column;gap:18px;}
+  .quote .mark{font-family:'Poppins',sans-serif;font-size:44px;line-height:.5;color:var(--cyan);font-weight:800;}
+  .quote p{font-size:17px;line-height:1.65;color:#fff;margin:0;font-style:italic;}
+  .quote .who{display:flex;align-items:center;gap:12px;margin-top:auto;}
+  .quote .avatar{width:42px;height:42px;border-radius:50%;background:rgba(19,217,232,.15);border:1px solid var(--cyan);color:var(--cyan);display:flex;align-items:center;justify-content:center;font-family:'Poppins',sans-serif;font-weight:700;font-size:15px;}
+  .quote .name{font-weight:700;font-size:15px;color:#fff;}
+  .quote .role{font-size:13.5px;color:var(--text-mute);}
+
+  .insights-head{display:flex;justify-content:space-between;align-items:flex-end;gap:32px;}
+  .btn-outline{font-weight:700;font-size:15px;color:var(--cyan);white-space:nowrap;border:1px solid rgba(19,217,232,.5);padding:12px 22px;border-radius:999px;transition:all .2s ease;}
+  .btn-outline:hover{box-shadow:0 0 20px rgba(19,217,232,.25);color:var(--cyan);}
+  .post-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:40px;}
+  .post{overflow:hidden;display:flex;flex-direction:column;color:inherit;}
+  .post:hover{color:inherit;}
+  .post img{height:160px;width:100%;object-fit:cover;display:block;border-bottom:1px solid rgba(19,217,232,.2);}
+  .post .body{padding:24px;display:flex;flex-direction:column;gap:10px;flex:1;}
+  .post .cat{font-size:12.5px;font-weight:700;letter-spacing:.1em;color:var(--coral);text-transform:uppercase;}
+  .post h3{font-size:18px;font-weight:700;color:#fff;line-height:1.35;}
+  .post p{font-size:14.5px;line-height:1.55;color:var(--text-dim);margin:0;}
+  .post .more{font-size:14px;font-weight:700;color:var(--cyan);margin-top:auto;}
+
+  .process{background:var(--dark2);border-top:1px solid rgba(19,217,232,.18);}
+  .steps{display:grid;grid-template-columns:1fr 1fr 1fr;gap:22px;margin-top:44px;}
+  .step{border:1px solid rgba(19,217,232,.3);border-radius:18px;padding:28px 26px;display:flex;flex-direction:column;gap:12px;transition:all .25s ease;}
+  .step:hover{border-color:var(--cyan);box-shadow:0 0 30px rgba(19,217,232,.12);}
+  .step .n{font-family:'Poppins',sans-serif;font-size:15px;font-weight:700;color:var(--cyan);}
+  .step h3{font-size:20px;font-weight:700;color:#fff;}
+  .step p{font-size:15px;line-height:1.55;color:var(--text-dim);margin:0;}
+
+  .final-cta{background:radial-gradient(ellipse 70% 90% at 50% 100%,rgba(0,105,134,.4) 0%,rgba(2,17,22,0) 65%),var(--dark);}
+  .final-cta .container{display:flex;flex-direction:column;gap:18px;align-items:center;text-align:center;padding-top:96px;padding-bottom:96px;max-width:900px;}
+  .final-cta h2{font-size:42px;font-weight:800;line-height:1.15;}
+  .final-cta p{font-size:18px;line-height:1.6;color:var(--text);margin:0;max-width:56ch;}
+  .final-cta .btn{font-size:17px;padding:17px 36px;margin-top:10px;box-shadow:0 0 36px rgba(19,217,232,.4);}
+  .final-cta .contact-line{font-size:15px;color:var(--text-mute);}
+  .final-cta .contact-line a{font-weight:700;}
+
+  footer{background:linear-gradient(180deg,#e1f3fa 0%,#9fcdd9 9%,#3d7e90 24%,#0a3540 46%,#021116 72%);}
+  footer .wave{display:block;width:100%;height:90px;}
+  footer .container{padding-top:64px;padding-bottom:32px;display:flex;flex-direction:column;gap:40px;}
+  .foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:40px;}
+  .foot-brand{display:flex;flex-direction:column;gap:14px;}
+  .foot-brand img{height:84px;width:auto;align-self:flex-start;filter:drop-shadow(0 0 2px rgba(255,255,255,.85)) drop-shadow(0 0 16px rgba(125,238,247,.5));}
+  .foot-brand p{font-size:14.5px;line-height:1.6;color:var(--text-mute);margin:0;max-width:38ch;}
+  .foot-social{display:flex;gap:14px;font-size:13.5px;font-weight:700;}
+  .foot-col{display:flex;flex-direction:column;gap:10px;}
+  .foot-col .h{font-family:'Poppins',sans-serif;font-size:14px;font-weight:700;color:#fff;letter-spacing:.06em;}
+  .foot-col a{color:var(--text-mute);font-size:14.5px;}
+  .foot-col a:hover{color:var(--cyan);}
+  .foot-legal{border-top:1px solid rgba(19,217,232,.18);padding-top:22px;display:flex;justify-content:space-between;gap:24px;font-size:13px;color:#5f838c;}
+
+  .calc-tabs{display:flex;justify-content:center;gap:12px;margin-top:44px;}
+  .calc-tab{font-family:'Poppins',sans-serif;font-weight:700;font-size:15px;padding:12px 26px;border-radius:999px;border:1px solid rgba(19,217,232,.5);background:transparent;color:var(--cyan);cursor:pointer;transition:all .2s ease;white-space:nowrap;}
+  .calc-tab:hover{box-shadow:0 0 20px rgba(19,217,232,.25);}
+  .calc-tab.active{background:var(--cyan);color:var(--dark);box-shadow:0 0 24px rgba(19,217,232,.35);}
+  .calc-pane{display:none;}
+  .calc-pane.active{display:block;}
+  .calc-card select{width:100%;padding:14px 18px;background:var(--panel);border:1px solid rgba(19,217,232,.5);border-radius:50px;color:#fff;font-size:16px;outline:none;font-family:'Source Sans 3',sans-serif;}
+  .calc-card select:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(19,217,232,.16);}
+  .compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:30px;}
+  .compare-card{background:var(--panel);border:1px solid rgba(19,217,232,.25);border-radius:18px;padding:26px;}
+  .compare-card.accent{background:rgba(19,217,232,.1);border-color:var(--cyan);}
+  .compare-card h4{font-family:'Poppins',sans-serif;font-size:22px;margin:0 0 16px;color:#fff;}
+  .compare-card ul{margin:0;padding-left:20px;color:var(--text-dim);line-height:1.8;}
+  .assess{margin-top:30px;}
+  .assess p{color:var(--text);font-size:17px;line-height:1.6;margin:0 0 22px;}
+  .assess .checks{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:26px;}
+  .assess .checks label{display:flex;gap:10px;align-items:flex-start;background:var(--panel);border:1px solid rgba(19,217,232,.25);border-radius:14px;padding:16px;color:#fff;line-height:1.4;cursor:pointer;font-size:15px;}
+  .assess .checks input{width:auto;flex:0 0 auto;margin-top:3px;accent-color:var(--cyan);}
+  .assess .checks label:has(input:checked){border-color:var(--cyan);background:rgba(19,217,232,.08);box-shadow:0 0 18px rgba(19,217,232,.12);}
+  .assess-result{background:rgba(19,217,232,.1);border:1px solid var(--cyan);border-radius:18px;padding:24px;text-align:center;}
+  .assess-result span{display:block;color:var(--text);margin-bottom:8px;font-size:14px;}
+  .assess-result strong{display:block;color:var(--cyan);font-size:28px;font-family:'Poppins',sans-serif;}
+
+  @media (max-width: 980px){
+    .hero .container,.calc-grid,.quote-grid{grid-template-columns:1fr;}
+    .pillars,.svc-grid,.post-grid,.steps{grid-template-columns:1fr 1fr;}
+    .foot-grid{grid-template-columns:1fr 1fr;}
+
+    .nav .links{display:none;}
+    .hero .stats{flex-wrap:wrap;}
+  }
+  @media (max-width: 640px){
+    .pillars,.svc-grid,.post-grid,.steps,.trust .container,.foot-grid{grid-template-columns:1fr;}
+    .trust .item + .item{border-left:none;}
+    .calc h2{font-size:36px;}
+    .topbar .container{flex-direction:column;align-items:flex-start;gap:6px;}
+    .compare-grid,.assess .checks{grid-template-columns:1fr;}
+    .calc-tabs{flex-direction:column;align-items:center;}
+  }
+</style>
+</head>
+<body>
+
+<!-- Top utility bar -->
+<div class="topbar">
+  <div class="container">
+    <div class="group">
+      <span>100% U.S.-based teams</span>
+      <span class="sep">|</span>
+      <span>Contact center + operations consulting</span>
+    </div>
+    <div class="group">
+      <a class="phone" href="tel:6562348009">656-234-8009</a>
+      <span class="sep">|</span>
+      <!--email_off--><a href="mailto:hello@opsiscx.com">hello@opsiscx.com</a><!--/email_off-->
+    </div>
+  </div>
+</div>
+
+<!-- Navigation -->
+<nav class="nav">
+  <div class="container">
+    <a href="#home"><img src="images/logo.png" alt="OpsisCX"></a>
+    <div class="links">
+      <a href="#home">Home</a>
+      <a href="#services">Services</a>
+      <a href="#calculator">Cost Savings Calculator</a>
+      <a href="/about">About</a>
+      <a href="/insights">Insights</a>
+      <a href="#contact">Contact</a>
+      <a class="mobile-book" href="https://calendly.com/opsiscx-support/30min" target="_blank" rel="noopener">Book a Discovery Call</a>
+    </div>
+    <a class="btn-nav" href="https://calendly.com/opsiscx-support/30min" target="_blank" rel="noopener">Book a Discovery Call</a>
+    <button class="nav-toggle" aria-label="Open menu" onclick="document.querySelector('.nav .links').classList.toggle('open')"><span></span><span></span><span></span></button>
+  </div>
+</nav>
+
+<!-- Hero -->
+<header id="home" class="hero">
+  <div class="container">
+    <div class="kicker">BUILT FOR EXECUTION. FOCUSED ON OUTCOMES.</div>
+    <div class="copy">
+      <h1><span style="white-space:nowrap;">Your Contact Center.</span><br>Your Operations.<br>Your Call.</h1>
+      <p class="sub">A high-performing, U.S.-based contact center — plus operations support at every level, from virtual and executive assistants to operations managers, OBMs, and fractional operations leadership. Take one, take both.</p>
+      <div class="cta-row">
+        <a class="btn btn-main" href="https://calendly.com/opsiscx-support/30min" target="_blank" rel="noopener">Book a Discovery Call →</a>
+        <a class="btn-ghost" href="#calculator">Calculate Your Savings</a>
+      </div>
+    </div>
+    <div class="map-col">
+      <div class="float"><img src="images/us-map.png" alt="U.S.-based coverage"></div>
+      <div class="map-caption">Nationwide coverage · Execution + consulting under one roof</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>The only BPO</b><span>that runs your operations, too</span></div>
+      <div class="stat-sep"></div>
+      <div class="stat"><b>Ops + CX</b><span>one partner for both</span></div>
+      <div class="stat-sep"></div>
+      <div class="stat"><b>100% U.S.</b><span>based agents &amp; consultants</span></div>
+    </div>
+  </div>
+</header>
+
+<!-- Trust strip -->
+<div class="trust">
+  <div class="container">
+    <div class="item"><div class="dot"></div><div class="label">Experienced U.S. Teams</div></div>
+    <div class="item"><div class="dot"></div><div class="label">Proven Systems &amp; Processes</div></div>
+    <div class="item"><div class="dot"></div><div class="label">Built for Growth &amp; Scalability</div></div>
+  </div>
+</div>
+
+<!-- How we help -->
+<section id="how" class="section">
+  <div class="container">
+    <div class="section-head">
+      <div class="eyebrow">How We Help You Scale</div>
+      <h2>We do not just advise. We build, implement, and operate.</h2>
+      <p class="intro">We help growing service businesses improve operations across four key areas.</p>
+    </div>
+    <div class="pillars">
+      <div class="card pillar"><div class="num">01</div><h3>Strategy</h3><p>Define what needs to change and where to focus.</p></div>
+      <div class="card pillar"><div class="num">02</div><h3>Execution</h3><p>Improve how work gets done and support day-to-day operations — outbound appointment setting and inbound support that keep no opportunity missed.</p></div>
+      <div class="card pillar"><div class="num">03</div><h3>Systems</h3><p>Build the tools and infrastructure that support your business.</p></div>
+      <div class="card pillar"><div class="num">04</div><h3>Support</h3><p>Handle customer communication and ensure no opportunity is missed.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- Services -->
+<section id="services" class="section services">
+  <div class="container">
+    <div class="section-head">
+      <div class="eyebrow">Services</div>
+      <h2>Flexible Service Solutions</h2>
+      <p class="intro">The only contact center BPO that helps you with your operations as well — customer service and the business processes behind it.</p>
+    </div>
+    <div class="svc-grid">
+      <a class="card svc" href="/outbound-appointment-setting">
+        <h3>Outbound Appointment Setting</h3>
+        <p>Fill your pipeline with qualified conversations, not just dials.</p>
+        <div class="more">Learn more →</div>
+      </a>
+      <a class="card svc" href="/revenue-recovery">
+        <h3>Revenue Recovery / Inbound Support</h3>
+        <p>Capture every inbound opportunity with fast, consistent response.</p>
+        <div class="more">Learn more →</div>
+      </a>
+      <a class="card svc" href="/fractional-operations-leadership">
+        <h3>Fractional Operations Leadership</h3>
+        <p>Senior operational guidance without the full-time executive cost.</p>
+        <div class="more">Learn more →</div>
+      </a>
+      <a class="card svc" href="/systems-implementation">
+        <h3>Systems Implementation</h3>
+        <p>The tools and infrastructure your team actually needs, built right the first time.</p>
+        <div class="more">Learn more →</div>
+      </a>
+      <a class="card svc" href="/process-optimization">
+        <h3>Process Optimization</h3>
+        <p>Streamlined workflows that remove friction and recover lost time.</p>
+        <div class="more">Learn more →</div>
+      </a>
+      <div class="svc-cta">
+        <h3>Not sure where to start?</h3>
+        <p>Most engagements begin with a short discovery call to map your goals to the right mix of services.</p>
+        <a class="btn" href="https://calendly.com/opsiscx-support/30min" target="_blank" rel="noopener">Book a Discovery Call</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Cost Savings Calculator -->
+<section id="calculator" class="section calc">
+  <div class="container">
+    <div class="section-head center">
+      <div class="eyebrow kicker">Cost Savings Calculators</div>
+      <h2 id="calc-title">What Is Your Support Team Really Costing You?</h2>
+    </div>
+    <div class="calc-tabs">
+      <button class="calc-tab active" type="button" data-pane="pane-cc">Customer Support Team</button>
+      <button class="calc-tab" type="button" data-pane="pane-ops">Operations &amp; Admin Support</button>
+    </div>
+    <div id="pane-cc" class="calc-pane active">
+    <div class="section-head center" style="margin-top:34px;">
+      <p>Most businesses only look at hourly wages. The true cost of an in-house support team includes paid breaks, idle time, PTO, benefits, payroll taxes, software, recruiting, training, equipment, management oversight, and office overhead.</p>
+      <p>Use this calculator to compare your current in-house support costs to Opsis CX Solutions.</p>
+    </div>
+    <div class="calc-grid">
+      <div class="calc-card">
+        <h3>Your Current Team</h3>
+        <label for="opsis-employees">Number of Support Employees</label>
+        <input type="number" id="opsis-employees" value="5" min="1">
+        <label for="opsis-hourly-wage">Average Hourly Wage</label>
+        <input type="number" id="opsis-hourly-wage" value="22" min="0" step="0.01">
+        <label for="opsis-weekly-hours">Paid Weekly Hours Per Employee</label>
+        <small>Include paid breaks, meetings, training, admin time, and other paid non-call time.</small>
+        <input type="number" id="opsis-weekly-hours" value="40" min="0" step="1">
+        <label for="opsis-utilization">Average Productive Utilization (%)</label>
+        <small>Estimated percentage of paid time spent actively supporting customers.</small>
+        <input type="number" id="opsis-utilization" value="65" min="1" max="100" step="1">
+        <label for="opsis-burden">Benefits &amp; Payroll Burden (%)</label>
+        <input type="number" id="opsis-burden" value="40" min="0" step="1">
+        <label for="opsis-software">Software Cost Per Employee / Month</label>
+        <input type="number" id="opsis-software" value="150" min="0" step="1">
+        <label for="opsis-office">Office &amp; Equipment Cost Per Employee / Month</label>
+        <input type="number" id="opsis-office" value="250" min="0" step="1">
+        <label for="opsis-training">Recruiting &amp; Training Cost Per Employee / Year</label>
+        <input type="number" id="opsis-training" value="3500" min="0" step="1">
+        <label for="opsis-management">Management, QA &amp; Supervisory Overhead / Year</label>
+        <input type="number" id="opsis-management" value="50000" min="0" step="1">
+      </div>
+      <div class="calc-card calc-results-card">
+        <h3>Opsis CX Estimate</h3>
+        <div class="rate-box">
+          The Opsis CX Model
+          <em>No PTO. No benefits. No paid breaks. No idle time. You only pay for productive support coverage.</em>
+        </div>
+        <div class="results">
+          <div class="result"><span>Estimated Productive Hours Needed / Week</span><strong id="opsis-productive-hours">0 hrs</strong></div>
+          <div class="result"><span>Current Annual Support Cost</span><strong id="opsis-current-cost">$0</strong></div>
+          <div class="result rate"><span>Your Current Cost Per Productive Hour</span><strong id="opsis-current-productive-rate">$0 / hr</strong></div>
+          <div class="result"><span>Opsis CX Annual Cost</span><strong id="opsis-annual-cost">$0</strong></div>
+          <div class="result highlight"><span>Potential Annual Savings</span><strong id="opsis-savings">$0</strong></div>
+          <div class="result highlight2"><span>Estimated Savings Percentage</span><strong id="opsis-savings-percent">0%</strong></div>
+        </div>
+        <p class="calc-note">With Opsis CX, you do not pay for paid breaks, idle time, PTO, benefits, recruiting costs, software licenses, office overhead, or training gaps.</p>
+        <a class="btn btn-book" href="https://calendly.com/opsiscx-support/30min" target="_blank" rel="noopener">Book a Discovery Call Now →</a>
+      </div>
+    </div>
+    </div>
+
+    <div id="pane-ops" class="calc-pane">
+    <div class="section-head center" style="margin-top:34px;">
+      <p>Compare the cost of hiring in-house administrative, operations, or leadership support against flexible U.S.-based support through our Turritopsis Consulting practice.</p>
+    </div>
+    <div class="calc-grid">
+      <div class="calc-card">
+        <h3>In-House Role Estimate</h3>
+        <label for="tc-role">Role You Need</label>
+        <select id="tc-role">
+          <option value="45000">Office Administrator - $45,000/year</option>
+          <option value="58000">Operations Assistant - $58,000/year</option>
+          <option value="85000">Operations Manager - $85,000/year</option>
+          <option value="125000">Director of Operations - $125,000/year</option>
+          <option value="200000">COO / Fractional Executive Equivalent - $200,000/year</option>
+        </select>
+        <label for="tc-burden">Benefits, Payroll Taxes &amp; Employment Burden (%)</label>
+        <input type="number" id="tc-burden" value="35" min="0">
+        <label for="tc-recruiting">Recruiting, Onboarding &amp; Training Cost</label>
+        <input type="number" id="tc-recruiting" value="4700" min="0">
+        <label for="tc-software">Software / Equipment Cost Per Month</label>
+        <input type="number" id="tc-software" value="250" min="0">
+        <label for="tc-hours">Hours of Support Needed Per Week</label>
+        <input type="number" id="tc-hours" value="25" min="1">
+        <label for="tc-owner-value">Owner / Executive Hourly Value</label>
+        <input type="number" id="tc-owner-value" value="150" min="0">
+        <label for="tc-owner-hours">Hours You Personally Spend Weekly on Admin, Follow-Up, Team Questions, Reporting, or Process Issues</label>
+        <input type="number" id="tc-owner-hours" value="10" min="0">
+      </div>
+      <div class="calc-card calc-results-card">
+        <h3>Your Cost Comparison</h3>
+        <div class="rate-box">
+          The Turritopsis Model
+          <em>U.S.-based support. Flexible hours. No full-time payroll commitment.</em>
+        </div>
+        <div class="results">
+          <div class="result"><span>Estimated In-House Annual Cost</span><strong id="tc-inhouse-cost">$0</strong></div>
+          <div class="result"><span>Turritopsis Annual Cost</span><strong id="tc-turritopsis-cost">$0</strong></div>
+          <div class="result highlight"><span>Estimated Annual Savings</span><strong id="tc-savings">$0</strong></div>
+          <div class="result"><span>Estimated Value of Owner Time Lost</span><strong id="tc-owner-cost">$0</strong></div>
+          <div class="result highlight2"><span>Total Potential Value Opportunity</span><strong id="tc-total-opportunity">$0</strong></div>
+        </div>
+        <p class="calc-note">You avoid recruiting, benefits, PTO, payroll taxes, equipment costs, and the risk of hiring full-time before your business truly needs full-time operational support.</p>
+        <a class="btn btn-book" href="https://calendly.com/opsiscx-support/30min" target="_blank" rel="noopener">Book a Discovery Call →</a>
+      </div>
+    </div>
+    <div class="compare-grid">
+      <div class="compare-card">
+        <h4>Hiring In-House</h4>
+        <ul>
+          <li>Salary commitment</li>
+          <li>Benefits and payroll taxes</li>
+          <li>PTO and coverage gaps</li>
+          <li>Recruiting and onboarding time</li>
+          <li>Software and equipment costs</li>
+          <li>May not need 40 hours every week</li>
+        </ul>
+      </div>
+      <div class="compare-card accent">
+        <h4>Turritopsis Consulting</h4>
+        <ul>
+          <li>Pay only for the support you need</li>
+          <li>U.S.-based operations support</li>
+          <li>Flexible weekly hours</li>
+          <li>Systems, SOPs, reporting, and execution</li>
+          <li>No benefits, PTO, or payroll burden</li>
+          <li>Strategic and hands-on support</li>
+        </ul>
+      </div>
+    </div>
+    <div class="calc-card assess">
+      <h3>Are You Ready for Operations Support?</h3>
+      <p>Select what applies. Your score will show whether you need admin support, operations support, or fractional leadership.</p>
+      <div class="checks">
+        <label><input type="checkbox" class="tc-assess"> Team members ask you questions daily.</label>
+        <label><input type="checkbox" class="tc-assess"> You are the bottleneck for decisions.</label>
+        <label><input type="checkbox" class="tc-assess"> SOPs are missing, outdated, or ignored.</label>
+        <label><input type="checkbox" class="tc-assess"> Reporting is inconsistent or manual.</label>
+        <label><input type="checkbox" class="tc-assess"> Client/customer follow-up depends on you.</label>
+        <label><input type="checkbox" class="tc-assess"> You cannot step away for a week without things slipping.</label>
+      </div>
+      <div class="assess-result">
+        <span>Recommended Level of Support</span>
+        <strong id="tc-recommendation">Select items above</strong>
+      </div>
+    </div>
+    </div>
+  </div>
+</section>
+
+<!-- Testimonials -->
+<section class="section testimonials">
+  <div class="container">
+    <div class="section-head center">
+      <div class="eyebrow">Testimonials</div>
+      <h2>What Our Clients Are Saying</h2>
+    </div>
+    <div class="quote-grid">
+      <div class="card quote">
+        <div class="mark">&ldquo;</div>
+        <p>Thank you so much for pulling this together. It was the best year-end meetings we have ever had.</p>
+        <div class="who">
+          <div class="avatar">DS</div>
+          <div><div class="name">Dimeta Smith</div><div class="role">CPA</div></div>
+        </div>
+      </div>
+      <div class="card quote">
+        <div class="mark">&ldquo;</div>
+        <p>The team came in and provided reporting &amp; a staffing plan to add immediate relief to our contact center by adding staffing in areas that we were running thin. In less than one week, a significant improvement was seen.</p>
+        <div class="who">
+          <div class="avatar">B</div>
+          <div><div class="name">Breanna</div><div class="role">Ruffin' It Adventures, LLC</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Insights -->
+<section id="insights" class="section">
+  <div class="container">
+    <div class="insights-head">
+      <div class="section-head">
+        <div class="eyebrow">Insights</div>
+        <h2>Latest Insights</h2>
+        <p class="intro">Practical insights and strategies to help you improve operations and drive results.</p>
+      </div>
+      <a class="btn-outline" href="/insights">View all articles →</a>
+    </div>
+    <div class="post-grid">
+      <a class="card post" href="/essential-sops-call-center">
+        <img src="images/insight-sops.png" alt="Essential SOPs Every High-Performing Call Center Needs">
+        <div class="body">
+          <div class="cat">Operations</div>
+          <h3>Essential SOPs Every High-Performing Call Center Needs</h3>
+          <p>The standard operating procedures that separate consistent teams from chaotic ones.</p>
+          <div class="more">Read article →</div>
+        </div>
+      </a>
+      <a class="card post" href="/increase-booking-rate">
+        <img src="images/insight-booking.png" alt="How to Increase Booking Rate in a Call Center">
+        <div class="body">
+          <div class="cat">Growth</div>
+          <h3>How to Increase Booking Rate in a Call Center</h3>
+          <p>Practical tactics to convert more conversations into booked appointments.</p>
+          <div class="more">Read article →</div>
+        </div>
+      </a>
+      <a class="card post" href="/best-crm-home-services">
+        <img src="images/insight-crm.png" alt="Best CRM for Home Service Companies">
+        <div class="body">
+          <div class="cat">Systems</div>
+          <h3>Best CRM for Home Service Companies</h3>
+          <p>How to choose a CRM that your field and office teams will actually use.</p>
+          <div class="more">Read article →</div>
+        </div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Process -->
+<section id="about" class="section process">
+  <div class="container">
+    <div class="section-head">
+      <div class="eyebrow">What Happens Next</div>
+      <h2>Let's build a solution that drives results.</h2>
+      <p class="intro">An initial discussion clarifies organizational goals, existing challenges, and potential opportunities to improve performance and drive more revenue.</p>
+    </div>
+    <div class="steps">
+      <div class="step"><div class="n">STEP 1</div><h3>Schedule your discovery call</h3><p>Pick a time that works. One unified booking system — no back and forth.</p></div>
+      <div class="step"><div class="n">STEP 2</div><h3>Meet with our team</h3><p>Walk us through your goals, challenges, and current operations.</p></div>
+      <div class="step"><div class="n">STEP 3</div><h3>Watch your business grow</h3><p>Get concrete recommendations, put them into action, and watch performance climb.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- Final CTA -->
+<section id="contact" class="final-cta">
+  <div class="container">
+    <h2>Tell us what you need.<br>We'll take it from there.</h2>
+    <p>Submit your objectives and a consultant will respond promptly to outline a tailored engagement roadmap.</p>
+    <a class="btn" href="https://calendly.com/opsiscx-support/30min" target="_blank" rel="noopener">Book a Discovery Call</a>
+    <div class="contact-line">Call <a href="tel:6562348009">656-234-8009</a> or email <!--email_off--><a href="mailto:hello@opsiscx.com">hello@opsiscx.com</a><!--/email_off--></div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer id="careers">
+  <svg class="wave" viewBox="0 0 1440 90" preserveAspectRatio="none">
+    <path fill="#021116" d="M0,0 L1440,0 L1440,34 C1200,-6 960,10 720,38 C480,66 240,60 0,20 Z"></path>
+  </svg>
+  <div class="container">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <img src="images/logo.png" alt="OpsisCX">
+        <p>Contact center execution and operations consulting for growing service businesses. Turritopsis Consulting is part of the OpsisCX family of services.</p>
+        <div class="foot-social">
+          <a href="https://www.facebook.com/opsiscx/" target="_blank" rel="noopener">Facebook</a>
+          <a href="https://www.instagram.com/opsis.cx/" target="_blank" rel="noopener">Instagram</a>
+          <a href="https://www.linkedin.com/company/turritopsis-consulting/" target="_blank" rel="noopener">LinkedIn</a>
+        </div>
+      </div>
+      <div class="foot-col">
+        <div class="h">COMPANY</div>
+        <a href="#home">Home</a>
+        <a href="/about">About</a>
+        <a href="/insights">Insights</a>
+        <a href="#careers">Careers</a>
+        <a href="#contact">Contact</a>
+        <a href="#calculator">Cost Savings Calculator</a>
+      </div>
+      <div class="foot-col">
+        <div class="h">SERVICES</div>
+        <a href="/outbound-appointment-setting">Outbound Appointment Setting</a>
+        <a href="/revenue-recovery">Revenue Recovery / Inbound</a>
+        <a href="/fractional-operations-leadership">Fractional Ops Leadership</a>
+        <a href="/systems-implementation">Systems Implementation</a>
+        <a href="/process-optimization">Process Optimization</a>
+      </div>
+      <div class="foot-col">
+        <div class="h">CONTACT</div>
+        <a href="tel:6562348009">656-234-8009</a>
+        <!--email_off--><a href="mailto:hello@opsiscx.com">hello@opsiscx.com</a><!--/email_off-->
+      </div>
+    </div>
+    <div class="foot-legal">
+      <div>© 2026 OpsisCX. All rights reserved.</div>
+      <div>OpsisCX Solutions is a DBA of Turritopsis Consulting, LLC.</div>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var OPSIS_RATE = 35.00;
+  function money(v) {
+    return v.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  }
+  function num(id) {
+    var el = document.getElementById(id);
+    return el ? Number(el.value) || 0 : 0;
+  }
+  function calculate() {
+    var employees = num("opsis-employees");
+    var hourlyWage = num("opsis-hourly-wage");
+    var weeklyHours = num("opsis-weekly-hours");
+    var utilization = num("opsis-utilization") / 100;
+    var burden = num("opsis-burden") / 100;
+    var softwareMonthly = num("opsis-software");
+    var officeMonthly = num("opsis-office");
+    var trainingAnnual = num("opsis-training");
+    var managementAnnual = num("opsis-management");
+
+    var paidHoursWeekly = employees * weeklyHours;
+    var paidHoursAnnual = paidHoursWeekly * 52;
+    var productiveHoursWeekly = paidHoursWeekly * utilization;
+    var productiveHoursAnnual = productiveHoursWeekly * 52;
+
+    var annualWages = paidHoursAnnual * hourlyWage;
+    var currentAnnualCost = annualWages + annualWages * burden
+      + employees * softwareMonthly * 12 + employees * officeMonthly * 12
+      + employees * trainingAnnual + managementAnnual;
+
+    var opsisAnnualCost = productiveHoursAnnual * OPSIS_RATE;
+    var annualSavings = currentAnnualCost - opsisAnnualCost;
+    var currentRate = productiveHoursAnnual > 0 ? currentAnnualCost / productiveHoursAnnual : 0;
+    var savingsPercent = currentAnnualCost > 0 ? (annualSavings / currentAnnualCost) * 100 : 0;
+
+    document.getElementById("opsis-productive-hours").innerText = Math.round(productiveHoursWeekly).toLocaleString("en-US") + " hrs";
+    document.getElementById("opsis-current-cost").innerText = money(currentAnnualCost);
+    document.getElementById("opsis-current-productive-rate").innerText = money(currentRate) + " / hr";
+    document.getElementById("opsis-annual-cost").innerText = money(opsisAnnualCost);
+    document.getElementById("opsis-savings").innerText = money(annualSavings);
+    document.getElementById("opsis-savings-percent").innerText = Math.round(savingsPercent) + "%";
+  }
+  function init() {
+    var inputs = document.querySelectorAll("#calculator input");
+    for (var i = 0; i < inputs.length; i++) {
+      inputs[i].addEventListener("input", calculate);
+      inputs[i].addEventListener("change", calculate);
+    }
+    calculate();
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+
+(function () {
+  var TC_RATE = 35;
+  function money(v) {
+    return v.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  }
+  function num(id) {
+    var el = document.getElementById(id);
+    return el ? Number(el.value) || 0 : 0;
+  }
+  function calcTC() {
+    var salary = num("tc-role");
+    var burden = num("tc-burden") / 100;
+    var recruiting = num("tc-recruiting");
+    var softwareMonthly = num("tc-software");
+    var weeklyHours = num("tc-hours");
+    var ownerHourlyValue = num("tc-owner-value");
+    var ownerHours = num("tc-owner-hours");
+
+    var inHouseCost = salary + salary * burden + recruiting + softwareMonthly * 12;
+    var turritopsisCost = weeklyHours * TC_RATE * 52;
+    var savings = inHouseCost - turritopsisCost;
+    var ownerTimeCost = ownerHours * ownerHourlyValue * 52;
+    var totalOpportunity = savings + ownerTimeCost;
+
+    document.getElementById("tc-inhouse-cost").innerText = money(inHouseCost);
+    document.getElementById("tc-turritopsis-cost").innerText = money(turritopsisCost);
+    document.getElementById("tc-savings").innerText = money(savings);
+    document.getElementById("tc-owner-cost").innerText = money(ownerTimeCost);
+    document.getElementById("tc-total-opportunity").innerText = money(totalOpportunity);
+  }
+  function calcAssessment() {
+    var checked = document.querySelectorAll(".tc-assess:checked").length;
+    var output = document.getElementById("tc-recommendation");
+    if (!output) return;
+    if (checked === 0) output.innerText = "Select items above";
+    else if (checked <= 2) output.innerText = "Administrative / Operations Support";
+    else if (checked <= 4) output.innerText = "Director of Operations Support";
+    else output.innerText = "Fractional COO / Strategic Operations Leadership";
+  }
+  function switchTab(btn) {
+    var tabs = document.querySelectorAll(".calc-tab");
+    var panes = document.querySelectorAll(".calc-pane");
+    for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove("active");
+    for (var j = 0; j < panes.length; j++) panes[j].classList.remove("active");
+    btn.classList.add("active");
+    document.getElementById(btn.getAttribute("data-pane")).classList.add("active");
+    document.getElementById("calc-title").innerText = btn.getAttribute("data-pane") === "pane-ops"
+      ? "What Would It Cost to Hire the Operations Support You Actually Need?"
+      : "What Is Your Support Team Really Costing You?";
+  }
+  function initTC() {
+    var tabs = document.querySelectorAll(".calc-tab");
+    for (var i = 0; i < tabs.length; i++) {
+      tabs[i].addEventListener("click", function () { switchTab(this); });
+    }
+    var inputs = document.querySelectorAll("#pane-ops input, #pane-ops select");
+    for (var j = 0; j < inputs.length; j++) {
+      inputs[j].addEventListener("input", calcTC);
+      inputs[j].addEventListener("change", calcTC);
+    }
+    var checks = document.querySelectorAll(".tc-assess");
+    for (var k = 0; k < checks.length; k++) {
+      checks[k].addEventListener("change", calcAssessment);
+    }
+    calcTC();
+    calcAssessment();
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initTC);
+  } else {
+    initTC();
+  }
+})();
+</script>
+
+<script>document.querySelectorAll('.nav .links a').forEach(function(a){a.addEventListener('click',function(){document.querySelector('.nav .links').classList.remove('open');});});</script>
+</body>
 </html>
