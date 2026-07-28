@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import ExternalQA, { ClientRecaps } from './ExternalQA'
@@ -57,6 +58,7 @@ function tierText(score) {
 
 export default function QualityAudit() {
   const { appRole } = useAuth()
+  const navigate = useNavigate()
   const isAuditor = canAny(appRole, 'quality_audit')
   const canSeeResults = canAny(appRole, 'quality_audit.view_own')
   // Agents land straight on their call reviews; auditors keep their old default.
@@ -79,6 +81,10 @@ export default function QualityAudit() {
         <button className={'btn ' + (tab === 'reviews' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('reviews')}>Call reviews</button>
         {isAuditor && <button className={'btn ' + (tab === 'external' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('external')}>External QA</button>}
         {isAuditor && <button className={'btn ' + (tab === 'recaps' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('recaps')}>Client recaps</button>}
+        {isAuditor && <>
+          <div style={{ flex: 1 }} />
+          <button className="btn btn-ghost" style={{ color: 'var(--accent)' }} onClick={() => navigate('/reporting?report=qa_by_question')} title="Per-question QA breakdown (pass/miss rates, most-missed items) and the per-audit answers export — lives in Reporting → Quality.">📊 QA by Question ↗</button>
+        </>}
       </div>
 
       {tab === 'new' && isAuditor && (
