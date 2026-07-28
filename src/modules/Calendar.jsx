@@ -349,16 +349,30 @@ const QUOTES = [
 ]
 function quoteFor(d) { return QUOTES[(d.getFullYear() + d.getMonth() + d.getDate()) % QUOTES.length] }
 
-function LeftRail({ cursor, setCursor, onAddEvent, itemsOn, tasksOn }) {
+function LeftRail({ cursor, setCursor, onAddEvent, tasksOn, allTasks = [] }) {
   const today = etNow()
   const ds = isoDate(today)
-  const items = itemsOn(ds)
   const { priority, other } = tasksOn(ds)
   const dueTasks = [...priority, ...other]
+  // Past due = my unfinished tasks whose due date is before today.
+  const pastDue = (allTasks || [])
+    .filter(t => t.status !== 'done' && t.due_date && t.due_date < ds)
+    .sort((a, b) => (a.due_date || '').localeCompare(b.due_date || ''))
   const dateLabel = today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  const fmtDue = (d) => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) } catch { return d } }
+
+  // Task line that WRAPS (no truncation) so the text is always readable.
+  const TaskRow = ({ t, overdue }) => (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '6px 0', fontSize: 12.5, lineHeight: 1.35 }}>
+      <span style={{ width: 13, height: 13, marginTop: 2, borderRadius: '50%', border: '1.5px solid ' + (overdue ? '#DC2626' : (t.priority === 'high' ? COLORS.priority : 'var(--cal-line)')), flexShrink: 0 }} />
+      <span style={{ minWidth: 0, color: overdue ? '#DC2626' : 'var(--cal-ink)', fontWeight: overdue ? 600 : 400 }}>
+        {t.name}{overdue && <span style={{ color: '#DC2626', fontWeight: 400 }}> · due {fmtDue(t.due_date)}</span>}
+      </span>
+    </div>
+  )
 
   return (
-    <div style={{ width: 216, flexShrink: 0, padding: '20px 18px', borderRight: '1px solid var(--cal-line-2)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ width: 220, flexShrink: 0, padding: '20px 18px', borderRight: '1px solid var(--cal-line-2)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: 'var(--cal-ink-soft)', marginBottom: 2 }}>Today</div>
       <div style={{ fontFamily: 'Georgia, serif', fontSize: 19, color: 'var(--cal-ink)', lineHeight: 1.2, marginBottom: 14 }}>{dateLabel}</div>
 
@@ -367,31 +381,23 @@ function LeftRail({ cursor, setCursor, onAddEvent, itemsOn, tasksOn }) {
         <button onClick={() => onAddEvent()} style={railBtn}>ADD EVENT</button>
       </div>
 
-      <div style={{ color: '#c07a5a', fontSize: 11, letterSpacing: 2, marginBottom: 6 }}>ON THE CALENDAR</div>
-      {items.length ? items.map(i => (
-        <div key={i.kind + i.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '5px 0', fontSize: 12.5 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: i.color, marginTop: 4, flexShrink: 0 }} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ color: 'var(--cal-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</div>
-            <div style={{ color: 'var(--cal-ink-mute)', fontSize: 11 }}>{i.allDay ? 'All day' : fmtTime(i.start)}</div>
-          </div>
-        </div>
-      )) : <div style={{ fontSize: 12, color: 'var(--cal-ink-mute)', fontStyle: 'italic' }}>Nothing scheduled.</div>}
+      {pastDue.length > 0 && (
+        <>
+          <div style={{ color: '#DC2626', fontSize: 11, letterSpacing: 2, fontWeight: 700, marginBottom: 6 }}>PAST DUE ({pastDue.length})</div>
+          {pastDue.map(t => <TaskRow key={t.id} t={t} overdue />)}
+        </>
+      )}
 
-      <div style={{ color: '#c07a5a', fontSize: 11, letterSpacing: 2, margin: '18px 0 6px' }}>DUE TODAY</div>
-      {dueTasks.length ? dueTasks.map(t => (
-        <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '5px 0', fontSize: 12.5 }}>
-          <span style={{ width: 13, height: 13, borderRadius: '50%', border: '1.5px solid ' + (t.priority === 'high' ? COLORS.priority : 'var(--cal-line)'), flexShrink: 0 }} />
-          <span style={{ color: 'var(--cal-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
-        </div>
-      )) : <div style={{ fontSize: 12, color: 'var(--cal-ink-mute)', fontStyle: 'italic' }}>No tasks due.</div>}
+      <div style={{ color: '#c07a5a', fontSize: 11, letterSpacing: 2, margin: (pastDue.length ? '18px 0 6px' : '0 0 6px') }}>DUE TODAY</div>
+      {dueTasks.length ? dueTasks.map(t => <TaskRow key={t.id} t={t} />)
+        : <div style={{ fontSize: 12, color: 'var(--cal-ink-mute)', fontStyle: 'italic' }}>Nothing due today. 🎉</div>}
     </div>
   )
 }
 const railBtn = { border: '1px solid var(--cal-line)', borderRadius: 14, padding: '4px 12px', fontSize: 11, color: 'var(--cal-ink-soft)', letterSpacing: '.5px', background: 'transparent', cursor: 'pointer' }
 
 // ---------- MONTH VIEW ----------
-function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent, onShowDetail }) {
+function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent, onShowDetail, allTasks }) {
   const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
   const gridStart = mondayOf(first)
   const lastOfMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)
@@ -453,7 +459,7 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
     <div style={{ display: 'flex' }}>
       {/* The "today" rail eats ~40% of a phone's width — hide it on mobile so
           the month grid itself is actually legible. */}
-      {!narrow && <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} itemsOn={itemsOn} tasksOn={tasksOn} />}
+      {!narrow && <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} tasksOn={tasksOn} allTasks={allTasks} />}
       <div style={{ flex: 1, padding: narrow ? '8px 8px' : '16px 18px', minWidth: 0 }}>
         <ViewNav cursor={cursor} setCursor={setCursor}
           label={`${MONTHS[cursor.getMonth()]} ${cursor.getFullYear()}`}
@@ -506,7 +512,7 @@ function ViewNav({ cursor, setCursor, label, onPrev, onNext }) {
 const navArrow = { border: '1px solid var(--cal-line)', background: 'transparent', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', color: 'var(--cal-ink-soft)', fontSize: 16, lineHeight: 1 }
 
 // ---------- WEEK VIEW ----------
-function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent, onShowDetail }) {
+function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent, onShowDetail, allTasks }) {
   const openItem = (i, e) => { e.stopPropagation(); if (i.kind === 'event' && i.raw) onEditEvent(i.raw); else onShowDetail(i) }
   const mon = mondayOf(cursor)
   const week = Array.from({ length: 7 }, (_, i) => addDays(mon, i))
@@ -569,7 +575,7 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
 
   return (
     <div style={{ display: 'flex' }}>
-      <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} itemsOn={itemsOn} tasksOn={tasksOn} />
+      <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} tasksOn={tasksOn} allTasks={allTasks} />
       <div style={{ flex: 1, padding: '12px 12px', minWidth: 0 }}>
         <ViewNav cursor={cursor} setCursor={setCursor}
           label={`${MONTHS[mon.getMonth()].slice(0, 3)} ${mon.getDate()} – ${MONTHS[week[6].getMonth()].slice(0, 3)} ${week[6].getDate()}`}
@@ -733,24 +739,6 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
       )}
     <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', gap: 20 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        {dayItems.length > 0 && (
-          <div style={{ marginBottom: 22 }}>
-            <PanelHead>TODAY'S SCHEDULE</PanelHead>
-            <div style={{ marginTop: 6 }}>
-              {dayItems.map(i => (
-                <div key={i.id} onClick={(e) => onOpenItem?.(i, e)}
-                  style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '5px 2px', borderBottom: '1px solid var(--cal-line-3)', cursor: onOpenItem ? 'pointer' : 'default' }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: i.color, flexShrink: 0, alignSelf: 'center' }} />
-                  <span style={{ fontSize: 11.5, color: 'var(--cal-ink-mute)', width: 108, flexShrink: 0 }}>
-                    {i.allDay ? 'All day' : `${fmtTime(i.start)}${i.end ? ' – ' + fmtTime(i.end) : ''}`}
-                  </span>
-                  <span style={{ fontSize: 12.5, color: 'var(--cal-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.title}</span>
-                  {i.calendarName && <span style={{ fontSize: 10, color: 'var(--cal-ink-mute)', marginLeft: 'auto', flexShrink: 0 }}>{i.calendarName}</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
         <PanelHead>PRIORITY TASKS</PanelHead>
         <TaskAndTodoList tasks={priority} todos={myPriorityTodos} onToggle={toggleTodo} onDel={delTodo} emptyBoth="No priority items."
           onToggleTaskDone={onToggleTaskDone} onToggleTaskTimer={onToggleTaskTimer} runningEntry={runningEntry} />
