@@ -127,6 +127,8 @@ export default function Certifications() {
 
       {!loading && !err && <CertMatrix records={records} certs={certs} />}
 
+      {!loading && !err && <CertJourney />}
+
       {showCreate && canEdit && (
         <CertModal
           cert={null}
@@ -384,6 +386,183 @@ function DetailRow({ k, v }) {
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '2px 0', fontSize: 12.5 }}>
       <span style={{ color: 'var(--ink-soft)' }}>{k}</span>
       <span style={{ fontWeight: 600 }}>{v}</span>
+    </div>
+  )
+}
+
+// ============================================================
+// CERTIFICATION JOURNEY
+// People × course grid: where each assigned person is along the path —
+// in lessons, quiz ready, quiz not passed, or done. Live read from
+// report_cert_journey (course_progress + quiz_attempts).
+// ============================================================
+const JSTAGE = {
+  not_started: { short: 'Not started', bg: 'var(--line-soft)', fg: 'var(--ink-soft)' },
+  in_lessons:  { short: 'In lessons',  bg: 'rgba(214,158,46,.16)', fg: 'var(--needed)' },
+  quiz_ready:  { short: 'Quiz ready',  bg: 'rgba(59,130,246,.16)', fg: 'var(--accent)' },
+  quiz_failed: { short: 'Quiz failed', bg: 'rgba(200,50,50,.14)',  fg: 'var(--failed)' },
+  passed:      { short: 'Passed',      bg: 'rgba(34,160,90,.16)',  fg: 'var(--passed)' },
+  done:        { short: 'Done',        bg: 'rgba(34,160,90,.16)',  fg: 'var(--passed)' },
+}
+function stageOf(cell, course) {
+  if (!cell) return 'not_started'
+  if (course.quiz_required) {
+    if (cell.passed) return 'passed'
+    if (cell.attempts > 0) return 'quiz_failed'
+    if (cell.lessons_complete) return 'quiz_ready'
+    if (cell.lessons_started) return 'in_lessons'
+    return 'not_started'
+  }
+  if (cell.lessons_complete) return 'done'
+  if (cell.lessons_started) return 'in_lessons'
+  return 'not_started'
+}
+const stageDone = (st) => st === 'passed' || st === 'done'
+function JourneyCell({ cell, course }) {
+  const st = stageOf(cell, course)
+  const m = JSTAGE[st]
+  let label = m.short
+  if (st === 'in_lessons') label = `Lessons ${cell.lessons_done}/${cell.lessons_total}`
+  else if (st === 'quiz_failed') label = cell.best != null ? `Quiz ${cell.best}%` : 'Quiz not passed'
+  else if (st === 'passed') label = cell.best != null ? `✓ ${cell.best}%` : '✓ Passed'
+  else if (st === 'done') label = '✓ Done'
+  const title = [
+    course.title,
+    `Lessons: ${cell ? cell.lessons_done : 0}/${cell ? cell.lessons_total : course.lessons_total}${cell && cell.lessons_complete ? ' (complete)' : ''}`,
+    course.quiz_required
+      ? `Quiz: ${cell ? cell.attempts : 0} attempt${cell && cell.attempts === 1 ? '' : 's'}${cell && cell.best != null ? ', best ' + cell.best + '%' : ''}${cell && cell.passed ? ' — passed' : ''}`
+      : 'No quiz required',
+  ].join('\n')
+  return (
+    <span title={title} style={{ display: 'inline-block', fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: m.bg, color: m.fg, whiteSpace: 'nowrap' }}>{label}</span>
+  )
+}
+const JCERT = {
+  passed: { label: 'Certified', cls: 'passed' },
+  failed: { label: 'Not certified', cls: 'failed' },
+}
+function CertJourney() {
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState('')
+  const [q, setQ] = useState('')
+  const [onlyOpen, setOnlyOpen] = useState(false)   // hide fully-certified people
+
+  useEffect(() => {
+    let active = true
+    supabase.rpc('report_cert_journey', {}).then(({ data, error }) => {
+      if (!active) return
+      if (error) setErr(error.message); else setData(data)
+    })
+    return () => { active = false }
+  }, [])
+
+  if (err) return (
+    <div className="card" style={{ marginTop: 26, borderColor: 'var(--failed)' }}>
+      <b style={{ color: 'var(--failed)' }}>Couldn't load the journey.</b>
+      <p className="page-sub" style={{ marginTop: 6 }}>{err === 'not authorized' ? 'This view is available to managers only.' : err}</p>
+    </div>
+  )
+  if (data == null) return <div className="card" style={{ marginTop: 26 }}><p className="page-sub" style={{ padding: 8 }}>Loading journey…</p></div>
+
+  const courses = data.courses || []
+  const allPeople = data.people || []
+  const cellMap = new Map()
+  ;(data.cells || []).forEach(c => cellMap.set(c.profile_id + '|' + c.course_id, c))
+  const cellAt = (pid, cid) => cellMap.get(pid + '|' + cid) || null
+  const doneCount = (pid) => courses.reduce((n, c) => n + (stageDone(stageOf(cellAt(pid, c.course_id), c)) ? 1 : 0), 0)
+  const isCertified = (p) => p.cert_status === 'passed'
+
+  const ql = q.trim().toLowerCase()
+  const people = allPeople.filter(p =>
+    (!ql || (p.name || '').toLowerCase().includes(ql) || (p.email || '').toLowerCase().includes(ql))
+    && (!onlyOpen || !isCertified(p))
+  )
+  const certifiedN = allPeople.filter(isCertified).length
+
+  function exportCsv() {
+    const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
+    const head = ['Person', 'Email', 'Courses done', ...courses.map(c => c.title), 'Certification']
+    const lines = allPeople.map(p => [
+      p.name, p.email, `${doneCount(p.profile_id)}/${courses.length}`,
+      ...courses.map(c => {
+        const cell = cellAt(p.profile_id, c.course_id); const st = stageOf(cell, c)
+        if (st === 'in_lessons') return `Lessons ${cell.lessons_done}/${cell.lessons_total}`
+        if (st === 'quiz_failed') return cell.best != null ? `Quiz ${cell.best}% (not passed)` : 'Quiz not passed'
+        if (st === 'passed') return cell.best != null ? `Passed ${cell.best}%` : 'Passed'
+        return JSTAGE[st].short
+      }),
+      JCERT[p.cert_status]?.label || 'In process',
+    ].map(esc).join(','))
+    const csv = [head.join(','), ...lines].join('\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    const a = document.createElement('a'); a.href = url; a.download = 'certification-journey.csv'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const LegendChip = ({ st }) => (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--ink-soft)' }}>
+      <span style={{ width: 10, height: 10, borderRadius: 3, background: JSTAGE[st].bg, border: '1px solid ' + JSTAGE[st].fg }} />{JSTAGE[st].short}
+    </span>
+  )
+
+  return (
+    <div className="card" style={{ marginTop: 26, padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--line)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>Certification Journey</h2>
+            <p className="page-sub" style={{ marginTop: 3 }}>
+              {allPeople.length} {allPeople.length === 1 ? 'person' : 'people'} · {certifiedN} certified · where everyone is across each course, live.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink-soft)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={onlyOpen} onChange={e => setOnlyOpen(e.target.checked)} /> Hide certified
+            </label>
+            <button onClick={exportCsv} className="btn btn-ghost" style={{ fontSize: 12.5, padding: '5px 12px' }}>⬇ CSV</button>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search person…"
+            style={{ flex: '1 1 220px', minWidth: 160, padding: '8px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', background: 'var(--canvas)' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 14, marginTop: 12, flexWrap: 'wrap' }}>
+          <LegendChip st="not_started" /><LegendChip st="in_lessons" /><LegendChip st="quiz_ready" /><LegendChip st="quiz_failed" /><LegendChip st="passed" />
+        </div>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        {courses.length === 0 ? (
+          <p className="page-sub" style={{ padding: 24, textAlign: 'center' }}>No published courses yet.</p>
+        ) : people.length === 0 ? (
+          <p className="page-sub" style={{ padding: 24, textAlign: 'center' }}>{allPeople.length === 0 ? 'No one is assigned a certification yet. Assign a certification to a tag and people will appear here.' : 'No people match your filters.'}</p>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, minWidth: 640 }}>
+            <thead>
+              <tr style={{ background: 'var(--canvas)', textAlign: 'left' }}>
+                <MTh sticky>Person</MTh>
+                <MTh center>Progress</MTh>
+                {courses.map(c => <MTh key={c.course_id} center>{c.title}</MTh>)}
+                <MTh center>Certification</MTh>
+              </tr>
+            </thead>
+            <tbody>
+              {people.map(p => {
+                const done = doneCount(p.profile_id)
+                const cm = JCERT[p.cert_status]
+                return (
+                  <tr key={p.profile_id} style={{ borderTop: '1px solid var(--line-soft)' }}>
+                    <MTd sticky><span style={{ fontWeight: 600 }}>{p.name || '—'}</span></MTd>
+                    <MTd center><span style={{ fontWeight: 700, color: done === courses.length ? 'var(--passed)' : 'var(--ink-soft)' }}>{done}/{courses.length}</span></MTd>
+                    {courses.map(c => <MTd key={c.course_id} center><JourneyCell cell={cellAt(p.profile_id, c.course_id)} course={c} /></MTd>)}
+                    <MTd center>{cm ? <span className={'badge ' + cm.cls}>{cm.label}</span> : <span className="badge" style={{ background: 'var(--line-soft)', color: 'var(--ink-soft)' }}>In process</span>}</MTd>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }
