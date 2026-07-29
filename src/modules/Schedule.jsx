@@ -65,16 +65,19 @@ function initials(name) {
 }
 
 // Hours from now until an interval starts. Same local-time parse the release
-// logic uses. The server-side release_interval RPC is the real 24h guard; this
+// logic uses. The server-side release_interval RPC is the real lock guard; this
 // just decides whether to show the Release button.
-const RELEASE_CUTOFF_HOURS = 24
+// Schedule Lock (per the Contractor Scheduling SOP): intervals lock 4 calendar
+// days (96 hours) before start. Before the lock, contractors freely release;
+// once locked, the interval is committed and can only move via the Trade Board.
+const RELEASE_CUTOFF_HOURS = 96
 function hoursUntilStart(block) {
   if (!block?.block_date || !block?.start_time) return Infinity
   const s = new Date(`${block.block_date}T${block.start_time.slice(0, 5)}:00`)
   return (s.getTime() - Date.now()) / 3600000
 }
-// Release is only allowed while the interval hasn't started AND is at least 24h
-// out. Within 24h an agent must use the Trade board instead.
+// Release is only allowed while the interval hasn't started AND is before the
+// 4-day (96h) schedule lock. Once locked, an agent must use the Trade board.
 function canReleaseBlock(block, started) {
   return !started && hoursUntilStart(block) >= RELEASE_CUTOFF_HOURS
 }
@@ -345,14 +348,15 @@ export default function Schedule() {
 
   async function unclaimBlock(block) {
     if (hasIntervalStarted(block)) { flash("That interval already started — can't release"); return }
-    // Release is only allowed 24h+ before start. Inside that window the agent
-    // must use the Trade board instead. The RPC re-checks this server-side.
+    // Release is only allowed before the 4-day (96h) schedule lock. Once locked,
+    // the interval is committed and the agent must use the Trade board. The RPC
+    // re-checks this server-side.
     if (hoursUntilStart(block) < RELEASE_CUTOFF_HOURS) {
-      flash("Within 24 hours of start — you can't release this. Put it up for trade instead."); return
+      flash("This interval is locked (within 4 days of start) — you can't release it. Put it up for trade instead."); return
     }
     if (!window.confirm('Release this interval? It goes back to the schedule for anyone to claim.')) return
 
-    // release_interval (SECURITY DEFINER): re-validates hold + not-started + 24h,
+    // release_interval (SECURITY DEFINER): re-validates hold + not-started + 96h lock,
     // logs a shift_cancellations audit row (fires the "released" channel post),
     // deletes the claim so the seat reopens, and voids any open trade offer.
     const { error } = await supabase.rpc('release_interval', { p_shift_block_id: block.id })
@@ -934,7 +938,8 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, canAs
             myTrade
               ? <button className="btn btn-ghost" onClick={() => onCancelTrade(myTrade)} title="Take it back off the trade board — you keep the interval.">Take off trade board</button>
               : <>
-                  {canReleaseBlock(block, started) && <button className="btn btn-ghost" onClick={() => onUnclaim(block)} title="Release this interval back to the schedule for anyone to claim. Allowed up to 24 hours before start; after that you must trade it.">Release</button>}
+                  {canReleaseBlock(block, started) && <button className="btn btn-ghost" onClick={() => onUnclaim(block)} title="Release this interval back to the schedule for anyone to claim. Allowed until the 4-day schedule lock; after it locks you must trade it.">Release</button>}
+                  {!canReleaseBlock(block, started) && <span title="This interval is locked (within 4 days of start). It's part of your committed schedule — you can only move it through the Trade Board, and you stay responsible until someone claims it." style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: 700, color: 'var(--cta)', padding: '0 4px' }}>🔒 Locked</span>}
                   <button className="btn btn-ghost" style={{ color: 'var(--accent)' }} onClick={() => onOfferTrade(block)} title="Can't make it? Put it up for trade. You still hold it (and stay accountable) until someone takes it.">🔁 Put up for trade</button>
                 </>
           )}
@@ -1132,9 +1137,12 @@ function ShiftCard({ block, claim, isPast, started, viewerTZ, onUnclaim, onCheck
             <div style={{ fontSize: 11, color: 'var(--cta)', fontWeight: 700, marginBottom: 4 }}>🔁 On the trade board</div>
             <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, border: '1px solid var(--line)' }} onClick={() => onCancelTrade(myTrade)}>Take back from trade board</button>
           </div>
-        : <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-            {canReleaseBlock(block, started) && onUnclaim && <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12, border: '1px solid var(--line)' }} onClick={() => onUnclaim(block)} title="Release this interval back to the schedule for anyone to claim. Allowed up to 24 hours before start.">Release</button>}
-            <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12, border: '1px solid var(--line)' }} onClick={() => onOfferTrade(block)} title="Can't make it? Put it up for trade. You still hold it (and stay accountable) until someone takes it — it shows on the Trade board and the Schedule.">🔁 {canReleaseBlock(block, started) ? 'Put up for trade' : "Can't make it? Put up for trade"}</button>
+        : <div style={{ marginTop: 6 }}>
+            {!canReleaseBlock(block, started) && <div title="This interval is locked (within 4 days of start). It's part of your committed schedule — you can only move it through the Trade Board, and you stay responsible until someone claims it." style={{ fontSize: 11, color: 'var(--cta)', fontWeight: 700, marginBottom: 4 }}>🔒 Locked — trade only</div>}
+            <div style={{ display: 'flex', gap: 6 }}>
+              {canReleaseBlock(block, started) && onUnclaim && <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12, border: '1px solid var(--line)' }} onClick={() => onUnclaim(block)} title="Release this interval back to the schedule for anyone to claim. Allowed until the 4-day schedule lock.">Release</button>}
+              <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12, border: '1px solid var(--line)' }} onClick={() => onOfferTrade(block)} title="Can't make it? Put it up for trade. You still hold it (and stay accountable) until someone takes it — it shows on the Trade board and the Schedule.">🔁 {canReleaseBlock(block, started) ? 'Put up for trade' : "Can't make it? Put up for trade"}</button>
+            </div>
           </div>
     )}
     {block.notes && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 8 }}>{block.notes}</div>}
