@@ -25,6 +25,7 @@ const scoreBg = (v) => (v == null ? '#f1f5f9' : v >= 85 ? '#e8f5e9' : v >= 70 ? 
 const pct = (v) => (v == null ? '—' : `${Number(v).toFixed(1)}%`)
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—')
 const fmtDur = (s) => (s == null ? '—' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`)
+const trendNavBtn = (enabled) => ({ width: 26, height: 26, lineHeight: '22px', textAlign: 'center', padding: 0, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: enabled ? '#334155' : '#cbd5e1', fontSize: 16, fontWeight: 700, cursor: enabled ? 'pointer' : 'default' })
 // Put each speaker turn on its own line with a blank line between, for readability.
 const formatTranscript = (t) => {
   if (!t) return ''
@@ -373,7 +374,19 @@ export default function CallQA({ portal = false } = {}) {
 }
 
 function Overview({ agg, trend }) {
-  const maxN = Math.max(1, ...trend.map((t) => t.n))
+  // Window size (days shown at once) + how many days back the window starts (0 = latest)
+  const [trendWindow, setTrendWindow] = useState(7)
+  const [trendOffset, setTrendOffset] = useState(0)
+  const total = trend.length
+  const paged = total > trendWindow
+  const offset = Math.min(trendOffset, Math.max(0, total - trendWindow)) // clamp when window grows
+  const end = Math.max(trendWindow, total - offset)
+  const start = Math.max(0, end - trendWindow)
+  const visibleTrend = paged ? trend.slice(start, end) : trend
+  const canOlder = start > 0
+  const canNewer = offset > 0
+  const maxN = Math.max(1, ...visibleTrend.map((t) => t.n))
+  const setWindow = (w) => { setTrendWindow(w); setTrendOffset(0) }
   const topReasons = Object.entries(agg.reasons).sort((a, b) => b[1] - a[1]).slice(0, 6)
   const topTopics = Object.entries(agg.topics).sort((a, b) => b[1] - a[1]).slice(0, 12)
   const maxTopic = Math.max(1, ...topTopics.map((t) => t[1]))
@@ -415,10 +428,42 @@ function Overview({ agg, trend }) {
       </Card>
 
       <Card>
-        <div style={{ fontWeight: 700, marginBottom: 14 }}>Daily QA score trend</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ fontWeight: 700 }}>Daily QA score trend</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: 7, overflow: 'hidden' }}>
+              {[7, 14, 30].map((w) => (
+                <button
+                  key={w}
+                  onClick={() => setWindow(w)}
+                  style={{ padding: '4px 11px', fontSize: 12.5, fontWeight: 700, border: 'none', borderLeft: w === 7 ? 'none' : '1px solid #e2e8f0', cursor: 'pointer', background: trendWindow === w ? TEAL : '#fff', color: trendWindow === w ? '#fff' : '#475569' }}
+                >{w}d</button>
+              ))}
+            </div>
+            {paged && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: '#64748b' }}>
+                  {visibleTrend.length ? `${fmtDate(visibleTrend[0].d)} – ${fmtDate(visibleTrend[visibleTrend.length - 1].d)}` : ''}
+                </span>
+                <button
+                  onClick={() => setTrendOffset((o) => Math.min(total - trendWindow, o + trendWindow))}
+                  disabled={!canOlder}
+                  title="Older days"
+                  style={trendNavBtn(canOlder)}
+                >‹</button>
+                <button
+                  onClick={() => setTrendOffset((o) => Math.max(0, o - trendWindow))}
+                  disabled={!canNewer}
+                  title="Newer days"
+                  style={trendNavBtn(canNewer)}
+                >›</button>
+              </div>
+            )}
+          </div>
+        </div>
         {trend.length === 0 ? <div style={{ color: '#64748b' }}>No calls in range.</div> : (
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 160, borderBottom: '1px solid #e2e8f0', paddingBottom: 4 }}>
-            {trend.map((t) => (
+            {visibleTrend.map((t) => (
               <div key={t.d} title={`${t.d}: ${pct(t.avg)} (${t.n} calls)`} style={{ flex: 1, minWidth: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
                 <div style={{ fontSize: 9, color: '#94a3b8' }}>{Math.round(t.avg)}</div>
                 <div style={{ width: '80%', background: scoreColor(t.avg), height: `${t.avg}%`, borderRadius: '3px 3px 0 0', opacity: 0.35 + 0.65 * (t.n / maxN) }} />
@@ -427,6 +472,7 @@ function Overview({ agg, trend }) {
             ))}
           </div>
         )}
+        {paged && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 10 }}>Showing {visibleTrend.length} of {total} days{canOlder ? '' : ' · earliest'}{canNewer ? '' : ' · most recent'}</div>}
       </Card>
     </div>
   )
