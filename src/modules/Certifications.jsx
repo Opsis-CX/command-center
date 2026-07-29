@@ -446,6 +446,7 @@ function CertJourney() {
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
   const [onlyOpen, setOnlyOpen] = useState(false)   // hide fully-certified people
+  const [openP, setOpenP] = useState(null)          // profile_id whose lesson detail is open
 
   useEffect(() => {
     let active = true
@@ -471,6 +472,24 @@ function CertJourney() {
   const cellAt = (pid, cid) => cellMap.get(pid + '|' + cid) || null
   const doneCount = (pid) => courses.reduce((n, c) => n + (stageDone(stageOf(cellAt(pid, c.course_id), c)) ? 1 : 0), 0)
   const isCertified = (p) => p.cert_status === 'passed'
+
+  // The lesson title a person is currently sitting on within a course (0-based cur_idx).
+  const lessonTitle = (course, idx) => (course.lessons && idx != null && course.lessons[idx]) ? course.lessons[idx].title : null
+  // One-line "where are they right now" — the first course still in flight, down to the lesson.
+  const focusOf = (pid) => {
+    for (const c of courses) {
+      const cell = cellAt(pid, c.course_id); const st = stageOf(cell, c)
+      if (st === 'in_lessons') {
+        const t = lessonTitle(c, cell.cur_idx)
+        return `${c.title} — Lesson ${cell.lessons_done}/${cell.lessons_total}${t ? ': ' + t : ''}`
+      }
+      if (st === 'quiz_ready') return `${c.title} — ready for the quiz`
+      if (st === 'quiz_failed') return `${c.title} — retaking quiz${cell.best != null ? ' (best ' + cell.best + '%)' : ''}`
+    }
+    if (courses.length && courses.every(c => stageDone(stageOf(cellAt(pid, c.course_id), c)))) return 'All courses complete'
+    if (courses.some(c => stageOf(cellAt(pid, c.course_id), c) !== 'not_started')) return 'Between courses'
+    return 'Not started yet'
+  }
 
   const ql = q.trim().toLowerCase()
   const people = allPeople.filter(p =>
@@ -512,7 +531,7 @@ function CertJourney() {
           <div>
             <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>Certification Journey</h2>
             <p className="page-sub" style={{ marginTop: 3 }}>
-              {allPeople.length} {allPeople.length === 1 ? 'person' : 'people'} · {certifiedN} certified · where everyone is across each course, live.
+              {allPeople.length} {allPeople.length === 1 ? 'person' : 'people'} · {certifiedN} certified · live. Click a person to see the exact lesson they're on.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -550,13 +569,69 @@ function CertJourney() {
               {people.map(p => {
                 const done = doneCount(p.profile_id)
                 const cm = JCERT[p.cert_status]
+                const open = openP === p.profile_id
                 return (
-                  <tr key={p.profile_id} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                    <MTd sticky><span style={{ fontWeight: 600 }}>{p.name || '—'}</span></MTd>
-                    <MTd center><span style={{ fontWeight: 700, color: done === courses.length ? 'var(--passed)' : 'var(--ink-soft)' }}>{done}/{courses.length}</span></MTd>
-                    {courses.map(c => <MTd key={c.course_id} center><JourneyCell cell={cellAt(p.profile_id, c.course_id)} course={c} /></MTd>)}
-                    <MTd center>{cm ? <span className={'badge ' + cm.cls}>{cm.label}</span> : <span className="badge" style={{ background: 'var(--line-soft)', color: 'var(--ink-soft)' }}>In process</span>}</MTd>
-                  </tr>
+                  <Fragment key={p.profile_id}>
+                    <tr onClick={() => setOpenP(open ? null : p.profile_id)}
+                      style={{ borderTop: '1px solid var(--line-soft)', cursor: 'pointer', background: open ? 'var(--accent-bg)' : 'transparent' }}>
+                      <MTd sticky>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                          <span style={{ fontWeight: 600 }}>{p.name || '—'}</span>
+                          <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{open ? '▾' : '▸'}</span>
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginTop: 2, maxWidth: 280, whiteSpace: 'normal' }}>{focusOf(p.profile_id)}</div>
+                      </MTd>
+                      <MTd center><span style={{ fontWeight: 700, color: done === courses.length ? 'var(--passed)' : 'var(--ink-soft)' }}>{done}/{courses.length}</span></MTd>
+                      {courses.map(c => <MTd key={c.course_id} center><JourneyCell cell={cellAt(p.profile_id, c.course_id)} course={c} /></MTd>)}
+                      <MTd center>{cm ? <span className={'badge ' + cm.cls}>{cm.label}</span> : <span className="badge" style={{ background: 'var(--line-soft)', color: 'var(--ink-soft)' }}>In process</span>}</MTd>
+                    </tr>
+                    {open && (
+                      <tr style={{ background: 'var(--canvas)' }}>
+                        <td colSpan={courses.length + 3} style={{ padding: '6px 16px 16px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12, marginTop: 8 }}>
+                            {courses.map(c => {
+                              const cell = cellAt(p.profile_id, c.course_id)
+                              const st = stageOf(cell, c)
+                              const curIdx = cell ? cell.cur_idx : null
+                              return (
+                                <div key={c.course_id} style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', background: 'var(--surface)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>{c.title}</span>
+                                    <JourneyCell cell={cell} course={c} />
+                                  </div>
+                                  {st === 'not_started' ? (
+                                    <div className="page-sub" style={{ fontSize: 12 }}>Not started yet.</div>
+                                  ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 220, overflowY: 'auto' }}>
+                                      {(c.lessons || []).map((l, i) => {
+                                        const doneL = cell.lessons_complete || (curIdx != null && i < curIdx)
+                                        const cur = !cell.lessons_complete && curIdx != null && i === curIdx
+                                        return (
+                                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '1px 0', fontWeight: cur ? 700 : 400, color: cur ? 'var(--accent)' : doneL ? 'var(--ink)' : 'var(--ink-soft)' }}>
+                                            <span style={{ width: 14, textAlign: 'center', color: doneL ? 'var(--passed)' : cur ? 'var(--accent)' : 'var(--ink-soft)' }}>{doneL ? '✓' : cur ? '▸' : '○'}</span>
+                                            <span style={{ width: 20, color: 'var(--ink-soft)', fontSize: 11 }}>{i + 1}.</span>
+                                            <span>{l.title}{cur ? '  — here now' : ''}</span>
+                                          </div>
+                                        )
+                                      })}
+                                      {c.quiz_required && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 0 1px', marginTop: 4, borderTop: '1px solid var(--line-soft)', fontWeight: 600 }}>
+                                          <span style={{ width: 14, textAlign: 'center', color: cell.passed ? 'var(--passed)' : cell.attempts > 0 ? 'var(--failed)' : 'var(--ink-soft)' }}>{cell.passed ? '✓' : cell.attempts > 0 ? '✗' : '○'}</span>
+                                          <span style={{ color: cell.passed ? 'var(--passed)' : cell.attempts > 0 ? 'var(--failed)' : 'var(--ink-soft)' }}>
+                                            Quiz{cell.attempts > 0 ? ` — ${cell.attempts} attempt${cell.attempts === 1 ? '' : 's'}, best ${cell.best}% ${cell.passed ? '(passed)' : '(needs ' + c.threshold + '%)'}` : cell.lessons_complete ? ' — ready to take' : ' — after lessons'}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 )
               })}
             </tbody>
