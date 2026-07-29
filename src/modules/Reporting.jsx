@@ -1627,10 +1627,40 @@ function CertificationsReport({ range, profiles, allowedIds }) {
     return { attempts, avg: attempts ? Math.round(wsum / attempts) : null, passRate: attempts ? Math.round(passes / attempts * 100) : null, people: perPerson.length }
   }, [perPerson])
 
+  // Per-person / per-quiz detail (Connecteam-style): which quizzes each person took, how many
+  // attempts, which they failed, and whether they fully completed the course.
+  const pcByPerson = useMemo(() => {
+    const m = new Map()
+    ;(data?.per_person_course || []).forEach(r => { if (!m.has(r.profile_id)) m.set(r.profile_id, []); m.get(r.profile_id).push(r) })
+    for (const arr of m.values()) arr.sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+    return m
+  }, [data])
+  const attByKey = useMemo(() => {
+    const m = new Map()
+    ;(data?.per_attempt || []).forEach(a => { const k = a.profile_id + '|' + a.course_id; if (!m.has(k)) m.set(k, []); m.get(k).push(a) })
+    for (const arr of m.values()) arr.sort((a, b) => a.attempt_no - b.attempt_no)
+    return m
+  }, [data])
+  const detailPeople = useMemo(() => Array.from(pcByPerson.keys()).sort((a, b) => nameOf(a).localeCompare(nameOf(b))), [pcByPerson])
+  const [openP, setOpenP] = useState({})
+  const [openPC, setOpenPC] = useState({})
+
   function exportCsv() {
     const out = [['Person', 'Attempts', 'Avg score', 'Best', 'Passed']]
     perPerson.forEach(r => out.push([nameOf(r.profile_id), r.attempts, r.avg, r.best, r.passes]))
     downloadCSV(`certifications-${range.from}_to_${range.to}.csv`, out)
+  }
+  function exportDetail() {
+    const out = [['Person', 'Quiz / Course', 'Attempts', 'Best %', 'Last %', 'Pass mark', 'Result', 'Lessons done', 'Fully completed', 'First attempt', 'Last attempt']]
+    ;(data?.per_person_course || []).slice()
+      .sort((a, b) => nameOf(a.profile_id).localeCompare(nameOf(b.profile_id)) || (a.title || '').localeCompare(b.title || ''))
+      .forEach(r => out.push([
+        nameOf(r.profile_id), r.title || 'Course', r.attempts, r.best, r.last_score,
+        r.threshold == null ? '' : r.threshold + '%', r.passed ? 'Passed' : 'Not passed',
+        r.lessons_done ? 'Yes' : 'No', (r.lessons_done && r.passed) ? 'Yes' : 'No',
+        r.first_at ? new Date(r.first_at).toLocaleDateString() : '', r.last_at ? new Date(r.last_at).toLocaleDateString() : '',
+      ]))
+    downloadCSV(`certification-detail-${range.from}_to_${range.to}.csv`, out)
   }
 
   if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err === 'not authorized' ? 'This report is available to managers only.' : err}</div>
@@ -1644,7 +1674,66 @@ function CertificationsReport({ range, profiles, allowedIds }) {
         <Tile label="Pass rate" value={overall.passRate == null ? '—' : overall.passRate + '%'} />
         <Tile label="People" value={overall.people} />
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button className="btn" onClick={exportDetail}>Export detail</button>
+        <button className="btn btn-primary" onClick={exportCsv}>Export CSV</button>
+      </div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By person &amp; quiz <span className="page-sub" style={{ fontWeight: 400 }}>— attempts, which they failed, and full completion</span></div>
+        {detailPeople.length === 0 && <div style={{ padding: '12px 16px' }}><span className="page-sub">No quiz attempts in this range.</span></div>}
+        {detailPeople.map(pid => {
+          const rows = pcByPerson.get(pid) || []
+          const quizzes = rows.length
+          const passed = rows.filter(r => r.passed).length
+          const failing = quizzes - passed
+          const pOpen = !!openP[pid]
+          return (
+            <div key={pid} style={{ borderBottom: '1px solid var(--line)' }}>
+              <div onClick={() => setOpenP(o => ({ ...o, [pid]: !o[pid] }))} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', cursor: 'pointer' }}>
+                <span style={{ width: 12, color: 'var(--ink-soft)' }}>{pOpen ? '▾' : '▸'}</span>
+                <span style={{ fontWeight: 600, flex: 1 }}>{nameOf(pid)}</span>
+                <span className="page-sub" style={{ fontSize: 12 }}>{quizzes} quiz{quizzes === 1 ? '' : 'zes'}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--passed)' }}>{passed} passed</span>
+                {failing > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--failed)' }}>{failing} not passed</span>}
+              </div>
+              {pOpen && (
+                <div style={{ padding: '0 16px 8px 30px' }}>
+                  {rows.map(r => {
+                    const key = pid + '|' + r.course_id
+                    const atts = attByKey.get(key) || []
+                    const cOpen = !!openPC[key]
+                    const complete = r.lessons_done && r.passed
+                    return (
+                      <div key={key} style={{ borderTop: '1px solid var(--line)' }}>
+                        <div onClick={() => atts.length > 1 && setOpenPC(o => ({ ...o, [key]: !o[key] }))} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', cursor: atts.length > 1 ? 'pointer' : 'default' }}>
+                          <span style={{ width: 12, color: 'var(--ink-soft)', fontSize: 11 }}>{atts.length > 1 ? (cOpen ? '▾' : '▸') : ''}</span>
+                          <span style={{ flex: 1, fontWeight: 500 }}>{r.title || 'Course'}</span>
+                          <span className="page-sub" style={{ fontSize: 12 }}>{r.attempts} attempt{r.attempts === 1 ? '' : 's'}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: scoreColor(r.best) }}>best {r.best}%</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: r.passed ? 'rgba(34,160,90,.12)' : 'rgba(200,50,50,.12)', color: r.passed ? 'var(--passed)' : 'var(--failed)' }}>{r.passed ? 'Passed' : 'Not passed'}</span>
+                          <span title={complete ? 'Lessons done + quiz passed' : (r.lessons_done ? 'Lessons done, quiz not passed' : 'Lessons not finished')} style={{ fontSize: 11, fontWeight: 600, minWidth: 74, textAlign: 'right', color: complete ? 'var(--passed)' : 'var(--ink-soft)' }}>{complete ? '✓ Complete' : 'Incomplete'}</span>
+                        </div>
+                        {cOpen && atts.length > 1 && (
+                          <div style={{ padding: '0 0 8px 22px' }}>
+                            {atts.map(a => (
+                              <div key={a.attempt_no} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '3px 0', fontSize: 12 }}>
+                                <span className="page-sub" style={{ width: 64 }}>Attempt {a.attempt_no}</span>
+                                <span className="page-sub" style={{ flex: 1 }}>{a.at ? new Date(a.at).toLocaleDateString() : ''}</span>
+                                <span style={{ fontWeight: 700, color: scoreColor(a.score) }}>{a.score}%</span>
+                                <span style={{ fontWeight: 600, minWidth: 74, textAlign: 'right', color: a.passed ? 'var(--passed)' : 'var(--failed)' }}>{a.passed ? 'Pass' : 'Fail'}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By person</div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
