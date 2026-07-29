@@ -619,13 +619,12 @@ function SetterChannelView(props) {
         </div>
         <span className="page-sub" style={{ fontSize: 12 }}># {props.channel?.name || 'GarageCo: Appointment Setters'}</span>
       </div>
-      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-        <div style={{ position: 'absolute', inset: 0, display: view === 'board' ? 'block' : 'none' }}>
-          <TradeBoardChannel me={me} isMobile={false} />
-        </div>
-        <div style={{ position: 'absolute', inset: 0, display: view === 'chat' ? 'flex' : 'none', flexDirection: 'column', minHeight: 0 }}>
-          <ChannelPane {...props} isMobile={false} />
-        </div>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {/* Render only the active view so each mounts fresh — the chat then runs
+            its own scroll-to-newest on open instead of loading while hidden. */}
+        {view === 'board'
+          ? <TradeBoardChannel me={me} isMobile={false} />
+          : <ChannelPane {...props} isMobile={false} />}
       </div>
     </div>
   )
