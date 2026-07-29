@@ -7,6 +7,7 @@ import { PRIORITIES } from './projectHelpers'
 const FREQ_OPTIONS = [
   { key: 'daily', label: 'Daily' },
   { key: 'weekly', label: 'Weekly' },
+  { key: 'biweekly', label: 'Bi-weekly' },
   { key: 'custom_days', label: 'Custom days' },
   { key: 'monthly', label: 'Monthly' },
   { key: 'yearly', label: 'Yearly' },
@@ -24,6 +25,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 function describe(r) {
   if (r.frequency === 'daily') return 'Daily'
   if (r.frequency === 'weekly') return `Weekly · ${DAY_LABELS[r.weekly_day]}`
+  if (r.frequency === 'biweekly') return `Bi-weekly · ${DAY_LABELS[r.weekly_day]}`
   if (r.frequency === 'custom_days') {
     const sel = (r.custom_days || []).slice().sort().map(d => DAY_LABELS[d])
     return sel.length ? sel.join('/') : 'Custom (no days set)'
@@ -210,7 +212,9 @@ function RecurringModal({ recurringId, onClose }) {
       priority,
       due_offset_days: parseInt(dueOffset, 10) || 0,
       frequency,
-      weekly_day: frequency === 'weekly' ? parseInt(weeklyDay, 10) : null,
+      weekly_day: (frequency === 'weekly' || frequency === 'biweekly') ? parseInt(weeklyDay, 10) : null,
+      week_interval: frequency === 'biweekly' ? 2 : null,
+      interval_start_date: frequency === 'biweekly' ? new Date().toISOString().slice(0, 10) : null,
       custom_days: frequency === 'custom_days' ? [...customDays].sort() : null,
       monthly_day: frequency === 'monthly' ? parseInt(monthlyDay, 10) : null,
       yearly_month: frequency === 'yearly' ? parseInt(yearlyMonth, 10) : null,
@@ -281,13 +285,14 @@ function RecurringModal({ recurringId, onClose }) {
               <select value={frequency} onChange={e => setFrequency(e.target.value)} style={inp}>
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly (one day)</option>
+                <option value="biweekly">Bi-weekly (every 2 weeks)</option>
                 <option value="custom_days">Custom (specific days of the week)</option>
                 <option value="monthly">Monthly</option>
                 <option value="yearly">Yearly</option>
               </select>
             </Grp>
 
-            {frequency === 'weekly' && (
+            {(frequency === 'weekly' || frequency === 'biweekly') && (
               <Grp label="Day of the week">
                 <select value={weeklyDay} onChange={e => setWeeklyDay(e.target.value)} style={inp}>
                   {DAY_LABELS.map((d, i) => <option key={i} value={i}>{['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][i]}</option>)}
