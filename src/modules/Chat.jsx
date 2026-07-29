@@ -8,6 +8,11 @@ import { useUnread } from '../lib/unread'
 import EmojiPicker from 'emoji-picker-react'
 import { RichEditor, RichContent, sanitizeHtml, htmlToText } from '../lib/RichEditor'
 import { needsTranscode, transcodeToMp3 } from '../lib/audioTranscode'
+import TradeBoardChannel from './TradeBoardChannel'
+
+// The #GarageCo: Appointment Setters channel is rendered as an interactive
+// Trade Board instead of a normal chat feed.
+const TRADE_BOARD_CHANNEL_ID = '21ecc8ff-0c15-4f35-8ae3-50c99117d339'
 
 // ============================================================
 // CHAT — Stage 1 + @update acknowledgments + @here
@@ -579,8 +584,11 @@ export default function Chat() {
 
       {showConvo && (
         activeId
-          ? <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} isOwner={isOwner} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead}
-              targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} />
+          ? (activeId === TRADE_BOARD_CHANNEL_ID
+              ? <SetterChannelView key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} isOwner={isOwner} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead}
+                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} />
+              : <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} isOwner={isOwner} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead}
+                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} />)
           : <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-soft)', height: '100%' }}>Select a channel</div>
       )}
 
@@ -590,6 +598,35 @@ export default function Chat() {
       {showDM && <CreateDMModal me={me} profiles={profiles}
         onClose={() => setShowDM(false)}
         onCreated={(id) => { setShowDM(false); load(); openChannel(id) }} />}
+    </div>
+  )
+}
+
+// The GarageCo setter channel gets a Trade Board AND the normal chat, switched
+// by a toggle. Both stay mounted (chat keeps receiving messages / marking read
+// while the board is showing, and vice-versa) so nothing resets on switch.
+function SetterChannelView(props) {
+  const { isMobile, onBack, me } = props
+  const [view, setView] = useState('board') // 'board' | 'chat'
+  const tab = (on) => ({ padding: '5px 14px', fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', background: on ? 'var(--accent, #0d9488)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink-soft)', fontFamily: 'inherit' })
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: 'var(--surface)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--line)', flex: 'none' }}>
+        {isMobile && <button className="btn btn-ghost" style={{ padding: '4px 8px' }} onClick={onBack}>‹</button>}
+        <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
+          <button onClick={() => setView('board')} style={tab(view === 'board')}>🔁 Trade Board</button>
+          <button onClick={() => setView('chat')} style={{ ...tab(view === 'chat'), borderLeft: '1px solid var(--line)' }}>💬 Chat</button>
+        </div>
+        <span className="page-sub" style={{ fontSize: 12 }}># {props.channel?.name || 'GarageCo: Appointment Setters'}</span>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <div style={{ position: 'absolute', inset: 0, display: view === 'board' ? 'block' : 'none' }}>
+          <TradeBoardChannel me={me} isMobile={false} />
+        </div>
+        <div style={{ position: 'absolute', inset: 0, display: view === 'chat' ? 'flex' : 'none', flexDirection: 'column', minHeight: 0 }}>
+          <ChannelPane {...props} isMobile={false} />
+        </div>
+      </div>
     </div>
   )
 }
