@@ -86,6 +86,9 @@ const CATALOG = [
   { label: 'Scorecard', items: [
     { key: 'scorecard', name: 'Agent Productivity', q: 'Per-agent Five9 calls, AHT, bookings and hours (rolling 7 / 30 day).' },
   ] },
+  { label: 'AI QA Spend', items: [
+    { key: 'ai_qa_spend', name: 'AI QA Spend vs Billing', q: 'What did AI QA cost to run vs what we bill — cost, revenue and margin by brand.' },
+  ] },
   { label: 'Help Center', items: [
     { key: 'support', name: 'Support Tickets', q: 'Ticket volume, first-response and resolution times, by category.' },
   ] },
@@ -127,6 +130,7 @@ const CAT_PERM = {
   'Quality': 'quality_audit',
   'Certifications': 'certifications',
   'Scorecard': 'service_performance_scorecard',
+  'AI QA Spend': '__admin__',
   'Tokens': 'tokens.award',
   'Sales': 'sales',
   'RSN Pipeline': 'sales',
@@ -151,7 +155,7 @@ const FILTERABLE = new Set(['person', 'client', 'compare', 'quality', 'qa_by_que
 // Reports whose CSV export is the parent-owned shared button (older inline reports).
 const SHARED_EXPORT = new Set(['person', 'client', 'compare', 'quality', 'people'])
 // Reports rendered by their own standalone component.
-const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions', 'dispo_corrections', 'qa_by_question'])
+const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions', 'dispo_corrections', 'qa_by_question', 'ai_qa_spend'])
 
 export default function Reporting() {
   const { isAdmin, appRole } = useAuth()
@@ -707,6 +711,7 @@ export default function Reporting() {
         : view === 'cert_quiz' ? <CertQuizReport range={range} allowedIds={allowedIds} />
         : view === 'qa_by_question' ? <QaByQuestionReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
         : view === 'scorecard' ? <ScorecardReport />
+        : view === 'ai_qa_spend' ? <AiQaSpendReport range={range} />
         : view === 'dispositions' ? <DispositionsReport />
         : view === 'dispo_corrections' ? <DispoCorrectionsReport range={range} />
         : view === 'clients' ? <ClientsReport range={range} />
@@ -1820,6 +1825,123 @@ function CertQuizReport({ range, allowedIds }) {
       <QTable title="Most missed (lowest correct %)" list={missed} />
       <QTable title="Most correct (highest correct %)" list={best} />
       <p className="page-sub" style={{ fontSize: 12 }}>A question is "correct" when the selected option is flagged correct. Ranked across all attempts in the range; top 15 each.</p>
+    </div>
+  )
+}
+
+// ================= AI QA Spend vs Billing =================
+// What the AI QA pipeline cost to run (Deepgram transcription + Claude scoring)
+// vs what we bill the client, with margin — per brand and total, over the date
+// range. Cost is reconstructed from stored transcript/output sizes + audio length
+// (token usage isn't logged); rates and the client price/call are editable and
+// live in ai_qa_cost_config. Admins only. RPC: report_ai_qa_spend.
+function AiQaSpendReport({ range }) {
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState('')
+  const [reload, setReload] = useState(0)
+  const [price, setPrice] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    let active = true; setData(null); setErr('')
+    supabase.rpc('report_ai_qa_spend', { p_from: range.from, p_to: range.to })
+      .then(({ data, error }) => { if (!active) return; if (error) setErr(error.message); else { setData(data); setPrice(String(data.config?.price_per_call ?? '')) } })
+    return () => { active = false }
+  }, [range.from, range.to, reload])
+
+  const money = (v) => v == null ? '—' : '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const marginColor = (v) => v == null ? 'var(--ink-soft)' : v >= 60 ? 'var(--passed)' : v >= 35 ? 'var(--needed)' : 'var(--failed)'
+
+  async function savePrice() {
+    const p = parseFloat(price)
+    if (!isFinite(p) || p < 0) { setErr('Enter a valid price per call.'); return }
+    setSaving(true); setErr('')
+    const { error } = await supabase.rpc('save_ai_qa_cost_config', { p_price_per_call: p, p_dg_per_min: null, p_claude_in_per_mtok: null, p_claude_out_per_mtok: null })
+    setSaving(false)
+    if (error) { setErr(error.message); return }
+    setReload(r => r + 1)
+  }
+  function exportCsv() {
+    const out = [['Brand', 'Calls', 'Audio min', 'Deepgram $', 'Claude $', 'Total cost $', 'Cost/call $', 'Revenue $', 'Profit $', 'Margin %']]
+    ;(data?.rows || []).forEach(r => out.push([r.brand, r.calls, r.minutes, r.deepgram_cost, r.claude_cost, r.total_cost, r.cost_per_call, r.revenue, r.profit, r.margin_pct]))
+    const t = data?.totals
+    if (t) out.push(['TOTAL', t.calls, t.minutes, t.deepgram_cost, t.claude_cost, t.total_cost, t.cost_per_call, t.revenue, t.profit, t.margin_pct])
+    downloadCSV(`ai-qa-spend-${range.from}_to_${range.to}.csv`, out)
+  }
+
+  if (err && !data) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err === 'not authorized' ? 'This report is available to admins only.' : err}</div>
+  if (data == null) return <p className="page-sub">Loading…</p>
+  const t = data.totals || {}
+  const rows = data.rows || []
+  const cfg = data.config || {}
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Calls scored" value={(t.calls || 0).toLocaleString()} />
+        <Tile label="Revenue (billed)" value={money(t.revenue)} />
+        <Tile label="Cost to run" value={money(t.total_cost)} />
+        <Tile label="Gross profit" value={money(t.profit)} />
+        <Tile label="Margin" value={t.margin_pct == null ? '—' : t.margin_pct + '%'} />
+      </div>
+
+      <div className="card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Price charged per call</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+            <span style={{ fontWeight: 700 }}>$</span>
+            <input value={price} onChange={e => setPrice(e.target.value)} inputMode="decimal"
+              style={{ width: 90, padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', background: 'var(--canvas)' }} />
+            <button className="btn btn-primary" onClick={savePrice} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 220, fontSize: 12.5, color: 'var(--ink-soft)' }}>
+          Cost model (per call): Deepgram ${cfg.dg_per_min}/audio min · Claude ${cfg.claude_in_per_mtok}/M in · ${cfg.claude_out_per_mtok}/M out. Direct vendor cost only — excludes hosting and human review time.
+        </div>
+        <button className="btn" onClick={exportCsv}>Export CSV</button>
+      </div>
+
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>By brand</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+            <thead><tr><Th>Brand</Th><Th r>Calls</Th><Th r>Audio min</Th><Th r>Deepgram</Th><Th r>Claude</Th><Th r>Total cost</Th><Th r>Cost/call</Th><Th r>Revenue</Th><Th r>Profit</Th><Th r>Margin</Th></tr></thead>
+            <tbody>
+              {rows.length === 0 && <tr><td style={cellL} colSpan={10}><span className="page-sub">No AI QA calls scored in this range.</span></td></tr>}
+              {rows.map(r => (
+                <tr key={r.brand} style={{ borderTop: '1px solid var(--line-soft)' }}>
+                  <td style={{ ...cellL, fontWeight: 600 }}>{r.brand}</td>
+                  <td style={cellR}>{r.calls.toLocaleString()}</td>
+                  <td style={cellR}>{Number(r.minutes).toLocaleString()}</td>
+                  <td style={cellR}>{money(r.deepgram_cost)}</td>
+                  <td style={cellR}>{money(r.claude_cost)}</td>
+                  <td style={cellR}>{money(r.total_cost)}</td>
+                  <td style={cellR}>{money(r.cost_per_call)}</td>
+                  <td style={cellR}>{money(r.revenue)}</td>
+                  <td style={{ ...cellR, fontWeight: 600 }}>{money(r.profit)}</td>
+                  <td style={{ ...cellR, fontWeight: 700, color: marginColor(r.margin_pct) }}>{r.margin_pct == null ? '—' : r.margin_pct + '%'}</td>
+                </tr>
+              ))}
+            </tbody>
+            {rows.length > 0 && (
+              <tfoot>
+                <tr style={{ borderTop: '2px solid var(--line)', background: 'var(--canvas)' }}>
+                  <td style={{ ...cellL, fontWeight: 700 }}>Total</td>
+                  <td style={{ ...cellR, fontWeight: 700 }}>{(t.calls || 0).toLocaleString()}</td>
+                  <td style={{ ...cellR, fontWeight: 700 }}>{Number(t.minutes || 0).toLocaleString()}</td>
+                  <td style={{ ...cellR, fontWeight: 700 }}>{money(t.deepgram_cost)}</td>
+                  <td style={{ ...cellR, fontWeight: 700 }}>{money(t.claude_cost)}</td>
+                  <td style={{ ...cellR, fontWeight: 700 }}>{money(t.total_cost)}</td>
+                  <td style={{ ...cellR, fontWeight: 700 }}>{money(t.cost_per_call)}</td>
+                  <td style={{ ...cellR, fontWeight: 700 }}>{money(t.revenue)}</td>
+                  <td style={{ ...cellR, fontWeight: 700 }}>{money(t.profit)}</td>
+                  <td style={{ ...cellR, fontWeight: 700, color: marginColor(t.margin_pct) }}>{t.margin_pct == null ? '—' : t.margin_pct + '%'}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>Cost is reconstructed from stored transcript and review sizes plus audio length (token usage isn't logged), calibrated against calls with known durations. Figures are direct Deepgram + Claude cost; hosting and human review time aren't included.</p>
     </div>
   )
 }
