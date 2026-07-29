@@ -325,8 +325,10 @@ function PicksAdmin({ onChanged, spotlights, tip, quote, names }) {
   async function addSpotlight() {
     if (!spPid) return
     setBusy('sp')
+    // Replace any current spotlight so the previous one clears when a new one is added.
+    await supabase.from('weekly_picks').update({ active: false }).eq('kind', 'spotlight').eq('active', true)
     await supabase.from('weekly_picks').insert({
-      kind: 'spotlight', spotlight_profile_id: spPid, blurb: spBlurb.trim() || null,
+      kind: 'spotlight', active: true, spotlight_profile_id: spPid, blurb: spBlurb.trim() || null,
       audience_tags: spTeam ? [spTeam] : [],
     })
     // Let the spotlighted person know they were picked.
