@@ -39,6 +39,14 @@ export default function PeopleTags() {
   const [five9Pass, setFive9Pass] = useState('')
   const [five9Busy, setFive9Busy] = useState(false)
   const [five9Msg, setFive9Msg] = useState('')
+  // Set-password (admin only): overwrite a person's login password so an admin
+  // can sign in as them. Backed by the admin-set-password Edge Function.
+  const canSetPassword = appRole === 'admin'
+  const [pwOpen, setPwOpen] = useState(null)   // person id
+  const [pwValue, setPwValue] = useState('')
+  const [pwShow, setPwShow] = useState(false)
+  const [pwBusy, setPwBusy] = useState(false)
+  const [pwMsg, setPwMsg] = useState('')       // { ok, text } or ''
   useEffect(() => { load() }, [])
   async function load() {
     setLoading(true); setErr('')
@@ -240,6 +248,43 @@ export default function PeopleTags() {
       setFive9Busy(false)
     }
   }
+  // ---- Set password (admin only) ----------------------------------------
+  function openPw(person) {
+    setPwOpen(person.id)
+    setPwValue('')
+    setPwShow(false)
+    setPwMsg('')
+  }
+  function genPassword() {
+    // Readable-but-strong: 16 chars from a no-ambiguous-characters alphabet.
+    const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%'
+    const buf = new Uint32Array(16)
+    crypto.getRandomValues(buf)
+    setPwValue(Array.from(buf, n => abc[n % abc.length]).join(''))
+    setPwShow(true)
+  }
+  async function setPassword(person) {
+    if (!canSetPassword) return
+    if (!pwValue || pwValue.length < 8) { setPwMsg({ ok: false, text: 'Password must be at least 8 characters.' }); return }
+    setPwBusy(true); setPwMsg('')
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-set-password', {
+        body: { userId: person.id, email: person.email, password: pwValue },
+      })
+      if (error) {
+        // Surface the function's own error message when present.
+        let detail = ''
+        try { detail = (await error.context?.json())?.error } catch { /* ignore */ }
+        throw new Error(detail || error.message)
+      }
+      if (data?.error) throw new Error(data.error)
+      setPwMsg({ ok: true, text: `Password set. Log in as ${person.email} in a private/incognito window using the password above. This replaced their old password.` })
+    } catch (e) {
+      setPwMsg({ ok: false, text: e.message || 'Could not set the password.' })
+    } finally {
+      setPwBusy(false)
+    }
+  }
   const initials = (n) => (n || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()
   return (
     <div>
@@ -329,6 +374,13 @@ export default function PeopleTags() {
                     onClick={() => five9Open === p.id ? setFive9Open(null) : openFive9(p)}>
                     {p.five9_sent_at ? 'Five9 ✓' : 'Five9 setup'}
                   </button>
+                  {canSetPassword && (
+                    <button type="button" className="btn btn-ghost" style={{ fontSize: 12.5, flex: 'none' }}
+                      title="Set this person's login password so you can sign in as them"
+                      onClick={() => pwOpen === p.id ? setPwOpen(null) : openPw(p)}>
+                      🔑 Set password
+                    </button>
+                  )}
                   {canEdit ? (
                     <select
                       value={p.role || 'agent'}
@@ -378,6 +430,38 @@ export default function PeopleTags() {
                         {activeBusy === p.id ? 'Removing…' : 'Deactivate'}
                       </button>
                       <button className="btn btn-ghost" onClick={() => { setDeactivating(null); setDeactReason('') }}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+
+                {pwOpen === p.id && canSetPassword && (
+                  <div style={{ background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: 14, margin: '4px 0 12px' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Set login password for {p.full_name}</div>
+                    <p style={{ fontSize: 12, color: 'var(--ink-soft)', margin: '0 0 12px', lineHeight: 1.5 }}>
+                      This sets a new password on <b>{p.email}</b> so you can sign in as them (use a private/incognito window so it doesn't sign you out here).
+                      <b> It replaces their current password</b> — if they log in themselves, they'll need to reset it. Their history and role are unchanged.
+                    </p>
+                    <div style={{ display: 'grid', gap: 10, maxWidth: 420 }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input value={pwValue} onChange={e => setPwValue(e.target.value)} type={pwShow ? 'text' : 'password'}
+                          placeholder="New password (min 8 characters)" autoComplete="new-password"
+                          style={{ flex: 1, padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit' }} />
+                        <button type="button" className="btn btn-ghost" style={{ fontSize: 12.5, flex: 'none' }} onClick={() => setPwShow(s => !s)}>
+                          {pwShow ? 'Hide' : 'Show'}
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button type="button" className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={genPassword}>Generate strong password</button>
+                        {pwValue && <button type="button" className="btn btn-ghost" style={{ fontSize: 12.5 }}
+                          onClick={() => { navigator.clipboard?.writeText(pwValue); setPwMsg({ ok: true, text: 'Password copied to clipboard.' }) }}>Copy</button>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <button className="btn btn-primary" onClick={() => setPassword(p)} disabled={pwBusy || pwValue.length < 8}>
+                          {pwBusy ? 'Setting…' : 'Set password'}
+                        </button>
+                        <button className="btn btn-ghost" onClick={() => setPwOpen(null)}>Cancel</button>
+                      </div>
+                      {pwMsg && <div style={{ fontSize: 12.5, color: pwMsg.ok ? '#16A34A' : 'var(--failed)', lineHeight: 1.5 }}>{pwMsg.ok ? '✓ ' : ''}{pwMsg.text}</div>}
                     </div>
                   </div>
                 )}
