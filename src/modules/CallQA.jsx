@@ -318,7 +318,7 @@ export default function CallQA({ portal = false } = {}) {
   const base = import.meta.env.VITE_SUPABASE_URL || ''
   const inFlight = (pipeline.needs_transcription || 0) + (pipeline.transcribing || 0) + (pipeline.ready || 0) + (pipeline.scoring || 0)
   const todayStr = new Date().toISOString().slice(0, 10)
-  const TABS = [['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['bookings', 'Bookings & Card'], ['calls', 'Calls'], ['fails', 'Epic Fails'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings']] : [])]
+  const TABS = [['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['bookings', 'Bookings & Card'], ['calls', 'Calls'], ['fails', 'Lowest Scores'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings']] : [])]
 
   return (
     <div style={{ padding: 20, maxWidth: 1180, margin: '0 auto' }}>
@@ -577,7 +577,7 @@ function EpicFails({ rows, onOpen, viewAll }) {
         <Tile label="Scored calls" value={scored.length} sub="in this range" />
       </div>
       <Card style={{ background: '#fdecea', border: '1px solid #f5c6cb' }}>
-        <div style={{ fontWeight: 700, color: '#b71c1c' }}>Worst calls first</div>
+        <div style={{ fontWeight: 700, color: '#b71c1c' }}>Lowest scores first</div>
         <div style={{ fontSize: 12.5, color: '#7f1d1d', marginTop: 2 }}>Every scored call in range, ranked lowest QA score to highest. Start at the top for the calls that need attention most.</div>
       </Card>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -786,16 +786,16 @@ function BookingsCard({ rows, onOpen, viewAll }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Tile label="Bookings" value={booked.length} sub="calls that booked" />
-        <Tile label="Asked for card" value={asked} color="#1b5e20" sub={askedPct == null ? '' : `${askedPct}% of bookings`} />
-        <Tile label="Did not ask" value={notAsked} color="#b71c1c" />
+        <Tile label="Card to secure appt" value={asked} color="#1b5e20" sub={askedPct == null ? '' : `${askedPct}% of bookings`} />
+        <Tile label="No card collected" value={notAsked} color="#b71c1c" />
         {pending > 0 && <Tile label="Pending" value={pending} color="#8d6e00" sub="not yet evaluated" />}
       </div>
       <Card style={{ background: '#f0fdfa', border: '1px solid #99f6e4' }}>
-        <div style={{ fontWeight: 700, color: TEAL }}>Booked calls — did the CSR ask for a credit card?</div>
-        <div style={{ fontSize: 12.5, color: '#334155', marginTop: 2 }}>Every call that resulted in a booking, with an AI Yes/No on whether the CSR asked the caller for a credit or debit card (to take a payment or a deposit). Click any row to open the full call — timestamped transcript, recording, scoring and notes.</div>
+        <div style={{ fontWeight: 700, color: TEAL }}>Booked calls — was a card collected to secure the appointment?</div>
+        <div style={{ fontSize: 12.5, color: '#334155', marginTop: 2 }}>Every call that resulted in a booking, with an AI Yes/No on whether the CSR asked the customer for a credit card <b>to secure or hold the appointment</b> (e.g. “we'll need a card to hold it — no charge until we come out / until we know the final cost”). Paying for a product or part over the phone, paying an existing invoice, or the customer offering to pay on arrival do <b>not</b> count. Click any row to open the full call — timestamped transcript, recording, scoring and notes.</div>
       </Card>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#475569' }}>
-        <input type="checkbox" checked={onlyAsked} onChange={(e) => setOnlyAsked(e.target.checked)} /> Only show bookings where a card was asked for
+        <input type="checkbox" checked={onlyAsked} onChange={(e) => setOnlyAsked(e.target.checked)} /> Only show bookings where a card was collected to secure the appointment
       </label>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
@@ -810,7 +810,7 @@ function BookingsCard({ rows, onOpen, viewAll }) {
               <col style={{ width: 66 }} />
               <col style={{ width: 34 }} />
             </colgroup>
-            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Asked for card', 'Card ask (verbatim)', 'Score', ''].map((h) => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Card to hold appt', 'What the rep said', 'Score', ''].map((h) => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}</tr></thead>
             <tbody>{shown.map((r) => {
               const c = r.call || {}
               const cell = { padding: '8px 12px', verticalAlign: 'top', whiteSpace: 'normal', overflowWrap: 'anywhere' }
@@ -957,7 +957,7 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, canManage,
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>INFO BEFORE PRICING</div><b>{ynLabel(row.info_before_pricing)}</b></div>
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>FEE EXPECTATIONS SET</div><b>{ynLabel(row.set_fee_expectations)}</b></div>
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>WINNABLE</div><b>{row.winnable == null ? '—' : (row.winnable ? 'Yes' : 'No')}</b></div>
-                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>ASKED FOR CREDIT CARD</div><b style={{ color: row.asked_for_cc == null ? '#64748b' : (row.asked_for_cc ? '#1b5e20' : '#b71c1c') }}>{row.asked_for_cc == null ? '—' : (row.asked_for_cc ? 'Yes' : 'No')}</b></div>
+                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CARD TO SECURE APPT</div><b style={{ color: row.asked_for_cc == null ? '#64748b' : (row.asked_for_cc ? '#1b5e20' : '#b71c1c') }}>{row.asked_for_cc == null ? '—' : (row.asked_for_cc ? 'Yes' : 'No')}</b></div>
               </div>
               {(row.objections || []).length > 0 && <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{row.objections.map((o, i) => <Pill key={i} bg="#fee2e2" fg="#991b1b">⛔ {o}</Pill>)}</div>}
               {row.asked_for_cc && row.cc_quote && <div style={{ marginTop: 10, fontSize: 13.5, color: '#334155' }}><b>Card ask:</b> “{row.cc_quote}”</div>}
