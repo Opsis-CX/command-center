@@ -79,7 +79,9 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
       priority,
       due_offset_days: parseInt(dueOffset, 10) || 0,
       frequency,
-      weekly_day: frequency === 'weekly' ? parseInt(weeklyDay, 10) : null,
+      weekly_day: (frequency === 'weekly' || frequency === 'biweekly') ? parseInt(weeklyDay, 10) : null,
+      week_interval: frequency === 'biweekly' ? 2 : null,
+      interval_start_date: frequency === 'biweekly' ? new Date().toISOString().slice(0, 10) : null,
       custom_days: frequency === 'custom_days' ? [...customDays].sort() : null,
       monthly_day: frequency === 'monthly' ? parseInt(monthlyDay, 10) : null,
       yearly_month: frequency === 'yearly' ? parseInt(yearlyMonth, 10) : null,
@@ -247,6 +249,7 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
                     <select value={frequency} onChange={e => setFrequency(e.target.value)} style={inp}>
                       <option value="daily">Daily</option>
                       <option value="weekly">Weekly (one day)</option>
+                      <option value="biweekly">Bi-weekly (every 2 weeks)</option>
                       <option value="custom_days">Custom (specific days)</option>
                       <option value="monthly">Monthly</option>
                       <option value="yearly">Yearly</option>
@@ -257,7 +260,7 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
                   </Grp>
                 </Row>
 
-                {frequency === 'weekly' && (
+                {(frequency === 'weekly' || frequency === 'biweekly') && (
                   <Grp label="Day of the week">
                     <select value={weeklyDay} onChange={e => setWeeklyDay(e.target.value)} style={inp}>
                       {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((d, i) => <option key={i} value={i}>{d}</option>)}
