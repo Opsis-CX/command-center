@@ -461,17 +461,32 @@ function Overview({ agg, trend }) {
             )}
           </div>
         </div>
-        {trend.length === 0 ? <div style={{ color: '#64748b' }}>No calls in range.</div> : (
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 160, borderBottom: '1px solid #e2e8f0', paddingBottom: 4 }}>
-            {visibleTrend.map((t) => (
-              <div key={t.d} title={`${t.d}: ${pct(t.avg)} (${t.n} calls)`} style={{ flex: 1, minWidth: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
-                <div style={{ fontSize: 9, color: '#94a3b8' }}>{Math.round(t.avg)}</div>
-                <div style={{ width: '80%', background: scoreColor(t.avg), height: `${t.avg}%`, borderRadius: '3px 3px 0 0', opacity: 0.35 + 0.65 * (t.n / maxN) }} />
-                <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 2, transform: 'rotate(-40deg)', whiteSpace: 'nowrap' }}>{fmtDate(t.d)}</div>
+        {trend.length === 0 ? <div style={{ color: '#64748b' }}>No calls in range.</div> : (() => {
+          const dense = visibleTrend.length > 16
+          const gap = dense ? 4 : 8
+          // Thin the date labels so at most ~8 show, always anchoring the most-recent day.
+          const labelStep = Math.max(1, Math.ceil(visibleTrend.length / 8))
+          const showLabel = (i) => (visibleTrend.length - 1 - i) % labelStep === 0
+          return (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap, height: 150, borderBottom: '1px solid #e2e8f0' }}>
+                {visibleTrend.map((t, i) => (
+                  <div key={t.d} title={`${t.d}: ${pct(t.avg)} (${t.n} calls)`} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+                    {(!dense || showLabel(i)) && <div style={{ fontSize: 9.5, color: '#64748b', marginBottom: 3 }}>{Math.round(t.avg)}</div>}
+                    <div style={{ width: '68%', maxWidth: 32, background: scoreColor(t.avg), height: `${t.avg}%`, borderRadius: '3px 3px 0 0', opacity: 0.4 + 0.6 * (t.n / maxN) }} />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
+              <div style={{ display: 'flex', gap, marginTop: 6 }}>
+                {visibleTrend.map((t, i) => (
+                  <div key={t.d} style={{ flex: 1, minWidth: 0, textAlign: 'center', fontSize: 10.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                    {showLabel(i) ? fmtDate(t.d) : ''}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
         {paged && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 10 }}>Showing {visibleTrend.length} of {total} days{canOlder ? '' : ' · earliest'}{canNewer ? '' : ' · most recent'}</div>}
       </Card>
     </div>
