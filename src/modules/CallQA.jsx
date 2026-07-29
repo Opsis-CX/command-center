@@ -215,7 +215,12 @@ export default function CallQA({ portal = false } = {}) {
     })
   }, [rows, days, startDate, endDate, customRange])
 
-  const agents = useMemo(() => Array.from(new Set(rows.map(agentOf).filter(Boolean))).sort(), [rows])
+  // Agent options are scoped to the current date range + selected brand, so picking
+  // a brand narrows the CSR list to that brand's agents (not everyone).
+  const agents = useMemo(() => {
+    const pool = dateFiltered.filter((r) => brand === 'all' || (r.call || {}).brand === brand)
+    return Array.from(new Set(pool.map(agentOf).filter(Boolean))).sort()
+  }, [dateFiltered, brand])
   const brands = useMemo(() => Array.from(new Set(rows.map((r) => r.call?.brand).filter(Boolean))).sort(), [rows])
   const topicList = useMemo(() => Array.from(new Set(rows.flatMap((r) => r.topics || []))).sort(), [rows])
 
@@ -339,7 +344,7 @@ export default function CallQA({ portal = false } = {}) {
         <DateField label="Start date" value={startDate} max={endDate || todayStr} onChange={setStartDate} />
         <DateField label="End date" value={endDate} min={startDate || undefined} max={todayStr} onChange={setEndDate} />
         {customRange && <button onClick={() => { setStartDate(''); setEndDate('') }} style={{ ...btn('ghost'), padding: '7px 10px' }}>✕ Clear dates</button>}
-        <Select label="Brand" value={brand} onChange={setBrand} opts={[['all', 'All brands'], ...brands.map((c) => [c, c])]} />
+        <Select label="Brand" value={brand} onChange={(v) => { setBrand(v); setAgent('all') }} opts={[['all', 'All brands'], ...brands.map((c) => [c, c])]} />
         <Select label="Topic" value={topic} onChange={setTopic} opts={[['all', 'All topics'], ...topicList.map((t) => [t, t])]} />
         {viewAll && <Select label="Agent" value={agent} onChange={setAgent} opts={[['all', 'All agents'], ...agents.map((a) => [a, a])]} />}
       </div>
