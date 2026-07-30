@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 // ============================================================
@@ -102,6 +102,7 @@ export default function HiringDashboard() {
   const [showScreened, setShowScreened] = useState(false)
   const [selected, setSelected] = useState(null)  // application being viewed
   const [busy, setBusy] = useState(false)
+  const rippleRunning = useRef(false)  // guards checkRipplingTasks against concurrent runs
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -185,6 +186,14 @@ export default function HiringDashboard() {
   }
 
   const checkRipplingTasks = useCallback(async () => {
+    // Re-entrancy guard: this runs on mount, whenever `apps` changes, AND on
+    // every realtime tasks UPDATE. Without a lock, several copies race before
+    // the status flip commits and each one advances + logs + provisions an
+    // account — that storm is what fired 2–28 duplicate events per hire and
+    // hammered account creation. One run at a time only.
+    if (rippleRunning.current) return
+    rippleRunning.current = true
+    try {
     const waiting = apps.filter(a => a.status === 'assessment_passed' && a.rippling_task_id)
     if (!waiting.length) return
     const ids = waiting.map(a => a.rippling_task_id)
@@ -194,19 +203,31 @@ export default function HiringDashboard() {
     const doneIds = new Set(doneTasks.map(t => t.id))
     for (const app of waiting) {
       if (doneIds.has(app.rippling_task_id)) {
-        // create their login account so they can access certification
-        const invited = await inviteAgentAccount(app)
-        const patch = { status: 'certifying', reviewed_at: new Date().toISOString() }
-        await supabase.from('hiring_applications').update(patch).eq('id', app.id)
-        await supabase.from('hiring_stage_events').insert({
-          application_id: app.id, from_status: 'assessment_passed', to_status: 'certifying',
-          note: invited
-            ? 'Rippling setup completed; Command Center account created and invite emailed'
-            : 'Rippling setup completed; automatic account creation FAILED — manual task raised for Becky',
-        })
+        // Rippling invite is out — advance exactly ONE step, to "Rippling —
+        // Awaiting Signature". (Do NOT jump ahead to Certifying; the manager
+        // walks them through Awaiting Signature -> Certification Assigned ->
+        // Certifying one step at a time.) The Command Center login is created
+        // later, when certification is actually started (the cert_assigned ->
+        // certifying transition), so we don't provision accounts before the
+        // hire has even signed their Rippling paperwork.
+        const patch = { status: 'rippling_awaiting_signature', reviewed_at: new Date().toISOString() }
+        // Conditional update: only flip a row that is STILL assessment_passed.
+        // A racing/duplicate run updates 0 rows, so we only log the stage event
+        // for the single run that actually made the change — no more duplicates.
+        const { data: flipped } = await supabase.from('hiring_applications')
+          .update(patch).eq('id', app.id).eq('status', 'assessment_passed').select('id')
+        if (flipped && flipped.length) {
+          await supabase.from('hiring_stage_events').insert({
+            application_id: app.id, from_status: 'assessment_passed', to_status: 'rippling_awaiting_signature',
+            note: 'Rippling setup completed by Corinne — invite sent, now awaiting the hire\'s signature.',
+          })
+        }
       }
     }
     load()
+    } finally {
+      rippleRunning.current = false
+    }
   }, [apps, load])
 
   useEffect(() => { checkRipplingTasks() }, [checkRipplingTasks])
@@ -260,7 +281,7 @@ export default function HiringDashboard() {
         priority: 'high',
         due_date: new Date().toISOString().slice(0, 10),
         project_id: ONBOARDING_PROJECT_ID || null,
-        notes: `New hire cleared assessment.\n\n${contact}\n\nCreate their Rippling onboarding, then mark this task done — that automatically creates their Command Center login and advances them to certification.`,
+        notes: `New hire cleared assessment.\n\n${contact}\n\nCreate their Rippling onboarding, then mark this task done — that automatically advances them to "Rippling — Awaiting Signature" in the hiring pipeline.`,
         created_by: user?.id || null,
       })
       if (tErr) { console.error('could not create Rippling task:', tErr); return null }
@@ -484,7 +505,7 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, busy }) {
   const advanceMap = {
     approved: { to: 'assessment_sent', label: 'Send assessment link', email: 'approved', hint: 'Emails the applicant their assessment link.' },
     assessment_review: { to: 'assessment_passed', label: 'Pass assessment', email: 'assessment_passed', deny: { to: 'assessment_denied', label: 'Reject assessment', email: 'assessment_denied' } },
-    assessment_passed: { to: 'rippling_awaiting_signature', label: '✋ Mark: Rippling invite sent', email: null, hint: 'Move to "Rippling — Awaiting Signature" once the invite is out and you\'re waiting on their signature. (If Corinne completes the Rippling setup task first, they auto-advance to Certifying.)' },
+    assessment_passed: { to: 'rippling_awaiting_signature', label: '✋ Mark: Rippling invite sent', email: null, hint: 'Move to "Rippling — Awaiting Signature" once the invite is out and you\'re waiting on their signature. (If Corinne completes the Rippling setup task first, they auto-advance to this same step.)' },
     rippling_awaiting_signature: { to: 'cert_assigned', label: '✋ Mark: certification assigned', email: null, hint: 'Move once their Rippling docs are signed and certification has been assigned.' },
     cert_assigned: { to: 'certifying', label: '✋ Mark: certification in progress', email: null, hint: 'Move once they have started their certification. This also creates their Command Center login if needed.' },
     certifying: { to: 'cert_complete', label: '✋ Mark: certification complete', email: null, hint: 'Manual — mark when they finish certification in Projects.' },
