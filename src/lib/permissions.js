@@ -80,18 +80,24 @@ const MATRIX = {
   'live_status': ['admin', 'asc', 'certification', 'quality'],
 }
 // can(role, "schedule.create_schedules") -> boolean
+// A person can hold MORE THAN ONE role, stored as a comma-separated list in
+// profiles.role (e.g. "asc,marketing"). They get the UNION of every listed
+// role's permissions. A single role (the common case) still works unchanged.
+function rolesOf(role) {
+  return String(role || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean)
+}
 export function can(role, perm) {
-  const r = String(role || '').trim().toLowerCase()
-  if (r === 'admin') return true            // admin always passes
+  const roles = rolesOf(role)
+  if (roles.includes('admin')) return true   // admin always passes
   const allowed = MATRIX[perm]
   if (!allowed) return false
-  return allowed.includes(r)
+  return roles.some(r => allowed.includes(r))
 }
 // Convenience: does this role have ANY capability under a page prefix?
 // Used for nav gating (show the page if they can do anything on it).
 export function canAny(role, pagePrefix) {
-  const r = String(role || '').trim().toLowerCase()
-  if (r === 'admin') return true
-  return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + ".")) && MATRIX[k].includes(r))
+  const roles = rolesOf(role)
+  if (roles.includes('admin')) return true
+  return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + '.')) && MATRIX[k].some(r => roles.includes(r)))
 }
 export const ALL_PERMS = Object.keys(MATRIX)
