@@ -133,20 +133,28 @@ export default function PeopleTags() {
       setDeletingTag(null)
     }
   }
-  // Admin-only: change a person's permission role. Optimistic update, then
-  // persist. RLS on profiles must restrict role writes to admins (see notes).
-  const [roleBusy, setRoleBusy] = useState(null)   // person id currently saving
-  async function changeRole(personId, nextRole) {
+  // Roles: a person can hold more than one (stored comma-separated in
+  // profiles.role, e.g. "asc,marketing"). They get the UNION of permissions.
+  const [roleBusy, setRoleBusy] = useState(null)     // person id currently saving
+  const [rolePickerFor, setRolePickerFor] = useState(null) // person id whose picker is open
+  const personRoles = (p) => String(p.role || 'agent').split(',').map(s => s.trim()).filter(Boolean)
+  const roleLabel = (key) => (ROLES.find(r => r.key === key) || {}).label || key
+  // Toggle one role on/off for a person and persist. Optimistic + rollback.
+  async function toggleRole(person, key) {
     if (!canEdit) return
+    const current = personRoles(person)
+    let next = current.includes(key) ? current.filter(k => k !== key) : [...current, key]
+    if (next.length === 0) next = ['agent']          // never leave someone with no role
+    const roleStr = ROLES.map(r => r.key).filter(k => next.includes(k)).join(',')  // stable order
     const prev = people
-    setPeople(ps => ps.map(p => p.id === personId ? { ...p, role: nextRole } : p))
-    setRoleBusy(personId); setErr('')
+    setPeople(ps => ps.map(p => p.id === person.id ? { ...p, role: roleStr } : p))
+    setRoleBusy(person.id); setErr('')
     try {
-      const { error } = await supabase.from('profiles').update({ role: nextRole }).eq('id', personId)
+      const { error } = await supabase.from('profiles').update({ role: roleStr }).eq('id', person.id)
       if (error) throw error
     } catch (e) {
-      setPeople(prev)                               // roll back on failure
-      setErr(e.message || 'Could not update role')
+      setPeople(prev)                                // roll back on failure
+      setErr(e.message || 'Could not update roles')
     } finally {
       setRoleBusy(null)
     }
@@ -382,17 +390,34 @@ export default function PeopleTags() {
                     </button>
                   )}
                   {canEdit ? (
-                    <select
-                      value={p.role || 'agent'}
-                      disabled={roleBusy === p.id}
-                      onChange={e => changeRole(p.id, e.target.value)}
-                      title="Permission role"
-                      style={{ fontSize: 12.5, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', fontFamily: 'inherit', background: 'var(--canvas)', color: 'var(--ink)', cursor: 'pointer', flex: 'none' }}>
-                      {ROLES.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
-                    </select>
+                    <div style={{ position: 'relative', flex: 'none' }}>
+                      <button type="button" onClick={() => setRolePickerFor(rolePickerFor === p.id ? null : p.id)}
+                        disabled={roleBusy === p.id} title="Permission roles — a person can have more than one"
+                        style={{ fontSize: 12.5, padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', fontFamily: 'inherit', background: 'var(--canvas)', color: 'var(--ink)', cursor: 'pointer', maxWidth: 230, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{personRoles(p).map(roleLabel).join(', ')}</span>
+                        <span style={{ color: 'var(--ink-soft)', flex: 'none' }}>▾</span>
+                      </button>
+                      {rolePickerFor === p.id && (
+                        <>
+                          <div onClick={() => setRolePickerFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                          <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 41, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.15)', padding: 6, minWidth: 210 }}>
+                            <div style={{ fontSize: 11, color: 'var(--ink-soft)', padding: '4px 8px 6px' }}>Select one or more roles</div>
+                            {ROLES.map(r => {
+                              const on = personRoles(p).includes(r.key)
+                              return (
+                                <label key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 13, background: on ? 'var(--accent-bg, rgba(0,119,182,.06))' : 'transparent' }}>
+                                  <input type="checkbox" checked={on} disabled={roleBusy === p.id} onChange={() => toggleRole(p, r.key)} style={{ flex: 'none' }} />
+                                  {r.label}
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   ) : (
                     <span style={{ fontSize: 12, color: 'var(--ink-soft)', flex: 'none' }}>
-                      {(ROLES.find(r => r.key === (p.role || 'agent')) || {}).label}
+                      {personRoles(p).map(roleLabel).join(', ')}
                     </span>
                   )}
                   {canEdit && (p.is_active ? (
