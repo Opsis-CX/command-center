@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
 import { useProjectsData } from './projectsData'
 import { Avatar } from './projectBits'
 import { PRIORITIES } from './projectHelpers'
@@ -36,8 +37,18 @@ function describe(r) {
 }
 
 export default function ProjectRecurring() {
-  const { recurring, projects, clients, profiles } = useProjectsData()
+  const { recurring: allRecurring, projects, clients, profiles } = useProjectsData()
+  const { appRole, user } = useAuth()
   const [modalId, setModalId] = useState(undefined) // undefined=closed, null=new, id=edit
+
+  // Visibility: only true admins (profiles.role === 'admin') see every recurring
+  // task. Everyone else sees only the ones they're assigned to — so people
+  // aren't wading through the whole company's schedule to find their own.
+  const isTaskAdmin = appRole === 'admin'
+  const recurring = useMemo(
+    () => (isTaskAdmin ? allRecurring : (allRecurring || []).filter(r => (r.assignee_ids || []).includes(user?.id))),
+    [allRecurring, isTaskAdmin, user?.id]
+  )
 
   // ---- Filters ----
   const [q, setQ] = useState('')
