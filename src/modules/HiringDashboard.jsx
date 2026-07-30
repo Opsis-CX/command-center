@@ -340,6 +340,26 @@ export default function HiringDashboard() {
     transition(app, 'denied', { email: 'denied', note: 'denied at first review' })
   }
 
+  // Corrective move: set an applicant to any stage (usually to move them BACK
+  // to the right one). Unlike the forward "advance" buttons this sends NO email
+  // and fires NO side effects (no new Rippling task, Five9 alert, or account
+  // creation) — it just fixes the stage and logs the change.
+  async function moveToStep(app, toStatus) {
+    if (!toStatus || toStatus === app.status) return
+    setBusy(true)
+    const from = app.status
+    const patch = { status: toStatus, reviewer_id: user?.id, reviewed_at: new Date().toISOString() }
+    const { error } = await supabase.from('hiring_applications').update(patch).eq('id', app.id)
+    if (error) { setErr(error.message); setBusy(false); return }
+    await supabase.from('hiring_stage_events').insert({
+      application_id: app.id, from_status: from, to_status: toStatus, actor_id: user?.id,
+      note: `Manually moved to "${STATUS_LABEL[toStatus] || toStatus}" (stage correction — no email sent)`,
+    })
+    setApps(prev => prev.map(a => a.id === app.id ? { ...a, ...patch } : a))
+    setSelected(prev => prev && prev.id === app.id ? { ...prev, ...patch } : prev)
+    setBusy(false)
+  }
+
   // group visible apps by column
   const visible = apps.filter(a => showScreened ? true : !SCREENED_OUT.includes(a.status))
   const byColumn = {}
@@ -416,7 +436,7 @@ export default function HiringDashboard() {
       )}
 
       {selected && <DetailPanel app={selected} onClose={() => setSelected(null)}
-        onApprove={approve} onDeny={deny} onTransition={transition} busy={busy} />}
+        onApprove={approve} onDeny={deny} onTransition={transition} onMove={moveToStep} busy={busy} />}
     </div>
   )
 }
@@ -447,10 +467,11 @@ function ApplicantCard({ app, onClick, onApprove, onDeny, busy }) {
   )
 }
 
-function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, busy }) {
+function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, busy }) {
   const [resumeUrl, setResumeUrl] = useState(null)
   const [assessment, setAssessment] = useState(null)
   const [assessLoading, setAssessLoading] = useState(false)
+  const [moveTo, setMoveTo] = useState('')
   useEffect(() => {
     if (app.resume_path) {
       const { data } = supabase.storage.from('hiring-files').getPublicUrl(app.resume_path)
@@ -560,6 +581,33 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, busy }) {
               </div>
               {adv.hint && <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 7, lineHeight: 1.4 }}>{adv.hint}</div>}
             </div>
+          )}
+
+          {/* Corrective move — set the stage directly (e.g. move someone back
+              who was advanced too far). No email, no side effects. */}
+          {onMove && !SCREENED_OUT.includes(app.status) && (
+            <details style={{ marginBottom: 20, border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-soft)' }}>Move to a different step</summary>
+              <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', margin: '8px 0 10px', lineHeight: 1.4 }}>
+                Corrects the stage without sending any email or re-triggering onboarding tasks. Use this to move someone back to where they actually are.
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select value={moveTo} onChange={e => setMoveTo(e.target.value)}
+                  style={{ flex: '1 1 180px', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)' }}>
+                  <option value="">Choose a step…</option>
+                  {COLUMNS.map(c => (
+                    <option key={c.key} value={c.key} disabled={c.key === app.status}>
+                      {c.title}{c.key === app.status ? ' (current)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <button disabled={busy || !moveTo || moveTo === app.status}
+                  onClick={() => { onMove(app, moveTo); setMoveTo('') }}
+                  style={{ border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 700, padding: '8px 16px', cursor: (busy || !moveTo) ? 'default' : 'pointer', opacity: (busy || !moveTo) ? 0.5 : 1, fontFamily: 'inherit', flex: 'none' }}>
+                  Move
+                </button>
+              </div>
+            </details>
           )}
 
           <Row label="Email" value={app.email} />
