@@ -378,7 +378,11 @@ function AdminEod() {
       // who was scheduled that day
       const { data: blocks } = await supabase.from('shift_blocks').select('id, block_date').eq('block_date', date)
       const blockIds = new Set((blocks || []).map(b => b.id))
-      const { data: claims } = await supabase.from('shift_claims').select('shift_block_id, profile_id')
+      // Bound to that day's blocks (was an unfiltered full-table pull that silently
+      // truncated at 1000 rows as shift_claims grew).
+      const { data: claims } = blockIds.size
+        ? await supabase.from('shift_claims').select('shift_block_id, profile_id').in('shift_block_id', [...blockIds])
+        : { data: [] }
       const scheduled = new Set((claims || []).filter(c => blockIds.has(c.shift_block_id)).map(c => c.profile_id))
 
       const built = []
