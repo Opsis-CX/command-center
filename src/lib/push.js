@@ -6,10 +6,14 @@ import { supabase } from './supabase'
 // This file does not send notifications. It registers /sw.js
 // and stores the browser subscription so a trusted server or
 // Supabase Edge Function can send Web Push.
+//
+// IMPORTANT: this public key MUST match the VAPID_PUBLIC_KEY
+// configured on the send-push Edge Function. If they differ,
+// the push service silently rejects every message (sent: 0).
 // ============================================================
 
 const VAPID_PUBLIC_KEY =
-  'BMQy7uRQeBrawgTMJKgrGAm4DPXmLDuxacQgId85M1TEunf1zeXG8wtyD5b1hDhlE2Wy-aVPmoegZTg8GJf86nY'
+  'BDht9ewakT8S8rYsz1sSslHzj4YOFRcMfJKmbc_vs82g1ZMStPdnSnCfd0Iue27lCPrwwEGkn9R-vM5WnUfatFI'
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat(
@@ -26,6 +30,36 @@ function urlBase64ToUint8Array(base64String) {
     raw,
     character => character.charCodeAt(0)
   )
+}
+
+// True if an existing browser subscription was created with the same
+// VAPID key we use now. After a key rotation the old subscription can
+// never receive our pushes, so we detect that and refresh it.
+function subscriptionMatchesKey(subscription, expectedKeyBytes) {
+  try {
+    const existing =
+      subscription?.options?.applicationServerKey
+
+    if (!existing) {
+      return false
+    }
+
+    const existingBytes = new Uint8Array(existing)
+
+    if (existingBytes.length !== expectedKeyBytes.length) {
+      return false
+    }
+
+    for (let i = 0; i < expectedKeyBytes.length; i++) {
+      if (existingBytes[i] !== expectedKeyBytes[i]) {
+        return false
+      }
+    }
+
+    return true
+  } catch (_) {
+    return false
+  }
 }
 
 function assertBrowser() {
@@ -137,18 +171,50 @@ export async function enablePush(profileId) {
   const readyRegistration =
     await navigator.serviceWorker.ready
 
+  const applicationServerKey =
+    urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+
   let subscription =
     await readyRegistration.pushManager.getSubscription()
+
+  // Self-heal: if there is already a subscription but it was created with
+  // a DIFFERENT VAPID key (e.g. before a key change), it can never receive
+  // our pushes. Drop it — locally and in the database — and re-subscribe
+  // with the current key. This makes "Enable push" fix itself on click.
+  if (
+    subscription &&
+    !subscriptionMatchesKey(subscription, applicationServerKey)
+  ) {
+    try {
+      await supabase
+        .from('push_subscriptions')
+        .delete()
+        .eq('endpoint', subscription.endpoint)
+    } catch (cleanupError) {
+      console.warn(
+        'Could not remove stale push subscription row',
+        cleanupError
+      )
+    }
+
+    try {
+      await subscription.unsubscribe()
+    } catch (unsubError) {
+      console.warn(
+        'Could not unsubscribe stale push subscription',
+        unsubError
+      )
+    }
+
+    subscription = null
+  }
 
   if (!subscription) {
     subscription =
       await readyRegistration.pushManager.subscribe({
         userVisibleOnly: true,
 
-        applicationServerKey:
-          urlBase64ToUint8Array(
-            VAPID_PUBLIC_KEY
-          ),
+        applicationServerKey,
       })
   }
 
@@ -274,6 +340,22 @@ export async function getPushStatus(
       return {
         enabled: false,
         reason: 'not-subscribed',
+      }
+    }
+
+    // If the existing subscription was created with a different VAPID key,
+    // it can never receive our pushes. Report it as NOT enabled so the UI
+    // prompts the user to re-enable — enablePush() will then refresh it.
+    const applicationServerKey =
+      urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+
+    if (
+      !subscriptionMatchesKey(subscription, applicationServerKey)
+    ) {
+      return {
+        enabled: false,
+        reason: 'stale-key',
+        endpoint: subscription.endpoint,
       }
     }
 
