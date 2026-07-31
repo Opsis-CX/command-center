@@ -43,6 +43,11 @@ const ONBOARDING_PROJECT_ID = null
 const CORINNE_ID = '6d73d6ff-b70f-4180-880b-1b791bb03bde'
 const BECKY_ID = '2825c623-847e-4747-9234-ee5579f1afcb'
 
+// The tag that carries the setter certification — assigning it makes the
+// certification appear under the hire's "My Certifications". (People & Tags →
+// "GarageCo: Appointment Setter Certification Needed".)
+const SETTER_CERT_TAG_ID = '13f17205-a32b-4f71-9ac7-e743384f0b6d'
+
 // Some statuses live under a column even though the column key differs
 // (e.g. assessment_sent belongs under "Approved" until it comes back).
 const STATUS_TO_COLUMN = {
@@ -102,6 +107,7 @@ export default function HiringDashboard() {
   const [showScreened, setShowScreened] = useState(false)
   const [selected, setSelected] = useState(null)  // application being viewed
   const [busy, setBusy] = useState(false)
+  const [lastOnboard, setLastOnboard] = useState(null)  // onboarding result banner
   const rippleRunning = useRef(false)  // guards checkRipplingTasks against concurrent runs
 
   const load = useCallback(async () => {
@@ -113,6 +119,21 @@ export default function HiringDashboard() {
     setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
+
+  // Certifications that can be assigned on onboard (each maps to a "Certification
+  // Needed" tag). Loaded once; used to populate the onboarding cert picker.
+  const [certTags, setCertTags] = useState([])
+  useEffect(() => {
+    supabase.from('certification_assignments').select('tag_id, cert:certifications(id, name, active)')
+      .then(({ data }) => {
+        const seen = new Set()
+        const list = (data || [])
+          .filter(r => r.cert && r.cert.active !== false && !seen.has(r.tag_id) && seen.add(r.tag_id))
+          .map(r => ({ tag_id: r.tag_id, cert_name: r.cert.name }))
+          .sort((a, b) => a.cert_name.localeCompare(b.cert_name))
+        setCertTags(list)
+      })
+  }, [])
 
   // realtime: refresh when applications change
   useEffect(() => {
@@ -300,7 +321,7 @@ export default function HiringDashboard() {
     } catch (e) { console.error('createRipplingTask failed:', e); return null }
   }
 
-  async function transition(app, toStatus, { email, note } = {}) {
+  async function transition(app, toStatus, { email, note, certTagId } = {}) {
     setBusy(true)
     const from = app.status
     const patch = { status: toStatus, reviewer_id: user?.id, reviewed_at: new Date().toISOString() }
@@ -317,8 +338,17 @@ export default function HiringDashboard() {
       await postFive9Alert(app)
     }
 
-    // If advancing to certifying manually (override), make sure the agent has
-    // a login account — they need it to see certification.
+    // When Rippling is signed (certification assigned), onboard the hire:
+    // create their login with a temporary password, assign their certification
+    // so it shows in My Certifications, and email a welcome with the login link
+    // + next steps. Handled by onboardHire(); result surfaced in a banner.
+    let onboardResult = null
+    if (toStatus === 'cert_assigned') {
+      onboardResult = await onboardHire(app, certTagId)
+    }
+
+    // Safety net: if someone jumps straight to certifying without the account
+    // having been made, ensure a login exists.
     if (toStatus === 'certifying') {
       await inviteAgentAccount(app)
     }
@@ -329,9 +359,44 @@ export default function HiringDashboard() {
       application_id: app.id, from_status: from, to_status: toStatus, actor_id: user?.id, note: note || null,
     })
     if (email) await sendHiringEmail(email, app.email, { name: app.full_name, appId: app.id, state: app.state })
+    if (onboardResult) setLastOnboard({ name: app.full_name, ...onboardResult })
     setApps(prev => prev.map(a => a.id === app.id ? { ...a, ...patch } : a))
     setSelected(prev => prev && prev.id === app.id ? { ...prev, ...patch } : prev)
     setBusy(false)
+  }
+
+  // Onboard a hire whose Rippling is signed: create/repair their login with a
+  // temporary password (via the onboard-hire Edge Function — always succeeds,
+  // returns the temp password), then assign their certification so it appears
+  // in My Certifications. Returns { tempPassword, emailed, error? } for the UI.
+  async function onboardHire(app, certTagId) {
+    let result
+    try {
+      const { data, error } = await supabase.functions.invoke('onboard-hire', {
+        body: { email: app.email, fullName: app.full_name },
+      })
+      if (error) {
+        let detail = ''
+        try { detail = (await error.context?.json())?.error } catch { /* ignore */ }
+        result = { error: detail || error.message }
+      } else {
+        result = data
+      }
+    } catch (e) {
+      result = { error: String(e?.message || e) }
+    }
+    // Assign the chosen certification (add its "Certification Needed" tag) so
+    // the course shows up under My Certifications. Best-effort, de-duplicated.
+    const uid = result?.userId
+    const tagId = certTagId || SETTER_CERT_TAG_ID
+    if (uid && tagId) {
+      try {
+        const { data: exists } = await supabase.from('taggables').select('id')
+          .eq('tag_id', tagId).eq('entity_type', 'profile').eq('entity_id', uid).maybeSingle()
+        if (!exists) await supabase.from('taggables').insert({ tag_id: tagId, entity_type: 'profile', entity_id: uid })
+      } catch (e) { console.error('cert tag assign failed:', e) }
+    }
+    return result
   }
 
   const approve = (app) => transition(app, 'approved', { email: 'approved', note: 'approved at first review' })
@@ -391,6 +456,26 @@ export default function HiringDashboard() {
 
       {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>{err}</div>}
 
+      {lastOnboard && (
+        <div style={{ background: lastOnboard.error ? '#FEF2F2' : '#ECFDF5', border: '1px solid ' + (lastOnboard.error ? '#FECACA' : '#A7F3D0'), borderRadius: 10, padding: '12px 16px', marginBottom: 14, position: 'relative' }}>
+          <button onClick={() => setLastOnboard(null)} style={{ position: 'absolute', top: 8, right: 10, border: 0, background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--ink-soft)', lineHeight: 1 }}>×</button>
+          {lastOnboard.error ? (
+            <div style={{ fontSize: 13, color: '#B91C1C' }}><b>Onboarding for {lastOnboard.name} hit a problem:</b> {lastOnboard.error} — you can retry, or set a password from People & Tags.</div>
+          ) : (
+            <div style={{ fontSize: 13.5, color: '#065F46' }}>
+              <b>✓ {lastOnboard.name} onboarded.</b> Account {lastOnboard.created ? 'created' : 'updated'}, certification assigned, and a welcome email {lastOnboard.emailed ? 'sent' : 'could NOT be sent — share the login below manually'}.
+              <div style={{ marginTop: 8, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
+                <span><b>Login:</b> app.opsiscx.com</span>
+                <span><b>Email:</b> {lastOnboard.email}</span>
+                <span style={{ fontFamily: 'monospace', background: '#fff', border: '1px solid #A7F3D0', borderRadius: 6, padding: '2px 8px' }}><b>Temp password:</b> {lastOnboard.tempPassword}</span>
+                <button onClick={() => { navigator.clipboard?.writeText(`Login: https://app.opsiscx.com\nEmail: ${lastOnboard.email}\nTemporary password: ${lastOnboard.tempPassword}`) }}
+                  style={{ border: '1px solid #A7F3D0', background: '#fff', borderRadius: 6, padding: '3px 10px', fontSize: 12.5, cursor: 'pointer', fontWeight: 600 }}>Copy login</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Kanban board */}
       <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start' }}>
         {COLUMNS.map(col => (
@@ -436,7 +521,7 @@ export default function HiringDashboard() {
       )}
 
       {selected && <DetailPanel app={selected} onClose={() => setSelected(null)}
-        onApprove={approve} onDeny={deny} onTransition={transition} onMove={moveToStep} busy={busy} />}
+        onApprove={approve} onDeny={deny} onTransition={transition} onMove={moveToStep} certTags={certTags} busy={busy} />}
     </div>
   )
 }
@@ -467,11 +552,14 @@ function ApplicantCard({ app, onClick, onApprove, onDeny, busy }) {
   )
 }
 
-function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, busy }) {
+function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, certTags = [], busy }) {
   const [resumeUrl, setResumeUrl] = useState(null)
   const [assessment, setAssessment] = useState(null)
   const [assessLoading, setAssessLoading] = useState(false)
   const [moveTo, setMoveTo] = useState('')
+  // Certification to assign on onboard — defaults to the first available cert.
+  const [certTag, setCertTag] = useState('')
+  useEffect(() => { if (!certTag && certTags.length) setCertTag(certTags[0].tag_id) }, [certTags]) // eslint-disable-line
   useEffect(() => {
     if (app.resume_path) {
       const { data } = supabase.storage.from('hiring-files').getPublicUrl(app.resume_path)
@@ -527,7 +615,7 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, bu
     approved: { to: 'assessment_sent', label: 'Send assessment link', email: 'approved', hint: 'Emails the applicant their assessment link.' },
     assessment_review: { to: 'assessment_passed', label: 'Pass assessment', email: 'assessment_passed', deny: { to: 'assessment_denied', label: 'Reject assessment', email: 'assessment_denied' } },
     assessment_passed: { to: 'rippling_awaiting_signature', label: '✋ Mark: Rippling invite sent', email: null, hint: 'Move to "Rippling — Awaiting Signature" once the invite is out and you\'re waiting on their signature. (If Corinne completes the Rippling setup task first, they auto-advance to this same step.)' },
-    rippling_awaiting_signature: { to: 'cert_assigned', label: '✋ Mark: certification assigned', email: null, hint: 'Move once their Rippling docs are signed and certification has been assigned.' },
+    rippling_awaiting_signature: { to: 'cert_assigned', label: '✅ Mark: Rippling signed — onboard', email: null, hint: 'Click once their Rippling paperwork is signed. This creates their Command Center login with a temporary password, assigns their certification (shows in My Certifications), and emails them a welcome with the login link + next steps. The temp password also appears here so you can share it.' },
     cert_assigned: { to: 'certifying', label: '✋ Mark: certification in progress', email: null, hint: 'Move once they have started their certification. This also creates their Command Center login if needed.' },
     certifying: { to: 'cert_complete', label: '✋ Mark: certification complete', email: null, hint: 'Manual — mark when they finish certification in Projects.' },
     cert_complete: { to: 'five9_pending', label: '✋ Mark: creating Five9 account', email: null, hint: 'The support channel was alerted to create their Five9 account. Mark this once someone is on it.' },
@@ -571,8 +659,23 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, bu
           )}
           {adv && (
             <div style={{ marginBottom: 20 }}>
+              {/* Onboarding step: choose which certification to assign to this hire. */}
+              {adv.to === 'cert_assigned' && (
+                <div style={{ marginBottom: 10, background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>Certification to assign on onboard</div>
+                  {certTags.length === 0 ? (
+                    <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>No certifications set up yet — they can be assigned later in People &amp; Tags.</div>
+                  ) : (
+                    <select value={certTag} onChange={e => setCertTag(e.target.value)}
+                      style={{ width: '100%', fontSize: 13, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }}>
+                      {certTags.map(ct => <option key={ct.tag_id} value={ct.tag_id}>{ct.cert_name}</option>)}
+                    </select>
+                  )}
+                  <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 6 }}>This is what appears under their My Certifications after onboarding.</div>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button disabled={busy} onClick={() => onTransition(app, adv.to, { email: adv.email, note: adv.label })}
+                <button disabled={busy} onClick={() => onTransition(app, adv.to, { email: adv.email, note: adv.label, certTagId: adv.to === 'cert_assigned' ? certTag : undefined })}
                   style={{ flex: 1, border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 160 }}>{adv.label}</button>
                 {adv.deny && (
                   <button disabled={busy} onClick={() => onTransition(app, adv.deny.to, { email: adv.deny.email, note: adv.deny.label })}
