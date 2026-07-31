@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { COMPANY_TZ, companyTimeToInstant } from '../lib/tz'
 
@@ -45,11 +45,11 @@ export default function HeaderTaskBar() {
   const load = useCallback(async () => {
     if (!userId) return
     const [taskRes, taRes, timeRes, clmRes, blkRes, projRes, cliRes] = await Promise.all([
-      supabase.from('tasks').select('id, name, status').is('deleted_at', null),
+      fetchAllRows(() => supabase.from('tasks').select('id, name, status').is('deleted_at', null).order('id')),
       supabase.from('task_assignees').select('task_id, profile_id').eq('profile_id', userId),
       supabase.from('time_entries').select('id, task_id, user_id, started_at, ended_at').eq('user_id', userId),
       supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at, checked_out_at').eq('profile_id', userId),
-      supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role'),
+      fetchAllRows(() => supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role').order('id')),
       supabase.from('projects').select('id, name').order('name'),
       supabase.from('clients').select('id, name').order('name'),
     ])
