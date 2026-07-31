@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { ROLES, can, canAny } from '../lib/permissions'
 import RawDataExport from './RawDataExport'
@@ -275,10 +275,10 @@ export default function Reporting() {
         .not('duration_minutes', 'is', null)
         .gte('started_at', fromISO).lte('started_at', toISO),
       supabase.from('profiles').select('id, full_name, role'),
-      supabase.from('tasks').select('id, name, client_id'),
+      fetchAllRows(() => supabase.from('tasks').select('id, name, client_id').order('id')),
       supabase.from('clients').select('id, name'),
-      supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at, checked_out_at'),
-      supabase.from('shift_blocks').select('id, block_date, start_time, end_time'),
+      fetchAllRows(() => supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at, checked_out_at').order('id')),
+      fetchAllRows(() => supabase.from('shift_blocks').select('id, block_date, start_time, end_time').order('id')),
       supabase.from('qa_audits').select('*').gte('created_at', fromISO).lte('created_at', toISO),
       supabase.from('sc_agents').select('agent_name, profile_id'),
       supabase.from('sc_occupancy_day').select('agent_name, login_hours, nr_hours, work_date').gte('work_date', range.from).lte('work_date', range.to),
@@ -1210,7 +1210,7 @@ function ProjectsReport({ range }) {
     const [{ data: t }, { data: pr }, { data: a }, { data: p }] = await Promise.all([
       supabase.from('tasks').select('*').is('deleted_at', null).gte('created_at', dayStart(range.from)).lte('created_at', dayEnd(range.to)).order('created_at'),
       supabase.from('projects').select('id, name'),
-      supabase.from('task_assignees').select('task_id, profile_id'),
+      fetchAllRows(() => supabase.from('task_assignees').select('task_id, profile_id').order('id')),
       supabase.from('profiles').select('id, full_name'),
     ])
     const pm = {}; (pr || []).forEach(x => pm[x.id] = x.name); setProjects(pm)
@@ -2716,7 +2716,7 @@ function TasksByPersonReport({ range, profiles, allowedIds }) {
     ;(async () => {
       const [{ data: tasks, error }, { data: asg }] = await Promise.all([
         supabase.from('tasks').select('id, status, due_date, created_at').is('deleted_at', null).gte('created_at', dayStart(range.from)).lte('created_at', dayEnd(range.to)),
-        supabase.from('task_assignees').select('task_id, profile_id'),
+        fetchAllRows(() => supabase.from('task_assignees').select('task_id, profile_id').order('id')),
       ])
       if (!active) return
       if (error) { setErr(error.message); return }
@@ -2984,7 +2984,7 @@ const BUILDER_SOURCES = {
     load: async (range, ctx) => {
       const [{ data: te }, { data: tasks }, { data: clients }] = await Promise.all([
         supabase.from('time_entries').select('user_id, task_id, client_id, duration_minutes, started_at, note').not('duration_minutes', 'is', null).gte('started_at', dayStart(range.from)).lte('started_at', dayEnd(range.to)),
-        supabase.from('tasks').select('id, name, client_id'),
+        fetchAllRows(() => supabase.from('tasks').select('id, name, client_id').order('id')),
         supabase.from('clients').select('id, name'),
       ])
       const taskById = Object.fromEntries((tasks || []).map(t => [t.id, t]))
@@ -3008,7 +3008,7 @@ const BUILDER_SOURCES = {
     load: async (range, ctx) => {
       const [{ data: tasks }, { data: asg }] = await Promise.all([
         supabase.from('tasks').select('id, status, due_date, created_at').is('deleted_at', null).gte('created_at', dayStart(range.from)).lte('created_at', dayEnd(range.to)),
-        supabase.from('task_assignees').select('task_id, profile_id'),
+        fetchAllRows(() => supabase.from('task_assignees').select('task_id, profile_id').order('id')),
       ])
       const nameById = Object.fromEntries((ctx.profiles || []).map(p => [p.id, p.full_name]))
       const taskById = Object.fromEntries((tasks || []).map(t => [t.id, t]))
