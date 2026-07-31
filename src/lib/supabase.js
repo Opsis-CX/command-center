@@ -32,6 +32,36 @@ supabase.auth.onAuthStateChange((_event, session) => {
   if (token) supabase.realtime.setAuth(token)
 })
 
+// PostgREST caps every response at a fixed number of rows (Supabase's default
+// "max rows" is 1000). A plain .select() therefore SILENTLY truncates any table
+// that has grown past that limit, and the UI just quietly loses rows. Use this
+// to load the COMPLETE result set for a query that legitimately needs all rows:
+// it pages through with .range() until the table is exhausted.
+//
+// IMPORTANT: the query you build MUST carry a deterministic order with a unique
+// tiebreaker (e.g. .order('id')), or paging can skip/duplicate rows across pages.
+// Pass a THUNK that builds a fresh query each call (the builder is single-use).
+//
+//   const rows = await fetchAllRows(() =>
+//     supabase.from('shift_blocks').select('*').order('block_date').order('id'))
+//
+// Returns { data, error }: data is the full array (possibly partial if a page
+// errored — error is set in that case), mirroring a normal supabase response so
+// callers can keep their existing `res.data || []` / `res.error` handling.
+export async function fetchAllRows(buildQuery, pageSize = 1000) {
+  let from = 0
+  const all = []
+  for (;;) {
+    const { data, error } = await buildQuery().range(from, from + pageSize - 1)
+    if (error) return { data: all, error }
+    if (!data || data.length === 0) break
+    all.push(...data)
+    if (data.length < pageSize) break
+    from += pageSize
+  }
+  return { data: all, error: null }
+}
+
 export function readRoleFromSession(session) {
   const jwt = session?.access_token
   if (!jwt) return { isAdmin: false, level: 0, roles: [] }
