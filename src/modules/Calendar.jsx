@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { COMPANY_TZ, companyTimeToInstant, formatInTZ, detectedTZ, wallTimeToViewerHHMM } from '../lib/tz'
 
@@ -94,16 +94,16 @@ export default function Calendar() {
     }
     const [evRes, taskRes, taRes, clmRes, blkRes, profRes, subRes, feedRes, gtRes, geRes, timeRes, shareInRes, shareOutRes] = await Promise.all([
       supabase.from('calendar_events').select('*'),
-      supabase.from('tasks').select('id, name, due_date, priority, status, project_id').is('deleted_at', null),
-      supabase.from('task_assignees').select('task_id, profile_id'),
-      supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at'),
-      supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role'),
+      fetchAllRows(() => supabase.from('tasks').select('id, name, due_date, priority, status, project_id').is('deleted_at', null).order('id')),
+      fetchAllRows(() => supabase.from('task_assignees').select('task_id, profile_id').order('id')),
+      fetchAllRows(() => supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at').order('id')),
+      fetchAllRows(() => supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role').order('id')),
       supabase.from('profiles').select('id, full_name'),
       supabase.from('calendar_subscriptions').select('*'),
       supabase.from('calendar_feed_events').select('*'),
       supabase.from('calendar_accounts').select('id, provider, account_email, color, is_default, target_calendar_name, last_synced_at, last_error, sync_enabled, connected_at').eq('provider', 'google'),
-      supabase.from('google_calendar_events').select('*'),
-      supabase.from('time_entries').select('id, task_id, user_id, started_at, ended_at, duration_minutes'),
+      fetchAllRows(() => supabase.from('google_calendar_events').select('*').order('id')),
+      fetchAllRows(() => supabase.from('time_entries').select('id, task_id, user_id, started_at, ended_at, duration_minutes').order('id')),
       supabase.from('calendar_shares').select('*').eq('viewer_id', uid),
       supabase.from('calendar_shares').select('*').eq('owner_id', uid),
     ])
