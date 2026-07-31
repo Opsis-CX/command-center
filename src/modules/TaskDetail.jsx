@@ -56,7 +56,10 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
       await supabase.from('task_assignees').delete().eq('task_id', taskId).eq('profile_id', pid)
       setTaskAssignees(prev => prev.filter(a => !(a.task_id === taskId && a.profile_id === pid)))
     } else {
-      await supabase.from('task_assignees').insert({ task_id: taskId, profile_id: pid })
+      // upsert (ignore duplicates) so a re-assign never fails on the
+      // UNIQUE(task_id, profile_id) constraint if a row already exists.
+      await supabase.from('task_assignees')
+        .upsert({ task_id: taskId, profile_id: pid }, { onConflict: 'task_id,profile_id', ignoreDuplicates: true })
       setTaskAssignees(prev => [...prev, { task_id: taskId, profile_id: pid }])
       const person = profiles.find(p => p.id === pid)
       logActivity('assigned', taskId, task.name, task.project_id, proj?.name, `Assigned to ${person?.full_name || ''}`)
