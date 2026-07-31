@@ -17,9 +17,16 @@ function etNow() { return new Date(new Date().toLocaleString('en-US', { timeZone
 const GRACE_MIN = 15
 
 export default function HeaderTaskBar() {
-  const { isAdmin, user } = useAuth()
+  const { isAdmin, appRole, isClientPortal, user } = useAuth()
   const userId = user?.id || null
-  const isSupport = isAdmin   // everyone who isn't an agent is treated as support
+  // The task timer is for coordinators — everyone who isn't a plain agent (or an
+  // external client). Roles can be comma-separated (e.g. "asc,marketing"), so we
+  // treat someone as support if ANY of their roles is a non-agent role. This is
+  // decoupled from the admin flag on purpose: locking admin down to a few people
+  // must not strip coordinators (ASC/Support/Quality/Marketing/Certification) of
+  // their timer.
+  const _roles = String(appRole || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean)
+  const isSupport = !isClientPortal && (isAdmin || _roles.some(r => r && r !== 'agent'))
 
   const [tasks, setTasks] = useState([])
   const [assignees, setAssignees] = useState([])
