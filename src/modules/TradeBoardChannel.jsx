@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
 import { COMPANY_TZ, wallTimeToViewer } from '../lib/tz'
@@ -68,7 +68,7 @@ export default function TradeBoardChannel({ me: meProp, isMobile, onBack }) {
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         supabase.from('profiles').select('id, full_name').order('full_name'),
         supabase.from('shift_blocks').select('*').eq('role', ROLE).order('block_date').order('start_time'),
-        supabase.from('shift_claims').select('*'),
+        fetchAllRows(() => supabase.from('shift_claims').select('*').order('id')),
         supabase.from('interval_trades').select('*').eq('status', 'open'),
         supabase.from('schedules').select('*'),
         supabase.from('schedule_audience').select('*'),
