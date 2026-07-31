@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { can } from '../lib/permissions'
 import { notifyCheckInNudge, notifyPickTaskNudge } from '../lib/notify'
 
 // ============================================================
@@ -95,7 +96,13 @@ function intervalIsNow(block, now) {
 }
 
 export default function LiveStatus() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, appRole } = useAuth()
+  // Floor oversight is a coordinator feature, not admin-only. The roster + counts
+  // are visible to anyone with the live_status permission (admin/asc/certification/
+  // quality); the check-out / adjust / nudge actions require interval-assign rights
+  // (admin/asc), matching can_assign_intervals() on the DB side.
+  const canSeeAll = isAdmin || can(appRole, 'live_status')
+  const canManage = isAdmin || can(appRole, 'schedule.ability_to_assign_intervals_to_agents')
   const [userId, setUserId] = useState(null)
   const [profiles, setProfiles] = useState([])
   const [blocks, setBlocks] = useState([])
@@ -115,11 +122,11 @@ export default function LiveStatus() {
       setUserId(user?.id || null)
       const [profRes, blkRes, clmRes, runRes, taskRes, projRes, brkRes] = await Promise.all([
         supabase.from('profiles').select('id, full_name'),
-        supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role, schedule_id'),
-        supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at'),
+        fetchAllRows(() => supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role, schedule_id').order('id')),
+        fetchAllRows(() => supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at').order('id')),
         // a running timer = started but not ended
         supabase.from('time_entries').select('id, user_id, task_id, started_at').is('ended_at', null),
-        supabase.from('tasks').select('id, name, project_id'),
+        fetchAllRows(() => supabase.from('tasks').select('id, name, project_id').order('id')),
         supabase.from('projects').select('id, name'),
         // open unpaid breaks (ended_at null)
         supabase.from('shift_breaks').select('id, claim_id, profile_id, started_at').is('ended_at', null),
@@ -279,8 +286,8 @@ export default function LiveStatus() {
     return { pid, name: profile?.full_name || 'Unknown', state, detail, interval, claimId, adjClaimId, checkedInAt }
   })
 
-  // Agents only see themselves.
-  if (!isAdmin) rows = rows.filter(r => r.pid === userId)
+  // Agents (and coordinators without floor-oversight) only see themselves.
+  if (!canSeeAll) rows = rows.filter(r => r.pid === userId)
 
   // Sort: active first, then idle, then absent; alpha within each.
   const order = { active: 0, break: 1, idle: 2, absent: 3 }
@@ -294,7 +301,7 @@ export default function LiveStatus() {
     return (
       <div className="card">
         <div className="page-sub" style={{ padding: 12, textAlign: 'center' }}>
-          {isAdmin ? 'Nobody is checked in or tracking time right now.' : "You're not checked in or tracking time right now."}
+          {canSeeAll ? 'Nobody is checked in or tracking time right now.' : "You're not checked in or tracking time right now."}
         </div>
       </div>
     )
@@ -308,17 +315,17 @@ export default function LiveStatus() {
           <span style={{ position: 'relative', width: 8, height: 8, borderRadius: '50%', background: 'var(--passed)' }} />
         </span>
         <span style={{ fontSize: 13, fontWeight: 700 }}>{onCount} on now</span>
-        {isAdmin && breakCount > 0 && (
+        {canSeeAll && breakCount > 0 && (
           <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--needed)' }}>· {breakCount} on break</span>
         )}
-        {isAdmin && absentCount > 0 && (
+        {canSeeAll && absentCount > 0 && (
           <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--failed)' }}>· {absentCount} scheduled, not here</span>
         )}
       </div>
 
       <div>
         {rows.map((r, i) => (
-          <StatusRow key={r.pid} row={r} last={i === rows.length - 1} isAdmin={isAdmin} onCheckOut={checkOut} onAdjustCheckIn={adjustCheckIn} onNudge={nudge} nudged={!!nudged[r.pid]} meId={userId} />
+          <StatusRow key={r.pid} row={r} last={i === rows.length - 1} canManage={canManage} onCheckOut={checkOut} onAdjustCheckIn={adjustCheckIn} onNudge={nudge} nudged={!!nudged[r.pid]} meId={userId} />
         ))}
       </div>
 
@@ -329,17 +336,17 @@ export default function LiveStatus() {
   )
 }
 
-function StatusRow({ row, last, isAdmin, onCheckOut, onAdjustCheckIn, onNudge, nudged, meId }) {
+function StatusRow({ row, last, canManage, onCheckOut, onAdjustCheckIn, onNudge, nudged, meId }) {
   const dot = { active: 'var(--passed)', break: '#0891B2', idle: 'var(--needed)', absent: 'var(--failed)' }[row.state]
   const bg = {
     active: 'var(--passed-bg)', break: '#E0F2FE', idle: 'var(--needed-bg)', absent: 'var(--failed-bg)',
   }[row.state]
-  // admin can check out anyone who's checked in (active or idle) and has a claim
-  const canCheckOut = isAdmin && row.claimId && (row.state === 'active' || row.state === 'idle' || row.state === 'break')
-  // admin can nudge: absent people to check in, idle people (not themselves) to pick a task
-  const canNudge = isAdmin && row.pid !== meId && (row.state === 'absent' || row.state === 'idle')
-  // admin can set/correct check-in time on any current claim (checked in OR absent-now)
-  const canAdjust = isAdmin && !!row.adjClaimId
+  // managers (admin/asc) can check out anyone who's checked in (active or idle) and has a claim
+  const canCheckOut = canManage && row.claimId && (row.state === 'active' || row.state === 'idle' || row.state === 'break')
+  // managers can nudge: absent people to check in, idle people (not themselves) to pick a task
+  const canNudge = canManage && row.pid !== meId && (row.state === 'absent' || row.state === 'idle')
+  // managers can set/correct check-in time on any current claim (checked in OR absent-now)
+  const canAdjust = canManage && !!row.adjClaimId
 
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
