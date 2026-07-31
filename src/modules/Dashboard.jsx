@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import LiveStatus from './LiveStatus'
 import EodReportCard from './EodReports'
@@ -48,8 +48,8 @@ export default function Dashboard() {
 
       const [schRes, blkRes, clmRes, actRes, recRes, certRes, profRes, notifRes, eodRes, audRes] = await Promise.all([
         supabase.from('schedules').select('*').eq('status', 'published'),
-        supabase.from('shift_blocks').select('*'),
-        supabase.from('shift_claims').select('*'),
+        fetchAllRows(() => supabase.from('shift_blocks').select('*').order('id')),
+        fetchAllRows(() => supabase.from('shift_claims').select('*').order('id')),
         supabase.from('schedule_activity_log').select('*').order('created_at', { ascending: false }).limit(8),
         supabase.from('agent_cert_records').select('*'),
         supabase.from('certifications').select('id, name, active'),
