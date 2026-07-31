@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
 
@@ -25,7 +25,7 @@ export default function Clients() {
     setLoading(true)
     const [cliRes, taskRes, schRes] = await Promise.all([
       supabase.from('clients').select('*').order('name'),
-      supabase.from('tasks').select('client_id').is('deleted_at', null),
+      fetchAllRows(() => supabase.from('tasks').select('client_id').is('deleted_at', null).order('id')),
       supabase.from('schedules').select('client_id'),
     ])
     setClients(cliRes.data || [])
