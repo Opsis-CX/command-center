@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { canAny } from '../lib/permissions'
 
@@ -60,8 +60,8 @@ export default function ScheduleInsights() {
       const { data: { user } } = await supabase.auth.getUser()
       const [schRes, blkRes, clmRes, profRes, tierRes, cliRes, posRes, actRes, audRes] = await Promise.all([
         supabase.from('schedules').select('*'),
-        supabase.from('shift_blocks').select('*'),
-        supabase.from('shift_claims').select('*'),
+        fetchAllRows(() => supabase.from('shift_blocks').select('*').order('id')),
+        fetchAllRows(() => supabase.from('shift_claims').select('*').order('id')),
         supabase.from('profiles').select('id, full_name, tier_id'),
         supabase.from('performance_tiers').select('*').order('sort_order'),
         supabase.from('clients').select('*').order('name'),
