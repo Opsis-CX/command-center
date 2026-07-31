@@ -74,27 +74,50 @@ export function ProjectsDataProvider({ children }) {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
+  // Projects the current user "has a task in" — i.e. they created or are
+  // assigned to at least one task within that project. Mirrors the DB
+  // SECURITY DEFINER fn my_task_project_ids() so the client shows exactly
+  // what RLS now returns (migration task_project_access_from_assignment,
+  // 2026-07-31). Without this the client re-hid projects people were
+  // assigned into but weren't members of — the "missing projects" bug.
+  const myTaskProjectIds = useCallback(() => {
+    const assignedTaskIds = new Set(
+      taskAssignees.filter(a => a.profile_id === userId).map(a => a.task_id)
+    )
+    const ids = new Set()
+    for (const t of tasks) {
+      if (t.created_by === userId || assignedTaskIds.has(t.id)) {
+        if (t.project_id) ids.add(t.project_id)
+      }
+    }
+    return ids
+  }, [tasks, taskAssignees, userId])
+
   // tasks visible to the current user. Admins see EVERY task across all
-  // projects; members see their projects' tasks, tasks assigned to them, or
-  // tasks they created.
+  // projects; members see tasks in their projects, tasks assigned to them,
+  // tasks they created, or any task in a project they have a task in.
   const myVisibleTasks = useCallback(() => {
     if (isAdmin) return tasks   // admin: full visibility into all tracked work
     const myProjectIds = projectMembers.filter(m => m.profile_id === userId).map(m => m.project_id)
     const myAssignedTaskIds = taskAssignees.filter(a => a.profile_id === userId).map(a => a.task_id)
+    const taskProjectIds = myTaskProjectIds()
     return tasks.filter(t =>
       myProjectIds.includes(t.project_id) ||
       myAssignedTaskIds.includes(t.id) ||
-      t.created_by === userId
+      t.created_by === userId ||
+      taskProjectIds.has(t.project_id)
     )
-  }, [tasks, projectMembers, taskAssignees, userId, isAdmin])
+  }, [tasks, projectMembers, taskAssignees, userId, isAdmin, myTaskProjectIds])
 
   const myVisibleProjects = useCallback(() => {
     if (isAdmin) return projects   // admin: see every project, regardless of creator/membership
+    const taskProjectIds = myTaskProjectIds()
     return projects.filter(p =>
       p.created_by === userId ||
-      projectMembers.some(m => m.project_id === p.id && m.profile_id === userId)
+      projectMembers.some(m => m.project_id === p.id && m.profile_id === userId) ||
+      taskProjectIds.has(p.id)
     )
-  }, [projects, projectMembers, userId, isAdmin])
+  }, [projects, projectMembers, userId, isAdmin, myTaskProjectIds])
 
   // activity log helper (fire-and-forget; won't block the calling action)
   const logActivity = useCallback(async (action, taskId, taskName, projectId, projectName, detail) => {
