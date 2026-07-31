@@ -137,7 +137,7 @@ export default function Updates() {
                       <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: '#fff', background: cm.color, borderRadius: 999, padding: '2px 9px' }}>{cm.label}</span>
                       <span style={{ fontWeight: 700, fontSize: 15.5 }}>{a.title}</span>
                       <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                        {isAdmin && <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '3px 8px' }} onClick={() => togglePin(a)}>{a.pinned ? 'Unpin' : 'Pin'}</button>}
+                        {(mine || isAdmin) && <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '3px 8px' }} onClick={() => togglePin(a)}>{a.pinned ? 'Unpin' : 'Pin'}</button>}
                         {(mine || isAdmin) && <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '3px 8px' }} onClick={() => { setEditing(a); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>Edit</button>}
                         {(mine || isAdmin) && <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '3px 8px', color: 'var(--failed)' }} onClick={() => remove(a)}>Delete</button>}
                       </span>
