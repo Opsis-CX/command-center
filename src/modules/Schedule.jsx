@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
 import { notifyIntervalReleased, notifyNoShow, notifyIntervalAssigned } from '../lib/notify'
@@ -163,8 +163,8 @@ export default function Schedule() {
         supabase.from('profiles').select('id, full_name, email, tier_id, is_admin, is_active, release_penalty_until_thu').order('full_name'),
         supabase.from('performance_tiers').select('*').order('sort_order'),
         supabase.from('schedules').select('*').order('week_start_date', { ascending: false }),
-        supabase.from('shift_blocks').select('*').order('block_date').order('start_time'),
-        supabase.from('shift_claims').select('*'),
+        fetchAllRows(() => supabase.from('shift_blocks').select('*').order('block_date').order('start_time').order('id')),
+        fetchAllRows(() => supabase.from('shift_claims').select('*').order('id')),
         supabase.from('schedule_audience').select('*'),
         supabase.from('agent_cert_records').select('*'),
         supabase.from('certifications').select('id, call_type_id, active'),
