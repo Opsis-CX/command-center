@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 
 // ============================================================
 // SCHEDULE BUILDER — Stage 2 (admin)
@@ -71,8 +71,8 @@ export default function ScheduleBuilder() {
     try {
       const [schRes, blkRes, clmRes, ctRes, profRes, audRes, cliRes] = await Promise.all([
         supabase.from('schedules').select('*').order('week_start_date', { ascending: false }),
-        supabase.from('shift_blocks').select('*').order('block_date').order('start_time'),
-        supabase.from('shift_claims').select('*'),
+        fetchAllRows(() => supabase.from('shift_blocks').select('*').order('block_date').order('start_time').order('id')),
+        fetchAllRows(() => supabase.from('shift_claims').select('*').order('id')),
         supabase.from('call_types').select('*').order('name'),
         supabase.from('profiles').select('id, full_name, email, is_active').eq('is_active', true).order('full_name'),
         supabase.from('schedule_audience').select('*'),
