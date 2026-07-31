@@ -1,36 +1,51 @@
-{
-  "name": "command-center",
-  "private": true,
-  "version": "0.1.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.45.0",
-    "@tiptap/core": "^3.27.3",
-    "@tiptap/extension-color": "^3.27.3",
-    "@tiptap/extension-highlight": "^3.27.3",
-    "@tiptap/extension-image": "^3.28.0",
-    "@tiptap/extension-link": "^3.27.3",
-    "@tiptap/extension-mention": "^3.27.3",
-    "@tiptap/extension-placeholder": "^3.27.3",
-    "@tiptap/extension-table": "^3.27.3",
-    "@tiptap/extension-text-style": "^3.27.3",
-    "@tiptap/pm": "^3.27.3",
-    "@tiptap/react": "^3.27.3",
-    "@tiptap/starter-kit": "^3.27.3",
-    "@tiptap/suggestion": "^3.27.3",
-    "dompurify": "^3.2.7",
-    "emoji-picker-react": "^4.12.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^5.4.0"
-  }
-}
+# Command Center — Desktop app (Windows & Mac)
+
+A thin native wrapper around the existing web app. It opens the app in its own
+window (real app icon, no browser, no address bar) and lets the app fire real
+operating-system notifications. It loads the hosted site, so it always shows
+the latest version — no rebuild when the web app changes.
+
+## Getting the installers (recommended — no Mac/PC setup needed)
+
+The installers are built by GitHub Actions on GitHub's own Mac and Windows
+machines:
+
+1. In the repo on GitHub, go to the **Actions** tab.
+2. Choose **"Build desktop apps"** → **Run workflow**.
+3. When it finishes (~5 min), open the run and download the artifacts:
+   - `command-center-macos-latest` → the **.dmg** (Mac installer)
+   - `command-center-windows-latest` → the **.exe** (Windows installer)
+
+Share those files with the team to install. (They're currently **unsigned**, so
+on first launch Windows/Mac shows a one-time "unidentified developer" warning —
+click through it. Adding signing certificates later removes that warning.)
+
+## Building locally (optional)
+
+Requires Node 20+. Mac builds only work on a Mac; Windows builds only on Windows.
+
+```bash
+cd desktop
+npm install
+npm start          # run the app in dev
+npm run build      # build the installer for THIS machine's OS → desktop/dist/
+```
+
+## Point it at staging
+
+```bash
+CC_URL=https://command-center-git-staging-opsis-cx1.vercel.app npm start
+```
+
+## What's here
+
+- `main.js` — creates the app window, loads the site, routes external links to the browser.
+- `preload.js` — exposes a tiny `window.commandCenterDesktop` marker so the web app can tell it's running inside the desktop app.
+- `build/icon.png` — the app icon (electron-builder generates the per-platform icons from it).
+- `package.json` — electron-builder config (Windows NSIS installer, Mac DMG).
+
+## Next polish (later)
+
+- **Code signing + notarization** (Apple Developer cert ~$99/yr, Windows cert) → removes the install warnings.
+- **Auto-update** (electron-updater) → the app updates itself.
+- **OS notification wiring** → have the web app prefer native notifications when `window.commandCenterDesktop` is present.
