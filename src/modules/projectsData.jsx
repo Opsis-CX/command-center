@@ -10,6 +10,28 @@ import { supabase } from '../lib/supabase'
 
 const ProjectsDataContext = createContext(null)
 
+// PostgREST caps every response at a fixed number of rows (Supabase's default
+// "max rows" is 1000). A plain .select() therefore SILENTLY truncates any table
+// that has grown past that limit — which is how task_assignees (1100+ rows)
+// started dropping people's assignments, making tasks vanish from "my tasks".
+// fetchAllRows pages through with .range() until the table is exhausted, so we
+// always load the complete set. Each query MUST carry a deterministic order
+// (unique tiebreaker) or paging could skip/duplicate rows across pages.
+const PAGE_SIZE = 1000
+async function fetchAllRows(buildQuery) {
+  let from = 0
+  let all = []
+  for (;;) {
+    const { data, error } = await buildQuery().range(from, from + PAGE_SIZE - 1)
+    if (error) { console.error('fetchAllRows failed:', error.message); break }
+    if (!data || data.length === 0) break
+    all = all.concat(data)
+    if (data.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  return all
+}
+
 export function ProjectsDataProvider({ children }) {
   const [me, setMe] = useState(null)          // current profile row
   const [isAdmin, setIsAdmin] = useState(false)
@@ -38,32 +60,32 @@ export function ProjectsDataProvider({ children }) {
 
       const [profRes, profilesRes, projRes, cliRes, recRes, pmRes, taskRes, taRes, comRes, actRes, attRes, timeRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
-        supabase.from('profiles').select('*').order('full_name'),
-        supabase.from('projects').select('*').order('name', { ascending: true }),
-        supabase.from('clients').select('*').order('name'),
-        supabase.from('recurring_tasks').select('*').order('created_at', { ascending: false }),
-        supabase.from('project_members').select('*'),
-        supabase.from('tasks').select('*').is('deleted_at', null).order('created_at'),
-        supabase.from('task_assignees').select('*'),
-        supabase.from('task_comments').select('*').order('created_at', { ascending: true }),
+        fetchAllRows(() => supabase.from('profiles').select('*').order('full_name').order('id')),
+        fetchAllRows(() => supabase.from('projects').select('*').order('name', { ascending: true }).order('id')),
+        fetchAllRows(() => supabase.from('clients').select('*').order('name').order('id')),
+        fetchAllRows(() => supabase.from('recurring_tasks').select('*').order('created_at', { ascending: false }).order('id')),
+        fetchAllRows(() => supabase.from('project_members').select('*').order('project_id').order('profile_id')),
+        fetchAllRows(() => supabase.from('tasks').select('*').is('deleted_at', null).order('created_at').order('id')),
+        fetchAllRows(() => supabase.from('task_assignees').select('*').order('task_id').order('profile_id')),
+        fetchAllRows(() => supabase.from('task_comments').select('*').order('created_at', { ascending: true }).order('id')),
         supabase.from('activity_log').select('*').order('created_at', { ascending: false }).limit(100),
-        supabase.from('task_attachments').select('*').order('created_at', { ascending: false }),
-        supabase.from('time_entries').select('*').order('created_at', { ascending: false }),
+        fetchAllRows(() => supabase.from('task_attachments').select('*').order('created_at', { ascending: false }).order('id')),
+        fetchAllRows(() => supabase.from('time_entries').select('*').order('created_at', { ascending: false }).order('id')),
       ])
 
       setMe(profRes.data)
       setIsAdmin(profRes.data?.is_admin || false)
-      setProfiles(profilesRes.data || [])
-      setProjects(projRes.data || [])
-      setClients(cliRes.data || [])
-      setRecurring(recRes.data || [])
-      setProjectMembers(pmRes.data || [])
-      setTasks(taskRes.data || [])
-      setTaskAssignees(taRes.data || [])
-      setComments(comRes.data || [])
+      setProfiles(profilesRes || [])
+      setProjects(projRes || [])
+      setClients(cliRes || [])
+      setRecurring(recRes || [])
+      setProjectMembers(pmRes || [])
+      setTasks(taskRes || [])
+      setTaskAssignees(taRes || [])
+      setComments(comRes || [])
       setActivity(actRes.data || [])
-      setAttachments(attRes.data || [])
-      setTimeEntries(timeRes.data || [])
+      setAttachments(attRes || [])
+      setTimeEntries(timeRes || [])
       setError(null)
     } catch (e) {
       setError(e.message || 'Failed to load project data')
