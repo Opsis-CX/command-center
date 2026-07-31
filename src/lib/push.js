@@ -62,6 +62,159 @@ function subscriptionMatchesKey(subscription, expectedKeyBytes) {
   }
 }
 
+// ============================================================
+// Native (Capacitor / Android FCM) support.
+//
+// When the app runs inside the installed Android app, it is a Capacitor
+// WebView — which has NO Web Push. Instead we use the native
+// PushNotifications plugin (FCM) via the Capacitor bridge, which is injected
+// on window even though this remote web build never imports the plugin.
+// The device's FCM token is saved to `device_push_tokens`, and the server's
+// send-fcm function delivers to it.
+// ============================================================
+
+function isNativePlatform() {
+  try {
+    return Boolean(
+      typeof window !== 'undefined' &&
+      window.Capacitor &&
+      typeof window.Capacitor.isNativePlatform === 'function' &&
+      window.Capacitor.isNativePlatform()
+    )
+  } catch (_) {
+    return false
+  }
+}
+
+function nativePlugin() {
+  const plugin = window?.Capacitor?.Plugins?.PushNotifications
+  if (!plugin) {
+    throw new Error(
+      'The native push plugin is not available in this app build.'
+    )
+  }
+  return plugin
+}
+
+async function enableNativePush(profileId) {
+  const PushNotifications = nativePlugin()
+
+  // Ask for (or confirm) permission.
+  let perm = await PushNotifications.checkPermissions()
+  if (perm.receive !== 'granted') {
+    perm = await PushNotifications.requestPermissions()
+  }
+  if (perm.receive !== 'granted') {
+    throw new Error(
+      perm.receive === 'denied'
+        ? 'Notifications are blocked. Enable them in your device settings.'
+        : 'Notification permission was not granted.'
+    )
+  }
+
+  // Register with FCM and wait for the device token event.
+  const token = await new Promise((resolve, reject) => {
+    let settled = false
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        reject(new Error('Timed out waiting for the device push token.'))
+      }
+    }, 20000)
+
+    PushNotifications.addListener('registration', (t) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      resolve(t?.value)
+    })
+
+    PushNotifications.addListener('registrationError', (e) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      reject(new Error(`Device registration failed: ${e?.error || 'unknown error'}`))
+    })
+
+    PushNotifications.register()
+  })
+
+  if (!token) {
+    throw new Error('The device did not return a push token.')
+  }
+
+  const platform =
+    (window?.Capacitor?.getPlatform && window.Capacitor.getPlatform()) ||
+    'android'
+
+  const { error } = await supabase
+    .from('device_push_tokens')
+    .upsert(
+      {
+        profile_id: profileId,
+        token,
+        provider: 'fcm',
+        platform,
+        user_agent:
+          typeof navigator !== 'undefined' ? navigator.userAgent : null,
+      },
+      { onConflict: 'token' }
+    )
+
+  if (error) {
+    console.error('Could not save device push token', error)
+    throw new Error(`Could not save device push token: ${error.message}`)
+  }
+
+  return true
+}
+
+async function disableNativePush(profileId) {
+  // Best-effort: remove this profile's device tokens. (Most users have a
+  // single device; multi-device per-token removal can come later.)
+  if (!profileId) return true
+  const { error } = await supabase
+    .from('device_push_tokens')
+    .delete()
+    .eq('profile_id', profileId)
+    .eq('provider', 'fcm')
+  if (error) {
+    console.error('Could not remove device push token', error)
+    throw new Error(`Could not remove device push token: ${error.message}`)
+  }
+  return true
+}
+
+async function getNativePushStatus(profileId) {
+  try {
+    const PushNotifications = nativePlugin()
+    const perm = await PushNotifications.checkPermissions()
+    if (perm.receive !== 'granted') {
+      return { enabled: false, reason: perm.receive || 'not-granted', native: true }
+    }
+    if (!profileId) {
+      return { enabled: false, reason: 'no-profile', native: true }
+    }
+    const { data, error } = await supabase
+      .from('device_push_tokens')
+      .select('id')
+      .eq('profile_id', profileId)
+      .eq('provider', 'fcm')
+      .limit(1)
+      .maybeSingle()
+    if (error) {
+      return { enabled: false, reason: 'database-error', native: true, error }
+    }
+    return {
+      enabled: Boolean(data),
+      reason: data ? 'enabled' : 'not-registered',
+      native: true,
+    }
+  } catch (error) {
+    return { enabled: false, reason: 'native-status-failed', native: true, error }
+  }
+}
+
 function assertBrowser() {
   if (
     typeof window === 'undefined' ||
@@ -79,6 +232,12 @@ export function pushSupported() {
     typeof navigator === 'undefined'
   ) {
     return false
+  }
+
+  // Inside the native app, push is supported via FCM even though the
+  // WebView lacks the Web Push APIs.
+  if (isNativePlatform()) {
+    return true
   }
 
   return (
@@ -140,6 +299,11 @@ export async function enablePush(profileId) {
     throw new Error(
       'A profile ID is required to enable push.'
     )
+  }
+
+  // Inside the native Android app, register with FCM instead of Web Push.
+  if (isNativePlatform()) {
+    return enableNativePush(profileId)
   }
 
   if (!pushSupported()) {
@@ -261,6 +425,10 @@ export async function enablePush(profileId) {
 export async function disablePush(
   profileId = null
 ) {
+  if (isNativePlatform()) {
+    return disableNativePush(profileId)
+  }
+
   if (!pushSupported()) {
     return true
   }
@@ -315,6 +483,10 @@ export async function disablePush(
 export async function getPushStatus(
   profileId
 ) {
+  if (isNativePlatform()) {
+    return getNativePushStatus(profileId)
+  }
+
   if (!pushSupported()) {
     return {
       enabled: false,
