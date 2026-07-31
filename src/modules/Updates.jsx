@@ -23,6 +23,42 @@ const when = (d) => new Date(d).toLocaleString('en-US', { month: 'short', day: '
 const inputStyle = { width: '100%', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', fontSize: 13.5, fontFamily: 'inherit', background: 'var(--canvas)', color: 'var(--ink)', boxSizing: 'border-box' }
 const chip = (active, color) => ({ fontSize: 12, fontWeight: 600, padding: '4px 11px', borderRadius: 999, cursor: 'pointer', border: '1px solid ' + (active ? (color || 'var(--accent)') : 'var(--line)'), background: active ? (color || 'var(--accent)') : 'transparent', color: active ? '#fff' : 'var(--ink-soft)' })
 
+// ---- media (images / videos) ----
+const MEDIA_BUCKET = 'announcement-media'
+const MAX_MEDIA_BYTES = 50 * 1024 * 1024 // 50MB, matches Chat/task uploads
+const isImg = (m) => (m?.file_type || '').startsWith('image/')
+const isVid = (m) => (m?.file_type || '').startsWith('video/')
+
+async function uploadAnnouncementMedia(file, userId) {
+  if (file.size > MAX_MEDIA_BYTES) throw new Error(`"${file.name}" is over 50MB.`)
+  const ext = file.name.includes('.') ? file.name.split('.').pop().replace(/[^a-zA-Z0-9]/g, '') : 'bin'
+  const rand = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()))
+  const path = `${userId || 'anon'}/${rand}.${ext}`
+  const { error: upErr } = await supabase.storage.from(MEDIA_BUCKET).upload(path, file, { contentType: file.type || undefined, upsert: false })
+  if (upErr) throw upErr
+  const { data: pub } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path)
+  return { storage_path: path, public_url: pub.publicUrl, file_name: file.name, file_type: file.type || '', file_size: file.size }
+}
+
+// Read-only gallery shown on each posted update.
+function MediaGallery({ media }) {
+  const list = Array.isArray(media) ? media : []
+  if (!list.length) return null
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+      {list.map((m, i) => (
+        <div key={m.storage_path || i} style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid var(--line)', maxWidth: '100%' }}>
+          {isVid(m)
+            ? <video src={m.public_url} controls preload="metadata" style={{ display: 'block', maxWidth: 340, maxHeight: 260, background: '#000' }} />
+            : isImg(m)
+              ? <a href={m.public_url} target="_blank" rel="noopener noreferrer"><img src={m.public_url} alt={m.file_name || ''} style={{ display: 'block', maxWidth: 240, maxHeight: 240, objectFit: 'cover' }} /></a>
+              : <a href={m.public_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', padding: '10px 12px', fontSize: 12.5, color: 'var(--accent)' }}>📎 {m.file_name || 'file'}</a>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function Updates() {
   const { user, isAdmin } = useAuth()
   const [items, setItems] = useState(null)
@@ -143,6 +179,7 @@ export default function Updates() {
                       </span>
                     </div>
                     {a.body && <RichContent html={a.body} />}
+                    <MediaGallery media={a.media} />
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 8, fontSize: 11.5, color: 'var(--ink-soft)' }}>
                       <span>{names[a.author_id] || 'Someone'}</span>
                       <span>·</span>
@@ -209,13 +246,38 @@ function Composer({ user, teams, editItem, onPosted, onCancel }) {
   const [title, setTitle] = useState(editItem?.title || '')
   const [category, setCategory] = useState(editItem?.category || 'general')
   const [audience, setAudience] = useState(editItem?.audience_tags || [])   // team tag ids; empty = Everyone
+  const [media, setMedia] = useState(Array.isArray(editItem?.media) ? editItem.media : [])
+  const [uploading, setUploading] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const editorRef = useRef(null)
   const htmlRef = useRef(editItem?.body || '')
+  const fileRef = useRef(null)
 
   function toggleTag(id) {
     setAudience(prev => prev.includes(id) ? prev.filter(k => k !== id) : [...prev, id])
+  }
+
+  async function handleFiles(e) {
+    const files = Array.from(e.target.files || [])
+    if (fileRef.current) fileRef.current.value = ''
+    if (!files.length) return
+    setErr('')
+    for (const file of files) {
+      if (!/^(image|video)\//.test(file.type || '')) { setErr(`"${file.name}" isn't an image or video — skipped.`); continue }
+      setUploading(`Uploading ${file.name}…`)
+      try {
+        const m = await uploadAnnouncementMedia(file, user?.id)
+        setMedia(prev => [...prev, m])
+      } catch (ex) { setErr(ex.message || `Failed to upload ${file.name}.`) }
+    }
+    setUploading('')
+  }
+
+  async function removeMedia(idx) {
+    const m = media[idx]
+    setMedia(prev => prev.filter((_, i) => i !== idx))
+    if (m?.storage_path) { try { await supabase.storage.from(MEDIA_BUCKET).remove([m.storage_path]) } catch { /* leave orphan; harmless */ } }
   }
 
   async function post() {
@@ -223,7 +285,7 @@ function Composer({ user, teams, editItem, onPosted, onCancel }) {
     if (!title.trim()) { setErr('Give it a title.'); return }
     const body = sanitizeHtml(htmlRef.current || '')
     setBusy(true)
-    const payload = { title: title.trim(), body: isEmptyHtml(body) ? null : body, category, audience_tags: audience }
+    const payload = { title: title.trim(), body: isEmptyHtml(body) ? null : body, category, audience_tags: audience, media }
     const { error } = isEdit
       ? await supabase.from('announcements').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editItem.id)
       : await supabase.from('announcements').insert({ author_id: user?.id, ...payload })
@@ -260,10 +322,33 @@ function Composer({ user, teams, editItem, onPosted, onCancel }) {
           <RichEditor variant="full" editorRef={editorRef} value={editItem?.body || ''} onChange={(html) => { htmlRef.current = html }} placeholder="What's the update? (optional)" />
         </div>
 
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', marginBottom: 6 }}>Photos &amp; video <span style={{ fontWeight: 400, textTransform: 'none' }}>— optional, up to 50MB each</span></div>
+          {media.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+              {media.map((m, i) => (
+                <div key={m.storage_path || i} style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--line)' }}>
+                  {isVid(m)
+                    ? <video src={m.public_url} style={{ display: 'block', width: 120, height: 90, objectFit: 'cover', background: '#000' }} muted />
+                    : <img src={m.public_url} alt={m.file_name || ''} style={{ display: 'block', width: 120, height: 90, objectFit: 'cover' }} />}
+                  <button type="button" onClick={() => removeMedia(i)} title="Remove"
+                    style={{ position: 'absolute', top: 3, right: 3, border: 0, borderRadius: 999, width: 22, height: 22, lineHeight: '20px', cursor: 'pointer', background: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 13 }}>×</button>
+                  {isVid(m) && <span style={{ position: 'absolute', bottom: 3, left: 5, color: '#fff', fontSize: 15, textShadow: '0 0 3px #000', pointerEvents: 'none' }}>▶</span>}
+                </div>
+              ))}
+            </div>
+          )}
+          <label className="btn btn-ghost" style={{ fontSize: 12, cursor: 'pointer', display: 'inline-flex', width: 'fit-content' }}>
+            🖼 Add photo / video
+            <input ref={fileRef} type="file" accept="image/*,video/*" multiple onChange={handleFiles} style={{ display: 'none' }} />
+          </label>
+          {uploading && <span style={{ fontSize: 12, color: 'var(--ink-soft)', marginLeft: 10 }}>{uploading}</span>}
+        </div>
+
         {err && <div style={{ color: 'var(--failed)', fontSize: 12.5 }}>{err}</div>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           {onCancel && <button className="btn btn-ghost" onClick={onCancel} disabled={busy}>Cancel</button>}
-          <button className="btn btn-primary" onClick={post} disabled={busy}>{busy ? (isEdit ? 'Saving…' : 'Posting…') : (isEdit ? 'Save changes' : 'Post update')}</button>
+          <button className="btn btn-primary" onClick={post} disabled={busy || !!uploading}>{busy ? (isEdit ? 'Saving…' : 'Posting…') : (uploading ? 'Uploading…' : (isEdit ? 'Save changes' : 'Post update'))}</button>
         </div>
       </div>
     </div>
