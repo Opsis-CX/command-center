@@ -632,6 +632,8 @@ function SetterChannelView(props) {
 
 function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profiles, isMobile, onBack, markRead, targetMessageId, onTargetConsumed }) {
   const { appRole } = useAuth()
+  // Who can post an @update (require-read) message: admins + non-agent staff (the moderator tier).
+  const canPostUpdate = isAdmin || String(appRole || 'agent').trim().toLowerCase() !== 'agent'
   const [messages, setMessages] = useState([])
   const [senders, setSenders] = useState({})
   const [acks, setAcks] = useState([])           // all acknowledgments for messages in view
@@ -1162,7 +1164,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     if (!plain && pending.length === 0) return
 
     const isHere = /(^|\s)@here(\s|$)/i.test(plain)
-    const willRequireAck = isAdmin && requireAck
+    const willRequireAck = canPostUpdate && requireAck
     const filesToSend = pending
 
     // Compute mentions once — used for both membership and notification routing.
@@ -1427,7 +1429,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                         : <button className="btn btn-cta" style={{ fontSize: 12.5 }} onClick={() => confirmRead(m.id)}>Confirm you've read this</button>}
                       <div style={{ marginTop: 8, display: 'flex', gap: 12, alignItems: 'center' }}>
                         <span style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>{confirmCount(m.id)}/{members.length} confirmed</span>
-                        {isAdmin && <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '3px 8px' }} onClick={() => setTrackFor(m.id)}>View who</button>}
+                        {canPostUpdate && <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '3px 8px' }} onClick={() => setTrackFor(m.id)}>View who</button>}
                       </div>
                     </div>
                   ) : (
@@ -1536,7 +1538,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
           )}
         </div>
 
-        {isAdmin && (
+        {canPostUpdate && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, fontSize: 12.5, color: requireAck ? 'var(--accent)' : 'var(--ink-soft)', cursor: 'pointer', fontWeight: requireAck ? 600 : 400 }}>
             <input type="checkbox" checked={requireAck} onChange={e => setRequireAck(e.target.checked)} style={{ flex: 'none' }} />
             <span>
