@@ -120,6 +120,7 @@ export default function Notes() {
               onTitle={(v) => patch(selected.id, { title: v })}
               onBody={(html) => patch(selected.id, { body: html })}
               onShare={(tags) => patch(selected.id, { shared_tags: tags })}
+              onColor={(c) => patch(selected.id, { color: c })}
               onPin={() => togglePin(selected)}
               onDelete={() => remove(selected)} />
           ) : (
@@ -131,12 +132,24 @@ export default function Notes() {
   )
 }
 
+// Color options for color-coding notes ('' = no color).
+const NOTE_COLORS = [
+  { key: '', label: 'None' },
+  { key: '#ef4444', label: 'Red' },
+  { key: '#f59e0b', label: 'Orange' },
+  { key: '#eab308', label: 'Yellow' },
+  { key: '#22c55e', label: 'Green' },
+  { key: '#3b82f6', label: 'Blue' },
+  { key: '#a855f7', label: 'Purple' },
+]
+
 function NoteRow({ n, active, onClick, by }) {
   const snippet = htmlToText(n.body || '')
   return (
     <div onClick={onClick} style={{
       padding: '9px 10px', borderRadius: 8, cursor: 'pointer', marginBottom: 3,
       background: active ? 'var(--accent-bg)' : 'transparent',
+      borderLeft: '3px solid ' + (n.color || 'transparent'),
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {n.pinned && <span style={{ fontSize: 11 }}>📌</span>}
@@ -148,7 +161,7 @@ function NoteRow({ n, active, onClick, by }) {
   )
 }
 
-function Editor({ note, teams, saving, onTitle, onBody, onShare, onPin, onDelete }) {
+function Editor({ note, teams, saving, onTitle, onBody, onShare, onColor, onPin, onDelete }) {
   const [title, setTitle] = useState(note.title || '')
   const [shareOpen, setShareOpen] = useState(false)
   const bodyTimer = useRef(null)
@@ -178,6 +191,26 @@ function Editor({ note, teams, saving, onTitle, onBody, onShare, onPin, onDelete
         <span style={{ fontSize: 11, color: 'var(--ink-soft)', minWidth: 44, textAlign: 'right' }}>{saving ? 'Saving…' : 'Saved'}</span>
         <button className="btn btn-ghost" title={note.pinned ? 'Unpin' : 'Pin'} style={{ fontSize: 13, padding: '4px 9px' }} onClick={onPin}>📌</button>
         <button className="btn btn-ghost" title="Delete" style={{ fontSize: 13, padding: '4px 9px', color: 'var(--failed)' }} onClick={onDelete}>🗑</button>
+      </div>
+
+      {/* color coding */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+        <span style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginRight: 2 }}>Color</span>
+        {NOTE_COLORS.map(c => {
+          const on = (note.color || '') === c.key
+          return (
+            <button key={c.key || 'none'} title={c.label} onClick={() => onColor(c.key)}
+              style={{
+                width: 20, height: 20, borderRadius: '50%', cursor: 'pointer', padding: 0,
+                background: c.key || 'var(--surface)',
+                border: c.key ? (on ? '2px solid var(--ink)' : '1px solid rgba(0,0,0,.15)')
+                              : (on ? '2px solid var(--ink)' : '1px solid var(--line)'),
+                position: 'relative',
+              }}>
+              {!c.key && <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--ink-soft)' }}>∅</span>}
+            </button>
+          )
+        })}
       </div>
 
       {/* share control */}
