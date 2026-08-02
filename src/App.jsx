@@ -22,6 +22,7 @@ import Chat from './modules/Chat'
 import { canAny } from './lib/permissions'
 import Settings from './modules/Settings'
 import Projects from './modules/Projects'
+import TimeAdmin from './modules/TimeAdmin'
 import Clients from './modules/Clients'
 import Reporting from './modules/Reporting'
 import HourlyReports from './modules/HourlyReports'
@@ -217,6 +218,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {canAny(appRole, 'certifications.assigned_to_complete') && <Route path="/my-certifications" element={<MyCertifications />} />}
               {canAny(appRole, 'certifications.assigned_to_complete') && <Route path="/my-courses" element={<MyCourses />} />}
               {canAny(appRole, 'project_management') && <Route path="/projects" element={<Projects />} />}
+              {isAdmin && <Route path="/time" element={<TimeAdmin />} />}
               {canAny(appRole, 'clients.view_only') && <Route path="/clients" element={<Clients />} />}
               <Route path="/updates" element={<Updates />} />
               <Route path="/home" element={<OpsisWeekly />} />
