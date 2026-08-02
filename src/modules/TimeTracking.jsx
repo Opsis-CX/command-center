@@ -17,7 +17,7 @@ function elapsed(startedAt) {
 }
 
 export default function TimeTracking({ taskId }) {
-  const { timeEntries, setTimeEntries, profiles, userId, tasks, projects, logActivity } = useProjectsData()
+  const { timeEntries, setTimeEntries, profiles, userId, isAdmin, tasks, projects, logActivity } = useProjectsData()
   const [manualOpen, setManualOpen] = useState(false)
   const [mHours, setMHours] = useState('')
   const [mDate, setMDate] = useState(new Date().toISOString().slice(0, 10))
@@ -25,17 +25,28 @@ export default function TimeTracking({ taskId }) {
   const [, forceTick] = useState(0)
   const tickRef = useRef(null)
 
+  // inline edit of an existing entry (admins on anyone; users on their own)
+  const [editId, setEditId] = useState(null)
+  const [eHours, setEHours] = useState('')
+  const [eDate, setEDate] = useState('')
+  const [eNote, setENote] = useState('')
+
   const entries = timeEntries.filter(e => e.task_id === taskId && e.duration_minutes)
   const totalMin = entries.reduce((s, e) => s + e.duration_minutes, 0)
   const running = timeEntries.find(e => e.task_id === taskId && e.user_id === userId && e.started_at && !e.ended_at)
+  // admins can see (and stop) anyone else's running timer on this task
+  const othersRunning = isAdmin
+    ? timeEntries.filter(e => e.task_id === taskId && e.user_id !== userId && e.started_at && !e.ended_at)
+    : []
+  const canModify = (e) => isAdmin || e.user_id === userId
 
-  // live clock tick while a timer runs
+  // live clock tick while any visible timer runs
   useEffect(() => {
-    if (running) {
+    if (running || othersRunning.length) {
       tickRef.current = setInterval(() => forceTick(t => t + 1), 1000)
       return () => clearInterval(tickRef.current)
     }
-  }, [running])
+  }, [running, othersRunning.length])
 
   async function startTimer() {
     // stop any other running timer for this user first (one at a time)
@@ -64,6 +75,11 @@ export default function TimeTracking({ taskId }) {
     if (running) await finalize(running)
   }
 
+  // Admin: stop someone else's running timer on this task.
+  async function stopEntry(entry) {
+    await finalize(entry)
+  }
+
   async function saveManual() {
     const hours = parseFloat(mHours)
     if (!hours || hours <= 0) { window.alert('Enter a valid number of hours'); return }
@@ -86,8 +102,30 @@ export default function TimeTracking({ taskId }) {
 
   async function deleteEntry(id) {
     if (!window.confirm('Delete this time entry?')) return
-    await supabase.from('time_entries').delete().eq('id', id)
+    const { error } = await supabase.from('time_entries').delete().eq('id', id)
+    if (error) { window.alert('Could not delete: ' + error.message); return }
     setTimeEntries(prev => prev.filter(e => e.id !== id))
+  }
+
+  function beginEdit(e) {
+    setEditId(e.id)
+    setEHours(String(Math.round((e.duration_minutes / 60) * 100) / 100))
+    setEDate((e.started_at || new Date().toISOString()).slice(0, 10))
+    setENote(e.note || '')
+  }
+
+  async function saveEdit(entry) {
+    const hours = parseFloat(eHours)
+    if (!hours || hours <= 0) { window.alert('Enter a valid number of hours'); return }
+    if (!eDate) { window.alert('Pick a date'); return }
+    const mins = Math.round(hours * 60)
+    const startedAt = new Date(eDate + 'T09:00:00').toISOString()
+    const endedAt = new Date(new Date(startedAt).getTime() + mins * 60000).toISOString()
+    const patch = { duration_minutes: mins, started_at: startedAt, ended_at: endedAt, note: eNote.trim() || null }
+    const { error } = await supabase.from('time_entries').update(patch).eq('id', entry.id)
+    if (error) { window.alert('Could not update: ' + error.message); return }
+    setTimeEntries(prev => prev.map(x => x.id === entry.id ? { ...x, ...patch } : x))
+    setEditId(null)
   }
 
   return (
@@ -114,19 +152,53 @@ export default function TimeTracking({ taskId }) {
         )}
       </div>
 
+      {/* admin: other people currently running a timer on this task */}
+      {othersRunning.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+          {othersRunning.map(e => {
+            const person = profiles.find(p => p.id === e.user_id)
+            return (
+              <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', background: 'var(--failed-bg)', border: '1px solid var(--failed)', borderRadius: 8, fontSize: 12 }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--failed)' }} />
+                <span style={{ fontWeight: 600 }}>{person?.full_name || 'Unknown'}</span>
+                <span style={{ color: 'var(--ink-soft)' }}>running · {elapsed(e.started_at)}</span>
+                <button onClick={() => stopEntry(e)} style={{ marginLeft: 'auto', background: 'var(--failed)', border: 0, color: '#fff', borderRadius: 14, padding: '4px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Stop</button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {/* entries */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
         {entries.slice(0, 10).map(e => {
           const person = profiles.find(p => p.id === e.user_id)
-          const canDelete = e.user_id === userId
+          const mod = canModify(e)
           const dateLabel = e.started_at ? new Date(e.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
+          if (editId === e.id) {
+            return (
+              <div key={e.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '9px 10px', background: 'var(--bg-soft, #f7f7f5)', border: '1px solid var(--accent)', borderRadius: 8 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-soft)' }}>Editing time for {person?.full_name || 'Unknown'}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <input type="number" min="0" step="0.25" value={eHours} onChange={ev => setEHours(ev.target.value)} placeholder="Hours" style={inp} />
+                  <input type="date" value={eDate} onChange={ev => setEDate(ev.target.value)} style={inp} />
+                </div>
+                <input type="text" value={eNote} onChange={ev => setENote(ev.target.value)} placeholder="Note (optional)" style={inp} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setEditId(null)} className="btn btn-ghost" style={{ fontSize: 12 }}>Cancel</button>
+                  <button onClick={() => saveEdit(e)} className="btn btn-primary" style={{ fontSize: 12 }}>Save</button>
+                </div>
+              </div>
+            )
+          }
           return (
             <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', background: 'var(--bg-soft, #f7f7f5)', borderRadius: 8, fontSize: 12 }}>
               <span style={{ fontWeight: 600 }}>{person?.full_name || 'Unknown'}</span>
               {e.note && <span style={{ color: 'var(--ink-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.note}</span>}
               <span style={{ color: 'var(--ink-soft)', marginLeft: 'auto' }}>{dateLabel}</span>
               <span style={{ fontWeight: 600, color: 'var(--ink-soft)' }}>{formatDuration(e.duration_minutes)}h</span>
-              {canDelete && <button onClick={() => deleteEntry(e.id)} style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 12 }}>✕</button>}
+              {mod && <button title="Edit" onClick={() => beginEdit(e)} style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 12 }}>✎</button>}
+              {mod && <button title="Delete" onClick={() => deleteEntry(e.id)} style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 12 }}>✕</button>}
             </div>
           )
         })}
