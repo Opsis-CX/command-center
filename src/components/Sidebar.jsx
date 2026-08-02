@@ -37,6 +37,7 @@ const NAV = [
       { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },  // everyone; private per-user notebook
       { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
       { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
+      { type: 'link', to: '/time', label: 'Time', ic: '⏱️', perm: null, adminGate: true },  // admins only; find & adjust anyone's tracked time
       {
         type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
         children: [
@@ -147,6 +148,7 @@ export default function Sidebar({ open, onNavigate }) {
   // header should render at all.
   const itemVisible = (item) => {
     if (item.type === 'link') {
+      if (item.adminGate) return !!isAdmin
       if (item.rsnGate) return !!rsnOk
       return !item.perm || canAny(appRole, item.perm)
     }
@@ -157,6 +159,7 @@ export default function Sidebar({ open, onNavigate }) {
   const renderItem = (item) => {
     // --- single top-level link ---
     if (item.type === 'link') {
+      if (item.adminGate && !isAdmin) return null
       if (item.rsnGate ? !rsnOk : (item.perm && !canAny(appRole, item.perm))) return null
       return (
         <NavLink key={item.to} to={item.to} end={item.end}
