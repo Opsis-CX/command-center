@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 
 // ============================================================
@@ -21,6 +21,16 @@ function liveClock(startedAt) {
 }
 const LONG_MIN = 8 * 60 // entries at/over 8h are flagged as likely runaways
 
+// minutes of a scheduled shift block, handling shifts that cross midnight
+function blockMins(b) {
+  if (!b?.start_time || !b?.end_time) return 0
+  const [sh, sm] = b.start_time.split(':').map(Number)
+  const [eh, em] = b.end_time.split(':').map(Number)
+  let mins = (eh * 60 + em) - (sh * 60 + sm)
+  if (mins < 0) mins += 24 * 60
+  return mins
+}
+
 export default function TimeAdmin() {
   const { isAdmin } = useAuth()
 
@@ -34,6 +44,7 @@ export default function TimeAdmin() {
 
   const [people, setPeople] = useState([])
   const [rows, setRows] = useState(null)
+  const [scheduledMin, setScheduledMin] = useState(null)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
   const [, tick] = useState(0)
@@ -82,7 +93,32 @@ export default function TimeAdmin() {
         mins: e.duration_minutes != null ? e.duration_minutes : (running ? Math.floor((Date.now() - new Date(e.started_at).getTime()) / 60000) : 0),
       }
     })
-    setRows(enriched); setLoading(false)
+    setRows(enriched)
+
+    // scheduled hours: sum the claimed shift blocks in the same range (per the
+    // selected person, or the whole team). Non-fatal if schedules can't load.
+    try {
+      const blkRes = await fetchAllRows(() =>
+        supabase.from('shift_blocks')
+          .select('id, block_date, start_time, end_time, shift_claims(profile_id, status)')
+          .gte('block_date', fromDate).lte('block_date', toDate)
+          .order('block_date').order('id'))
+      if (blkRes.error) { setScheduledMin(null) }
+      else {
+        let sched = 0
+        for (const b of (blkRes.data || [])) {
+          const mins = blockMins(b)
+          for (const c of (b.shift_claims || [])) {
+            if (personId !== 'all' && c.profile_id !== personId) continue
+            if (['cancelled', 'canceled', 'dropped', 'removed'].includes((c.status || '').toLowerCase())) continue
+            sched += mins
+          }
+        }
+        setScheduledMin(sched)
+      }
+    } catch (_) { setScheduledMin(null) }
+
+    setLoading(false)
   }, [fromDate, toDate, personId])
 
   useEffect(() => { load() }, [load])
@@ -173,9 +209,15 @@ export default function TimeAdmin() {
 
       {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 12 }}>{err}</div>}
 
-      <div style={{ display: 'flex', gap: 18, alignItems: 'baseline', marginBottom: 10, fontSize: 12.5, color: 'var(--ink-soft)' }}>
+      <div style={{ display: 'flex', gap: 18, alignItems: 'baseline', marginBottom: 10, fontSize: 12.5, color: 'var(--ink-soft)', flexWrap: 'wrap' }}>
         <span><strong style={{ color: 'var(--ink)' }}>{filtered.length}</strong> entries</span>
-        <span><strong style={{ color: 'var(--ink)' }}>{hrs(totalMin)}h</strong> total (completed)</span>
+        <span><strong style={{ color: 'var(--ink)' }}>{hrs(totalMin)}h</strong> tracked (completed)</span>
+        <span><strong style={{ color: 'var(--ink)' }}>{scheduledMin == null ? '—' : hrs(scheduledMin) + 'h'}</strong> scheduled</span>
+        {scheduledMin != null && totalMin > 0 && (
+          <span style={{ color: totalMin > scheduledMin + 30 ? 'var(--failed)' : 'var(--ink-soft)' }}>
+            ({totalMin > scheduledMin ? '+' : ''}{hrs(totalMin - scheduledMin)}h vs scheduled)
+          </span>
+        )}
       </div>
 
       {loading ? <p className="page-sub">Loading…</p>
