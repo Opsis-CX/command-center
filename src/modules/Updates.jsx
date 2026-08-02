@@ -49,7 +49,10 @@ function MediaGallery({ media }) {
       {list.map((m, i) => (
         <div key={m.storage_path || i} style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid var(--line)', maxWidth: '100%' }}>
           {isVid(m)
-            ? <video src={m.public_url} controls preload="metadata" style={{ display: 'block', maxWidth: 340, maxHeight: 260, background: '#000' }} />
+            ? <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <video src={m.public_url} controls playsInline preload="metadata" style={{ display: 'block', width: '100%', maxWidth: 340, maxHeight: 260, background: '#000' }} />
+                <a href={m.public_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, color: 'var(--accent)', textDecoration: 'none', padding: '2px 2px' }}>▶ Open / download video</a>
+              </div>
             : isImg(m)
               ? <a href={m.public_url} target="_blank" rel="noopener noreferrer"><img src={m.public_url} alt={m.file_name || ''} style={{ display: 'block', maxWidth: 240, maxHeight: 240, objectFit: 'cover' }} /></a>
               : <a href={m.public_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', padding: '10px 12px', fontSize: 12.5, color: 'var(--accent)' }}>📎 {m.file_name || 'file'}</a>}
