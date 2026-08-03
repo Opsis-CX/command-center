@@ -41,6 +41,15 @@ export default function HeaderTaskBar() {
   const [newProject, setNewProject] = useState('')
   const [newClient, setNewClient] = useState('')
   const [, tick] = useState(0)
+  // On phones the full task-timer form doesn't fit the top bar — collapse it
+  // into a compact button that opens the fields in a dropdown.
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    const onR = () => setNarrow(window.innerWidth <= 768)
+    window.addEventListener('resize', onR)
+    return () => window.removeEventListener('resize', onR)
+  }, [])
 
   const load = useCallback(async () => {
     if (!userId) return
@@ -145,6 +154,32 @@ export default function HeaderTaskBar() {
 
   const chip = { display: 'flex', alignItems: 'center', gap: 8 }
   const selStyle = { fontSize: 12.5, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line, #ddd)', maxWidth: 140 }
+  const fInput = (stacked) => ({ fontSize: 12.5, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--line, #ddd)', width: stacked ? '100%' : 160 })
+  const fSel = (stacked, mw) => ({ fontSize: 12.5, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--line, #ddd)', width: stacked ? '100%' : undefined, maxWidth: stacked ? 'none' : (mw || 140) })
+
+  // The five timer inputs, shared by the desktop inline row and the mobile dropdown.
+  const starterFields = (stacked) => (
+    <>
+      <input value={newTaskName} onChange={e => setNewTaskName(e.target.value)} placeholder="Type a task to track…"
+        onKeyDown={e => { if (e.key === 'Enter' && (newTaskName.trim() || picked)) { startTimer(); setOpen(false) } }}
+        style={fInput(stacked)} />
+      <select value={newProject} onChange={e => setNewProject(e.target.value)} title="Project" style={fSel(stacked)}>
+        <option value="">Project…</option>
+        {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </select>
+      <select value={newClient} onChange={e => setNewClient(e.target.value)} title="Client" style={fSel(stacked)}>
+        <option value="">Client…</option>
+        {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+      <span style={{ fontSize: 11, color: 'var(--ink-soft)', textAlign: stacked ? 'center' : 'left' }}>or</span>
+      <select value={picked} onChange={e => setPicked(e.target.value)} title="Existing task" style={fSel(stacked, 170)}>
+        <option value="">Existing task…</option>
+        {openTasks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+      <button disabled={!newTaskName.trim() && !picked} onClick={() => { startTimer(); setOpen(false) }}
+        style={{ border: 'none', background: (newTaskName.trim() || picked) ? '#16A34A' : '#c3bfb5', color: '#fff', borderRadius: 6, padding: stacked ? '9px 12px' : '5px 12px', fontSize: 12.5, cursor: (newTaskName.trim() || picked) ? 'pointer' : 'default', width: stacked ? '100%' : undefined }}>▶ Start</button>
+    </>
+  )
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
@@ -171,26 +206,25 @@ export default function HeaderTaskBar() {
             <span style={{ fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#16A34A' }}>{elapsed()}</span>
             <button onClick={stopRunning} style={{ border: 'none', background: '#DC2626', color: '#fff', borderRadius: 6, padding: '3px 10px', fontSize: 12, cursor: 'pointer' }}>Stop</button>
           </div>
+        ) : narrow ? (
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setOpen(o => !o)} title="Start a task timer"
+              style={{ border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 8, padding: '6px 10px', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+              ⏱ <span style={{ fontSize: 12 }}>Track</span>
+            </button>
+            {open && (
+              <>
+                <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
+                <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 61, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.18)', padding: 12, width: 240, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Start a task timer</div>
+                  {starterFields(true)}
+                </div>
+              </>
+            )}
+          </div>
         ) : (
           <div style={{ ...chip, flexWrap: 'wrap' }}>
-            <input value={newTaskName} onChange={e => setNewTaskName(e.target.value)} placeholder="Type a task to track…"
-              onKeyDown={e => { if (e.key === 'Enter' && (newTaskName.trim() || picked)) startTimer() }}
-              style={{ fontSize: 12.5, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line, #ddd)', width: 160 }} />
-            <select value={newProject} onChange={e => setNewProject(e.target.value)} title="Project" style={selStyle}>
-              <option value="">Project…</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            <select value={newClient} onChange={e => setNewClient(e.target.value)} title="Client" style={selStyle}>
-              <option value="">Client…</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>or</span>
-            <select value={picked} onChange={e => setPicked(e.target.value)} title="Existing task" style={{ ...selStyle, maxWidth: 170 }}>
-              <option value="">Existing task…</option>
-              {openTasks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-            <button disabled={!newTaskName.trim() && !picked} onClick={startTimer}
-              style={{ border: 'none', background: (newTaskName.trim() || picked) ? '#16A34A' : '#c3bfb5', color: '#fff', borderRadius: 6, padding: '5px 12px', fontSize: 12.5, cursor: (newTaskName.trim() || picked) ? 'pointer' : 'default' }}>▶ Start</button>
+            {starterFields(false)}
           </div>
         )
       )}
