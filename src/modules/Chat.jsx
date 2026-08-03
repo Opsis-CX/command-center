@@ -1522,21 +1522,22 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
           </div>
         )}
 
-        {/* Post-as-@update (left) + Schedule-send (pushed right) share one row to save vertical space. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+        {/* Post-as-@update (left) + Schedule-send (pushed right) share one row to save vertical space.
+            Closed on mobile they stay on one line (nowrap); opening the scheduler lets it wrap. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: (isMobile && !schedOpen) ? 'nowrap' : 'wrap', marginBottom: 8 }}>
             {canPostUpdate && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: requireAck ? 'var(--accent)' : 'var(--ink-soft)', cursor: 'pointer', fontWeight: requireAck ? 600 : 400 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, fontSize: 12.5, color: requireAck ? 'var(--accent)' : 'var(--ink-soft)', cursor: 'pointer', fontWeight: requireAck ? 600 : 400 }}>
                 <input type="checkbox" checked={requireAck} onChange={e => setRequireAck(e.target.checked)} style={{ flex: 'none' }} />
-                <span>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   Post as <b>@update</b>
                   {!isMobile && ' — require everyone to confirm they\'ve read it'}
                 </span>
               </label>
             )}
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }}
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', flex: 'none' }}>
+              <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px', flex: 'none', whiteSpace: 'nowrap' }}
                 onClick={() => { setSchedOpen(o => { const n = !o; if (n && !schedAt) setSchedAt(defaultSchedAt()); return n }) }}>
-                🕗 {schedOpen ? 'Cancel schedule' : 'Schedule send'}
+                🕗 {schedOpen ? (isMobile ? 'Cancel' : 'Cancel schedule') : (isMobile ? 'Schedule' : 'Schedule send')}
               </button>
               {schedOpen && (
                 <>
