@@ -8,6 +8,7 @@ import ChangePassword from './components/ChangePassword'
 import { useAuth } from './lib/auth'
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
+import HelpAssistant from './components/HelpAssistant'
 import Certifications from './modules/Certifications'
 import MyCertifications from './modules/MyCertifications'
 import MyCourses from './modules/MyCourses'
@@ -247,6 +248,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
           </div>
         </main>
       </div>
+      <HelpAssistant />
     </UnreadProvider>
   )
 }
