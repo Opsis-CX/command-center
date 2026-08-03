@@ -2353,11 +2353,12 @@ function DispoCorrectionsReport({ range }) {
   const [err, setErr] = useState('')
   useEffect(() => {
     let active = true; setAudits(null); setErr('')
-    const fromISO = new Date(range.from + 'T00:00:00').toISOString()
-    const toISO = new Date(range.to + 'T23:59:59').toISOString()
+    // Filter by CALL DATE (the date the call happened), matching the export's Date
+    // column and what's useful for re-dispositioning in Five9. call_date is a DATE
+    // column, so range.from/range.to ('YYYY-MM-DD') can be compared directly.
     ;(async () => {
       const [{ data, error }, { data: profs }] = await Promise.all([
-        supabase.from('qa_audits').select('*').gte('created_at', fromISO).lte('created_at', toISO).order('created_at', { ascending: false }),
+        supabase.from('qa_audits').select('*').gte('call_date', range.from).lte('call_date', range.to).order('call_date', { ascending: false }),
         supabase.from('profiles').select('id, full_name'),
       ])
       if (!active) return
@@ -2383,8 +2384,11 @@ function DispoCorrectionsReport({ range }) {
     downloadCSV(`disposition-corrections-${isoDay(new Date())}.csv`, out)
   }
   function exportSlim() {
-    const header = ['Call ID', 'Current Disposition', 'Correct Disposition']
-    const out = [header, ...rows.map(a => [a.call_id || '', a.current_disposition || '', a.correct_disposition || ''])]
+    const header = ['Call ID', 'Date', 'Brand', 'Current Disposition', 'Corrected Disposition']
+    const out = [header, ...rows.map(a => [
+      a.call_id || '', a.call_date || '', a.brand || '',
+      a.current_disposition || '', a.correct_disposition || '',
+    ])]
     downloadCSV(`disposition-corrections-slim-${isoDay(new Date())}.csv`, out)
   }
 
@@ -2432,7 +2436,7 @@ function DispoCorrectionsReport({ range }) {
           </table>
         </div>
       </div>
-      <p className="page-sub" style={{ fontSize: 12 }}>From QA audits where the auditor entered a corrected disposition (same source as the Quality Audit module). The slim export (Call ID + Current + Correct) is the one for re-dispositioning in Five9.</p>
+      <p className="page-sub" style={{ fontSize: 12 }}>From QA audits where the auditor entered a corrected disposition (same source as the Quality Audit module). The date range above filters by <strong>call date</strong>. The slim export (Call ID · Date · Brand · Current · Corrected) is the one for re-dispositioning in Five9.</p>
     </div>
   )
 }
