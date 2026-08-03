@@ -269,6 +269,16 @@ export function RichEditor({
     },
   }, [variant, disabled])
 
+  // On phones the chat composer's formatting toolbar (10 icons) is clutter —
+  // collapse it behind a single "Aa" toggle.
+  const [narrow, setNarrow] = React.useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)
+  const [fmtOpen, setFmtOpen] = React.useState(false)
+  useEffect(() => {
+    const onR = () => setNarrow(window.innerWidth <= 768)
+    window.addEventListener('resize', onR)
+    return () => window.removeEventListener('resize', onR)
+  }, [])
+
   // Expose an imperative handle, matching the old composer's shape so callers
   // don't have to change how they clear / focus / insert emoji.
   useEffect(() => {
@@ -287,9 +297,20 @@ export function RichEditor({
 
   if (!editor) return null
 
+  const collapsibleToolbar = narrow && variant === 'chat'
   return (
     <div className={'re-wrap' + (disabled ? ' disabled' : '')}>
-      <Toolbar editor={editor} items={TOOLBARS[variant] || TOOLBARS.full} />
+      {collapsibleToolbar ? (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '2px 2px 0' }}>
+            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => setFmtOpen(o => !o)} title="Formatting"
+              style={{ border: '1px solid var(--line)', background: fmtOpen ? 'var(--canvas)' : 'transparent', borderRadius: 6, fontSize: 12, fontWeight: 700, padding: '2px 9px', cursor: 'pointer', color: 'var(--ink-soft)' }}>Aa</button>
+          </div>
+          {fmtOpen && <Toolbar editor={editor} items={TOOLBARS[variant] || TOOLBARS.full} />}
+        </>
+      ) : (
+        <Toolbar editor={editor} items={TOOLBARS[variant] || TOOLBARS.full} />
+      )}
       <EditorContent editor={editor} />
     </div>
   )
