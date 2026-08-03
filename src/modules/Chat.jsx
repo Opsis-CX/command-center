@@ -1307,24 +1307,24 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, position: 'relative' }}>
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', flex: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ padding: isMobile ? '10px 12px' : '14px 18px', borderBottom: '1px solid var(--line)', flex: 'none', display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, flexWrap: 'nowrap' }}>
         {isMobile && (
           <button onClick={onBack} title="Back to channels"
-            style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 20, color: 'var(--accent)', padding: '0 4px 0 0', fontFamily: 'inherit', flex: 'none' }}>‹</button>
+            style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 22, lineHeight: 1, color: 'var(--accent)', padding: '0 2px 0 0', fontFamily: 'inherit', flex: 'none' }}>‹</button>
         )}
         <div style={{ minWidth: 0, flex: 1 }}>
-          <b style={{ fontSize: 15 }}>{channel?.is_dm ? (dmName || 'Direct message') : `# ${channel?.name}`}</b>
-          {channel?.description && !channel?.is_dm && <div className="page-sub" style={{ fontSize: 12.5 }}>{channel.description}</div>}
+          <b style={{ fontSize: 15, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{channel?.is_dm ? (dmName || 'Direct message') : `# ${channel?.name}`}</b>
+          {channel?.description && !channel?.is_dm && <div className="page-sub" style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{channel.description}</div>}
           {channel?.is_dm && <div className="page-sub" style={{ fontSize: 12 }}>{(dmName || '').includes(',') ? `Group message · ${(dmName || '').split(',').length + 1} people` : 'Direct message'}</div>}
         </div>
         {(String(me?.role || '').toLowerCase() !== 'agent' || me?.is_admin) && (
-          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', flex: 'none' }}
-            onClick={startVideoCall} disabled={callBusy} title="Start a video call">{callBusy ? '…' : '📹 Call'}</button>
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: isMobile ? '6px 9px' : '5px 10px', flex: 'none' }}
+            onClick={startVideoCall} disabled={callBusy} title="Start a video call">{callBusy ? '…' : (isMobile ? '📹' : '📹 Call')}</button>
         )}
-        <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', flex: 'none' }}
+        <button className="btn btn-ghost" style={{ fontSize: 12, padding: isMobile ? '6px 9px' : '5px 10px', flex: 'none' }}
           onClick={() => setShowPrefs(true)} title="Notification settings">🔔</button>
         {!channel?.is_dm && (
-          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', flex: 'none' }} onClick={() => setShowMembers(true)}>👥 Members</button>
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: isMobile ? '6px 9px' : '5px 10px', flex: 'none' }} onClick={() => setShowMembers(true)} title="Members">{isMobile ? '👥' : '👥 Members'}</button>
         )}
       </div>
 

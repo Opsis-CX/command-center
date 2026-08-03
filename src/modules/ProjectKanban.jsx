@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useProjectsData } from './projectsData'
 import { PriorityBadge, DueLabel, AvatarStack, SearchBox } from './projectBits'
 import { dueCls } from './projectHelpers'
@@ -31,6 +31,15 @@ export default function ProjectKanban({ activeProject, setActiveProject, onOpenT
     try { localStorage.setItem('kanbanMineOnly', String(next)) } catch { /* private mode */ }
     return next
   })
+
+  // On phones, five fixed columns become an unreadable sideways scroll.
+  // Stack them into one full-width column instead.
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)
+  useEffect(() => {
+    const onR = () => setNarrow(window.innerWidth <= 768)
+    window.addEventListener('resize', onR)
+    return () => window.removeEventListener('resize', onR)
+  }, [])
 
   const q = search.trim().toLowerCase()
   const myTaskIds = new Set(taskAssignees.filter(a => a.profile_id === userId).map(a => a.task_id))
@@ -74,7 +83,7 @@ export default function ProjectKanban({ activeProject, setActiveProject, onOpenT
       </div>
 
       {/* board */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(200px, 1fr))', gap: 14, alignItems: 'start', overflowX: 'auto' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : 'repeat(5, minmax(200px, 1fr))', gap: narrow ? 10 : 14, alignItems: 'start', overflowX: narrow ? 'visible' : 'auto' }}>
         {COLS.map(col => {
           const ct = tasks.filter(t => t.status === col.key)
           return (
