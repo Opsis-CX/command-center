@@ -1522,31 +1522,32 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
           </div>
         )}
 
-        {/* Schedule-send control. Any member can queue the composed message. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: schedOpen ? 8 : 6 }}>
-          <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }}
-            onClick={() => { setSchedOpen(o => { const n = !o; if (n && !schedAt) setSchedAt(defaultSchedAt()); return n }) }}>
-            🕗 {schedOpen ? 'Cancel schedule' : 'Schedule send'}
-          </button>
-          {schedOpen && (
-            <>
-              <input type="datetime-local" value={schedAt} onChange={e => setSchedAt(e.target.value)}
-                style={{ padding: '5px 8px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }} />
-              <button className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={scheduleMessage} disabled={!schedAt}>Schedule</button>
-              <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>Delivers at your chosen time. (Text only — no attachments.)</span>
-            </>
-          )}
-        </div>
-
-        {canPostUpdate && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, fontSize: 12.5, color: requireAck ? 'var(--accent)' : 'var(--ink-soft)', cursor: 'pointer', fontWeight: requireAck ? 600 : 400 }}>
-            <input type="checkbox" checked={requireAck} onChange={e => setRequireAck(e.target.checked)} style={{ flex: 'none' }} />
-            <span>
-              Post as <b>@update</b>
-              {!isMobile && ' — require everyone to confirm they\'ve read it'}
-            </span>
-          </label>
-        )}
+        {/* Post-as-@update (left) + Schedule-send (pushed right) share one row to save vertical space. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+            {canPostUpdate && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: requireAck ? 'var(--accent)' : 'var(--ink-soft)', cursor: 'pointer', fontWeight: requireAck ? 600 : 400 }}>
+                <input type="checkbox" checked={requireAck} onChange={e => setRequireAck(e.target.checked)} style={{ flex: 'none' }} />
+                <span>
+                  Post as <b>@update</b>
+                  {!isMobile && ' — require everyone to confirm they\'ve read it'}
+                </span>
+              </label>
+            )}
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }}
+                onClick={() => { setSchedOpen(o => { const n = !o; if (n && !schedAt) setSchedAt(defaultSchedAt()); return n }) }}>
+                🕗 {schedOpen ? 'Cancel schedule' : 'Schedule send'}
+              </button>
+              {schedOpen && (
+                <>
+                  <input type="datetime-local" value={schedAt} onChange={e => setSchedAt(e.target.value)}
+                    style={{ padding: '5px 8px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }} />
+                  <button className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={scheduleMessage} disabled={!schedAt}>Schedule</button>
+                  {!isMobile && <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>Delivers at your chosen time. (Text only — no attachments.)</span>}
+                </>
+              )}
+            </div>
+          </div>
 
         {pending.length > 0 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
