@@ -18,10 +18,10 @@ const MATRIX = {
   'service_performance_scorecard': ['agent'],
   // Quality Audit isn't on the roles sheet — left as-is. Confirm whether the new
   // "quality" role should be added here (and to is_qa_auditor() in Supabase).
-  'quality_audit': ['certification', 'admin'],
-  'quality_audit.enter_audits': ['certification', 'admin'],
-  'quality_audit.view_own': ['certification', 'admin'],
-  'quality_audit.call_reviews': ['certification', 'admin'],
+  'quality_audit': ['asc', 'certification', 'admin'],
+  'quality_audit.enter_audits': ['asc', 'certification', 'admin'],
+  'quality_audit.view_own': ['asc', 'certification', 'admin'],
+  'quality_audit.call_reviews': ['asc', 'certification', 'admin'],
   'service_performance_scorecard.view_personal_scorecard': ['agent', 'admin'],
   'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard.edit_scorecard': ['admin'],
@@ -75,23 +75,31 @@ const MATRIX = {
   'tokens.view_own': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
   'tokens.award': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'tokens.admin': ['admin'],
+  // Token ledger / Awards Log report — read-only audit of all token activity.
+  'tokens.ledger': ['certification', 'quality', 'admin'],
   // Who's On — live check-ins + current task (floor oversight). Restores the
   // old Dashboard's "On now" view.
   'live_status': ['admin', 'asc', 'certification', 'quality'],
 }
 // can(role, "schedule.create_schedules") -> boolean
+// A person can hold MORE THAN ONE role, stored as a comma-separated list in
+// profiles.role (e.g. "asc,marketing"). They get the UNION of every listed
+// role's permissions. A single role (the common case) still works unchanged.
+function rolesOf(role) {
+  return String(role || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean)
+}
 export function can(role, perm) {
-  const r = String(role || '').trim().toLowerCase()
-  if (r === 'admin') return true            // admin always passes
+  const roles = rolesOf(role)
+  if (roles.includes('admin')) return true   // admin always passes
   const allowed = MATRIX[perm]
   if (!allowed) return false
-  return allowed.includes(r)
+  return roles.some(r => allowed.includes(r))
 }
 // Convenience: does this role have ANY capability under a page prefix?
 // Used for nav gating (show the page if they can do anything on it).
 export function canAny(role, pagePrefix) {
-  const r = String(role || '').trim().toLowerCase()
-  if (r === 'admin') return true
-  return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + ".")) && MATRIX[k].includes(r))
+  const roles = rolesOf(role)
+  if (roles.includes('admin')) return true
+  return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + '.')) && MATRIX[k].some(r => roles.includes(r)))
 }
 export const ALL_PERMS = Object.keys(MATRIX)
