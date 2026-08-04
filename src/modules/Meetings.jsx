@@ -15,6 +15,7 @@ const STATUS_STYLE = {
   transcribing: { bg: '#fef9c3', fg: '#854d0e', label: 'Transcribing…' },
   ready: { bg: '#e0f2fe', fg: '#075985', label: 'Ready' },
   summarizing: { bg: '#fef9c3', fg: '#854d0e', label: 'Summarizing…' },
+  cancelled: { bg: '#f1f5f9', fg: '#475569', label: 'Notetaker off' },
   done: { bg: '#dcfce7', fg: '#166534', label: 'Done' },
   error: { bg: '#fee2e2', fg: '#b91c1c', label: 'Error' },
 }
@@ -248,9 +249,19 @@ function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted })
     await supabase.from('meetings').delete().eq('id', meeting.id)
     await onDeleted()
   }
+  async function removeNotetaker() {
+    if (!confirm('Remove the notetaker from this meeting? The bot won’t join (or leaves if already in), and it won’t be re-added.')) return
+    onError(''); setBusy('cancelling')
+    try {
+      const { error } = await supabase.functions.invoke('recall-cancel', { body: { meeting_id: meeting.id } })
+      if (error) throw new Error(error.message || error)
+      await onRefresh()
+    } catch (e) { onError(String(e.message || e)) } finally { setBusy('') }
+  }
 
   const chip = { display: 'inline-block', padding: '2px 10px', borderRadius: 999, background: 'var(--canvas, #f1f5f9)', border: '1px solid var(--line)', fontSize: 12, marginRight: 6, marginBottom: 6 }
-  const working = busy === 'processing' || busy === 'tasks'
+  const working = busy === 'processing' || busy === 'tasks' || busy === 'cancelling'
+  const canRemoveBot = meeting.source === 'recall' && meeting.recall_bot_id && ['new', 'transcribing'].includes(meeting.status)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -268,6 +279,11 @@ function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted })
             <button className="btn btn-ghost" onClick={reprocess} disabled={working} title="Re-run summary + action items">
               {busy === 'processing' ? 'Working…' : '↻ Re-summarize'}
             </button>
+            {canRemoveBot && (
+              <button className="btn btn-ghost" onClick={removeNotetaker} disabled={working} title="Cancel the notetaker for this meeting">
+                {busy === 'cancelling' ? 'Removing…' : '✖ Remove notetaker'}
+              </button>
+            )}
             <button className="btn btn-ghost" onClick={del} disabled={working} style={{ color: 'var(--failed, #b42318)' }}>Delete</button>
           </div>
         </div>
