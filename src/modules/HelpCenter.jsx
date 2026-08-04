@@ -106,7 +106,10 @@ function SlaBadges({ t }) {
 // ============================================================
 export default function HelpCenter() {
   const { user, appRole, isAdmin } = useAuth()
-  const isStaff = isAdmin || ['asc', 'admin'].includes(String(appRole || '').toLowerCase())
+  // NOTE: appRole can be a comma-separated list of roles (e.g. "asc,marketing"),
+  // so match each role individually — a plain includes() on the whole string
+  // wrongly treated multi-role coordinators (like an asc,marketing) as agents.
+  const isStaff = isAdmin || String(appRole || '').toLowerCase().split(',').map(s => s.trim()).some(r => r === 'asc' || r === 'admin')
   const [tab, setTab] = useState('tickets')
 
   return (
