@@ -183,7 +183,7 @@ export default function Reporting() {
   const [pickerOpen, setPickerOpen] = useState(true)  // catalog / saved-report picker visible
   const [expanded, setExpanded] = useState({})        // category label -> open?
   const [search, setSearch] = useState('')            // report-tree search
-  const [filters, setFilters] = useState({ personId: 'all', tagId: 'all', role: 'all' })
+  const [filters, setFilters] = useState({ personId: 'all', tagId: 'all', role: 'all', clientId: 'all' })
   const [savedReports, setSavedReports] = useState([])
   const [savingReport, setSavingReport] = useState(false)
   const [builderInitial, setBuilderInitial] = useState(null) // config when opening a saved custom-built report
@@ -234,7 +234,7 @@ export default function Reporting() {
   }, [peopleFull])
 
   function selectReport(key) { setView(key) }
-  function backToCatalog() { setView(null); setFilters({ personId: 'all', tagId: 'all', role: 'all' }) }
+  function backToCatalog() { setView(null); setFilters({ personId: 'all', tagId: 'all', role: 'all', clientId: 'all' }) }
 
   async function saveAsCustom() {
     const name = window.prompt('Name this report:', `${REPORT_META[view]?.name || view} — ${range.from} to ${range.to}`)
@@ -324,6 +324,7 @@ export default function Reporting() {
       if (!min) continue
       const cl = clientOfEntry(e)
       const clientKey = cl ? cl.id : '__none__'
+      if (filters.clientId !== 'all' && clientKey !== filters.clientId) continue
       clientLabel[clientKey] = cl ? cl.name : 'No client'
 
       if (!byPerson[e.user_id]) byPerson[e.user_id] = { total: 0, clients: {} }
@@ -335,9 +336,9 @@ export default function Reporting() {
       byClient[clientKey].people[e.user_id] = (byClient[clientKey].people[e.user_id] || 0) + min
     }
     return { byPerson, byClient, clientLabel }
-  }, [entries, clientOfEntry, allowedIds])
+  }, [entries, clientOfEntry, allowedIds, filters.clientId])
 
-  const grandTotal = useMemo(() => hoursFromMinutes(entries.filter(e => !allowedIds || allowedIds.has(e.user_id)).reduce((s, e) => s + (e.duration_minutes || 0), 0)), [entries, allowedIds])
+  const grandTotal = useMemo(() => hoursFromMinutes(entries.filter(e => (!allowedIds || allowedIds.has(e.user_id)) && (filters.clientId === 'all' || ((clientOfEntry(e)?.id) || '__none__') === filters.clientId)).reduce((s, e) => s + (e.duration_minutes || 0), 0)), [entries, allowedIds, filters.clientId, clientOfEntry])
 
   // COMPARE: per-person scheduled vs clock vs task minutes
   const comparison = useMemo(() => {
@@ -403,6 +404,7 @@ export default function Reporting() {
       if (!min) continue
       const cl = clientOfEntry(e)
       const clientKey = cl ? cl.id : '__none__'
+      if (filters.clientId !== 'all' && clientKey !== filters.clientId) continue
       const isMeeting = !e.task_id
       const itemKey = isMeeting ? ('m:' + e.id) : ('t:' + e.task_id)
       const key = e.user_id + '||' + itemKey
@@ -410,7 +412,7 @@ export default function Reporting() {
       map[key].minutes += min
     }
     return Object.values(map)
-  }, [entries, clientOfEntry, allowedIds])
+  }, [entries, clientOfEntry, allowedIds, filters.clientId])
 
   function exportPersonCSV() {
     const header = ['Person', 'Client', 'Task', 'Hours']
@@ -684,6 +686,16 @@ export default function Reporting() {
                 {roleOptions.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
               </select>
             </div>
+            {(view === 'client' || view === 'person') && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={lbl}>Client</label>
+                <select value={filters.clientId} onChange={e => setFilters(f => ({ ...f, clientId: e.target.value }))} style={inp}>
+                  <option value="all">All clients</option>
+                  {clients.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  <option value="__none__">No client</option>
+                </select>
+              </div>
+            )}
           </>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
