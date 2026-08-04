@@ -15,9 +15,17 @@ export function AuthProvider({ children }) {
     const uid = sess?.user?.id
     if (!uid) { setAppRole('agent'); setClientId(null); return }
     try {
-      const { data } = await supabase.from('profiles').select('role, client_id').eq('id', uid).maybeSingle()
+      const { data } = await supabase.from('profiles').select('role, client_id, timezone').eq('id', uid).maybeSingle()
       setAppRole(data?.role || 'agent')
       setClientId(data?.client_id || null)
+      // Auto-capture each person's real timezone from their computer so timezones
+      // stay accurate without manual entry. Only writes when it actually changed.
+      try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+        if (tz && data && data.timezone !== tz) {
+          await supabase.from('profiles').update({ timezone: tz }).eq('id', uid)
+        }
+      } catch { /* ignore timezone detection errors */ }
     } catch { setAppRole('agent'); setClientId(null) }
   }
 
