@@ -17,6 +17,9 @@ const SECTIONS = [
   { key: 'close_next_steps', label: 'Close & Next Steps' },
 ]
 const RUBRIC_ORDER = ['greeting', 'verify', 'callflow', 'knowledge', 'appointment', 'professionalism', 'rebuttals', 'hold', 'nextsteps', 'closing']
+// Program/client scope for the Call QA screen. `garagedoor` = GarageCo (external client);
+// `lavin` / `open_invoices` = Opsis's own internal Five9 programs. Keys must match ai_qa_reviews.campaign.
+const PROGRAM_LABELS = { garagedoor: 'GarageCo', lavin: 'Lavin', open_invoices: 'Open Invoices' }
 const TEAL = '#0f766e'
 const canViewAll = (r) => can(r, 'quality_audit.call_reviews') || can(r, 'service_performance_scorecard.view_all_scorecards')
 
@@ -137,6 +140,7 @@ export default function CallQA({ portal = false } = {}) {
   const [brand, setBrand] = useState('all')
   const [agent, setAgent] = useState('all')
   const [topic, setTopic] = useState('all')
+  const [program, setProgram] = useState('garagedoor') // GarageCo vs internal programs (Lavin / Open Invoices)
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -180,6 +184,14 @@ export default function CallQA({ portal = false } = {}) {
     return () => { active = false }
   }, [user?.id])
 
+  // Program scope. Only Opsis managers get the GarageCo↔internal switcher; everyone else
+  // (portal clients, agents) is left unfiltered so RLS alone governs what they see —
+  // that avoids hiding an internal agent's own Lavin/Open-Invoices reviews.
+  const scoped = useMemo(() => ((canManage && program !== 'all') ? rows.filter((r) => r.campaign === program) : rows), [rows, program, canManage])
+  const programOpts = useMemo(() => {
+    const camps = Array.from(new Set(['garagedoor', ...settings.map((s) => s.campaign).filter(Boolean)]))
+    return [['all', 'All programs'], ...camps.map((c) => [c, PROGRAM_LABELS[c] || c])]
+  }, [settings])
   const customRange = Boolean(startDate || endDate) // explicit calendar dates take over from the Range preset
   const filtered = useMemo(() => {
     // Default window from the "Range" preset…
@@ -187,7 +199,7 @@ export default function CallQA({ portal = false } = {}) {
     // …unless a start and/or end date is chosen on the calendar, which overrides it.
     const start = startDate ? new Date(startDate + 'T00:00:00') : null
     const end = endDate ? new Date(endDate + 'T23:59:59.999') : null
-    return rows.filter((r) => {
+    return scoped.filter((r) => {
       const c = r.call || {}
       const d = c.call_date ? new Date(c.call_date) : new Date(r.created_at)
       if (customRange) {
@@ -199,7 +211,7 @@ export default function CallQA({ portal = false } = {}) {
       if (topic !== 'all' && !(r.topics || []).includes(topic)) return false
       return true
     })
-  }, [rows, days, startDate, endDate, customRange, brand, agent, topic])
+  }, [scoped, days, startDate, endDate, customRange, brand, agent, topic])
 
   // Date-range-only view (ignores the brand/agent/topic pickers) — the Scorecards
   // hub has its own brand/agent selectors, so it works off this wider set.
@@ -207,14 +219,14 @@ export default function CallQA({ portal = false } = {}) {
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days)
     const start = startDate ? new Date(startDate + 'T00:00:00') : null
     const end = endDate ? new Date(endDate + 'T23:59:59.999') : null
-    return rows.filter((r) => {
+    return scoped.filter((r) => {
       const c = r.call || {}
       const d = c.call_date ? new Date(c.call_date) : new Date(r.created_at)
       if (customRange) { if (start && d < start) return false; if (end && d > end) return false }
       else if (d < cutoff) return false
       return true
     })
-  }, [rows, days, startDate, endDate, customRange])
+  }, [scoped, days, startDate, endDate, customRange])
 
   // Agent options are scoped to the current date range + selected brand, so picking
   // a brand narrows the CSR list to that brand's agents (not everyone).
@@ -222,8 +234,8 @@ export default function CallQA({ portal = false } = {}) {
     const pool = dateFiltered.filter((r) => brand === 'all' || (r.call || {}).brand === brand)
     return Array.from(new Set(pool.map(agentOf).filter(Boolean))).sort()
   }, [dateFiltered, brand])
-  const brands = useMemo(() => Array.from(new Set(rows.map((r) => r.call?.brand).filter(Boolean))).sort(), [rows])
-  const topicList = useMemo(() => Array.from(new Set(rows.flatMap((r) => r.topics || []))).sort(), [rows])
+  const brands = useMemo(() => Array.from(new Set(scoped.map((r) => r.call?.brand).filter(Boolean))).sort(), [scoped])
+  const topicList = useMemo(() => Array.from(new Set(scoped.flatMap((r) => r.topics || []))).sort(), [scoped])
 
   const agg = useMemo(() => {
     const scored = filtered.filter(isScored)
@@ -341,6 +353,7 @@ export default function CallQA({ portal = false } = {}) {
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', margin: '16px 0' }}>
+        {canManage && <Select label="Program" value={program} onChange={(v) => { setProgram(v); setBrand('all'); setAgent('all') }} opts={programOpts} />}
         <Select label="Range" value={days} onChange={(v) => setDays(Number(v))} opts={[[7, 'Last 7 days'], [30, 'Last 30 days'], [90, 'Last 90 days'], [3650, 'All time']]} disabled={customRange} title={customRange ? 'Using the custom date range below' : undefined} />
         <DateField label="Start date" value={startDate} max={endDate || todayStr} onChange={setStartDate} />
         <DateField label="End date" value={endDate} min={startDate || undefined} max={todayStr} onChange={setEndDate} />
