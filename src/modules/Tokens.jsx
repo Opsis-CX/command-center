@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { can } from '../lib/permissions'
 
 // ============================================================
 // TOKENS — employee rewards (Connecteam Tokens, rebuilt).
@@ -41,6 +42,7 @@ function statusBadge(s) {
 export default function Tokens() {
   const { user, isAdmin, appRole } = useAuth()
   const canAward = isAdmin || AWARD_ROLES.includes(String(appRole || '').toLowerCase())
+  const canViewLedger = isAdmin || can(appRole, 'tokens.ledger')
   const [tab, setTab] = useState('wallet')
 
   return (
@@ -54,6 +56,7 @@ export default function Tokens() {
         <button style={tabBtn(tab === 'redeem')} onClick={() => setTab('redeem')}>Redeem</button>
         {canAward && <button style={tabBtn(tab === 'award')} onClick={() => setTab('award')}>Award</button>}
         <button style={tabBtn(tab === 'leaderboard')} onClick={() => setTab('leaderboard')}>Leaderboard</button>
+        {canViewLedger && <button style={tabBtn(tab === 'ledger')} onClick={() => setTab('ledger')}>Awards Log</button>}
         {isAdmin && <button style={tabBtn(tab === 'admin')} onClick={() => setTab('admin')}>Admin</button>}
       </div>
 
@@ -61,6 +64,7 @@ export default function Tokens() {
       {tab === 'redeem' && <RedeemTab user={user} />}
       {tab === 'award' && canAward && <AwardTab user={user} isAdmin={isAdmin} />}
       {tab === 'leaderboard' && <LeaderboardTab user={user} />}
+      {tab === 'ledger' && canViewLedger && <AdminLedger />}
       {tab === 'admin' && isAdmin && <AdminTab />}
     </div>
   )
@@ -424,6 +428,116 @@ function AdminTab() {
       {sub === 'adjust' && <AdminAdjust />}
       {sub === 'redemptions' && <AdminRedemptions />}
       {sub === 'settings' && <AdminSettings />}
+    </div>
+  )
+}
+
+// Full audit log: every token awarded, adjusted, or redeemed — who, how many, and why.
+// Backed by the admin-only SECURITY DEFINER RPC `token_ledger_admin`.
+const KIND_LABEL = { award: 'Award', adjustment: 'Adjustment', redeem: 'Redemption', redeem_refund: 'Refund' }
+const KIND_FILTERS = [
+  { key: 'all', label: 'All', kind: null },
+  { key: 'award', label: 'Awards', kind: 'award' },
+  { key: 'adjustment', label: 'Adjustments', kind: 'adjustment' },
+  { key: 'redeem', label: 'Redemptions', kind: 'redeem' },
+]
+function fmtDateTime(s) {
+  if (!s) return ''
+  try { return new Date(s).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) } catch { return s }
+}
+function AdminLedger() {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState(null)
+  const [filter, setFilter] = useState('all')
+  const [q, setQ] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(null)
+    const kind = KIND_FILTERS.find(f => f.key === filter)?.kind ?? null
+    const { data, error } = await supabase.rpc('token_ledger_admin', { p_kind: kind, p_profile: null, p_limit: 2000, p_offset: 0 })
+    if (error) setErr(error.message)
+    setRows(data || []); setLoading(false)
+  }, [filter])
+  useEffect(() => { load() }, [load])
+
+  const needle = q.trim().toLowerCase()
+  const shown = needle
+    ? rows.filter(r => [r.recipient_name, r.recipient_email, r.actor_name, r.reason, r.note, r.redemption_brand]
+        .some(v => String(v || '').toLowerCase().includes(needle)))
+    : rows
+
+  const awarded = shown.filter(r => r.delta > 0).reduce((a, r) => a + r.delta, 0)
+  const spent = shown.filter(r => r.delta < 0).reduce((a, r) => a - r.delta, 0)
+
+  function exportCsv() {
+    const cols = ['Date', 'Type', 'Recipient', 'Recipient email', 'Tokens', 'USD value', 'Reason', 'Note', 'Actioned by', 'Balance after', 'Gift card', 'Fulfillment']
+    const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const lines = [cols.join(',')]
+    shown.forEach(r => lines.push([
+      new Date(r.created_at).toISOString(), KIND_LABEL[r.kind] || r.kind, r.recipient_name || '', r.recipient_email || '',
+      r.delta, (Math.abs(r.delta) / RATE).toFixed(2), r.reason || '', r.note || '', r.actor_name || '',
+      r.balance_after ?? '', r.redemption_brand || '', r.redemption_status || '',
+    ].map(esc).join(',')))
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `token-ledger-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div className="card">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={{ fontWeight: 700 }}>Awards log — every token awarded &amp; why</div>
+        <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={load} disabled={loading}>↻ Refresh</button>
+        <button className="btn btn-ghost" onClick={exportCsv} disabled={!shown.length}>⭳ Export CSV</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+        {KIND_FILTERS.map(f => (
+          <button key={f.key} style={{ ...tabBtn(filter === f.key), fontSize: 12, padding: '5px 11px' }} onClick={() => setFilter(f.key)}>{f.label}</button>
+        ))}
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name, reason, note…"
+          style={{ marginLeft: 'auto', minWidth: 200, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--line)', fontFamily: 'inherit', fontSize: 13 }} />
+      </div>
+
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 10 }}>
+        <span><b style={{ color: 'var(--ink)' }}>{shown.length}</b> entr{shown.length === 1 ? 'y' : 'ies'}</span>
+        <span>Awarded <b style={{ color: 'var(--passed,#16a34a)' }}>{awarded.toLocaleString()}</b> ({usd(awarded)})</span>
+        <span>Redeemed <b style={{ color: 'var(--failed,#dc2626)' }}>{spent.toLocaleString()}</b> ({usd(spent)})</span>
+      </div>
+
+      {err && <div style={{ color: 'var(--failed,#dc2626)', fontSize: 13.5, marginBottom: 10 }}>{err}</div>}
+      {loading && <div style={{ color: 'var(--ink-soft)', fontSize: 14 }}>Loading…</div>}
+      {!loading && shown.length === 0 && <div style={{ color: 'var(--ink-soft)', fontSize: 14 }}>No matching activity.</div>}
+
+      {shown.map(r => {
+        const pos = r.delta > 0
+        return (
+          <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--line)' }}>
+            <div style={{ minWidth: 78, fontWeight: 800, fontSize: 15, color: pos ? 'var(--passed,#16a34a)' : 'var(--failed,#dc2626)' }}>
+              {pos ? '+' : ''}{r.delta}
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-soft)' }}>{usd(Math.abs(r.delta))}</div>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>
+                {r.recipient_name || '—'}
+                <span className={`badge ${pos ? 'passed' : 'needed'}`} style={{ marginLeft: 8 }}>{KIND_LABEL[r.kind] || r.kind}</span>
+                {r.reason && <span style={{ marginLeft: 8, fontSize: 12.5, color: 'var(--ink-soft)', fontWeight: 500 }}>{r.reason}</span>}
+              </div>
+              {r.note && <div style={{ fontSize: 13, marginTop: 2 }}>{r.note}</div>}
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2 }}>
+                {fmtDateTime(r.created_at)}
+                {r.actor_name && <> · by <b style={{ fontWeight: 600 }}>{r.actor_name}</b></>}
+                {r.redemption_brand && <> · {r.redemption_brand}</>}
+                {r.redemption_status && <> · {r.redemption_status}</>}
+                {r.balance_after != null && <> · balance after {r.balance_after}</>}
+              </div>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
