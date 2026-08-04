@@ -54,8 +54,9 @@ const MATRIX = {
   'schedule.accept_and_release_intervals_on_an_assigned_schedule': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
   'schedule.ability_to_assign_agents_to_schedules': ['certification', 'admin'],
   'schedule.view_my_schedule': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
-  // Not on the roles sheet — left as-is.
-  'schedule.view_all_schedules': ['certification', 'admin'],
+  // ASC (Kerri) added so coordinators can SEE all published schedules in the
+  // Schedule view (they manage staffing but aren't on any agent roster/audience).
+  'schedule.view_all_schedules': ['asc', 'certification', 'admin'],
   'reporting': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'people_and_tags.view_only': ['asc', 'quality', 'admin'],
   'people_and_tags.edit': ['certification', 'admin'],
