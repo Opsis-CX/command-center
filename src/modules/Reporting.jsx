@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { ROLES, can, canAny } from '../lib/permissions'
@@ -50,8 +50,61 @@ function presetRange(preset) {
   if (preset === 'last7') { const f = new Date(now); f.setDate(now.getDate() - 6); return { from: isoDay(f), to: isoDay(now) } }
   if (preset === 'last30') { const f = new Date(now); f.setDate(now.getDate() - 29); return { from: isoDay(f), to: isoDay(now) } }
   if (preset === 'month') { const f = new Date(now.getFullYear(), now.getMonth(), 1); return capToday({ from: isoDay(f), to: isoDay(now) }) }
+  if (preset === 'lastmonth') { const f = new Date(now.getFullYear(), now.getMonth() - 1, 1); const t = new Date(now.getFullYear(), now.getMonth(), 0); return { from: isoDay(f), to: isoDay(t) } }
   if (preset === 'week') return defaultRange()
   return null // 'custom'
+}
+
+// Reusable multi-select dropdown (checkbox list). Empty selection = "all".
+function MultiSelect({ options, selected, onChange, allLabel }) {
+  const sel = selected || []
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+  const toggle = (v) => {
+    const s = new Set(sel)
+    if (s.has(v)) s.delete(v); else s.add(v)
+    onChange([...s])
+  }
+  const summary = sel.length === 0 ? allLabel
+    : sel.length === 1 ? (options.find(o => o.value === sel[0])?.label || '1 selected')
+    : `${sel.length} selected`
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        style={{ ...inp, minWidth: 170, textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary}</span>
+        <span style={{ opacity: .6, fontSize: 11 }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', zIndex: 40, top: 'calc(100% + 4px)', left: 0, minWidth: '100%', maxHeight: 300, overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, boxShadow: '0 10px 28px rgba(0,0,0,.14)', padding: 6 }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 8px', fontSize: 13, cursor: 'pointer', fontWeight: 600, borderBottom: '1px solid var(--line)' }}>
+            <input type="checkbox" checked={sel.length === 0} onChange={() => onChange([])} /> {allLabel}
+          </label>
+          {options.map(o => (
+            <label key={o.value} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 8px', fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" checked={sel.includes(o.value)} onChange={() => toggle(o.value)} /> {o.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Accept old single-value saved filters ({personId,...}) or new multi ({personIds,...}).
+function normalizeFilters(f) {
+  if (!f) return { personIds: [], tagIds: [], roles: [], clientIds: [] }
+  if (Array.isArray(f.personIds) || Array.isArray(f.clientIds) || Array.isArray(f.tagIds) || Array.isArray(f.roles)) {
+    return { personIds: f.personIds || [], tagIds: f.tagIds || [], roles: f.roles || [], clientIds: f.clientIds || [] }
+  }
+  const one = (v) => (v && v !== 'all') ? [v] : []
+  return { personIds: one(f.personId), tagIds: one(f.tagId), roles: one(f.role), clientIds: one(f.clientId) }
 }
 
 // ---- Five9-style report catalog. Each leaf key maps to a `view`. Adding a
@@ -183,7 +236,7 @@ export default function Reporting() {
   const [pickerOpen, setPickerOpen] = useState(true)  // catalog / saved-report picker visible
   const [expanded, setExpanded] = useState({})        // category label -> open?
   const [search, setSearch] = useState('')            // report-tree search
-  const [filters, setFilters] = useState({ personId: 'all', tagId: 'all', role: 'all', clientId: 'all' })
+  const [filters, setFilters] = useState({ personIds: [], tagIds: [], roles: [], clientIds: [] })
   const [savedReports, setSavedReports] = useState([])
   const [savingReport, setSavingReport] = useState(false)
   const [builderInitial, setBuilderInitial] = useState(null) // config when opening a saved custom-built report
@@ -215,10 +268,13 @@ export default function Reporting() {
   // Resolve the person/tag filter to a set of allowed profile ids (null = everyone).
   const allowedIds = useMemo(() => {
     let ids = null
-    if (filters.personId !== 'all') ids = new Set([filters.personId])
-    else if (filters.tagId !== 'all') ids = new Set(taggables.filter(t => t.tag_id === filters.tagId).map(t => t.entity_id))
-    if (filters.role && filters.role !== 'all') {
-      const roleIds = new Set(peopleFull.filter(p => p.role === filters.role).map(p => p.id))
+    const personIds = filters.personIds || []
+    const tagIds = filters.tagIds || []
+    const roles = filters.roles || []
+    if (personIds.length) ids = new Set(personIds)
+    else if (tagIds.length) ids = new Set(taggables.filter(t => tagIds.includes(t.tag_id)).map(t => t.entity_id))
+    if (roles.length) {
+      const roleIds = new Set(peopleFull.filter(p => roles.includes(p.role)).map(p => p.id))
       ids = ids ? new Set([...ids].filter(x => roleIds.has(x))) : roleIds
     }
     return ids
@@ -234,7 +290,7 @@ export default function Reporting() {
   }, [peopleFull])
 
   function selectReport(key) { setView(key) }
-  function backToCatalog() { setView(null); setFilters({ personId: 'all', tagId: 'all', role: 'all', clientId: 'all' }) }
+  function backToCatalog() { setView(null); setFilters({ personIds: [], tagIds: [], roles: [], clientIds: [] }) }
 
   async function saveAsCustom() {
     const name = window.prompt('Name this report:', `${REPORT_META[view]?.name || view} — ${range.from} to ${range.to}`)
@@ -253,7 +309,7 @@ export default function Reporting() {
   }
   function openSaved(r) {
     if (r.config?.range) setRange(r.config.range)
-    if (r.config?.filters) setFilters(r.config.filters)
+    if (r.config?.filters) setFilters(normalizeFilters(r.config.filters))
     if (r.report_key === 'builder') { setBuilderInitial(r.config || {}); setBuilderKey(k => k + 1); setView('builder'); setPickerOpen(false); return }
     setView(r.report_key)
     setMode('standard'); setPickerOpen(false)
@@ -324,7 +380,7 @@ export default function Reporting() {
       if (!min) continue
       const cl = clientOfEntry(e)
       const clientKey = cl ? cl.id : '__none__'
-      if (filters.clientId !== 'all' && clientKey !== filters.clientId) continue
+      if (filters.clientIds.length && !filters.clientIds.includes(clientKey)) continue
       clientLabel[clientKey] = cl ? cl.name : 'No client'
 
       if (!byPerson[e.user_id]) byPerson[e.user_id] = { total: 0, clients: {} }
@@ -336,9 +392,9 @@ export default function Reporting() {
       byClient[clientKey].people[e.user_id] = (byClient[clientKey].people[e.user_id] || 0) + min
     }
     return { byPerson, byClient, clientLabel }
-  }, [entries, clientOfEntry, allowedIds, filters.clientId])
+  }, [entries, clientOfEntry, allowedIds, filters.clientIds])
 
-  const grandTotal = useMemo(() => hoursFromMinutes(entries.filter(e => (!allowedIds || allowedIds.has(e.user_id)) && (filters.clientId === 'all' || ((clientOfEntry(e)?.id) || '__none__') === filters.clientId)).reduce((s, e) => s + (e.duration_minutes || 0), 0)), [entries, allowedIds, filters.clientId, clientOfEntry])
+  const grandTotal = useMemo(() => hoursFromMinutes(entries.filter(e => (!allowedIds || allowedIds.has(e.user_id)) && (filters.clientIds.length === 0 || filters.clientIds.includes((clientOfEntry(e)?.id) || '__none__'))).reduce((s, e) => s + (e.duration_minutes || 0), 0)), [entries, allowedIds, filters.clientIds, clientOfEntry])
 
   // COMPARE: per-person scheduled vs clock vs task minutes
   const comparison = useMemo(() => {
@@ -404,7 +460,7 @@ export default function Reporting() {
       if (!min) continue
       const cl = clientOfEntry(e)
       const clientKey = cl ? cl.id : '__none__'
-      if (filters.clientId !== 'all' && clientKey !== filters.clientId) continue
+      if (filters.clientIds.length && !filters.clientIds.includes(clientKey)) continue
       const isMeeting = !e.task_id
       const itemKey = isMeeting ? ('m:' + e.id) : ('t:' + e.task_id)
       const key = e.user_id + '||' + itemKey
@@ -412,7 +468,7 @@ export default function Reporting() {
       map[key].minutes += min
     }
     return Object.values(map)
-  }, [entries, clientOfEntry, allowedIds, filters.clientId])
+  }, [entries, clientOfEntry, allowedIds, filters.clientIds])
 
   function exportPersonCSV() {
     const header = ['Person', 'Client', 'Task', 'Hours']
@@ -648,7 +704,7 @@ export default function Reporting() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={lbl}>Quick range</label>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {[['week', 'This week'], ['last7', 'Last 7'], ['last30', 'Last 30'], ['month', 'This month']].map(([p, l]) => (
+                {[['week', 'This week'], ['last7', 'Last 7'], ['last30', 'Last 30'], ['month', 'This month'], ['lastmonth', 'Last month']].map(([p, l]) => (
                   <button key={p} onClick={() => setRange(presetRange(p))} style={{ ...tabBtn(false), border: '1px solid var(--line)', borderRadius: 8 }}>{l}</button>
                 ))}
               </div>
@@ -667,33 +723,28 @@ export default function Reporting() {
           <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={lbl}>Person</label>
-              <select value={filters.personId} onChange={e => setFilters(f => ({ ...f, personId: e.target.value }))} style={inp}>
-                <option value="all">All people</option>
-                {peopleFull.slice().sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')).map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-              </select>
+              <MultiSelect allLabel="All people" selected={filters.personIds}
+                onChange={v => setFilters(f => ({ ...f, personIds: v }))}
+                options={peopleFull.slice().sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')).map(p => ({ value: p.id, label: p.full_name }))} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={lbl}>Tag</label>
-              <select value={filters.tagId} onChange={e => setFilters(f => ({ ...f, tagId: e.target.value }))} style={inp}>
-                <option value="all">All tags</option>
-                {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+              <MultiSelect allLabel="All tags" selected={filters.tagIds}
+                onChange={v => setFilters(f => ({ ...f, tagIds: v }))}
+                options={tags.map(t => ({ value: t.id, label: t.name }))} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={lbl}>Role</label>
-              <select value={filters.role} onChange={e => setFilters(f => ({ ...f, role: e.target.value }))} style={inp}>
-                <option value="all">All roles</option>
-                {roleOptions.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
-              </select>
+              <MultiSelect allLabel="All roles" selected={filters.roles}
+                onChange={v => setFilters(f => ({ ...f, roles: v }))}
+                options={roleOptions.map(r => ({ value: r, label: ROLE_LABELS[r] || r }))} />
             </div>
             {(view === 'client' || view === 'person') && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={lbl}>Client</label>
-                <select value={filters.clientId} onChange={e => setFilters(f => ({ ...f, clientId: e.target.value }))} style={inp}>
-                  <option value="all">All clients</option>
-                  {clients.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  <option value="__none__">No client</option>
-                </select>
+                <MultiSelect allLabel="All clients" selected={filters.clientIds}
+                  onChange={v => setFilters(f => ({ ...f, clientIds: v }))}
+                  options={[...clients.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(c => ({ value: c.id, label: c.name })), { value: '__none__', label: 'No client' }]} />
               </div>
             )}
           </>
