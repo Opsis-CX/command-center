@@ -160,9 +160,12 @@ export default function CallQA({ portal = false } = {}) {
     setRows(all)
     const [{ data: st }, { data: sk }] = await Promise.all([
       supabase.from('ai_qa_settings').select('*').order('campaign'),
-      supabase.from('integration_secrets').select('key'),
+      // Presence-only RPC (names, never values) — integration_secrets isn't
+      // client-readable, so selecting it directly returned nothing and showed
+      // every key as falsely "MISSING".
+      supabase.rpc('callqa_secret_presence'),
     ])
-    setSettings(st || []); setSecretKeys((sk || []).map((r) => r.key))
+    setSettings(st || []); setSecretKeys(Array.isArray(sk) ? sk : [])
     // exact pipeline counts (head:true transfers no rows, so no 1000-row cap)
     const statuses = ['ingested', 'needs_transcription', 'transcribing', 'ready', 'scoring', 'scored', 'error']
     const counts = {}
@@ -336,7 +339,7 @@ export default function CallQA({ portal = false } = {}) {
   const base = import.meta.env.VITE_SUPABASE_URL || ''
   const inFlight = (pipeline.needs_transcription || 0) + (pipeline.transcribing || 0) + (pipeline.ready || 0) + (pipeline.scoring || 0)
   const todayStr = new Date().toISOString().slice(0, 10)
-  const TABS = [['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['bookings', 'Bookings & Card'], ['calls', 'Calls'], ['fails', 'Lowest Scores'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings']] : [])]
+  const TABS = [['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['bookings', 'Bookings & Card'], ['calls', 'Calls'], ['fails', 'Lowest Scores'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings'], ['import', 'Import']] : [])]
 
   return (
     <div style={{ padding: 20, maxWidth: 1180, margin: '0 auto' }}>
@@ -379,6 +382,7 @@ export default function CallQA({ portal = false } = {}) {
           {tab === 'fails' && <EpicFails rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'rubric' && canManage && <RubricTab campaigns={settings.map((s) => s.campaign)} />}
         {tab === 'settings' && canManage && <SettingsTab settings={settings} secretKeys={secretKeys} pipeline={pipeline} base={base} onSave={saveSetting} busy={busy} />}
+        {tab === 'import' && canManage && <ImportPanel />}
         </>
       )}
       {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onExclude={setExcluded} onAdjust={saveAdjustment} busy={busy} canManage={canManage} meName={meName} userId={user?.id} />}
@@ -1892,6 +1896,186 @@ function buildCallReportHtml(row, c, answers, transcript, notes, includeTranscri
 </body></html>`
 }
 const inp = (w) => ({ padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', width: w, fontSize: 13 })
+// ---- Lightspeed bulk import (managers) ------------------------------------
+// Upload a .zip of Lightspeed WAVs (or the WAVs directly) to a brand's folder.
+// The persistent `callqa-lightspeed-pump` cron ingests + transcribes + scores
+// them automatically; recording links and per-line timestamps are captured on
+// the first pass (no backfill needed). Client/brand/scope drive where they land.
+function ImportPanel() {
+  const [clients, setClients] = useState([])
+  const [clientId, setClientId] = useState('')
+  const [brand, setBrand] = useState('')
+  const [scope, setScope] = useState('inout')
+  const [prefix, setPrefix] = useState('')
+  const [phase, setPhase] = useState('idle') // idle | preparing | uploading | done | error
+  const [prog, setProg] = useState({ done: 0, total: 0, failed: 0, cur: '' })
+  const [status, setStatus] = useState(null)
+  const [err, setErr] = useState('')
+
+  const AUDIO_RE = /\.(wav|mp3|m4a|gsm|ogg|flac)$/i
+
+  useEffect(() => {
+    supabase.from('clients').select('id, portal_name').order('portal_name').then(({ data }) => {
+      const list = (data || []).filter((c) => c.portal_name)
+      setClients(list)
+      const gc = list.find((c) => /garage/i.test(c.portal_name))
+      setClientId((prev) => prev || gc?.id || list[0]?.id || '')
+    })
+  }, [])
+
+  async function loadZipLib() {
+    if (window.zip) return window.zip
+    await new Promise((res, rej) => {
+      const s = document.createElement('script')
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/zip.js/2.7.62/zip.min.js'
+      s.onload = res
+      s.onerror = () => rej(new Error('Could not load the zip reader.'))
+      document.head.appendChild(s)
+    })
+    if (!window.zip) throw new Error('zip reader unavailable')
+    return window.zip
+  }
+
+  async function refreshStatus(b) {
+    try { const { data } = await supabase.rpc('callqa_lightspeed_status', { p_brand: b }); setStatus(data) } catch { /* ignore */ }
+  }
+
+  async function onFiles(fileList) {
+    setErr(''); setStatus(null)
+    const files = Array.from(fileList || [])
+    if (!files.length) return
+    if (!clientId) { setErr('Pick a client first.'); return }
+    if (!brand.trim()) { setErr('Enter a brand (e.g. Apple Door).'); return }
+
+    let dest
+    try {
+      setPhase('preparing')
+      const { data, error } = await supabase.rpc('callqa_lightspeed_register_source',
+        { p_client: clientId, p_brand: brand.trim(), p_scope: scope, p_campaign: 'garagedoor' })
+      if (error) throw error
+      dest = data; setPrefix(data)
+    } catch (e) { setPhase('error'); setErr('Could not prepare destination: ' + (e.message || e)); return }
+
+    const readers = []
+    const jobs = []
+    try {
+      for (const f of files) {
+        if (/\.zip$/i.test(f.name)) {
+          const zip = await loadZipLib()
+          const reader = new zip.ZipReader(new zip.BlobReader(f))
+          readers.push(reader)
+          const entries = await reader.getEntries()
+          for (const e of entries) {
+            if (e.directory || !AUDIO_RE.test(e.filename)) continue
+            jobs.push({ name: e.filename.split('/').pop(), entry: e })
+          }
+        } else if (AUDIO_RE.test(f.name)) {
+          jobs.push({ name: f.name, file: f })
+        }
+      }
+    } catch (e) {
+      for (const r of readers) { try { await r.close() } catch { /* ignore */ } }
+      setPhase('error'); setErr('Could not read the file(s): ' + (e.message || e)); return
+    }
+
+    if (!jobs.length) {
+      for (const r of readers) { try { await r.close() } catch { /* ignore */ } }
+      setPhase('error'); setErr('No audio files (.wav/.mp3/…) found in the selection.'); return
+    }
+
+    setPhase('uploading'); setProg({ done: 0, total: jobs.length, failed: 0, cur: '' })
+    let done = 0, failed = 0
+    for (const j of jobs) {
+      try {
+        setProg((p) => ({ ...p, cur: j.name }))
+        const blob = j.file ? j.file : await j.entry.getData(new window.zip.BlobWriter())
+        const { error } = await supabase.storage.from('qa-recordings')
+          .upload(`${dest}${j.name}`, blob, { upsert: true, contentType: 'audio/wav' })
+        if (error) throw error
+        done++
+      } catch (e) { failed++ }
+      setProg((p) => ({ ...p, done, failed }))
+    }
+    for (const r of readers) { try { await r.close() } catch { /* ignore */ } }
+    setPhase('done')
+    await refreshStatus(brand.trim())
+  }
+
+  // Poll processing status after upload so the counts + checks stay live.
+  useEffect(() => {
+    if (phase !== 'done') return
+    const b = brand.trim(); if (!b) return
+    const t = setInterval(() => refreshStatus(b), 5000)
+    return () => clearInterval(t)
+  }, [phase, brand])
+
+  const busyUp = phase === 'uploading' || phase === 'preparing'
+  const recOk = status && status.missing_recording === 0
+  const tsOk = status && (status.scored || 0) > 0 && status.scored_missing_timestamps === 0
+
+  return (
+    <div style={{ display: 'grid', gap: 16, maxWidth: 720 }}>
+      <Card>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>Bulk import — Lightspeed recordings</div>
+        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
+          Drop a <b>.zip</b> of Lightspeed WAVs (or select the WAVs). They upload to the brand's folder and the
+          pipeline transcribes + scores them automatically within a couple of minutes — inbound &amp; outbound
+          are scored; internal/fragment calls are kept but held. Recording links and per-line timestamps are
+          captured on the first pass.
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <Select label="Client" value={clientId} onChange={setClientId} opts={clients.map((c) => [c.id, c.portal_name])} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Brand</label>
+            <input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Apple Door"
+              style={{ padding: '7px 10px', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14 }} />
+          </div>
+          <Select label="Scope" value={scope} onChange={setScope} opts={[['inout', 'Inbound + outbound'], ['all', 'All call types']]} />
+        </div>
+      </Card>
+
+      <Card>
+        <label style={{ display: 'block', border: '2px dashed #cbd5e1', borderRadius: 12, padding: 24, textAlign: 'center', cursor: busyUp ? 'default' : 'pointer', background: '#f8fafc', opacity: busyUp ? 0.6 : 1 }}>
+          <input type="file" accept=".zip,.wav,.mp3,.m4a,.gsm,.ogg,.flac" multiple style={{ display: 'none' }}
+            onChange={(e) => onFiles(e.target.files)} disabled={busyUp} />
+          <div style={{ fontSize: 15, fontWeight: 600, color: TEAL }}>Choose a .zip or WAV files…</div>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Large zips stream file-by-file — you can leave this tab open.</div>
+        </label>
+
+        {phase === 'preparing' && <div style={{ marginTop: 12, color: '#64748b' }}>Preparing destination…</div>}
+        {(phase === 'uploading' || phase === 'done') && (
+          <div style={{ marginTop: 14 }}>
+            <Bar v={prog.total ? (prog.done + prog.failed) / prog.total * 100 : 0} />
+            <div style={{ fontSize: 13, color: '#475569', marginTop: 6 }}>
+              {prog.done + prog.failed} / {prog.total} uploaded{prog.failed ? ` · ${prog.failed} failed` : ''}{phase === 'uploading' && prog.cur ? ` · ${prog.cur}` : ''}
+            </div>
+          </div>
+        )}
+        {err && <div style={{ marginTop: 12, color: '#b71c1c', fontSize: 13 }}>{err}</div>}
+      </Card>
+
+      {status && (
+        <Card>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>Processing — {status.brand}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            {Object.entries(status.by_status || {}).map(([s, n]) => <Pill key={s} bg="#eef2f7" fg="#334155">{s}: {n}</Pill>)}
+            <Pill bg="#eef2f7" fg="#334155">total: {status.total}</Pill>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Pill bg={recOk ? '#e8f5e9' : '#fff8e1'} fg={recOk ? '#1b5e20' : '#8d6e00'}>
+              {recOk ? '✓' : '⚠'} recordings linked{status.missing_recording ? ` (${status.missing_recording} missing)` : ''}
+            </Pill>
+            <Pill bg={tsOk ? '#e8f5e9' : '#fff8e1'} fg={tsOk ? '#1b5e20' : '#8d6e00'}>
+              {tsOk ? '✓' : '…'} timestamps present{status.scored_missing_timestamps ? ` (${status.scored_missing_timestamps} missing)` : ''}
+            </Pill>
+          </div>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>Auto-refreshing every 5s. Scored calls appear on the scorecards under this brand.</div>
+        </Card>
+      )}
+    </div>
+  )
+}
+
 function btn(kind) {
   if (kind === 'primary') return { background: TEAL, color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }
   return { background: '#fff', color: '#334155', border: '1px solid #cbd5e1', padding: '8px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }
