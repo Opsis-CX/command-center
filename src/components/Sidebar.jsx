@@ -35,6 +35,7 @@ const NAV = [
       { type: 'link', to: '/', label: 'Home Base', ic: '🏠', end: true, perm: null },  // everyone; page scopes itself by tag/role
       { type: 'link', to: '/updates', label: 'Updates', ic: '📣', perm: null },  // everyone; RLS gates audience
       { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },  // everyone; private per-user notebook
+      { type: 'link', to: '/get-to-know-you', label: 'Get to Know You', ic: '🎉', perm: null },  // everyone; team favorites directory
       { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
       { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
       { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: null },  // everyone (staff); notetaker + action items → tasks
