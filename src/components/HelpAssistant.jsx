@@ -17,6 +17,9 @@ import { useAuth } from '../lib/auth';
 
 const TEAL = '#0f766e';
 
+// The launcher now lives in the app header (see App.jsx). It opens this panel by
+// dispatching a `cc:open-help` window event, which we listen for below. Other
+// components can open Help the same way: window.dispatchEvent(new Event('cc:open-help')).
 export default function HelpAssistant() {
   const auth = useAuth() || {};
   const { appRole, isAdmin, isClientPortal } = auth;
@@ -35,6 +38,13 @@ export default function HelpAssistant() {
   useEffect(() => {
     if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
   }, [messages, loading, open]);
+
+  // Open the panel when the header Help button (or anything else) asks us to.
+  useEffect(() => {
+    const openHelp = () => setOpen(true);
+    window.addEventListener('cc:open-help', openHelp);
+    return () => window.removeEventListener('cc:open-help', openHelp);
+  }, []);
 
   if (!show) return null;
 
@@ -82,22 +92,8 @@ export default function HelpAssistant() {
 
   return (
     <>
-      {/* Launcher button */}
-      {!open && (
-        <button
-          onClick={() => setOpen(true)}
-          aria-label="Open Help"
-          style={{
-            position: 'fixed', right: 20, bottom: 20, zIndex: 9998,
-            background: TEAL, color: '#fff', border: 'none', borderRadius: 999,
-            padding: '12px 18px', fontSize: 15, fontWeight: 600, cursor: 'pointer',
-            boxShadow: '0 6px 20px rgba(0,0,0,0.18)', display: 'flex',
-            alignItems: 'center', gap: 8,
-          }}
-        >
-          <span style={{ fontSize: 18 }}>💬</span> Help
-        </button>
-      )}
+      {/* Launcher lives in the app header (App.jsx) and opens this via the
+          `cc:open-help` event — no floating button here anymore. */}
 
       {/* Panel */}
       {open && (
