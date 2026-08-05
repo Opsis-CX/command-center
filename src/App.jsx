@@ -175,6 +175,10 @@ function ClientPortal({ session, clientId }) {
 function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location }) {
   // RSN pipeline visibility (admins + anyone with the 'access/rsn' tag).
   const rsnOk = useRsnAccess()
+  // Help assistant is for non-agent staff only (same gate as HelpAssistant).
+  // The header button below opens the panel via the `cc:open-help` event.
+  const _helpRoles = String(appRole || '').split(',').map(r => r.trim()).filter(Boolean)
+  const helpOk = isAdmin || _helpRoles.some(r => r && r !== 'agent')
   // Agents handed the shared temporary password must set their own before
   // they can use the app. Checked once, on load.
   const [mustChange, setMustChange] = useState(null) // null = still checking
@@ -198,6 +202,15 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <button className="nav-toggle" onClick={() => setNavOpen(o => !o)} aria-label="Menu">☰</button>
               <div className="crumb"><b>{titleFor(location.pathname)}</b></div>
+              {helpOk && (
+                <button
+                  onClick={() => window.dispatchEvent(new Event('cc:open-help'))}
+                  aria-label="Open Help" title="Help"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 999, padding: '5px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  <span style={{ fontSize: 15 }}>💬</span> Help
+                </button>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <HeaderTaskBar />
