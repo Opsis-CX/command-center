@@ -1250,13 +1250,21 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     if (callBusy) return
     setCallBusy(true)
     try {
+      // Pass the channel roster (names) so the notetaker can attribute + gate
+      // visibility even when nobody's calendar carries this ad-hoc call.
+      const nameById = Object.fromEntries((profiles || []).map(p => [p.id, p.full_name]))
+      const participantNames = [...new Set([me.full_name, ...members.map(id => nameById[id])])].filter(Boolean)
       const { data, error } = await supabase.functions.invoke('create-video-call', {
-        body: { title: channel?.is_dm ? `📹 Call · ${dmName || 'Direct message'}` : `📹 Call · #${channel?.name}` },
+        body: {
+          title: channel?.is_dm ? `📹 Call · ${dmName || 'Direct message'}` : `📹 Call · #${channel?.name}`,
+          participants: participantNames,
+        },
       })
       if (error || !data?.url) throw new Error(error?.message || data?.error || 'Could not create the call link.')
 
       const label = channel?.is_dm ? (dmName || 'this conversation') : `#${channel?.name}`
       const body = `📹 <b>${me.full_name || 'Someone'} started a video call</b> — <a href="${data.url}" target="_blank" rel="noopener noreferrer">Join the call</a>` +
+        (data.captured ? ' · 🔴 <i>the notetaker is recording this call</i>' : '') +
         (data.provider === 'jitsi' ? ' <i>(first person in may need to sign in to start the room)</i>' : '')
       const { data: msg, error: mErr } = await supabase.from('messages')
         .insert({ channel_id: channelId, sender_id: me.id, body }).select().single()
