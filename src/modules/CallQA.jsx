@@ -204,7 +204,11 @@ export default function CallQA({ portal = false } = {}) {
     const end = endDate ? new Date(endDate + 'T23:59:59.999') : null
     return scoped.filter((r) => {
       const c = r.call || {}
-      const d = c.call_date ? new Date(c.call_date) : new Date(r.created_at)
+      // call_date is a DATE ('YYYY-MM-DD'); parse it at LOCAL midnight so it lines
+      // up with the start/end pickers (also local). Bare new Date('YYYY-MM-DD')
+      // parses as UTC midnight, which in ET is the night before — that shift made
+      // same-day filters (e.g. today–today) drop the current day entirely.
+      const d = c.call_date ? new Date(c.call_date + 'T00:00:00') : new Date(r.created_at)
       if (customRange) {
         if (start && d < start) return false
         if (end && d > end) return false
@@ -224,7 +228,11 @@ export default function CallQA({ portal = false } = {}) {
     const end = endDate ? new Date(endDate + 'T23:59:59.999') : null
     return scoped.filter((r) => {
       const c = r.call || {}
-      const d = c.call_date ? new Date(c.call_date) : new Date(r.created_at)
+      // call_date is a DATE ('YYYY-MM-DD'); parse it at LOCAL midnight so it lines
+      // up with the start/end pickers (also local). Bare new Date('YYYY-MM-DD')
+      // parses as UTC midnight, which in ET is the night before — that shift made
+      // same-day filters (e.g. today–today) drop the current day entirely.
+      const d = c.call_date ? new Date(c.call_date + 'T00:00:00') : new Date(r.created_at)
       if (customRange) { if (start && d < start) return false; if (end && d > end) return false }
       else if (d < cutoff) return false
       return true
