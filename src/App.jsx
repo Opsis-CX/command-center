@@ -54,6 +54,8 @@ import { useRsnAccess } from './lib/rsnAccess'
 import Tokens from './modules/Tokens'
 // --- live "who's on" status (restored from the old Dashboard) ---
 import LiveStatus from './modules/LiveStatus'
+// --- "Get to Know You" team favorites directory (everyone) ---
+import TeamFavorites from './modules/TeamFavorites'
 // A tiny wrapper so the assessment route can read :appId from the URL and
 // pass it into the form as a prop.
 import { useParams } from 'react-router-dom'
@@ -225,6 +227,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/updates" element={<Updates />} />
               <Route path="/home" element={<OpsisWeekly />} />
               <Route path="/notes" element={<Notes />} />
+              <Route path="/get-to-know-you" element={<TeamFavorites />} />
               <Route path="/meetings" element={<Meetings />} />
               {canAny(appRole, 'reporting') && <Route path="/reporting" element={<Reporting />} />}
               {canAny(appRole, 'reporting') && <Route path="/reporting/hourly" element={<HourlyReports />} />}
@@ -259,7 +262,7 @@ function titleFor(path) {
     '/': 'Home Base', '/certifications': 'Certifications',
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
-    '/chat': 'Chat', '/updates': 'Updates', '/home': 'Home Base', '/notes': 'My Notes', '/meetings': 'Meetings', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
+    '/chat': 'Chat', '/updates': 'Updates', '/home': 'Home Base', '/notes': 'My Notes', '/get-to-know-you': 'Get to Know You', '/meetings': 'Meetings', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/quality': 'Quality', '/call-qa': 'Call QA', '/sales': 'Sales', '/rsn': 'RSN Pipeline', '/help': 'Help Center', '/eod': 'End of Day Report', '/tokens': 'Tokens', '/live': "Who's On",
   }
   return map[path] || 'Command Center'
