@@ -1932,16 +1932,14 @@ function ImportPanel() {
   }, [])
 
   async function loadZipLib() {
-    if (window.zip) return window.zip
-    await new Promise((res, rej) => {
-      const s = document.createElement('script')
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/zip.js/2.7.62/zip.min.js'
-      s.onload = res
-      s.onerror = () => rej(new Error('Could not load the zip reader.'))
-      document.head.appendChild(s)
-    })
-    if (!window.zip) throw new Error('zip reader unavailable')
-    return window.zip
+    if (window.__zipjs) return window.__zipjs
+    // @zip.js/zip.js is ESM-only now (no browser-global build), so load it as a
+    // module from jsDelivr (already used elsewhere in the app for ffmpeg).
+    const mod = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.8.34/+esm')
+    const lib = (mod && mod.ZipReader) ? mod : (mod && mod.default) ? mod.default : mod
+    if (!lib || !lib.ZipReader) throw new Error('Could not load the zip reader.')
+    window.__zipjs = lib
+    return lib
   }
 
   async function refreshStatus(b) {
@@ -1996,7 +1994,7 @@ function ImportPanel() {
     for (const j of jobs) {
       try {
         setProg((p) => ({ ...p, cur: j.name }))
-        const blob = j.file ? j.file : await j.entry.getData(new window.zip.BlobWriter())
+        const blob = j.file ? j.file : await j.entry.getData(new window.__zipjs.BlobWriter())
         const { error } = await supabase.storage.from('qa-recordings')
           .upload(`${dest}${j.name}`, blob, { upsert: true, contentType: 'audio/wav' })
         if (error) throw error
