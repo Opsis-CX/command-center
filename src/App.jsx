@@ -241,7 +241,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/home" element={<OpsisWeekly />} />
               <Route path="/notes" element={<Notes />} />
               <Route path="/get-to-know-you" element={<TeamFavorites />} />
-              <Route path="/meetings" element={<Meetings />} />
+              {canAny(appRole, 'meetings') && <Route path="/meetings" element={<Meetings />} />}
               {canAny(appRole, 'reporting') && <Route path="/reporting" element={<Reporting />} />}
               {canAny(appRole, 'reporting') && <Route path="/reporting/hourly" element={<HourlyReports />} />}
               {canAny(appRole, 'people_and_tags.view_only') && <Route path="/people" element={<PeopleTags />} />}
