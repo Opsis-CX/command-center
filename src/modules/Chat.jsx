@@ -529,22 +529,25 @@ export default function Chat() {
     return () => window.removeEventListener('resize', compute)
   }, [loading])
 
-  if (loading) return <p className="page-sub">Loading chat…</p>
-
-  const openChannel = (id) => { setActiveId(id); setMobileView('convo'); markRead(id) }
-
-  // On mobile, show either the list or the conversation. On desktop, both.
   // Safety net: the shell has overflow:hidden, which is still programmatically
   // scrollable. Anything that nudges it sideways hides the conversation list, so
   // snap it back rather than leaving the sidebar stranded off-screen.
+  // MUST stay above the `if (loading) return` below: a hook after an early
+  // return is skipped on the first render, and the changing hook count crashes
+  // the whole app with React error #310.
   useEffect(() => {
     const el = shellRef.current
     if (!el) return
     const onScroll = () => { if (el.scrollLeft !== 0) el.scrollLeft = 0 }
     el.addEventListener('scroll', onScroll)
     return () => el.removeEventListener('scroll', onScroll)
-  }, [])
+  }, [loading])
 
+  if (loading) return <p className="page-sub">Loading chat…</p>
+
+  const openChannel = (id) => { setActiveId(id); setMobileView('convo'); markRead(id) }
+
+  // On mobile, show either the list or the conversation. On desktop, both.
   const showList = !isMobile || mobileView === 'list'
   const showConvo = !isMobile || mobileView === 'convo'
 
