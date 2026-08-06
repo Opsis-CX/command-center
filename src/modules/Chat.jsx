@@ -534,6 +534,17 @@ export default function Chat() {
   const openChannel = (id) => { setActiveId(id); setMobileView('convo'); markRead(id) }
 
   // On mobile, show either the list or the conversation. On desktop, both.
+  // Safety net: the shell has overflow:hidden, which is still programmatically
+  // scrollable. Anything that nudges it sideways hides the conversation list, so
+  // snap it back rather than leaving the sidebar stranded off-screen.
+  useEffect(() => {
+    const el = shellRef.current
+    if (!el) return
+    const onScroll = () => { if (el.scrollLeft !== 0) el.scrollLeft = 0 }
+    el.addEventListener('scroll', onScroll)
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
+
   const showList = !isMobile || mobileView === 'list'
   const showConvo = !isMobile || mobileView === 'convo'
 
@@ -632,7 +643,7 @@ function SetterChannelView(props) {
   const [view, setView] = useState('board') // 'board' | 'chat'
   const tab = (on) => ({ padding: '5px 14px', fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', background: on ? 'var(--accent, #0d9488)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink-soft)', fontFamily: 'inherit' })
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: 'var(--surface)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, minHeight: 0, background: 'var(--surface)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--line)', flex: 'none' }}>
         {isMobile && <button className="btn btn-ghost" style={{ padding: '4px 8px' }} onClick={onBack}>‹</button>}
         <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
@@ -826,13 +837,13 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         setHighlightId(msg.id)
         // Also bring the parent into view behind the panel if it's loaded.
         setTimeout(() => {
-          document.getElementById('chat-msg-' + msg.parent_id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          document.getElementById('chat-msg-' + msg.parent_id)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
         }, 120)
       } else if (msg) {
         setHighlightId(msg.id)
         stickToBottom.current = false
         setTimeout(() => {
-          document.getElementById('chat-msg-' + msg.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          document.getElementById('chat-msg-' + msg.id)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
         }, 120)
       }
       setTimeout(() => { if (!cancelled) setHighlightId(null) }, 5000)
@@ -1152,9 +1163,18 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   }, [loading])
 
   // New message: follow only if the user was already at the bottom.
+  // Scroll the message list itself rather than calling scrollIntoView on the
+  // sentinel. scrollIntoView walks up and scrolls EVERY scrollable ancestor,
+  // horizontally included — that is what dragged the conversation list out of
+  // view whenever a message was sent. Setting scrollTop can only ever move
+  // this one element, on one axis.
   useEffect(() => {
     if (!didInitialScroll.current || !stickToBottom.current) return
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    const el = scrollerRef.current
+    if (!el) return
+    programmatic.current = true
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    requestAnimationFrame(() => { programmatic.current = false })
   }, [messages.length])
 
   // Attachments arrive after the message and change list height. Re-pin.
@@ -1336,7 +1356,12 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     : null
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, position: 'relative' }}>
+    // minWidth/minHeight 0: this sits in the shell's `1fr` grid track, whose
+    // min-width defaults to AUTO. A wide message (a posted report table) would
+    // otherwise stretch the track past the shell, and the shell's overflow:hidden
+    // can still be scrolled programmatically — which is what pushed the
+    // conversation list off-screen when a message was sent.
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, minHeight: 0, position: 'relative' }}>
       <div style={{ padding: isMobile ? '10px 12px' : '14px 18px', borderBottom: '1px solid var(--line)', flex: 'none', display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, flexWrap: 'nowrap' }}>
         {isMobile && (
           <button onClick={onBack} title="Back to channels"
