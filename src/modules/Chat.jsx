@@ -374,6 +374,7 @@ export default function Chat() {
   const [showCreate, setShowCreate] = useState(false)
   const [showDM, setShowDM] = useState(false)
   const [dmNames, setDmNames] = useState({}) // channelId -> other person's name
+  const [dmPeers, setDmPeers] = useState({}) // channelId -> the other person's profile_id (1:1 DMs only)
   const [mobileView, setMobileView] = useState('list') // 'list' | 'convo' (mobile only)
 
   // Read activeId inside load() without making load() depend on it (stale-closure fix).
@@ -427,12 +428,14 @@ export default function Chat() {
           const { data: profs } = await supabase.from('profiles').select('id, full_name').in('id', ids)
           const nameById = {}; (profs || []).forEach(p => nameById[p.id] = p.full_name)
           const map = {}
+          const peers = {}
           Object.entries(othersByChannel).forEach(([cid, pids]) => {
             if (pids.length === 0) map[cid] = 'Just you'
-            else if (pids.length === 1) map[cid] = nameById[pids[0]] || 'Unknown'
+            else if (pids.length === 1) { map[cid] = nameById[pids[0]] || 'Unknown'; peers[cid] = pids[0] }
             else map[cid] = pids.map(pid => (nameById[pid] || 'Unknown').split(' ')[0]).sort().join(', ')
           })
           setDmNames(map)
+          setDmPeers(peers)
         }
       }
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
@@ -581,8 +584,12 @@ export default function Chat() {
             {dmList.map(c => (
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
                 <button onClick={() => openChannel(c.id)}
-                  style={{ display: 'flex', alignItems: 'center', flex: 1, textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: unreadCounts[c.id] ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  <span style={{ flex: 1 }}>{dmNames[c.id] || c.name || 'Direct message'}</span>
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: unreadCounts[c.id] ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {(() => { const peer = dmPeers[c.id] ? profiles.find(p => p.id === dmPeers[c.id]) : null; return peer ? <PresenceDot profile={peer} size={9} ring="var(--canvas)" /> : <span style={{ width: 9, flex: 'none' }} /> })()}
+                  <span style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{dmNames[c.id] || c.name || 'Direct message'}</span>
+                    {(() => { const peer = dmPeers[c.id] ? profiles.find(p => p.id === dmPeers[c.id]) : null; const s = peer && effStatus(peer); return s && s.emoji ? <span title={s.text || ''} style={{ fontSize: 12, flex: 'none' }}>{s.emoji}</span> : null })()}
+                  </span>
                   {unreadCounts[c.id] > 0 && (
                     <span style={{ background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', flex: 'none' }}>{unreadCounts[c.id] > 99 ? '99+' : unreadCounts[c.id]}</span>
                   )}
