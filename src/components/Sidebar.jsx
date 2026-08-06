@@ -38,7 +38,7 @@ const NAV = [
       { type: 'link', to: '/get-to-know-you', label: 'Get to Know You', ic: '🎉', perm: null },  // everyone; team favorites directory
       { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
       { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
-      { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: null },  // everyone (staff); notetaker + action items → tasks
+      { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings' },  // all staff except agents; notetaker + action items → tasks
       { type: 'link', to: '/time', label: 'Time', ic: '⏱️', perm: null, adminGate: true },  // admins only; find & adjust anyone's tracked time
       {
         type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
