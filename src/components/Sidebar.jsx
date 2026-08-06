@@ -36,6 +36,7 @@ const NAV = [
       { type: 'link', to: '/updates', label: 'Updates', ic: '📣', perm: null },  // everyone; RLS gates audience
       { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },  // everyone; private per-user notebook
       { type: 'link', to: '/get-to-know-you', label: 'Get to Know You', ic: '🎉', perm: null },  // everyone; team favorites directory
+      { type: 'link', to: '/team', label: 'Team', ic: '🟢', perm: null },  // everyone; presence + status + OOO board
       { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
       { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
       { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings' },  // all staff except agents; notetaker + action items → tasks
