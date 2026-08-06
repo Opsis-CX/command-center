@@ -1,6 +1,6 @@
 import NotificationBell from './components/NotificationBell'
 import HeaderTaskBar from './components/HeaderTaskBar'
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { initTheme } from './lib/theme'
 import { supabase } from './lib/supabase'
@@ -61,6 +61,55 @@ import { usePresenceHeartbeat, MyStatusButton, TeamStatus } from './components/P
 // A tiny wrapper so the assessment route can read :appId from the URL and
 // pass it into the form as a prop.
 import { useParams } from 'react-router-dom'
+
+// ============================================================
+// A thrown error anywhere in the route tree used to unmount the WHOLE app,
+// leaving a blank white page with nothing to go on — the screen "flashes up
+// and disappears". This catches it, keeps the nav and header alive, and puts
+// the actual error on screen so it can be read and reported instead of guessed.
+// Scoped to the routed content only, deliberately: the sidebar, header and
+// notification bell stay usable so you can navigate away from a broken page.
+// ============================================================
+class RouteErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { error: null }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error }
+  }
+
+  componentDidCatch(error, info) {
+    console.error('Route crashed:', error, info?.componentStack)
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children
+    const e = this.state.error
+    return (
+      <div style={{ padding: 24, maxWidth: 760 }}>
+        <h2 style={{ margin: '0 0 6px', fontSize: 19, color: '#b91c1c' }}>This page hit an error</h2>
+        <p style={{ margin: '0 0 14px', fontSize: 13.5, color: 'var(--ink-soft)' }}>
+          The rest of the app still works — use the menu to go somewhere else. Sending the text below is
+          enough to identify the problem.
+        </p>
+        <pre style={{
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12.5, lineHeight: 1.5,
+          background: 'var(--bg-soft)', color: 'var(--ink)', border: '1px solid var(--line)',
+          borderRadius: 8, padding: 12, maxHeight: 320, overflowY: 'auto',
+        }}>{String(e?.name || 'Error')}: {String(e?.message || e)}{e?.stack ? '\n\n' + e.stack : ''}</pre>
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          <button onClick={() => { navigator.clipboard?.writeText(String(e?.stack || e?.message || e)) }}
+            className="btn btn-ghost">Copy error</button>
+          <button onClick={() => this.setState({ error: null })} className="btn btn-ghost">Try again</button>
+          <button onClick={() => window.location.reload()} className="btn btn-primary">Reload the app</button>
+        </div>
+      </div>
+    )
+  }
+}
+
 function AssessmentRoute() {
   const { appId } = useParams()
   return <AssessmentForm applicationId={appId} />
@@ -232,6 +281,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             </div>
           </div>
           <div className="content">
+            <RouteErrorBoundary>
             <Routes>
               <Route path="/" element={<OpsisWeekly />} />
               <Route path="/calendar" element={<Calendar />} />
@@ -277,6 +327,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {(canAny(appRole, 'schedule.all') || canAny(appRole, 'schedule.view_insights_assigned')) && <Route path="/insights" element={<ScheduleInsights />} />}
               <Route path="*" element={<OpsisWeekly />} />
             </Routes>
+            </RouteErrorBoundary>
           </div>
         </main>
       </div>
