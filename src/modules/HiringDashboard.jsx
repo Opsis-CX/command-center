@@ -105,6 +105,7 @@ export default function HiringDashboard() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [showScreened, setShowScreened] = useState(false)
+  const [holdFilter, setHoldFilter] = useState('all')   // all | hold | active
   const [selected, setSelected] = useState(null)  // application being viewed
   const [busy, setBusy] = useState(false)
   const [lastOnboard, setLastOnboard] = useState(null)  // onboarding result banner
@@ -425,6 +426,44 @@ export default function HiringDashboard() {
     setBusy(false)
   }
 
+  // ---- capacity hold ----
+  // Parks an applicant where they are. The stage is deliberately left alone, so
+  // releasing them resumes exactly where they stopped. Releasing also writes a
+  // stage event: pipeline-reminders reads the latest event for the current
+  // status as the in-stage clock, so this hands them a fresh 48h/14-day window
+  // rather than instantly auto-denying someone who waited out a long hold.
+  async function setHold(app, hold, reason) {
+    setBusy(true)
+    const { error } = await supabase.from('hiring_applications').update({
+      on_hold: hold,
+      on_hold_since: hold ? new Date().toISOString() : null,
+      on_hold_by: hold ? (user?.id || null) : null,
+      on_hold_reason: hold ? (reason || null) : null,
+    }).eq('id', app.id)
+    if (error) { setErr(error.message); setBusy(false); return }
+
+    await supabase.from('hiring_stage_events').insert({
+      application_id: app.id,
+      from_status: app.status,
+      to_status: app.status,
+      note: hold
+        ? `Placed on hold at capacity${reason ? ': ' + reason : ''}`
+        : 'Released from capacity hold — reminder clock reset',
+    })
+    if (!hold) {
+      // clear the nudge counters so the cadence starts clean on resume
+      await supabase.from('hiring_applications')
+        .update({ pipeline_reminders_sent: 0, last_pipeline_reminder_at: null, pipeline_reminder_stage: null })
+        .eq('id', app.id)
+    }
+    if (app.email) {
+      await sendHiringEmail(hold ? 'capacity_hold' : 'capacity_release', app.email, { name: app.full_name })
+    }
+    await load()
+    setSelected(prev => (prev && prev.id === app.id ? { ...prev, on_hold: hold, on_hold_reason: hold ? (reason || null) : null } : prev))
+    setBusy(false)
+  }
+
   // group visible apps by column
   const visible = apps.filter(a => showScreened ? true : !SCREENED_OUT.includes(a.status))
   const byColumn = {}
@@ -432,12 +471,15 @@ export default function HiringDashboard() {
   const screenedOut = []
   visible.forEach(a => {
     if (SCREENED_OUT.includes(a.status)) { screenedOut.push(a); return }
+    if (holdFilter === 'hold' && !a.on_hold) return
+    if (holdFilter === 'active' && a.on_hold) return
     const col = STATUS_TO_COLUMN[a.status]
     if (col && byColumn[col]) byColumn[col].push(a)
   })
 
   const activeCount = apps.filter(a => !SCREENED_OUT.includes(a.status)).length
   const screenedCount = apps.filter(a => SCREENED_OUT.includes(a.status)).length
+  const holdCount = apps.filter(a => a.on_hold && !SCREENED_OUT.includes(a.status)).length
 
   if (loading) return <p className="page-sub" style={{ padding: 20 }}>Loading applicants…</p>
 
@@ -446,12 +488,22 @@ export default function HiringDashboard() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Hiring pipeline</h1>
-          <p className="page-sub" style={{ margin: '4px 0 0', fontSize: 13.5 }}>{activeCount} active · {screenedCount} screened out</p>
+          <p className="page-sub" style={{ margin: '4px 0 0', fontSize: 13.5 }}>
+            {activeCount} active · {screenedCount} screened out{holdCount > 0 ? ` · ⏸ ${holdCount} on hold` : ''}
+          </p>
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, cursor: 'pointer', color: 'var(--ink-soft)' }}>
-          <input type="checkbox" checked={showScreened} onChange={e => setShowScreened(e.target.checked)} />
-          Show screened-out ({screenedCount})
-        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <select value={holdFilter} onChange={e => setHoldFilter(e.target.value)}
+            style={{ padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)' }}>
+            <option value="all">All applicants</option>
+            <option value="active">Active only (hide on hold)</option>
+            <option value="hold">On hold only ({holdCount})</option>
+          </select>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, cursor: 'pointer', color: 'var(--ink-soft)' }}>
+            <input type="checkbox" checked={showScreened} onChange={e => setShowScreened(e.target.checked)} />
+            Show screened-out ({screenedCount})
+          </label>
+        </div>
       </div>
 
       {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>{err}</div>}
@@ -521,14 +573,14 @@ export default function HiringDashboard() {
       )}
 
       {selected && <DetailPanel app={selected} onClose={() => setSelected(null)}
-        onApprove={approve} onDeny={deny} onTransition={transition} onMove={moveToStep} certTags={certTags} busy={busy} />}
+        onApprove={approve} onDeny={deny} onTransition={transition} onMove={moveToStep} onHold={setHold} certTags={certTags} busy={busy} />}
     </div>
   )
 }
 
 function ApplicantCard({ app, onClick, onApprove, onDeny, busy }) {
   return (
-    <div style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 10, padding: 10, cursor: 'pointer' }} onClick={onClick}>
+    <div style={{ border: '1px solid ' + (app.on_hold ? '#FDE68A' : 'var(--line)'), background: 'var(--surface)', borderRadius: 10, padding: 10, cursor: 'pointer', opacity: app.on_hold ? 0.75 : 1 }} onClick={onClick}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
         <span style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(app.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flex: 'none' }}>{initials(app.full_name)}</span>
         <div style={{ minWidth: 0, flex: 1 }}>
@@ -536,6 +588,12 @@ function ApplicantCard({ app, onClick, onApprove, onDeny, busy }) {
           <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{app.role_applying || '—'}</div>
         </div>
       </div>
+      {app.on_hold && (
+        <div title={app.on_hold_reason || 'On hold at capacity'}
+          style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 999, padding: '2px 9px' }}>
+          ⏸ On hold{app.on_hold_reason ? ' · ' + app.on_hold_reason : ''}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 11, color: 'var(--ink-soft)' }}>
         <span>{app.city ? app.city + ', ' : ''}{app.state}</span>
         <span style={{ marginLeft: 'auto' }}>{timeAgo(app.created_at)}</span>
@@ -552,11 +610,12 @@ function ApplicantCard({ app, onClick, onApprove, onDeny, busy }) {
   )
 }
 
-function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, certTags = [], busy }) {
+function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, onHold, certTags = [], busy }) {
   const [resumeUrl, setResumeUrl] = useState(null)
   const [assessment, setAssessment] = useState(null)
   const [assessLoading, setAssessLoading] = useState(false)
   const [moveTo, setMoveTo] = useState('')
+  const [holdReason, setHoldReason] = useState('')
   // Certification to assign on onboard — defaults to the first available cert.
   const [certTag, setCertTag] = useState('')
   useEffect(() => { if (!certTag && certTags.length) setCertTag(certTags[0].tag_id) }, [certTags]) // eslint-disable-line
@@ -684,6 +743,40 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, ce
               </div>
               {adv.hint && <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 7, lineHeight: 1.4 }}>{adv.hint}</div>}
             </div>
+          )}
+
+          {/* Capacity hold — park them between stages without losing their place. */}
+          {onHold && !SCREENED_OUT.includes(app.status) && (
+            app.on_hold ? (
+              <div style={{ marginBottom: 20, background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '12px 14px' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>⏸ On hold at capacity</div>
+                <div style={{ fontSize: 12.5, color: '#92400E', lineHeight: 1.5, marginBottom: 10 }}>
+                  {app.on_hold_reason ? <>Reason: {app.on_hold_reason}. </> : null}
+                  They're still at <b>{STATUS_LABEL[app.status] || app.status}</b> and will resume there. Reminder emails and the 14-day
+                  auto-deny are paused, and they're excluded from the morning report's SLA. Releasing them emails them the good news and
+                  restarts their reminder clock from zero.
+                </div>
+                <button disabled={busy} onClick={() => onHold(app, false)}
+                  style={{ width: '100%', border: 0, borderRadius: 8, background: '#16A34A', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 0', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  ▶ Release hold — resume at {STATUS_LABEL[app.status] || app.status}
+                </button>
+              </div>
+            ) : (
+              <details style={{ marginBottom: 20, border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px' }}>
+                <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-soft)' }}>Put on hold (at capacity)</summary>
+                <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', margin: '8px 0 10px', lineHeight: 1.45 }}>
+                  Parks them at <b>{STATUS_LABEL[app.status] || app.status}</b> without moving them backwards or forwards. Pauses their
+                  reminder emails and the 14-day auto-deny, and takes them out of the morning report's 24-hour SLA. They get a short
+                  "we're at capacity, this isn't a rejection" email.
+                </div>
+                <input value={holdReason} onChange={e => setHoldReason(e.target.value)} placeholder="Reason (optional) — e.g. no open spots until September"
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', boxSizing: 'border-box', marginBottom: 8 }} />
+                <button disabled={busy} onClick={() => onHold(app, true, holdReason.trim())}
+                  style={{ width: '100%', border: '1px solid #FDE68A', borderRadius: 8, background: '#FEF3C7', color: '#92400E', fontSize: 13.5, fontWeight: 700, padding: '9px 0', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  ⏸ Put on hold &amp; email them
+                </button>
+              </details>
+            )
           )}
 
           {/* Corrective move — set the stage directly (e.g. move someone back
