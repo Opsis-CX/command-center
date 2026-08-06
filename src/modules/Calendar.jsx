@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react'
+    import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { COMPANY_TZ, companyTimeToInstant, formatInTZ, detectedTZ, wallTimeToViewerHHMM } from '../lib/tz'
@@ -306,7 +306,7 @@ function BookFrame({ view, setView, children }) {
   if (narrow) {
     return (
       <div style={{ background: '#4a6178', borderRadius: 12, padding: 8 }}>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8, position: 'sticky', top: 60, zIndex: 5, background: '#4a6178', paddingBottom: 4 }}>
           {tabs.map(v => (
             <button key={v} onClick={() => setView(v)}
               style={{
@@ -424,7 +424,7 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
     const shown = items.slice(0, MAX_SHOWN)
     const more = items.length - shown.length
     return (
-      <div style={{ background: inMonth ? '#fff' : 'var(--cal-paper)', height: CELL_H, padding: '4px 6px', cursor: 'pointer', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+      <div style={{ background: inMonth ? 'var(--cal-paper)' : 'var(--cal-line-3)', height: CELL_H, padding: '4px 6px', cursor: 'pointer', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
         onClick={() => onAddEvent(d)}>
         <div style={{ fontSize: 12, color: isToday ? '#fff' : 'var(--cal-ink-mute)', background: isToday ? COLORS.event : 'transparent', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           {d.getDate()}
@@ -500,12 +500,17 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
 
 // shared nav bar: ‹ label › + Today
 function ViewNav({ cursor, setCursor, label, onPrev, onNext }) {
+  const narrow = useNarrow(700)
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
-      <button onClick={onPrev} style={navArrow}>‹</button>
-      <div style={{ fontFamily: 'Georgia, "Playfair Display", serif', fontSize: 34, fontStyle: 'italic', color: 'var(--cal-ink)', minWidth: 220, letterSpacing: '.5px', lineHeight: 1 }}>{label}</div>
-      <button onClick={onNext} style={navArrow}>›</button>
-      <button onClick={() => setCursor(etNow())} style={{ ...railBtn, marginLeft: 8 }}>TODAY</button>
+    <div style={{ display: 'flex', alignItems: 'center', gap: narrow ? 8 : 14, marginBottom: 14, flexWrap: 'nowrap' }}>
+      <button onClick={onPrev} style={{ ...navArrow, flexShrink: 0 }}>‹</button>
+      <div style={{
+        fontFamily: 'Georgia, "Playfair Display", serif', fontSize: narrow ? 20 : 34, fontStyle: 'italic',
+        color: 'var(--cal-ink)', minWidth: 0, flex: '1 1 auto', letterSpacing: '.5px', lineHeight: 1.15,
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>{label}</div>
+      <button onClick={onNext} style={{ ...navArrow, flexShrink: 0 }}>›</button>
+      <button onClick={() => setCursor(etNow())} style={{ ...railBtn, marginLeft: narrow ? 0 : 8, flexShrink: 0, whiteSpace: 'nowrap' }}>TODAY</button>
     </div>
   )
 }
