@@ -153,6 +153,7 @@ function AgentScorecard({ row, canCoach, canSeeNotes, isOwn, onBack }) {
   const [notes, setNotes] = useState([])
   const [loadingNotes, setLoadingNotes] = useState(true)
   const [qaAudits, setQaAudits] = useState([])
+  const [aiAudits, setAiAudits] = useState([])
   const [subItemLabels, setSubItemLabels] = useState({})
   const [meetings, setMeetings] = useState([])
   const [loadingMtg, setLoadingMtg] = useState(true)
@@ -191,19 +192,42 @@ function AgentScorecard({ row, canCoach, canSeeNotes, isOwn, onBack }) {
     return out
   }, [subItemLabels])
 
+  // Manual (qa_audits) + AI (ai_qa_reviews via RPC) normalized into one list.
+  const mergedAudits = useMemo(() => {
+    const man = (qaAudits || []).map(a => ({
+      key: 'man:' + a.id, kind: 'manual', auditId: a.id, aiCallId: null,
+      recordingUrl: a.recording_link || null, hasRecording: !!a.recording_link,
+      score: a.clean_qa_score == null ? null : Number(a.clean_qa_score), autoFail: !!a.auto_fail,
+      auditType: a.audit_type, brand: a.brand, campaign: a.campaign,
+      feedback: a.feedback, missed: missedFor(a), missedLabel: 'Missed:',
+      date: a.call_date || a.created_at,
+      editCount: a.edit_count, editedAt: a.edited_at, editorName: a.editor_name,
+    }))
+    const ai = (aiAudits || []).map(a => ({
+      key: 'ai:' + a.id, kind: 'ai', auditId: null, aiCallId: a.ai_call_id,
+      recordingUrl: null, hasRecording: !!a.has_recording,
+      score: a.score == null ? null : Number(a.score), autoFail: !!a.auto_fail,
+      auditType: a.audit_type, brand: a.brand, campaign: a.campaign,
+      feedback: a.feedback, missed: Array.isArray(a.improvements) ? a.improvements : [], missedLabel: 'Focus:',
+      date: a.call_date || a.created_at,
+      editCount: 0, editedAt: null, editorName: null,
+    }))
+    return [...man, ...ai].sort((x, y) => String(y.date || '').localeCompare(String(x.date || '')))
+  }, [qaAudits, aiAudits, missedFor])
+
   const filteredQa = useMemo(() => {
     const k = kw.trim().toLowerCase()
-    return qaAudits.filter(a => {
-      const d = String(a.call_date || a.created_at || '').slice(0, 10)
+    return mergedAudits.filter(a => {
+      const d = String(a.date || '').slice(0, 10)
       if (dFrom && d && d < dFrom) return false
       if (dTo && d && d > dTo) return false
       if (k) {
-        const hay = [a.feedback, a.brand, a.audit_type, a.campaign, ...missedFor(a)].filter(Boolean).join(' ').toLowerCase()
+        const hay = [a.feedback, a.brand, a.auditType, a.campaign, ...(a.missed || [])].filter(Boolean).join(' ').toLowerCase()
         if (!hay.includes(k)) return false
       }
       return true
     })
-  }, [qaAudits, kw, dFrom, dTo, missedFor])
+  }, [mergedAudits, kw, dFrom, dTo])
 
   const filtersActive = !!(kw.trim() || dFrom || dTo)
   const visibleQa = showAllQa ? filteredQa : filteredQa.slice(0, 2)
@@ -218,17 +242,20 @@ function AgentScorecard({ row, canCoach, canSeeNotes, isOwn, onBack }) {
 
   const loadQa = useCallback(async () => {
     if (!row) return
-    const [aRes, sRes] = await Promise.all([
+    const [aRes, sRes, aiRes] = await Promise.all([
       supabase.from('qa_audits')
-        .select('id, audit_type, campaign, clean_qa_score, auto_fail, brand, feedback, answers, created_at, call_date, edited_at, editor_name, edit_count')
+        .select('id, audit_type, campaign, clean_qa_score, auto_fail, brand, feedback, answers, created_at, call_date, edited_at, editor_name, edit_count, recording_link')
         .eq('agent_name', row.agent_name)
         .order('created_at', { ascending: false })
         .limit(50),
       supabase.from('qa_sub_items').select('id, label'),
+      // AI QA audits for this agent (matched by profile or name server-side).
+      supabase.rpc('agent_scorecard_ai_audits', { p_profile_id: row.profile_id, p_agent_name: row.agent_name }),
     ])
     setQaAudits(aRes.data || [])
     const map = {}; (sRes.data || []).forEach(s => { map[s.id] = s.label })
     setSubItemLabels(map)
+    setAiAudits(Array.isArray(aiRes.data) ? aiRes.data : [])
   }, [row])
   useEffect(() => { loadQa() }, [loadQa])
 
@@ -327,7 +354,7 @@ function AgentScorecard({ row, canCoach, canSeeNotes, isOwn, onBack }) {
       <div className="card" style={{ marginTop: 14 }}>
         <SectionTitle>Quality Feedback</SectionTitle>
 
-        {qaAudits.length > 0 && (
+        {mergedAudits.length > 0 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 8px' }}>
             <input value={kw} onChange={e => { setKw(e.target.value); setShowAllQa(true) }} placeholder="Search feedback, brand, missed items…"
               style={{ ...qaFilterInp, flex: '1 1 220px', minWidth: 150 }} />
@@ -341,47 +368,52 @@ function AgentScorecard({ row, canCoach, canSeeNotes, isOwn, onBack }) {
           </div>
         )}
 
-        {qaAudits.length === 0 ? (
+        {mergedAudits.length === 0 ? (
           <p className="page-sub" style={{ fontSize: 13 }}>No quality reviews yet.</p>
         ) : filteredQa.length === 0 ? (
           <p className="page-sub" style={{ fontSize: 13 }}>No quality reviews match your search.</p>
         ) : (
           <div>
             {visibleQa.map(a => {
-              const s = a.clean_qa_score
-              const col = a.auto_fail ? { bg: '#fdecea', fg: '#b71c1c' }
+              const s = a.score
+              const col = a.autoFail ? { bg: '#fdecea', fg: '#b71c1c' }
                 : s == null ? { bg: 'var(--line-soft)', fg: 'var(--ink-soft)' }
                 : s >= 90 ? { bg: '#e8f5e9', fg: '#1b5e20' }
                 : s >= 80 ? { bg: '#fff8e1', fg: '#8d6e00' }
                 : s >= 70 ? { bg: '#e3f2fd', fg: '#0d47a1' }
                 : { bg: '#fdecea', fg: '#b71c1c' }
-              const missed = missedFor(a)
-              const isRead = reads.has(a.id)
+              const isRead = a.auditId ? reads.has(a.auditId) : false
               return (
-                <div key={a.id} style={{ padding: '10px 0', borderTop: '1px solid var(--line-soft)' }}>
+                <div key={a.key} style={{ padding: '10px 0', borderTop: '1px solid var(--line-soft)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: col.bg, color: col.fg }}>
-                      {a.auto_fail ? 'Auto-fail' : (s == null ? '—' : s + '%')}
+                      {a.autoFail ? 'Auto-fail' : (s == null ? '—' : (Math.round(s * 10) / 10) + '%')}
                     </span>
-                    <span style={{ fontSize: 13, fontWeight: 600, textTransform: 'capitalize' }}>{(a.audit_type || '').replace('_', ' ')}</span>
+                    <span title={a.kind === 'ai' ? 'Scored by the AI QA tool' : 'Manually audited'}
+                      style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: a.kind === 'ai' ? '#ede7f6' : 'var(--line-soft)', color: a.kind === 'ai' ? '#5e35b1' : 'var(--ink-soft)' }}>
+                      {a.kind === 'ai' ? 'AI' : 'Manual'}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 600, textTransform: 'capitalize' }}>{(a.auditType || '').replace('_', ' ')}</span>
                     {a.brand && <span className="page-sub" style={{ fontSize: 12 }}>· {a.brand}</span>}
-                    {a.edit_count > 0 && (
-                      <span title={`Score updated ${fmtDate(a.edited_at)}${a.editor_name ? ' by ' + a.editor_name : ''}`}
+                    {a.editCount > 0 && (
+                      <span title={`Score updated ${fmtDate(a.editedAt)}${a.editorName ? ' by ' + a.editorName : ''}`}
                         style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'var(--needed-bg)', color: 'var(--needed)' }}>
                         updated
                       </span>
                     )}
-                    <span className="page-sub" style={{ fontSize: 12, marginLeft: 'auto' }}>{fmtDate(a.call_date || a.created_at)}</span>
+                    <span className="page-sub" style={{ fontSize: 12, marginLeft: 'auto' }}>{fmtDate(a.date)}</span>
                   </div>
                   {a.feedback && <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: '6px 0 0', color: 'var(--ink)' }}>{a.feedback}</p>}
-                  {missed.length > 0 && <p style={{ fontSize: 12.5, margin: '5px 0 0', color: 'var(--ink-soft)' }}><b>Missed:</b> {missed.join(', ')}</p>}
+                  {a.missed.length > 0 && <p style={{ fontSize: 12.5, margin: '5px 0 0', color: 'var(--ink-soft)' }}><b>{a.missedLabel}</b> {a.missed.join(', ')}</p>}
 
-                  {isOwn ? (
+                  {a.hasRecording && <AuditPlay kind={a.kind} recordingUrl={a.recordingUrl} aiCallId={a.aiCallId} />}
+
+                  {a.auditId && isOwn ? (
                     <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 8, fontSize: 12.5, cursor: 'pointer', color: isRead ? 'var(--passed)' : 'var(--ink-soft)', fontWeight: isRead ? 600 : 400 }}>
-                      <input type="checkbox" checked={isRead} onChange={() => toggleRead(a.id)} style={{ width: 15, height: 15 }} />
+                      <input type="checkbox" checked={isRead} onChange={() => toggleRead(a.auditId)} style={{ width: 15, height: 15 }} />
                       {isRead ? '✓ I’ve read this feedback' : 'I’ve read this feedback'}
                     </label>
-                  ) : canCoach ? (
+                  ) : (a.auditId && canCoach) ? (
                     <div style={{ marginTop: 8, fontSize: 12, color: isRead ? 'var(--passed)' : 'var(--ink-soft)', fontWeight: isRead ? 600 : 400 }}>
                       {isRead ? '✓ Agent marked as read' : 'Not yet read by agent'}
                     </div>
@@ -479,6 +511,36 @@ function AgentScorecard({ row, canCoach, canSeeNotes, isOwn, onBack }) {
         )}
       </div>
       )}
+    </div>
+  )
+}
+
+// Play a call recording inline. Manual audits carry a direct storage link; AI
+// audits resolve through callqa-recording (signed URL + on-demand transcode of
+// GSM). Playback is access-controlled server-side (agents hear only their own).
+function AuditPlay({ kind, recordingUrl, aiCallId }) {
+  const [url, setUrl] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  async function go() {
+    if (url || busy) return
+    setErr('')
+    if (kind === 'manual') { if (recordingUrl) setUrl(recordingUrl); else setErr('No recording'); return }
+    setBusy(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('callqa-recording', { body: { call_id: aiCallId } })
+      if (error || !data?.url) throw new Error(error?.message || data?.error || 'Recording unavailable')
+      setUrl(data.url)
+    } catch (e) { setErr(e.message || 'Recording unavailable') }
+    setBusy(false)
+  }
+  if (url) return <audio controls autoPlay src={url} style={{ height: 34, marginTop: 8, maxWidth: '100%', display: 'block' }} />
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '5px 12px' }} onClick={go} disabled={busy}>
+        {busy ? 'Loading…' : '▶ Listen to call'}
+      </button>
+      {err && <span style={{ fontSize: 12, color: 'var(--failed)', marginLeft: 8 }}>{err}</span>}
     </div>
   )
 }
