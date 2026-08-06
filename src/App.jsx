@@ -84,6 +84,10 @@ function EodReportPage() {
 // "On now" panel). LiveStatus self-scopes: admins/managers see the whole team,
 // agents see themselves. Gated to the floor-oversight roles by the 'live_status'
 // page-key.
+// Who's On — the live check-in / current-task view (LiveStatus, shift-based) PLUS the
+// Slack-style team presence board below it (who's online, self-set status, and OOO).
+// LiveStatus self-scopes: admins/managers see the whole team, agents see themselves.
+// Gated to the floor-oversight roles by the 'live_status' page-key.
 function LiveStatusPage() {
   return (
     <div>
@@ -92,18 +96,9 @@ function LiveStatusPage() {
         <p className="page-sub">Live check-ins and what each person is working on right now.</p>
       </div>
       <LiveStatus />
-    </div>
-  )
-}
-// Team — Slack-style presence: who's online, everyone's self-set status, and who's out
-// of office. Different from "Who's On" (that's shift check-ins for CSR agents); this is
-// self-set availability for the whole team.
-function TeamStatusPage() {
-  return (
-    <div>
-      <div style={{ marginBottom: 12 }}>
-        <h1 className="page-title">Team</h1>
-        <p className="page-sub">Who's online, what everyone's up to, and who's out of office. Set your own status from the button up top.</p>
+      <div style={{ marginTop: 28, marginBottom: 12 }}>
+        <h2 className="page-title" style={{ fontSize: 20 }}>Team status</h2>
+        <p className="page-sub">Who's online, everyone's self-set status, and who's out of office. Set your own from the button up top.</p>
       </div>
       <TeamStatus />
     </div>
@@ -260,7 +255,6 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/home" element={<OpsisWeekly />} />
               <Route path="/notes" element={<Notes />} />
               <Route path="/get-to-know-you" element={<TeamFavorites />} />
-              <Route path="/team" element={<TeamStatusPage />} />
               {canAny(appRole, 'meetings') && <Route path="/meetings" element={<Meetings />} />}
               {canAny(appRole, 'reporting') && <Route path="/reporting" element={<Reporting />} />}
               {canAny(appRole, 'reporting') && <Route path="/reporting/hourly" element={<HourlyReports />} />}
@@ -295,7 +289,7 @@ function titleFor(path) {
     '/': 'Home Base', '/certifications': 'Certifications',
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
-    '/chat': 'Chat', '/updates': 'Updates', '/home': 'Home Base', '/notes': 'My Notes', '/get-to-know-you': 'Get to Know You', '/team': 'Team', '/meetings': 'Meetings', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
+    '/chat': 'Chat', '/updates': 'Updates', '/home': 'Home Base', '/notes': 'My Notes', '/get-to-know-you': 'Get to Know You', '/meetings': 'Meetings', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/quality': 'Quality', '/call-qa': 'Call QA', '/sales': 'Sales', '/rsn': 'RSN Pipeline', '/help': 'Help Center', '/eod': 'End of Day Report', '/tokens': 'Tokens', '/live': "Who's On",
   }
   return map[path] || 'Command Center'
