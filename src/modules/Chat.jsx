@@ -9,6 +9,7 @@ import EmojiPicker from 'emoji-picker-react'
 import { RichEditor, RichContent, sanitizeHtml, htmlToText } from '../lib/RichEditor'
 import { needsTranscode, transcodeToMp3 } from '../lib/audioTranscode'
 import TradeBoardChannel from './TradeBoardChannel'
+import { PresenceDot, effStatus } from '../components/Presence'
 
 // The #GarageCo: Appointment Setters channel is rendered as an interactive
 // Trade Board instead of a normal chat feed.
@@ -393,7 +394,7 @@ export default function Chat() {
         myChannelIds.length
           ? supabase.from('channels').select('*').in('id', myChannelIds).order('name')
           : Promise.resolve({ data: [], error: null }),
-        supabase.from('profiles').select('id, full_name, is_active').eq('is_active', true).order('full_name'),
+        supabase.from('profiles').select('id, full_name, is_active, last_seen_at, status_emoji, status_text, status_type, status_until').eq('is_active', true).order('full_name'),
       ])
       if (chRes.error) throw chRes.error
       setMe(meRes.data)
@@ -438,6 +439,20 @@ export default function Chat() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Keep presence fresh (online/offline + status) without a full reload: poll just the
+  // presence columns every 60s and merge them into the loaded profiles by id.
+  useEffect(() => {
+    const refresh = async () => {
+      const { data } = await supabase.from('profiles')
+        .select('id, last_seen_at, status_emoji, status_text, status_type, status_until').eq('is_active', true)
+      if (!data) return
+      const byId = {}; data.forEach(r => { byId[r.id] = r })
+      setProfiles(prev => prev.map(p => byId[p.id] ? { ...p, ...byId[p.id] } : p))
+    }
+    const iv = setInterval(refresh, 60000)
+    return () => clearInterval(iv)
+  }, [])
 
   // ---- Live sidebar ordering ----
   // Any new message (top-level or reply) bumps its channel's last_message_at
@@ -1399,6 +1414,8 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             const prev = topLevel[i - 1]
             const grouped = prev && prev.sender_id === m.sender_id && !m.requires_ack && !prev.requires_ack && (new Date(m.created_at) - new Date(prev.created_at) < 5 * 60000)
             const name = m.sender_id === me.id ? 'You' : (senders[m.sender_id] || 'Someone')
+            const authorP = profiles.find(p => p.id === m.sender_id)
+            const authorStatus = effStatus(authorP)
             const canDelete = !m._optimistic && (m.sender_id === me.id || canModerate)
             const canEdit = !m._optimistic && m.sender_id === me.id && !m.requires_ack
             const canPin = !m._optimistic && canModerate
@@ -1415,11 +1432,15 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                   borderRadius: isHighlighted ? 10 : 0, padding: isHighlighted ? '6px 8px' : 0,
                   transition: 'background .6s ease, outline-color .6s ease' }}>
                 <div style={{ width: 32, flex: 'none' }}>
-                  {!grouped && <div style={{ width: 32, height: 32, borderRadius: '50%', background: avatarColor(name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>{initials(name)}</div>}
+                  {!grouped && <div style={{ position: 'relative', width: 32, height: 32 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: avatarColor(name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>{initials(name)}</div>
+                    {authorP && <span style={{ position: 'absolute', right: -1, bottom: -1 }}><PresenceDot profile={authorP} size={10} /></span>}
+                  </div>}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {!grouped && <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
                     <b style={{ fontSize: 13.5 }}>{name}</b>
+                    {authorStatus && (authorStatus.emoji || authorStatus.text) && <span title={authorStatus.text || ''} style={{ fontSize: 12, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>{authorStatus.emoji && <span>{authorStatus.emoji}</span>}{authorStatus.type === 'ooo' && <span style={{ fontWeight: 700, color: '#7c3aed' }}>OOO</span>}</span>}
                     <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{timeLabel(m.created_at)}</span>
                     {m.edited_at && <span style={{ fontSize: 10.5, color: 'var(--ink-soft)', fontStyle: 'italic' }}>(edited)</span>}
                     {m.is_here && <span className="badge" style={{ background: 'var(--accent-bg)', color: 'var(--accent)', fontSize: 10 }}>@here</span>}
@@ -1917,8 +1938,14 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {members.map(p => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0' }}>
-                <span style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flex: 'none' }}>{initials(p.full_name)}</span>
-                <span style={{ flex: 1, fontSize: 14 }}>{p.full_name}{p.id === meId ? ' (you)' : ''}</span>
+                <span style={{ position: 'relative', width: 30, height: 30, flex: 'none' }}>
+                  <span style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>{initials(p.full_name)}</span>
+                  <span style={{ position: 'absolute', right: -1, bottom: -1 }}><PresenceDot profile={p} size={10} /></span>
+                </span>
+                <span style={{ flex: 1, fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.full_name}{p.id === meId ? ' (you)' : ''}</span>
+                  {effStatus(p) && (effStatus(p).emoji || effStatus(p).text) && <span title={effStatus(p).text || ''} style={{ fontSize: 12.5, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 3, minWidth: 0 }}>{effStatus(p).emoji && <span>{effStatus(p).emoji}</span>}{effStatus(p).type === 'ooo' ? <span style={{ fontWeight: 700, color: '#7c3aed' }}>OOO</span> : <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140 }}>{effStatus(p).text}</span>}</span>}
+                </span>
                 {isOwner && p.id !== meId && (
                   <button onClick={() => removeMember(p.id)} title="Remove from channel"
                     style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--failed)', fontSize: 12, fontWeight: 600, padding: '4px 8px' }}>Remove</button>
