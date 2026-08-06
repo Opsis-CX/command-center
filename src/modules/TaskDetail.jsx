@@ -228,7 +228,7 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
                         <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 2 }}>
                           {author?.full_name || 'Unknown'} <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}>{formatCommentTime(c.created_at)}</span>
                         </div>
-                        <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }} dangerouslySetInnerHTML={{ __html: c.text }} />
+                        <div className="pm-rich" style={{ fontSize: 13, wordBreak: 'break-word' }} dangerouslySetInnerHTML={{ __html: c.text }} />
                         {canDelete && <button onClick={() => deleteComment(c.id)} style={{ fontSize: 11, color: 'var(--ink-soft)', background: 'none', border: 0, cursor: 'pointer', padding: '2px 0', marginTop: 2 }}>Delete</button>}
                       </div>
                     </div>
