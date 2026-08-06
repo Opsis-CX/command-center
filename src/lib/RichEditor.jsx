@@ -316,12 +316,72 @@ export function RichEditor({
   )
 }
 
+// ---- readability guard ---------------------------------------------------
+// The Aa toolbar lets people colour their text, and sanitize.js deliberately
+// preserves inline `color` on spans. A colour picked in light mode (near-black)
+// is invisible against the dark canvas, and vice versa — the message renders as
+// a blank block. So at RENDER time we measure each inline colour against the
+// current background and drop only the ones that collide. Deliberate reds,
+// blues and greens have plenty of contrast and survive untouched.
+//
+// Render time, not write time: this has to follow whichever theme the READER is
+// using, and the same stored message must work for both.
+
+function parseColor(css) {
+  const v = String(css || '').trim()
+  let m = v.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i)
+  if (m) return [+m[1], +m[2], +m[3]]
+  m = v.match(/^#([0-9a-f]{3,8})$/i)
+  if (m) {
+    let h = m[1]
+    if (h.length === 3) h = h.split('').map(c => c + c).join('')
+    if (h.length < 6) return null
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
+  }
+  return null
+}
+
+function relLuminance([r, g, b]) {
+  const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4) }
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+}
+
+function contrastRatio(a, b) {
+  const l1 = relLuminance(a), l2 = relLuminance(b)
+  const hi = Math.max(l1, l2), lo = Math.min(l1, l2)
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+const MIN_CONTRAST = 3   // below this the text is effectively invisible
+
+function dropUnreadableColors(html) {
+  if (typeof window === 'undefined' || !window.DOMParser) return html
+  if (!/style\s*=/i.test(html)) return html   // fast path: nothing coloured
+  let bg = null
+  try {
+    bg = parseColor(getComputedStyle(document.documentElement).getPropertyValue('--canvas'))
+  } catch { /* ignore */ }
+  if (!bg) return html
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
+  doc.body.querySelectorAll('[style]').forEach(el => {
+    const st = el.style
+    // An explicit text+background pair was a deliberate choice — leave it be.
+    if (!st.color || st.backgroundColor) return
+    const fg = parseColor(st.color)
+    if (!fg) return
+    if (contrastRatio(fg, bg) >= MIN_CONTRAST) return
+    st.removeProperty('color')
+    if (!st.length) el.removeAttribute('style')
+  })
+  return doc.body.innerHTML
+}
+
 /**
  * RichContent — render stored HTML. ALWAYS sanitizes, never trusts the source.
  * `highlight` optionally wraps @here / @update.
  */
 export function RichContent({ html, className = '', style, highlightMentions = false }) {
-  let out = sanitizeHtml(html)
+  let out = dropUnreadableColors(sanitizeHtml(html))
   if (highlightMentions) {
     // Safe: our span carries no user content, and everything around it is
     // already sanitized. Doing this BEFORE sanitizing would let a user smuggle
