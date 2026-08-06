@@ -524,11 +524,12 @@ function AuditPlay({ kind, recordingUrl, aiCallId }) {
   const [err, setErr] = useState('')
   async function go() {
     if (url || busy) return
-    setErr('')
-    if (kind === 'manual') { if (recordingUrl) setUrl(recordingUrl); else setErr('No recording'); return }
-    setBusy(true)
+    setErr(''); setBusy(true)
     try {
-      const { data, error } = await supabase.functions.invoke('callqa-recording', { body: { call_id: aiCallId } })
+      // Both kinds go through callqa-recording so any format (incl. GSM
+      // telephony WAV) is transcoded + signed to something the browser plays.
+      const body = kind === 'manual' ? { recording_url: recordingUrl } : { call_id: aiCallId }
+      const { data, error } = await supabase.functions.invoke('callqa-recording', { body })
       if (error || !data?.url) throw new Error(error?.message || data?.error || 'Recording unavailable')
       setUrl(data.url)
     } catch (e) { setErr(e.message || 'Recording unavailable') }
