@@ -139,7 +139,7 @@ const RichTextEditor = forwardRef(function RichTextEditor(
         onInput={handleInput}
         onKeyDown={handleKeyDown}
         className={'pm-rte ' + (className || '')}
-        style={{ minHeight, outline: 'none', border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 13, lineHeight: 1.5, background: 'var(--bg-soft, #f7f7f5)', overflowY: 'auto' }}
+        style={{ minHeight, outline: 'none', border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 13, lineHeight: 1.5, background: 'var(--bg-soft, #f7f7f5)', color: 'var(--ink)', overflowY: 'auto' }}
       />
       {dropdown.open && (
         <div style={{ position: 'absolute', left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)', maxHeight: 160, overflowY: 'auto', zIndex: 50 }}>
