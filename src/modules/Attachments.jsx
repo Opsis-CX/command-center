@@ -72,7 +72,7 @@ export default function Attachments({ taskId }) {
         <div style={sectionLabel}>Google Drive link</div>
         <div style={{ display: 'flex', gap: 6 }}>
           <input type="url" value={driveDraft} onChange={e => setDriveDraft(e.target.value)} placeholder="Paste a Google Drive link…"
-            style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} />
+            style={{ flex: 1, minWidth: 0, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }} />
           <button onClick={saveDrive} className="btn btn-ghost" style={{ flexShrink: 0, fontSize: 12 }}>Save</button>
         </div>
         {task?.drive_link && (
