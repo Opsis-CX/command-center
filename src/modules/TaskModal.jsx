@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useProjectsData } from './projectsData'
 import { Avatar } from './projectBits'
-import { statusLabel, STATUSES, PRIORITIES, stripHtml } from './projectHelpers'
+import { statusLabel, STATUSES, PRIORITIES } from './projectHelpers'
 import { notifyTaskAssigned, notifyTaskAdded, notifyTaskCompleted } from '../lib/notify'
+import RichTextEditor from './RichTextEditor'
 
 // ============================================================
 // TASK MODAL — create a new task or edit an existing one.
@@ -30,7 +31,7 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
   const [status, setStatus] = useState('todo')
   const [priority, setPriority] = useState('medium')
   const [due, setDue] = useState('')
-  const [notes, setNotes] = useState('')
+  const notesRef = useRef(null)
   const [assignees, setAssignees] = useState([])
   const [busy, setBusy] = useState(false)
   const [nameError, setNameError] = useState(false)
@@ -54,11 +55,14 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
       setStatus(existing.status || 'todo')
       setPriority(existing.priority || 'medium')
       setDue(existing.due_date || '')
-      setNotes(stripHtml(existing.notes) || '')
+      // Notes are rich HTML now — load them straight into the editor instead of
+      // flattening them to plain text (which used to destroy bullets on save).
+      notesRef.current?.setHtml(existing.notes || '')
       setAssignees(taskAssignees.filter(a => a.task_id === taskId).map(a => a.profile_id))
     } else {
       setStatus(defaultStatus || 'todo')
       setProjectId(defaultProject || '')
+      notesRef.current?.setHtml('')
     }
   }, [taskId]) // eslint-disable-line
 
@@ -69,6 +73,12 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
   async function save() {
     if (!name.trim()) { setNameError(true); return }
     if (recurring && frequency === 'custom_days' && !customDays.length) { window.alert('Pick at least one day for the recurring task.'); return }
+
+    // Read the notes once — an "empty" contenteditable still reports <br>.
+    const rawNotes = notesRef.current?.getHtml() || ''
+    const notesHtml = rawNotes.replace(/<br\s*\/?>/gi, '').replace(/&nbsp;/g, ' ').replace(/<[^>]*>/g, '').trim()
+      ? rawNotes
+      : null
 
     // Build a recurring_tasks definition from the current fields.
     const recurringPayload = () => ({
@@ -86,7 +96,7 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
       monthly_day: frequency === 'monthly' ? parseInt(monthlyDay, 10) : null,
       yearly_month: frequency === 'yearly' ? parseInt(yearlyMonth, 10) : null,
       yearly_day: frequency === 'yearly' ? parseInt(yearlyDay, 10) : null,
-      notes: notes.trim() || null,
+      notes: notesHtml,
       assignee_ids: assignees,
       is_active: true,
       created_by: userId,
@@ -102,9 +112,6 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
     }
 
     setBusy(true)
-    const notesHtml = notes.trim()
-      ? notes.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
-      : null
     const taskData = {
       name: name.trim(),
       status, priority,
@@ -326,8 +333,8 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
             </Grp>
 
             <Grp label="Notes">
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add notes, context, links…"
-                style={{ ...inp, minHeight: 80, resize: 'vertical' }} />
+              <RichTextEditor ref={notesRef} profiles={profiles} minHeight={90}
+                placeholder="Add notes, context, links… use @ to mention someone" />
             </Grp>
           </div>
 
