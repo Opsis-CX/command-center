@@ -148,7 +148,7 @@ export default function CallQA({ portal = false } = {}) {
     // The heavy per-question `answers` blob and the `transcript` are fetched lazily
     // (in the detail drawer, and on demand at CSV-export time) to keep this initial
     // payload light — it makes the first load noticeably faster at scale.
-    const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, strengths, improvements, strength_tags, improvement_tags, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, winnable, revenue_tip, asked_for_cc, cc_quote, collected_cc, cc_collected_quote, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, customer_name, customer_number)'
+    const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, strengths, improvements, strength_tags, improvement_tags, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, reviewed, reviewed_marked_at, reviewed_marked_by, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, winnable, revenue_tip, asked_for_cc, cc_quote, collected_cc, cc_collected_quote, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, customer_name, customer_number)'
     const page = 1000; let from = 0; let all = []
     for (;;) {
       const { data, error } = await supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(from, from + page - 1)
@@ -288,6 +288,25 @@ export default function CallQA({ portal = false } = {}) {
 
   async function rescore(callId) { setBusy(callId); try { const { error } = await supabase.functions.invoke('callqa-score', { body: { call_id: callId } }); if (error) throw error; await load() } catch (e) { alert('Re-score failed: ' + (e.message || e)) } setBusy('') }
   async function setReviewStatus(reviewId, status) { await supabase.from('ai_qa_reviews').update({ status, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', reviewId); await load() }
+  // Marking reviewed goes through the qa_set_reviewed RPC rather than a direct
+  // update: the RLS write policy on ai_qa_reviews is can_manage_qa(), which
+  // does NOT include the asc role, so a plain .update() would fail silently for
+  // Corinne / Kerri / Sylvia. The RPC is security-definer and gated on
+  // can_view_all_scorecards(), which does include asc.
+  // Patches local state instead of reloading — load() refetches every review.
+  async function setReviewed(reviewId, val) {
+    setBusy(reviewId)
+    const { data, error } = await supabase.rpc('qa_set_reviewed', { p_review_id: reviewId, p_reviewed: val })
+    if (error) { window.alert('Could not update reviewed status: ' + error.message); setBusy(''); return }
+    const patch = {
+      reviewed: val,
+      reviewed_marked_at: data?.reviewed_marked_at ?? (val ? new Date().toISOString() : null),
+      reviewed_marked_by: data?.reviewed_marked_by ?? (val ? user?.id : null),
+    }
+    setRows((prev) => prev.map((r) => (r.id === reviewId ? { ...r, ...patch } : r)))
+    setSelected((sel) => (sel && sel.id === reviewId ? { ...sel, ...patch } : sel))
+    setBusy('')
+  }
   async function setExcluded(reviewId, val) { setBusy(reviewId); await supabase.from('ai_qa_reviews').update({ excluded: val, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', reviewId); await load(); setBusy('') }
   async function saveAdjustment(reviewId, answers, note) {
     setBusy(reviewId)
@@ -311,7 +330,7 @@ export default function CallQA({ portal = false } = {}) {
       }
     } catch { /* fall through — per-item columns just come out blank */ }
     const cols = ['call_date', 'brand', 'agent', 'source', 'direction', 'duration_sec', 'disposition',
-      'call_class', 'scoreable', 'excluded', 'manager_adjusted', 'topics',
+      'call_class', 'scoreable', 'excluded', 'manager_adjusted', 'reviewed', 'reviewed_at', 'topics',
       'score_pct', 'earned', 'max', 'opportunity', 'outcome', 'not_booked_reason', 'opportunity_context',
       'objections', 'asked_for_booking', 'info_before_pricing', 'set_fee_expectations', 'winnable', 'revenue_tip',
       'sec_greeting_compliance', 'sec_discovery_needs', 'sec_solution_pitch', 'sec_close_next_steps',
@@ -324,7 +343,8 @@ export default function CallQA({ portal = false } = {}) {
       const row = {
         call_date: c.call_date, brand: c.brand, agent: agentOf(r), source: c.source, direction: c.direction,
         duration_sec: c.duration_seconds, disposition: c.disposition,
-        call_class: r.call_class, scoreable: r.scoreable, excluded: r.excluded, manager_adjusted: r.manager_adjusted, topics: (r.topics || []).join(' | '),
+        call_class: r.call_class, scoreable: r.scoreable, excluded: r.excluded, manager_adjusted: r.manager_adjusted,
+        reviewed: r.reviewed ? 'yes' : 'no', reviewed_at: r.reviewed_marked_at || '', topics: (r.topics || []).join(' | '),
         score_pct: r.score_pct, earned: r.earned_points, max: r.max_points,
         opportunity: r.opportunity, outcome: r.outcome, not_booked_reason: r.not_booked_reason, opportunity_context: r.opportunity_context,
         objections: (r.objections || []).join(' | '), asked_for_booking: r.asked_for_booking, info_before_pricing: r.info_before_pricing,
@@ -386,14 +406,14 @@ export default function CallQA({ portal = false } = {}) {
           {tab === 'missed' && <MissedOpps rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'conversion' && <Conversion rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'bookings' && <BookingsCard rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
-          {tab === 'calls' && <Calls rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
+          {tab === 'calls' && <Calls rows={filtered} onOpen={setSelected} viewAll={viewAll} canManage={canManage} onSetReviewed={setReviewed} busy={busy} />}
           {tab === 'fails' && <EpicFails rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'rubric' && canManage && <RubricTab campaigns={settings.map((s) => s.campaign)} />}
         {tab === 'settings' && canManage && <SettingsTab settings={settings} secretKeys={secretKeys} pipeline={pipeline} base={base} onSave={saveSetting} busy={busy} />}
         {tab === 'import' && canManage && <ImportPanel />}
         </>
       )}
-      {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onExclude={setExcluded} onAdjust={saveAdjustment} busy={busy} canManage={canManage} meName={meName} userId={user?.id} />}
+      {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onExclude={setExcluded} onSetReviewed={setReviewed} onAdjust={saveAdjustment} busy={busy} canManage={canManage} meName={meName} userId={user?.id} />}
     </div>
   )
 }
@@ -828,30 +848,68 @@ function Conversion({ rows, onOpen, viewAll }) {
   )
 }
 
-function Calls({ rows, onOpen, viewAll }) {
+function Calls({ rows, onOpen, viewAll, canManage, onSetReviewed, busy }) {
+  // All / Unreviewed / Reviewed lives here rather than in the global filter bar,
+  // deliberately: filtering the whole module would skew the Overview averages and
+  // the scorecards. This is a worklist filter, not an analytics one.
+  const [revFilter, setRevFilter] = useState('all')
+  const reviewedCount = rows.filter((r) => r.reviewed).length
+
+  const list = useMemo(() => {
+    if (revFilter === 'reviewed') return rows.filter((r) => r.reviewed)
+    if (revFilter === 'unreviewed') return rows.filter((r) => !r.reviewed)
+    return rows
+  }, [rows, revFilter])
+
   if (!rows.length) return <Card style={{ color: '#64748b' }}>No scored calls in this range.</Card>
   return (
-    <Card style={{ padding: 0, overflow: 'hidden' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-        <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'Opp.', 'Outcome', 'Score', ''].map((h) => <th key={h} style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
-        <tbody>{rows.map((r) => {
-          const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
-          return (
-            <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
-              <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
-              {viewAll && <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{agentOf(r)}</td>}
-              <td style={{ padding: '9px 12px' }}>{c.brand || '—'}{(r.topics || [])[0] && <div style={{ fontSize: 11, color: '#94a3b8' }}>🏷 {r.topics[0]}</div>}</td>
-              <td style={{ padding: '9px 12px' }}>{r.opportunity ? '✅' : '—'}</td>
-              <td style={{ padding: '9px 12px' }}>{r.outcome ? <Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill> : '—'}</td>
-              <td style={{ padding: '9px 12px' }}>{isScored(r)
-                ? <span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 9px', borderRadius: 8 }}>{r.auto_fail ? 'FAIL' : pct(r.score_pct)}{r.manager_adjusted ? ' *' : ''}</span>
-                : <Pill bg="#f1f5f9" fg="#64748b">{r.excluded ? 'Excluded' : (CLASS_LABEL[r.call_class] || 'Not scored')}</Pill>}</td>
-              <td style={{ padding: '9px 12px', color: '#94a3b8' }}>›</td>
-            </tr>
-          )
-        })}</tbody>
-      </table>
-    </Card>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {canManage && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Select label="Show" value={revFilter} onChange={setRevFilter}
+            opts={[['all', `All (${rows.length})`], ['unreviewed', `Unreviewed (${rows.length - reviewedCount})`], ['reviewed', `Reviewed (${reviewedCount})`]]} />
+          <div style={{ fontSize: 12.5, color: '#64748b', paddingBottom: 2 }}>
+            {reviewedCount} of {rows.length} calls in this range marked reviewed
+          </div>
+        </div>
+      )}
+
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        {list.length === 0 ? <div style={{ padding: 14, color: '#64748b' }}>
+          {revFilter === 'unreviewed' ? 'Everything in this range has been reviewed. 🎉' : 'No calls match this filter.'}
+        </div> : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{[...(canManage ? ['✓'] : []), 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'Opp.', 'Outcome', 'Score', ''].map((h, i) => <th key={h + i} style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+          <tbody>{list.map((r) => {
+            const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
+            return (
+              <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer', background: r.reviewed ? '#f8fdf9' : '#fff' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = r.reviewed ? '#f8fdf9' : '#fff'}>
+                {canManage && (
+                  // stopPropagation so ticking the box doesn't also open the drawer
+                  <td style={{ padding: '9px 12px' }} onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" checked={!!r.reviewed} disabled={busy === r.id}
+                      onChange={(e) => onSetReviewed(r.id, e.target.checked)}
+                      title={r.reviewed ? `Reviewed${r.reviewed_marked_at ? ' ' + fmtDate(r.reviewed_marked_at) : ''} — click to unmark` : 'Mark this call reviewed'}
+                      style={{ width: 16, height: 16, cursor: 'pointer', accentColor: TEAL }} />
+                  </td>
+                )}
+                <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
+                {viewAll && <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{agentOf(r)}</td>}
+                <td style={{ padding: '9px 12px' }}>{c.brand || '—'}{(r.topics || [])[0] && <div style={{ fontSize: 11, color: '#94a3b8' }}>🏷 {r.topics[0]}</div>}</td>
+                <td style={{ padding: '9px 12px' }}>{r.opportunity ? '✅' : '—'}</td>
+                <td style={{ padding: '9px 12px' }}>{r.outcome ? <Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill> : '—'}</td>
+                <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{isScored(r)
+                  ? <span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 9px', borderRadius: 8 }}>{r.auto_fail ? 'FAIL' : pct(r.score_pct)}{r.manager_adjusted ? ' *' : ''}</span>
+                  : <Pill bg="#f1f5f9" fg="#64748b">{r.excluded ? 'Excluded' : (CLASS_LABEL[r.call_class] || 'Not scored')}</Pill>}
+                  {r.reviewed && <span style={{ marginLeft: 6, fontSize: 11, color: '#1b5e20', fontWeight: 600 }}>✓ Reviewed</span>}</td>
+                <td style={{ padding: '9px 12px', color: '#94a3b8' }}>›</td>
+              </tr>
+            )
+          })}</tbody>
+        </table>
+        )}
+      </Card>
+    </div>
   )
 }
 
@@ -975,7 +1033,7 @@ function Coaching({ byAgent }) {
   )
 }
 
-function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, canManage, meName, userId }) {
+function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, busy, canManage, meName, userId }) {
   const c = row.call || {}
   const os = OUTCOME_STYLE[row.outcome] || OUTCOME_STYLE.Other
   const [transcript, setTranscript] = useState(c.transcript ?? null)
@@ -1134,6 +1192,14 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, canManage,
                   ? <button disabled={busy === row.id} onClick={() => onExclude(row.id, false)} style={btn('ghost')}>Include in scoring</button>
                   : <button disabled={busy === row.id} onClick={() => onExclude(row.id, true)} style={btn('ghost')}>Exclude from scoring</button>}
               </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 12, paddingTop: 12, borderTop: '1px solid #eef2f7', cursor: 'pointer', fontSize: 13.5 }}>
+                <input type="checkbox" checked={!!row.reviewed} disabled={busy === row.id}
+                  onChange={(e) => onSetReviewed(row.id, e.target.checked)}
+                  style={{ width: 16, height: 16, cursor: 'pointer', accentColor: TEAL }} />
+                <span style={{ fontWeight: 600 }}>This call has been reviewed</span>
+                {row.reviewed && row.reviewed_marked_at &&
+                  <span style={{ color: '#64748b', fontSize: 12 }}>· marked {fmtDate(row.reviewed_marked_at)}</span>}
+              </label>
             </Card>
           )}
         </div>
@@ -1319,793 +1385,4 @@ function RubricRow({ r, onSave, onDelete }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input value={d.label} onChange={(e) => setD({ ...d, label: e.target.value })} placeholder="What the AI checks for on the call" style={{ ...inp(360), flex: 1, minWidth: 220 }} />
-        <label style={{ fontSize: 12, color: '#64748b' }}>Points <input type="number" value={d.points} onChange={(e) => setD({ ...d, points: e.target.value })} style={inp(60)} /></label>
-        <label style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}><input type="checkbox" checked={!!d.allow_na} onChange={(e) => setD({ ...d, allow_na: e.target.checked })} /> Allow N/A</label>
-        <input value={d.section || ''} list="rubric-sections" onChange={(e) => setD({ ...d, section: e.target.value })} placeholder="section" style={inp(150)} />
-      </div>
-      <textarea value={missesText} onChange={(e) => setD({ ...d, misses: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
-        placeholder="Miss reasons the AI can cite when the answer is 'No' — one per line (optional)"
-        style={{ ...inp('100%'), width: '100%', minHeight: 48, resize: 'vertical', fontFamily: 'inherit' }} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button onClick={() => onDelete(r)} style={{ ...btn('ghost'), color: '#b71c1c', padding: '4px 10px' }}>Delete</button>
-        {dirty && <button onClick={() => onSave(r, d)} style={{ ...btn('primary'), padding: '4px 12px' }}>Save changes</button>}
-      </div>
-    </div>
-  )
-}
-function SettingsTab({ settings, secretKeys, pipeline, base, onSave, busy }) {
-  const required = [['callqa_webhook_secret', 'Inbound webhook secret'], ['anthropic_api_key', 'Claude scoring'], ['deepgram_api_key', 'Deepgram transcription'], ['callrail_api_key', 'CallRail API']]
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <Card>
-        <div style={{ fontWeight: 700, marginBottom: 10 }}>Pipeline</div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {['ingested', 'needs_transcription', 'transcribing', 'ready', 'scoring', 'scored', 'error'].map((s) => (
-            <Pill key={s} bg="#f1f5f9" fg="#475569">{s}: {pipeline[s] || 0}</Pill>
-          ))}
-        </div>
-      </Card>
-      <Card>
-        <div style={{ fontWeight: 700, marginBottom: 10 }}>Integration status</div>
-        {required.map(([k, d]) => { const on = secretKeys.includes(k); return (
-          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid #f1f5f9' }}>
-            <Pill bg={on ? '#e8f5e9' : '#fdecea'} fg={on ? '#1b5e20' : '#b71c1c'}>{on ? 'SET' : 'MISSING'}</Pill><code style={{ fontSize: 13 }}>{k}</code><span style={{ fontSize: 12, color: '#64748b' }}>{d}</span>
-          </div>
-        )})}
-      </Card>
-      <Card>
-        <div style={{ fontWeight: 700, marginBottom: 10 }}>Per-campaign automation</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ textAlign: 'left', color: '#475569' }}>{['Campaign', 'Enabled', 'Auto-score', 'Min sec', 'Pass %', 'Model', ''].map((h) => <th key={h} style={{ padding: '6px 8px' }}>{h}</th>)}</tr></thead>
-          <tbody>{settings.map((s) => <SettingRow key={s.campaign} s={s} onSave={onSave} busy={busy} />)}{!settings.length && <tr><td colSpan={7} style={{ color: '#64748b', padding: 8 }}>No campaigns.</td></tr>}</tbody>
-        </table>
-      </Card>
-    </div>
-  )
-}
-function SettingRow({ s, onSave, busy }) {
-  const [d, setD] = useState(s); const dirty = JSON.stringify(d) !== JSON.stringify(s)
-  return (
-    <tr style={{ borderTop: '1px solid #f1f5f9' }}>
-      <td style={{ padding: '6px 8px', fontWeight: 600 }}>{d.campaign}</td>
-      <td style={{ padding: '6px 8px' }}><input type="checkbox" checked={d.enabled} onChange={(e) => setD({ ...d, enabled: e.target.checked })} /></td>
-      <td style={{ padding: '6px 8px' }}><input type="checkbox" checked={d.auto_score} onChange={(e) => setD({ ...d, auto_score: e.target.checked })} /></td>
-      <td style={{ padding: '6px 8px' }}><input type="number" value={d.min_duration_seconds} onChange={(e) => setD({ ...d, min_duration_seconds: Number(e.target.value) })} style={inp(60)} /></td>
-      <td style={{ padding: '6px 8px' }}><input type="number" value={d.pass_threshold} onChange={(e) => setD({ ...d, pass_threshold: Number(e.target.value) })} style={inp(60)} /></td>
-      <td style={{ padding: '6px 8px' }}><input value={d.model} onChange={(e) => setD({ ...d, model: e.target.value })} style={inp(200)} /></td>
-      <td style={{ padding: '6px 8px' }}>{dirty && <button disabled={busy === 'settings'} onClick={() => onSave(d)} style={{ ...btn('primary'), padding: '4px 10px' }}>Save</button>}</td>
-    </tr>
-  )
-}
-
-function Select({ label, value, onChange, opts, disabled = false, title }) {
-  return (
-    <label style={{ fontSize: 12, color: '#64748b', opacity: disabled ? 0.5 : 1 }} title={title}>
-      <div style={{ marginBottom: 3, fontWeight: 600 }}>{label}</div>
-      <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: disabled ? '#f1f5f9' : '#fff', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer' }}>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-    </label>
-  )
-}
-function DateField({ label, value, onChange, min, max }) {
-  return (
-    <label style={{ fontSize: 12, color: '#64748b' }}>
-      <div style={{ marginBottom: 3, fontWeight: 600 }}>{label}</div>
-      <input type="date" value={value} min={min} max={max} onChange={(e) => onChange(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', fontSize: 13, fontFamily: 'inherit', color: value ? '#0f172a' : '#94a3b8' }} />
-    </label>
-  )
-}
-function RecordingBtn({ callId }) {
-  const [url, setUrl] = useState(null); const [loading, setLoading] = useState(false); const [err, setErr] = useState(false)
-  async function loadRec() {
-    setLoading(true); setErr(false)
-    try {
-      const { data, error } = await supabase.functions.invoke('callqa-recording', { body: { call_id: callId } })
-      if (error) throw error
-      // proxy returns either {url} (signed, seekable) or the audio bytes as a Blob
-      if (data && !(data instanceof Blob) && data.url) setUrl(data.url)
-      else { const blob = data instanceof Blob ? data : new Blob([data], { type: 'audio/mpeg' }); setUrl(URL.createObjectURL(blob)) }
-    } catch (e) { setErr(true) }
-    setLoading(false)
-  }
-  if (url) return <audio controls autoPlay src={url} style={{ height: 34 }} />
-  return <button onClick={loadRec} disabled={loading} style={{ ...btn('ghost'), padding: '4px 10px', fontSize: 13 }}>{loading ? 'Loading…' : (err ? '↻ Retry' : '▶ Recording')}</button>
-}
-// ===================== Scorecards hub (3-tier feedback loop) =================
-// Executive (portfolio) / Manager (per brand) / Agent (personal) views computed
-// live from the loaded reviews. Each tier is exportable to PDF, Excel, and CSV.
-// Renders for managers and the client portal (viewAll). Agent-login scoping +
-// read-receipts come later; this is the read side of the loop.
-
-const r1 = (v) => (v == null ? '' : Math.round(Number(v) * 10) / 10)
-const csvEsc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
-function downloadBlob(filename, blob) { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url) }
-// sheets = [{ title, sheet, cols:[], rows:[[...]] }]
-function exportCSVsheets(filename, sheets) {
-  const parts = sheets.map((s) => {
-    const lines = [(s.title ? csvEsc(s.title) : ''), s.cols.map(csvEsc).join(','), ...s.rows.map((r) => r.map(csvEsc).join(','))].filter((x) => x !== '')
-    return lines.join('\n')
-  })
-  downloadBlob(filename + '.csv', new Blob([parts.join('\n\n')], { type: 'text/csv;charset=utf-8;' }))
-}
-let _xlsxPromise = null
-function ensureXLSX() {
-  if (typeof window !== 'undefined' && window.XLSX) return Promise.resolve(window.XLSX)
-  if (!_xlsxPromise) _xlsxPromise = new Promise((resolve, reject) => {
-    const s = document.createElement('script')
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
-    s.onload = () => resolve(window.XLSX); s.onerror = () => reject(new Error('Could not load the Excel library'))
-    document.head.appendChild(s)
-  })
-  return _xlsxPromise
-}
-async function exportXLSXsheets(filename, sheets) {
-  const XLSX = await ensureXLSX()
-  const wb = XLSX.utils.book_new()
-  sheets.forEach((s, i) => {
-    const ws = XLSX.utils.aoa_to_sheet([s.cols, ...s.rows])
-    XLSX.utils.book_append_sheet(wb, ws, String(s.sheet || s.title || ('Sheet' + (i + 1))).slice(0, 31))
-  })
-  XLSX.writeFile(wb, filename + '.xlsx')
-}
-function exportPDFsheets(title, subtitle, sheets) {
-  const e = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const body = sheets.map((s) => '<h2>' + e(s.title || '') + '</h2><table><thead><tr>' + s.cols.map((c) => '<th>' + e(c) + '</th>').join('') + '</tr></thead><tbody>' + s.rows.map((r) => '<tr>' + r.map((c) => '<td>' + e(c) + '</td>').join('') + '</tr>').join('') + '</tbody></table>').join('')
-  const gen = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
-  const html = '<!doctype html><html><head><meta charset="utf-8"><title>' + e(title) + '</title><style>'
-    + '@page{margin:12mm}*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#0f172a;padding:6px 10px;font-size:12px}'
-    + 'h1{font-size:18px;margin:0 0 2px;border-bottom:3px solid ' + TEAL + ';padding-bottom:8px}h1 span{color:' + TEAL + '}'
-    + '.sub{color:#64748b;font-size:11px;margin:6px 0 4px}h2{font-size:13px;margin:16px 0 6px}'
-    + 'table{width:100%;border-collapse:collapse;margin-bottom:8px}th{background:#f1f5f9;text-align:left;padding:5px 7px;font-size:10.5px;color:#475569}td{padding:4px 7px;border-top:1px solid #eef2f7}tr{page-break-inside:avoid}'
-    + '.foot{margin-top:14px;border-top:1px solid #e2e8f0;padding-top:6px;color:#94a3b8;font-size:10px;display:flex;justify-content:space-between}'
-    + '.noprint{text-align:center;margin-bottom:10px}.noprint button{background:' + TEAL + ';color:#fff;border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer}'
-    + '@media print{.noprint{display:none}body{padding:0}}'
-    + '</style></head><body><div class="noprint"><button onclick="window.print()">⬇ Save as PDF / Print</button></div>'
-    + '<h1>Call QA <span>(AI)</span> — ' + e(title) + '</h1><div class="sub">' + e(subtitle || '') + '</div>' + body
-    + '<div class="foot"><span>Generated ' + e(gen) + '</span><span>Powered by Opsis CX</span></div>'
-    + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}</scr' + 'ipt></body></html>'
-  const w = window.open('', '_blank'); if (!w) { alert('Please allow pop-ups to export the PDF.'); return }
-  w.document.write(html); w.document.close(); w.focus()
-}
-function ExportBar({ name, title, subtitle, build }) {
-  const [busy, setBusy] = useState('')
-  return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-      <button style={{ ...btn('ghost'), padding: '6px 10px' }} onClick={() => exportPDFsheets(title, subtitle, build())}>⬇ PDF</button>
-      <button style={{ ...btn('ghost'), padding: '6px 10px', opacity: busy ? 0.6 : 1 }} disabled={!!busy} onClick={async () => { setBusy('x'); try { await exportXLSXsheets(name, build()) } catch (e) { alert(e.message || e) } setBusy('') }}>{busy ? 'Preparing…' : '⬇ Excel'}</button>
-      <button style={{ ...btn('ghost'), padding: '6px 10px' }} onClick={() => exportCSVsheets(name, build())}>⬇ CSV</button>
-    </div>
-  )
-}
-
-// AI CSRs (virtual agents) — audited for quality like anyone else, but never
-// coached (there's no 1:1 with an AI) and kept out of the human baseline so they
-// don't inflate it. Extend this list as more AI agents come online.
-const AI_CSRS = new Set(['Dane', 'Sophia', 'Jason'])
-const isAiCsr = (name) => AI_CSRS.has((name || '').trim())
-
-function Scorecards({ rows, viewAll, onOpen }) {
-  const [tier, setTier] = useState('exec')
-  const [mgrBrand, setMgrBrand] = useState('')
-  const [agentKey, setAgentKey] = useState('')
-  const P = (n, d) => (d ? (n / d) * 100 : null)
-  const data = useMemo(() => {
-    const scored = rows.filter(isScored)
-    const overall = {
-      scored: scored.length,
-      avg: scored.length ? scored.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / scored.length : null,
-      opps: rows.filter((r) => r.opportunity).length,
-      booked: rows.filter((r) => r.opportunity && r.outcome === 'Booked').length,
-      missed: rows.filter(isMissedOpp).length,
-      winnable: rows.filter((r) => isMissedOpp(r) && r.winnable).length,
-      large: rows.filter((r) => isMissedOpp(r) && valueTier(r) === 3).length,
-    }
-    const bm = new Map()
-    rows.forEach((r) => {
-      const b = r.call?.brand || '—'
-      if (!bm.has(b)) bm.set(b, { brand: b, scores: [], opps: 0, booked: 0, ccYes: 0, collYes: 0, missed: 0, winnable: 0, large: 0, agents: new Set() })
-      const o = bm.get(b); if (isScored(r)) o.scores.push(Number(r.score_pct) || 0)
-      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') { o.booked++; if (r.asked_for_cc === true) o.ccYes++; if (r.collected_cc === true) o.collYes++ } }
-      if (isMissedOpp(r)) { o.missed++; if (r.winnable) o.winnable++; if (valueTier(r) === 3) o.large++ }
-      const an = agentOf(r); if (an) o.agents.add(an)
-    })
-    const brands = Array.from(bm.values()).map((o) => ({
-      ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
-      conv: P(o.booked, o.opps), cardRate: P(o.ccYes, o.booked), collectRate: P(o.collYes, o.ccYes), calls: o.scores.length, nAgents: o.agents.size,
-    })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
-
-    const am = new Map()
-    rows.forEach((r) => {
-      const an = agentOf(r); const b = r.call?.brand || '—'; const k = an + '|||' + b
-      if (!am.has(k)) am.set(k, { name: an, brand: b, scores: [], opps: 0, booked: 0, ccYes: 0, collYes: 0, asked: 0, focus: {}, win: {} })
-      const o = am.get(k); if (isScored(r)) o.scores.push(Number(r.score_pct) || 0)
-      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') { o.booked++; if (r.asked_for_cc === true) o.ccYes++; if (r.collected_cc === true) o.collYes++ } if (r.asked_for_booking) o.asked++ }
-      ;(r.improvement_tags || []).forEach((t) => o.focus[t] = (o.focus[t] || 0) + 1)
-      ;(r.strength_tags || []).forEach((t) => o.win[t] = (o.win[t] || 0) + 1)
-    })
-    const top = (m) => Object.entries(m).sort((a, b) => b[1] - a[1]).map((x) => x[0])
-    const agents = Array.from(am.values()).filter((o) => o.scores.length >= 1 && o.name && o.name !== 'Unknown').map((o) => ({
-      ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
-      calls: o.scores.length, conv: P(o.booked, o.opps), askRate: P(o.asked, o.opps), cardRate: P(o.ccYes, o.booked), collectRate: P(o.collYes, o.ccYes),
-      topFocus: top(o.focus), topWin: top(o.win), ai: isAiCsr(o.name),
-    })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
-
-    // Coaching gaps are a human-only view (we don't coach AI CSRs).
-    const gaps = (brand) => {
-      const m = {}
-      agents.filter((a) => (!brand || a.brand === brand) && !a.ai).forEach((a) => { (a.topFocus.slice(0, 2)).forEach((t) => m[t] = (m[t] || 0) + 1) })
-      return Object.entries(m).sort((a, b) => b[1] - a[1])
-    }
-    return { overall, brands, agents, gaps }
-  }, [rows])
-
-  const seg = (k, l) => <button key={k} onClick={() => setTier(k)} style={{ border: 'none', background: tier === k ? TEAL : '#fff', color: tier === k ? '#fff' : '#334155', padding: '8px 16px', borderRadius: 999, cursor: 'pointer', fontWeight: 700, fontSize: 13, boxShadow: tier === k ? 'none' : 'inset 0 0 0 1px #cbd5e1' }}>{l}</button>
-
-  // Selected brand/agent fall back to the top-ranked one until the user picks
-  // (or drills in via a click).
-  const brand = (mgrBrand && data.brands.some((x) => x.brand === mgrBrand)) ? mgrBrand : (data.brands[0]?.brand || '')
-  const aKey = (agentKey && data.agents.some((x) => (x.name + '|||' + x.brand) === agentKey)) ? agentKey : (data.agents[0] ? data.agents[0].name + '|||' + data.agents[0].brand : '')
-  const goBrand = (b) => { setMgrBrand(b); setTier('mgr') }
-  const goAgent = (name, br) => { setAgentKey(name + '|||' + br); setTier('agent') }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        {seg('exec', 'Executive')}{seg('mgr', 'Manager')}{seg('agent', 'Agent')}
-        <span style={{ color: '#94a3b8', fontSize: 12.5, marginLeft: 4 }}>Click a brand or agent to drill in · export any view as PDF, Excel, or CSV.</span>
-      </div>
-      {tier === 'exec' && <ScExec data={data} onBrand={goBrand} />}
-      {tier === 'mgr' && <ScMgr data={data} brand={brand} setBrand={setMgrBrand} onAgent={goAgent} onOpen={onOpen} />}
-      {tier === 'agent' && <ScAgent data={data} rows={rows} aKey={aKey} setKey={setAgentKey} onOpen={onOpen} />}
-    </div>
-  )
-}
-
-function ScExec({ data, onBrand }) {
-  const o = data.overall; const cv = P100(o.booked, o.opps)
-  const gaps = data.gaps(null).slice(0, 8)
-  const gmax = Math.max(1, ...gaps.map((g) => g[1]))
-  const build = () => ([
-    { title: 'Portfolio summary', sheet: 'Summary', cols: ['Metric', 'Value'], rows: [
-      ['Calls scored', o.scored], ['Avg QA %', r1(o.avg)], ['Opportunities', o.opps], ['Booked', o.booked],
-      ['Conversion %', r1(cv)], ['Missed opportunities', o.missed], ['Winnable lost', o.winnable], ['Large missed opps', o.large],
-    ] },
-    { title: 'Brand ranking', sheet: 'Brands', cols: ['Brand', 'Calls', 'Avg QA %', 'Conversion %', 'Card asked %', 'Card collected %', 'Missed', 'Large missed', 'Agents'], rows: data.brands.map((b) => [b.brand, b.calls, r1(b.avg), r1(b.conv), r1(b.cardRate), r1(b.collectRate), b.missed, b.large, b.nAgents]) },
-    { title: 'Systemic coaching gaps', sheet: 'Gaps', cols: ['Coaching gap', 'Agents affected'], rows: data.gaps(null).map((g) => [g[0], g[1]]) },
-  ])
-  return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-        <div style={{ fontWeight: 700, fontSize: 15 }}>Executive — portfolio</div>
-        <ExportBar name="callqa-executive-scorecard" title="Executive Scorecard" subtitle={'All brands · ' + o.scored + ' calls scored'} build={build} />
-      </div>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Tile label="Calls scored" value={o.scored} sub="all brands" />
-        <Tile label="Avg QA score" value={pct(o.avg)} color={scoreColor(o.avg)} />
-        <Tile label="Conversion" value={pct(cv)} color={TEAL} sub={o.booked + ' of ' + o.opps + ' opps'} />
-        <Tile label="Winnable lost" value={o.winnable} color="#b71c1c" />
-        <Tile label="Large missed opps" value={o.large} color="#92400e" sub="install / commercial" />
-      </div>
-      {(() => {
-        const humans = data.agents.filter((a) => !a.ai); const ais = data.agents.filter((a) => a.ai)
-        const wavg = (arr) => { const c = arr.reduce((s, a) => s + a.calls, 0); return c ? arr.reduce((s, a) => s + (a.avg || 0) * a.calls, 0) / c : null }
-        const hc = humans.reduce((s, a) => s + a.calls, 0); const ac = ais.reduce((s, a) => s + a.calls, 0)
-        if (!ais.length) return null
-        return (
-          <Card style={{ background: '#f8fafc' }}>
-            <div style={{ fontWeight: 700, marginBottom: 10 }}>Human vs AI performance <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12.5 }}>— AI CSRs are audited for quality, not coached</span></div>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <Tile label="Human CSRs — avg QA" value={pct(wavg(humans))} color={scoreColor(wavg(humans))} sub={humans.length + ' CSRs · ' + hc.toLocaleString() + ' scored calls'} />
-              <Tile label="AI CSRs — avg QA" value={pct(wavg(ais))} color={scoreColor(wavg(ais))} sub={ais.length + ' AI agents · ' + ac.toLocaleString() + ' scored calls · audit only'} />
-            </div>
-          </Card>
-        )
-      })()}
-      <Card style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ fontWeight: 700, padding: 14 }}>Brand ranking</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Brand', 'Calls', 'Avg QA', 'QA', 'Conversion', 'Card asked', 'Card collected', 'Missed', 'Large missed'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
-          <tbody>{data.brands.map((b) => (
-            <tr key={b.brand} onClick={() => onBrand(b.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
-              <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{b.brand} <span style={{ color: '#cbd5e1' }}>›</span></td>
-              <td style={{ padding: '8px 12px' }}>{b.calls}</td>
-              <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(b.avg), color: scoreColor(b.avg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(b.avg)}</span></td>
-              <td style={{ padding: '8px 12px', width: 130 }}><Bar v={b.avg} color={scoreColor(b.avg)} /></td>
-              <td style={{ padding: '8px 12px', fontWeight: 700, color: b.conv >= 50 ? '#1b5e20' : b.conv >= 35 ? '#8d6e00' : '#b71c1c' }}>{pct(b.conv)}</td>
-              <td style={{ padding: '8px 12px', fontWeight: 700, color: TEAL }} title={b.cardRate == null ? 'no bookings in range' : (b.ccYes + ' of ' + b.booked + ' bookings asked')}>{pct(b.cardRate)}</td>
-              <td style={{ padding: '8px 12px', fontWeight: 700, color: '#0f766e' }} title={b.collectRate == null ? 'no card asks in range' : (b.collYes + ' of ' + b.ccYes + ' asks collected')}>{pct(b.collectRate)}</td>
-              <td style={{ padding: '8px 12px' }}>{b.missed}</td>
-              <td style={{ padding: '8px 12px', color: '#92400e', fontWeight: 700 }}>{b.large}</td>
-            </tr>
-          ))}</tbody>
-        </table>
-      </Card>
-      <Card>
-        <div style={{ fontWeight: 700, marginBottom: 12 }}>Biggest systemic coaching gaps <span style={{ color: '#94a3b8', fontWeight: 400 }}>— across all brands</span></div>
-        {gaps.map((g) => (
-          <div key={g[0]} style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{g[0]}</span><b>{g[1]} agents</b></div>
-            <Bar v={(g[1] / gmax) * 100} color="#c2410c" />
-          </div>
-        ))}
-      </Card>
-    </>
-  )
-}
-
-function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
-  const b = data.brands.find((x) => x.brand === brand) || data.brands[0]
-  const roster = data.agents.filter((a) => a.brand === (b?.brand) && !a.ai)   // coachable humans
-  const aiRoster = data.agents.filter((a) => a.brand === (b?.brand) && a.ai)  // audit-only AI
-  const gaps = data.gaps(b?.brand).slice(0, 6); const gmax = Math.max(1, ...gaps.map((g) => g[1]))
-  const build = () => ([
-    { title: (b.brand + ' — team summary'), sheet: 'Summary', cols: ['Metric', 'Value'], rows: [
-      ['Brand', b.brand], ['Calls scored', b.calls], ['Avg QA %', r1(b.avg)], ['Conversion %', r1(b.conv)], ['Card asked on bookings %', r1(b.cardRate)],
-      ['Missed opportunities', b.missed], ['Large missed opps', b.large], ['Agents', b.nAgents],
-    ] },
-    { title: 'Agent leaderboard', sheet: 'Agents', cols: ['#', 'Agent', 'Calls', 'Avg QA %', 'Conversion %', 'Asked for booking %', 'Card asked %', 'Coaching focus'], rows: roster.map((a, i) => [i + 1, a.name, a.calls, r1(a.avg), r1(a.conv), r1(a.askRate), r1(a.cardRate), a.topFocus[0] || '']) },
-    { title: 'Team coaching gaps', sheet: 'Gaps', cols: ['Coaching gap', 'Agents affected'], rows: data.gaps(b?.brand).map((g) => [g[0], g[1]]) },
-  ])
-  if (!b) return <Card style={{ color: '#64748b' }}>No brand data in range.</Card>
-  return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <Select label="Brand" value={brand} onChange={setBrand} opts={data.brands.map((x) => [x.brand, x.brand])} />
-        <ExportBar name={'callqa-manager-' + b.brand.replace(/\W+/g, '-').toLowerCase()} title={b.brand + ' — Team Scorecard'} subtitle={b.calls + ' calls · ' + b.nAgents + ' agents'} build={build} />
-      </div>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Tile label="Team avg QA" value={pct(b.avg)} color={scoreColor(b.avg)} sub={b.calls + ' calls'} />
-        <Tile label="Conversion" value={pct(b.conv)} color={TEAL} sub={b.booked + ' of ' + b.opps} />
-        <Tile label="Card asked" value={pct(b.cardRate)} color={TEAL} sub={b.cardRate == null ? 'no bookings' : (b.ccYes + ' of ' + b.booked + ' bookings')} />
-        <Tile label="Winnable lost" value={b.winnable} color="#b71c1c" sub="recoverable" />
-        <Tile label="Large missed" value={b.large} color="#92400e" sub="install / commercial" />
-      </div>
-      <Card style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ fontWeight: 700, padding: 14 }}>Agent leaderboard</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['#', 'Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Card asked', 'Coaching focus'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
-          <tbody>{roster.map((a, i) => (
-            <tr key={a.name} onClick={() => onAgent(a.name, a.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
-              <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{i + 1}</td>
-              <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{a.name} <span style={{ color: '#cbd5e1' }}>›</span></td>
-              <td style={{ padding: '8px 12px' }}>{a.calls}</td>
-              <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(a.avg), color: scoreColor(a.avg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(a.avg)}</span></td>
-              <td style={{ padding: '8px 12px', fontWeight: 700, color: a.conv >= 50 ? '#1b5e20' : a.conv >= 35 ? '#8d6e00' : '#b71c1c' }}>{pct(a.conv)}</td>
-              <td style={{ padding: '8px 12px', color: a.askRate < 50 ? '#b71c1c' : '#334155' }}>{pct(a.askRate)}</td>
-              <td style={{ padding: '8px 12px', color: '#334155' }}>{pct(a.cardRate)}</td>
-              <td style={{ padding: '8px 12px', maxWidth: 240, color: '#475569' }}>{a.topFocus[0] || '—'}</td>
-            </tr>
-          ))}</tbody>
-        </table>
-      </Card>
-      {aiRoster.length > 0 && (
-        <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ fontWeight: 700, padding: 14 }}>AI CSRs <span style={{ color: '#94a3b8', fontWeight: 400 }}>— audited for quality, not coached</span></div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Card asked'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
-            <tbody>{aiRoster.map((a) => (
-              <tr key={a.name} onClick={() => onAgent(a.name, a.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
-                <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{a.name} <Pill bg="#ede9fe" fg="#6d28d9">AI</Pill> <span style={{ color: '#cbd5e1' }}>›</span></td>
-                <td style={{ padding: '8px 12px' }}>{a.calls}</td>
-                <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(a.avg), color: scoreColor(a.avg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(a.avg)}</span></td>
-                <td style={{ padding: '8px 12px', fontWeight: 700, color: a.conv >= 50 ? '#1b5e20' : a.conv >= 35 ? '#8d6e00' : '#b71c1c' }}>{pct(a.conv)}</td>
-                <td style={{ padding: '8px 12px', color: '#334155' }}>{pct(a.askRate)}</td>
-                <td style={{ padding: '8px 12px', color: '#334155' }}>{pct(a.cardRate)}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </Card>
-      )}
-      <Card>
-        <div style={{ fontWeight: 700, marginBottom: 12 }}>Top team coaching gaps <span style={{ color: '#94a3b8', fontWeight: 400 }}>— coach the pattern (human CSRs)</span></div>
-        {gaps.length === 0 ? <div style={{ color: '#64748b' }}>No data.</div> : gaps.map((g) => (
-          <div key={g[0]} style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{g[0]}</span><b>{g[1]} agents</b></div>
-            <Bar v={(g[1] / gmax) * 100} color="#c2410c" />
-          </div>
-        ))}
-      </Card>
-    </>
-  )
-}
-
-function ScAgent({ data, rows, aKey, setKey, onOpen }) {
-  const opts = [...data.agents].sort((a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name))
-  const a = data.agents.find((x) => (x.name + '|||' + x.brand) === aKey) || opts[0]
-  if (!a) return <Card style={{ color: '#64748b' }}>No agent data in range.</Card>
-  const isAi = a.ai
-  const win = a.topWin[0] || '—'; const f0 = a.topFocus[0] || '—'; const f1 = a.topFocus[1]
-  // This agent's own scored calls — clickable through to the full Detail drawer
-  // (10-section breakdown, transcript, recording playback).
-  const myCalls = (rows || []).filter((r) => agentOf(r) === a.name && (r.call?.brand || '—') === a.brand)
-    .slice().sort((x, y) => String(y.call?.call_date || y.created_at).localeCompare(String(x.call?.call_date || x.created_at)))
-  const build = () => ([
-    { title: a.name + ' (' + a.brand + ') — scorecard', sheet: 'Scorecard', cols: ['Metric', 'Value'], rows: [
-      ['Agent', a.name], ['Brand', a.brand], ['Calls scored', a.calls], ['Avg QA %', r1(a.avg)],
-      ['Conversion %', r1(a.conv)], ['Asked for booking %', r1(a.askRate)],
-      ['What they do best', win], ['Focus this week', f0], ['Then', f1 || ''],
-    ] },
-    { title: 'QA reviews', sheet: 'Calls', cols: ['Date', 'Score %', 'Scoreable', 'Opportunity', 'Outcome', 'Not booked reason', 'Topic', 'Summary'], rows: myCalls.map((r) => [r.call?.call_date || '', r.score_pct == null ? '' : r.score_pct, isScored(r) ? 'yes' : 'no', r.opportunity ? 'yes' : 'no', r.outcome || '', r.not_booked_reason || '', (r.topics || [])[0] || '', r.summary || '']) },
-  ])
-  return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <Select label="Agent" value={aKey} onChange={setKey} opts={opts.map((o) => [o.name + '|||' + o.brand, o.name + ' · ' + o.brand + (o.ai ? ' (AI)' : '')])} />
-        <ExportBar name={'callqa-agent-' + a.name.replace(/\W+/g, '-').toLowerCase()} title={a.name + ' — Scorecard'} subtitle={a.brand + ' · ' + a.calls + ' calls'} build={build} />
-      </div>
-      <Card>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ width: 92, height: 92, borderRadius: '50%', background: scoreColor(a.avg), color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{a.avg == null ? '—' : Math.round(a.avg)}</div><div style={{ fontSize: 10, opacity: 0.9 }}>avg QA</div>
-          </div>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{a.name} {isAi ? <Pill bg="#ede9fe" fg="#6d28d9">AI CSR</Pill> : null} <span style={{ color: '#64748b', fontWeight: 500 }}>· {a.brand}</span></div>
-            <div style={{ color: '#64748b', fontSize: 12.5 }}>{a.calls} calls scored in range</div>
-            <div style={{ marginTop: 8, fontSize: 13 }}>{isAi ? 'Virtual agent — audited for quality and tuned, not coached.' : ((a.avg >= 80 ? '⭐ One of the strongest voices on the team. ' : '') + 'One focus this week — small change, real money.')}</div>
-          </div>
-        </div>
-      </Card>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Tile label="Calls scored" value={a.calls} />
-        <Tile label="Avg QA" value={pct(a.avg)} color={scoreColor(a.avg)} />
-        <Tile label="Conversion" value={pct(a.conv)} color={TEAL} sub={a.booked + ' booked'} />
-        <Tile label="Asked for booking" value={pct(a.askRate)} color={a.askRate < 50 ? '#b71c1c' : '#1b5e20'} sub="on opportunities" />
-        <Tile label="AHT" value="—" color="#94a3b8" sub="Lightspeed · pending" />
-        <Tile label="ACW" value="—" color="#94a3b8" sub="Lightspeed · pending" />
-      </div>
-      {!isAi ? (
-        <>
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-            <Card style={{ flex: 1, minWidth: 240, background: '#f0fdf4', border: '1px solid #bbf7d0' }}><div style={{ fontWeight: 700, color: '#166534', marginBottom: 4 }}>🌟 What you're great at</div><div>{win}</div></Card>
-            <Card style={{ flex: 1, minWidth: 240, background: '#fff7ed', border: '1px solid #fed7aa' }}><div style={{ fontWeight: 700, color: '#9a3412', marginBottom: 4 }}>🎯 Your focus this week</div><div style={{ fontWeight: 600 }}>{f0}</div>{f1 ? <div style={{ color: '#64748b', fontSize: 12.5, marginTop: 4 }}>Then: {f1}</div> : null}</Card>
-          </div>
-          <Card>
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>Asked for the booking</div>
-            <div style={{ height: 10, borderRadius: 6, background: '#eef2f7', overflow: 'hidden' }}><div style={{ height: '100%', width: (a.askRate || 0) + '%', background: a.askRate < 50 ? '#b71c1c' : '#1b5e20' }} /></div>
-            <div style={{ color: '#64748b', fontSize: 12.5, marginTop: 6 }}>{pct(a.askRate)} of your opportunity calls. Next cycle this shows your movement — that's the loop.</div>
-          </Card>
-        </>
-      ) : (
-        <Card style={{ background: '#faf5ff', border: '1px solid #e9d5ff' }}>
-          <div style={{ fontWeight: 700, color: '#6d28d9', marginBottom: 4 }}>🤖 AI CSR — audit only</div>
-          <div style={{ fontSize: 13, color: '#334155' }}>This is a virtual agent. Its calls are scored for quality monitoring and tuning, not coached. It asked for the booking on <b>{pct(a.askRate)}</b> of opportunity calls, with <b>{pct(a.conv)}</b> conversion. Use the calls below to spot-check and tune the AI.</div>
-        </Card>
-      )}
-      <Card style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ fontWeight: 700, padding: 14 }}>Their QA reviews <span style={{ color: '#94a3b8', fontWeight: 400 }}>— click any call to see the full breakdown, transcript &amp; recording</span></div>
-        {myCalls.length === 0 ? <div style={{ padding: 14, color: '#64748b' }}>No calls in range.</div> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Date', 'Score', 'Opp.', 'Outcome', 'Topic', ''].map((h) => <th key={h} style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
-            <tbody>{myCalls.map((r) => {
-              const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
-              return (
-                <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
-                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
-                  <td style={{ padding: '8px 12px' }}>{isScored(r)
-                    ? <span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{r.auto_fail ? 'FAIL' : pct(r.score_pct)}</span>
-                    : <Pill bg="#f1f5f9" fg="#64748b">{r.excluded ? 'Excluded' : (CLASS_LABEL[r.call_class] || 'Not scored')}</Pill>}</td>
-                  <td style={{ padding: '8px 12px' }}>{r.opportunity ? '✅' : '—'}</td>
-                  <td style={{ padding: '8px 12px' }}>{r.outcome ? <Pill bg={os.bg} fg={os.fg}>{r.outcome}</Pill> : '—'}</td>
-                  <td style={{ padding: '8px 12px', maxWidth: 220, color: '#475569' }}>{(r.topics || [])[0] || '—'}</td>
-                  <td style={{ padding: '8px 12px', color: '#94a3b8' }}>›</td>
-                </tr>
-              )
-            })}</tbody>
-          </table>
-        )}
-      </Card>
-    </>
-  )
-}
-const P100 = (n, d) => (d ? (n / d) * 100 : null)
-
-// Build a self-contained, print-optimized HTML report for a single call and
-// auto-open the browser print dialog (Save as PDF). No external dependencies.
-// Layout: page 1 = the analysis (score, context, revenue, risks, summary,
-// coaching, full 10-point scoring); page 2 = transcript + notes.
-function buildCallReportHtml(row, c, answers, transcript, notes, includeTranscript = false, segments = []) {
-  const esc = (v) => (v == null ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'))
-  // Short, print-friendly names for the rubric items (full questions are long).
-  const SHORT = { greeting: 'Greeting', verify: 'Verify customer info', callflow: 'Call flow & expectations', knowledge: 'Product knowledge', appointment: 'Offer appointment', professionalism: 'Professionalism', rebuttals: 'Rebuttals to book', hold: 'Hold policy', nextsteps: 'Clear next steps', closing: 'Proper closing' }
-  const items = Object.entries(answers || {}).sort((a, b) => {
-    const ia = RUBRIC_ORDER.indexOf(a[0]), ib = RUBRIC_ORDER.indexOf(b[0])
-    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
-  })
-  const notScored = row.scoreable === false || row.excluded
-  const scoreStr = row.excluded ? 'Excluded' : (row.scoreable === false ? (CLASS_LABEL[row.call_class] || 'Not scored') : (row.auto_fail ? 'FAIL' : pct(row.score_pct)))
-  const scoreCol = notScored ? '#64748b' : scoreColor(row.score_pct)
-  const chip = (label, val) => `<div class="fld"><div class="lbl">${esc(label)}</div><div class="val">${esc(val)}</div></div>`
-
-  const metaBits = [agentOf(row), c.brand, fmtDate(c.call_date), c.source, c.direction, fmtDur(c.duration_seconds),
-    c.customer_number ? '☎ ' + c.customer_number : '', c.customer_name].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ')
-
-  const contextCard = `<div class="card"><div class="h">Call context</div><div class="grid">
-    ${chip('Call type', CLASS_LABEL[row.call_class] || 'Conversation')}
-    ${chip('Opportunity', row.opportunity ? 'Yes' : 'No')}
-    ${chip('Outcome', row.outcome || '—')}
-    ${row.outcome === 'Not Booked' ? chip('Reason', row.not_booked_reason || '—') : ''}
-  </div>${row.opportunity_context ? `<div class="ln"><b>Caller wanted:</b> ${esc(row.opportunity_context)}</div>` : ''}${(row.topics || []).length ? `<div class="tags">${row.topics.map((t) => `<span class="tag">🏷 ${esc(t)}</span>`).join('')}</div>` : ''}</div>`
-
-  const revenueCard = (row.opportunity || row.revenue_tip) ? `<div class="card amber"><div class="h">Revenue &amp; conversion</div><div class="grid">
-    ${chip('Asked for booking', row.asked_for_booking == null ? '—' : (row.asked_for_booking ? 'Yes' : 'No'))}
-    ${chip('Info before pricing', ynLabel(row.info_before_pricing))}
-    ${chip('Fee expectations', ynLabel(row.set_fee_expectations))}
-    ${chip('Winnable', row.winnable == null ? '—' : (row.winnable ? 'Yes' : 'No'))}
-  </div>${(row.objections || []).length ? `<div class="tags">${row.objections.map((o) => `<span class="tag red">⛔ ${esc(o)}</span>`).join('')}</div>` : ''}${row.revenue_tip ? `<div class="ln lever"><b>Biggest revenue lever:</b> ${esc(row.revenue_tip)}</div>` : ''}</div>` : ''
-
-  const risks = (row.risk_flags || []).length ? `<div class="card red"><span class="rh">⚠ Risk flags:</span> ${row.risk_flags.map((f) => esc(f)).join(' &nbsp;•&nbsp; ')}</div>` : ''
-
-  const summaryCard = `<div class="card"><div class="h">Summary</div><div class="body">${esc(row.summary) || '—'}</div></div>`
-  const coachInner = `${row.coaching_note ? `<div class="body">${esc(row.coaching_note)}</div>` : ''}${(row.improvements || []).length ? `<div class="ln"><b>Focus:</b> ${row.improvements.map((s) => esc(s)).join(' · ')}</div>` : ''}${(row.strengths || []).length ? `<div class="ln" style="color:#1b5e20"><b>Strengths:</b> ${row.strengths.map((s) => esc(s)).join(' · ')}</div>` : ''}`
-  const coachingCard = `<div class="card teal"><div class="h">Coaching</div>${coachInner || '<div class="body">—</div>'}</div>`
-
-  const scoringItems = items.length ? items.map(([k, a]) => {
-    const isNa = a.na || a.answer === 'na'; const isYes = a.answer === 'yes'
-    const mark = isNa ? 'N/A' : (isYes ? '✓' : '✗'); const mc = isNa ? '#64748b' : (isYes ? '#1b5e20' : '#b71c1c')
-    const earned = isNa ? 'N/A' : `${isYes ? (a.max || 0) : 0}/${a.max || 0}`
-    const misses = (a.misses || []).length && !isNa && !isYes ? esc(a.misses.join(', ')) : ''
-    return `<div class="s"><div class="sh"><span class="mk" style="color:${mc}">${mark}</span> <b>${esc(SHORT[k] || a.label || k)}</b> <span class="pts">${earned}</span></div>${a.rationale ? `<div class="rat">${esc(a.rationale)}</div>` : ''}${misses ? `<div class="miss">Missed: ${misses}</div>` : ''}</div>`
-  }).join('') : '<div class="body">No detailed scoring available.</div>'
-  const scoreTotal = (row.earned_points != null && row.max_points != null) ? `${row.earned_points} / ${row.max_points}` : ''
-  const scoringCard = `<div class="card flow"><div class="h">Detailed scoring${scoreTotal ? ` <span class="pts" style="font-size:12px">${esc(scoreTotal)} pts</span>` : ''}</div><div class="scores">${scoringItems}</div></div>`
-
-  const notesHtml = (notes && notes.length) ? `<div class="card"><div class="h">Notes (${notes.length})</div>${notes.map((n) => `<div class="note"><div class="notehd"><b>${esc(n.author_name || 'User')}</b><span>${n.created_at ? esc(new Date(n.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })) : ''}</span></div><div class="body">${esc(n.body)}</div></div>`).join('')}</div>` : ''
-  // Optional: full transcript, forced onto its own page(s) after the summary.
-  // Timestamped table when we have Deepgram segments; plain text otherwise.
-  const txBody = (segments && segments.length)
-    ? `<table class="tx">${segments.map((seg) => `<tr><td class="ts">${clockOf(seg.t)}</td><td class="sp">${esc(seg.s)}</td><td>${esc(seg.text)}</td></tr>`).join('')}</table>`
-    : `<pre>${esc(formatTranscript(transcript)) || 'No transcript.'}</pre>`
-  const txSection = includeTranscript ? `<div class="pg2"><div class="card"><div class="h">Transcript</div>${txBody}</div></div>` : ''
-
-  const genDate = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
-  const title = `Call QA Report — ${agentOf(row)} · ${c.brand || ''} · ${fmtDate(c.call_date)}`
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
-<style>
-  @page { margin: 12mm; }
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; padding: 12px 26px; font-size: 11.5px; line-height: 1.35; }
-  .top { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid ${TEAL}; padding-bottom: 8px; margin-bottom: 6px; }
-  .top h1 { font-size: 18px; margin: 0 0 3px; }
-  .brand { color: ${TEAL}; font-weight: 800; letter-spacing: .3px; }
-  .meta { color: #64748b; font-size: 11px; }
-  .score { text-align: right; white-space: nowrap; }
-  .score .n { font-size: 28px; font-weight: 800; color: ${scoreCol}; line-height: 1; }
-  .score .c { font-size: 10.5px; color: #64748b; }
-  .row { display: flex; gap: 10px; align-items: stretch; }
-  .row > .card { flex: 1; }
-  .card { border: 1px solid #e2e8f0; border-radius: 9px; padding: 8px 11px; margin-top: 7px; page-break-inside: avoid; }
-  .card.flow { page-break-inside: auto; }
-  .card.amber { background: #fffbeb; border-color: #fde68a; }
-  .card.red { background: #fdecea; border-color: #f5c6cb; color: #7f1d1d; }
-  .card.teal { background: #f0fdfa; border-color: #99f6e4; }
-  .h { font-weight: 700; margin-bottom: 6px; }
-  .rh { font-weight: 700; color: #b71c1c; }
-  .grid { display: flex; flex-wrap: wrap; gap: 6px 18px; }
-  .fld .lbl { font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .4px; }
-  .fld .val { font-weight: 700; font-size: 12px; }
-  .ln { margin-top: 6px; color: #334155; }
-  .lever { color: #7c2d12; }
-  .tags { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 5px; }
-  .tag { background: #e0f2fe; color: #075985; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; }
-  .tag.red { background: #fee2e2; color: #991b1b; }
-  .body { color: #334155; }
-  /* Detailed scoring — two compact columns */
-  .scores { column-count: 2; column-gap: 20px; }
-  .s { break-inside: avoid; padding: 3px 0; border-top: 1px solid #f1f5f9; }
-  .s:first-child { border-top: none; }
-  .sh { display: flex; align-items: baseline; gap: 5px; }
-  .mk { font-weight: 800; width: 12px; display: inline-block; }
-  .sh b { flex: 1; }
-  .pts { color: #94a3b8; font-weight: 600; font-size: 10.5px; white-space: nowrap; }
-  .rat { color: #475569; margin: 1px 0 0 17px; }
-  .miss { color: #b71c1c; margin: 1px 0 0 17px; }
-  pre { white-space: pre-wrap; font-family: inherit; font-size: 11.5px; color: #334155; margin: 0; }
-  .tx { width: 100%; border-collapse: collapse; }
-  .tx td { vertical-align: top; padding: 2px 0; color: #334155; }
-  .tx .ts { color: ${TEAL}; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; padding-right: 9px; width: 30px; }
-  .tx .sp { font-weight: 700; color: #475569; white-space: nowrap; padding-right: 9px; width: 44px; }
-  .note { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 7px 9px; margin-bottom: 7px; }
-  .notehd { display: flex; justify-content: space-between; font-size: 10.5px; color: #64748b; }
-  .pg2 { page-break-before: always; }
-  .foot { margin-top: 10px; padding-top: 7px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 10.5px; display: flex; justify-content: space-between; }
-  .noprint { text-align: center; margin-bottom: 12px; }
-  .noprint button { background: ${TEAL}; color: #fff; border: none; padding: 9px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
-  @media print { .noprint { display: none; } body { padding: 0; } }
-</style></head><body>
-  <div class="noprint"><button onclick="window.print()">⬇ Save as PDF / Print</button></div>
-  <div class="top">
-    <div><h1>Call QA <span class="brand">(AI)</span> Report</h1><div class="meta">${metaBits}</div></div>
-    <div class="score"><div class="n">${esc(scoreStr)}</div><div class="c">${notScored ? 'not counted toward score' : 'QA score'}${row.manager_adjusted ? ' · adjusted' : ''}</div></div>
-  </div>
-  <div class="row">${contextCard}${revenueCard}</div>
-  ${risks}
-  <div class="row">${summaryCard}${coachingCard}</div>
-  ${scoringCard}
-  ${notesHtml}${txSection}
-  <div class="foot"><span>Generated ${esc(genDate)}</span><span>Powered by Opsis CX</span></div>
-  <script>window.onload=function(){setTimeout(function(){window.print()},350)};window.onafterprint=function(){setTimeout(function(){window.close()},100)};</script>
-</body></html>`
-}
-const inp = (w) => ({ padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', width: w, fontSize: 13 })
-// ---- Lightspeed bulk import (managers) ------------------------------------
-// Upload a .zip of Lightspeed WAVs (or the WAVs directly) to a brand's folder.
-// The persistent `callqa-lightspeed-pump` cron ingests + transcribes + scores
-// them automatically; recording links and per-line timestamps are captured on
-// the first pass (no backfill needed). Client/brand/scope drive where they land.
-function ImportPanel() {
-  const [clients, setClients] = useState([])
-  const [clientId, setClientId] = useState('')
-  const [brand, setBrand] = useState('')
-  const [scope, setScope] = useState('inout')
-  const [prefix, setPrefix] = useState('')
-  const [phase, setPhase] = useState('idle') // idle | preparing | uploading | done | error
-  const [prog, setProg] = useState({ done: 0, total: 0, failed: 0, cur: '' })
-  const [status, setStatus] = useState(null)
-  const [err, setErr] = useState('')
-
-  const AUDIO_RE = /\.(wav|mp3|m4a|gsm|ogg|flac)$/i
-
-  useEffect(() => {
-    supabase.from('clients').select('id, portal_name').order('portal_name').then(({ data }) => {
-      const list = (data || []).filter((c) => c.portal_name)
-      setClients(list)
-      const gc = list.find((c) => /garage/i.test(c.portal_name))
-      setClientId((prev) => prev || gc?.id || list[0]?.id || '')
-    })
-  }, [])
-
-  async function loadZipLib() {
-    if (window.__zipjs) return window.__zipjs
-    // @zip.js/zip.js is ESM-only now (no browser-global build), so load it as a
-    // module from jsDelivr (already used elsewhere in the app for ffmpeg).
-    const mod = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.8.34/+esm')
-    const lib = (mod && mod.ZipReader) ? mod : (mod && mod.default) ? mod.default : mod
-    if (!lib || !lib.ZipReader) throw new Error('Could not load the zip reader.')
-    window.__zipjs = lib
-    return lib
-  }
-
-  async function refreshStatus(b) {
-    try { const { data } = await supabase.rpc('callqa_lightspeed_status', { p_brand: b }); setStatus(data) } catch { /* ignore */ }
-  }
-
-  async function onFiles(fileList) {
-    setErr(''); setStatus(null)
-    const files = Array.from(fileList || [])
-    if (!files.length) return
-    if (!clientId) { setErr('Pick a client first.'); return }
-    if (!brand.trim()) { setErr('Enter a brand (e.g. Apple Door).'); return }
-
-    let dest
-    try {
-      setPhase('preparing')
-      const { data, error } = await supabase.rpc('callqa_lightspeed_register_source',
-        { p_client: clientId, p_brand: brand.trim(), p_scope: scope, p_campaign: 'garagedoor' })
-      if (error) throw error
-      dest = data; setPrefix(data)
-    } catch (e) { setPhase('error'); setErr('Could not prepare destination: ' + (e.message || e)); return }
-
-    const readers = []
-    const jobs = []
-    try {
-      for (const f of files) {
-        if (/\.zip$/i.test(f.name)) {
-          const zip = await loadZipLib()
-          const reader = new zip.ZipReader(new zip.BlobReader(f))
-          readers.push(reader)
-          const entries = await reader.getEntries()
-          for (const e of entries) {
-            if (e.directory || !AUDIO_RE.test(e.filename)) continue
-            jobs.push({ name: e.filename.split('/').pop(), entry: e })
-          }
-        } else if (AUDIO_RE.test(f.name)) {
-          jobs.push({ name: f.name, file: f })
-        }
-      }
-    } catch (e) {
-      for (const r of readers) { try { await r.close() } catch { /* ignore */ } }
-      setPhase('error'); setErr('Could not read the file(s): ' + (e.message || e)); return
-    }
-
-    if (!jobs.length) {
-      for (const r of readers) { try { await r.close() } catch { /* ignore */ } }
-      setPhase('error'); setErr('No audio files (.wav/.mp3/…) found in the selection.'); return
-    }
-
-    setPhase('uploading'); setProg({ done: 0, total: jobs.length, failed: 0, cur: '' })
-    let done = 0, failed = 0
-    for (const j of jobs) {
-      try {
-        setProg((p) => ({ ...p, cur: j.name }))
-        const blob = j.file ? j.file : await j.entry.getData(new window.__zipjs.BlobWriter())
-        const { error } = await supabase.storage.from('qa-recordings')
-          .upload(`${dest}${j.name}`, blob, { upsert: true, contentType: 'audio/wav' })
-        if (error) throw error
-        done++
-      } catch (e) { failed++ }
-      setProg((p) => ({ ...p, done, failed }))
-    }
-    for (const r of readers) { try { await r.close() } catch { /* ignore */ } }
-    setPhase('done')
-    await refreshStatus(brand.trim())
-  }
-
-  // Poll processing status after upload so the counts + checks stay live.
-  useEffect(() => {
-    if (phase !== 'done') return
-    const b = brand.trim(); if (!b) return
-    const t = setInterval(() => refreshStatus(b), 5000)
-    return () => clearInterval(t)
-  }, [phase, brand])
-
-  const busyUp = phase === 'uploading' || phase === 'preparing'
-  const recOk = status && status.missing_recording === 0
-  const tsOk = status && (status.scored || 0) > 0 && status.scored_missing_timestamps === 0
-
-  return (
-    <div style={{ display: 'grid', gap: 16, maxWidth: 720 }}>
-      <Card>
-        <div style={{ fontWeight: 700, marginBottom: 4 }}>Bulk import — Lightspeed recordings</div>
-        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
-          Drop a <b>.zip</b> of Lightspeed WAVs (or select the WAVs). They upload to the brand's folder and the
-          pipeline transcribes + scores them automatically within a couple of minutes — inbound &amp; outbound
-          are scored; internal/fragment calls are kept but held. Recording links and per-line timestamps are
-          captured on the first pass.
-        </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <Select label="Client" value={clientId} onChange={setClientId} opts={clients.map((c) => [c.id, c.portal_name])} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Brand</label>
-            <input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Apple Door"
-              style={{ padding: '7px 10px', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14 }} />
-          </div>
-          <Select label="Scope" value={scope} onChange={setScope} opts={[['inout', 'Inbound + outbound'], ['all', 'All call types']]} />
-        </div>
-      </Card>
-
-      <Card>
-        <label style={{ display: 'block', border: '2px dashed #cbd5e1', borderRadius: 12, padding: 24, textAlign: 'center', cursor: busyUp ? 'default' : 'pointer', background: '#f8fafc', opacity: busyUp ? 0.6 : 1 }}>
-          <input type="file" accept=".zip,.wav,.mp3,.m4a,.gsm,.ogg,.flac" multiple style={{ display: 'none' }}
-            onChange={(e) => onFiles(e.target.files)} disabled={busyUp} />
-          <div style={{ fontSize: 15, fontWeight: 600, color: TEAL }}>Choose a .zip or WAV files…</div>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Large zips stream file-by-file — you can leave this tab open.</div>
-        </label>
-
-        {phase === 'preparing' && <div style={{ marginTop: 12, color: '#64748b' }}>Preparing destination…</div>}
-        {(phase === 'uploading' || phase === 'done') && (
-          <div style={{ marginTop: 14 }}>
-            <Bar v={prog.total ? (prog.done + prog.failed) / prog.total * 100 : 0} />
-            <div style={{ fontSize: 13, color: '#475569', marginTop: 6 }}>
-              {prog.done + prog.failed} / {prog.total} uploaded{prog.failed ? ` · ${prog.failed} failed` : ''}{phase === 'uploading' && prog.cur ? ` · ${prog.cur}` : ''}
-            </div>
-          </div>
-        )}
-        {err && <div style={{ marginTop: 12, color: '#b71c1c', fontSize: 13 }}>{err}</div>}
-      </Card>
-
-      {status && (
-        <Card>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>Processing — {status.brand}</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-            {Object.entries(status.by_status || {}).map(([s, n]) => <Pill key={s} bg="#eef2f7" fg="#334155">{s}: {n}</Pill>)}
-            <Pill bg="#eef2f7" fg="#334155">total: {status.total}</Pill>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Pill bg={recOk ? '#e8f5e9' : '#fff8e1'} fg={recOk ? '#1b5e20' : '#8d6e00'}>
-              {recOk ? '✓' : '⚠'} recordings linked{status.missing_recording ? ` (${status.missing_recording} missing)` : ''}
-            </Pill>
-            <Pill bg={tsOk ? '#e8f5e9' : '#fff8e1'} fg={tsOk ? '#1b5e20' : '#8d6e00'}>
-              {tsOk ? '✓' : '…'} timestamps present{status.scored_missing_timestamps ? ` (${status.scored_missing_timestamps} missing)` : ''}
-            </Pill>
-          </div>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>Auto-refreshing every 5s. Scored calls appear on the scorecards under this brand.</div>
-        </Card>
-      )}
-    </div>
-  )
-}
-
-function btn(kind) {
-  if (kind === 'primary') return { background: TEAL, color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }
-  return { background: '#fff', color: '#334155', border: '1px solid #cbd5e1', padding: '8px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }
-}
+        <input value={d.label} onChange={(e) => setD({ ...d, label: e.target.value })} placeholder="What the AI checks for on the call" style={{ ...inp(360), flex: 1, minWidth: 22
