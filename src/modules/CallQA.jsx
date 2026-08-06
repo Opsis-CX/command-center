@@ -148,7 +148,7 @@ export default function CallQA({ portal = false } = {}) {
     // The heavy per-question `answers` blob and the `transcript` are fetched lazily
     // (in the detail drawer, and on demand at CSV-export time) to keep this initial
     // payload light — it makes the first load noticeably faster at scale.
-    const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, strengths, improvements, strength_tags, improvement_tags, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, winnable, revenue_tip, asked_for_cc, cc_quote, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, customer_name, customer_number)'
+    const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, strengths, improvements, strength_tags, improvement_tags, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, winnable, revenue_tip, asked_for_cc, cc_quote, collected_cc, cc_collected_quote, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, customer_name, customer_number)'
     const page = 1000; let from = 0; let all = []
     for (;;) {
       const { data, error } = await supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(from, from + page - 1)
@@ -855,39 +855,57 @@ function Calls({ rows, onOpen, viewAll }) {
   )
 }
 
-// ---- Bookings & Card: every call that booked, with the AI Yes/No on whether the CSR asked for a credit card ----
+// ---- Bookings & Card: every booked call, with TWO layers — did the CSR ASK for a card
+// to secure the appointment (agent metric), and given they asked, did we COLLECT it (corporate metric) ----
 function BookingsCard({ rows, onOpen, viewAll }) {
-  const [onlyAsked, setOnlyAsked] = useState(false)
+  const [filter, setFilter] = useState('all') // all | asked | collected | failed
   const booked = useMemo(() => rows.filter((r) => r.outcome === 'Booked'), [rows])
   const asked = booked.filter((r) => r.asked_for_cc === true).length
+  const collected = booked.filter((r) => r.collected_cc === true).length
+  const askedButNot = booked.filter((r) => r.asked_for_cc === true && r.collected_cc === false).length
   const notAsked = booked.filter((r) => r.asked_for_cc === false).length
   const pending = booked.filter((r) => r.asked_for_cc == null).length
-  const askedPct = booked.length ? Math.round((asked / booked.length) * 1000) / 10 : null
-  const rank = (r) => (r.asked_for_cc === true ? 0 : r.asked_for_cc === false ? 1 : 2)
+  const askPct = booked.length ? Math.round((asked / booked.length) * 1000) / 10 : null      // Layer A: ask rate (of bookings)
+  const collectPct = asked ? Math.round((collected / asked) * 1000) / 10 : null                // Layer B: collect rate (of asks)
+  // Sort: asked-first, and within asked, collected-first.
+  const rank = (r) => (r.asked_for_cc === true ? (r.collected_cc === true ? 0 : r.collected_cc === false ? 1 : 2) : r.asked_for_cc == null ? 3 : 4)
   const shown = useMemo(() => {
-    const base = onlyAsked ? booked.filter((r) => r.asked_for_cc === true) : booked
+    let base = booked
+    if (filter === 'asked') base = booked.filter((r) => r.asked_for_cc === true)
+    else if (filter === 'collected') base = booked.filter((r) => r.collected_cc === true)
+    else if (filter === 'failed') base = booked.filter((r) => r.asked_for_cc === true && r.collected_cc === false)
     return base.slice().sort((a, b) => (rank(a) - rank(b)) || (new Date(b.call?.call_date || 0) - new Date(a.call?.call_date || 0)))
-  }, [booked, onlyAsked])
+  }, [booked, filter])
   if (!booked.length) return <Card style={{ color: '#64748b' }}>No booked calls in this range.</Card>
-  const ccPill = (v) => v === true
+  const askPill = (v) => v === true
     ? <Pill bg="#e8f5e9" fg="#1b5e20">Yes</Pill>
     : v === false ? <Pill bg="#f1f5f9" fg="#64748b">No</Pill>
       : <Pill bg="#fff8e1" fg="#8d6e00">Pending</Pill>
+  // Collect only applies when the rep asked. Otherwise it's N/A.
+  const collectPill = (r) => r.asked_for_cc !== true
+    ? <span style={{ color: '#cbd5e1' }}>—</span>
+    : r.collected_cc === true ? <Pill bg="#ccfbf1" fg="#0f766e">Yes</Pill>
+      : r.collected_cc === false ? <Pill bg="#fee2e2" fg="#b71c1c">No</Pill>
+        : <Pill bg="#fff8e1" fg="#8d6e00">Pending</Pill>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Tile label="Bookings" value={booked.length} sub="calls that booked" />
-        <Tile label="Card to secure appt" value={asked} color="#1b5e20" sub={askedPct == null ? '' : `${askedPct}% of bookings`} />
-        <Tile label="No card collected" value={notAsked} color="#b71c1c" />
+        <Tile label="Card asked" value={asked} color="#1b5e20" sub={askPct == null ? '' : `${askPct}% of bookings · agent metric`} />
+        <Tile label="Card collected" value={collected} color="#0f766e" sub={collectPct == null ? 'no asks yet' : `${collectPct}% of asks · corporate metric`} />
+        {askedButNot > 0 && <Tile label="Asked, not collected" value={askedButNot} color="#b71c1c" />}
         {pending > 0 && <Tile label="Pending" value={pending} color="#8d6e00" sub="not yet evaluated" />}
       </div>
       <Card style={{ background: '#f0fdfa', border: '1px solid #99f6e4' }}>
-        <div style={{ fontWeight: 700, color: TEAL }}>Booked calls — was a card collected to secure the appointment?</div>
-        <div style={{ fontSize: 12.5, color: '#334155', marginTop: 2 }}>Every call that resulted in a booking, with an AI Yes/No on whether the CSR asked the customer for a credit card <b>to secure or hold the appointment</b> (e.g. “we'll need a card to hold it — no charge until we come out / until we know the final cost”). Paying for a product or part over the phone, paying an existing invoice, or the customer offering to pay on arrival do <b>not</b> count. Click any row to open the full call — timestamped transcript, recording, scoring and notes.</div>
+        <div style={{ fontWeight: 700, color: TEAL }}>Booked calls — two layers: did we ask for a card, and did we collect it?</div>
+        <div style={{ fontSize: 12.5, color: '#334155', marginTop: 2 }}><b>Layer A — Card asked</b> (agent metric): the CSR asks the customer for a credit card <b>to secure or hold the appointment</b> (e.g. “we'll need a card to hold it — no charge until we come out”). Paying for a product/part over the phone, paying an existing invoice, or the customer offering to pay on arrival do <b>not</b> count. <b>Layer B — Card collected</b> (corporate metric): given the rep asked, the customer actually provided the card. An agent gets credit for asking even if the customer declines — collection is a corporate outcome, not an agent ding. Click any row to open the full call — timestamped transcript, recording, scoring and notes.</div>
       </Card>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#475569' }}>
-        <input type="checkbox" checked={onlyAsked} onChange={(e) => setOnlyAsked(e.target.checked)} /> Only show bookings where a card was collected to secure the appointment
-      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, flexWrap: 'wrap' }}>
+        <span style={{ color: '#64748b' }}>Show:</span>
+        {[['all', `All bookings (${booked.length})`], ['asked', `Asked (${asked})`], ['collected', `Collected (${collected})`], ['failed', `Asked but not collected (${askedButNot})`]].map(([k, lbl]) => (
+          <button key={k} onClick={() => setFilter(k)} style={{ padding: '4px 10px', borderRadius: 999, border: '1px solid ' + (filter === k ? TEAL : '#e2e8f0'), background: filter === k ? '#f0fdfa' : '#fff', color: filter === k ? TEAL : '#475569', fontWeight: filter === k ? 700 : 500, cursor: 'pointer' }}>{lbl}</button>
+        ))}
+      </div>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
@@ -895,13 +913,14 @@ function BookingsCard({ rows, onOpen, viewAll }) {
               <col style={{ width: 74 }} />
               {viewAll && <col style={{ width: 120 }} />}
               <col style={{ width: 130 }} />
-              <col style={{ width: '22%' }} />
-              <col style={{ width: 104 }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: 90 }} />
+              <col style={{ width: 96 }} />
               <col />
-              <col style={{ width: 66 }} />
-              <col style={{ width: 34 }} />
+              <col style={{ width: 60 }} />
+              <col style={{ width: 28 }} />
             </colgroup>
-            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Card to hold appt', 'What the rep said', 'Score', ''].map((h) => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Card asked', 'Collected', 'What the rep said', 'Score', ''].map((h) => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}</tr></thead>
             <tbody>{shown.map((r) => {
               const c = r.call || {}
               const cell = { padding: '8px 12px', verticalAlign: 'top', whiteSpace: 'normal', overflowWrap: 'anywhere' }
@@ -911,8 +930,9 @@ function BookingsCard({ rows, onOpen, viewAll }) {
                   {viewAll && <td style={cell}>{agentOf(r)}</td>}
                   <td style={cell}>{c.brand || '—'}</td>
                   <td style={{ ...cell, color: '#475569' }}>{r.opportunity_context || (r.topics || [])[0] || '—'}</td>
-                  <td style={cell}>{ccPill(r.asked_for_cc)}</td>
-                  <td style={{ ...cell, color: '#64748b', fontStyle: r.cc_quote ? 'italic' : 'normal' }}>{r.asked_for_cc === true ? (r.cc_quote ? `“${r.cc_quote}”` : '—') : ''}</td>
+                  <td style={cell}>{askPill(r.asked_for_cc)}</td>
+                  <td style={cell}>{collectPill(r)}</td>
+                  <td style={{ ...cell, color: '#64748b', fontStyle: (r.cc_quote || r.cc_collected_quote) ? 'italic' : 'normal' }}>{r.asked_for_cc === true ? (r.cc_quote ? `“${r.cc_quote}”` : '—') : ''}{r.asked_for_cc === true && r.cc_collected_quote ? <span style={{ display: 'block', color: '#0f766e', marginTop: 2 }}>{`→ “${r.cc_collected_quote}”`}</span> : null}</td>
                   <td style={{ ...cell, whiteSpace: 'nowrap' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{isScored(r) ? (r.auto_fail ? 'FAIL' : pct(r.score_pct)) : '—'}</span></td>
                   <td style={{ ...cell, color: '#94a3b8' }}>›</td>
                 </tr>
@@ -1048,10 +1068,12 @@ function Detail({ row, onClose, onRescore, onExclude, onAdjust, busy, canManage,
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>INFO BEFORE PRICING</div><b>{ynLabel(row.info_before_pricing)}</b></div>
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>FEE EXPECTATIONS SET</div><b>{ynLabel(row.set_fee_expectations)}</b></div>
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>WINNABLE</div><b>{row.winnable == null ? '—' : (row.winnable ? 'Yes' : 'No')}</b></div>
-                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CARD TO SECURE APPT</div><b style={{ color: row.asked_for_cc == null ? '#64748b' : (row.asked_for_cc ? '#1b5e20' : '#b71c1c') }}>{row.asked_for_cc == null ? '—' : (row.asked_for_cc ? 'Yes' : 'No')}</b></div>
+                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CARD ASKED</div><b style={{ color: row.asked_for_cc == null ? '#64748b' : (row.asked_for_cc ? '#1b5e20' : '#b71c1c') }}>{row.asked_for_cc == null ? '—' : (row.asked_for_cc ? 'Yes' : 'No')}</b></div>
+                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CARD COLLECTED</div><b style={{ color: row.asked_for_cc !== true ? '#94a3b8' : (row.collected_cc == null ? '#8d6e00' : (row.collected_cc ? '#0f766e' : '#b71c1c')) }}>{row.asked_for_cc !== true ? 'N/A' : (row.collected_cc == null ? 'Pending' : (row.collected_cc ? 'Yes' : 'No'))}</b></div>
               </div>
               {(row.objections || []).length > 0 && <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{row.objections.map((o, i) => <Pill key={i} bg="#fee2e2" fg="#991b1b">⛔ {o}</Pill>)}</div>}
               {row.asked_for_cc && row.cc_quote && <div style={{ marginTop: 10, fontSize: 13.5, color: '#334155' }}><b>Card ask:</b> “{row.cc_quote}”</div>}
+              {row.asked_for_cc === true && row.cc_collected_quote && <div style={{ marginTop: 6, fontSize: 13.5, color: '#334155' }}><b>Collected:</b> “{row.cc_collected_quote}”</div>}
               {row.revenue_tip && <div style={{ marginTop: 10, fontSize: 13.5, color: '#7c2d12' }}><b>Biggest revenue lever:</b> {row.revenue_tip}</div>}
             </Card>
           )}
@@ -1481,30 +1503,30 @@ function Scorecards({ rows, viewAll, onOpen }) {
     const bm = new Map()
     rows.forEach((r) => {
       const b = r.call?.brand || '—'
-      if (!bm.has(b)) bm.set(b, { brand: b, scores: [], opps: 0, booked: 0, ccYes: 0, missed: 0, winnable: 0, large: 0, agents: new Set() })
+      if (!bm.has(b)) bm.set(b, { brand: b, scores: [], opps: 0, booked: 0, ccYes: 0, collYes: 0, missed: 0, winnable: 0, large: 0, agents: new Set() })
       const o = bm.get(b); if (isScored(r)) o.scores.push(Number(r.score_pct) || 0)
-      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') { o.booked++; if (r.asked_for_cc === true) o.ccYes++ } }
+      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') { o.booked++; if (r.asked_for_cc === true) o.ccYes++; if (r.collected_cc === true) o.collYes++ } }
       if (isMissedOpp(r)) { o.missed++; if (r.winnable) o.winnable++; if (valueTier(r) === 3) o.large++ }
       const an = agentOf(r); if (an) o.agents.add(an)
     })
     const brands = Array.from(bm.values()).map((o) => ({
       ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
-      conv: P(o.booked, o.opps), cardRate: P(o.ccYes, o.booked), calls: o.scores.length, nAgents: o.agents.size,
+      conv: P(o.booked, o.opps), cardRate: P(o.ccYes, o.booked), collectRate: P(o.collYes, o.ccYes), calls: o.scores.length, nAgents: o.agents.size,
     })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
 
     const am = new Map()
     rows.forEach((r) => {
       const an = agentOf(r); const b = r.call?.brand || '—'; const k = an + '|||' + b
-      if (!am.has(k)) am.set(k, { name: an, brand: b, scores: [], opps: 0, booked: 0, ccYes: 0, asked: 0, focus: {}, win: {} })
+      if (!am.has(k)) am.set(k, { name: an, brand: b, scores: [], opps: 0, booked: 0, ccYes: 0, collYes: 0, asked: 0, focus: {}, win: {} })
       const o = am.get(k); if (isScored(r)) o.scores.push(Number(r.score_pct) || 0)
-      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') { o.booked++; if (r.asked_for_cc === true) o.ccYes++ } if (r.asked_for_booking) o.asked++ }
+      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') { o.booked++; if (r.asked_for_cc === true) o.ccYes++; if (r.collected_cc === true) o.collYes++ } if (r.asked_for_booking) o.asked++ }
       ;(r.improvement_tags || []).forEach((t) => o.focus[t] = (o.focus[t] || 0) + 1)
       ;(r.strength_tags || []).forEach((t) => o.win[t] = (o.win[t] || 0) + 1)
     })
     const top = (m) => Object.entries(m).sort((a, b) => b[1] - a[1]).map((x) => x[0])
     const agents = Array.from(am.values()).filter((o) => o.scores.length >= 1 && o.name && o.name !== 'Unknown').map((o) => ({
       ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
-      calls: o.scores.length, conv: P(o.booked, o.opps), askRate: P(o.asked, o.opps), cardRate: P(o.ccYes, o.booked),
+      calls: o.scores.length, conv: P(o.booked, o.opps), askRate: P(o.asked, o.opps), cardRate: P(o.ccYes, o.booked), collectRate: P(o.collYes, o.ccYes),
       topFocus: top(o.focus), topWin: top(o.win), ai: isAiCsr(o.name),
     })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
 
@@ -1548,7 +1570,7 @@ function ScExec({ data, onBrand }) {
       ['Calls scored', o.scored], ['Avg QA %', r1(o.avg)], ['Opportunities', o.opps], ['Booked', o.booked],
       ['Conversion %', r1(cv)], ['Missed opportunities', o.missed], ['Winnable lost', o.winnable], ['Large missed opps', o.large],
     ] },
-    { title: 'Brand ranking', sheet: 'Brands', cols: ['Brand', 'Calls', 'Avg QA %', 'Conversion %', 'Card collected %', 'Missed', 'Large missed', 'Agents'], rows: data.brands.map((b) => [b.brand, b.calls, r1(b.avg), r1(b.conv), r1(b.cardRate), b.missed, b.large, b.nAgents]) },
+    { title: 'Brand ranking', sheet: 'Brands', cols: ['Brand', 'Calls', 'Avg QA %', 'Conversion %', 'Card asked %', 'Card collected %', 'Missed', 'Large missed', 'Agents'], rows: data.brands.map((b) => [b.brand, b.calls, r1(b.avg), r1(b.conv), r1(b.cardRate), r1(b.collectRate), b.missed, b.large, b.nAgents]) },
     { title: 'Systemic coaching gaps', sheet: 'Gaps', cols: ['Coaching gap', 'Agents affected'], rows: data.gaps(null).map((g) => [g[0], g[1]]) },
   ])
   return (
@@ -1582,7 +1604,7 @@ function ScExec({ data, onBrand }) {
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ fontWeight: 700, padding: 14 }}>Brand ranking</div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Brand', 'Calls', 'Avg QA', 'QA', 'Conversion', 'Card collected', 'Missed', 'Large missed'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
+          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Brand', 'Calls', 'Avg QA', 'QA', 'Conversion', 'Card asked', 'Card collected', 'Missed', 'Large missed'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
           <tbody>{data.brands.map((b) => (
             <tr key={b.brand} onClick={() => onBrand(b.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
               <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{b.brand} <span style={{ color: '#cbd5e1' }}>›</span></td>
@@ -1590,7 +1612,8 @@ function ScExec({ data, onBrand }) {
               <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(b.avg), color: scoreColor(b.avg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(b.avg)}</span></td>
               <td style={{ padding: '8px 12px', width: 130 }}><Bar v={b.avg} color={scoreColor(b.avg)} /></td>
               <td style={{ padding: '8px 12px', fontWeight: 700, color: b.conv >= 50 ? '#1b5e20' : b.conv >= 35 ? '#8d6e00' : '#b71c1c' }}>{pct(b.conv)}</td>
-              <td style={{ padding: '8px 12px', fontWeight: 700, color: TEAL }} title={b.cardRate == null ? 'no bookings in range' : (b.ccYes + ' of ' + b.booked + ' bookings')}>{pct(b.cardRate)}</td>
+              <td style={{ padding: '8px 12px', fontWeight: 700, color: TEAL }} title={b.cardRate == null ? 'no bookings in range' : (b.ccYes + ' of ' + b.booked + ' bookings asked')}>{pct(b.cardRate)}</td>
+              <td style={{ padding: '8px 12px', fontWeight: 700, color: '#0f766e' }} title={b.collectRate == null ? 'no card asks in range' : (b.collYes + ' of ' + b.ccYes + ' asks collected')}>{pct(b.collectRate)}</td>
               <td style={{ padding: '8px 12px' }}>{b.missed}</td>
               <td style={{ padding: '8px 12px', color: '#92400e', fontWeight: 700 }}>{b.large}</td>
             </tr>
@@ -1617,10 +1640,10 @@ function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
   const gaps = data.gaps(b?.brand).slice(0, 6); const gmax = Math.max(1, ...gaps.map((g) => g[1]))
   const build = () => ([
     { title: (b.brand + ' — team summary'), sheet: 'Summary', cols: ['Metric', 'Value'], rows: [
-      ['Brand', b.brand], ['Calls scored', b.calls], ['Avg QA %', r1(b.avg)], ['Conversion %', r1(b.conv)], ['Card collected on bookings %', r1(b.cardRate)],
+      ['Brand', b.brand], ['Calls scored', b.calls], ['Avg QA %', r1(b.avg)], ['Conversion %', r1(b.conv)], ['Card asked on bookings %', r1(b.cardRate)],
       ['Missed opportunities', b.missed], ['Large missed opps', b.large], ['Agents', b.nAgents],
     ] },
-    { title: 'Agent leaderboard', sheet: 'Agents', cols: ['#', 'Agent', 'Calls', 'Avg QA %', 'Conversion %', 'Asked for booking %', 'Card collected %', 'Coaching focus'], rows: roster.map((a, i) => [i + 1, a.name, a.calls, r1(a.avg), r1(a.conv), r1(a.askRate), r1(a.cardRate), a.topFocus[0] || '']) },
+    { title: 'Agent leaderboard', sheet: 'Agents', cols: ['#', 'Agent', 'Calls', 'Avg QA %', 'Conversion %', 'Asked for booking %', 'Card asked %', 'Coaching focus'], rows: roster.map((a, i) => [i + 1, a.name, a.calls, r1(a.avg), r1(a.conv), r1(a.askRate), r1(a.cardRate), a.topFocus[0] || '']) },
     { title: 'Team coaching gaps', sheet: 'Gaps', cols: ['Coaching gap', 'Agents affected'], rows: data.gaps(b?.brand).map((g) => [g[0], g[1]]) },
   ])
   if (!b) return <Card style={{ color: '#64748b' }}>No brand data in range.</Card>
@@ -1633,14 +1656,14 @@ function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Tile label="Team avg QA" value={pct(b.avg)} color={scoreColor(b.avg)} sub={b.calls + ' calls'} />
         <Tile label="Conversion" value={pct(b.conv)} color={TEAL} sub={b.booked + ' of ' + b.opps} />
-        <Tile label="Card collected" value={pct(b.cardRate)} color={TEAL} sub={b.cardRate == null ? 'no bookings' : (b.ccYes + ' of ' + b.booked + ' bookings')} />
+        <Tile label="Card asked" value={pct(b.cardRate)} color={TEAL} sub={b.cardRate == null ? 'no bookings' : (b.ccYes + ' of ' + b.booked + ' bookings')} />
         <Tile label="Winnable lost" value={b.winnable} color="#b71c1c" sub="recoverable" />
         <Tile label="Large missed" value={b.large} color="#92400e" sub="install / commercial" />
       </div>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ fontWeight: 700, padding: 14 }}>Agent leaderboard</div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['#', 'Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Card collected', 'Coaching focus'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
+          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['#', 'Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Card asked', 'Coaching focus'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
           <tbody>{roster.map((a, i) => (
             <tr key={a.name} onClick={() => onAgent(a.name, a.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
               <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{i + 1}</td>
@@ -1659,7 +1682,7 @@ function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ fontWeight: 700, padding: 14 }}>AI CSRs <span style={{ color: '#94a3b8', fontWeight: 400 }}>— audited for quality, not coached</span></div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Card collected'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Card asked'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
             <tbody>{aiRoster.map((a) => (
               <tr key={a.name} onClick={() => onAgent(a.name, a.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
                 <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{a.name} <Pill bg="#ede9fe" fg="#6d28d9">AI</Pill> <span style={{ color: '#cbd5e1' }}>›</span></td>
