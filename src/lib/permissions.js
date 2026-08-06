@@ -14,6 +14,10 @@ export const ROLES = [
 // For each permission, the set of roles that have it.
 const MATRIX = {
   'dashboard': ['asc', 'support', 'certification', 'quality', 'marketing', 'admin'],
+  // Meetings (notetaker) — every staff role EXCEPT agents. Agents found it
+  // confusing; their meeting notes + recordings surface on their Scorecard's
+  // Coaching & Feedback section instead.
+  'meetings': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
   'weekly_sync': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard': ['agent'],
   // Quality Audit isn't on the roles sheet — left as-is. Confirm whether the new
