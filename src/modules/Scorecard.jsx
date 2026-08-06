@@ -154,6 +154,8 @@ function AgentScorecard({ row, canCoach, canSeeNotes, isOwn, onBack }) {
   const [loadingNotes, setLoadingNotes] = useState(true)
   const [qaAudits, setQaAudits] = useState([])
   const [subItemLabels, setSubItemLabels] = useState({})
+  const [meetings, setMeetings] = useState([])
+  const [loadingMtg, setLoadingMtg] = useState(true)
 
   // Quality Feedback: read-acknowledgment + search + "show only last 2"
   const agentId = row?.profile_id
@@ -229,6 +231,18 @@ function AgentScorecard({ row, canCoach, canSeeNotes, isOwn, onBack }) {
     setSubItemLabels(map)
   }, [row])
   useEffect(() => { loadQa() }, [loadQa])
+
+  // Coaching & Feedback: meetings this agent was part of (notetaker summary +
+  // action items + recording). The RPC gates access to the agent themselves or
+  // a manager, and matches the agent to meetings.participants server-side.
+  const loadMeetings = useCallback(async () => {
+    if (!agentId) { setMeetings([]); setLoadingMtg(false); return }
+    setLoadingMtg(true)
+    const { data, error } = await supabase.rpc('agent_coaching_meetings', { p_profile_id: agentId })
+    setMeetings(error ? [] : (Array.isArray(data) ? data : []))
+    setLoadingMtg(false)
+  }, [agentId])
+  useEffect(() => { loadMeetings() }, [loadMeetings])
 
   if (!row) return (
     <div>
@@ -385,6 +399,53 @@ function AgentScorecard({ row, canCoach, canSeeNotes, isOwn, onBack }) {
           </div>
         )}
       </div>
+
+      {/* Coaching & Feedback — meetings this agent was part of (notetaker
+          summary + action items + recording). Same audience as Notes: the
+          agent on their own card, plus coaches/admins. */}
+      {canSeeNotes && (
+      <div className="card" style={{ marginTop: 14 }}>
+        <SectionTitle>Coaching &amp; Feedback</SectionTitle>
+        {loadingMtg ? (
+          <p className="page-sub" style={{ fontSize: 13 }}>Loading…</p>
+        ) : meetings.length === 0 ? (
+          <p className="page-sub" style={{ fontSize: 13 }}>No coaching sessions yet. When you're part of a recorded meeting, its notes and recording appear here.</p>
+        ) : (
+          <div>
+            {meetings.map(m => (
+              <div key={m.id} style={{ padding: '12px 0', borderTop: '1px solid var(--line-soft)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>{m.title || 'Meeting'}</span>
+                  {m.duration_min != null && <span className="page-sub" style={{ fontSize: 12 }}>· {Math.round(m.duration_min)} min</span>}
+                  <span className="page-sub" style={{ fontSize: 12, marginLeft: 'auto' }}>{fmtDate(m.meeting_date || m.started_at)}</span>
+                </div>
+                {m.summary && <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: '8px 0 0', color: 'var(--ink)' }}>{m.summary}</p>}
+                {Array.isArray(m.action_items) && m.action_items.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 4 }}>Action items</div>
+                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                      {m.action_items.map((ai, i) => (
+                        <li key={i} style={{ fontSize: 13, marginBottom: 3, textDecoration: ai.done ? 'line-through' : 'none', color: ai.done ? 'var(--ink-soft)' : 'var(--ink)' }}>
+                          {ai.text}
+                          {ai.owner_name ? <span className="page-sub" style={{ fontSize: 12 }}> — {ai.owner_name}</span> : null}
+                          {ai.due_date ? <span className="page-sub" style={{ fontSize: 12 }}> (due {fmtDate(ai.due_date)})</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {m.recording_link && (
+                  <a href={m.recording_link} target="_blank" rel="noreferrer" className="btn btn-ghost"
+                    style={{ marginTop: 10, fontSize: 12.5, padding: '5px 12px', textDecoration: 'none', display: 'inline-block' }}>
+                    ▶ Watch recording
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      )}
 
       {/* Notes & Anecdotal Feedback — ASC, admins, and the agent on their own
           card only. Certification/marketing must not see this section. */}
