@@ -790,5 +790,26 @@ a{color:inherit;text-decoration:none;}
 
   /* Wide grids/tables stay swipeable instead of clipping off-screen */
   .grid-scroll { -webkit-overflow-scrolling: touch; }
-  .re-rendered, .rich-full { overflow-x: auto; }
+  .re-rendered, .rich-full { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* A posted report table has more columns than a phone has width. The desktop
+     rules (table-layout: fixed + width: 100%) force all of them to share ~370px,
+     which is what shreds each heading into one letter per line. On mobile let
+     the table take the width its content needs and swipe sideways instead.
+     .re-content is deliberately NOT included — the editor needs fixed layout
+     for ProseMirror's column-resize handles to work. */
+  .re-rendered table, .rich-full table {
+    table-layout: auto;
+    width: max-content;
+    max-width: none;
+    min-width: 100%;
+  }
+  .re-rendered th, .re-rendered td,
+  .rich-full th, .rich-full td {
+    white-space: nowrap;
+    padding: 5px 8px;
+    font-size: 12.5px;
+  }
+  /* Long prose in a cell still wraps — only keep headings and figures intact. */
+  .re-rendered td p, .rich-full td p { white-space: normal; }
 }
