@@ -8,6 +8,7 @@
   --ink-soft:   var(--teal);
   --line:       #dfe6e9;
   --line-soft:  #eef2f3;
+  --bg-soft:    #f7f7f5;
   /* Calendar "paper" palette — warm in light mode, flips to readable dark below */
   --cal-paper:    #fdfcfa;
   --cal-panel:    #ece8e0;
@@ -171,15 +172,17 @@ a{color:inherit;text-decoration:none;}
   content: attr(data-placeholder);
   color: var(--ink-soft);
 }
-.pm-rte ul { margin: 4px 0 4px 20px; padding: 0; }
-.pm-rte ol { margin: 4px 0 4px 20px; padding: 0; }
+.pm-rte ul { list-style: disc;    margin: 4px 0; padding-left: 22px; }
+.pm-rte ol { list-style: decimal; margin: 4px 0; padding-left: 22px; }
 .pm-rte li { margin-bottom: 2px; }
 .pm-rte b, .pm-rte strong { font-weight: 700; }
 .pm-rte i, .pm-rte em { font-style: italic; }
 .pm-mention { color: var(--accent); font-weight: 600; }
-.pm-rich ul { margin: 4px 0 4px 18px; padding: 0; }
-.pm-rich ol { margin: 4px 0 4px 18px; padding: 0; }
+.pm-rich ul { list-style: disc;    margin: 4px 0; padding-left: 20px; }
+.pm-rich ol { list-style: decimal; margin: 4px 0; padding-left: 20px; }
 .pm-rich li { margin-bottom: 2px; }
+.pm-rich b, .pm-rich strong { font-weight: 700; }
+.pm-rich i, .pm-rich em { font-style: italic; }
 .pm-rich .pm-mention { color: var(--accent); font-weight: 600; }
 
 /* ============================================================
@@ -282,6 +285,7 @@ a{color:inherit;text-decoration:none;}
   --cal-ink-mute: #8a99a0;
   --line:       #2a3439;
   --line-soft:  #212a2e;
+  --bg-soft:    #1b2327;
   --surface:    #161d21;
   --canvas:     #0d1417;
   --accent:     #2b9fd6;
@@ -311,6 +315,7 @@ a{color:inherit;text-decoration:none;}
     --cal-ink-mute: #8a99a0;
     --line:       #2a3439;
     --line-soft:  #212a2e;
+    --bg-soft:    #1b2327;
     --surface:    #161d21;
     --canvas:     #0d1417;
     --accent:     #2b9fd6;
