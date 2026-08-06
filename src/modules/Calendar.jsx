@@ -1,4 +1,4 @@
-    import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { COMPANY_TZ, companyTimeToInstant, formatInTZ, detectedTZ, wallTimeToViewerHHMM } from '../lib/tz'
@@ -519,23 +519,44 @@ const navArrow = { border: '1px solid var(--cal-line)', background: 'transparent
 // ---------- WEEK VIEW ----------
 function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent, onShowDetail, allTasks }) {
   const openItem = (i, e) => { e.stopPropagation(); if (i.kind === 'event' && i.raw) onEditEvent(i.raw); else onShowDetail(i) }
+  const narrow = useNarrow(700)
   const mon = mondayOf(cursor)
   const week = Array.from({ length: 7 }, (_, i) => addDays(mon, i))
   const START_HOUR = 7, END_HOUR = 22 // 7a–10p window for week grid
   const hours = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => i + START_HOUR)
   const ROW = 40
+  const AXIS_W = narrow ? 24 : 38
   const todayStr = isoDate(etNow())
   const hourLabel = (h) => h === 0 ? '12a' : h === 12 ? '12p' : h > 12 ? `${h - 12}p` : `${h}a`
 
+  const allDayByDay = week.map(d => itemsOn(isoDate(d)).filter(i => i.allDay))
+  const hasAllDay = allDayByDay.some(a => a.length > 0)
+
+  const cellStyle = { flex: 1, minWidth: 0, borderRight: '1px solid var(--cal-line-2)' }
+  const axisSpacer = { width: AXIS_W, flexShrink: 0 }
+
+  // ---- day-name header row (own row so the all-day band can line up under it)
+  function DayHead({ d }) {
+    const isToday = isoDate(d) === todayStr
+    return (
+      <div style={{
+        ...cellStyle, textAlign: 'center', padding: '6px 0', overflow: 'hidden',
+        color: isToday ? COLORS.event : 'var(--cal-ink-soft)', fontWeight: isToday ? 700 : 400,
+      }}>
+        <div style={{ fontSize: narrow ? 9 : 11, letterSpacing: narrow ? 0 : 1 }}>
+          {d.toLocaleDateString('en-US', { weekday: narrow ? 'narrow' : 'short' }).toUpperCase()}
+        </div>
+        <div style={{ fontSize: narrow ? 12 : 11, lineHeight: 1.3 }}>{d.getDate()}</div>
+      </div>
+    )
+  }
+
+  // ---- timed-events column
   function DayCol({ d }) {
     const ds = isoDate(d)
     const timed = itemsOn(ds).filter(i => !i.allDay && i.start)
-    const { priority } = tasksOn(ds)
     return (
-      <div style={{ flex: 1, borderRight: '1px solid var(--cal-line-2)', minWidth: 0 }}>
-        <div style={{ textAlign: 'center', fontSize: 11, letterSpacing: 1, color: isoDate(d) === todayStr ? COLORS.event : 'var(--cal-ink-soft)', fontWeight: isoDate(d) === todayStr ? 700 : 400, padding: '6px 0' }}>
-          {d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()} {d.getDate()}
-        </div>
+      <div style={cellStyle}>
         <div style={{ position: 'relative', height: hours.length * ROW, borderTop: '1px solid var(--cal-line-2)' }} onClick={() => onAddEvent(d)}>
           {hours.map((h, i) => <div key={h} style={{ position: 'absolute', top: i * ROW, left: 0, right: 0, height: ROW, borderBottom: '1px solid var(--cal-line-3)' }} />)}
           {timed.map(i => {
@@ -544,52 +565,120 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
             const top = Math.max(0, (startH - START_HOUR) * ROW)
             const h = Math.max(18, ((endH || startH + 1) - startH) * ROW - 2)
             return (
-              <div key={i.id} onClick={(e) => openItem(i, e)}
-                style={{ position: 'absolute', top, left: 2, right: 2, height: h, background: i.color, color: '#fff', fontSize: 10, padding: '2px 4px', borderRadius: 3, overflow: 'hidden', cursor: 'pointer' }}>
-                {fmtTime(i.start)} {i.title}
+              <div key={i.kind + i.id} onClick={(e) => openItem(i, e)} title={`${fmtTime(i.start)} ${i.title}`}
+                style={{
+                  position: 'absolute', top, left: 1, right: 1, height: h, background: i.color, color: '#fff',
+                  fontSize: narrow ? 8.5 : 10, lineHeight: 1.15, padding: narrow ? '1px 2px' : '2px 4px',
+                  borderRadius: 3, overflow: 'hidden', cursor: 'pointer',
+                }}>
+                {narrow ? i.title : `${fmtTime(i.start)} ${i.title}`}
               </div>
             )
           })}
         </div>
-        <div style={{ borderTop: '1px solid var(--cal-line-2)', padding: '6px', minHeight: 70 }}>
-          <div style={{ fontSize: 10, color: 'var(--cal-ink-mute)', letterSpacing: 1 }}>PRIORITY</div>
-          {priority.map(t => (
-            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--cal-ink)', margin: '3px 0' }}>
-              <span style={{ width: 12, height: 12, borderRadius: '50%', border: '1.5px solid var(--cal-line)', flexShrink: 0 }} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
-            </div>
+      </div>
+    )
+  }
+
+  // ---- per-day PRIORITY footer (wide screens only — 45px-wide columns can't hold it)
+  function PriorityCol({ d }) {
+    const { priority } = tasksOn(isoDate(d))
+    return (
+      <div style={{ ...cellStyle, borderTop: '1px solid var(--cal-line-2)', padding: 6, minHeight: 70 }}>
+        <div style={{ fontSize: 10, color: 'var(--cal-ink-mute)', letterSpacing: 1 }}>PRIORITY</div>
+        {priority.map(t => (
+          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--cal-ink)', margin: '3px 0' }}>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', border: '1.5px solid var(--cal-line)', flexShrink: 0 }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  // ---- left hour-label axis, aligned to the same rows
+  function HourAxis() {
+    return (
+      <div style={axisSpacer}>
+        <div style={{ position: 'relative', height: hours.length * ROW, borderTop: '1px solid transparent' }}>
+          {hours.map((h, i) => (
+            <div key={h} style={{ position: 'absolute', top: i * ROW - 6, right: 3, fontSize: narrow ? 9 : 10, color: 'var(--cal-ink-mute)', whiteSpace: 'nowrap' }}>{hourLabel(h)}</div>
           ))}
         </div>
       </div>
     )
   }
 
-  // left hour-label axis, aligned to the same rows
-  function HourAxis() {
+  // On phones the priority columns collapse into one readable list under the grid.
+  function PriorityList() {
+    const rows = week.map(d => ({ d, tasks: tasksOn(isoDate(d)).priority })).filter(r => r.tasks.length)
+    if (!rows.length) return null
     return (
-      <div style={{ width: 38, flexShrink: 0 }}>
-        <div style={{ padding: '6px 0', fontSize: 11 }}>&nbsp;</div>
-        <div style={{ position: 'relative', height: hours.length * ROW, borderTop: '1px solid transparent' }}>
-          {hours.map((h, i) => (
-            <div key={h} style={{ position: 'absolute', top: i * ROW - 6, right: 4, fontSize: 10, color: 'var(--cal-ink-mute)' }}>{hourLabel(h)}</div>
-          ))}
-        </div>
+      <div style={{ borderTop: '1px solid var(--cal-line-2)', marginTop: 8, paddingTop: 8 }}>
+        <div style={{ fontSize: 10, color: 'var(--cal-ink-mute)', letterSpacing: 1, marginBottom: 4 }}>PRIORITY THIS WEEK</div>
+        {rows.map(({ d, tasks }) => (
+          <div key={isoDate(d)} style={{ marginBottom: 6 }}>
+            <div style={{ fontSize: 10, color: 'var(--cal-ink-soft)' }}>{d.toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' })}</div>
+            {tasks.map(t => (
+              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--cal-ink)', margin: '3px 0' }}>
+                <span style={{ width: 12, height: 12, borderRadius: '50%', border: '1.5px solid var(--cal-line)', flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+              </div>
+            ))}
+          </div>
+        ))}
       </div>
     )
   }
 
   return (
     <div style={{ display: 'flex' }}>
-      <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} tasksOn={tasksOn} allTasks={allTasks} />
-      <div style={{ flex: 1, padding: '12px 12px', minWidth: 0 }}>
+      {/* The rail eats ~2/3 of a phone's width and crushes the 7 day columns. */}
+      {!narrow && <LeftRail cursor={cursor} setCursor={setCursor} onAddEvent={onAddEvent} tasksOn={tasksOn} allTasks={allTasks} />}
+      <div style={{ flex: 1, padding: narrow ? '8px 6px' : '12px 12px', minWidth: 0 }}>
         <ViewNav cursor={cursor} setCursor={setCursor}
           label={`${MONTHS[mon.getMonth()].slice(0, 3)} ${mon.getDate()} – ${MONTHS[week[6].getMonth()].slice(0, 3)} ${week[6].getDate()}`}
           onPrev={() => setCursor(addDays(cursor, -7))}
           onNext={() => setCursor(addDays(cursor, 7))} />
+
+        {/* day names */}
+        <div style={{ display: 'flex' }}>
+          <div style={axisSpacer} />
+          {week.map(d => <DayHead key={'h' + isoDate(d)} d={d} />)}
+        </div>
+
+        {/* all-day band — these events used to be dropped from week view entirely */}
+        {hasAllDay && (
+          <div style={{ display: 'flex', borderTop: '1px solid var(--cal-line-2)', background: 'var(--cal-line-3)' }}>
+            <div style={{ ...axisSpacer, fontSize: 8, color: 'var(--cal-ink-mute)', textAlign: 'right', paddingRight: 3, paddingTop: 4 }}>all-day</div>
+            {week.map((d, wi) => (
+              <div key={'ad' + isoDate(d)} style={{ ...cellStyle, padding: '2px 2px', minHeight: 20 }}>
+                {allDayByDay[wi].map(i => (
+                  <div key={i.kind + i.id} onClick={(e) => openItem(i, e)} title={i.title}
+                    style={{
+                      background: i.color, color: '#fff', fontSize: narrow ? 8.5 : 10, lineHeight: 1.25,
+                      borderRadius: 2, padding: '1px 3px', margin: '1px 0', cursor: 'pointer',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>{i.title}</div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* hour grid */}
         <div style={{ display: 'flex' }}>
           <HourAxis />
           {week.map(d => <DayCol key={isoDate(d)} d={d} />)}
         </div>
+
+        {/* priority tasks */}
+        {narrow ? <PriorityList /> : (
+          <div style={{ display: 'flex' }}>
+            <div style={axisSpacer} />
+            {week.map(d => <PriorityCol key={'p' + isoDate(d)} d={d} />)}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -623,13 +712,13 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
   return (
     <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', minHeight: narrow ? 0 : 820 }}>
       {/* left page: hourly column */}
-      <div style={{ flex: 1, padding: '18px 20px', borderRight: narrow ? 'none' : '1px solid var(--cal-line-2)', borderBottom: narrow ? '1px solid var(--cal-line-2)' : 'none', minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+      <div style={{ flex: 1, padding: narrow ? '12px 10px' : '18px 20px', borderRight: narrow ? 'none' : '1px solid var(--cal-line-2)', borderBottom: narrow ? '1px solid var(--cal-line-2)' : 'none', minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
           <div>
-            <span style={{ fontFamily: 'Georgia, serif', fontSize: 24, color: 'var(--cal-ink)' }}>{DOW[(cursor.getDay() + 6) % 7]}</span>
-            <span style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: 'var(--cal-ink-soft)', marginLeft: 8 }}>{MONTHS[cursor.getMonth()]} {cursor.getDate()}, {cursor.getFullYear()}</span>
+            <span style={{ fontFamily: 'Georgia, serif', fontSize: narrow ? 19 : 24, color: 'var(--cal-ink)' }}>{DOW[(cursor.getDay() + 6) % 7]}</span>
+            <span style={{ fontFamily: 'Georgia, serif', fontSize: narrow ? 14 : 18, color: 'var(--cal-ink-soft)', marginLeft: 8 }}>{MONTHS[cursor.getMonth()]} {cursor.getDate()}, {cursor.getFullYear()}</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             <button onClick={() => setCursor(addDays(cursor, -1))} style={navArrow}>‹</button>
             <button onClick={() => setCursor(addDays(cursor, 1))} style={navArrow}>›</button>
             <button onClick={() => setCursor(etNow())} style={railBtn}>TODAY</button>
@@ -657,7 +746,7 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
       </div>
 
       {/* right page: panels */}
-      <div style={{ flex: 1, padding: '18px 20px', minWidth: 0 }}>
+      <div style={{ flex: 1, padding: narrow ? '12px 10px' : '18px 20px', minWidth: 0 }}>
         <DayPlanner userId={userId} ds={ds} priority={priority} other={other} quote={[q, who]} dayItems={items} onOpenItem={openItem}
           onToggleTaskDone={onToggleTaskDone} onToggleTaskTimer={onToggleTaskTimer} runningEntry={runningEntry} timeEntries={timeEntries} />
       </div>
