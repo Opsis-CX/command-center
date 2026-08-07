@@ -1,6 +1,7 @@
 import NotificationBell from './components/NotificationBell'
 import HeaderTaskBar from './components/HeaderTaskBar'
 import React, { useState, useEffect } from 'react'
+import PushEnrollmentBanner from './components/PushEnrollmentBanner'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { initTheme } from './lib/theme'
 import { supabase } from './lib/supabase'
@@ -154,7 +155,7 @@ function LiveStatusPage() {
   )
 }
 export default function App() {
-  const { session, loading, isAdmin, appRole, clientId } = useAuth()
+  const { session, loading, isAdmin, appRole, clientId, user } = useAuth()
   const [navOpen, setNavOpen] = useState(false)
   const location = useLocation()
   // apply the saved light/dark/system theme as early as possible
@@ -281,6 +282,10 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             </div>
           </div>
           <div className="content">
+            {/* Per-device push opt-in. Sits above the routes so it is seen wherever
+                the person already is — it cannot live only in Settings, because
+                that is exactly where 37 of 41 people never found it. */}
+            <PushEnrollmentBanner profileId={user?.id} />
             <RouteErrorBoundary>
             <Routes>
               <Route path="/" element={<OpsisWeekly />} />
