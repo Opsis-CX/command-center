@@ -239,7 +239,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             <ErrorBoundary>
             {/* Per-device push opt-in. INSIDE the boundary — anything rendered
                 outside it can blank the whole app with no error shown. */}
-            <PushEnrollmentBanner profileId={user?.id} />
+            <PushEnrollmentBanner profileId={session?.user?.id} />
             <Routes>
               <Route path="/" element={<OpsisWeekly />} />
               <Route path="/calendar" element={<Calendar />} />
