@@ -139,7 +139,7 @@ export default function App() {
 // Call QA module in portal mode. Clients see their own calls (RLS-enforced),
 // can export and add notes, but never manager controls or any other module.
 function ClientPortal({ session, clientId }) {
-  const { signOut } = useAuth()
+  const { signOut, user } = useAuth()   // user is needed by PushEnrollmentBanner below
   const [brand, setBrand] = useState(null)          // { portal_name, portal_accent, portal_logo_url, name }
   const [mustChange, setMustChange] = useState(null) // null = still checking
 
