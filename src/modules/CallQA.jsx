@@ -109,14 +109,106 @@ function recomputeReview(answers) {
 // It must therefore state its own ink colour — otherwise text with no explicit
 // colour inherits var(--ink), which is near-white in dark mode, on a white card.
 const Card = ({ children, style }) => <div style={{ background: '#fff', color: INK, border: '1px solid #e2e8f0', borderRadius: 12, padding: 16, ...style }}>{children}</div>
-const Tile = ({ label, value, sub, color }) => (
+const Tile = ({ label, value, sub, color, delta }) => (
   <Card style={{ flex: 1, minWidth: 130 }}>
     <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
-    <div style={{ fontSize: 26, fontWeight: 700, color: color || '#0f172a', marginTop: 4 }}>{value}</div>
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+      <div style={{ fontSize: 26, fontWeight: 700, color: color || '#0f172a' }}>{value}</div>
+      {delta}
+    </div>
     {sub && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{sub}</div>}
   </Card>
 )
-const Bar = ({ v, color }) => <div style={{ background: '#eef2f7', borderRadius: 6, height: 8, overflow: 'hidden' }}><div style={{ width: `${Math.max(0, Math.min(100, v || 0))}%`, height: '100%', background: color || TEAL }} /></div>
+// Change vs. the prior period. `good` says which direction is good (up/down); the
+// arrow is green when the move is good, red when not. Renders nothing without a baseline.
+const Delta = ({ now, prev, good = 'up', digits = 1, suffix = 'pp' }) => {
+  if (now == null || prev == null) return null
+  const d = now - prev
+  if (Math.abs(d) < (digits === 0 ? 0.5 : 0.05)) return <span style={{ fontSize: 11.5, color: '#94a3b8', fontWeight: 600 }}>±0</span>
+  const up = d > 0
+  const positive = good === 'up' ? up : !up
+  const mag = digits === 0 ? Math.round(Math.abs(d)) : Math.round(Math.abs(d) * 10) / 10
+  return <span title={'vs. prior period'} style={{ fontSize: 11.5, fontWeight: 700, color: positive ? '#1b5e20' : '#b71c1c', whiteSpace: 'nowrap' }}>{up ? '▲' : '▼'} {mag}{suffix}</span>
+}
+const Bar = ({ v, color }) => <div style={{ background: '#eef2f7', borderRadius: 999, height: 9, overflow: 'hidden' }}><div style={{ width: `${Math.max(0, Math.min(100, v || 0))}%`, height: '100%', background: color || TEAL, borderRadius: 999, transition: 'width .3s ease' }} /></div>
+// ---- Lightweight SVG charts (zero dependencies) ---------------------------
+// Smooth area+line trend chart. `data` = [{ label, value, n? }]. Scales width
+// to its container; height is fixed by the viewBox aspect ratio.
+function TrendChart({ data, color = TEAL, yMax = 100, valueFmt = (v) => Math.round(v) }) {
+  if (!data || !data.length) return <div style={{ color: '#64748b', padding: '20px 0' }}>No calls in range.</div>
+  const W = 760, H = 200, padT = 12, padB = 24, padX = 6
+  const n = data.length, innerW = W - padX * 2, innerH = H - padT - padB
+  const x = (i) => padX + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW)
+  const y = (v) => padT + innerH - (Math.max(0, Math.min(yMax, v || 0)) / yMax) * innerH
+  const pts = data.map((d, i) => [x(i), y(d.value)])
+  const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ')
+  const area = `${line} L ${x(n - 1).toFixed(1)} ${(padT + innerH).toFixed(1)} L ${x(0).toFixed(1)} ${(padT + innerH).toFixed(1)} Z`
+  const step = Math.max(1, Math.ceil(n / 8))
+  const gid = 'grad' + String(color).replace(/[^a-z0-9]/gi, '')
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', height: 'auto', overflow: 'visible' }}>
+      <defs><linearGradient id={gid} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity="0.20" /><stop offset="100%" stopColor={color} stopOpacity="0" /></linearGradient></defs>
+      {[0, 0.25, 0.5, 0.75, 1].map((g) => <line key={g} x1={padX} x2={W - padX} y1={padT + innerH * g} y2={padT + innerH * g} stroke="#eef2f7" strokeWidth="1" />)}
+      <path d={area} fill={`url(#${gid})`} />
+      <path d={line} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+      {pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r={n > 30 ? 0 : 3} fill="#fff" stroke={color} strokeWidth="2"><title>{`${data[i].label}: ${valueFmt(data[i].value)}${data[i].n != null ? ` · ${data[i].n} calls` : ''}`}</title></circle>)}
+      {data.map((d, i) => ((n - 1 - i) % step === 0 ? <text key={i} x={x(i)} y={H - 7} fontSize="11" fill="#94a3b8" textAnchor="middle">{d.label}</text> : null))}
+    </svg>
+  )
+}
+// A labeled horizontal bar row (label · value on top, bar below).
+const BarRow = ({ label, value, v, color }) => (
+  <div style={{ marginBottom: 10 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4, gap: 8 }}><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span><b style={{ whiteSpace: 'nowrap' }}>{value}</b></div>
+    <Bar v={v} color={color} />
+  </div>
+)
+
+// ---- Table view: in-table search + pagination ----------------------------
+// Wrap an already-sorted row list. Returns the current page of rows plus the
+// search box / pager state. `searchText(row)` supplies the text a row matches on.
+function useTableView(rows, opts = {}) {
+  const { pageSize = 25, searchText = null } = opts
+  const [query, setQuery] = useState('')
+  const [page, setPage] = useState(1)
+  const q = query.trim().toLowerCase()
+  const filtered = useMemo(
+    () => ((!q || !searchText) ? rows : rows.filter((r) => String(searchText(r) || '').toLowerCase().includes(q))),
+    [rows, q, searchText]
+  )
+  useEffect(() => { setPage(1) }, [q])
+  const total = filtered.length
+  const pages = Math.max(1, Math.ceil(total / pageSize))
+  const cur = Math.min(Math.max(1, page), pages)
+  const pageRows = filtered.slice((cur - 1) * pageSize, cur * pageSize)
+  return { query, setQuery, pageRows, total, allTotal: rows.length, page: cur, pages, setPage, pageSize }
+}
+const pagerBtn = (on) => ({ width: 26, height: 26, borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: on ? '#334155' : '#cbd5e1', cursor: on ? 'pointer' : 'default', fontSize: 15, fontWeight: 700, lineHeight: '20px', padding: 0 })
+function Pager({ view }) {
+  if (view.pages <= 1) return null
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#475569' }}>
+      <button onClick={() => view.setPage(view.page - 1)} disabled={view.page <= 1} title="Previous page" style={pagerBtn(view.page > 1)}>‹</button>
+      <span style={{ whiteSpace: 'nowrap' }}>Page {view.page} / {view.pages}</span>
+      <button onClick={() => view.setPage(view.page + 1)} disabled={view.page >= view.pages} title="Next page" style={pagerBtn(view.page < view.pages)}>›</button>
+    </div>
+  )
+}
+// Search box + row count + pager, shown above a table.
+function TableToolbar({ view, placeholder = 'Search…' }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', flexWrap: 'wrap', borderBottom: '1px solid #f1f5f9' }}>
+      <div style={{ position: 'relative' }}>
+        <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: 12, pointerEvents: 'none' }}>🔎</span>
+        <input value={view.query} onChange={(e) => view.setQuery(e.target.value)} placeholder={placeholder}
+          style={{ padding: '6px 10px 6px 30px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, width: 210, maxWidth: '60vw', background: '#fff', color: INK, boxSizing: 'border-box' }} />
+      </div>
+      <div style={{ fontSize: 12.5, color: '#64748b' }}>{view.total === view.allTotal ? `${view.total} rows` : `${view.total} of ${view.allTotal}`}</div>
+      <div style={{ flex: 1 }} />
+      <Pager view={view} />
+    </div>
+  )
+}
 const Pill = ({ children, bg, fg }) => <span style={{ background: bg, color: fg, fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap' }}>{children}</span>
 
 // ---- Column sorting -------------------------------------------------------
@@ -162,7 +254,7 @@ function SortHead({ cols, sort, onSort, thStyle, trStyle }) {
             <th key={label + i}
               onClick={sortable ? () => onSort(key) : undefined}
               title={sortable ? 'Sort by ' + label : undefined}
-              style={{ padding: '8px 12px', cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap', ...thStyle, ...(active ? { color: TEAL } : null) }}>
+              style={{ padding: '8px 12px', cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1, ...thStyle, ...(active ? { color: TEAL } : null) }}>
               {label}{active ? <span style={{ color: TEAL }}>{sort.dir === 'asc' ? ' ▲' : ' ▼'}</span> : (sortable ? <span style={{ color: '#cbd5e1', fontSize: 10 }}> ⇅</span> : '')}
             </th>
           )
@@ -326,6 +418,40 @@ export default function CallQA({ portal = false } = {}) {
     return Array.from(m.entries()).map(([d, arr]) => ({ d, avg: arr.reduce((a, b) => a + b, 0) / arr.length, n: arr.length })).sort((a, b) => a.d.localeCompare(b.d))
   }, [filtered])
 
+  // Same-length window immediately BEFORE the current one — powers the period-over-
+  // period ▲/▼ deltas on the Overview tiles. Null when there's no comparable prior data.
+  const prevAgg = useMemo(() => {
+    let start, end
+    if (customRange) {
+      const s = startDate ? new Date(startDate + 'T00:00:00') : null
+      const e = endDate ? new Date(endDate + 'T23:59:59.999') : new Date()
+      if (!s) return null
+      const span = e - s
+      end = new Date(s.getTime() - 1)
+      start = new Date(s.getTime() - span - 1)
+    } else {
+      if (days >= 3650) return null // "All time" has no prior window
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days)
+      end = new Date(cutoff.getTime() - 1)
+      start = new Date(cutoff.getTime()); start.setDate(start.getDate() - days)
+    }
+    const inWin = scoped.filter((r) => {
+      const c = r.call || {}
+      const d = c.call_date ? new Date(c.call_date + 'T00:00:00') : new Date(r.created_at)
+      if (d < start || d > end) return false
+      if (brand !== 'all' && c.brand !== brand) return false
+      if (agent !== 'all' && agentOf(r) !== agent) return false
+      if (topic !== 'all' && !(r.topics || []).includes(topic)) return false
+      return true
+    })
+    const scoredP = inWin.filter(isScored)
+    const nP = scoredP.length
+    const oppsP = inWin.filter((r) => r.opportunity)
+    const bookedP = oppsP.filter((r) => r.outcome === 'Booked')
+    if (!inWin.length) return null
+    return { n: nP, avg: nP ? scoredP.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / nP : null, opps: oppsP.length, booked: bookedP.length, conv: oppsP.length ? (bookedP.length / oppsP.length) * 100 : null }
+  }, [scoped, days, startDate, endDate, customRange, brand, agent, topic])
+
   const byAgent = useMemo(() => {
     const m = new Map()
     filtered.forEach((r) => {
@@ -457,7 +583,7 @@ export default function CallQA({ portal = false } = {}) {
 
       {loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
         <>
-          {tab === 'overview' && <Overview agg={agg} trend={trend} />}
+          {tab === 'overview' && <Overview agg={agg} trend={trend} prevAgg={prevAgg} />}
           {tab === 'scorecards' && <Scorecards rows={dateFiltered} viewAll={viewAll} onOpen={setSelected} />}
           {tab === 'opportunities' && <Opportunities rows={filtered} agg={agg} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'missed' && <MissedOpps rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
@@ -475,7 +601,7 @@ export default function CallQA({ portal = false } = {}) {
   )
 }
 
-function Overview({ agg, trend }) {
+function Overview({ agg, trend, prevAgg }) {
   // Window size (days shown at once) + how many days back the window starts (0 = latest)
   const [trendWindow, setTrendWindow] = useState(7)
   const [trendOffset, setTrendOffset] = useState(0)
@@ -487,7 +613,6 @@ function Overview({ agg, trend }) {
   const visibleTrend = paged ? trend.slice(start, end) : trend
   const canOlder = start > 0
   const canNewer = offset > 0
-  const maxN = Math.max(1, ...visibleTrend.map((t) => t.n))
   const setWindow = (w) => { setTrendWindow(w); setTrendOffset(0) }
   const topReasons = Object.entries(agg.reasons).sort((a, b) => b[1] - a[1]).slice(0, 6)
   const topTopics = Object.entries(agg.topics).sort((a, b) => b[1] - a[1]).slice(0, 12)
@@ -495,21 +620,18 @@ function Overview({ agg, trend }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Tile label="Calls scored" value={agg.n} />
+        <Tile label="Calls scored" value={agg.n} delta={<Delta now={agg.n} prev={prevAgg?.n} digits={0} suffix="" />} />
         <Tile label="Not scored" value={agg.excluded} sub="wrong # / IVR / excluded" />
-        <Tile label="Avg QA score" value={agg.avg == null ? '—' : pct(agg.avg)} color={scoreColor(agg.avg)} />
-        <Tile label="Opportunities" value={agg.opps} sub="calls with a booking/sale chance" />
-        <Tile label="Booked" value={agg.booked} color="#1b5e20" />
-        <Tile label="Conversion" value={agg.conv == null ? '—' : pct(agg.conv)} color={TEAL} sub="booked ÷ opportunities" />
+        <Tile label="Avg QA score" value={agg.avg == null ? '—' : pct(agg.avg)} color={scoreColor(agg.avg)} delta={<Delta now={agg.avg} prev={prevAgg?.avg} suffix="pp" />} />
+        <Tile label="Opportunities" value={agg.opps} sub="calls with a booking/sale chance" delta={<Delta now={agg.opps} prev={prevAgg?.opps} digits={0} suffix="" />} />
+        <Tile label="Booked" value={agg.booked} color="#1b5e20" delta={<Delta now={agg.booked} prev={prevAgg?.booked} digits={0} suffix="" />} />
+        <Tile label="Conversion" value={agg.conv == null ? '—' : pct(agg.conv)} color={TEAL} sub="booked ÷ opportunities" delta={<Delta now={agg.conv} prev={prevAgg?.conv} suffix="pp" />} />
       </div>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <Card style={{ flex: 2, minWidth: 340 }}>
           <div style={{ fontWeight: 700, marginBottom: 14 }}>Score by section</div>
           {SECTIONS.map((s) => (
-            <div key={s.key} style={{ marginBottom: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{s.label}</span><b style={{ color: scoreColor(agg.sec[s.key]) }}>{pct(agg.sec[s.key])}</b></div>
-              <Bar v={agg.sec[s.key]} color={scoreColor(agg.sec[s.key])} />
-            </div>
+            <BarRow key={s.key} label={s.label} value={pct(agg.sec[s.key])} v={agg.sec[s.key]} color={scoreColor(agg.sec[s.key])} />
           ))}
         </Card>
         <Card style={{ flex: 1, minWidth: 220 }}>
@@ -522,10 +644,7 @@ function Overview({ agg, trend }) {
       <Card>
         <div style={{ fontWeight: 700, marginBottom: 14 }}>What calls are about</div>
         {topTopics.length === 0 ? <div style={{ color: '#64748b' }}>No topics yet.</div> : topTopics.map(([t, v]) => (
-          <div key={t} style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{t}</span><b>{v}</b></div>
-            <Bar v={(v / maxTopic) * 100} color={TEAL} />
-          </div>
+          <BarRow key={t} label={t} value={v} v={(v / maxTopic) * 100} color={TEAL} />
         ))}
       </Card>
 
@@ -563,32 +682,9 @@ function Overview({ agg, trend }) {
             )}
           </div>
         </div>
-        {trend.length === 0 ? <div style={{ color: '#64748b' }}>No calls in range.</div> : (() => {
-          const dense = visibleTrend.length > 16
-          const gap = dense ? 4 : 8
-          // Thin the date labels so at most ~8 show, always anchoring the most-recent day.
-          const labelStep = Math.max(1, Math.ceil(visibleTrend.length / 8))
-          const showLabel = (i) => (visibleTrend.length - 1 - i) % labelStep === 0
-          return (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap, height: 150, borderBottom: '1px solid #e2e8f0' }}>
-                {visibleTrend.map((t, i) => (
-                  <div key={t.d} title={`${t.d}: ${pct(t.avg)} (${t.n} calls)`} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
-                    {(!dense || showLabel(i)) && <div style={{ fontSize: 9.5, color: '#64748b', marginBottom: 3 }}>{Math.round(t.avg)}</div>}
-                    <div style={{ width: '68%', maxWidth: 32, background: scoreColor(t.avg), height: `${t.avg}%`, borderRadius: '3px 3px 0 0', opacity: 0.4 + 0.6 * (t.n / maxN) }} />
-                  </div>
-                ))}
-              </div>
-              <div style={{ display: 'flex', gap, marginTop: 6 }}>
-                {visibleTrend.map((t, i) => (
-                  <div key={t.d} style={{ flex: 1, minWidth: 0, textAlign: 'center', fontSize: 10.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
-                    {showLabel(i) ? fmtDate(t.d) : ''}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )
-        })()}
+        {trend.length === 0 ? <div style={{ color: '#64748b' }}>No calls in range.</div> : (
+          <TrendChart data={visibleTrend.map((t) => ({ label: fmtDate(t.d), value: t.avg, n: t.n }))} />
+        )}
         {paged && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 10 }}>Showing {visibleTrend.length} of {total} days{canOlder ? '' : ' · earliest'}{canNewer ? '' : ' · most recent'}</div>}
       </Card>
     </div>
@@ -607,6 +703,7 @@ function Opportunities({ rows, agg, onOpen, viewAll }) {
   const [oppSort, oppOnSort] = useSort()
   const brandAcc = { Brand: (b) => b.brand, Opportunities: (b) => b.opps, Booked: (b) => b.booked, Conversion: (b) => b.conv }
   const oppAcc = { Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'What they wanted': (r) => r.opportunity_context, Outcome: (r) => r.outcome, Reason: (r) => r.not_booked_reason, Score: (r) => Number(r.score_pct) }
+  const oppView = useTableView(sortRows(opps, oppSort, oppAcc), { searchText: (r) => `${fmtDate(r.call?.call_date)} ${agentOf(r)} ${r.call?.brand || ''} ${r.opportunity_context || ''} ${r.outcome || ''} ${r.not_booked_reason || ''}` })
   if (!opps.length) return <Card style={{ color: '#64748b' }}>No opportunity calls scored in this range yet.</Card>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -630,9 +727,11 @@ function Opportunities({ rows, agg, onOpen, viewAll }) {
       </Card>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ fontWeight: 700, padding: 14 }}>Opportunity calls</div>
+        <TableToolbar view={oppView} placeholder="Search opportunities…" />
+        <div style={{ overflowX: 'auto', maxHeight: 620 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <SortHead cols={['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Outcome', 'Reason', 'Score']} sort={oppSort} onSort={oppOnSort} />
-          <tbody>{sortRows(opps, oppSort, oppAcc).map((r) => {
+          <tbody>{oppView.pageRows.map((r) => {
             const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
             return (
               <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
@@ -647,6 +746,7 @@ function Opportunities({ rows, agg, onOpen, viewAll }) {
             )
           })}</tbody>
         </table>
+        </div>
       </Card>
     </div>
   )
@@ -674,6 +774,7 @@ function MissedOpps({ rows, onOpen, viewAll }) {
   }, [allMissed, highOnly])
   const [missSort, missOnSort] = useSort()
   const missAcc = { Size: (x) => x.tier, Date: (x) => dnum(x.r.call?.call_date), Agent: (x) => agentOf(x.r), Brand: (x) => x.r.call?.brand, 'What they wanted': (x) => x.r.opportunity_context || (x.r.topics || [])[0], Outcome: (x) => x.r.outcome, 'What would have won it': (x) => x.r.revenue_tip || x.r.not_booked_reason, Score: (x) => Number(x.r.score_pct) }
+  const missView = useTableView(sortRows(shown, missSort, missAcc), { searchText: ({ r }) => `${fmtDate(r.call?.call_date)} ${agentOf(r)} ${r.call?.brand || ''} ${r.opportunity_context || (r.topics || [])[0] || ''} ${r.outcome || ''}` })
 
   if (!allMissed.length) return <Card style={{ color: '#64748b' }}>No missed opportunities in this range.</Card>
   return (
@@ -696,7 +797,8 @@ function MissedOpps({ rows, onOpen, viewAll }) {
         </div>
       </Card>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
+        <TableToolbar view={missView} placeholder="Search missed opps…" />
+        <div style={{ overflowX: 'auto', maxHeight: 620 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
           <colgroup>
             <col style={{ width: 66 }} />
@@ -709,7 +811,7 @@ function MissedOpps({ rows, onOpen, viewAll }) {
             <col style={{ width: 78 }} />
           </colgroup>
           <SortHead cols={['Size', 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Outcome', 'What would have won it', 'Score']} sort={missSort} onSort={missOnSort} thStyle={{ fontWeight: 600 }} />
-          <tbody>{sortRows(shown, missSort, missAcc).map(({ r, tier }) => {
+          <tbody>{missView.pageRows.map(({ r, tier }) => {
             const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other; const tm = TIER_META[tier]
             const cell = { padding: '8px 12px', verticalAlign: 'top', whiteSpace: 'normal', overflowWrap: 'anywhere' }
             return (
@@ -740,6 +842,7 @@ function EpicFails({ rows, onOpen, viewAll }) {
   )
   const [failSort, failOnSort] = useSort()
   const failAcc = { Score: (r) => Number(r.score_pct), Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'Biggest issue': (r) => topIssue(r), Outcome: (r) => r.outcome }
+  const failView = useTableView(sortRows(scored, failSort, failAcc), { searchText: (r) => `${fmtDate(r.call?.call_date)} ${agentOf(r)} ${r.call?.brand || ''} ${topIssue(r)} ${r.outcome || ''}` })
   const under50 = scored.filter((r) => Number(r.score_pct) < 50).length
   const under60 = scored.filter((r) => Number(r.score_pct) < 60).length
   const worst = scored.length ? Number(scored[0].score_pct) : null
@@ -757,7 +860,8 @@ function EpicFails({ rows, onOpen, viewAll }) {
         <div style={{ fontSize: 12.5, color: '#7f1d1d', marginTop: 2 }}>Every scored call in range, ranked lowest QA score to highest. Start at the top for the calls that need attention most.</div>
       </Card>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
+        <TableToolbar view={failView} placeholder="Search calls…" />
+        <div style={{ overflowX: 'auto', maxHeight: 620 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
           <colgroup>
             <col style={{ width: 44 }} />
@@ -769,12 +873,12 @@ function EpicFails({ rows, onOpen, viewAll }) {
             <col style={{ width: 132 }} />
           </colgroup>
           <SortHead cols={[['#', null], 'Score', 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'Biggest issue', 'Outcome']} sort={failSort} onSort={failOnSort} thStyle={{ fontWeight: 600 }} />
-          <tbody>{sortRows(scored, failSort, failAcc).map((r, i) => {
+          <tbody>{failView.pageRows.map((r, i) => {
             const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
             const cell = { padding: '8px 12px', verticalAlign: 'top', whiteSpace: 'normal', overflowWrap: 'anywhere' }
             return (
               <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
-                <td style={{ ...cell, color: '#94a3b8', fontWeight: 600 }}>{i + 1}</td>
+                <td style={{ ...cell, color: '#94a3b8', fontWeight: 600 }}>{(failView.page - 1) * failView.pageSize + i + 1}</td>
                 <td style={{ ...cell, whiteSpace: 'nowrap' }}><span style={{ background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(r.score_pct)}{r.manager_adjusted ? ' *' : ''}</span></td>
                 <td style={{ ...cell, whiteSpace: 'nowrap' }}>{fmtDate(c.call_date)}</td>
                 {viewAll && <td style={cell}>{agentOf(r)}</td>}
@@ -858,19 +962,13 @@ function Conversion({ rows, onOpen, viewAll }) {
         <Card style={{ flex: 1, minWidth: 300 }}>
           <div style={{ fontWeight: 700, marginBottom: 14 }}>What's stopping the sale (objections)</div>
           {topObj.length === 0 ? <div style={{ color: '#64748b' }}>No objections captured yet.</div> : topObj.map(([o, v]) => (
-            <div key={o} style={{ marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{o}</span><b>{v} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({pctOf(v, opps.length)}% of opps)</span></b></div>
-              <Bar v={(v / maxObj) * 100} color="#c2410c" />
-            </div>
+            <BarRow key={o} label={o} value={<span>{v} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({pctOf(v, opps.length)}% of opps)</span></span>} v={(v / maxObj) * 100} color="#c2410c" />
           ))}
         </Card>
         <Card style={{ flex: 1, minWidth: 300 }}>
           <div style={{ fontWeight: 700, marginBottom: 14 }}>Biggest revenue coaching gaps</div>
           {topTags.length === 0 ? <div style={{ color: '#64748b' }}>No coaching data yet.</div> : topTags.map(([t, v]) => (
-            <div key={t} style={{ marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{t}</span><b>{v} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({pctOf(v, scoredCount)}% of calls)</span></b></div>
-              <Bar v={(v / maxTag) * 100} color={TEAL} />
-            </div>
+            <BarRow key={t} label={t} value={<span>{v} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({pctOf(v, scoredCount)}% of calls)</span></span>} v={(v / maxTag) * 100} color={TEAL} />
           ))}
         </Card>
       </div>
@@ -931,6 +1029,7 @@ function Calls({ rows, onOpen, viewAll, canManage, onSetReviewed, busy }) {
   }, [rows, revFilter])
   const [callSort, callOnSort] = useSort()
   const callAcc = { Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'Opp.': (r) => (r.opportunity ? 1 : 0), Outcome: (r) => r.outcome, Score: (r) => (isScored(r) ? Number(r.score_pct) : null) }
+  const callView = useTableView(sortRows(list, callSort, callAcc), { searchText: (r) => `${fmtDate(r.call?.call_date)} ${agentOf(r)} ${r.call?.brand || ''} ${r.outcome || ''} ${(r.topics || [])[0] || ''}` })
 
   if (!rows.length) return <Card style={{ color: '#64748b' }}>No scored calls in this range.</Card>
   return (
@@ -946,13 +1045,14 @@ function Calls({ rows, onOpen, viewAll, canManage, onSetReviewed, busy }) {
       )}
 
       <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <TableToolbar view={callView} placeholder="Search calls…" />
         {list.length === 0 ? <div style={{ padding: 14, color: '#64748b' }}>
           {revFilter === 'unreviewed' ? 'Everything in this range has been reviewed. 🎉' : 'No calls match this filter.'}
         </div> : (
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', maxHeight: 620 }}>
         <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse', fontSize: 13 }}>
           <SortHead cols={[...(canManage ? [['✓', null]] : []), 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'Opp.', 'Outcome', 'Score', ['', null]]} sort={callSort} onSort={callOnSort} thStyle={{ padding: '10px 12px' }} />
-          <tbody>{sortRows(list, callSort, callAcc).map((r) => {
+          <tbody>{callView.pageRows.map((r) => {
             const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
             return (
               <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer', background: r.reviewed ? '#f8fdf9' : '#fff' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = r.reviewed ? '#f8fdf9' : '#fff'}>
@@ -1009,6 +1109,7 @@ function BookingsCard({ rows, onOpen, viewAll }) {
   }, [booked, filter])
   const [bkSort, bkOnSort] = useSort()
   const bkAcc = { Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'What they wanted': (r) => r.opportunity_context || (r.topics || [])[0], 'Card asked': (r) => (r.asked_for_cc === true ? 1 : r.asked_for_cc === false ? 0 : null), Collected: (r) => (r.asked_for_cc !== true ? null : r.collected_cc === true ? 1 : r.collected_cc === false ? 0 : null), 'What the rep said': (r) => r.cc_quote, Score: (r) => (isScored(r) ? Number(r.score_pct) : null) }
+  const bkView = useTableView(sortRows(shown, bkSort, bkAcc), { searchText: (r) => `${fmtDate(r.call?.call_date)} ${agentOf(r)} ${r.call?.brand || ''} ${r.opportunity_context || (r.topics || [])[0] || ''} ${r.cc_quote || ''}` })
   if (!booked.length) return <Card style={{ color: '#64748b' }}>No booked calls in this range.</Card>
   const askPill = (v) => v === true
     ? <Pill bg="#e8f5e9" fg="#1b5e20">Yes</Pill>
@@ -1040,7 +1141,8 @@ function BookingsCard({ rows, onOpen, viewAll }) {
         ))}
       </div>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
+        <TableToolbar view={bkView} placeholder="Search bookings…" />
+        <div style={{ overflowX: 'auto', maxHeight: 620 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: 74 }} />
@@ -1054,7 +1156,7 @@ function BookingsCard({ rows, onOpen, viewAll }) {
               <col style={{ width: 28 }} />
             </colgroup>
             <SortHead cols={['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Card asked', 'Collected', 'What the rep said', 'Score', ['', null]]} sort={bkSort} onSort={bkOnSort} thStyle={{ fontWeight: 600 }} />
-            <tbody>{sortRows(shown, bkSort, bkAcc).map((r) => {
+            <tbody>{bkView.pageRows.map((r) => {
               const c = r.call || {}
               const cell = { padding: '8px 12px', verticalAlign: 'top', whiteSpace: 'normal', overflowWrap: 'anywhere' }
               return (
@@ -1766,10 +1868,7 @@ function ScExec({ data, onBrand }) {
       <Card>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>Biggest systemic coaching gaps <span style={{ color: '#94a3b8', fontWeight: 400 }}>— across all brands</span></div>
         {gaps.map((g) => (
-          <div key={g[0]} style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{g[0]}</span><b>{g[1]} agents</b></div>
-            <Bar v={(g[1] / gmax) * 100} color="#c2410c" />
-          </div>
+          <BarRow key={g[0]} label={g[0]} value={`${g[1]} agents`} v={(g[1] / gmax) * 100} color="#c2410c" />
         ))}
       </Card>
     </>
@@ -1845,10 +1944,7 @@ function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
       <Card>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>Top team coaching gaps <span style={{ color: '#94a3b8', fontWeight: 400 }}>— coach the pattern (human CSRs)</span></div>
         {gaps.length === 0 ? <div style={{ color: '#64748b' }}>No data.</div> : gaps.map((g) => (
-          <div key={g[0]} style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}><span>{g[0]}</span><b>{g[1]} agents</b></div>
-            <Bar v={(g[1] / gmax) * 100} color="#c2410c" />
-          </div>
+          <BarRow key={g[0]} label={g[0]} value={`${g[1]} agents`} v={(g[1] / gmax) * 100} color="#c2410c" />
         ))}
       </Card>
     </>
