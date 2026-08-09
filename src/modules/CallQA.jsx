@@ -119,6 +119,59 @@ const Tile = ({ label, value, sub, color }) => (
 const Bar = ({ v, color }) => <div style={{ background: '#eef2f7', borderRadius: 6, height: 8, overflow: 'hidden' }}><div style={{ width: `${Math.max(0, Math.min(100, v || 0))}%`, height: '100%', background: color || TEAL }} /></div>
 const Pill = ({ children, bg, fg }) => <span style={{ background: bg, color: fg, fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap' }}>{children}</span>
 
+// ---- Column sorting -------------------------------------------------------
+// Click a table header to sort by that column; click again to flip the
+// direction. Numeric columns sort low↔high, text columns sort A↔Z. Blank
+// values ("—" / null) always sink to the bottom regardless of direction.
+const dnum = (v) => { if (!v) return null; const t = new Date(v).getTime(); return Number.isNaN(t) ? null : t }
+function useSort(initialKey = null, initialDir = 'asc') {
+  const [sort, setSort] = useState({ key: initialKey, dir: initialDir })
+  const onSort = useCallback((key) => {
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
+  }, [])
+  return [sort, onSort]
+}
+function sortRows(list, sort, accessors) {
+  if (!sort || !sort.key || !accessors) return list
+  const acc = accessors[sort.key]
+  if (!acc) return list
+  const dir = sort.dir === 'desc' ? -1 : 1
+  const val = (row) => { const v = acc(row); return (v === '' || v === '—' || v == null || (typeof v === 'number' && Number.isNaN(v))) ? null : v }
+  return list.slice().sort((a, b) => {
+    const va = val(a), vb = val(b)
+    if (va == null && vb == null) return 0
+    if (va == null) return 1
+    if (vb == null) return -1
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir
+    return String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' }) * dir
+  })
+}
+// A <thead> whose headers are click-to-sort. Each `cols` item is either a label
+// string (sortable by that label) or [label, sortKey] where sortKey === null
+// makes the column non-sortable (action / index / visual columns).
+function SortHead({ cols, sort, onSort, thStyle, trStyle }) {
+  return (
+    <thead>
+      <tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569', ...trStyle }}>
+        {cols.map((c, i) => {
+          const label = Array.isArray(c) ? c[0] : c
+          const key = Array.isArray(c) ? c[1] : c
+          const sortable = key != null
+          const active = sortable && sort && sort.key === key
+          return (
+            <th key={label + i}
+              onClick={sortable ? () => onSort(key) : undefined}
+              title={sortable ? 'Sort by ' + label : undefined}
+              style={{ padding: '8px 12px', cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap', ...thStyle, ...(active ? { color: TEAL } : null) }}>
+              {label}{active ? <span style={{ color: TEAL }}>{sort.dir === 'asc' ? ' ▲' : ' ▼'}</span> : (sortable ? <span style={{ color: '#cbd5e1', fontSize: 10 }}> ⇅</span> : '')}
+            </th>
+          )
+        })}
+      </tr>
+    </thead>
+  )
+}
+
 export default function CallQA({ portal = false } = {}) {
   const { appRole, user, isClientPortal } = useAuth()
   // Portal mode = an external client login. They see ALL of their client's calls
@@ -550,6 +603,10 @@ function Opportunities({ rows, agg, onOpen, viewAll }) {
     opps.forEach((r) => { const b = r.call?.brand || '—'; if (!m.has(b)) m.set(b, { brand: b, opps: 0, booked: 0 }); const o = m.get(b); o.opps++; if (r.outcome === 'Booked') o.booked++ })
     return Array.from(m.values()).map((o) => ({ ...o, conv: o.opps ? (o.booked / o.opps) * 100 : 0 })).sort((a, b) => b.opps - a.opps)
   }, [rows])
+  const [brandSort, brandOnSort] = useSort()
+  const [oppSort, oppOnSort] = useSort()
+  const brandAcc = { Brand: (b) => b.brand, Opportunities: (b) => b.opps, Booked: (b) => b.booked, Conversion: (b) => b.conv }
+  const oppAcc = { Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'What they wanted': (r) => r.opportunity_context, Outcome: (r) => r.outcome, Reason: (r) => r.not_booked_reason, Score: (r) => Number(r.score_pct) }
   if (!opps.length) return <Card style={{ color: '#64748b' }}>No opportunity calls scored in this range yet.</Card>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -562,8 +619,8 @@ function Opportunities({ rows, agg, onOpen, viewAll }) {
       <Card style={{ padding: 0 }}>
         <div style={{ fontWeight: 700, padding: 14 }}>Conversion by brand</div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Brand', 'Opportunities', 'Booked', 'Conversion'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
-          <tbody>{byBrand.map((b) => (
+          <SortHead cols={['Brand', 'Opportunities', 'Booked', 'Conversion']} sort={brandSort} onSort={brandOnSort} />
+          <tbody>{sortRows(byBrand, brandSort, brandAcc).map((b) => (
             <tr key={b.brand} style={{ borderTop: '1px solid #eef2f7' }}>
               <td style={{ padding: '8px 12px', fontWeight: 600 }}>{b.brand}</td><td style={{ padding: '8px 12px' }}>{b.opps}</td><td style={{ padding: '8px 12px' }}>{b.booked}</td>
               <td style={{ padding: '8px 12px' }}><span style={{ color: b.conv >= 50 ? '#1b5e20' : b.conv >= 30 ? '#8d6e00' : '#b71c1c', fontWeight: 700 }}>{pct(b.conv)}</span></td>
@@ -574,8 +631,8 @@ function Opportunities({ rows, agg, onOpen, viewAll }) {
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ fontWeight: 700, padding: 14 }}>Opportunity calls</div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Outcome', 'Reason', 'Score'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
-          <tbody>{opps.map((r) => {
+          <SortHead cols={['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Outcome', 'Reason', 'Score']} sort={oppSort} onSort={oppOnSort} />
+          <tbody>{sortRows(opps, oppSort, oppAcc).map((r) => {
             const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
             return (
               <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
@@ -615,6 +672,8 @@ function MissedOpps({ rows, onOpen, viewAll }) {
         || (Number(Boolean(b.r.winnable)) - Number(Boolean(a.r.winnable)))
         || String(b.r.call?.call_date || b.r.created_at).localeCompare(String(a.r.call?.call_date || a.r.created_at)))
   }, [allMissed, highOnly])
+  const [missSort, missOnSort] = useSort()
+  const missAcc = { Size: (x) => x.tier, Date: (x) => dnum(x.r.call?.call_date), Agent: (x) => agentOf(x.r), Brand: (x) => x.r.call?.brand, 'What they wanted': (x) => x.r.opportunity_context || (x.r.topics || [])[0], Outcome: (x) => x.r.outcome, 'What would have won it': (x) => x.r.revenue_tip || x.r.not_booked_reason, Score: (x) => Number(x.r.score_pct) }
 
   if (!allMissed.length) return <Card style={{ color: '#64748b' }}>No missed opportunities in this range.</Card>
   return (
@@ -649,8 +708,8 @@ function MissedOpps({ rows, onOpen, viewAll }) {
             <col />
             <col style={{ width: 78 }} />
           </colgroup>
-          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Size', 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Outcome', 'What would have won it', 'Score'].map((h) => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}</tr></thead>
-          <tbody>{shown.map(({ r, tier }) => {
+          <SortHead cols={['Size', 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Outcome', 'What would have won it', 'Score']} sort={missSort} onSort={missOnSort} thStyle={{ fontWeight: 600 }} />
+          <tbody>{sortRows(shown, missSort, missAcc).map(({ r, tier }) => {
             const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other; const tm = TIER_META[tier]
             const cell = { padding: '8px 12px', verticalAlign: 'top', whiteSpace: 'normal', overflowWrap: 'anywhere' }
             return (
@@ -679,6 +738,8 @@ function EpicFails({ rows, onOpen, viewAll }) {
     () => rows.filter(isScored).slice().sort((a, b) => (Number(a.score_pct) || 0) - (Number(b.score_pct) || 0)),
     [rows]
   )
+  const [failSort, failOnSort] = useSort()
+  const failAcc = { Score: (r) => Number(r.score_pct), Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'Biggest issue': (r) => topIssue(r), Outcome: (r) => r.outcome }
   const under50 = scored.filter((r) => Number(r.score_pct) < 50).length
   const under60 = scored.filter((r) => Number(r.score_pct) < 60).length
   const worst = scored.length ? Number(scored[0].score_pct) : null
@@ -707,8 +768,8 @@ function EpicFails({ rows, onOpen, viewAll }) {
             <col />
             <col style={{ width: 132 }} />
           </colgroup>
-          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['#', 'Score', 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'Biggest issue', 'Outcome'].map((h) => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}</tr></thead>
-          <tbody>{scored.map((r, i) => {
+          <SortHead cols={[['#', null], 'Score', 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'Biggest issue', 'Outcome']} sort={failSort} onSort={failOnSort} thStyle={{ fontWeight: 600 }} />
+          <tbody>{sortRows(scored, failSort, failAcc).map((r, i) => {
             const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
             const cell = { padding: '8px 12px', verticalAlign: 'top', whiteSpace: 'normal', overflowWrap: 'anywhere' }
             return (
@@ -758,6 +819,10 @@ function Conversion({ rows, onOpen, viewAll }) {
   const agents = Array.from(am.values()).map((o) => ({ ...o, conv: pctOf(o.booked, o.opps), askRate: pctOf(o.asked, o.opps) })).sort((a, b) => b.opps - a.opps)
 
   const winList = lost.filter((r) => r.winnable)
+  const [agSort, agOnSort] = useSort()
+  const [winSort, winOnSort] = useSort()
+  const agAcc = { Agent: (a) => a.name, Opportunities: (a) => a.opps, Booked: (a) => a.booked, Conversion: (a) => a.conv, 'Asked for booking': (a) => a.askRate }
+  const winAcc = { Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'What they wanted': (r) => r.opportunity_context, 'What would have won it': (r) => r.revenue_tip }
   const Leak = ({ label, n, sub, of }) => (
     <Card style={{ flex: 1, minWidth: 180 }}>
       <div style={{ fontSize: 26, fontWeight: 800, color: '#b71c1c' }}>{n}</div>
@@ -814,8 +879,8 @@ function Conversion({ rows, onOpen, viewAll }) {
         <Card style={{ padding: 0 }}>
           <div style={{ fontWeight: 700, padding: 14 }}>Conversion by agent</div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Agent', 'Opportunities', 'Booked', 'Conversion', 'Asked for booking'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
-            <tbody>{agents.map((a) => (
+            <SortHead cols={['Agent', 'Opportunities', 'Booked', 'Conversion', 'Asked for booking']} sort={agSort} onSort={agOnSort} />
+            <tbody>{sortRows(agents, agSort, agAcc).map((a) => (
               <tr key={a.name} style={{ borderTop: '1px solid #eef2f7' }}>
                 <td style={{ padding: '8px 12px', fontWeight: 600 }}>{a.name}</td>
                 <td style={{ padding: '8px 12px' }}>{a.opps}</td>
@@ -832,8 +897,8 @@ function Conversion({ rows, onOpen, viewAll }) {
         <div style={{ fontWeight: 700, padding: 14 }}>Winnable calls you lost <span style={{ color: '#94a3b8', fontWeight: 400 }}>— recoverable with better handling</span></div>
         {winList.length === 0 ? <div style={{ padding: 14, color: '#64748b' }}>None flagged in range.</div> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'What would have won it'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
-            <tbody>{winList.map((r) => {
+            <SortHead cols={['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'What would have won it']} sort={winSort} onSort={winOnSort} />
+            <tbody>{sortRows(winList, winSort, winAcc).map((r) => {
               const c = r.call || {}
               return (
                 <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
@@ -864,6 +929,8 @@ function Calls({ rows, onOpen, viewAll, canManage, onSetReviewed, busy }) {
     if (revFilter === 'unreviewed') return rows.filter((r) => !r.reviewed)
     return rows
   }, [rows, revFilter])
+  const [callSort, callOnSort] = useSort()
+  const callAcc = { Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'Opp.': (r) => (r.opportunity ? 1 : 0), Outcome: (r) => r.outcome, Score: (r) => (isScored(r) ? Number(r.score_pct) : null) }
 
   if (!rows.length) return <Card style={{ color: '#64748b' }}>No scored calls in this range.</Card>
   return (
@@ -884,8 +951,8 @@ function Calls({ rows, onOpen, viewAll, canManage, onSetReviewed, busy }) {
         </div> : (
         <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{[...(canManage ? ['✓'] : []), 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'Opp.', 'Outcome', 'Score', ''].map((h, i) => <th key={h + i} style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
-          <tbody>{list.map((r) => {
+          <SortHead cols={[...(canManage ? [['✓', null]] : []), 'Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'Opp.', 'Outcome', 'Score', ['', null]]} sort={callSort} onSort={callOnSort} thStyle={{ padding: '10px 12px' }} />
+          <tbody>{sortRows(list, callSort, callAcc).map((r) => {
             const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
             return (
               <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer', background: r.reviewed ? '#f8fdf9' : '#fff' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = r.reviewed ? '#f8fdf9' : '#fff'}>
@@ -940,6 +1007,8 @@ function BookingsCard({ rows, onOpen, viewAll }) {
     else if (filter === 'failed') base = booked.filter((r) => r.asked_for_cc === true && r.collected_cc === false)
     return base.slice().sort((a, b) => (rank(a) - rank(b)) || (new Date(b.call?.call_date || 0) - new Date(a.call?.call_date || 0)))
   }, [booked, filter])
+  const [bkSort, bkOnSort] = useSort()
+  const bkAcc = { Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'What they wanted': (r) => r.opportunity_context || (r.topics || [])[0], 'Card asked': (r) => (r.asked_for_cc === true ? 1 : r.asked_for_cc === false ? 0 : null), Collected: (r) => (r.asked_for_cc !== true ? null : r.collected_cc === true ? 1 : r.collected_cc === false ? 0 : null), 'What the rep said': (r) => r.cc_quote, Score: (r) => (isScored(r) ? Number(r.score_pct) : null) }
   if (!booked.length) return <Card style={{ color: '#64748b' }}>No booked calls in this range.</Card>
   const askPill = (v) => v === true
     ? <Pill bg="#e8f5e9" fg="#1b5e20">Yes</Pill>
@@ -984,8 +1053,8 @@ function BookingsCard({ rows, onOpen, viewAll }) {
               <col style={{ width: 60 }} />
               <col style={{ width: 28 }} />
             </colgroup>
-            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Card asked', 'Collected', 'What the rep said', 'Score', ''].map((h) => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}</tr></thead>
-            <tbody>{shown.map((r) => {
+            <SortHead cols={['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Card asked', 'Collected', 'What the rep said', 'Score', ['', null]]} sort={bkSort} onSort={bkOnSort} thStyle={{ fontWeight: 600 }} />
+            <tbody>{sortRows(shown, bkSort, bkAcc).map((r) => {
               const c = r.call || {}
               const cell = { padding: '8px 12px', verticalAlign: 'top', whiteSpace: 'normal', overflowWrap: 'anywhere' }
               return (
@@ -1637,6 +1706,8 @@ function ScExec({ data, onBrand }) {
   const o = data.overall; const cv = P100(o.booked, o.opps)
   const gaps = data.gaps(null).slice(0, 8)
   const gmax = Math.max(1, ...gaps.map((g) => g[1]))
+  const [exSort, exOnSort] = useSort()
+  const exAcc = { Brand: (b) => b.brand, Calls: (b) => b.calls, 'Avg QA': (b) => b.avg, Conversion: (b) => b.conv, 'Card asked': (b) => b.cardRate, 'Card collected': (b) => b.collectRate, Missed: (b) => b.missed, 'Large missed': (b) => b.large }
   const build = () => ([
     { title: 'Portfolio summary', sheet: 'Summary', cols: ['Metric', 'Value'], rows: [
       ['Calls scored', o.scored], ['Avg QA %', r1(o.avg)], ['Opportunities', o.opps], ['Booked', o.booked],
@@ -1676,8 +1747,8 @@ function ScExec({ data, onBrand }) {
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ fontWeight: 700, padding: 14 }}>Brand ranking</div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Brand', 'Calls', 'Avg QA', 'QA', 'Conversion', 'Card asked', 'Card collected', 'Missed', 'Large missed'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
-          <tbody>{data.brands.map((b) => (
+          <SortHead cols={['Brand', 'Calls', 'Avg QA', ['QA', null], 'Conversion', 'Card asked', 'Card collected', 'Missed', 'Large missed']} sort={exSort} onSort={exOnSort} />
+          <tbody>{sortRows(data.brands, exSort, exAcc).map((b) => (
             <tr key={b.brand} onClick={() => onBrand(b.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
               <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{b.brand} <span style={{ color: '#cbd5e1' }}>›</span></td>
               <td style={{ padding: '8px 12px' }}>{b.calls}</td>
@@ -1709,6 +1780,9 @@ function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
   const b = data.brands.find((x) => x.brand === brand) || data.brands[0]
   const roster = data.agents.filter((a) => a.brand === (b?.brand) && !a.ai)   // coachable humans
   const aiRoster = data.agents.filter((a) => a.brand === (b?.brand) && a.ai)  // audit-only AI
+  const [mgrSort, mgrOnSort] = useSort()
+  const [aiSort, aiOnSort] = useSort()
+  const mgrAcc = { Agent: (a) => a.name, Calls: (a) => a.calls, 'Avg QA': (a) => a.avg, Conversion: (a) => a.conv, 'Asked for booking': (a) => a.askRate, 'Card asked': (a) => a.cardRate, 'Coaching focus': (a) => a.topFocus[0] }
   const gaps = data.gaps(b?.brand).slice(0, 6); const gmax = Math.max(1, ...gaps.map((g) => g[1]))
   const build = () => ([
     { title: (b.brand + ' — team summary'), sheet: 'Summary', cols: ['Metric', 'Value'], rows: [
@@ -1735,8 +1809,8 @@ function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ fontWeight: 700, padding: 14 }}>Agent leaderboard</div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['#', 'Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Card asked', 'Coaching focus'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
-          <tbody>{roster.map((a, i) => (
+          <SortHead cols={[['#', null], 'Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Card asked', 'Coaching focus']} sort={mgrSort} onSort={mgrOnSort} />
+          <tbody>{sortRows(roster, mgrSort, mgrAcc).map((a, i) => (
             <tr key={a.name} onClick={() => onAgent(a.name, a.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
               <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{i + 1}</td>
               <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{a.name} <span style={{ color: '#cbd5e1' }}>›</span></td>
@@ -1754,8 +1828,8 @@ function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ fontWeight: 700, padding: 14 }}>AI CSRs <span style={{ color: '#94a3b8', fontWeight: 400 }}>— audited for quality, not coached</span></div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Card asked'].map((h) => <th key={h} style={{ padding: '8px 12px' }}>{h}</th>)}</tr></thead>
-            <tbody>{aiRoster.map((a) => (
+            <SortHead cols={['Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Card asked']} sort={aiSort} onSort={aiOnSort} />
+            <tbody>{sortRows(aiRoster, aiSort, mgrAcc).map((a) => (
               <tr key={a.name} onClick={() => onAgent(a.name, a.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
                 <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{a.name} <Pill bg="#ede9fe" fg="#6d28d9">AI</Pill> <span style={{ color: '#cbd5e1' }}>›</span></td>
                 <td style={{ padding: '8px 12px' }}>{a.calls}</td>
@@ -1784,6 +1858,8 @@ function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
 function ScAgent({ data, rows, aKey, setKey, onOpen }) {
   const opts = [...data.agents].sort((a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name))
   const a = data.agents.find((x) => (x.name + '|||' + x.brand) === aKey) || opts[0]
+  const [acSort, acOnSort] = useSort()
+  const acAcc = { Date: (r) => dnum(r.call?.call_date), Score: (r) => (isScored(r) ? Number(r.score_pct) : null), 'Opp.': (r) => (r.opportunity ? 1 : 0), Outcome: (r) => r.outcome, Topic: (r) => (r.topics || [])[0] }
   if (!a) return <Card style={{ color: '#64748b' }}>No agent data in range.</Card>
   const isAi = a.ai
   const win = a.topWin[0] || '—'; const f0 = a.topFocus[0] || '—'; const f1 = a.topFocus[1]
@@ -1847,8 +1923,8 @@ function ScAgent({ data, rows, aKey, setKey, onOpen }) {
         <div style={{ fontWeight: 700, padding: 14 }}>Their QA reviews <span style={{ color: '#94a3b8', fontWeight: 400 }}>— click any call to see the full breakdown, transcript &amp; recording</span></div>
         {myCalls.length === 0 ? <div style={{ padding: 14, color: '#64748b' }}>No calls in range.</div> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>{['Date', 'Score', 'Opp.', 'Outcome', 'Topic', ''].map((h) => <th key={h} style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
-            <tbody>{myCalls.map((r) => {
+            <SortHead cols={['Date', 'Score', 'Opp.', 'Outcome', 'Topic', ['', null]]} sort={acSort} onSort={acOnSort} />
+            <tbody>{sortRows(myCalls, acSort, acAcc).map((r) => {
               const c = r.call || {}; const os = OUTCOME_STYLE[r.outcome] || OUTCOME_STYLE.Other
               return (
                 <tr key={r.id} onClick={() => onOpen(r)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
