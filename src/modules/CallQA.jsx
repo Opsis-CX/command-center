@@ -134,7 +134,7 @@ const Bar = ({ v, color }) => <div style={{ background: '#eef2f7', borderRadius:
 // ---- Lightweight SVG charts (zero dependencies) ---------------------------
 // Smooth area+line trend chart. `data` = [{ label, value, n? }]. Scales width
 // to its container; height is fixed by the viewBox aspect ratio.
-function TrendChart({ data, color = TEAL, yMax = 100, valueFmt = (v) => Math.round(v) }) {
+function TrendChart({ data, color = TEAL, yMax = 100, valueFmt = (v) => Math.round(v), showTrend = true }) {
   if (!data || !data.length) return <div style={{ color: '#64748b', padding: '20px 0' }}>No calls in range.</div>
   const W = 760, H = 200, padT = 12, padB = 24, padX = 6
   const n = data.length, innerW = W - padX * 2, innerH = H - padT - padB
@@ -143,6 +143,13 @@ function TrendChart({ data, color = TEAL, yMax = 100, valueFmt = (v) => Math.rou
   const pts = data.map((d, i) => [x(i), y(d.value)])
   const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ')
   const area = `${line} L ${x(n - 1).toFixed(1)} ${(padT + innerH).toFixed(1)} L ${x(0).toFixed(1)} ${(padT + innerH).toFixed(1)} Z`
+  // Least-squares best-fit trend line across the visible points.
+  const mx = (n - 1) / 2, my = data.reduce((s, d) => s + (d.value || 0), 0) / n
+  let tnum = 0, tden = 0
+  data.forEach((d, i) => { tnum += (i - mx) * ((d.value || 0) - my); tden += (i - mx) ** 2 })
+  const slope = tden ? tnum / tden : 0
+  const fit = (i) => my + slope * (i - mx)
+  const trendPath = n > 1 ? `M ${x(0).toFixed(1)} ${y(fit(0)).toFixed(1)} L ${x(n - 1).toFixed(1)} ${y(fit(n - 1)).toFixed(1)}` : null
   const step = Math.max(1, Math.ceil(n / 8))
   const gid = 'grad' + String(color).replace(/[^a-z0-9]/gi, '')
   return (
@@ -151,6 +158,7 @@ function TrendChart({ data, color = TEAL, yMax = 100, valueFmt = (v) => Math.rou
       {[0, 0.25, 0.5, 0.75, 1].map((g) => <line key={g} x1={padX} x2={W - padX} y1={padT + innerH * g} y2={padT + innerH * g} stroke="#eef2f7" strokeWidth="1" />)}
       <path d={area} fill={`url(#${gid})`} />
       <path d={line} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+      {showTrend && trendPath && <path d={trendPath} fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="5 4"><title>Best-fit trend</title></path>}
       {pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r={n > 30 ? 0 : 3} fill="#fff" stroke={color} strokeWidth="2"><title>{`${data[i].label}: ${valueFmt(data[i].value)}${data[i].n != null ? ` · ${data[i].n} calls` : ''}`}</title></circle>)}
       {data.map((d, i) => ((n - 1 - i) % step === 0 ? <text key={i} x={x(i)} y={H - 7} fontSize="11" fill="#94a3b8" textAnchor="middle">{d.label}</text> : null))}
     </svg>
@@ -664,15 +672,8 @@ function Overview({ agg, trend, prevAgg }) {
         </Card>
       </div>
       <Card>
-        <div style={{ fontWeight: 700, marginBottom: 14 }}>What calls are about</div>
-        {topTopics.length === 0 ? <div style={{ color: '#64748b' }}>No topics yet.</div> : topTopics.map(([t, v]) => (
-          <BarRow key={t} label={t} value={v} v={(v / maxTopic) * 100} color={TEAL} />
-        ))}
-      </Card>
-
-      <Card>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ fontWeight: 700 }}>Daily QA score trend</div>
+          <div style={{ fontWeight: 700 }}>Daily QA score trend <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>· dashed line = trend</span></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: 7, overflow: 'hidden' }}>
               {[7, 14, 30].map((w) => (
@@ -708,6 +709,12 @@ function Overview({ agg, trend, prevAgg }) {
           <TrendChart data={visibleTrend.map((t) => ({ label: fmtDate(t.d), value: t.avg, n: t.n }))} />
         )}
         {paged && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 10 }}>Showing {visibleTrend.length} of {total} days{canOlder ? '' : ' · earliest'}{canNewer ? '' : ' · most recent'}</div>}
+      </Card>
+      <Card>
+        <div style={{ fontWeight: 700, marginBottom: 14 }}>What calls are about</div>
+        {topTopics.length === 0 ? <div style={{ color: '#64748b' }}>No topics yet.</div> : topTopics.map(([t, v]) => (
+          <BarRow key={t} label={t} value={v} v={(v / maxTopic) * 100} color={TEAL} />
+        ))}
       </Card>
     </div>
   )
@@ -1887,13 +1894,12 @@ function ScExec({ data, prevOverall, onBrand }) {
         <TableToolbar view={exView} placeholder="Search brands…" />
         <div style={{ overflowX: 'auto', maxHeight: 620 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <SortHead cols={['Brand', 'Calls', 'Avg QA', ['QA', null], 'Conversion', 'Card asked', 'Card collected', 'Missed', 'Large missed']} sort={exSort} onSort={exOnSort} />
+          <SortHead cols={['Brand', 'Calls', 'Avg QA', 'Conversion', 'Card asked', 'Card collected', 'Missed', 'Large missed']} sort={exSort} onSort={exOnSort} />
           <tbody>{exView.pageRows.map((b) => (
             <tr key={b.brand} onClick={() => onBrand(b.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
               <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{b.brand} <span style={{ color: '#cbd5e1' }}>›</span></td>
               <td style={{ padding: '8px 12px' }}>{b.calls}</td>
               <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(b.avg), color: scoreColor(b.avg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(b.avg)}</span></td>
-              <td style={{ padding: '8px 12px', width: 130 }}><Bar v={b.avg} color={scoreColor(b.avg)} /></td>
               <td style={{ padding: '8px 12px', fontWeight: 700, color: b.conv >= 50 ? '#1b5e20' : b.conv >= 35 ? '#8d6e00' : '#b71c1c' }}>{pct(b.conv)}</td>
               <td style={{ padding: '8px 12px', fontWeight: 700, color: TEAL }} title={b.cardRate == null ? 'no bookings in range' : (b.ccYes + ' of ' + b.booked + ' bookings asked')}>{pct(b.cardRate)}</td>
               <td style={{ padding: '8px 12px', fontWeight: 700, color: '#0f766e' }} title={b.collectRate == null ? 'no card asks in range' : (b.collYes + ' of ' + b.ccYes + ' asks collected')}>{pct(b.collectRate)}</td>
