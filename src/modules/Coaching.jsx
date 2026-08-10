@@ -336,26 +336,28 @@ function SessionsPanel({ user, mode }) {
 // TEAMS PANEL — assign agents to an ASC's team (admin / ASC)
 // ============================================================
 function TeamsPanel() {
-  const [teams, setTeams] = useState([])       // rows: {asc_id, asc_name, asc_room_url, agent_id, agent_name, agent_active}
-  const [ascs, setAscs] = useState([])
-  const [agents, setAgents] = useState([])     // all assignable agents
+  const { isAdmin } = useAuth()
+  const [teams, setTeams] = useState([])       // rows: {asc_id, asc_name, asc_room_url, agent_id, agent_name, agent_active} (scoped: admin=all, ASC=own team)
+  const [ascs, setAscs] = useState([])         // admin only (assignment dropdown)
+  const [agents, setAgents] = useState([])     // admin only (assignment grid)
   const [rooms, setRooms] = useState({})       // asc_id -> room url (draft)
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: t }, { data: a }, { data: ag }] = await Promise.all([
-      supabase.rpc('get_coaching_teams'),
-      supabase.rpc('list_ascs'),
-      supabase.from('profiles').select('id, full_name, coaching_asc_id').eq('role', 'agent').eq('is_active', true).order('full_name'),
-    ])
-    setTeams(t || [])
-    setAscs(a || [])
-    setAgents(ag || [])
-    const rm = {}; (t || []).forEach(r => { if (!(r.asc_id in rm)) rm[r.asc_id] = r.asc_room_url || '' }); setRooms(rm)
+    const calls = [supabase.rpc('get_coaching_teams')]
+    if (isAdmin) {
+      calls.push(supabase.rpc('list_ascs'))
+      calls.push(supabase.from('profiles').select('id, full_name, coaching_asc_id').eq('role', 'agent').eq('is_active', true).order('full_name'))
+    }
+    const res = await Promise.all(calls)
+    const t = res[0]?.data || []
+    setTeams(t)
+    if (isAdmin) { setAscs(res[1]?.data || []); setAgents(res[2]?.data || []) }
+    const rm = {}; t.forEach(r => { if (!(r.asc_id in rm)) rm[r.asc_id] = r.asc_room_url || '' }); setRooms(rm)
     setLoading(false)
-  }, [])
+  }, [isAdmin])
 
   useEffect(() => { load() }, [load])
 
@@ -365,7 +367,6 @@ function TeamsPanel() {
     if (error) { setMsg(error.message); return }
     load()
   }
-
   async function saveRoom(ascId) {
     setMsg('')
     const { error } = await supabase.rpc('set_coaching_room', { p_asc_id: ascId, p_url: rooms[ascId] || '' })
@@ -374,46 +375,50 @@ function TeamsPanel() {
 
   if (loading) return <div style={card}>Loading…</div>
 
-  // group agents by ASC for a quick roster overview
-  const byAsc = {}
-  for (const a of ascs) byAsc[a.id] = { name: a.full_name, members: [] }
-  const unassigned = []
-  for (const ag of agents) {
-    if (ag.coaching_asc_id && byAsc[ag.coaching_asc_id]) byAsc[ag.coaching_asc_id].members.push(ag)
-    else unassigned.push(ag)
-  }
+  // ASC rows are already scoped by get_coaching_teams (admin = all ASCs, ASC = just themselves)
+  const ascRows = []; const seen = new Set()
+  for (const r of teams) { if (!seen.has(r.asc_id)) { seen.add(r.asc_id); ascRows.push({ id: r.asc_id, full_name: r.asc_name }) } }
+  const membersByAsc = {}
+  for (const r of teams) { (membersByAsc[r.asc_id] ||= []); if (r.agent_id) membersByAsc[r.asc_id].push(r.agent_name) }
+  const unassigned = isAdmin ? agents.filter(a => !a.coaching_asc_id) : []
 
   return (
     <div>
-      {msg && <div style={{ ...card, color: '#b91c1c' }}>{msg}</div>}
+      {msg && <div style={{ ...card, color: msg.includes('✓') ? '#16a34a' : '#b91c1c' }}>{msg}</div>}
 
-      <div style={card}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Assign agents to a coach</div>
-        <p style={{ color: 'var(--muted,#6b7280)', marginTop: 0 }}>
-          Each agent can only book coaching with the ASC selected here.
-        </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px 12px', alignItems: 'center' }}>
-          {agents.map(ag => (
-            <React.Fragment key={ag.id}>
-              <div>{ag.full_name}</div>
-              <select value={ag.coaching_asc_id || ''} onChange={e => assign(ag.id, e.target.value)}
-                style={{ padding: 6, borderRadius: 8, minWidth: 180 }}>
-                <option value="">— No team —</option>
-                {ascs.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
-              </select>
-            </React.Fragment>
-          ))}
+      {isAdmin ? (
+        <div style={card}>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>Assign agents to a coach</div>
+          <p style={{ color: 'var(--muted,#6b7280)', marginTop: 0 }}>
+            Each agent can only book coaching with the ASC selected here. Only admins can change these.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px 12px', alignItems: 'center' }}>
+            {agents.map(ag => (
+              <React.Fragment key={ag.id}>
+                <div>{ag.full_name}</div>
+                <select value={ag.coaching_asc_id || ''} onChange={e => assign(ag.id, e.target.value)}
+                  style={{ padding: 6, borderRadius: 8, minWidth: 180 }}>
+                  <option value="">— No team —</option>
+                  {ascs.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+                </select>
+              </React.Fragment>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div style={{ ...card, color: 'var(--muted,#6b7280)' }}>
+          This is your team. Only an admin can add or move agents between coaches — reach out to an admin for roster changes.
+        </div>
+      )}
 
       <div style={card}>
-        <div style={{ fontWeight: 700, marginBottom: 4 }}>Coaching video rooms</div>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>Coaching video room{isAdmin ? 's' : ''}</div>
         <p style={{ color: 'var(--muted,#6b7280)', marginTop: 0, fontSize: 13 }}>
           Optional. If set, the notetaker joins this standing room (Zoom/Meet/Teams) for every session.
           Leave blank to auto-generate a Google Meet link per session. Either way the session stays in Command Center only.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr auto', gap: '8px 10px', alignItems: 'center' }}>
-          {ascs.map(a => (
+          {ascRows.map(a => (
             <React.Fragment key={a.id}>
               <div>{a.full_name}</div>
               <input value={rooms[a.id] || ''} placeholder="https://…  (blank = auto Meet link)"
@@ -426,12 +431,12 @@ function TeamsPanel() {
       </div>
 
       <div style={card}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Rosters</div>
-        {ascs.map(a => (
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>{isAdmin ? 'Rosters' : 'My team'}</div>
+        {ascRows.map(a => (
           <div key={a.id} style={{ marginBottom: 12 }}>
-            <div style={{ fontWeight: 600 }}>{a.full_name}’s team <span style={{ color: 'var(--muted,#6b7280)' }}>({byAsc[a.id].members.length})</span></div>
+            <div style={{ fontWeight: 600 }}>{a.full_name}’s team <span style={{ color: 'var(--muted,#6b7280)' }}>({(membersByAsc[a.id] || []).length})</span></div>
             <div style={{ color: 'var(--muted,#6b7280)', fontSize: 14 }}>
-              {byAsc[a.id].members.length ? byAsc[a.id].members.map(m => m.full_name).join(', ') : 'No agents yet'}
+              {(membersByAsc[a.id] || []).length ? membersByAsc[a.id].join(', ') : 'No agents yet'}
             </div>
           </div>
         ))}
