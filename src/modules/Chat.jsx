@@ -10,6 +10,8 @@ import { RichEditor, RichContent, sanitizeHtml, htmlToText } from '../lib/RichEd
 import { needsTranscode, transcodeToMp3 } from '../lib/audioTranscode'
 import TradeBoardChannel from './TradeBoardChannel'
 import { PresenceDot, effStatus } from '../components/Presence'
+import TaskModal from './TaskModal'
+import { ProjectsDataProvider } from './projectsData'
 
 // The #GarageCo: Appointment Setters channel is rendered as an interactive
 // Trade Board instead of a normal chat feed.
@@ -696,6 +698,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   const [reactorsFor, setReactorsFor] = useState(null) // {messageId, emoji} whose reactor list is open
   const [pinned, setPinned] = useState([])         // pinned messages in this channel (newest pin first)
   const [showPinned, setShowPinned] = useState(false) // is the pinned drawer expanded
+  const [taskFromMsg, setTaskFromMsg] = useState(null) // message being turned into a project task, or null
   const [expandedPins, setExpandedPins] = useState(() => new Set()) // pin ids shown in full
   const [scheduled, setScheduled] = useState([])   // my pending scheduled messages in this channel
   const [schedOpen, setSchedOpen] = useState(false) // schedule picker open
@@ -1536,9 +1539,14 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                   )}
                 </div>
 
-                {/* Hover-revealed actions. Pin = moderator; edit = own normal message; delete = own or moderator. */}
-                {(canPin || canEdit || canDelete) && (
+                {/* Hover-revealed actions. Create task = anyone; pin = moderator; edit = own normal message; delete = own or moderator. */}
+                {(
                   <div style={{ position: 'absolute', top: 0, right: 0, display: 'flex', gap: 4 }}>
+                    <button className="chat-msg-delete" title="Create a project task from this message"
+                      onClick={() => setTaskFromMsg(m)}
+                      style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '4px 6px', color: 'var(--ink-soft)' }}>
+                      ✅
+                    </button>
                     {canPin && (
                       <button className="chat-msg-delete" title={m.pinned_at ? 'Unpin this message' : 'Pin this message'}
                         onClick={() => togglePin(m)}
@@ -1712,6 +1720,28 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         const { data } = await supabase.from('channel_members').select('profile_id').eq('channel_id', channelId)
         setMembers((data || []).map(m => m.profile_id))
       }} />}
+      {/* Turn a chat message into a project task. Opens the standard TaskModal
+          (project picker, assignees, due, priority) prefilled from the message.
+          Wrapped in ProjectsDataProvider so the modal has its projects/people. */}
+      {taskFromMsg && (() => {
+        const senderName = senders[taskFromMsg.sender_id]
+          || profiles.find(p => p.id === taskFromMsg.sender_id)?.full_name
+          || 'Someone'
+        const plain = (htmlToText(taskFromMsg.body || '') || '').trim()
+        const name = plain ? plain.replace(/\s+/g, ' ').slice(0, 140) : 'Task from chat message'
+        const where = channel?.is_dm ? 'a direct message' : (channel?.name ? '#' + channel.name : 'chat')
+        const notes = `<blockquote>${taskFromMsg.body || '<em>(no text)</em>'}</blockquote><p>— From ${senderName} in ${where}</p>`
+        return (
+          <ProjectsDataProvider>
+            <TaskModal
+              taskId={null}
+              defaultName={name}
+              defaultNotes={notes}
+              onClose={() => setTaskFromMsg(null)}
+            />
+          </ProjectsDataProvider>
+        )
+      })()}
     </div>
   )
 }
