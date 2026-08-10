@@ -340,9 +340,11 @@ export default function CallQA({ portal = false } = {}) {
     setLoading(false)
   }, [canManage, program])
   useEffect(() => { load() }, [load])
-  // Server-side Overview aggregate (managers only) — instant landing.
+  // Server-side Overview aggregate for EVERYONE — instant landing. The RPC
+  // self-scopes exactly like the row RLS (manager → all, portal → their client,
+  // agent → own), so it's safe for the client portal and far faster than the
+  // paged row download.
   useEffect(() => {
-    if (!canManage) { setOvData(null); return }
     let active = true
     const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     const today = new Date()
@@ -364,7 +366,7 @@ export default function CallQA({ portal = false } = {}) {
     }
     setOvData(null); setOvErr('')
     supabase.rpc('callqa_overview', {
-      p_campaign: program === 'all' ? null : program,
+      p_campaign: canManage && program !== 'all' ? program : null,
       p_start: pStart, p_end: pEnd, p_prev_start: prevStart, p_prev_end: prevEnd,
       p_brand: brand === 'all' ? null : brand, p_agent: agent === 'all' ? null : agent, p_topic: topic === 'all' ? null : topic,
     }).then(({ data, error }) => { if (!active) return; if (error) setOvErr(error.message); else setOvData(data) })
@@ -663,13 +665,12 @@ export default function CallQA({ portal = false } = {}) {
         {TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} style={{ border: 'none', background: 'none', padding: '10px 14px', cursor: 'pointer', fontWeight: 600, fontSize: 14, color: tab === k ? TEAL : '#64748b', borderBottom: tab === k ? `2px solid ${TEAL}` : '2px solid transparent' }}>{l}</button>)}
       </div>
 
-      {tab === 'overview' && canManage ? (
+      {tab === 'overview' ? (
         ovErr ? <Card style={{ color: '#b71c1c' }}>Error: {ovErr}</Card>
           : ovData ? <Overview agg={ovData.agg} trend={ovData.trend} prevAgg={ovData.prev} />
             : <div style={{ color: '#64748b' }}>Loading…</div>
       ) : loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
         <>
-          {tab === 'overview' && <Overview agg={agg} trend={trend} prevAgg={prevAgg} />}
           {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} />}
           {tab === 'opportunities' && <Opportunities rows={filtered} agg={agg} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'missed' && <MissedOpps rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
