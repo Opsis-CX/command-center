@@ -1,279 +1,964 @@
-import React, { useEffect, useState, useRef } from 'react'
-import { supabase } from '../lib/supabase'
-import { useAuth } from '../lib/auth'
-import { US_ZONES, detectedTZ, tzAbbrev, COMPANY_TZ } from '../lib/tz'
-import { NOTIF_CATEGORIES } from '../lib/notify'
-import { loadNotifPrefs, saveNotifPref } from '../lib/notif_prefs'
-import { pushSupported, pushPermission, enablePush, disablePush, isPushEnabled } from '../lib/push'
+:root{
+  --black:      #000000;
+  --white:      #FFFFFF;
+  --cyan:       #00E6E6;
+  --blue:       #0077B6;
+  --teal:       #245866;
+  --ink:        #0d1518;
+  --ink-soft:   var(--teal);
+  --line:       #dfe6e9;
+  --line-soft:  #eef2f3;
+  --bg-soft:    #f7f7f5;
+  /* Calendar "paper" palette — warm in light mode, flips to readable dark below */
+  --cal-paper:    #fdfcfa;
+  --cal-panel:    #ece8e0;
+  --cal-line:     #c3bfb5;
+  --cal-line-2:   #ece8e0;
+  --cal-line-3:   #f2efe9;
+  --cal-ink:      #3a3a38;
+  --cal-ink-soft: #6a665e;
+  --cal-ink-mute: #9a968c;
+  --surface:    var(--white);
+  --canvas:     #f4f7f8;
+  --accent:     var(--blue);
+  --accent-bg:  #e5f1f8;
+  --accent-ink: var(--white);
+  --cta:        var(--cyan);
+  --cta-ink:    #00312f;
+  --passed:     #1f8a53; --passed-bg:#e7f5ec;
+  --failed:     #c0392b; --failed-bg:#fbe9e7;
+  --needed:     var(--teal); --needed-bg:#e3edf0;
+  --sidebar:    var(--black);
+  --sidebar-soft:#7f9299;
+  --radius:12px; --radius-sm:8px;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.06);
 
+  /* Emoji font fallbacks. Without these the browser renders a tofu box or a
+     flat monochrome glyph. Appended to every font stack that shows user text. */
+  --font-emoji: "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";
 
-function PushCard({ userId }) {
-  const [enabled, setEnabled] = React.useState(false)
-  const [perm, setPerm] = React.useState('default')
-  const [busy, setBusy] = React.useState(false)
-  const [msg, setMsg] = React.useState('')
+  /* The app's base stack, defined once so chat surfaces can reuse it. */
+  --font-body: 'Poppins',ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 
-  React.useEffect(() => {
-    if (!pushSupported()) return
-    setPerm(pushPermission())
-    isPushEnabled(userId).then(setEnabled)
-  }, [userId])
-
-  if (!pushSupported()) return null
-  const denied = perm === 'denied'
-
-  async function toggle() {
-    setBusy(true); setMsg('')
-    try {
-      if (enabled) { await disablePush(userId); setEnabled(false); setMsg('Push turned off for this device') }
-      else { await enablePush(userId); setEnabled(true); setPerm('granted'); setMsg('Push turned on for this device') }
-    } catch (e) { setMsg(e.message) }
-    finally { setBusy(false); setTimeout(() => setMsg(''), 3500) }
+  /* Toolbar strip above the chat composer. Overridden in dark mode below. */
+  --composer-toolbar-bg: #fbfcfd;
+}
+*{box-sizing:border-box;}
+html,body,#root{height:100%;margin:0;}
+body{
+  font-family: var(--font-body), var(--font-emoji);
+  color:var(--ink); background:var(--canvas);
+  -webkit-font-smoothing:antialiased;
+}
+button,input,textarea,select{font-family:inherit;}
+a{color:inherit;text-decoration:none;}
+.app{display:grid;grid-template-columns:238px 1fr;height:100vh;overflow:hidden;}
+.main{overflow:auto;}
+.topbar{height:60px;background:var(--surface);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;padding:0 26px;position:sticky;top:0;z-index:10;}
+.crumb{font-size:14px;color:var(--ink-soft);} .crumb b{color:var(--ink);font-weight:600;}
+.content{padding:28px;}
+.sidebar{background:var(--sidebar);color:var(--white);padding:20px 14px;display:flex;flex-direction:column;height:100vh;min-height:0;overflow:hidden;box-sizing:border-box;}
+.nav-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 -6px;padding:0 6px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) transparent;}
+.nav-scroll::-webkit-scrollbar{width:6px;}
+.nav-scroll::-webkit-scrollbar-track{background:transparent;}
+.nav-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:3px;}
+.nav-scroll:hover::-webkit-scrollbar-thumb{background:rgba(255,255,255,.32);}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 10px 20px;}
+.brand-mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--cyan),var(--blue));display:grid;place-items:center;font-weight:700;font-size:15px;color:var(--black);}
+.brand-name{font-weight:600;font-size:15.5px;letter-spacing:-.01em;}
+.nav-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--sidebar-soft);padding:12px 12px 6px;font-weight:600;}
+.nav-item{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:var(--radius-sm);cursor:pointer;font-size:14px;font-weight:500;color:#c7d2d6;margin:1px 0;transition:background .12s,color .12s;border:0;background:transparent;width:100%;text-align:left;}
+.nav-item:hover{background:rgba(0,230,230,.10);color:var(--cyan);}
+.nav-item.on{background:var(--cyan);color:var(--black);font-weight:600;}
+.nav-item .ic{width:18px;flex:none;opacity:.9;}
+.nav-spacer{flex:1;}
+.user-chip{display:flex;align-items:center;gap:10px;padding:10px;border-radius:var(--radius-sm);background:rgba(255,255,255,.06);}
+.user-av{width:32px;height:32px;border-radius:50%;background:var(--cyan);color:var(--black);display:grid;place-items:center;font-size:12px;font-weight:700;flex:none;}
+.user-name{font-size:13.5px;font-weight:600;}
+.user-role{font-size:11.5px;color:var(--sidebar-soft);}
+.signout{margin-top:8px;border:0;background:transparent;color:var(--sidebar-soft);font-size:12.5px;cursor:pointer;padding:6px 10px;text-align:left;}
+.signout:hover{color:var(--cyan);}
+.page-head{margin-bottom:22px;}
+.page-title{margin:0;font-size:24px;font-weight:700;letter-spacing:-.02em;color:var(--ink);}
+.page-sub{margin:5px 0 0;color:var(--ink-soft);font-size:14px;}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;}
+.badge{display:inline-block;font-size:11.5px;font-weight:600;padding:4px 11px;border-radius:999px;white-space:nowrap;align-self:flex-start;flex:0 0 auto;}
+.badge.needed{background:var(--needed-bg);color:var(--needed);}
+.badge.passed{background:var(--passed-bg);color:var(--passed);}
+.badge.failed{background:var(--failed-bg);color:var(--failed);}
+.btn{border:0;border-radius:var(--radius-sm);padding:9px 16px;font-size:13.5px;font-weight:600;cursor:pointer;transition:filter .12s;}
+.btn:hover{filter:brightness(1.05);}
+.btn-primary{background:var(--accent);color:var(--accent-ink);}
+.btn-cta{background:var(--cta);color:var(--cta-ink);}
+.btn-ghost{background:var(--canvas);color:var(--ink-soft);border:1px solid var(--line);}
+.login-wrap{display:grid;place-items:center;height:100vh;background:var(--black);}
+.login-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.4);padding:34px;width:380px;max-width:calc(100vw - 32px);}
+.login-brand{display:flex;align-items:center;gap:11px;margin-bottom:22px;}
+.login-title{font-size:19px;font-weight:700;letter-spacing:-.01em;}
+.field{margin-bottom:15px;}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;}
+.field input,.field textarea,.field select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:14px;font-family:inherit;color:var(--ink);outline:none;background:var(--surface);}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,119,182,.15);}
+.field textarea{resize:vertical;min-height:60px;}
+.field .hint{font-size:12px;color:var(--ink-soft);margin-top:5px;}
+.login-btn{width:100%;padding:12px;border:0;border-radius:var(--radius-sm);background:var(--cta);color:var(--cta-ink);font-size:15px;font-weight:600;cursor:pointer;margin-top:6px;}
+.login-btn:disabled{opacity:.6;cursor:default;}
+.login-err{background:var(--failed-bg);color:var(--failed);font-size:13px;padding:10px 12px;border-radius:var(--radius-sm);margin-bottom:14px;}
+.loading-screen{display:grid;place-items:center;height:100vh;color:var(--ink-soft);font-size:14px;}
+.modal-back{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;z-index:9998;align-items:center;justify-content:center;padding:20px;}
+.modal-back.open{display:flex;}
+.modal{background:var(--surface);border-radius:var(--radius);box-shadow:0 20px 60px rgba(0,0,0,.35);width:480px;max-width:100%;padding:24px;max-height:88vh;overflow:auto;}
+.tag-picker{display:flex;flex-wrap:wrap;gap:7px;}
+.tag-opt{font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);cursor:pointer;}
+.tag-opt.on{background:var(--accent);color:var(--white);border-color:var(--accent);}
+/* ===== Mobile navigation — hamburger toggle + slide-out sidebar ===== */
+.nav-toggle{
+  display:none;
+  border:0;background:transparent;color:var(--ink);
+  font-size:22px;line-height:1;cursor:pointer;padding:4px 8px;
+}
+.nav-backdrop{
+  display:none;
+  position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:90;
+}
+@media(max-width:800px){
+  .app{grid-template-columns:1fr;}
+  .sidebar{
+    position:fixed;left:0;top:0;bottom:0;width:238px;z-index:100;
+    transform:translateX(-100%);transition:transform .2s;overflow-y:auto;
   }
+  .sidebar.open{transform:translateX(0);}
+  .nav-toggle{display:inline-flex;align-items:center;}
+  .nav-backdrop{display:block;}
+}
+/* ===== Schedule week grid ===== */
+.grid-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);}
+.week-grid{display:grid;grid-template-columns:180px repeat(7,minmax(150px,1fr));min-width:1180px;}
+.wg-corner{position:sticky;left:0;z-index:6;background:var(--surface);border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);display:flex;align-items:center;}
+.wg-dayhead{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:8px 10px;text-align:center;background:var(--surface);}
+.wg-dayhead:last-child{border-right:none;}
+.wg-dayhead.today{background:var(--accent-bg);}
+.wg-dayname{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);}
+.wg-daydate{font-size:12px;color:var(--ink-soft);margin-top:1px;}
+.wg-daymeta{font-size:10px;color:var(--ink-soft);margin-top:3px;font-variant-numeric:tabular-nums;}
+.wg-rowlabel{position:sticky;left:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:10px 12px;display:flex;align-items:center;gap:9px;min-height:64px;}
+.wg-avatar{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;}
+.wg-person-name{font-size:12px;font-weight:600;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wg-person-sub{font-size:10px;color:var(--ink-soft);margin-top:1px;}
+.wg-cell{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:5px;display:flex;flex-direction:column;gap:4px;min-height:64px;}
+.wg-cell:last-child{border-right:none;}
+.wg-cell.today{background:color-mix(in srgb,var(--accent-bg) 35%,transparent);}
+.wg-cell.dim{background:var(--canvas);}
+.iv{border-radius:6px;padding:5px 7px;font-size:11px;line-height:1.3;cursor:pointer;border:1px solid var(--line);background:var(--surface);transition:transform .1s,box-shadow .1s;position:relative;}
+.iv:hover{transform:translateY(-1px);box-shadow:var(--shadow);}
+.iv-time{font-weight:700;font-size:11px;white-space:nowrap;}
+.iv-sub{font-size:10px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.iv-spots{font-size:9px;font-weight:600;margin-top:2px;letter-spacing:.02em;}
+.iv.open{border-color:var(--line);}
+.iv.open .iv-spots{color:var(--accent);}
+.iv.mine{background:var(--passed-bg);border-color:var(--passed);}
+.iv.mine .iv-time{color:var(--passed);}
+.iv.mine .iv-spots{color:var(--passed);}
+.iv.taken{background:var(--accent-bg);border-color:var(--accent);opacity:.92;}
+.iv.taken .iv-time{color:var(--accent);}
+.iv.full{opacity:.55;}
+.iv.checkedin::after{content:"";position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--passed);}
+.iv.noshow{background:var(--failed-bg);border-color:var(--failed);}
+.iv.noshow .iv-time{color:var(--failed);}
+/* ===== Projects rich text editor ===== */
+.pm-rte:empty:before {
+  content: attr(data-placeholder);
+  color: var(--ink-soft);
+}
+.pm-rte ul { list-style: disc;    margin: 4px 0; padding-left: 22px; }
+.pm-rte ol { list-style: decimal; margin: 4px 0; padding-left: 22px; }
+.pm-rte li { margin-bottom: 2px; }
+.pm-rte b, .pm-rte strong { font-weight: 700; }
+.pm-rte i, .pm-rte em { font-style: italic; }
+.pm-mention { color: var(--accent); font-weight: 600; }
+.pm-rich ul { list-style: disc;    margin: 4px 0; padding-left: 20px; }
+.pm-rich ol { list-style: decimal; margin: 4px 0; padding-left: 20px; }
+.pm-rich li { margin-bottom: 2px; }
+.pm-rich b, .pm-rich strong { font-weight: 700; }
+.pm-rich i, .pm-rich em { font-style: italic; }
+.pm-rich .pm-mention { color: var(--accent); font-weight: 600; }
 
-  return (
-    <div style={{ marginTop: 18, paddingTop: 18, borderTop: '1px solid var(--line-soft)' }}>
-      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Push notifications on this device</div>
-      <p className="page-sub" style={{ marginTop: 0, fontSize: 13, marginBottom: 12 }}>
-        Get browser notifications on this device even when Command Center isn't open.
-        This is per-device; enable it on each computer or phone you use.
-      </p>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button onClick={toggle} disabled={busy || denied}
-          style={{ border: '1px solid var(--line)', background: enabled ? 'var(--accent-bg)' : 'var(--surface)',
-            color: enabled ? 'var(--accent)' : 'var(--ink-soft)', borderRadius: 8, padding: '7px 12px',
-            fontSize: 13, fontWeight: 600, cursor: denied ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-          {denied ? 'Blocked in browser settings' : enabled ? '🔔 Push is on — turn off' : '🔕 Enable push on this device'}
-        </button>
-        {msg && <span style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>{msg}</span>}
-      </div>
-    </div>
-  )
+/* ============================================================
+   CHAT
+   .chat-rich     — a rendered message body (renderBody)
+   .chat-composer — the contentEditable input (RichComposer)
+   .chat-emoji    — a reaction pill's emoji glyph
+   ============================================================ */
+
+/* Emoji rendering. body already carries --font-emoji, but the composer and
+   message bodies set their own font-size/inherit chains, and reaction pills
+   sit inside buttons — so restate it here rather than trust inheritance. */
+.chat-rich,
+.chat-composer,
+.chat-emoji {
+  font-family: var(--font-body), var(--font-emoji);
 }
 
-function NotificationPrefsCard({ userId }) {
-  const [prefs, setPrefs] = React.useState(null)
-  const [savingKey, setSavingKey] = React.useState(null)
+/* Reaction pill glyphs and the picker need color emoji at a legible size. */
+.chat-emoji { line-height: 1; }
 
-  React.useEffect(() => { if (userId) loadNotifPrefs(userId).then(setPrefs) }, [userId])
-
-  async function flip(category, field) {
-    const current = prefs[category]
-    const next = { ...current, [field]: !current[field] }
-    setPrefs(p => ({ ...p, [category]: next }))
-    setSavingKey(category + ':' + field)
-    try { await saveNotifPref(userId, category, next) }
-    catch (e) { setPrefs(p => ({ ...p, [category]: current })) }  // roll back
-    finally { setSavingKey(null) }
-  }
-
-  const Toggle = ({ on, onClick, busy }) => (
-    <button onClick={onClick} disabled={busy} aria-pressed={on}
-      style={{ width: 40, height: 22, borderRadius: 11, border: '1px solid var(--line)',
-        background: on ? 'var(--accent, #0077B6)' : 'var(--surface)', position: 'relative',
-        cursor: busy ? 'default' : 'pointer', flex: 'none', transition: 'background .15s', opacity: busy ? 0.6 : 1 }}>
-      <span style={{ position: 'absolute', top: 2, left: on ? 20 : 2, width: 16, height: 16, borderRadius: '50%',
-        background: '#fff', transition: 'left .15s', boxShadow: '0 1px 2px rgba(0,0,0,.3)' }} />
-    </button>
-  )
-
-  return (
-    <div className="card" style={{ padding: 20, marginTop: 20 }}>
-      <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Notifications</div>
-      <p className="page-sub" style={{ marginTop: 0, fontSize: 13, marginBottom: 16 }}>
-        Choose how each kind of notification reaches you. <b>In-app</b> shows it in your bell and history.
-        <b> Push</b> sends a browser notification. <b>Sound</b> plays a chime when it arrives.
-        Per-channel chat settings still live inside each chat channel.
-      </p>
-
-      {!prefs ? <p className="page-sub">Loading…</p> : (
-        <div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '10px 18px', alignItems: 'center' }}>
-            <span />
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-soft)', textAlign: 'center' }}>IN-APP</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-soft)', textAlign: 'center' }}>PUSH</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-soft)', textAlign: 'center' }}>SOUND</span>
-            {NOTIF_CATEGORIES.map(cat => (
-              <React.Fragment key={cat.key}>
-                <span style={{ fontSize: 13.5, fontWeight: 500 }}>{cat.label}</span>
-                <div style={{ display: 'grid', placeItems: 'center' }}>
-                  <Toggle on={prefs[cat.key].in_app} busy={savingKey === cat.key + ':in_app'} onClick={() => flip(cat.key, 'in_app')} />
-                </div>
-                <div style={{ display: 'grid', placeItems: 'center' }}>
-                  <Toggle on={prefs[cat.key].push} busy={savingKey === cat.key + ':push'} onClick={() => flip(cat.key, 'push')} />
-                </div>
-                <div style={{ display: 'grid', placeItems: 'center' }}>
-                  <Toggle on={prefs[cat.key].sound} busy={savingKey === cat.key + ':sound'} onClick={() => flip(cat.key, 'sound')} />
-                </div>
-              </React.Fragment>
-            ))}
-          </div>
-          <PushCard userId={userId} />
-        </div>
-      )}
-    </div>
-  )
+/* @here / @update highlight.
+   This lives in a class, not an inline style, because renderBody() sanitizes
+   user HTML with ALLOWED_ATTR: [] — every attribute is stripped, including
+   any style="" we might have injected. The class survives. */
+.chat-rich .chat-mention {
+  color: var(--accent);
+  font-weight: 700;
+  background: var(--accent-bg);
+  border-radius: 4px;
+  padding: 0 3px;
 }
 
-// ---- Profile photo (avatar) ----
-// Users upload a photo that replaces their coloured initials everywhere an
-// avatar shows. Stored in the public "avatars" bucket under "<uid>/..." so the
-// storage policy lets each person manage only their own file.
-function initialsFrom(name) {
-  return (name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
-}
-function PhotoCard({ userId }) {
-  const [url, setUrl] = useState(null)
-  const [name, setName] = useState('')
-  const [color, setColor] = useState('#2563EB')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const [loaded, setLoaded] = useState(false)
-  const fileRef = useRef(null)
+/* The composer toolbar can emit <ul>/<ol>. A CSS reset strips the markers,
+   so put them back — in the composer AND in the rendered message. */
+.chat-rich ul,
+.chat-composer ul { list-style: disc; margin: 4px 0 4px 20px; padding: 0; }
+.chat-rich ol,
+.chat-composer ol { list-style: decimal; margin: 4px 0 4px 20px; padding: 0; }
+.chat-rich li,
+.chat-composer li { margin-bottom: 2px; }
 
-  useEffect(() => {
-    if (!userId) return
-    let active = true
-    supabase.from('profiles').select('avatar_url, full_name, color').eq('id', userId).maybeSingle()
-      .then(({ data }) => {
-        if (!active) return
-        setUrl(data?.avatar_url || null)
-        setName(data?.full_name || '')
-        if (data?.color) setColor(data.color)
-        setLoaded(true)
-      })
-    return () => { active = false }
-  }, [userId])
+.chat-rich b, .chat-rich strong,
+.chat-composer b, .chat-composer strong { font-weight: 700; }
+.chat-rich i, .chat-rich em,
+.chat-composer i, .chat-composer em { font-style: italic; }
+.chat-rich s, .chat-rich strike, .chat-rich del,
+.chat-composer s, .chat-composer strike, .chat-composer del { text-decoration: line-through; }
 
-  async function onPick(e) {
-    const file = e.target.files?.[0]
-    if (fileRef.current) fileRef.current.value = ''
-    if (!file) return
-    setErr('')
-    if (!file.type.startsWith('image/')) { setErr('Please choose an image file.'); return }
-    if (file.size > 5 * 1024 * 1024) { setErr('Please choose an image under 5 MB.'); return }
-    setBusy(true)
-    try {
-      const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png'
-      // A fresh filename each time busts any CDN/browser cache of the old photo.
-      const path = `${userId}/avatar-${Date.now()}.${ext}`
-      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type })
-      if (upErr) throw upErr
-      const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path)
-      const publicUrl = pub?.publicUrl
-      const { error: dbErr } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', userId)
-      if (dbErr) throw dbErr
-      setUrl(publicUrl)
-      window.dispatchEvent(new CustomEvent('cc:avatar-updated', { detail: publicUrl }))
-    } catch (e) {
-      setErr(e?.message || 'Upload failed. Please try again.')
-    } finally {
-      setBusy(false)
-    }
-  }
+/* renderBody sets white-space: pre-wrap, so <p> margins would double the
+   apparent line spacing. Collapse them, and hide the stray empty <div>s
+   contentEditable leaves behind. */
+.chat-rich p { margin: 0; }
+.chat-rich div:empty { display: none; }
 
-  async function onRemove() {
-    setBusy(true); setErr('')
-    try {
-      const { error } = await supabase.from('profiles').update({ avatar_url: null }).eq('id', userId)
-      if (error) throw error
-      setUrl(null)
-      window.dispatchEvent(new CustomEvent('cc:avatar-updated', { detail: null }))
-    } catch (e) {
-      setErr(e?.message || 'Could not remove photo.')
-    } finally {
-      setBusy(false)
-    }
-  }
+/* Links pasted into a message. */
+.chat-rich a { color: var(--accent); text-decoration: underline; }
 
-  if (!loaded) return null
-
-  return (
-    <div className="card" style={{ padding: 20, marginBottom: 16 }}>
-      <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Your photo</div>
-      <p className="page-sub" style={{ marginTop: 0, fontSize: 13, marginBottom: 14 }}>
-        Add a profile photo — it replaces your initials across Command Center. Square images look best (JPG or PNG, up to 5 MB).
-      </p>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        {url
-          ? <img src={url} alt={name} style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 0 2px var(--line)' }} />
-          : <span style={{ width: 72, height: 72, borderRadius: '50%', background: color + '22', color, fontSize: 26, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{initialsFrom(name)}</span>}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn btn-primary" disabled={busy} onClick={() => fileRef.current?.click()}>
-            {busy ? 'Uploading…' : url ? 'Change photo' : 'Upload photo'}
-          </button>
-          {url && <button className="btn btn-ghost" disabled={busy} onClick={onRemove}>Remove</button>}
-          <input ref={fileRef} type="file" accept="image/*" onChange={onPick} style={{ display: 'none' }} />
-        </div>
-      </div>
-      {err && <div style={{ marginTop: 12, fontSize: 13, color: 'var(--failed, #c0392b)' }}>{err}</div>}
-    </div>
-  )
+/* The emoji picker library renders its own surface. Round it off and make it
+   sit on our shadow so it doesn't look bolted on. */
+.EmojiPickerReact {
+  border-radius: var(--radius-sm) !important;
+  box-shadow: var(--shadow);
 }
 
-export default function Settings() {
-  const { user } = useAuth()
-  const [tz, setTz] = useState(COMPANY_TZ)
-  const [loaded, setLoaded] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const detected = detectedTZ()
+/* ============================================================
+   ADD-ONS: tighter content padding + dark mode
+   Paste this block at the END of your CSS file.
+   It overrides a few earlier rules (later CSS wins).
+   ============================================================ */
+/* ---- Tighter layout: content uses more of the screen ---- */
+.content { padding: 16px 18px; }
+.topbar  { padding: 0 18px; }
+@media (min-width: 1400px) {
+  /* on big screens, give a little more breathing room but still tight */
+  .content { padding: 18px 24px; }
+}
+/* ============================================================
+   DARK MODE
+   Two ways it activates:
+   1. Automatically, if the user's device is set to dark
+      (the @media prefers-color-scheme block), UNLESS they've
+      chosen an explicit theme.
+   2. Manually, when <html data-theme="dark"> is set by the
+      toggle (this wins over the system setting).
+   The toggle sets data-theme = "light" | "dark" | (removes it
+   for "system").
+   ============================================================ */
+/* Shared dark palette, used by both the manual and auto triggers */
+:root[data-theme="dark"] {
+  --ink:        #e8eef0;
+  --ink-soft:   #9fb4bb;
+  --cal-paper:    #161d21;
+  --cal-panel:    #1b242a;
+  --cal-line:     #2b353b;
+  --cal-line-2:   #232d33;
+  --cal-line-3:   #1e272c;
+  --cal-ink:      #e8eef0;
+  --cal-ink-soft: #b3c1c7;
+  --cal-ink-mute: #8a99a0;
+  --line:       #2a3439;
+  --line-soft:  #212a2e;
+  --bg-soft:    #1b2327;
+  --surface:    #161d21;
+  --canvas:     #0d1417;
+  --accent:     #2b9fd6;
+  --accent-bg:  #16333f;
+  --accent-ink: #ffffff;
+  --passed:     #3fbf77; --passed-bg:#12301f;
+  --failed:     #e15c4d; --failed-bg:#3a1a15;
+  --needed:     #7fa6b2; --needed-bg:#1a2c31;
+  --sidebar:    #0a0f11;
+  --sidebar-soft:#6b7f86;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.45);
+  --composer-toolbar-bg: #1b2327;
+}
+/* Follow the system setting automatically — but only when the user
+   hasn't explicitly picked light or dark. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --ink:        #e8eef0;
+    --ink-soft:   #9fb4bb;
+    --cal-paper:    #161d21;
+    --cal-panel:    #1b242a;
+    --cal-line:     #2b353b;
+    --cal-line-2:   #232d33;
+    --cal-line-3:   #1e272c;
+    --cal-ink:      #e8eef0;
+    --cal-ink-soft: #b3c1c7;
+    --cal-ink-mute: #8a99a0;
+    --line:       #2a3439;
+    --line-soft:  #212a2e;
+    --bg-soft:    #1b2327;
+    --surface:    #161d21;
+    --canvas:     #0d1417;
+    --accent:     #2b9fd6;
+    --accent-bg:  #16333f;
+    --accent-ink: #ffffff;
+    --passed:     #3fbf77; --passed-bg:#12301f;
+    --failed:     #e15c4d; --failed-bg:#3a1a15;
+    --needed:     #7fa6b2; --needed-bg:#1a2c31;
+    --sidebar:    #0a0f11;
+    --sidebar-soft:#6b7f86;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.45);
+    --composer-toolbar-bg: #1b2327;
+  }
+}
+/* A couple of spots that were pure white/black and need nudging in dark */
+:root[data-theme="dark"] .tag-opt.on,
+:root[data-theme="dark"] .badge.passed,
+:root[data-theme="dark"] .badge.failed { color: #fff; }
 
-  useEffect(() => {
-    (async () => {
-      if (!user) return
-      const { data } = await supabase.from('profiles').select('timezone').eq('id', user.id).maybeSingle()
-      setTz(data?.timezone || COMPANY_TZ)
-      setLoaded(true)
-    })()
-  }, [user])
+/* The emoji picker ships a light theme by default. Ask it for dark. */
+:root[data-theme="dark"] .EmojiPickerReact {
+  --epr-bg-color: var(--surface);
+  --epr-category-label-bg-color: var(--surface);
+  --epr-text-color: var(--ink);
+  --epr-search-input-bg-color: var(--canvas);
+  --epr-picker-border-color: var(--line);
+  --epr-hover-bg-color: var(--accent-bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .EmojiPickerReact {
+    --epr-bg-color: var(--surface);
+    --epr-category-label-bg-color: var(--surface);
+    --epr-text-color: var(--ink);
+    --epr-search-input-bg-color: var(--canvas);
+    --epr-picker-border-color: var(--line);
+    --epr-hover-bg-color: var(--accent-bg);
+  }
+}
+/* ============================================================
+   Append to index.css, inside (or just after) the CHAT block.
+   ============================================================ */
 
-  async function save(newTz) {
-    setTz(newTz)
-    await supabase.from('profiles').update({ timezone: newTz }).eq('id', user.id)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+/* The delete button sits in the corner of a message row and only appears on
+   hover. Without this it would show on all 200 messages at once. */
+.chat-msg-delete {
+  opacity: 0;
+  transition: opacity .12s;
+  pointer-events: none;
+}
+.chat-msg-row:hover .chat-msg-delete,
+.chat-msg-delete:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.chat-msg-delete:hover {
+  background: var(--failed-bg) !important;
+  border-color: var(--failed) !important;
+}
+
+/* Touch devices have no hover. Show it always, faded, so it's reachable. */
+@media (hover: none) {
+  .chat-msg-delete { opacity: .45; pointer-events: auto; }
+}
+/* ============================================================
+   Append to index.css, inside (or just after) the CHAT block.
+   ============================================================ */
+
+/* The delete button sits in the corner of a message row and only appears on
+   hover. Without this it would show on all 200 messages at once. */
+.chat-msg-delete {
+  opacity: 0;
+  transition: opacity .12s;
+  pointer-events: none;
+}
+.chat-msg-row:hover .chat-msg-delete,
+.chat-msg-delete:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.chat-msg-delete:hover {
+  background: var(--failed-bg) !important;
+  border-color: var(--failed) !important;
+}
+
+/* Touch devices have no hover. Show it always, faded, so it's reachable. */
+@media (hover: none) {
+  .chat-msg-delete { opacity: .45; pointer-events: auto; }
+}
+/* ============================================================
+   RICH EDITOR — append to index.css
+   Used by both Chat and Certification via <RichEditor> / <RichContent>.
+
+   TipTap ships NO styles. Without these, tables render as unstyled inline
+   text with no borders and no visible cells.
+   ============================================================ */
+
+.re-wrap {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: visible;
+  position: relative;
+}
+.re-wrap.disabled { opacity: .6; pointer-events: none; }
+.re-wrap:focus-within { border-color: var(--accent); }
+
+/* ---- toolbar ---- */
+.re-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-wrap: wrap;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--composer-toolbar-bg);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.re-btn {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-family: inherit;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 5px;
+  border-radius: 5px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.re-btn:hover:not(:disabled) { background: var(--accent-bg); color: var(--accent); }
+.re-btn.on { background: var(--accent); color: var(--accent-ink); }
+.re-btn:disabled { opacity: .35; cursor: default; }
+.re-sep { width: 1px; height: 16px; background: var(--line); margin: 0 4px; flex: none; }
+
+/* ---- colour popover ---- */
+.re-popover {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  z-index: 61;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 8px;
+}
+.re-swatch {
+  width: 20px; height: 20px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  padding: 0;
+}
+.re-swatch:hover { transform: scale(1.12); }
+.re-clear {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--canvas);
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  font-family: inherit;
+  padding: 4px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+/* ---- the editable surface ---- */
+.re-content {
+  outline: none;
+  padding: 10px 12px;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* TipTap's Placeholder extension marks the first empty node. Without this rule
+   the placeholder text never appears. */
+.re-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--ink-soft);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* ============================================================
+   SHARED CONTENT STYLES
+   Apply to BOTH the editor surface and the rendered output, so what you type
+   is what you see. Any rule that only lands on one of them is a bug waiting.
+   ============================================================ */
+
+.re-content, .re-rendered {
+  font-family: var(--font-body), var(--font-emoji);
+  word-break: break-word;
+}
+
+.re-content p, .re-rendered p { margin: 0 0 6px; }
+.re-content p:last-child, .re-rendered p:last-child { margin-bottom: 0; }
+.re-content img, .re-rendered img { max-width: 100%; height: auto; border-radius: 6px; margin: 6px 0; display: block; }
+.re-content img.ProseMirror-selectednode { outline: 2px solid var(--accent); }
+
+.re-content h1, .re-rendered h1 { font-size: 21px; font-weight: 700; margin: 14px 0 6px; letter-spacing: -.01em; }
+.re-content h2, .re-rendered h2 { font-size: 17px; font-weight: 700; margin: 12px 0 5px; }
+.re-content h3, .re-rendered h3 { font-size: 15px; font-weight: 600; margin: 10px 0 4px; }
+.re-content h1:first-child, .re-rendered h1:first-child,
+.re-content h2:first-child, .re-rendered h2:first-child,
+.re-content h3:first-child, .re-rendered h3:first-child { margin-top: 0; }
+
+.re-content ul, .re-rendered ul { list-style: disc;    margin: 4px 0 6px 20px; padding: 0; }
+.re-content ol, .re-rendered ol { list-style: decimal; margin: 4px 0 6px 20px; padding: 0; }
+.re-content li, .re-rendered li { margin: 2px 0; }
+.re-content li p, .re-rendered li p { margin: 0; }
+
+.re-content blockquote, .re-rendered blockquote {
+  border-left: 3px solid var(--line);
+  margin: 6px 0;
+  padding: 2px 0 2px 12px;
+  color: var(--ink-soft);
+}
+
+.re-content code, .re-rendered code {
+  background: var(--canvas);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .9em;
+}
+.re-content pre, .re-rendered pre {
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 6px 0;
+}
+.re-content pre code, .re-rendered pre code { background: none; border: 0; padding: 0; }
+
+.re-content a, .re-rendered a { color: var(--accent); text-decoration: underline; cursor: pointer; }
+
+.re-content hr, .re-rendered hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+
+/* ---- tables ----
+   `border-collapse: collapse` plus `table-layout: fixed` is what makes
+   ProseMirror's column resizing behave. Without fixed layout, dragging a
+   column border does nothing visible. */
+.re-content table, .re-rendered table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 8px 0;
+  overflow: hidden;
+}
+.re-content td, .re-content th,
+.re-rendered td, .re-rendered th {
+  border: 1px solid var(--line);
+  padding: 6px 9px;
+  vertical-align: top;
+  position: relative;
+  min-width: 1em;
+  font-size: 13.5px;
+}
+.re-content th, .re-rendered th {
+  background: var(--canvas);
+  font-weight: 700;
+  text-align: left;
+}
+.re-content .selectedCell:after {
+  /* ProseMirror marks selected cells with this class. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent-bg);
+  opacity: .5;
+  pointer-events: none;
+}
+.re-content .column-resize-handle {
+  position: absolute;
+  right: -2px; top: 0; bottom: 0;
+  width: 4px;
+  background: var(--accent);
+  cursor: col-resize;
+}
+.re-content.resize-cursor { cursor: col-resize; }
+
+/* ProseMirror's gap cursor: the blinking line shown when the caret sits
+   between two block nodes (e.g. just after a table). Invisible without this. */
+.ProseMirror-gapcursor { display: none; pointer-events: none; position: absolute; }
+.ProseMirror-gapcursor:after {
+  content: '';
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 1px solid var(--ink);
+  animation: re-blink 1.1s steps(2, start) infinite;
+}
+.ProseMirror-focused .ProseMirror-gapcursor { display: block; }
+@keyframes re-blink { to { visibility: hidden; } }
+
+/* Rendered output is not editable, so it needs no min-height or padding. */
+.re-rendered { font-size: 14px; line-height: 1.55; }
+
+/* @here / @update, set by RichContent after sanitizing. */
+.re-rendered .chat-mention {
+  color: var(--accent);
+  font-weight: 700;
+  background: var(--accent-bg);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+/* ---- @mention autocomplete ----
+   The popup is appended to <body>, not to the editor, so it can escape the
+   composer's overflow:auto without being clipped. Position is set inline. */
+.re-mention-popup {
+  position: fixed;
+  z-index: 200;
+}
+.re-mention-list {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 6px 20px rgba(0,0,0,.14);
+  overflow: hidden;
+  width: 240px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.re-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.re-mention-item.on { background: var(--accent-bg); color: var(--accent); }
+.re-mention-av {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex: none;
+}
+/* ===== Rich text rendering (RichContent) ===== */
+.rich-full h1 { font-size: 22px; font-weight: 600; margin: 18px 0 8px; }
+.rich-full h2 { font-size: 18px; font-weight: 600; margin: 16px 0 7px; }
+.rich-full h3 { font-size: 16px; font-weight: 600; margin: 14px 0 6px; }
+.rich-full h4 { font-size: 15px; font-weight: 600; margin: 12px 0 5px; }
+
+.rich-full p { margin: 10px 0; }
+
+.rich-full ul,
+.rich-full ol { margin: 10px 0; padding-left: 22px; }
+.rich-full li { margin: 4px 0; }
+
+.rich-full a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.rich-full blockquote {
+  border-left: 3px solid var(--line);
+  padding-left: 12px;
+  margin: 12px 0;
+  color: var(--ink-soft);
+}
+
+.rich-full hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 16px 0;
+}
+
+.rich-full code {
+  background: var(--canvas);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.rich-full pre {
+  background: var(--canvas);
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.rich-full pre code { background: none; padding: 0; }
+
+.rich-full table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 14px 0;
+  table-layout: fixed;
+}
+.rich-full th,
+.rich-full td {
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.rich-full th {
+  background: var(--canvas);
+  font-weight: 600;
+}
+
+.rich-full > :first-child { margin-top: 0; }
+.rich-full > :last-child { margin-bottom: 0; }
+
+/* Recording indicator on the assessment form */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+/* Course builder: reveal the lesson delete control on hover/focus only, so
+   the sidebar stays clean but delete is always one click away. */
+.lesson-row .lesson-del { opacity: 0; transition: opacity .12s ease; }
+.lesson-row:hover .lesson-del,
+.lesson-row .lesson-del:focus-visible { opacity: 1; }
+.lesson-row .lesson-del:hover { color: var(--failed); background: var(--failed-bg); }
+
+/* ============================================================
+   MOBILE RESPONSIVE PASS — lifts every screen on small viewports.
+   Purely additive and scoped to small widths; later CSS wins.
+   ============================================================ */
+@media (max-width: 768px) {
+  /* Contain the page so the whole app never scrolls sideways */
+  .main { overflow-x: hidden; }
+  .content { padding: 12px 12px calc(14px + env(safe-area-inset-bottom, 0px)); }
+  .topbar { padding: 0 12px; height: 54px; }
+  .crumb { font-size: 13px; }
+
+  .page-head { margin-bottom: 16px; }
+  .page-title { font-size: 19px; }
+  .page-sub { font-size: 13px; }
+
+  /* Stat/card grids collapse to a single column, edge to edge */
+  .cards { grid-template-columns: 1fr; gap: 12px; }
+  .card { padding: 14px; border-radius: 10px; }
+
+  /* Media never overflows its container */
+  img, video, canvas, svg { max-width: 100%; height: auto; }
+
+  /* Bigger, zoom-proof form controls (16px stops iOS auto-zoom on focus) */
+  .field input, .field textarea, .field select { font-size: 16px; padding: 11px 12px; }
+  .btn { padding: 11px 15px; font-size: 14px; }
+
+  /* Modals become bottom sheets that use the full width */
+  .modal-back { padding: 0; align-items: flex-end; }
+  .modal {
+    width: 100%; max-width: 100%; max-height: 92vh;
+    border-radius: 16px 16px 0 0;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px));
   }
 
-  if (!loaded) return <div className="page-sub" style={{ padding: 30 }}>Loading settings…</div>
+  /* Wide grids/tables stay swipeable instead of clipping off-screen */
+  .grid-scroll { -webkit-overflow-scrolling: touch; }
+  .re-rendered, .rich-full { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-  const detectedInList = US_ZONES.some(([v]) => v === detected)
-
-  return (
-    <div style={{ maxWidth: 560 }}>
-      <h2 style={{ fontSize: 20, marginBottom: 4 }}>Settings</h2>
-      <p className="page-sub" style={{ marginTop: 0, marginBottom: 24 }}>Your preferences for Command Center.</p>
-
-      <PhotoCard userId={user?.id} />
-
-      <div className="card" style={{ padding: 20 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Your timezone</div>
-        <p className="page-sub" style={{ marginTop: 0, fontSize: 13, marginBottom: 14 }}>
-          Schedules are set in company time ({tzAbbrev(COMPANY_TZ)}). Choose your timezone and all times across
-          Command Center — your calendar, intervals, and check-in — will show in your local time.
-        </p>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <select value={tz} onChange={e => save(e.target.value)}
-            style={{ fontSize: 14, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', minWidth: 240 }}>
-            {US_ZONES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-            {!detectedInList && <option value={detected}>{detected}</option>}
-          </select>
-          {saved && <span style={{ fontSize: 13, color: 'var(--passed, #16A34A)' }}>✓ Saved</span>}
-        </div>
-
-        {detected && detected !== tz && (
-          <button onClick={() => save(detected)}
-            style={{ marginTop: 12, border: '1px solid var(--line)', background: 'transparent', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, cursor: 'pointer' }}>
-            Use my detected timezone ({detected}, {tzAbbrev(detected)})
-          </button>
-        )}
-
-        <div style={{ marginTop: 16, fontSize: 12.5, color: 'var(--ink-soft)' }}>
-          Currently showing times in: <b>{tzAbbrev(tz)}</b> ({tz})
-        </div>
-      </div>
-
-      <NotificationPrefsCard userId={user?.id} />
-    </div>
-  )
+  /* A posted report table has more columns than a phone has width. The desktop
+     rules (table-layout: fixed + width: 100%) force all of them to share ~370px,
+     which is what shreds each heading into one letter per line. On mobile let
+     the table take the width its content needs and swipe sideways instead.
+     .re-content is deliberately NOT included — the editor needs fixed layout
+     for ProseMirror's column-resize handles to work. */
+  .re-rendered table, .rich-full table {
+    table-layout: auto;
+    width: max-content;
+    max-width: none;
+    min-width: 100%;
+  }
+  .re-rendered th, .re-rendered td,
+  .rich-full th, .rich-full td {
+    white-space: nowrap;
+    padding: 5px 8px;
+    font-size: 12.5px;
+  }
+  /* Long prose in a cell still wraps — only keep headings and figures intact. */
+  .re-rendered td p, .rich-full td p { white-space: normal; }
 }
+
+/* ============================================================
+   PREMIUM THEME  (2026)  — the "high-end product" direction.
+   Appended last so it wins over everything above. Expressed through
+   the existing tokens + component classes, so all ~60 screens inherit
+   it. The sidebar is dark glass in BOTH light and dark modes (its
+   tokens were already dark); only the content surfaces flip.
+   ============================================================ */
+:root{
+  /* Premium palette additions */
+  --violet:#7c8bff;
+  --grad-cyan:   linear-gradient(135deg,#2af0f0 0%,#12b6d6 100%);
+  --grad-violet: linear-gradient(135deg,#8b9bff 0%,#5f6fe6 100%);
+  --grad-accent: linear-gradient(135deg,#0a90ce 0%,#0077B6 100%);
+
+  --radius:16px; --radius-sm:10px; --radius-lg:22px;
+  --font-head:'Space Grotesk','Poppins',ui-sans-serif,system-ui,sans-serif;
+
+  --glow-cyan:0 0 0 1px rgba(34,227,227,.20),0 14px 40px -12px rgba(34,227,227,.38);
+  --shadow-sm:0 1px 2px rgba(8,15,30,.05);
+  --shadow:0 2px 8px rgba(8,15,30,.06),0 24px 60px -26px rgba(8,15,30,.42);
+  --shadow-lg:0 4px 14px rgba(8,15,30,.10),0 40px 90px -32px rgba(8,15,30,.55);
+  --ease:cubic-bezier(.22,.61,.36,1);
+
+  /* Glass surfaces + ambient wash (light mode values) */
+  --card-bg:rgba(255,255,255,.82);
+  --card-edge:rgba(255,255,255,.92);
+  --ring:0 0 0 3px rgba(0,119,182,.15);
+  --amb1:rgba(124,139,255,.16);
+  --amb2:rgba(34,227,227,.16);
+}
+:root[data-theme="dark"]{
+  --card-bg:rgba(20,27,42,.62);
+  --card-edge:rgba(255,255,255,.12);
+  --ring:0 0 0 3px rgba(43,159,214,.28);
+  --amb1:rgba(124,139,255,.13);
+  --amb2:rgba(34,227,227,.10);
+  --shadow:0 2px 8px rgba(0,0,0,.35),0 24px 60px -26px rgba(0,0,0,.6);
+  --shadow-lg:0 4px 14px rgba(0,0,0,.45),0 40px 90px -30px rgba(0,0,0,.7);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]):not([data-theme="dark"]){
+    --card-bg:rgba(20,27,42,.62);
+    --card-edge:rgba(255,255,255,.12);
+    --ring:0 0 0 3px rgba(43,159,214,.28);
+    --amb1:rgba(124,139,255,.13);
+    --amb2:rgba(34,227,227,.10);
+    --shadow:0 2px 8px rgba(0,0,0,.35),0 24px 60px -26px rgba(0,0,0,.6);
+    --shadow-lg:0 4px 14px rgba(0,0,0,.45),0 40px 90px -30px rgba(0,0,0,.7);
+  }
+}
+
+/* ---- Ambient canvas: a whisper of colour behind everything ---- */
+body{
+  background:
+    radial-gradient(1100px 720px at 85% -12%, var(--amb1), transparent 55%),
+    radial-gradient(900px 620px at -6% 6%, var(--amb2), transparent 55%),
+    var(--canvas);
+  background-attachment:fixed;
+}
+
+/* ---- Sidebar: frosted dark glass, glowing active item ---- */
+.sidebar{
+  background:linear-gradient(180deg, rgba(15,20,32,.97), rgba(8,11,19,.99)), var(--sidebar);
+  border-right:1px solid rgba(255,255,255,.07);
+  backdrop-filter:blur(12px);
+}
+.brand{ display:flex; align-items:center; gap:12px; padding:6px 10px 20px; }
+.brand-mark{
+  width:44px; height:44px; border-radius:13px; flex:none; display:grid; place-items:center; overflow:hidden;
+  background:radial-gradient(120% 120% at 30% 22%, #ffffff, #e9f5f8);
+  box-shadow:inset 0 0 0 1px rgba(34,227,227,.25), 0 8px 22px -8px rgba(34,227,227,.5);
+}
+.brand-mark img{ width:36px; height:36px; object-fit:contain; }
+.brand-name{ font-family:var(--font-head); font-weight:600; font-size:15.5px; letter-spacing:-.01em; line-height:1.12; color:#f2f7fb; }
+.brand-name span{ display:block; font-family:var(--font-body); font-weight:500; font-size:10.5px; color:var(--sidebar-soft); letter-spacing:.15em; text-transform:uppercase; margin-top:3px; }
+.nav-item{ font-family:var(--font-head); border-radius:11px; transition:background .16s var(--ease), color .16s var(--ease), transform .12s var(--ease); }
+.nav-item:hover{ background:rgba(255,255,255,.055); color:#eaf6fb; transform:translateX(1px); }
+.nav-item.on{
+  background:linear-gradient(100deg, rgba(34,227,227,.16), rgba(34,227,227,.03));
+  color:#eafeff;
+  box-shadow:inset 3px 0 0 0 var(--cyan), inset 0 0 0 1px rgba(34,227,227,.18);
+}
+.user-chip{ background:rgba(255,255,255,.055); border:1px solid rgba(255,255,255,.08); border-radius:14px; }
+.user-av{ overflow:hidden; box-shadow:0 0 0 2px rgba(34,227,227,.4); }
+.user-av img{ width:100%; height:100%; object-fit:cover; border-radius:50%; display:block; }
+
+/* ---- Top bar: glassy, softly floating ---- */
+.topbar{
+  background:color-mix(in srgb, var(--surface) 80%, transparent);
+  backdrop-filter:saturate(1.4) blur(12px);
+  -webkit-backdrop-filter:saturate(1.4) blur(12px);
+  border-bottom:1px solid var(--line);
+  box-shadow:0 10px 30px -24px rgba(8,15,30,.6);
+}
+
+/* ---- Headings (Poppins — kept, just tightened) ---- */
+.page-title{ font-weight:700; letter-spacing:-.025em; }
+
+/* ---- Cards: glass panels with a gentle lift ---- */
+.card{
+  background:var(--card-bg);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  transition:transform .2s var(--ease), box-shadow .2s var(--ease), border-color .2s var(--ease);
+}
+.card:hover{ transform:translateY(-3px); box-shadow:var(--shadow-lg); border-color:color-mix(in srgb, var(--accent) 22%, var(--line)); }
+
+/* ---- Buttons: gradient fills, real depth, tactile press ---- */
+.btn{ border-radius:11px; transition:transform .12s var(--ease), box-shadow .16s var(--ease), filter .16s var(--ease); }
+.btn:hover{ transform:translateY(-1px); filter:none; }
+.btn:active{ transform:translateY(0); }
+.btn-primary{ background:var(--grad-accent); color:#fff; box-shadow:0 10px 26px -12px rgba(0,119,182,.7); }
+.btn-primary:hover{ box-shadow:0 12px 30px -10px rgba(0,119,182,.8); }
+.btn-cta{ background:var(--grad-cyan); color:var(--cta-ink); box-shadow:var(--glow-cyan); }
+.btn-cta:hover{ box-shadow:0 8px 26px -8px rgba(34,227,227,.6); }
+.btn-ghost{ background:var(--surface); border:1px solid var(--line); box-shadow:var(--shadow-sm); }
+.btn-ghost:hover{ border-color:color-mix(in srgb, var(--accent) 40%, var(--line)); color:var(--ink); }
+
+/* ---- Inputs: softer, clean focus ring ---- */
+.field input,.field textarea,.field select{ border-radius:10px; transition:border-color .14s var(--ease), box-shadow .14s var(--ease); }
+.field input:focus,.field textarea:focus,.field select:focus{ border-color:var(--accent); box-shadow:var(--ring); }
+
+/* ---- Badges: subtle inner ring ---- */
+.badge{ box-shadow:inset 0 0 0 1px rgba(8,15,30,.05); }
+
+/* ---- Modals: deep rounding, blurred backdrop ---- */
+.modal-back{ background:rgba(6,12,16,.55); backdrop-filter:blur(5px); -webkit-backdrop-filter:blur(5px); }
+.modal{ border-radius:var(--radius-lg); box-shadow:var(--shadow-lg); }
+
+/* ---- Login: premium floating card ---- */
+.login-wrap{ background:radial-gradient(1000px 520px at 50% -10%, #0b2a33 0%, #05070b 62%); }
+.login-card{ border-radius:22px; box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.05); }
+.login-btn{ background:var(--grad-cyan); box-shadow:var(--glow-cyan); border-radius:12px; transition:transform .12s var(--ease), box-shadow .16s var(--ease); }
+.login-btn:hover:not(:disabled){ transform:translateY(-1px); box-shadow:0 8px 26px -8px rgba(34,227,227,.6); }
+
+/* ---- Slim scrollbars ---- */
+*{ scrollbar-width:thin; scrollbar-color:color-mix(in srgb, var(--ink) 22%, transparent) transparent; }
+.main::-webkit-scrollbar,.content ::-webkit-scrollbar{ width:10px; height:10px; }
+.main::-webkit-scrollbar-thumb,.content ::-webkit-scrollbar-thumb{ background:color-mix(in srgb, var(--ink) 18%, transparent); border-radius:999px; border:2px solid transparent; background-clip:padding-box; }
+.main::-webkit-scrollbar-thumb:hover,.content ::-webkit-scrollbar-thumb:hover{ background:color-mix(in srgb, var(--ink) 32%, transparent); background-clip:padding-box; }
+.main::-webkit-scrollbar-track,.content ::-webkit-scrollbar-track{ background:transparent; }
+
+/* ---- Schedule chips + grid get the same soft treatment ---- */
+.grid-scroll{ box-shadow:var(--shadow); border-radius:var(--radius); }
+.iv{ border-radius:8px; }
