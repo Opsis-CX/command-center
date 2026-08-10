@@ -507,20 +507,36 @@ export default function CallQA({ portal = false } = {}) {
   // Corinne / Kerri / Sylvia. The RPC is security-definer and gated on
   // can_view_all_scorecards(), which does include asc.
   // Patches local state instead of reloading — load() refetches every review.
-  async function setReviewed(reviewId, val) {
+  // A background re-score deletes+reinserts a call's review row, so the id the
+  // browser is holding can go stale ("QA review <id> not found"). Resolve the
+  // CURRENT review id by call_id right before acting so the action can't miss.
+  async function liveReviewId(reviewId, callId) {
+    if (!callId) return reviewId
+    const { data } = await supabase.from('ai_qa_reviews').select('id').eq('call_id', callId).maybeSingle()
+    return data?.id || reviewId
+  }
+  async function setReviewed(reviewId, val, callId) {
     setBusy(reviewId)
-    const { data, error } = await supabase.rpc('qa_set_reviewed', { p_review_id: reviewId, p_reviewed: val })
-    if (error) { window.alert('Could not update reviewed status: ' + error.message); setBusy(''); return }
+    const id = await liveReviewId(reviewId, callId)
+    const { data, error } = await supabase.rpc('qa_set_reviewed', { p_review_id: id, p_reviewed: val })
+    if (error) { window.alert('Could not update reviewed status: ' + error.message + '\nRefreshing…'); setBusy(''); await load(); return }
     const patch = {
+      id,
       reviewed: val,
       reviewed_marked_at: data?.reviewed_marked_at ?? (val ? new Date().toISOString() : null),
       reviewed_marked_by: data?.reviewed_marked_by ?? (val ? user?.id : null),
     }
-    setRows((prev) => prev.map((r) => (r.id === reviewId ? { ...r, ...patch } : r)))
-    setSelected((sel) => (sel && sel.id === reviewId ? { ...sel, ...patch } : sel))
+    setRows((prev) => prev.map((r) => (r.id === reviewId || r.id === id ? { ...r, ...patch } : r)))
+    setSelected((sel) => (sel && (sel.id === reviewId || sel.id === id) ? { ...sel, ...patch } : sel))
     setBusy('')
   }
-  async function setExcluded(reviewId, val) { setBusy(reviewId); await supabase.from('ai_qa_reviews').update({ excluded: val, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', reviewId); await load(); setBusy('') }
+  async function setExcluded(reviewId, val, callId) {
+    setBusy(reviewId)
+    const id = await liveReviewId(reviewId, callId)
+    const { error } = await supabase.from('ai_qa_reviews').update({ excluded: val, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', id)
+    if (error) { window.alert('Could not update scoring status: ' + error.message) }
+    await load(); setBusy('')
+  }
   async function saveAdjustment(reviewId, answers, note) {
     setBusy(reviewId)
     const { earned, max, pct, section_scores } = recomputeReview(answers)
@@ -1093,7 +1109,7 @@ function Calls({ rows, onOpen, viewAll, canManage, onSetReviewed, busy }) {
                   // stopPropagation so ticking the box doesn't also open the drawer
                   <td style={{ padding: '9px 12px' }} onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" checked={!!r.reviewed} disabled={busy === r.id}
-                      onChange={(e) => onSetReviewed(r.id, e.target.checked)}
+                      onChange={(e) => onSetReviewed(r.id, e.target.checked, r.call?.id)}
                       title={r.reviewed ? `Reviewed${r.reviewed_marked_at ? ' ' + fmtDate(r.reviewed_marked_at) : ''} — click to unmark` : 'Mark this call reviewed'}
                       style={{ width: 16, height: 16, cursor: 'pointer', accentColor: TEAL }} />
                   </td>
@@ -1399,12 +1415,12 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, b
                 {dirty && <button disabled={busy === row.id} onClick={() => onAdjust(row.id, ans, note)} style={btn('primary')}>{busy === row.id ? 'Saving…' : `Save adjustments → ${pct(preview.pct)}`}</button>}
                 <button disabled={busy === c.id} onClick={() => onRescore(c.id)} style={btn('ghost')}>{busy === c.id ? 'Scoring…' : '↻ Re-score with AI'}</button>
                 {row.excluded
-                  ? <button disabled={busy === row.id} onClick={() => onExclude(row.id, false)} style={btn('ghost')}>Include in scoring</button>
-                  : <button disabled={busy === row.id} onClick={() => onExclude(row.id, true)} style={btn('ghost')}>Exclude from scoring</button>}
+                  ? <button disabled={busy === row.id} onClick={() => onExclude(row.id, false, row.call?.id)} style={btn('ghost')}>Include in scoring</button>
+                  : <button disabled={busy === row.id} onClick={() => onExclude(row.id, true, row.call?.id)} style={btn('ghost')}>Exclude from scoring</button>}
               </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 12, paddingTop: 12, borderTop: '1px solid #eef2f7', cursor: 'pointer', fontSize: 13.5 }}>
                 <input type="checkbox" checked={!!row.reviewed} disabled={busy === row.id}
-                  onChange={(e) => onSetReviewed(row.id, e.target.checked)}
+                  onChange={(e) => onSetReviewed(row.id, e.target.checked, row.call?.id)}
                   style={{ width: 16, height: 16, cursor: 'pointer', accentColor: TEAL }} />
                 <span style={{ fontWeight: 600 }}>This call has been reviewed</span>
                 {row.reviewed && row.reviewed_marked_at &&
