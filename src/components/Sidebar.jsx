@@ -39,6 +39,7 @@ const NAV = [
       { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
       { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
       { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },  // everyone gets calendar; sits under Project Management
+      { type: 'link', to: '/coaching', label: 'Coaching', ic: '🧑‍🏫', perm: null },  // everyone; page scopes itself (agents book their ASC; ASC/admin manage teams)
       { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings' },  // all staff except agents; notetaker + action items → tasks
       { type: 'link', to: '/time', label: 'Time', ic: '⏱️', perm: null, adminGate: true },  // admins only; find & adjust anyone's tracked time
       {
