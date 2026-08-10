@@ -312,15 +312,15 @@ export default function CallQA({ portal = false } = {}) {
     // payload light — it makes the first load noticeably faster at scale.
     const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, strengths, improvements, strength_tags, improvement_tags, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, reviewed, reviewed_marked_at, reviewed_marked_by, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, winnable, revenue_tip, asked_for_cc, cc_quote, collected_cc, cc_collected_quote, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, customer_name, customer_number)'
     // Managers fetch only the selected program server-side (client-side `scoped`
-    // still applies); everyone else is RLS-scoped. Pages are fetched in PARALLEL
-    // (previously sequential) — the biggest load-time win at this scale — and the
-    // settings / secret-presence / pipeline-count queries run concurrently too.
+    // still applies); everyone else is RLS-scoped. The settings / secret-presence /
+    // pipeline-count queries run concurrently. Reviews are paged SEQUENTIALLY: an
+    // exact COUNT and concurrent heavy paged queries tripped statement_timeout for
+    // the RLS-scoped client portal, so we page until a short page instead.
     const page = 1000
     const useCampaign = canManage && program !== 'all'
     const withCampaign = (q) => (useCampaign ? q.eq('campaign', program) : q)
     const statuses = ['ingested', 'needs_transcription', 'transcribing', 'ready', 'scoring', 'scored', 'error']
-    const [{ count }, { data: st }, { data: sk }, ...pipe] = await Promise.all([
-      withCampaign(supabase.from('ai_qa_reviews').select('id', { count: 'exact', head: true })),
+    const [{ data: st }, { data: sk }, ...pipe] = await Promise.all([
       supabase.from('ai_qa_settings').select('*').order('campaign'),
       // Presence-only RPC (names, never values) — integration_secrets isn't client-readable.
       supabase.rpc('callqa_secret_presence'),
@@ -328,14 +328,15 @@ export default function CallQA({ portal = false } = {}) {
     ])
     setSettings(st || []); setSecretKeys(Array.isArray(sk) ? sk : [])
     const counts = {}; pipe.forEach(({ s, count: c }) => { counts[s] = c }); setPipeline(counts)
-    const pages = Math.max(1, Math.ceil((count || 0) / page))
-    const pageResults = await Promise.all(
-      Array.from({ length: pages }, (_, p) =>
-        withCampaign(supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(p * page, p * page + page - 1)))
-    )
-    const firstErr = pageResults.find((r) => r.error)
-    if (firstErr) { setErr(firstErr.error.message); setLoading(false); return }
-    setRows(pageResults.flatMap((r) => r.data || []))
+    let from = 0; let all = []
+    for (;;) {
+      const { data, error } = await withCampaign(supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(from, from + page - 1))
+      if (error) { setErr(error.message); setLoading(false); return }
+      all = all.concat(data || [])
+      if (!data || data.length < page) break
+      from += page
+    }
+    setRows(all)
     setLoading(false)
   }, [canManage, program])
   useEffect(() => { load() }, [load])
