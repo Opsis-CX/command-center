@@ -17,7 +17,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 
 const ONLINE_MS = 5 * 60 * 1000   // "online" = active within the last 5 minutes
-const SELECT = 'id, full_name, email, role, is_active, last_seen_at, status_emoji, status_text, status_type, status_until'
+const SELECT = 'id, full_name, email, role, is_active, last_seen_at, status_emoji, status_text, status_type, status_until, custom_status_presets'
 
 // Preset statuses. `clearsBy` is a hint for the default auto-clear in the picker.
 const PRESETS = [
@@ -183,11 +183,33 @@ function StatusPicker({ me, uid, onClose, onSaved }) {
     return t.toISOString().slice(0, 10)
   })
   const [saving, setSaving] = useState(false)
+  // The user's own saved custom presets (array of { emoji, text }).
+  const [myPresets, setMyPresets] = useState(() => Array.isArray(me?.custom_status_presets) ? me.custom_status_presets : [])
 
   const pickPreset = (p) => {
     setEmoji(p.emoji); setText(p.text); setType(p.key)
     setClearKind(p.clearsBy === 'date' ? 'date' : p.clearsBy || 'none')
   }
+  const applyMyPreset = (p) => {
+    setEmoji(p.emoji || ''); setText(p.text || ''); setType('custom')
+  }
+  // Save the currently typed emoji + text as a reusable preset chip.
+  const savePreset = async () => {
+    const e = (emoji || '').trim(); const t = (text || '').trim()
+    if (!e && !t) return
+    if (myPresets.some(p => (p.emoji || '') === e && (p.text || '') === t)) return  // no dupes
+    const next = [...myPresets, { emoji: e, text: t }].slice(-12)  // keep the 12 most recent
+    setMyPresets(next)
+    await supabase.from('profiles').update({ custom_status_presets: next }).eq('id', uid)
+  }
+  const removePreset = async (idx) => {
+    const next = myPresets.filter((_, i) => i !== idx)
+    setMyPresets(next)
+    await supabase.from('profiles').update({ custom_status_presets: next }).eq('id', uid)
+  }
+  const canSavePreset = !!((emoji || '').trim() || (text || '').trim())
+  const alreadySaved = myPresets.some(p => (p.emoji || '') === (emoji || '').trim() && (p.text || '') === (text || '').trim())
+  const lbl = { fontSize: 11.5, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }
   const save = async () => {
     setSaving(true)
     const until = computeUntil(clearKind, dateStr)
@@ -210,12 +232,20 @@ function StatusPicker({ me, uid, onClose, onSaved }) {
           <button onClick={onClose} style={{ border: 0, background: 'transparent', fontSize: 20, lineHeight: 1, cursor: 'pointer', color: 'var(--ink-soft)' }}>×</button>
         </div>
         <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* current input row */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input value={emoji} onChange={(e) => setEmoji(e.target.value.slice(0, 4))} placeholder="🙂" aria-label="Status emoji"
-              style={{ width: 46, textAlign: 'center', fontSize: 20, padding: '8px 0', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--canvas)', color: 'var(--ink)' }} />
-            <input value={text} onChange={(e) => { setText(e.target.value); if (type !== 'ooo') setType('custom') }} placeholder="What's your status?" maxLength={80}
-              style={{ flex: 1, fontSize: 14, padding: '9px 12px', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--canvas)', color: 'var(--ink)' }} />
+          {/* custom status — type your own emoji + text */}
+          <div>
+            <div style={lbl}>Custom</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input value={emoji} onChange={(e) => setEmoji(e.target.value.slice(0, 4))} placeholder="🙂" aria-label="Status emoji"
+                style={{ width: 46, textAlign: 'center', fontSize: 20, padding: '8px 0', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--canvas)', color: 'var(--ink)' }} />
+              <input value={text} onChange={(e) => { setText(e.target.value); if (type !== 'ooo') setType('custom') }} placeholder="What's your status?" maxLength={80}
+                style={{ flex: 1, fontSize: 14, padding: '9px 12px', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--canvas)', color: 'var(--ink)' }} />
+              <button onClick={savePreset} disabled={!canSavePreset || alreadySaved}
+                title={alreadySaved ? 'Already saved as a preset' : 'Save this as a reusable preset'}
+                style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 600, padding: '9px 12px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--canvas)', color: 'var(--ink-soft)', cursor: (!canSavePreset || alreadySaved) ? 'default' : 'pointer', opacity: (!canSavePreset || alreadySaved) ? 0.5 : 1, whiteSpace: 'nowrap' }}>
+                {alreadySaved ? '★ Saved' : '☆ Save'}
+              </button>
+            </div>
           </div>
           {/* quick emoji */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -223,6 +253,23 @@ function StatusPicker({ me, uid, onClose, onSaved }) {
               <button key={e} onClick={() => setEmoji(e)} style={{ fontSize: 18, width: 34, height: 34, borderRadius: 8, border: '1px solid ' + (emoji === e ? 'var(--accent)' : 'var(--line)'), background: emoji === e ? 'var(--accent-bg)' : 'var(--canvas)', cursor: 'pointer' }}>{e}</button>
             ))}
           </div>
+          {/* my saved presets */}
+          {myPresets.length > 0 && (
+            <div>
+              <div style={lbl}>My presets</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {myPresets.map((p, i) => (
+                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid var(--line)', borderRadius: 999, background: 'var(--canvas)', overflow: 'hidden' }}>
+                    <button onClick={() => applyMyPreset(p)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 4px 6px 10px', border: 0, background: 'transparent', color: 'var(--ink)', cursor: 'pointer', fontSize: 13 }}>
+                      {p.emoji && <span>{p.emoji}</span>}{p.text}
+                    </button>
+                    <button onClick={() => removePreset(i)} title="Remove preset" aria-label="Remove preset"
+                      style={{ border: 0, background: 'transparent', color: 'var(--ink-soft)', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '6px 9px 6px 5px' }}>×</button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           {/* presets */}
           <div>
             <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Quick presets</div>
