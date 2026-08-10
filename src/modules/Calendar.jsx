@@ -57,7 +57,7 @@ const COLORS = {
 
 export default function Calendar() {
   const { isAdmin } = useAuth()
-  const [view, setView] = useState('month')          // month | week | day
+  const [view, setView] = useState('day')             // month | week | day (default to Day)
   const [cursor, setCursor] = useState(etNow())      // anchor date
   const [userId, setUserId] = useState(null)
   const [events, setEvents] = useState([])
@@ -168,7 +168,7 @@ export default function Calendar() {
   }, [load])
 
   // ---- visibility: events (personal to me OR team), tasks (mine or admin), intervals (mine) ----
-  const myEvents = useMemo(() => events.filter(e => e.scope === 'team' || e.owner_id === userId), [events, userId])
+  const myEvents = useMemo(() => events.filter(e => e.scope === 'team' || e.owner_id === userId || (e.invitee_ids || []).includes(userId)), [events, userId])
   const myTaskIds = useMemo(() => new Set(assignees.filter(a => a.profile_id === userId).map(a => a.task_id)), [assignees, userId])
   // Personal calendar: always only the current user's own tasks, even for admins.
   const myTasks = useMemo(() => tasks.filter(t => myTaskIds.has(t.id)), [tasks, myTaskIds])
@@ -288,7 +288,7 @@ export default function Calendar() {
         onEdit={(raw) => { setDetailItem(null); setEditEvent(raw) }} />}
 
       {editEvent && (
-        <EventModal event={editEvent} userId={userId} isAdmin={isAdmin} gcalConn={gcalConn}
+        <EventModal event={editEvent} userId={userId} isAdmin={isAdmin} gcalConn={gcalConn} profiles={profiles}
           onClose={() => setEditEvent(null)}
           onSaved={() => { setEditEvent(null); load() }} />
       )}
@@ -342,12 +342,120 @@ function BookFrame({ view, setView, children }) {
 }
 
 // ---------- shared left-rail (mini month + quote) ----------
+// A large curated library so the calendar shows a genuinely fresh quote each
+// day. quoteFor() advances by exactly one entry per calendar day and cycles
+// through the whole list before repeating — deterministic, so everyone sees the
+// same quote on a given date, with no network call.
 const QUOTES = [
-  ['Success is no accident. It is hard work, perseverance, learning, studying, sacrifice, and most of all, loving what you are doing.', 'Pelé'],
-  ['Discipline is deciding between what you want now and what you want most.', 'Abraham Lincoln'],
-  ['If you are working on something exciting that you really care about, you don\u2019t have to be pushed. The vision pulls you.', 'Steve Jobs'],
+  ["Success is no accident. It is hard work, perseverance, learning, studying, sacrifice, and most of all, loving what you are doing.", "Pelé"],
+  ["Discipline is deciding between what you want now and what you want most.", "Abraham Lincoln"],
+  ["If you are working on something exciting that you really care about, you don't have to be pushed. The vision pulls you.", "Steve Jobs"],
+  ["The secret of getting ahead is getting started.", "Mark Twain"],
+  ["Quality means doing it right when no one is looking.", "Henry Ford"],
+  ["It always seems impossible until it's done.", "Nelson Mandela"],
+  ["Well done is better than well said.", "Benjamin Franklin"],
+  ["The way to get started is to quit talking and begin doing.", "Walt Disney"],
+  ["Whether you think you can or you think you can't, you're right.", "Henry Ford"],
+  ["Great things are done by a series of small things brought together.", "Vincent van Gogh"],
+  ["Do the hard jobs first. The easy jobs will take care of themselves.", "Dale Carnegie"],
+  ["You don't have to be great to start, but you have to start to be great.", "Zig Ziglar"],
+  ["Success usually comes to those who are too busy to be looking for it.", "Henry David Thoreau"],
+  ["The future depends on what you do today.", "Mahatma Gandhi"],
+  ["Amateurs sit and wait for inspiration; the rest of us just get up and go to work.", "Stephen King"],
+  ["Motivation is what gets you started. Habit is what keeps you going.", "Jim Ryun"],
+  ["Don't watch the clock; do what it does. Keep going.", "Sam Levenson"],
+  ["Either you run the day or the day runs you.", "Jim Rohn"],
+  ["Opportunities don't happen. You create them.", "Chris Grosser"],
+  ["The only way to do great work is to love what you do.", "Steve Jobs"],
+  ["Perseverance is not a long race; it is many short races one after the other.", "Walter Elliot"],
+  ["Focus on being productive instead of busy.", "Tim Ferriss"],
+  ["A goal without a plan is just a wish.", "Antoine de Saint-Exupéry"],
+  ["What gets measured gets managed.", "Peter Drucker"],
+  ["The best way to predict the future is to create it.", "Peter Drucker"],
+  ["Excellence is not a skill. It's an attitude.", "Ralph Marston"],
+  ["Start where you are. Use what you have. Do what you can.", "Arthur Ashe"],
+  ["It's not that I'm so smart, it's just that I stay with problems longer.", "Albert Einstein"],
+  ["Setting goals is the first step in turning the invisible into the visible.", "Tony Robbins"],
+  ["Action is the foundational key to all success.", "Pablo Picasso"],
+  ["The difference between ordinary and extraordinary is that little extra.", "Jimmy Johnson"],
+  ["Hard work beats talent when talent doesn't work hard.", "Tim Notke"],
+  ["Done is better than perfect.", "Sheryl Sandberg"],
+  ["If you want to lift yourself up, lift up someone else.", "Booker T. Washington"],
+  ["Nothing will work unless you do.", "Maya Angelou"],
+  ["Believe you can and you're halfway there.", "Theodore Roosevelt"],
+  ["Efficiency is doing things right; effectiveness is doing the right things.", "Peter Drucker"],
+  ["We are what we repeatedly do. Excellence, then, is not an act, but a habit.", "Will Durant"],
+  ["A year from now you may wish you had started today.", "Karen Lamb"],
+  ["The expert in anything was once a beginner.", "Helen Hayes"],
+  ["Small daily improvements over time lead to stunning results.", "Robin Sharma"],
+  ["You miss 100% of the shots you don't take.", "Wayne Gretzky"],
+  ["Courage is one step ahead of fear.", "Coleman Young"],
+  ["Success is the sum of small efforts repeated day in and day out.", "Robert Collier"],
+  ["The harder you work for something, the greater you'll feel when you achieve it.", "Anonymous"],
+  ["Don't be afraid to give up the good to go for the great.", "John D. Rockefeller"],
+  ["I never dreamed about success. I worked for it.", "Estée Lauder"],
+  ["Do what you can, with what you have, where you are.", "Theodore Roosevelt"],
+  ["Great teams do not hold back with one another.", "Patrick Lencioni"],
+  ["Alone we can do so little; together we can do so much.", "Helen Keller"],
+  ["Coming together is a beginning, staying together is progress, working together is success.", "Henry Ford"],
+  ["Feedback is the breakfast of champions.", "Ken Blanchard"],
+  ["The strength of the team is each individual member. The strength of each member is the team.", "Phil Jackson"],
+  ["If everyone is moving forward together, then success takes care of itself.", "Henry Ford"],
+  ["Talent wins games, but teamwork and intelligence win championships.", "Michael Jordan"],
+  ["People who feel appreciated will always do more than what is expected.", "Anonymous"],
+  ["Progress is impossible without change.", "George Bernard Shaw"],
+  ["The best preparation for tomorrow is doing your best today.", "H. Jackson Brown Jr."],
+  ["Consistency is the true foundation of trust.", "Roy T. Bennett"],
+  ["Clarity precedes success.", "Robin Sharma"],
+  ["Details create the big picture.", "Sanford I. Weill"],
+  ["Take care of the minutes and the hours will take care of themselves.", "Lord Chesterfield"],
+  ["Ideas are easy. Implementation is hard.", "Guy Kawasaki"],
+  ["Simplicity is the soul of efficiency.", "Austin Freeman"],
+  ["The way to achieve your own success is to be willing to help somebody else get it first.", "Iyanla Vanzant"],
+  ["Make each day your masterpiece.", "John Wooden"],
+  ["Success is walking from failure to failure with no loss of enthusiasm.", "Winston Churchill"],
+  ["The only place where success comes before work is in the dictionary.", "Vidal Sassoon"],
+  ["Winners are not people who never fail, but people who never quit.", "Anonymous"],
+  ["The road to success is always under construction.", "Lily Tomlin"],
+  ["Be so good they can't ignore you.", "Steve Martin"],
+  ["Push yourself, because no one else is going to do it for you.", "Anonymous"],
+  ["Sometimes later becomes never. Do it now.", "Anonymous"],
+  ["Great things never come from comfort zones.", "Anonymous"],
+  ["Little things make big days.", "Anonymous"],
+  ["Don't stop when you're tired. Stop when you're done.", "Anonymous"],
+  ["Wake up with determination. Go to bed with satisfaction.", "Anonymous"],
+  ["Do something today that your future self will thank you for.", "Sean Patrick Flanery"],
+  ["Learn as if you will live forever, live like you will die tomorrow.", "Mahatma Gandhi"],
+  ["Strive for progress, not perfection.", "Anonymous"],
+  ["The comeback is always stronger than the setback.", "Anonymous"],
+  ["A little progress each day adds up to big results.", "Anonymous"],
+  ["Work hard in silence, let your success be your noise.", "Frank Ocean"],
+  ["The key is not to prioritize what's on your schedule, but to schedule your priorities.", "Stephen Covey"],
+  ["You don't need to see the whole staircase, just take the first step.", "Martin Luther King Jr."],
+  ["Everything you've ever wanted is on the other side of fear.", "George Addair"],
+  ["Success is liking yourself, liking what you do, and liking how you do it.", "Maya Angelou"],
+  ["Don't count the days, make the days count.", "Muhammad Ali"],
+  ["Fall seven times, stand up eight.", "Japanese Proverb"],
+  ["The secret of change is to focus all of your energy not on fighting the old, but on building the new.", "Socrates"],
+  ["Quality is not an act, it is a habit.", "Aristotle"],
+  ["What we fear doing most is usually what we most need to do.", "Tim Ferriss"],
+  ["Do the best you can until you know better. Then when you know better, do better.", "Maya Angelou"],
+  ["If it doesn't challenge you, it won't change you.", "Fred DeVito"],
+  ["The only limit to our realization of tomorrow is our doubts of today.", "Franklin D. Roosevelt"],
+  ["Success is not final, failure is not fatal: it is the courage to continue that counts.", "Winston Churchill"],
+  ["You are never too old to set another goal or to dream a new dream.", "C.S. Lewis"],
+  ["Well begun is half done.", "Aristotle"],
+  ["The man who moves a mountain begins by carrying away small stones.", "Confucius"],
+  ["It does not matter how slowly you go as long as you do not stop.", "Confucius"],
+  ["Success seems to be connected with action. Successful people keep moving.", "Conrad Hilton"],
+  ["Trust the process. Your time is coming.", "Anonymous"],
+  ["Energy and persistence conquer all things.", "Benjamin Franklin"],
+  ["Discipline equals freedom.", "Jocko Willink"],
 ]
-function quoteFor(d) { return QUOTES[(d.getFullYear() + d.getMonth() + d.getDate()) % QUOTES.length] }
+function quoteFor(d) {
+  const dayNum = Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000)
+  return QUOTES[((dayNum % QUOTES.length) + QUOTES.length) % QUOTES.length]
+}
 
 function LeftRail({ cursor, setCursor, onAddEvent, tasksOn, allTasks = [] }) {
   const today = etNow()
@@ -1288,9 +1396,54 @@ function EventDetailModal({ item, onClose, onEdit }) {
 }
 
 // ---------- EVENT DETAIL end ----------
+// ---------- INVITEE PICKER ----------
+// A compact searchable multi-select over team members. Selected people show as
+// removable chips; the list below toggles membership. Excludes the current user
+// (the owner is implicitly attending their own event).
+function InviteePicker({ profiles, userId, value, onChange }) {
+  const [q, setQ] = useState('')
+  const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || 'Unknown'
+  const list = profiles
+    .filter(p => p.id !== userId)
+    .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
+  const needle = q.trim().toLowerCase()
+  const shown = needle ? list.filter(p => (p.full_name || '').toLowerCase().includes(needle)) : list
+  const toggle = (id) => onChange(value.includes(id) ? value.filter(x => x !== id) : [...value, id])
+  return (
+    <div>
+      {value.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+          {value.map(id => (
+            <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, background: 'var(--accent-bg)', color: 'var(--accent)', borderRadius: 999, padding: '3px 4px 3px 9px' }}>
+              {nameOf(id)}
+              <span onClick={() => toggle(id)} title="Remove" style={{ cursor: 'pointer', fontWeight: 700, fontSize: 14, lineHeight: 1, padding: '0 3px' }}>×</span>
+            </span>
+          ))}
+        </div>
+      )}
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search people to invite…" />
+      <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8, marginTop: 6 }}>
+        {shown.length === 0 ? (
+          <div style={{ padding: 8, fontSize: 12, color: 'var(--ink-soft)' }}>No matches</div>
+        ) : shown.map(p => {
+          const on = value.includes(p.id)
+          return (
+            <div key={p.id} onClick={() => toggle(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 13, background: on ? 'var(--accent-bg)' : 'transparent', borderBottom: '1px solid var(--line-soft)' }}>
+              <input type="checkbox" checked={on} readOnly style={{ width: 'auto' }} />
+              <span style={{ color: on ? 'var(--accent)' : 'var(--ink)', fontWeight: on ? 600 : 400 }}>{p.full_name || 'Unknown'}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ---------- EVENT MODAL ----------
-function EventModal({ event, userId, isAdmin, gcalConn, onClose, onSaved }) {
+function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, onSaved }) {
   const isNew = !event.id
+  // Only the owner (or a brand-new event) can edit; invitees see it read-only.
+  const isOwner = isNew || event.owner_id === userId
   const [title, setTitle] = useState(event.title || '')
   const [date, setDate] = useState(event.event_date || isoDate(etNow()))
   const [allDay, setAllDay] = useState(event.all_day || false)
@@ -1299,8 +1452,10 @@ function EventModal({ event, userId, isAdmin, gcalConn, onClose, onSaved }) {
   const [notes, setNotes] = useState(event.notes || '')
   const [scope, setScope] = useState(event.scope || 'personal')
   const [color, setColor] = useState(event.color || '#0077B6')
+  const [invitees, setInvitees] = useState(event.invitee_ids || [])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || 'Unknown'
 
   async function save() {
     if (!title.trim()) { setErr('Give the event a title.'); return }
@@ -1309,6 +1464,7 @@ function EventModal({ event, userId, isAdmin, gcalConn, onClose, onSaved }) {
       title: title.trim(), event_date: date, all_day: allDay,
       start_time: allDay ? null : start, end_time: allDay ? null : end,
       notes: notes.trim() || null, scope, color, owner_id: userId, tz: detectedTZ(),
+      invitee_ids: invitees,
     }
     let savedId = event.id
     let res
@@ -1349,28 +1505,45 @@ function EventModal({ event, userId, isAdmin, gcalConn, onClose, onSaved }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }} onClick={onClose}>
       <div className="card" style={{ width: 420, maxWidth: '90vw', padding: 20 }} onClick={e => e.stopPropagation()}>
-        <h3 style={{ margin: '0 0 14px', fontSize: 16 }}>{isNew ? 'Add event' : 'Edit event'}</h3>
+        <h3 style={{ margin: '0 0 14px', fontSize: 16 }}>{isNew ? 'Add event' : isOwner ? 'Edit event' : 'Event details'}</h3>
+        {!isOwner && (
+          <div style={{ fontSize: 12, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+            You're invited to this event{event.owner_id ? ` by ${nameOf(event.owner_id)}` : ''}. View only.
+          </div>
+        )}
         {err && <div style={{ color: 'var(--failed)', fontSize: 12, marginBottom: 8 }}>{err}</div>}
         <div className="field"><label>Title</label>
-          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Event title" autoFocus />
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Event title" autoFocus={isOwner} disabled={!isOwner} />
         </div>
         <div className="field"><label>Date</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} disabled={!isOwner} />
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '8px 0' }}>
-          <input type="checkbox" checked={allDay} onChange={e => setAllDay(e.target.checked)} style={{ width: 'auto' }} /> All day
+          <input type="checkbox" checked={allDay} onChange={e => setAllDay(e.target.checked)} disabled={!isOwner} style={{ width: 'auto' }} /> All day
         </label>
         {!allDay && (
           <div style={{ display: 'flex', gap: 10 }}>
-            <div className="field" style={{ flex: 1 }}><label>Start</label><input type="time" value={start} onChange={e => setStart(e.target.value)} /></div>
-            <div className="field" style={{ flex: 1 }}><label>End</label><input type="time" value={end} onChange={e => setEnd(e.target.value)} /></div>
+            <div className="field" style={{ flex: 1 }}><label>Start</label><input type="time" value={start} onChange={e => setStart(e.target.value)} disabled={!isOwner} /></div>
+            <div className="field" style={{ flex: 1 }}><label>End</label><input type="time" value={end} onChange={e => setEnd(e.target.value)} disabled={!isOwner} /></div>
           </div>
         )}
         <div className="field"><label>Notes</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} />
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} disabled={!isOwner} />
+        </div>
+        <div className="field"><label>Invitees</label>
+          {isOwner ? (
+            <>
+              <InviteePicker profiles={profiles} userId={userId} value={invitees} onChange={setInvitees} />
+              <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>Invited people see this event on their calendar, even if it's set to Personal.</div>
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: invitees.length ? 'var(--ink)' : 'var(--ink-soft)' }}>
+              {invitees.length ? invitees.map(nameOf).join(', ') : 'No invitees'}
+            </div>
+          )}
         </div>
         <div className="field"><label>Color</label>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', pointerEvents: isOwner ? 'auto' : 'none', opacity: isOwner ? 1 : .7 }}>
             {['#0077B6', '#16A34A', '#D97706', '#7C3AED', '#DC2626', '#0891B2', '#DB2777', '#65A30D', '#4B5563'].map(c => (
               <span key={c} onClick={() => setColor(c)} title={c}
                 style={{ width: 26, height: 26, borderRadius: 6, background: c, cursor: 'pointer', border: color === c ? '3px solid var(--ink)' : '3px solid transparent' }} />
@@ -1384,16 +1557,22 @@ function EventModal({ event, userId, isAdmin, gcalConn, onClose, onSaved }) {
           </div>
         </div>
         <div className="field"><label>Visibility</label>
-          <select value={scope} onChange={e => setScope(e.target.value)} disabled={!isAdmin && scope !== 'team'}>
-            <option value="personal">Personal (only me)</option>
+          <select value={scope} onChange={e => setScope(e.target.value)} disabled={!isOwner || (!isAdmin && scope !== 'team')}>
+            <option value="personal">Personal{invitees.length ? ' + invitees' : ' (only me)'}</option>
             <option value="team">Team (everyone)</option>
           </select>
         </div>
-        {!isAdmin && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: -6, marginBottom: 8 }}>Only admins can create team events.</div>}
+        {isOwner && !isAdmin && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: -6, marginBottom: 8 }}>Only admins can create team events, but you can invite specific people above.</div>}
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          {!isNew && <button className="btn btn-ghost" style={{ marginLeft: 'auto', color: 'var(--failed)' }} onClick={del}>Delete</button>}
+          {isOwner ? (
+            <>
+              <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+              <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+              {!isNew && <button className="btn btn-ghost" style={{ marginLeft: 'auto', color: 'var(--failed)' }} onClick={del}>Delete</button>}
+            </>
+          ) : (
+            <button className="btn btn-ghost" onClick={onClose}>Close</button>
+          )}
         </div>
       </div>
     </div>
