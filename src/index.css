@@ -813,3 +813,152 @@ a{color:inherit;text-decoration:none;}
   /* Long prose in a cell still wraps — only keep headings and figures intact. */
   .re-rendered td p, .rich-full td p { white-space: normal; }
 }
+
+/* ============================================================
+   PREMIUM THEME  (2026)  — the "high-end product" direction.
+   Appended last so it wins over everything above. Expressed through
+   the existing tokens + component classes, so all ~60 screens inherit
+   it. The sidebar is dark glass in BOTH light and dark modes (its
+   tokens were already dark); only the content surfaces flip.
+   ============================================================ */
+:root{
+  /* Premium palette additions */
+  --violet:#7c8bff;
+  --grad-cyan:   linear-gradient(135deg,#2af0f0 0%,#12b6d6 100%);
+  --grad-violet: linear-gradient(135deg,#8b9bff 0%,#5f6fe6 100%);
+  --grad-accent: linear-gradient(135deg,#0a90ce 0%,#0077B6 100%);
+
+  --radius:16px; --radius-sm:10px; --radius-lg:22px;
+  --font-head:'Space Grotesk','Poppins',ui-sans-serif,system-ui,sans-serif;
+
+  --glow-cyan:0 0 0 1px rgba(34,227,227,.20),0 14px 40px -12px rgba(34,227,227,.38);
+  --shadow-sm:0 1px 2px rgba(8,15,30,.05);
+  --shadow:0 2px 8px rgba(8,15,30,.06),0 24px 60px -26px rgba(8,15,30,.42);
+  --shadow-lg:0 4px 14px rgba(8,15,30,.10),0 40px 90px -32px rgba(8,15,30,.55);
+  --ease:cubic-bezier(.22,.61,.36,1);
+
+  /* Glass surfaces + ambient wash (light mode values) */
+  --card-bg:rgba(255,255,255,.82);
+  --card-edge:rgba(255,255,255,.92);
+  --ring:0 0 0 3px rgba(0,119,182,.15);
+  --amb1:rgba(124,139,255,.16);
+  --amb2:rgba(34,227,227,.16);
+}
+:root[data-theme="dark"]{
+  --card-bg:rgba(20,27,42,.62);
+  --card-edge:rgba(255,255,255,.12);
+  --ring:0 0 0 3px rgba(43,159,214,.28);
+  --amb1:rgba(124,139,255,.13);
+  --amb2:rgba(34,227,227,.10);
+  --shadow:0 2px 8px rgba(0,0,0,.35),0 24px 60px -26px rgba(0,0,0,.6);
+  --shadow-lg:0 4px 14px rgba(0,0,0,.45),0 40px 90px -30px rgba(0,0,0,.7);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]):not([data-theme="dark"]){
+    --card-bg:rgba(20,27,42,.62);
+    --card-edge:rgba(255,255,255,.12);
+    --ring:0 0 0 3px rgba(43,159,214,.28);
+    --amb1:rgba(124,139,255,.13);
+    --amb2:rgba(34,227,227,.10);
+    --shadow:0 2px 8px rgba(0,0,0,.35),0 24px 60px -26px rgba(0,0,0,.6);
+    --shadow-lg:0 4px 14px rgba(0,0,0,.45),0 40px 90px -30px rgba(0,0,0,.7);
+  }
+}
+
+/* ---- Ambient canvas: a whisper of colour behind everything ---- */
+body{
+  background:
+    radial-gradient(1100px 720px at 85% -12%, var(--amb1), transparent 55%),
+    radial-gradient(900px 620px at -6% 6%, var(--amb2), transparent 55%),
+    var(--canvas);
+  background-attachment:fixed;
+}
+
+/* ---- Sidebar: frosted dark glass, glowing active item ---- */
+.sidebar{
+  background:linear-gradient(180deg, rgba(15,20,32,.97), rgba(8,11,19,.99)), var(--sidebar);
+  border-right:1px solid rgba(255,255,255,.07);
+  backdrop-filter:blur(12px);
+}
+.brand{ display:flex; align-items:center; gap:12px; padding:6px 10px 20px; }
+.brand-mark{
+  width:44px; height:44px; border-radius:13px; flex:none; display:grid; place-items:center; overflow:hidden;
+  background:radial-gradient(120% 120% at 30% 22%, #ffffff, #e9f5f8);
+  box-shadow:inset 0 0 0 1px rgba(34,227,227,.25), 0 8px 22px -8px rgba(34,227,227,.5);
+}
+.brand-mark img{ width:36px; height:36px; object-fit:contain; }
+.brand-name{ font-family:var(--font-head); font-weight:600; font-size:15.5px; letter-spacing:-.01em; line-height:1.12; color:#f2f7fb; }
+.brand-name span{ display:block; font-family:var(--font-body); font-weight:500; font-size:10.5px; color:var(--sidebar-soft); letter-spacing:.15em; text-transform:uppercase; margin-top:3px; }
+.nav-item{ font-family:var(--font-head); border-radius:11px; transition:background .16s var(--ease), color .16s var(--ease), transform .12s var(--ease); }
+.nav-item:hover{ background:rgba(255,255,255,.055); color:#eaf6fb; transform:translateX(1px); }
+.nav-item.on{
+  background:linear-gradient(100deg, rgba(34,227,227,.16), rgba(34,227,227,.03));
+  color:#eafeff;
+  box-shadow:inset 3px 0 0 0 var(--cyan), inset 0 0 0 1px rgba(34,227,227,.18);
+}
+.user-chip{ background:rgba(255,255,255,.055); border:1px solid rgba(255,255,255,.08); border-radius:14px; }
+.user-av{ overflow:hidden; box-shadow:0 0 0 2px rgba(34,227,227,.4); }
+.user-av img{ width:100%; height:100%; object-fit:cover; border-radius:50%; display:block; }
+
+/* ---- Top bar: glassy, softly floating ---- */
+.topbar{
+  background:color-mix(in srgb, var(--surface) 80%, transparent);
+  backdrop-filter:saturate(1.4) blur(12px);
+  -webkit-backdrop-filter:saturate(1.4) blur(12px);
+  border-bottom:1px solid var(--line);
+  box-shadow:0 10px 30px -24px rgba(8,15,30,.6);
+}
+
+/* ---- Headings (Poppins — kept, just tightened) ---- */
+.page-title{ font-weight:700; letter-spacing:-.025em; }
+
+/* ---- Cards: glass panels with a gentle lift ---- */
+.card{
+  background:var(--card-bg);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  transition:transform .2s var(--ease), box-shadow .2s var(--ease), border-color .2s var(--ease);
+}
+.card:hover{ transform:translateY(-3px); box-shadow:var(--shadow-lg); border-color:color-mix(in srgb, var(--accent) 22%, var(--line)); }
+
+/* ---- Buttons: gradient fills, real depth, tactile press ---- */
+.btn{ border-radius:11px; transition:transform .12s var(--ease), box-shadow .16s var(--ease), filter .16s var(--ease); }
+.btn:hover{ transform:translateY(-1px); filter:none; }
+.btn:active{ transform:translateY(0); }
+.btn-primary{ background:var(--grad-accent); color:#fff; box-shadow:0 10px 26px -12px rgba(0,119,182,.7); }
+.btn-primary:hover{ box-shadow:0 12px 30px -10px rgba(0,119,182,.8); }
+.btn-cta{ background:var(--grad-cyan); color:var(--cta-ink); box-shadow:var(--glow-cyan); }
+.btn-cta:hover{ box-shadow:0 8px 26px -8px rgba(34,227,227,.6); }
+.btn-ghost{ background:var(--surface); border:1px solid var(--line); box-shadow:var(--shadow-sm); }
+.btn-ghost:hover{ border-color:color-mix(in srgb, var(--accent) 40%, var(--line)); color:var(--ink); }
+
+/* ---- Inputs: softer, clean focus ring ---- */
+.field input,.field textarea,.field select{ border-radius:10px; transition:border-color .14s var(--ease), box-shadow .14s var(--ease); }
+.field input:focus,.field textarea:focus,.field select:focus{ border-color:var(--accent); box-shadow:var(--ring); }
+
+/* ---- Badges: subtle inner ring ---- */
+.badge{ box-shadow:inset 0 0 0 1px rgba(8,15,30,.05); }
+
+/* ---- Modals: deep rounding, blurred backdrop ---- */
+.modal-back{ background:rgba(6,12,16,.55); backdrop-filter:blur(5px); -webkit-backdrop-filter:blur(5px); }
+.modal{ border-radius:var(--radius-lg); box-shadow:var(--shadow-lg); }
+
+/* ---- Login: premium floating card ---- */
+.login-wrap{ background:radial-gradient(1000px 520px at 50% -10%, #0b2a33 0%, #05070b 62%); }
+.login-card{ border-radius:22px; box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.05); }
+.login-btn{ background:var(--grad-cyan); box-shadow:var(--glow-cyan); border-radius:12px; transition:transform .12s var(--ease), box-shadow .16s var(--ease); }
+.login-btn:hover:not(:disabled){ transform:translateY(-1px); box-shadow:0 8px 26px -8px rgba(34,227,227,.6); }
+
+/* ---- Slim scrollbars ---- */
+*{ scrollbar-width:thin; scrollbar-color:color-mix(in srgb, var(--ink) 22%, transparent) transparent; }
+.main::-webkit-scrollbar,.content ::-webkit-scrollbar{ width:10px; height:10px; }
+.main::-webkit-scrollbar-thumb,.content ::-webkit-scrollbar-thumb{ background:color-mix(in srgb, var(--ink) 18%, transparent); border-radius:999px; border:2px solid transparent; background-clip:padding-box; }
+.main::-webkit-scrollbar-thumb:hover,.content ::-webkit-scrollbar-thumb:hover{ background:color-mix(in srgb, var(--ink) 32%, transparent); background-clip:padding-box; }
+.main::-webkit-scrollbar-track,.content ::-webkit-scrollbar-track{ background:transparent; }
+
+/* ---- Schedule chips + grid get the same soft treatment ---- */
+.grid-scroll{ box-shadow:var(--shadow); border-radius:var(--radius); }
+.iv{ border-radius:8px; }
