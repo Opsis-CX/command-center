@@ -50,6 +50,13 @@ export function DueLabel({ task, small }) {
 export function Avatar({ profile, size = 24 }) {
   if (!profile) return null
   const color = profile.color || AVATAR_COLORS[0]
+  // Uploaded photo wins; otherwise fall back to the coloured initials chip.
+  if (profile.avatar_url) {
+    return (
+      <img src={profile.avatar_url} alt={profile.full_name} title={profile.full_name}
+        style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, display: 'inline-block' }} />
+    )
+  }
   return (
     <span title={profile.full_name}
       style={{ width: size, height: size, borderRadius: '50%', background: color + '22', color, fontSize: Math.round(size * 0.37), fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -66,6 +73,12 @@ export function AvatarStack({ ids, profiles, size = 24 }) {
       {shown.map((id, i) => {
         const p = profiles.find(x => x.id === id)
         if (!p) return null
+        if (p.avatar_url) {
+          return (
+            <img key={id} src={p.avatar_url} alt={p.full_name} title={p.full_name}
+              style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--surface)', marginLeft: i === 0 ? 0 : -6, flexShrink: 0, display: 'inline-block' }} />
+          )
+        }
         return (
           <span key={id} title={p.full_name}
             style={{ width: size, height: size, borderRadius: '50%', background: (p.color || AVATAR_COLORS[0]) + '22', color: p.color || AVATAR_COLORS[0], fontSize: Math.round(size * 0.37), fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--surface)', marginLeft: i === 0 ? 0 : -6, flexShrink: 0 }}>
