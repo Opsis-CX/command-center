@@ -306,33 +306,33 @@ export default function CallQA({ portal = false } = {}) {
     // (in the detail drawer, and on demand at CSV-export time) to keep this initial
     // payload light — it makes the first load noticeably faster at scale.
     const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, strengths, improvements, strength_tags, improvement_tags, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, reviewed, reviewed_marked_at, reviewed_marked_by, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, winnable, revenue_tip, asked_for_cc, cc_quote, collected_cc, cc_collected_quote, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, customer_name, customer_number)'
-    const page = 1000; let from = 0; let all = []
-    for (;;) {
-      const { data, error } = await supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(from, from + page - 1)
-      if (error) { setErr(error.message); setLoading(false); return }
-      all = all.concat(data || [])
-      if (!data || data.length < page) break
-      from += page
-    }
-    setRows(all)
-    const [{ data: st }, { data: sk }] = await Promise.all([
+    // Managers fetch only the selected program server-side (client-side `scoped`
+    // still applies); everyone else is RLS-scoped. Pages are fetched in PARALLEL
+    // (previously sequential) — the biggest load-time win at this scale — and the
+    // settings / secret-presence / pipeline-count queries run concurrently too.
+    const page = 1000
+    const useCampaign = canManage && program !== 'all'
+    const withCampaign = (q) => (useCampaign ? q.eq('campaign', program) : q)
+    const statuses = ['ingested', 'needs_transcription', 'transcribing', 'ready', 'scoring', 'scored', 'error']
+    const [{ count }, { data: st }, { data: sk }, ...pipe] = await Promise.all([
+      withCampaign(supabase.from('ai_qa_reviews').select('id', { count: 'exact', head: true })),
       supabase.from('ai_qa_settings').select('*').order('campaign'),
-      // Presence-only RPC (names, never values) — integration_secrets isn't
-      // client-readable, so selecting it directly returned nothing and showed
-      // every key as falsely "MISSING".
+      // Presence-only RPC (names, never values) — integration_secrets isn't client-readable.
       supabase.rpc('callqa_secret_presence'),
+      ...statuses.map((s) => supabase.from('ai_qa_calls').select('id', { count: 'exact', head: true }).eq('status', s).then((r) => ({ s, count: r.count || 0 }))),
     ])
     setSettings(st || []); setSecretKeys(Array.isArray(sk) ? sk : [])
-    // exact pipeline counts (head:true transfers no rows, so no 1000-row cap)
-    const statuses = ['ingested', 'needs_transcription', 'transcribing', 'ready', 'scoring', 'scored', 'error']
-    const counts = {}
-    await Promise.all(statuses.map(async (s) => {
-      const { count } = await supabase.from('ai_qa_calls').select('id', { count: 'exact', head: true }).eq('status', s)
-      counts[s] = count || 0
-    }))
-    setPipeline(counts)
+    const counts = {}; pipe.forEach(({ s, count: c }) => { counts[s] = c }); setPipeline(counts)
+    const pages = Math.max(1, Math.ceil((count || 0) / page))
+    const pageResults = await Promise.all(
+      Array.from({ length: pages }, (_, p) =>
+        withCampaign(supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(p * page, p * page + page - 1)))
+    )
+    const firstErr = pageResults.find((r) => r.error)
+    if (firstErr) { setErr(firstErr.error.message); setLoading(false); return }
+    setRows(pageResults.flatMap((r) => r.data || []))
     setLoading(false)
-  }, [])
+  }, [canManage, program])
   useEffect(() => { load() }, [load])
   // Current user's display name, used when they add a note.
   useEffect(() => {
@@ -1085,9 +1085,13 @@ function Calls({ rows, onOpen, viewAll, canManage, onSetReviewed, busy }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {canManage && (
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Select label="Show" value={revFilter} onChange={setRevFilter}
-            opts={[['all', `All (${rows.length})`], ['unreviewed', `Unreviewed (${rows.length - reviewedCount})`], ['reviewed', `Reviewed (${reviewedCount})`]]} />
-          <div style={{ fontSize: 12.5, color: '#64748b', paddingBottom: 2 }}>
+          <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Show</span>
+          <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+            {[['all', `All (${rows.length})`], ['unreviewed', `Unreviewed (${rows.length - reviewedCount})`], ['reviewed', `Reviewed (${reviewedCount})`]].map(([k, lbl], i) => (
+              <button key={k} onClick={() => setRevFilter(k)} style={{ padding: '6px 14px', fontSize: 13, fontWeight: 700, border: 'none', borderLeft: i === 0 ? 'none' : '1px solid #e2e8f0', cursor: 'pointer', background: revFilter === k ? TEAL : '#fff', color: revFilter === k ? '#fff' : '#475569' }}>{lbl}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 12.5, color: '#64748b' }}>
             {reviewedCount} of {rows.length} calls in this range marked reviewed
           </div>
         </div>
