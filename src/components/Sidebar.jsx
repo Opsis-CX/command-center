@@ -109,12 +109,20 @@ export default function Sidebar({ open, onNavigate }) {
   // so pull full_name from their profile. Fall back to the email prefix only
   // if the profile has no name yet.
   const [fullName, setFullName] = useState(null)
+  const [avatarUrl, setAvatarUrl] = useState(null)
   useEffect(() => {
     if (!user?.id) return
     let active = true
-    supabase.from('profiles').select('full_name').eq('id', user.id).single()
-      .then(({ data }) => { if (active && data?.full_name) setFullName(data.full_name) })
-    return () => { active = false }
+    supabase.from('profiles').select('full_name, avatar_url').eq('id', user.id).single()
+      .then(({ data }) => {
+        if (!active) return
+        if (data?.full_name) setFullName(data.full_name)
+        setAvatarUrl(data?.avatar_url || null)
+      })
+    // Reflect a photo change made on the Settings page without a reload.
+    const onAvatar = (e) => setAvatarUrl(e.detail || null)
+    window.addEventListener('cc:avatar-updated', onAvatar)
+    return () => { active = false; window.removeEventListener('cc:avatar-updated', onAvatar) }
   }, [user?.id])
   const name = fullName || user?.email?.split('@')[0] || 'User'
   const initial = (name.trim()[0] || 'U').toUpperCase()
@@ -207,7 +215,8 @@ export default function Sidebar({ open, onNavigate }) {
   return (
     <aside className={'sidebar' + (open ? ' open' : '')}>
       <div className="brand">
-        <img src="/opsis-logo.png" alt="Opsis" style={{ width: '100%', height: 'auto', maxHeight: 64, objectFit: 'contain' }} />
+        <div className="brand-mark"><img src="/opsis-logo.png" alt="Opsis" /></div>
+        <div className="brand-name">Command Center<span>Opsis CX</span></div>
       </div>
 
       {/* Only THIS region scrolls when the nav outgrows the window — the page
@@ -232,7 +241,7 @@ export default function Sidebar({ open, onNavigate }) {
       </div>
 
       <div className="user-chip">
-        <div className="user-av">{initial}</div>
+        <div className="user-av">{avatarUrl ? <img src={avatarUrl} alt={name} /> : initial}</div>
         <div>
           <div className="user-name">{name}</div>
           <div className="user-role">{isOwner ? 'Owner' : isAdmin ? 'Admin' : 'Agent'}</div>
