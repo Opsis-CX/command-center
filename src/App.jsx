@@ -35,6 +35,7 @@ import EodReportCard from './modules/EodReports'
 import Notes from './modules/Notes'
 import Meetings from './modules/Meetings'
 import Calendar from './modules/Calendar'
+import Coaching from './modules/Coaching'
 import WeeklySync from './modules/WeeklySync'
 import Notifications from './modules/Notifications'
 import KnowledgeBase from './modules/KnowledgeBase'
@@ -243,6 +244,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             <Routes>
               <Route path="/" element={<OpsisWeekly />} />
               <Route path="/calendar" element={<Calendar />} />
+              <Route path="/coaching" element={<Coaching />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/knowledge" element={<KnowledgeBase />} />
@@ -298,7 +300,7 @@ function titleFor(path) {
     '/': 'Home Base', '/certifications': 'Certifications',
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
-    '/chat': 'Chat', '/updates': 'Updates', '/home': 'Home Base', '/notes': 'My Notes', '/get-to-know-you': 'Get to Know You', '/meetings': 'Meetings', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
+    '/chat': 'Chat', '/updates': 'Updates', '/home': 'Home Base', '/notes': 'My Notes', '/get-to-know-you': 'Get to Know You', '/meetings': 'Meetings', '/coaching': 'Coaching', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/quality': 'Quality', '/call-qa': 'Call QA', '/sales': 'Sales', '/rsn': 'RSN Pipeline', '/help': 'Help Center', '/eod': 'End of Day Report', '/tokens': 'Tokens', '/live': "Who's On",
   }
   return map[path] || 'Command Center'
