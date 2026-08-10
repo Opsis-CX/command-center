@@ -225,13 +225,13 @@ function StatusPicker({ me, uid, onClose, onSaved }) {
 
   const isOooSel = type === 'ooo'
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 1000, overflowY: 'auto', padding: '24px 16px' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(460px, 100%)', margin: '0 auto', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(460px, 100%)', maxHeight: 'calc(100vh - 24px)', display: 'flex', flexDirection: 'column', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+        <div style={{ flex: 'none', padding: '14px 18px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <b style={{ fontSize: 15 }}>Set your status</b>
           <button onClick={onClose} style={{ border: 0, background: 'transparent', fontSize: 20, lineHeight: 1, cursor: 'pointer', color: 'var(--ink-soft)' }}>×</button>
         </div>
-        <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', flex: '1 1 auto', minHeight: 0 }}>
           {/* custom status — type your own emoji + text */}
           <div>
             <div style={lbl}>Custom</div>
@@ -301,7 +301,7 @@ function StatusPicker({ me, uid, onClose, onSaved }) {
             {isOooSel && <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>auto-clears the evening of that day</span>}
           </div>
         </div>
-        <div style={{ padding: '14px 18px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ flex: 'none', padding: '14px 18px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
           <button onClick={clearAll} disabled={saving} style={{ border: '1px solid var(--line)', background: 'var(--canvas)', color: 'var(--ink-soft)', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13 }}>Clear status</button>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={onClose} disabled={saving} style={{ border: '1px solid var(--line)', background: 'var(--canvas)', color: 'var(--ink)', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
