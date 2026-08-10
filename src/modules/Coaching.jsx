@@ -150,13 +150,23 @@ function BookPanel({ user }) {
     if (busy) return
     const topic = window.prompt('What would you like to focus on? (optional)') ?? ''
     setBusy(true); setMsg('')
-    const { error } = await supabase.rpc('book_coaching_session', {
+    const { data, error } = await supabase.rpc('book_coaching_session', {
       p_asc_id: s.asc_id, p_date: s.session_date, p_start: s.start_time, p_slot_min: SLOT_MIN, p_topic: topic,
     })
-    setBusy(false)
-    if (error) { setMsg(error.message); return }
-    setMsg(`Booked ${fmtDate(s.session_date)} at ${fmtTime(s.start_time)} ✓`)
+    if (error) { setBusy(false); setMsg(error.message); return }
+    const when = `${fmtDate(s.session_date)} at ${fmtTime(s.start_time)}`
+    setMsg(`Booked ${when} ✓ — scheduling notetaker…`)
     loadSlots(ascId)
+    // Dispatch the Recall notetaker (mints/uses a video link + schedules the bot).
+    const sid = Array.isArray(data) ? data[0]?.id : data?.id
+    if (sid) {
+      try {
+        const { data: d2 } = await supabase.functions.invoke('coaching-dispatch', { body: { coaching_session_id: sid } })
+        if (d2?.ok) setMsg(`Booked ${when} ✓ · 🎙️ notetaker will join & record`)
+        else setMsg(`Booked ${when} ✓ · notetaker not set (${d2?.note || 'no room/link'})`)
+      } catch { setMsg(`Booked ${when} ✓ (notetaker will be scheduled shortly)`) }
+    }
+    setBusy(false)
   }
 
   if (loading) return <div style={card}>Loading…</div>
@@ -185,6 +195,9 @@ function BookPanel({ user }) {
         ) : (
           <div>Your coach: <b>{coach?.asc_name}</b></div>
         )}
+        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--muted,#6b7280)' }}>
+          🎙️ A notetaker automatically joins and records each session. The recording &amp; summary are private to you and your coach.
+        </div>
         {msg && <div style={{ marginTop: 10, color: msg.includes('✓') ? '#16a34a' : '#b91c1c' }}>{msg}</div>}
       </div>
 
@@ -220,6 +233,7 @@ function BookPanel({ user }) {
 function SessionsPanel({ user, mode }) {
   const [rows, setRows] = useState([])
   const [names, setNames] = useState({})
+  const [meetings, setMeetings] = useState({})   // meeting_id -> {status, recording_link, summary}
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
 
@@ -233,6 +247,12 @@ function SessionsPanel({ user, mode }) {
     const list = data || []
     setRows(list)
     setNames(await loadNames(list.flatMap(r => [r.agent_id, r.asc_id])))
+    // pull the linked private meeting rows (recording + summary) — RLS lets participants read
+    const mids = [...new Set(list.map(r => r.meeting_id).filter(Boolean))]
+    if (mids.length) {
+      const { data: mts } = await supabase.from('meetings').select('id, status, recording_link, summary').in('id', mids)
+      const map = {}; (mts || []).forEach(m => { map[m.id] = m }); setMeetings(map)
+    } else setMeetings({})
     setLoading(false)
   }, [mode, user.id])
 
@@ -251,21 +271,49 @@ function SessionsPanel({ user, mode }) {
   const upcoming = rows.filter(r => r.status === 'booked' && r.session_date >= today)
   const past = rows.filter(r => !(r.status === 'booked' && r.session_date >= today))
 
-  const Row = ({ r }) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border,#eee)' }}>
-      <div>
-        <div style={{ fontWeight: 600 }}>{fmtDate(r.session_date)} · {fmtTime(r.start_time)}–{fmtTime(r.end_time)}</div>
-        <div style={{ fontSize: 13, color: 'var(--muted,#6b7280)' }}>
-          {mode === 'asc' ? `Agent: ${names[r.agent_id] || '—'}` : `Coach: ${names[r.asc_id] || '—'}`}
-          {r.topic ? ` · ${r.topic}` : ''}
-          {r.status !== 'booked' ? ` · ${r.status}` : ''}
+  const captureLabel = (r) => {
+    const m = r.meeting_id ? meetings[r.meeting_id] : null
+    if (m && (m.status === 'done' || m.status === 'ready') && m.recording_link) return { text: '🎙️ Recorded', color: '#16a34a' }
+    if (m && m.status === 'error') return { text: '🎙️ not captured', color: '#b91c1c' }
+    if (r.capture === 'scheduled') return { text: '🎙️ notetaker scheduled', color: 'var(--muted,#6b7280)' }
+    if (r.capture === 'recording' || (m && (m.status === 'new' || m.status === 'transcribing' || m.status === 'summarizing'))) return { text: '🎙️ recording…', color: 'var(--muted,#6b7280)' }
+    if (r.capture === 'none') return { text: 'no notetaker (set ASC room)', color: 'var(--muted,#6b7280)' }
+    return null
+  }
+
+  const Row = ({ r }) => {
+    const m = r.meeting_id ? meetings[r.meeting_id] : null
+    const cap = captureLabel(r)
+    return (
+      <div style={{ padding: '10px 0', borderBottom: '1px solid var(--border,#eee)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontWeight: 600 }}>{fmtDate(r.session_date)} · {fmtTime(r.start_time)}–{fmtTime(r.end_time)}</div>
+            <div style={{ fontSize: 13, color: 'var(--muted,#6b7280)' }}>
+              {mode === 'asc' ? `Agent: ${names[r.agent_id] || '—'}` : `Coach: ${names[r.asc_id] || '—'}`}
+              {r.topic ? ` · ${r.topic}` : ''}
+              {r.status !== 'booked' ? ` · ${r.status}` : ''}
+              {cap ? <span style={{ color: cap.color }}> · {cap.text}</span> : null}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {r.status === 'booked' && r.meeting_url && r.session_date >= today && (
+              <a href={r.meeting_url} target="_blank" rel="noreferrer" style={{ ...btn, textDecoration: 'none' }}>Join</a>
+            )}
+            {m && m.recording_link && (
+              <a href={m.recording_link} target="_blank" rel="noreferrer" style={{ ...btn, textDecoration: 'none' }}>▶ Recording</a>
+            )}
+            {r.status === 'booked' && r.session_date >= today && (
+              <button style={btn} onClick={() => cancel(r)}>Cancel</button>
+            )}
+          </div>
         </div>
+        {m && m.summary && (
+          <div style={{ marginTop: 6, fontSize: 13, background: 'var(--bg,#f9fafb)', borderRadius: 8, padding: '8px 10px' }}>{m.summary}</div>
+        )}
       </div>
-      {r.status === 'booked' && r.session_date >= today && (
-        <button style={btn} onClick={() => cancel(r)}>Cancel</button>
-      )}
-    </div>
-  )
+    )
+  }
 
   return (
     <div>
@@ -288,9 +336,10 @@ function SessionsPanel({ user, mode }) {
 // TEAMS PANEL — assign agents to an ASC's team (admin / ASC)
 // ============================================================
 function TeamsPanel() {
-  const [teams, setTeams] = useState([])       // rows: {asc_id, asc_name, agent_id, agent_name, agent_active}
+  const [teams, setTeams] = useState([])       // rows: {asc_id, asc_name, asc_room_url, agent_id, agent_name, agent_active}
   const [ascs, setAscs] = useState([])
   const [agents, setAgents] = useState([])     // all assignable agents
+  const [rooms, setRooms] = useState({})       // asc_id -> room url (draft)
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
 
@@ -304,6 +353,7 @@ function TeamsPanel() {
     setTeams(t || [])
     setAscs(a || [])
     setAgents(ag || [])
+    const rm = {}; (t || []).forEach(r => { if (!(r.asc_id in rm)) rm[r.asc_id] = r.asc_room_url || '' }); setRooms(rm)
     setLoading(false)
   }, [])
 
@@ -314,6 +364,12 @@ function TeamsPanel() {
     const { error } = await supabase.rpc('set_coaching_team', { p_agent_id: agentId, p_asc_id: ascId || null })
     if (error) { setMsg(error.message); return }
     load()
+  }
+
+  async function saveRoom(ascId) {
+    setMsg('')
+    const { error } = await supabase.rpc('set_coaching_room', { p_asc_id: ascId, p_url: rooms[ascId] || '' })
+    setMsg(error ? error.message : 'Room saved ✓')
   }
 
   if (loading) return <div style={card}>Loading…</div>
@@ -345,6 +401,25 @@ function TeamsPanel() {
                 <option value="">— No team —</option>
                 {ascs.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
               </select>
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+
+      <div style={card}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>Coaching video rooms</div>
+        <p style={{ color: 'var(--muted,#6b7280)', marginTop: 0, fontSize: 13 }}>
+          Optional. If set, the notetaker joins this standing room (Zoom/Meet/Teams) for every session.
+          Leave blank to auto-generate a Google Meet link per session. Either way the session stays in Command Center only.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr auto', gap: '8px 10px', alignItems: 'center' }}>
+          {ascs.map(a => (
+            <React.Fragment key={a.id}>
+              <div>{a.full_name}</div>
+              <input value={rooms[a.id] || ''} placeholder="https://…  (blank = auto Meet link)"
+                onChange={e => setRooms(r => ({ ...r, [a.id]: e.target.value }))}
+                style={{ padding: 6, borderRadius: 8, border: '1px solid var(--border,#e5e7eb)' }} />
+              <button style={btn} onClick={() => saveRoom(a.id)}>Save</button>
             </React.Fragment>
           ))}
         </div>
