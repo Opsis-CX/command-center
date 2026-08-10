@@ -17,7 +17,7 @@ import RichTextEditor from './RichTextEditor'
 //   onClose(saved)- called after close; saved=true triggers refresh
 // ============================================================
 
-export default function TaskModal({ taskId, defaultStatus, defaultProject, onClose }) {
+export default function TaskModal({ taskId, defaultStatus, defaultProject, defaultName, defaultNotes, onClose }) {
   const {
     tasks, projects, clients, profiles, taskAssignees, projectMembers, userId, me,
     logActivity, refresh,
@@ -62,7 +62,9 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, onClo
     } else {
       setStatus(defaultStatus || 'todo')
       setProjectId(defaultProject || '')
-      notesRef.current?.setHtml('')
+      // Prefill from a source (e.g. a chat message turned into a task).
+      if (defaultName) setName(defaultName)
+      notesRef.current?.setHtml(defaultNotes || '')
     }
   }, [taskId]) // eslint-disable-line
 
