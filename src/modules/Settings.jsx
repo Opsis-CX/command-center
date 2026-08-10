@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { US_ZONES, detectedTZ, tzAbbrev, COMPANY_TZ } from '../lib/tz'
@@ -115,6 +115,102 @@ function NotificationPrefsCard({ userId }) {
   )
 }
 
+// ---- Profile photo (avatar) ----
+// Users upload a photo that replaces their coloured initials everywhere an
+// avatar shows. Stored in the public "avatars" bucket under "<uid>/..." so the
+// storage policy lets each person manage only their own file.
+function initialsFrom(name) {
+  return (name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+}
+function PhotoCard({ userId }) {
+  const [url, setUrl] = useState(null)
+  const [name, setName] = useState('')
+  const [color, setColor] = useState('#2563EB')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  const fileRef = useRef(null)
+
+  useEffect(() => {
+    if (!userId) return
+    let active = true
+    supabase.from('profiles').select('avatar_url, full_name, color').eq('id', userId).maybeSingle()
+      .then(({ data }) => {
+        if (!active) return
+        setUrl(data?.avatar_url || null)
+        setName(data?.full_name || '')
+        if (data?.color) setColor(data.color)
+        setLoaded(true)
+      })
+    return () => { active = false }
+  }, [userId])
+
+  async function onPick(e) {
+    const file = e.target.files?.[0]
+    if (fileRef.current) fileRef.current.value = ''
+    if (!file) return
+    setErr('')
+    if (!file.type.startsWith('image/')) { setErr('Please choose an image file.'); return }
+    if (file.size > 5 * 1024 * 1024) { setErr('Please choose an image under 5 MB.'); return }
+    setBusy(true)
+    try {
+      const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png'
+      // A fresh filename each time busts any CDN/browser cache of the old photo.
+      const path = `${userId}/avatar-${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type })
+      if (upErr) throw upErr
+      const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path)
+      const publicUrl = pub?.publicUrl
+      const { error: dbErr } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', userId)
+      if (dbErr) throw dbErr
+      setUrl(publicUrl)
+      window.dispatchEvent(new CustomEvent('cc:avatar-updated', { detail: publicUrl }))
+    } catch (e) {
+      setErr(e?.message || 'Upload failed. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onRemove() {
+    setBusy(true); setErr('')
+    try {
+      const { error } = await supabase.from('profiles').update({ avatar_url: null }).eq('id', userId)
+      if (error) throw error
+      setUrl(null)
+      window.dispatchEvent(new CustomEvent('cc:avatar-updated', { detail: null }))
+    } catch (e) {
+      setErr(e?.message || 'Could not remove photo.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!loaded) return null
+
+  return (
+    <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+      <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Your photo</div>
+      <p className="page-sub" style={{ marginTop: 0, fontSize: 13, marginBottom: 14 }}>
+        Add a profile photo — it replaces your initials across Command Center. Square images look best (JPG or PNG, up to 5 MB).
+      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        {url
+          ? <img src={url} alt={name} style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 0 2px var(--line)' }} />
+          : <span style={{ width: 72, height: 72, borderRadius: '50%', background: color + '22', color, fontSize: 26, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{initialsFrom(name)}</span>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" disabled={busy} onClick={() => fileRef.current?.click()}>
+            {busy ? 'Uploading…' : url ? 'Change photo' : 'Upload photo'}
+          </button>
+          {url && <button className="btn btn-ghost" disabled={busy} onClick={onRemove}>Remove</button>}
+          <input ref={fileRef} type="file" accept="image/*" onChange={onPick} style={{ display: 'none' }} />
+        </div>
+      </div>
+      {err && <div style={{ marginTop: 12, fontSize: 13, color: 'var(--failed, #c0392b)' }}>{err}</div>}
+    </div>
+  )
+}
+
 export default function Settings() {
   const { user } = useAuth()
   const [tz, setTz] = useState(COMPANY_TZ)
@@ -146,6 +242,8 @@ export default function Settings() {
     <div style={{ maxWidth: 560 }}>
       <h2 style={{ fontSize: 20, marginBottom: 4 }}>Settings</h2>
       <p className="page-sub" style={{ marginTop: 0, marginBottom: 24 }}>Your preferences for Command Center.</p>
+
+      <PhotoCard userId={user?.id} />
 
       <div className="card" style={{ padding: 20 }}>
         <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Your timezone</div>
