@@ -65,6 +65,7 @@ export default function Calendar() {
   const [assignees, setAssignees] = useState([])
   const [claims, setClaims] = useState([])
   const [blocks, setBlocks] = useState([])
+  const [coaching, setCoaching] = useState([])   // coaching sessions (own or team) — CC-only, never Google
   const [profiles, setProfiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [editEvent, setEditEvent] = useState(null)   // event obj or {} for new
@@ -92,7 +93,7 @@ export default function Calendar() {
       const { data: prof } = await supabase.from('profiles').select('timezone').eq('id', uid).maybeSingle()
       setViewerTZ(prof?.timezone || COMPANY_TZ)
     }
-    const [evRes, taskRes, taRes, clmRes, blkRes, profRes, subRes, feedRes, gtRes, geRes, timeRes, shareInRes, shareOutRes] = await Promise.all([
+    const [evRes, taskRes, taRes, clmRes, blkRes, profRes, subRes, feedRes, gtRes, geRes, timeRes, shareInRes, shareOutRes, coachRes] = await Promise.all([
       supabase.from('calendar_events').select('*'),
       fetchAllRows(() => supabase.from('tasks').select('id, name, due_date, priority, status, project_id').is('deleted_at', null).order('id')),
       fetchAllRows(() => supabase.from('task_assignees').select('task_id, profile_id').order('id')),
@@ -106,6 +107,7 @@ export default function Calendar() {
       fetchAllRows(() => supabase.from('time_entries').select('id, task_id, user_id, started_at, ended_at, duration_minutes').order('id')),
       supabase.from('calendar_shares').select('*').eq('viewer_id', uid),
       supabase.from('calendar_shares').select('*').eq('owner_id', uid),
+      supabase.from('coaching_sessions').select('id, asc_id, agent_id, session_date, start_time, end_time, status, topic, meeting_url').eq('status', 'booked'),
     ])
     setEvents(evRes.data || [])
     setTasks(taskRes.data || [])
@@ -125,6 +127,7 @@ export default function Calendar() {
     setTimeEntries(timeRes.data || [])
     setSharedWithMe(shareInRes.data || [])
     setMySharedOut(shareOutRes.data || [])
+    setCoaching(coachRes.data || [])
     setLoading(false)
   }, [])
 
@@ -241,12 +244,22 @@ export default function Calendar() {
         color: shareByOwner[c.profile_id]?.color || '#0891B2',
       }))
 
-    return [...evs, ...ivs, ...feeds, ...gcal, ...sharedEvs, ...sharedGcal, ...sharedIvs].sort((a, b) => {
+    const coachIvs = coaching.filter(s => s.session_date === ds).map(s => {
+      const other = s.agent_id === userId ? nameOf(s.asc_id) : nameOf(s.agent_id)
+      return {
+        kind: 'coaching', id: 'co-' + s.id, title: s.agent_id === userId ? `🎯 Coaching with ${other}` : `🎯 Coaching: ${other}`, allDay: false,
+        start: toViewerHHMM(s.session_date, s.start_time, COMPANY_TZ, viewerTZ),
+        end: toViewerHHMM(s.session_date, s.end_time, COMPANY_TZ, viewerTZ),
+        color: '#DB2777', hangoutLink: s.meeting_url || undefined,
+      }
+    })
+
+    return [...evs, ...ivs, ...feeds, ...gcal, ...sharedEvs, ...sharedGcal, ...sharedIvs, ...coachIvs].sort((a, b) => {
       if (a.allDay && !b.allDay) return -1
       if (!a.allDay && b.allDay) return 1
       return (a.start || '').localeCompare(b.start || '')
     })
-  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn, events, claims, sharedWithMe, hiddenShares, profiles, userId, viewerTZ])
+  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn, events, claims, coaching, sharedWithMe, hiddenShares, profiles, userId, viewerTZ])
 
   const tasksOn = useCallback((ds) => {
     const due = myTasks.filter(t => t.due_date === ds)
