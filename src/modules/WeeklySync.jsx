@@ -95,17 +95,20 @@ export default function WeeklySync() {
   const [tab, setTab] = useState('mine')            // 'mine' | 'presentation'
   const [updates, setUpdates] = useState([])
   const [profiles, setProfiles] = useState([])
+  const [hygiene, setHygiene] = useState([])   // per-person live task-board counts
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [upRes, profRes] = await Promise.all([
+    const [upRes, profRes, hygRes] = await Promise.all([
       supabase.from('weekly_updates').select('*').eq('week_start_date', week),
       supabase.from('profiles').select('id, full_name, role').order('full_name'),
+      supabase.rpc('weekly_task_hygiene'),
     ])
     setUpdates(upRes.data || [])
     setProfiles(profRes.data || [])
+    setHygiene(hygRes.data || [])
     setLoading(false)
   }, [week])
 
@@ -114,6 +117,7 @@ export default function WeeklySync() {
 
   const mine = updates.find(u => u.profile_id === userId)
   const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || 'Unknown'
+  const hygieneOf = (id) => hygiene.find(h => h.profile_id === id)
   const locked = isWeekLocked(week)
 
   return (
@@ -139,8 +143,8 @@ export default function WeeklySync() {
 
       {loading ? <p className="page-sub">Loading…</p> :
         tab === 'mine'
-          ? <MyUpdate week={week} userId={userId} existing={mine} locked={locked} lockLabelText={lockLabel(week)} dueLabelText={dueLabel(week)} onSaved={(msg) => { load(); flash(msg) }} />
-          : <Presentation week={week} updates={updates} profiles={profiles} nameOf={nameOf} />
+          ? <MyUpdate week={week} userId={userId} existing={mine} locked={locked} lockLabelText={lockLabel(week)} dueLabelText={dueLabel(week)} myHygiene={hygieneOf(userId)} onSaved={(msg) => { load(); flash(msg) }} />
+          : <Presentation week={week} updates={updates} profiles={profiles} nameOf={nameOf} hygiene={hygiene} />
       }
     </div>
   )
@@ -154,7 +158,82 @@ function TabBtn({ active, onClick, children }) {
   )
 }
 
-function MyUpdate({ week, userId, existing, locked, lockLabelText, dueLabelText, onSaved }) {
+// ---- Task-board hygiene (live counts from Project Management) ----
+// Counts come from the weekly_task_hygiene() RPC: open (assigned & not done),
+// past due, no due date, and unassigned tasks the person created.
+function HygieneChips({ h }) {
+  const open = h?.open_count || 0
+  const pastDue = h?.past_due_count || 0
+  const noDue = h?.no_due_count || 0
+  const unassigned = h?.unassigned_created_count || 0
+  const clean = pastDue === 0 && noDue === 0 && unassigned === 0
+  const chip = (val, label, tone, title) => {
+    const hot = val > 0 && tone !== 'info'
+    const bg = hot ? (tone === 'bad' ? 'var(--failed-bg)' : 'var(--needed-bg)') : 'var(--canvas)'
+    const fg = hot ? (tone === 'bad' ? 'var(--failed)' : 'var(--needed)') : 'var(--ink-soft)'
+    return (
+      <span title={title} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 5, fontSize: 12.5, fontWeight: 600, padding: '4px 10px', borderRadius: 999, border: '1px solid var(--line)', background: bg, color: fg }}>
+        <b style={{ fontSize: 13.5, color: hot ? 'inherit' : 'var(--ink)' }}>{val}</b> {label}
+      </span>
+    )
+  }
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+      {chip(open, 'open', 'info', 'Open tasks assigned to you (not done)')}
+      {chip(pastDue, 'past due', 'bad', 'Assigned to you, not done, due date has passed')}
+      {chip(noDue, 'no due date', 'warn', 'Assigned to you, not done, missing a due date')}
+      {chip(unassigned, 'unassigned', 'warn', 'Tasks you created that have no assignee')}
+      {clean && <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--passed)' }}>✓ clean</span>}
+    </div>
+  )
+}
+
+function HygieneTable({ hygiene, profiles }) {
+  const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || 'Unknown'
+  const rows = (hygiene || [])
+    .map(h => ({ ...h, name: nameOf(h.profile_id), problems: (h.past_due_count || 0) + (h.no_due_count || 0) + (h.unassigned_created_count || 0) }))
+    .filter(r => (r.open_count || 0) > 0 || (r.unassigned_created_count || 0) > 0)
+    .sort((a, b) => b.problems - a.problems || (b.open_count || 0) - (a.open_count || 0) || a.name.localeCompare(b.name))
+  if (rows.length === 0) return null
+  const th = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', padding: '8px 10px' }
+  const td = { padding: '8px 10px', fontSize: 13, borderTop: '1px solid var(--line-soft)' }
+  const num = (v, tone) => <span style={{ fontWeight: 700, color: v > 0 ? (tone === 'bad' ? 'var(--failed)' : tone === 'warn' ? 'var(--needed)' : 'var(--ink)') : 'var(--ink-soft)' }}>{v}</span>
+  return (
+    <div className="card" style={{ padding: 16, marginBottom: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>🧹 Task board hygiene <span style={{ fontWeight: 500, color: 'var(--ink-soft)', fontSize: 12.5 }}>— live from Project Management</span></div>
+        <a href="/projects" style={{ fontSize: 12.5, color: 'var(--accent)', fontWeight: 600 }}>Open the board →</a>
+      </div>
+      <p className="page-sub" style={{ marginTop: 0, fontSize: 12.5, marginBottom: 10 }}>Clear the highlighted numbers as you review: assign owners, add due dates, and close or reschedule what's overdue.</p>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
+          <thead>
+            <tr>
+              <th style={{ ...th, textAlign: 'left' }}>Person</th>
+              <th style={{ ...th, textAlign: 'right' }}>Open</th>
+              <th style={{ ...th, textAlign: 'right' }}>Past due</th>
+              <th style={{ ...th, textAlign: 'right' }}>No due date</th>
+              <th style={{ ...th, textAlign: 'right' }} title="Tasks they created with no assignee">Unassigned</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.profile_id}>
+                <td style={{ ...td, fontWeight: 600 }}>{r.name}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{num(r.open_count, 'info')}</td>
+                <td style={{ ...td, textAlign: 'right', background: r.past_due_count > 0 ? 'var(--failed-bg)' : 'transparent' }}>{num(r.past_due_count, 'bad')}</td>
+                <td style={{ ...td, textAlign: 'right', background: r.no_due_count > 0 ? 'var(--needed-bg)' : 'transparent' }}>{num(r.no_due_count, 'warn')}</td>
+                <td style={{ ...td, textAlign: 'right', background: r.unassigned_created_count > 0 ? 'var(--needed-bg)' : 'transparent' }}>{num(r.unassigned_created_count, 'warn')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function MyUpdate({ week, userId, existing, locked, lockLabelText, dueLabelText, myHygiene, onSaved }) {
   const [busy, setBusy] = useState(false)
   // One HTML value per section; htmlRefs holds the latest for each.
   const htmlRefs = useRef({})
@@ -192,6 +271,13 @@ function MyUpdate({ week, userId, existing, locked, lockLabelText, dueLabelText,
 
   return (
     <div style={{ maxWidth: 720 }}>
+      {myHygiene && (
+        <div className="card" style={{ padding: 14, marginBottom: 16 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 8 }}>🧹 Your task board <span style={{ fontWeight: 500, color: 'var(--ink-soft)', fontSize: 12 }}>— tidy these up before you submit</span></div>
+          <HygieneChips h={myHygiene} />
+          <div style={{ marginTop: 8 }}><a href="/projects" style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>Open your board →</a></div>
+        </div>
+      )}
       {locked && (
         <div className="card" style={{ padding: '10px 14px', marginBottom: 16, background: 'var(--canvas)', border: '1px solid var(--line)', color: 'var(--ink-soft)', fontSize: 13, fontWeight: 500 }}>
           🔒 This week locked at {lockLabelText}. Submissions and edits are closed{submitted ? '. Your submitted update is shown below (read-only).' : ' — nothing was submitted for you this week.'}
@@ -241,24 +327,25 @@ function MyUpdate({ week, userId, existing, locked, lockLabelText, dueLabelText,
   )
 }
 
-function Presentation({ week, updates, profiles, nameOf }) {
+function Presentation({ week, updates, profiles, nameOf, hygiene }) {
   const submitted = updates.filter(u => u.submitted_at)
   const submittedIds = new Set(submitted.map(u => u.profile_id))
   // Only non-agents are expected to submit, so only they can be "missing".
   const expected = profiles.filter(p => String(p.role || 'agent').trim().toLowerCase() !== 'agent')
   const missing = expected.filter(p => !submittedIds.has(p.id))
 
-  if (submitted.length === 0) {
-    return (
-      <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
-        <h3 style={{ fontSize: 14, marginBottom: 4 }}>No submissions yet for this week</h3>
-        <p style={{ fontSize: 13 }}>Updates will assemble here as people submit them.</p>
-      </div>
-    )
-  }
-
   return (
     <div>
+      {/* Live task-board hygiene for the whole team — review and clean weekly. */}
+      <HygieneTable hygiene={hygiene} profiles={profiles} />
+
+      {submitted.length === 0 ? (
+        <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
+          <h3 style={{ fontSize: 14, marginBottom: 4 }}>No submissions yet for this week</h3>
+          <p style={{ fontSize: 13 }}>Updates will assemble here as people submit them.</p>
+        </div>
+      ) : (
+      <>
       {/* submission status bar */}
       <div className="card" style={{ padding: '12px 16px', marginBottom: 18, display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         <div><span style={{ fontSize: 22, fontWeight: 700, color: 'var(--passed)' }}>{submitted.length}</span> <span style={{ fontSize: 13, color: 'var(--ink-soft)' }}>submitted</span></div>
@@ -293,6 +380,8 @@ function Presentation({ week, updates, profiles, nameOf }) {
             </div>
           ))}
       </div>
+      </>
+      )}
     </div>
   )
 }
