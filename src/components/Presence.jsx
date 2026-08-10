@@ -13,6 +13,7 @@
 // so no special backend is needed. Expired statuses auto-clear (UI-side here + an hourly
 // cron server-side).
 import { useState, useEffect, useCallback, useRef } from 'react'
+import EmojiPicker from 'emoji-picker-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 
@@ -183,6 +184,8 @@ function StatusPicker({ me, uid, onClose, onSaved }) {
     return t.toISOString().slice(0, 10)
   })
   const [saving, setSaving] = useState(false)
+  const [emojiOpen, setEmojiOpen] = useState(false)   // full emoji picker open?
+  const emojiBtnRef = useRef(null)
   // The user's own saved custom presets (array of { emoji, text }).
   const [myPresets, setMyPresets] = useState(() => Array.isArray(me?.custom_status_presets) ? me.custom_status_presets : [])
 
@@ -236,8 +239,26 @@ function StatusPicker({ me, uid, onClose, onSaved }) {
           <div>
             <div style={lbl}>Custom</div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input value={emoji} onChange={(e) => setEmoji(e.target.value.slice(0, 4))} placeholder="🙂" aria-label="Status emoji"
-                style={{ width: 46, textAlign: 'center', fontSize: 20, padding: '8px 0', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--canvas)', color: 'var(--ink)' }} />
+              {/* Emoji picker button — click to choose ANY emoji (not just the quick row). */}
+              <button ref={emojiBtnRef} type="button" onClick={() => setEmojiOpen(o => !o)} aria-label="Pick a status emoji"
+                title="Pick an emoji"
+                style={{ width: 46, height: 42, textAlign: 'center', fontSize: 20, border: '1px solid ' + (emojiOpen ? 'var(--accent)' : 'var(--line)'), borderRadius: 10, background: 'var(--canvas)', color: 'var(--ink)', cursor: 'pointer', flex: 'none' }}>
+                {emoji || '🙂'}
+              </button>
+              {emojiOpen && (() => {
+                const r = emojiBtnRef.current?.getBoundingClientRect()
+                const top = r ? Math.min(r.bottom + 6, window.innerHeight - 396) : 80
+                const left = r ? Math.min(Math.max(8, r.left), window.innerWidth - 328) : 20
+                return (
+                  <>
+                    <div onClick={() => setEmojiOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1100 }} />
+                    <div style={{ position: 'fixed', top, left, zIndex: 1101 }}>
+                      <EmojiPicker onEmojiClick={(ev) => { setEmoji(ev.emoji); if (type !== 'ooo') setType('custom'); setEmojiOpen(false) }}
+                        width={320} height={380} previewConfig={{ showPreview: false }} searchDisabled={false} />
+                    </div>
+                  </>
+                )
+              })()}
               <input value={text} onChange={(e) => { setText(e.target.value); if (type !== 'ooo') setType('custom') }} placeholder="What's your status?" maxLength={80}
                 style={{ flex: 1, fontSize: 14, padding: '9px 12px', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--canvas)', color: 'var(--ink)' }} />
               <button onClick={savePreset} disabled={!canSavePreset || alreadySaved}
