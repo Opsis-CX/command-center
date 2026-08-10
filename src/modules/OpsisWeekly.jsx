@@ -208,29 +208,6 @@ export default function OpsisWeekly() {
           </Card>
         )}
 
-        {/* Updates — hidden until there is at least one */}
-        {anns.length > 0 && (
-          <Card span2 title="Updates" ico="📣" tag={canSeeCompany ? 'All clients' : 'Your teams + general'}>
-            {anns.map(a => {
-              const c = CAT[a.category] || CAT.general
-              return (
-                <div key={a.id} style={{ padding: '11px 0', borderTop: '1px solid var(--line-soft)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', padding: '2px 8px', borderRadius: 20, background: c.color + '22', color: c.color }}>{c.label}</span>
-                    {a.pinned && <span title="Pinned" style={{ fontSize: 11 }}>📌</span>}
-                  </div>
-                  <div style={{ fontSize: 13.5, fontWeight: 600, margin: '6px 0 2px' }}>{a.title}</div>
-                  {a.body && <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}><RichContent html={a.body} /></div>}
-                  <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 5, opacity: .85 }}>
-                    {names[a.author_id] || 'Someone'} · {new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </div>
-                </div>
-              )
-            })}
-            <div style={{ marginTop: 12 }}><a href="/updates" style={link}>See all updates →</a></div>
-          </Card>
-        )}
-
         {/* Spotlight */}
         {spotlights.length > 0 && (
           <Card title="Team Spotlight" ico="⭐" tag="Weekly pick">
@@ -293,6 +270,30 @@ export default function OpsisWeekly() {
             <a style={helpLink} href="/schedule">🗓️ My Schedule</a>
           </div>
         </Card>
+
+        {/* Updates — moved to the bottom: agents also have a dedicated Updates tab,
+            so the highlights above take priority on Home Base. Hidden until there's at least one. */}
+        {anns.length > 0 && (
+          <Card span2 title="Updates" ico="📣" tag={canSeeCompany ? 'All clients' : 'Your teams + general'}>
+            {anns.map(a => {
+              const c = CAT[a.category] || CAT.general
+              return (
+                <div key={a.id} style={{ padding: '11px 0', borderTop: '1px solid var(--line-soft)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', padding: '2px 8px', borderRadius: 20, background: c.color + '22', color: c.color }}>{c.label}</span>
+                    {a.pinned && <span title="Pinned" style={{ fontSize: 11 }}>📌</span>}
+                  </div>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, margin: '6px 0 2px' }}>{a.title}</div>
+                  {a.body && <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}><RichContent html={a.body} /></div>}
+                  <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 5, opacity: .85 }}>
+                    {names[a.author_id] || 'Someone'} · {new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </div>
+                </div>
+              )
+            })}
+            <div style={{ marginTop: 12 }}><a href="/updates" style={link}>See all updates →</a></div>
+          </Card>
+        )}
 
       </div>
     </div>
