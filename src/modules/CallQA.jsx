@@ -298,6 +298,11 @@ export default function CallQA({ portal = false } = {}) {
   const [agent, setAgent] = useState('all')
   const [topic, setTopic] = useState('all')
   const [program, setProgram] = useState('garagedoor') // GarageCo vs internal programs (Lavin / Open Invoices)
+  // Overview is served by a server-side aggregate (callqa_overview) for managers, so
+  // it renders instantly instead of waiting for the full row download. Agents/portal
+  // keep the client-side path (RLS-scoped rows). Verified to match the row math.
+  const [ovData, setOvData] = useState(null)
+  const [ovErr, setOvErr] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -334,6 +339,36 @@ export default function CallQA({ portal = false } = {}) {
     setLoading(false)
   }, [canManage, program])
   useEffect(() => { load() }, [load])
+  // Server-side Overview aggregate (managers only) — instant landing.
+  useEffect(() => {
+    if (!canManage) { setOvData(null); return }
+    let active = true
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const today = new Date()
+    let pStart, pEnd, prevStart, prevEnd
+    if (startDate || endDate) {
+      const s = startDate ? new Date(startDate + 'T00:00:00') : new Date('2000-01-01T00:00:00')
+      const e = endDate ? new Date(endDate + 'T00:00:00') : today
+      pStart = fmt(s); pEnd = fmt(e)
+      const span = e - s
+      const pe = new Date(s.getTime() - 86400000)
+      const ps = new Date(s.getTime() - 86400000 - span)
+      prevStart = fmt(ps); prevEnd = fmt(pe)
+    } else {
+      const s = new Date(today); s.setDate(s.getDate() - days)
+      pStart = fmt(s); pEnd = fmt(today)
+      const pe = new Date(s); pe.setDate(pe.getDate() - 1)
+      const ps = new Date(s); ps.setDate(ps.getDate() - days - 1)
+      prevStart = fmt(ps); prevEnd = fmt(pe)
+    }
+    setOvData(null); setOvErr('')
+    supabase.rpc('callqa_overview', {
+      p_campaign: program === 'all' ? null : program,
+      p_start: pStart, p_end: pEnd, p_prev_start: prevStart, p_prev_end: prevEnd,
+      p_brand: brand === 'all' ? null : brand, p_agent: agent === 'all' ? null : agent, p_topic: topic === 'all' ? null : topic,
+    }).then(({ data, error }) => { if (!active) return; if (error) setOvErr(error.message); else setOvData(data) })
+    return () => { active = false }
+  }, [canManage, program, days, startDate, endDate, brand, agent, topic])
   // Current user's display name, used when they add a note.
   useEffect(() => {
     let active = true
@@ -627,7 +662,11 @@ export default function CallQA({ portal = false } = {}) {
         {TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} style={{ border: 'none', background: 'none', padding: '10px 14px', cursor: 'pointer', fontWeight: 600, fontSize: 14, color: tab === k ? TEAL : '#64748b', borderBottom: tab === k ? `2px solid ${TEAL}` : '2px solid transparent' }}>{l}</button>)}
       </div>
 
-      {loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
+      {tab === 'overview' && canManage ? (
+        ovErr ? <Card style={{ color: '#b71c1c' }}>Error: {ovErr}</Card>
+          : ovData ? <Overview agg={ovData.agg} trend={ovData.trend} prevAgg={ovData.prev} />
+            : <div style={{ color: '#64748b' }}>Loading…</div>
+      ) : loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
         <>
           {tab === 'overview' && <Overview agg={agg} trend={trend} prevAgg={prevAgg} />}
           {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} />}
