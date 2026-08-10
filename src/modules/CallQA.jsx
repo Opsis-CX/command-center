@@ -449,8 +449,30 @@ export default function CallQA({ portal = false } = {}) {
     const oppsP = inWin.filter((r) => r.opportunity)
     const bookedP = oppsP.filter((r) => r.outcome === 'Booked')
     if (!inWin.length) return null
-    return { n: nP, avg: nP ? scoredP.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / nP : null, opps: oppsP.length, booked: bookedP.length, conv: oppsP.length ? (bookedP.length / oppsP.length) * 100 : null }
+    return { n: nP, avg: nP ? scoredP.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / nP : null, opps: oppsP.length, booked: bookedP.length, conv: oppsP.length ? (bookedP.length / oppsP.length) * 100 : null, winnable: inWin.filter((r) => isMissedOpp(r) && r.winnable).length }
   }, [scoped, days, startDate, endDate, customRange, brand, agent, topic])
+
+  // Prior-period rows for the DATE-ONLY slice (matches `dateFiltered`, which the
+  // Scorecards hub uses). Empty when there's no comparable prior window.
+  const prevDateRows = useMemo(() => {
+    let start, end
+    if (customRange) {
+      const s = startDate ? new Date(startDate + 'T00:00:00') : null
+      const e = endDate ? new Date(endDate + 'T23:59:59.999') : new Date()
+      if (!s) return []
+      const span = e - s
+      end = new Date(s.getTime() - 1); start = new Date(s.getTime() - span - 1)
+    } else {
+      if (days >= 3650) return []
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days)
+      end = new Date(cutoff.getTime() - 1); start = new Date(cutoff.getTime()); start.setDate(start.getDate() - days)
+    }
+    return scoped.filter((r) => {
+      const c = r.call || {}
+      const d = c.call_date ? new Date(c.call_date + 'T00:00:00') : new Date(r.created_at)
+      return d >= start && d <= end
+    })
+  }, [scoped, days, startDate, endDate, customRange])
 
   const byAgent = useMemo(() => {
     const m = new Map()
@@ -584,10 +606,10 @@ export default function CallQA({ portal = false } = {}) {
       {loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
         <>
           {tab === 'overview' && <Overview agg={agg} trend={trend} prevAgg={prevAgg} />}
-          {tab === 'scorecards' && <Scorecards rows={dateFiltered} viewAll={viewAll} onOpen={setSelected} />}
+          {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} />}
           {tab === 'opportunities' && <Opportunities rows={filtered} agg={agg} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'missed' && <MissedOpps rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
-          {tab === 'conversion' && <Conversion rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
+          {tab === 'conversion' && <Conversion rows={filtered} prevAgg={prevAgg} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'bookings' && <BookingsCard rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'calls' && <Calls rows={filtered} onOpen={setSelected} viewAll={viewAll} canManage={canManage} onSetReviewed={setReviewed} busy={busy} />}
           {tab === 'fails' && <EpicFails rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
@@ -896,7 +918,7 @@ function EpicFails({ rows, onOpen, viewAll }) {
 }
 
 // ---- Conversion: revenue intelligence (win/loss drivers + leaks) ----
-function Conversion({ rows, onOpen, viewAll }) {
+function Conversion({ rows, onOpen, viewAll, prevAgg }) {
   const opps = rows.filter((r) => r.opportunity)
   const booked = opps.filter((r) => r.outcome === 'Booked')
   const lost = opps.filter((r) => r.outcome !== 'Booked')
@@ -927,6 +949,7 @@ function Conversion({ rows, onOpen, viewAll }) {
   const [winSort, winOnSort] = useSort()
   const agAcc = { Agent: (a) => a.name, Opportunities: (a) => a.opps, Booked: (a) => a.booked, Conversion: (a) => a.conv, 'Asked for booking': (a) => a.askRate }
   const winAcc = { Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'What they wanted': (r) => r.opportunity_context, 'What would have won it': (r) => r.revenue_tip }
+  const agView = useTableView(sortRows(agents, agSort, agAcc), { pageSize: 15, searchText: (a) => a.name })
   const Leak = ({ label, n, sub, of }) => (
     <Card style={{ flex: 1, minWidth: 180 }}>
       <div style={{ fontSize: 26, fontWeight: 800, color: '#b71c1c' }}>{n}</div>
@@ -939,12 +962,12 @@ function Conversion({ rows, onOpen, viewAll }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* funnel */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <Tile label="Opportunities" value={opps.length} />
+        <Tile label="Opportunities" value={opps.length} delta={<Delta now={opps.length} prev={prevAgg?.opps} digits={0} suffix="" />} />
         <div style={{ color: '#94a3b8', fontSize: 20 }}>→</div>
-        <Tile label="Booked / Sold" value={booked.length} color="#1b5e20" />
+        <Tile label="Booked / Sold" value={booked.length} color="#1b5e20" delta={<Delta now={booked.length} prev={prevAgg?.booked} digits={0} suffix="" />} />
         <div style={{ color: '#94a3b8', fontSize: 20 }}>→</div>
-        <Tile label="Conversion" value={`${conv.toFixed(1)}%`} color={TEAL} sub={`${booked.length} of ${opps.length} opps`} />
-        <Tile label="Winnable lost" value={winnableLost} color="#b71c1c" sub={`${pctOf(winnableLost, lost.length)}% of lost · recoverable`} />
+        <Tile label="Conversion" value={`${conv.toFixed(1)}%`} color={TEAL} sub={`${booked.length} of ${opps.length} opps`} delta={<Delta now={conv} prev={prevAgg?.conv} suffix="pp" />} />
+        <Tile label="Winnable lost" value={winnableLost} color="#b71c1c" sub={`${pctOf(winnableLost, lost.length)}% of lost · recoverable`} delta={<Delta now={winnableLost} prev={prevAgg?.winnable} digits={0} suffix="" good="down" />} />
       </div>
 
       <Card style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
@@ -976,9 +999,11 @@ function Conversion({ rows, onOpen, viewAll }) {
       {viewAll && (
         <Card style={{ padding: 0 }}>
           <div style={{ fontWeight: 700, padding: 14 }}>Conversion by agent</div>
+          <TableToolbar view={agView} placeholder="Search agents…" />
+          <div style={{ overflowX: 'auto', maxHeight: 620 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <SortHead cols={['Agent', 'Opportunities', 'Booked', 'Conversion', 'Asked for booking']} sort={agSort} onSort={agOnSort} />
-            <tbody>{sortRows(agents, agSort, agAcc).map((a) => (
+            <tbody>{agView.pageRows.map((a) => (
               <tr key={a.name} style={{ borderTop: '1px solid #eef2f7' }}>
                 <td style={{ padding: '8px 12px', fontWeight: 600 }}>{a.name}</td>
                 <td style={{ padding: '8px 12px' }}>{a.opps}</td>
@@ -988,6 +1013,7 @@ function Conversion({ rows, onOpen, viewAll }) {
               </tr>
             ))}</tbody>
           </table>
+          </div>
         </Card>
       )}
 
@@ -1727,60 +1753,68 @@ function ExportBar({ name, title, subtitle, build }) {
 const AI_CSRS = new Set(['Dane', 'Sophia', 'Jason'])
 const isAiCsr = (name) => AI_CSRS.has((name || '').trim())
 
-function Scorecards({ rows, viewAll, onOpen }) {
+// Aggregate a row set into the scorecard shape (overall + per-brand + per-agent +
+// coaching gaps). Pulled out so the current and prior periods use identical math.
+function buildScorecardData(rows) {
+  const P = (n, d) => (d ? (n / d) * 100 : null)
+  const scored = rows.filter(isScored)
+  const overall = {
+    scored: scored.length,
+    avg: scored.length ? scored.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / scored.length : null,
+    opps: rows.filter((r) => r.opportunity).length,
+    booked: rows.filter((r) => r.opportunity && r.outcome === 'Booked').length,
+    missed: rows.filter(isMissedOpp).length,
+    winnable: rows.filter((r) => isMissedOpp(r) && r.winnable).length,
+    large: rows.filter((r) => isMissedOpp(r) && valueTier(r) === 3).length,
+  }
+  const bm = new Map()
+  rows.forEach((r) => {
+    const b = r.call?.brand || '—'
+    if (!bm.has(b)) bm.set(b, { brand: b, scores: [], opps: 0, booked: 0, ccYes: 0, collYes: 0, missed: 0, winnable: 0, large: 0, agents: new Set() })
+    const o = bm.get(b); if (isScored(r)) o.scores.push(Number(r.score_pct) || 0)
+    if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') { o.booked++; if (r.asked_for_cc === true) o.ccYes++; if (r.collected_cc === true) o.collYes++ } }
+    if (isMissedOpp(r)) { o.missed++; if (r.winnable) o.winnable++; if (valueTier(r) === 3) o.large++ }
+    const an = agentOf(r); if (an) o.agents.add(an)
+  })
+  const brands = Array.from(bm.values()).map((o) => ({
+    ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
+    conv: P(o.booked, o.opps), cardRate: P(o.ccYes, o.booked), collectRate: P(o.collYes, o.ccYes), calls: o.scores.length, nAgents: o.agents.size,
+  })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
+
+  const am = new Map()
+  rows.forEach((r) => {
+    const an = agentOf(r); const b = r.call?.brand || '—'; const k = an + '|||' + b
+    if (!am.has(k)) am.set(k, { name: an, brand: b, scores: [], opps: 0, booked: 0, ccYes: 0, collYes: 0, asked: 0, focus: {}, win: {} })
+    const o = am.get(k); if (isScored(r)) o.scores.push(Number(r.score_pct) || 0)
+    if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') { o.booked++; if (r.asked_for_cc === true) o.ccYes++; if (r.collected_cc === true) o.collYes++ } if (r.asked_for_booking) o.asked++ }
+    ;(r.improvement_tags || []).forEach((t) => o.focus[t] = (o.focus[t] || 0) + 1)
+    ;(r.strength_tags || []).forEach((t) => o.win[t] = (o.win[t] || 0) + 1)
+  })
+  const top = (m) => Object.entries(m).sort((a, b) => b[1] - a[1]).map((x) => x[0])
+  const agents = Array.from(am.values()).filter((o) => o.scores.length >= 1 && o.name && o.name !== 'Unknown').map((o) => ({
+    ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
+    calls: o.scores.length, conv: P(o.booked, o.opps), askRate: P(o.asked, o.opps), cardRate: P(o.ccYes, o.booked), collectRate: P(o.collYes, o.ccYes),
+    topFocus: top(o.focus), topWin: top(o.win), ai: isAiCsr(o.name),
+  })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
+
+  // Coaching gaps are a human-only view (we don't coach AI CSRs).
+  const gaps = (brand) => {
+    const m = {}
+    agents.filter((a) => (!brand || a.brand === brand) && !a.ai).forEach((a) => { (a.topFocus.slice(0, 2)).forEach((t) => m[t] = (m[t] || 0) + 1) })
+    return Object.entries(m).sort((a, b) => b[1] - a[1])
+  }
+  return { overall, brands, agents, gaps }
+}
+
+function Scorecards({ rows, prevRows, viewAll, onOpen }) {
   const [tier, setTier] = useState('exec')
   const [mgrBrand, setMgrBrand] = useState('')
   const [agentKey, setAgentKey] = useState('')
-  const P = (n, d) => (d ? (n / d) * 100 : null)
-  const data = useMemo(() => {
-    const scored = rows.filter(isScored)
-    const overall = {
-      scored: scored.length,
-      avg: scored.length ? scored.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / scored.length : null,
-      opps: rows.filter((r) => r.opportunity).length,
-      booked: rows.filter((r) => r.opportunity && r.outcome === 'Booked').length,
-      missed: rows.filter(isMissedOpp).length,
-      winnable: rows.filter((r) => isMissedOpp(r) && r.winnable).length,
-      large: rows.filter((r) => isMissedOpp(r) && valueTier(r) === 3).length,
-    }
-    const bm = new Map()
-    rows.forEach((r) => {
-      const b = r.call?.brand || '—'
-      if (!bm.has(b)) bm.set(b, { brand: b, scores: [], opps: 0, booked: 0, ccYes: 0, collYes: 0, missed: 0, winnable: 0, large: 0, agents: new Set() })
-      const o = bm.get(b); if (isScored(r)) o.scores.push(Number(r.score_pct) || 0)
-      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') { o.booked++; if (r.asked_for_cc === true) o.ccYes++; if (r.collected_cc === true) o.collYes++ } }
-      if (isMissedOpp(r)) { o.missed++; if (r.winnable) o.winnable++; if (valueTier(r) === 3) o.large++ }
-      const an = agentOf(r); if (an) o.agents.add(an)
-    })
-    const brands = Array.from(bm.values()).map((o) => ({
-      ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
-      conv: P(o.booked, o.opps), cardRate: P(o.ccYes, o.booked), collectRate: P(o.collYes, o.ccYes), calls: o.scores.length, nAgents: o.agents.size,
-    })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
-
-    const am = new Map()
-    rows.forEach((r) => {
-      const an = agentOf(r); const b = r.call?.brand || '—'; const k = an + '|||' + b
-      if (!am.has(k)) am.set(k, { name: an, brand: b, scores: [], opps: 0, booked: 0, ccYes: 0, collYes: 0, asked: 0, focus: {}, win: {} })
-      const o = am.get(k); if (isScored(r)) o.scores.push(Number(r.score_pct) || 0)
-      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') { o.booked++; if (r.asked_for_cc === true) o.ccYes++; if (r.collected_cc === true) o.collYes++ } if (r.asked_for_booking) o.asked++ }
-      ;(r.improvement_tags || []).forEach((t) => o.focus[t] = (o.focus[t] || 0) + 1)
-      ;(r.strength_tags || []).forEach((t) => o.win[t] = (o.win[t] || 0) + 1)
-    })
-    const top = (m) => Object.entries(m).sort((a, b) => b[1] - a[1]).map((x) => x[0])
-    const agents = Array.from(am.values()).filter((o) => o.scores.length >= 1 && o.name && o.name !== 'Unknown').map((o) => ({
-      ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
-      calls: o.scores.length, conv: P(o.booked, o.opps), askRate: P(o.asked, o.opps), cardRate: P(o.ccYes, o.booked), collectRate: P(o.collYes, o.ccYes),
-      topFocus: top(o.focus), topWin: top(o.win), ai: isAiCsr(o.name),
-    })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
-
-    // Coaching gaps are a human-only view (we don't coach AI CSRs).
-    const gaps = (brand) => {
-      const m = {}
-      agents.filter((a) => (!brand || a.brand === brand) && !a.ai).forEach((a) => { (a.topFocus.slice(0, 2)).forEach((t) => m[t] = (m[t] || 0) + 1) })
-      return Object.entries(m).sort((a, b) => b[1] - a[1])
-    }
-    return { overall, brands, agents, gaps }
-  }, [rows])
+  const data = useMemo(() => buildScorecardData(rows), [rows])
+  const prevData = useMemo(() => buildScorecardData(prevRows || []), [prevRows])
+  const hasPrev = (prevRows || []).length > 0
+  const prevBrand = useMemo(() => { const m = {}; (prevData.brands || []).forEach((b) => { m[b.brand] = b }); return m }, [prevData])
+  const prevAgentMap = useMemo(() => { const m = {}; (prevData.agents || []).forEach((a) => { m[a.name + '|||' + a.brand] = a }); return m }, [prevData])
 
   const seg = (k, l) => <button key={k} onClick={() => setTier(k)} style={{ border: 'none', background: tier === k ? TEAL : '#fff', color: tier === k ? '#fff' : '#334155', padding: '8px 16px', borderRadius: 999, cursor: 'pointer', fontWeight: 700, fontSize: 13, boxShadow: tier === k ? 'none' : 'inset 0 0 0 1px #cbd5e1' }}>{l}</button>
 
@@ -1797,19 +1831,21 @@ function Scorecards({ rows, viewAll, onOpen }) {
         {seg('exec', 'Executive')}{seg('mgr', 'Manager')}{seg('agent', 'Agent')}
         <span style={{ color: '#94a3b8', fontSize: 12.5, marginLeft: 4 }}>Click a brand or agent to drill in · export any view as PDF, Excel, or CSV.</span>
       </div>
-      {tier === 'exec' && <ScExec data={data} onBrand={goBrand} />}
-      {tier === 'mgr' && <ScMgr data={data} brand={brand} setBrand={setMgrBrand} onAgent={goAgent} onOpen={onOpen} />}
-      {tier === 'agent' && <ScAgent data={data} rows={rows} aKey={aKey} setKey={setAgentKey} onOpen={onOpen} />}
+      {tier === 'exec' && <ScExec data={data} prevOverall={hasPrev ? prevData.overall : null} onBrand={goBrand} />}
+      {tier === 'mgr' && <ScMgr data={data} prevBrand={hasPrev ? prevBrand : null} prevAgent={hasPrev ? prevAgentMap : null} brand={brand} setBrand={setMgrBrand} onAgent={goAgent} onOpen={onOpen} />}
+      {tier === 'agent' && <ScAgent data={data} prevAgent={hasPrev ? prevAgentMap : null} rows={rows} aKey={aKey} setKey={setAgentKey} onOpen={onOpen} />}
     </div>
   )
 }
 
-function ScExec({ data, onBrand }) {
+function ScExec({ data, prevOverall, onBrand }) {
   const o = data.overall; const cv = P100(o.booked, o.opps)
+  const prevCv = prevOverall ? P100(prevOverall.booked, prevOverall.opps) : null
   const gaps = data.gaps(null).slice(0, 8)
   const gmax = Math.max(1, ...gaps.map((g) => g[1]))
   const [exSort, exOnSort] = useSort()
   const exAcc = { Brand: (b) => b.brand, Calls: (b) => b.calls, 'Avg QA': (b) => b.avg, Conversion: (b) => b.conv, 'Card asked': (b) => b.cardRate, 'Card collected': (b) => b.collectRate, Missed: (b) => b.missed, 'Large missed': (b) => b.large }
+  const exView = useTableView(sortRows(data.brands, exSort, exAcc), { pageSize: 15, searchText: (b) => b.brand })
   const build = () => ([
     { title: 'Portfolio summary', sheet: 'Summary', cols: ['Metric', 'Value'], rows: [
       ['Calls scored', o.scored], ['Avg QA %', r1(o.avg)], ['Opportunities', o.opps], ['Booked', o.booked],
@@ -1825,11 +1861,11 @@ function ScExec({ data, onBrand }) {
         <ExportBar name="callqa-executive-scorecard" title="Executive Scorecard" subtitle={'All brands · ' + o.scored + ' calls scored'} build={build} />
       </div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Tile label="Calls scored" value={o.scored} sub="all brands" />
-        <Tile label="Avg QA score" value={pct(o.avg)} color={scoreColor(o.avg)} />
-        <Tile label="Conversion" value={pct(cv)} color={TEAL} sub={o.booked + ' of ' + o.opps + ' opps'} />
-        <Tile label="Winnable lost" value={o.winnable} color="#b71c1c" />
-        <Tile label="Large missed opps" value={o.large} color="#92400e" sub="install / commercial" />
+        <Tile label="Calls scored" value={o.scored} sub="all brands" delta={<Delta now={o.scored} prev={prevOverall?.scored} digits={0} suffix="" />} />
+        <Tile label="Avg QA score" value={pct(o.avg)} color={scoreColor(o.avg)} delta={<Delta now={o.avg} prev={prevOverall?.avg} suffix="pp" />} />
+        <Tile label="Conversion" value={pct(cv)} color={TEAL} sub={o.booked + ' of ' + o.opps + ' opps'} delta={<Delta now={cv} prev={prevCv} suffix="pp" />} />
+        <Tile label="Winnable lost" value={o.winnable} color="#b71c1c" delta={<Delta now={o.winnable} prev={prevOverall?.winnable} digits={0} suffix="" good="down" />} />
+        <Tile label="Large missed opps" value={o.large} color="#92400e" sub="install / commercial" delta={<Delta now={o.large} prev={prevOverall?.large} digits={0} suffix="" good="down" />} />
       </div>
       {(() => {
         const humans = data.agents.filter((a) => !a.ai); const ais = data.agents.filter((a) => a.ai)
@@ -1848,9 +1884,11 @@ function ScExec({ data, onBrand }) {
       })()}
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ fontWeight: 700, padding: 14 }}>Brand ranking</div>
+        <TableToolbar view={exView} placeholder="Search brands…" />
+        <div style={{ overflowX: 'auto', maxHeight: 620 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <SortHead cols={['Brand', 'Calls', 'Avg QA', ['QA', null], 'Conversion', 'Card asked', 'Card collected', 'Missed', 'Large missed']} sort={exSort} onSort={exOnSort} />
-          <tbody>{sortRows(data.brands, exSort, exAcc).map((b) => (
+          <tbody>{exView.pageRows.map((b) => (
             <tr key={b.brand} onClick={() => onBrand(b.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
               <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{b.brand} <span style={{ color: '#cbd5e1' }}>›</span></td>
               <td style={{ padding: '8px 12px' }}>{b.calls}</td>
@@ -1864,6 +1902,7 @@ function ScExec({ data, onBrand }) {
             </tr>
           ))}</tbody>
         </table>
+        </div>
       </Card>
       <Card>
         <div style={{ fontWeight: 700, marginBottom: 12 }}>Biggest systemic coaching gaps <span style={{ color: '#94a3b8', fontWeight: 400 }}>— across all brands</span></div>
@@ -1875,13 +1914,15 @@ function ScExec({ data, onBrand }) {
   )
 }
 
-function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
+function ScMgr({ data, prevBrand, prevAgent, brand, setBrand, onAgent, onOpen }) {
   const b = data.brands.find((x) => x.brand === brand) || data.brands[0]
+  const prevB = prevBrand ? prevBrand[b?.brand] : null
   const roster = data.agents.filter((a) => a.brand === (b?.brand) && !a.ai)   // coachable humans
   const aiRoster = data.agents.filter((a) => a.brand === (b?.brand) && a.ai)  // audit-only AI
   const [mgrSort, mgrOnSort] = useSort()
   const [aiSort, aiOnSort] = useSort()
   const mgrAcc = { Agent: (a) => a.name, Calls: (a) => a.calls, 'Avg QA': (a) => a.avg, Conversion: (a) => a.conv, 'Asked for booking': (a) => a.askRate, 'Card asked': (a) => a.cardRate, 'Coaching focus': (a) => a.topFocus[0] }
+  const mgrView = useTableView(sortRows(roster, mgrSort, mgrAcc), { pageSize: 15, searchText: (a) => a.name })
   const gaps = data.gaps(b?.brand).slice(0, 6); const gmax = Math.max(1, ...gaps.map((g) => g[1]))
   const build = () => ([
     { title: (b.brand + ' — team summary'), sheet: 'Summary', cols: ['Metric', 'Value'], rows: [
@@ -1899,19 +1940,21 @@ function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
         <ExportBar name={'callqa-manager-' + b.brand.replace(/\W+/g, '-').toLowerCase()} title={b.brand + ' — Team Scorecard'} subtitle={b.calls + ' calls · ' + b.nAgents + ' agents'} build={build} />
       </div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Tile label="Team avg QA" value={pct(b.avg)} color={scoreColor(b.avg)} sub={b.calls + ' calls'} />
-        <Tile label="Conversion" value={pct(b.conv)} color={TEAL} sub={b.booked + ' of ' + b.opps} />
-        <Tile label="Card asked" value={pct(b.cardRate)} color={TEAL} sub={b.cardRate == null ? 'no bookings' : (b.ccYes + ' of ' + b.booked + ' bookings')} />
-        <Tile label="Winnable lost" value={b.winnable} color="#b71c1c" sub="recoverable" />
-        <Tile label="Large missed" value={b.large} color="#92400e" sub="install / commercial" />
+        <Tile label="Team avg QA" value={pct(b.avg)} color={scoreColor(b.avg)} sub={b.calls + ' calls'} delta={<Delta now={b.avg} prev={prevB?.avg} suffix="pp" />} />
+        <Tile label="Conversion" value={pct(b.conv)} color={TEAL} sub={b.booked + ' of ' + b.opps} delta={<Delta now={b.conv} prev={prevB?.conv} suffix="pp" />} />
+        <Tile label="Card asked" value={pct(b.cardRate)} color={TEAL} sub={b.cardRate == null ? 'no bookings' : (b.ccYes + ' of ' + b.booked + ' bookings')} delta={<Delta now={b.cardRate} prev={prevB?.cardRate} suffix="pp" />} />
+        <Tile label="Winnable lost" value={b.winnable} color="#b71c1c" sub="recoverable" delta={<Delta now={b.winnable} prev={prevB?.winnable} digits={0} suffix="" good="down" />} />
+        <Tile label="Large missed" value={b.large} color="#92400e" sub="install / commercial" delta={<Delta now={b.large} prev={prevB?.large} digits={0} suffix="" good="down" />} />
       </div>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ fontWeight: 700, padding: 14 }}>Agent leaderboard</div>
+        <TableToolbar view={mgrView} placeholder="Search agents…" />
+        <div style={{ overflowX: 'auto', maxHeight: 620 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <SortHead cols={[['#', null], 'Agent', 'Calls', 'Avg QA', 'Conversion', 'Asked for booking', 'Card asked', 'Coaching focus']} sort={mgrSort} onSort={mgrOnSort} />
-          <tbody>{sortRows(roster, mgrSort, mgrAcc).map((a, i) => (
+          <tbody>{mgrView.pageRows.map((a, i) => (
             <tr key={a.name} onClick={() => onAgent(a.name, a.brand)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
-              <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{i + 1}</td>
+              <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{(mgrView.page - 1) * mgrView.pageSize + i + 1}</td>
               <td style={{ padding: '8px 12px', fontWeight: 600, color: TEAL }}>{a.name} <span style={{ color: '#cbd5e1' }}>›</span></td>
               <td style={{ padding: '8px 12px' }}>{a.calls}</td>
               <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(a.avg), color: scoreColor(a.avg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(a.avg)}</span></td>
@@ -1922,6 +1965,7 @@ function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
             </tr>
           ))}</tbody>
         </table>
+        </div>
       </Card>
       {aiRoster.length > 0 && (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -1951,12 +1995,13 @@ function ScMgr({ data, brand, setBrand, onAgent, onOpen }) {
   )
 }
 
-function ScAgent({ data, rows, aKey, setKey, onOpen }) {
+function ScAgent({ data, prevAgent, rows, aKey, setKey, onOpen }) {
   const opts = [...data.agents].sort((a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name))
   const a = data.agents.find((x) => (x.name + '|||' + x.brand) === aKey) || opts[0]
   const [acSort, acOnSort] = useSort()
   const acAcc = { Date: (r) => dnum(r.call?.call_date), Score: (r) => (isScored(r) ? Number(r.score_pct) : null), 'Opp.': (r) => (r.opportunity ? 1 : 0), Outcome: (r) => r.outcome, Topic: (r) => (r.topics || [])[0] }
   if (!a) return <Card style={{ color: '#64748b' }}>No agent data in range.</Card>
+  const prevA = prevAgent ? prevAgent[a.name + '|||' + a.brand] : null
   const isAi = a.ai
   const win = a.topWin[0] || '—'; const f0 = a.topFocus[0] || '—'; const f1 = a.topFocus[1]
   // This agent's own scored calls — clickable through to the full Detail drawer
@@ -1990,10 +2035,10 @@ function ScAgent({ data, rows, aKey, setKey, onOpen }) {
         </div>
       </Card>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Tile label="Calls scored" value={a.calls} />
-        <Tile label="Avg QA" value={pct(a.avg)} color={scoreColor(a.avg)} />
-        <Tile label="Conversion" value={pct(a.conv)} color={TEAL} sub={a.booked + ' booked'} />
-        <Tile label="Asked for booking" value={pct(a.askRate)} color={a.askRate < 50 ? '#b71c1c' : '#1b5e20'} sub="on opportunities" />
+        <Tile label="Calls scored" value={a.calls} delta={<Delta now={a.calls} prev={prevA?.calls} digits={0} suffix="" />} />
+        <Tile label="Avg QA" value={pct(a.avg)} color={scoreColor(a.avg)} delta={<Delta now={a.avg} prev={prevA?.avg} suffix="pp" />} />
+        <Tile label="Conversion" value={pct(a.conv)} color={TEAL} sub={a.booked + ' booked'} delta={<Delta now={a.conv} prev={prevA?.conv} suffix="pp" />} />
+        <Tile label="Asked for booking" value={pct(a.askRate)} color={a.askRate < 50 ? '#b71c1c' : '#1b5e20'} sub="on opportunities" delta={<Delta now={a.askRate} prev={prevA?.askRate} suffix="pp" />} />
         <Tile label="AHT" value="—" color="#94a3b8" sub="Lightspeed · pending" />
         <Tile label="ACW" value="—" color="#94a3b8" sub="Lightspeed · pending" />
       </div>
