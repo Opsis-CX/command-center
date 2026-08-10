@@ -962,3 +962,6 @@ body{
 /* ---- Schedule chips + grid get the same soft treatment ---- */
 .grid-scroll{ box-shadow:var(--shadow); border-radius:var(--radius); }
 .iv{ border-radius:8px; }
+
+
+.topbar,.sidebar,.card,.user-chip{backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
