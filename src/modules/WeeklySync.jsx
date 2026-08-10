@@ -160,30 +160,51 @@ function TabBtn({ active, onClick, children }) {
 
 // ---- Task-board hygiene (live counts from Project Management) ----
 // Counts come from the weekly_task_hygiene() RPC: open (assigned & not done),
-// past due, no due date, and unassigned tasks the person created.
+// past due, no due date, and unassigned tasks the person created. The RPC also
+// returns each person's numbers from the previous week, so we can show movement.
+// The goal for the three "problem" columns (past due, no due date, unassigned)
+// is always 0 — the weekly review is where we drive them there.
+
+// Small ▲/▼ tag showing the change since last week. For problem metrics lower is
+// better, so a drop is green and a rise is red; neutral metrics (open) show grey.
+// Renders nothing when there's no prior-week number yet (first week live).
+function DeltaTag({ cur, prev, neutral = false }) {
+  if (prev == null || cur == null) return null
+  const d = cur - prev
+  if (d === 0) return <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--ink-soft)' }} title="No change from last week">±0</span>
+  const arrow = d > 0 ? '▲' : '▼'
+  const color = neutral ? 'var(--ink-soft)' : (d > 0 ? 'var(--failed)' : 'var(--passed)')
+  return (
+    <span style={{ fontSize: 10.5, fontWeight: 700, color }} title={`${d > 0 ? '+' : ''}${d} vs last week`}>
+      {arrow}{Math.abs(d)}
+    </span>
+  )
+}
+
 function HygieneChips({ h }) {
   const open = h?.open_count || 0
   const pastDue = h?.past_due_count || 0
   const noDue = h?.no_due_count || 0
   const unassigned = h?.unassigned_created_count || 0
-  const clean = pastDue === 0 && noDue === 0 && unassigned === 0
-  const chip = (val, label, tone, title) => {
+  const atGoal = pastDue === 0 && noDue === 0 && unassigned === 0
+  const chip = (val, prev, label, tone, title) => {
     const hot = val > 0 && tone !== 'info'
     const bg = hot ? (tone === 'bad' ? 'var(--failed-bg)' : 'var(--needed-bg)') : 'var(--canvas)'
     const fg = hot ? (tone === 'bad' ? 'var(--failed)' : 'var(--needed)') : 'var(--ink-soft)'
     return (
       <span title={title} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 5, fontSize: 12.5, fontWeight: 600, padding: '4px 10px', borderRadius: 999, border: '1px solid var(--line)', background: bg, color: fg }}>
         <b style={{ fontSize: 13.5, color: hot ? 'inherit' : 'var(--ink)' }}>{val}</b> {label}
+        <DeltaTag cur={val} prev={prev} neutral={tone === 'info'} />
       </span>
     )
   }
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-      {chip(open, 'open', 'info', 'Open tasks assigned to you (not done)')}
-      {chip(pastDue, 'past due', 'bad', 'Assigned to you, not done, due date has passed')}
-      {chip(noDue, 'no due date', 'warn', 'Assigned to you, not done, missing a due date')}
-      {chip(unassigned, 'unassigned', 'warn', 'Tasks you created that have no assignee')}
-      {clean && <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--passed)' }}>✓ clean</span>}
+      {chip(open, h?.prev_open_count, 'open', 'info', 'Open tasks assigned to you (not done)')}
+      {chip(pastDue, h?.prev_past_due_count, 'past due', 'bad', 'Assigned to you, not done, due date has passed · goal 0')}
+      {chip(noDue, h?.prev_no_due_count, 'no due date', 'warn', 'Assigned to you, not done, missing a due date · goal 0')}
+      {chip(unassigned, h?.prev_unassigned_created_count, 'unassigned', 'warn', 'Tasks you created that have no assignee · goal 0')}
+      {atGoal && <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--passed)' }}>✓ at goal</span>}
     </div>
   )
 }
@@ -195,38 +216,72 @@ function HygieneTable({ hygiene, profiles }) {
     .filter(r => (r.open_count || 0) > 0 || (r.unassigned_created_count || 0) > 0)
     .sort((a, b) => b.problems - a.problems || (b.open_count || 0) - (a.open_count || 0) || a.name.localeCompare(b.name))
   if (rows.length === 0) return null
-  const th = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', padding: '8px 10px' }
+
+  // Team totals (across the people shown) + whether any prior-week data exists yet.
+  const t = rows.reduce((acc, r) => ({
+    open: acc.open + (r.open_count || 0), pOpen: acc.pOpen + (r.prev_open_count || 0),
+    pastDue: acc.pastDue + (r.past_due_count || 0), pPastDue: acc.pPastDue + (r.prev_past_due_count || 0),
+    noDue: acc.noDue + (r.no_due_count || 0), pNoDue: acc.pNoDue + (r.prev_no_due_count || 0),
+    unassigned: acc.unassigned + (r.unassigned_created_count || 0), pUnassigned: acc.pUnassigned + (r.prev_unassigned_created_count || 0),
+    hasPrev: acc.hasPrev || r.prev_past_due_count != null,
+  }), { open: 0, pOpen: 0, pastDue: 0, pPastDue: 0, noDue: 0, pNoDue: 0, unassigned: 0, pUnassigned: 0, hasPrev: false })
+
+  const th = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', padding: '8px 10px', verticalAlign: 'bottom' }
   const td = { padding: '8px 10px', fontSize: 13, borderTop: '1px solid var(--line-soft)' }
-  const num = (v, tone) => <span style={{ fontWeight: 700, color: v > 0 ? (tone === 'bad' ? 'var(--failed)' : tone === 'warn' ? 'var(--needed)' : 'var(--ink)') : 'var(--ink-soft)' }}>{v}</span>
+  // Problem columns: 0 = at goal (green), >0 = red/amber. Open is neutral.
+  const valColor = (v, tone) => tone === 'info'
+    ? (v > 0 ? 'var(--ink)' : 'var(--ink-soft)')
+    : (v === 0 ? 'var(--passed)' : (tone === 'bad' ? 'var(--failed)' : 'var(--needed)'))
+  const cell = (val, prev, tone) => (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, lineHeight: 1.05 }}>
+      <span style={{ fontWeight: 700, color: valColor(val, tone) }}>{val}</span>
+      <DeltaTag cur={val} prev={prev} neutral={tone === 'info'} />
+    </div>
+  )
+  const goalHead = (label, title) => (
+    <th style={{ ...th, textAlign: 'right' }} title={title}>
+      <div>{label}</div>
+      <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--passed)', letterSpacing: 0, textTransform: 'none' }}>Goal 0</div>
+    </th>
+  )
   return (
     <div className="card" style={{ padding: 16, marginBottom: 18 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
         <div style={{ fontSize: 14, fontWeight: 700 }}>🧹 Task board hygiene <span style={{ fontWeight: 500, color: 'var(--ink-soft)', fontSize: 12.5 }}>— live from Project Management</span></div>
         <a href="/projects" style={{ fontSize: 12.5, color: 'var(--accent)', fontWeight: 600 }}>Open the board →</a>
       </div>
-      <p className="page-sub" style={{ marginTop: 0, fontSize: 12.5, marginBottom: 10 }}>Clear the highlighted numbers as you review: assign owners, add due dates, and close or reschedule what's overdue.</p>
+      <p className="page-sub" style={{ marginTop: 0, fontSize: 12.5, marginBottom: 10 }}>Goal is 0 for past due, no due date, and unassigned. Arrows (▲▼) show the change since last week. Clear the highlighted numbers as you review: assign owners, add due dates, close or reschedule what's overdue.</p>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
           <thead>
             <tr>
               <th style={{ ...th, textAlign: 'left' }}>Person</th>
               <th style={{ ...th, textAlign: 'right' }}>Open</th>
-              <th style={{ ...th, textAlign: 'right' }}>Past due</th>
-              <th style={{ ...th, textAlign: 'right' }}>No due date</th>
-              <th style={{ ...th, textAlign: 'right' }} title="Tasks they created with no assignee">Unassigned</th>
+              {goalHead('Past due', 'Assigned & not done, due date has passed · goal 0')}
+              {goalHead('No due date', 'Assigned & not done, missing a due date · goal 0')}
+              {goalHead('Unassigned', 'Tasks they created with no assignee · goal 0')}
             </tr>
           </thead>
           <tbody>
             {rows.map(r => (
               <tr key={r.profile_id}>
                 <td style={{ ...td, fontWeight: 600 }}>{r.name}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{num(r.open_count, 'info')}</td>
-                <td style={{ ...td, textAlign: 'right', background: r.past_due_count > 0 ? 'var(--failed-bg)' : 'transparent' }}>{num(r.past_due_count, 'bad')}</td>
-                <td style={{ ...td, textAlign: 'right', background: r.no_due_count > 0 ? 'var(--needed-bg)' : 'transparent' }}>{num(r.no_due_count, 'warn')}</td>
-                <td style={{ ...td, textAlign: 'right', background: r.unassigned_created_count > 0 ? 'var(--needed-bg)' : 'transparent' }}>{num(r.unassigned_created_count, 'warn')}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{cell(r.open_count, r.prev_open_count, 'info')}</td>
+                <td style={{ ...td, textAlign: 'right', background: r.past_due_count > 0 ? 'var(--failed-bg)' : 'transparent' }}>{cell(r.past_due_count, r.prev_past_due_count, 'bad')}</td>
+                <td style={{ ...td, textAlign: 'right', background: r.no_due_count > 0 ? 'var(--needed-bg)' : 'transparent' }}>{cell(r.no_due_count, r.prev_no_due_count, 'warn')}</td>
+                <td style={{ ...td, textAlign: 'right', background: r.unassigned_created_count > 0 ? 'var(--needed-bg)' : 'transparent' }}>{cell(r.unassigned_created_count, r.prev_unassigned_created_count, 'warn')}</td>
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr>
+              <td style={{ ...td, fontWeight: 700, borderTop: '2px solid var(--line)' }}>Team total <span style={{ fontWeight: 500, color: 'var(--ink-soft)', fontSize: 11 }}>· goal 0 / 0 / 0</span></td>
+              <td style={{ ...td, textAlign: 'right', borderTop: '2px solid var(--line)' }}>{cell(t.open, t.hasPrev ? t.pOpen : null, 'info')}</td>
+              <td style={{ ...td, textAlign: 'right', borderTop: '2px solid var(--line)', background: t.pastDue > 0 ? 'var(--failed-bg)' : 'transparent' }}>{cell(t.pastDue, t.hasPrev ? t.pPastDue : null, 'bad')}</td>
+              <td style={{ ...td, textAlign: 'right', borderTop: '2px solid var(--line)', background: t.noDue > 0 ? 'var(--needed-bg)' : 'transparent' }}>{cell(t.noDue, t.hasPrev ? t.pNoDue : null, 'warn')}</td>
+              <td style={{ ...td, textAlign: 'right', borderTop: '2px solid var(--line)', background: t.unassigned > 0 ? 'var(--needed-bg)' : 'transparent' }}>{cell(t.unassigned, t.hasPrev ? t.pUnassigned : null, 'warn')}</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
@@ -363,9 +418,11 @@ function Presentation({ week, updates, profiles, nameOf, hygiene }) {
           .sort((a, b) => nameOf(a.profile_id).localeCompare(nameOf(b.profile_id)))
           .map(u => (
             <div key={u.id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '14px 20px', background: 'var(--ink)', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 17, fontWeight: 700 }}>{nameOf(u.profile_id)}</span>
-                <span style={{ fontSize: 12, opacity: .8 }}>{weekLabel(week)}</span>
+              {/* Fixed dark bar (not var(--ink), which flips to near-white in dark mode
+                  and hid the name). White text stays readable in both themes. */}
+              <div style={{ padding: '14px 20px', background: '#0d1518', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 17, fontWeight: 700, color: '#fff' }}>{nameOf(u.profile_id)}</span>
+                <span style={{ fontSize: 12, color: '#fff', opacity: .8 }}>{weekLabel(week)}</span>
               </div>
               <div style={{ padding: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
                 {SECTIONS.filter(s => u[s.key]).map(s => (
