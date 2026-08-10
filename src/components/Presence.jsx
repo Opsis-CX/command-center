@@ -225,8 +225,8 @@ function StatusPicker({ me, uid, onClose, onSaved }) {
 
   const isOooSel = type === 'ooo'
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, padding: '24px 16px', overflowY: 'auto' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(460px, 100%)', margin: 'auto', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 1000, overflowY: 'auto', padding: '24px 16px' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(460px, 100%)', margin: '0 auto', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <b style={{ fontSize: 15 }}>Set your status</b>
           <button onClick={onClose} style={{ border: 0, background: 'transparent', fontSize: 20, lineHeight: 1, cursor: 'pointer', color: 'var(--ink-soft)' }}>×</button>
