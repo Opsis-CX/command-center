@@ -559,6 +559,12 @@ a{color:inherit;text-decoration:none;}
 }
 .re-content pre code, .re-rendered pre code { background: none; border: 0; padding: 0; }
 
+/* Highlighter marks (TipTap Highlight) always use a pale background from the
+   HIGHLIGHTS palette. Text inside inherits --ink, which is near-white in dark
+   mode and vanished on the pale highlight. Pin highlighted text (and any nested
+   node without its own colour) to a dark ink so it's readable in both themes. */
+.re-content mark, .re-rendered mark { color: #0d1518; }
+
 .re-content a, .re-rendered a { color: var(--accent); text-decoration: underline; cursor: pointer; }
 
 .re-content hr, .re-rendered hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
@@ -963,5 +969,15 @@ body{
 .grid-scroll{ box-shadow:var(--shadow); border-radius:var(--radius); }
 .iv{ border-radius:8px; }
 
-
-.topbar,.sidebar,.card,.user-chip{backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
+/* ============================================================
+   MODAL FIX — backdrop-filter on an ancestor makes position:fixed
+   anchor to THAT ancestor instead of the viewport. The status picker
+   renders inside .topbar, ChangePassword inside .sidebar, etc., so the
+   premium blur was clipping those modals to the bar's height. Drop the
+   blur on containers that host fixed overlays; the translucent tint +
+   shadow keep the premium feel.
+   ============================================================ */
+.topbar, .sidebar, .card, .user-chip {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
