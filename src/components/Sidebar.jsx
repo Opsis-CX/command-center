@@ -38,6 +38,7 @@ const NAV = [
       { type: 'link', to: '/get-to-know-you', label: 'Get to Know You', ic: '🎉', perm: null },  // everyone; team favorites directory
       { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
       { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
+      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },  // everyone gets calendar; sits under Project Management
       { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings' },  // all staff except agents; notetaker + action items → tasks
       { type: 'link', to: '/time', label: 'Time', ic: '⏱️', perm: null, adminGate: true },  // admins only; find & adjust anyone's tracked time
       {
@@ -84,7 +85,6 @@ const NAV = [
       { type: 'link', to: '/sales', label: 'Sales', ic: '💼', perm: 'sales' },
       { type: 'link', to: '/rsn', label: 'RSN Pipeline', ic: '🔗', perm: null, rsnGate: true },
       { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧑‍💼', perm: 'hiring' },
-      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },  // everyone gets calendar
       {
         type: 'section', key: 'backend', label: 'Backend', ic: '⚙',
         children: [
