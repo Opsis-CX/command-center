@@ -116,7 +116,7 @@ function LiveStatusPage() {
   )
 }
 export default function App() {
-  const { session, loading, isAdmin, appRole, clientId, user } = useAuth()
+  const { session, loading, isAdmin, appRole, clientId, inTraining, user } = useAuth()
   const [navOpen, setNavOpen] = useState(false)
   const location = useLocation()
   // apply the saved light/dark/system theme as early as possible
@@ -141,6 +141,8 @@ export default function App() {
   // External client-portal login: a branded, single-purpose shell that shows ONLY
   // Call QA (their own data, RLS-enforced). No sidebar, no other modules.
   if (appRole === 'client') return <ClientPortal session={session} clientId={clientId} />
+  // New hires in the pipeline are locked to a Certification-only view until they're Hired.
+  if (inTraining) return <TraineePortal session={session} />
   return <AuthedApp session={session} isAdmin={isAdmin} appRole={appRole} navOpen={navOpen} setNavOpen={setNavOpen} location={location} />
 }
 // External client portal — a branded, single-page shell that renders ONLY the
@@ -195,6 +197,52 @@ function ClientPortal({ session, clientId }) {
 
 // Everything behind the login gate. Split out so the must-change-password
 // check can run with a session guaranteed to exist.
+// New-hire onboarding shell — a Certification-only view. New hires keep their agent
+// account (so certification data works exactly as it does for agents) but are locked
+// here — no sidebar, no other modules — until an admin marks them Hired, which clears
+// in_training (finish_onboarding). Questions route to onboarding@opsiscx.com.
+function TraineePortal({ session }) {
+  const { signOut } = useAuth()
+  const [tab, setTab] = useState('certs')
+  const [mustChange, setMustChange] = useState(null)
+  useEffect(() => {
+    let active = true
+    supabase.from('profiles').select('must_change_password').eq('id', session.user.id).single()
+      .then(({ data }) => { if (active) setMustChange(!!data?.must_change_password) })
+      .catch(() => { if (active) setMustChange(false) })
+    return () => { active = false }
+  }, [session.user.id])
+  if (mustChange === null) return <div className="loading-screen">Loading…</div>
+  if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
+
+  const tabBtn = (k, label) => (
+    <button onClick={() => setTab(k)} style={{ background: tab === k ? '#0077B6' : 'transparent', color: tab === k ? '#fff' : '#0f172a', border: '1px solid #0077B6', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>{label}</button>
+  )
+  return (
+    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+      <header style={{ background: '#0077B6', color: '#fff', padding: '0 20px', height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontWeight: 800, fontSize: 18 }}>Opsis Command Center</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <span style={{ fontSize: 13, opacity: 0.9 }}>{session.user.email}</span>
+          <button onClick={() => signOut()} style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Sign out</button>
+        </div>
+      </header>
+      <div style={{ maxWidth: 1000, margin: '0 auto', padding: '20px 16px 40px' }}>
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 14 }}>
+          👋 Welcome! Your first step is <strong>certification</strong> — complete it below to move forward in onboarding. The rest of Command Center unlocks once you're all set.
+          <div style={{ marginTop: 6 }}>Questions? Email <a href="mailto:onboarding@opsiscx.com" style={{ color: '#1d4ed8', fontWeight: 600 }}>onboarding@opsiscx.com</a>.</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          {tabBtn('certs', 'My Certifications')}
+          {tabBtn('courses', 'My Courses')}
+        </div>
+        {tab === 'certs' ? <MyCertifications /> : <MyCourses />}
+      </div>
+      <footer style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: '24px 0 32px' }}>Opsis CX</footer>
+    </div>
+  )
+}
+
 function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location }) {
   // RSN pipeline visibility (admins + anyone with the 'access/rsn' tag).
   const rsnOk = useRsnAccess()
