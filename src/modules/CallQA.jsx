@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
@@ -304,7 +304,14 @@ export default function CallQA({ portal = false } = {}) {
   const [ovData, setOvData] = useState(null)
   const [ovErr, setOvErr] = useState('')
 
+  // Guards against a slower, superseded load clobbering the current program's rows.
+  // Switching program (garagedoor -> lavin) kicks off a new load(), but the previous
+  // load may still be paging (the ~11k-row garagedoor fetch takes ~10s). Without this,
+  // that stale fetch's setRows() lands late and — because `scoped` filters to the NOW-
+  // selected program — every row gets filtered out ("No scored calls in this range").
+  const loadSeq = useRef(0)
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current
     setLoading(true); setErr('')
     // Supabase caps a single response at 1000 rows, so page through ALL reviews.
     // The heavy per-question `answers` blob and the `transcript` are fetched lazily
@@ -326,16 +333,19 @@ export default function CallQA({ portal = false } = {}) {
       supabase.rpc('callqa_secret_presence'),
       ...statuses.map((s) => supabase.from('ai_qa_calls').select('id', { count: 'exact', head: true }).eq('status', s).then((r) => ({ s, count: r.count || 0 }))),
     ])
+    if (seq !== loadSeq.current) return
     setSettings(st || []); setSecretKeys(Array.isArray(sk) ? sk : [])
     const counts = {}; pipe.forEach(({ s, count: c }) => { counts[s] = c }); setPipeline(counts)
     let from = 0; let all = []
     for (;;) {
       const { data, error } = await withCampaign(supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(from, from + page - 1))
+      if (seq !== loadSeq.current) return   // a newer load superseded this one — drop its result
       if (error) { setErr(error.message); setLoading(false); return }
       all = all.concat(data || [])
       if (!data || data.length < page) break
       from += page
     }
+    if (seq !== loadSeq.current) return
     setRows(all)
     setLoading(false)
   }, [canManage, program])
