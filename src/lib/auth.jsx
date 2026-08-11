@@ -8,16 +8,18 @@ export function AuthProvider({ children }) {
   const [role, setRole] = useState({ isAdmin: false, level: 0, roles: [] })
   const [appRole, setAppRole] = useState('agent')   // the permission role from profiles
   const [clientId, setClientId] = useState(null)    // set only for external client-portal users
+  const [inTraining, setInTraining] = useState(false) // new hire locked to Certification until Hired
   const [loading, setLoading] = useState(true)
   const activeChannelRef = useRef(null)
 
   async function loadAppRole(sess) {
     const uid = sess?.user?.id
-    if (!uid) { setAppRole('agent'); setClientId(null); return }
+    if (!uid) { setAppRole('agent'); setClientId(null); setInTraining(false); return }
     try {
-      const { data } = await supabase.from('profiles').select('role, client_id, timezone').eq('id', uid).maybeSingle()
+      const { data } = await supabase.from('profiles').select('role, client_id, timezone, in_training').eq('id', uid).maybeSingle()
       setAppRole(data?.role || 'agent')
       setClientId(data?.client_id || null)
+      setInTraining(!!data?.in_training)
       // Auto-capture each person's real timezone from their computer so timezones
       // stay accurate without manual entry. Only writes when it actually changed.
       try {
@@ -26,7 +28,7 @@ export function AuthProvider({ children }) {
           await supabase.from('profiles').update({ timezone: tz }).eq('id', uid)
         }
       } catch { /* ignore timezone detection errors */ }
-    } catch { setAppRole('agent'); setClientId(null) }
+    } catch { setAppRole('agent'); setClientId(null); setInTraining(false) }
   }
 
   // If this user has been made inactive on People & Tags, kick them out now.
@@ -89,6 +91,7 @@ export function AuthProvider({ children }) {
     ...role,
     appRole,
     clientId,
+    inTraining,
     isClientPortal: appRole === 'client' || !!clientId,
     loading,
     signOut: () => supabase.auth.signOut(),
