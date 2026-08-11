@@ -36,6 +36,7 @@ import Notes from './modules/Notes'
 import Meetings from './modules/Meetings'
 import Calendar from './modules/Calendar'
 import Coaching from './modules/Coaching'
+import MockCallScheduler from './modules/MockCallScheduler'
 import WeeklySync from './modules/WeeklySync'
 import Notifications from './modules/Notifications'
 import KnowledgeBase from './modules/KnowledgeBase'
@@ -69,6 +70,11 @@ import { useParams } from 'react-router-dom'
 function AssessmentRoute() {
   const { appId } = useParams()
   return <AssessmentForm applicationId={appId} />
+}
+
+function MockCallRoute() {
+  const { appId } = useParams()
+  return <MockCallScheduler appId={appId} />
 }
 // End of Day Report page (Operations → End of Day Report). Wraps the existing
 // role-aware EodReportCard (from EodReports.jsx) with a page title. Admins get
@@ -119,7 +125,7 @@ export default function App() {
   // ---- PUBLIC routes (no login required) ----
   // These must be checked BEFORE the login gate so job applicants who aren't
   // signed in can reach the application and assessment forms.
-  const publicPaths = ['/apply', '/assessment']
+  const publicPaths = ['/apply', '/assessment', '/mock-call']
   const isPublic = publicPaths.some(p => location.pathname === p || location.pathname.startsWith(p + '/'))
   if (isPublic) {
     return (
@@ -127,6 +133,7 @@ export default function App() {
         <Route path="/apply" element={<ApplicationForm />} />
         <Route path="/assessment/:appId" element={<AssessmentRoute />} />
         <Route path="/assessment" element={<AssessmentForm />} />
+        <Route path="/mock-call/:appId" element={<MockCallRoute />} />
       </Routes>
     )
   }
