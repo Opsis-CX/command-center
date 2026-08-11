@@ -5,7 +5,6 @@ import { useUnread } from '../lib/unread'
 import { supabase } from '../lib/supabase'
 import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
 import { canAny } from '../lib/permissions'
-import { useRsnAccess } from '../lib/rsnAccess'
 import ChangePassword from './ChangePassword'
 
 // Sidebar navigation, organized into labelled GROUPS.
@@ -26,70 +25,69 @@ import ChangePassword from './ChangePassword'
 // group, add another { group, items } block. Order in this array = order shown.
 const NAV = [
   {
-    // One flat list in Becky's order (2026-07-21). No group label — collapsible
-    // sections (Schedule, Certifications, Reporting, Operations, Backend) provide
-    // the structure. Every item still carries a `perm`, so roles auto-filter:
-    // an agent only sees the handful they're allowed, in this same order.
-    group: '',
+    // Daily drivers, pinned at the top. Single-tap for the pages people live in.
+    group: 'Main',
     items: [
-      { type: 'link', to: '/', label: 'Home Base', ic: '🏠', end: true, perm: null },  // everyone; page scopes itself by tag/role
+      { type: 'link', to: '/home', label: 'Opsis Weekly', ic: '🏠', perm: null },  // everyone; page scopes itself by tag/role
+      { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, perm: 'dashboard' },
       { type: 'link', to: '/updates', label: 'Updates', ic: '📣', perm: null },  // everyone; RLS gates audience
       { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },  // everyone; private per-user notebook
-      { type: 'link', to: '/get-to-know-you', label: 'Get to Know You', ic: '🎉', perm: null },  // everyone; team favorites directory
-      { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
-      { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
-      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },  // everyone gets calendar; sits under Project Management
-      { type: 'link', to: '/coaching', label: 'Coaching', ic: '🧑‍🏫', perm: null },  // everyone; page scopes itself (agents book their ASC; ASC/admin manage teams)
-      { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings' },  // all staff except agents; notetaker + action items → tasks
-      { type: 'link', to: '/time', label: 'Time', ic: '⏱️', perm: null, adminGate: true },  // admins only; find & adjust anyone's tracked time
       {
         type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
         children: [
-          { to: '/schedule', label: 'Schedule Board', perm: 'schedule.view_my_schedule' },
-          { to: '/live', label: "Who's On", perm: 'live_status' },   // live check-ins + current task
-          { to: '/insights', label: 'Schedule Insights', perm: 'schedule.view_insights_assigned' },
-          { to: '/schedule-builder', label: 'Schedule Builder', perm: 'schedule.create_schedules' },
+          { to: '/schedule', label: 'Schedule', perm: 'schedule.view_my_schedule' },
+          { to: '/schedule-builder', label: 'Schedule builder', perm: 'schedule.create_schedules' },
+          { to: '/insights', label: 'Schedule insights', perm: 'schedule.view_insights_assigned' },
         ],
       },
       { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
-      { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
-      { type: 'link', to: '/tokens', label: 'Tokens', ic: '🪙', perm: 'tokens.view_own' },  // everyone; rewards wallet
-      {
-        type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
-        children: [
-          { to: '/my-certifications', label: 'My Certifications', perm: 'certifications.view_personal_score_and_content_assigned' },
-          // INTERIM: kept reachable until the certifications rework nests courses
-          // inside My Certifications. Remove this line once that ships.
-          { to: '/my-courses', label: 'My Courses', perm: 'certifications.assigned_to_complete' },
-          { to: '/certifications', label: 'Certifications', perm: 'certifications.all' },
-          { to: '/courses', label: 'Course Builder', perm: 'certifications.builder' },
-        ],
-      },
-      { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
-      { type: 'link', to: '/call-qa', label: 'Call QA (AI)', ic: '🤖', perm: 'quality_audit.call_reviews' },
-      { type: 'link', to: '/help', label: 'Help Center', ic: '🛟', perm: null },  // everyone; tickets are private per RLS
       {
         type: 'section', key: 'reporting', label: 'Reporting', ic: '📈',
         children: [
-          { to: '/reporting', label: 'Reporting Hub', perm: 'reporting' },
+          { to: '/reporting', label: 'Reporting', perm: 'reporting' },
           { to: '/reporting/hourly', label: 'Hourly', perm: 'reporting' },
         ],
       },
+      { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
+      { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
+    ],
+  },
+  {
+    // Everything secondary, folded into collapsible sections so the list stays short.
+    group: 'More',
+    items: [
       {
         type: 'section', key: 'operations', label: 'Operations', ic: '🧰',
         children: [
-          // End-of-day report — non-agent staff only (same audience as the old Dashboard).
-          { to: '/eod', label: 'End of Day Report', perm: 'dashboard' },
           { to: '/weekly-sync', label: 'Weekly Sync', perm: 'weekly_sync' },
+          { to: '/projects', label: 'Project Management', perm: 'project_management' },
+          { to: '/hiring', label: 'Hiring', perm: 'hiring' },
+          // Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
+          // and grant it to the right roles, like 'hiring'.
+          { to: '/sales', label: 'Sales', perm: 'sales' },
         ],
       },
-      { type: 'link', to: '/sales', label: 'Sales', ic: '💼', perm: 'sales' },
-      { type: 'link', to: '/rsn', label: 'RSN Pipeline', ic: '🔗', perm: null, rsnGate: true },
-      { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧑‍💼', perm: 'hiring' },
       {
-        type: 'section', key: 'backend', label: 'Backend', ic: '⚙',
+        type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
         children: [
-          { to: '/people', label: 'People & Tags', perm: 'people_and_tags.view_only' },
+          { to: '/certifications', label: 'Certifications', perm: 'certifications.all' },
+          { to: '/my-certifications', label: 'My certifications', perm: 'certifications.view_personal_score_and_content_assigned' },
+          { to: '/courses', label: 'Course builder', perm: 'certifications.builder' },
+          { to: '/my-courses', label: 'My courses', perm: 'certifications.assigned_to_complete' },
+        ],
+      },
+      { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
+      {
+        type: 'section', key: 'resources', label: 'Resources', ic: '🛟', perm: null,
+        children: [
+          { to: '/help', label: 'Help Center', perm: null },     // everyone; tickets are private per RLS
+          { to: '/calendar', label: 'Calendar', perm: null },    // everyone gets calendar
+        ],
+      },
+      {
+        type: 'section', key: 'backend', label: 'Backend', ic: '⚙', perm: null,
+        children: [
+          { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
           { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
           { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
         ],
@@ -98,9 +96,25 @@ const NAV = [
   },
 ]
 
+// Turn a stored role string ("asc,marketing") into a readable label
+// ("ASC & Marketing"). A single role passes through unchanged; unknown keys are
+// Title-Cased as a safe fallback.
+const ROLE_LABELS = {
+  owner: 'Owner', admin: 'Admin', agent: 'Agent', client: 'Client',
+  support: 'Support', certification: 'Certification', quality: 'Quality',
+  sales: 'Sales', asc: 'ASC', marketing: 'Marketing',
+  reviewer: 'App Reviewer', qa_reviewer: 'QA Reviewer',
+}
+function formatRole(raw) {
+  const parts = String(raw || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+  if (!parts.length) return 'Agent'
+  return parts
+    .map(p => ROLE_LABELS[p] || p.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))
+    .join(' & ')
+}
+
 export default function Sidebar({ open, onNavigate }) {
   const { isAdmin, level, roles, user, signOut, appRole } = useAuth()
-  const rsnOk = useRsnAccess()   // RSN pipeline link: admins + 'access/rsn' tag
   const { total: unreadTotal } = useUnread()
   const location = useLocation()
 
@@ -110,20 +124,12 @@ export default function Sidebar({ open, onNavigate }) {
   // so pull full_name from their profile. Fall back to the email prefix only
   // if the profile has no name yet.
   const [fullName, setFullName] = useState(null)
-  const [avatarUrl, setAvatarUrl] = useState(null)
   useEffect(() => {
     if (!user?.id) return
     let active = true
-    supabase.from('profiles').select('full_name, avatar_url').eq('id', user.id).single()
-      .then(({ data }) => {
-        if (!active) return
-        if (data?.full_name) setFullName(data.full_name)
-        setAvatarUrl(data?.avatar_url || null)
-      })
-    // Reflect a photo change made on the Settings page without a reload.
-    const onAvatar = (e) => setAvatarUrl(e.detail || null)
-    window.addEventListener('cc:avatar-updated', onAvatar)
-    return () => { active = false; window.removeEventListener('cc:avatar-updated', onAvatar) }
+    supabase.from('profiles').select('full_name').eq('id', user.id).single()
+      .then(({ data }) => { if (active && data?.full_name) setFullName(data.full_name) })
+    return () => { active = false }
   }, [user?.id])
   const name = fullName || user?.email?.split('@')[0] || 'User'
   const initial = (name.trim()[0] || 'U').toUpperCase()
@@ -158,11 +164,7 @@ export default function Sidebar({ open, onNavigate }) {
   // Is a single item visible to this person? Used to decide whether a group
   // header should render at all.
   const itemVisible = (item) => {
-    if (item.type === 'link') {
-      if (item.adminGate) return !!isAdmin
-      if (item.rsnGate) return !!rsnOk
-      return !item.perm || canAny(appRole, item.perm)
-    }
+    if (item.type === 'link') return !item.perm || canAny(appRole, item.perm)
     return item.children.some(c => !c.perm || canAny(appRole, c.perm))
   }
 
@@ -170,8 +172,7 @@ export default function Sidebar({ open, onNavigate }) {
   const renderItem = (item) => {
     // --- single top-level link ---
     if (item.type === 'link') {
-      if (item.adminGate && !isAdmin) return null
-      if (item.rsnGate ? !rsnOk : (item.perm && !canAny(appRole, item.perm))) return null
+      if (item.perm && !canAny(appRole, item.perm)) return null
       return (
         <NavLink key={item.to} to={item.to} end={item.end}
           onClick={() => onNavigate && onNavigate()}
@@ -216,8 +217,7 @@ export default function Sidebar({ open, onNavigate }) {
   return (
     <aside className={'sidebar' + (open ? ' open' : '')}>
       <div className="brand">
-        <div className="brand-mark"><img src="/opsis-logo.png" alt="Opsis" /></div>
-        <div className="brand-name">Command Center<span>Opsis CX</span></div>
+        <img src="/opsis-logo.png" alt="Opsis" style={{ width: '100%', height: 'auto', maxHeight: 64, objectFit: 'contain' }} />
       </div>
 
       {/* Only THIS region scrolls when the nav outgrows the window — the page
@@ -228,13 +228,11 @@ export default function Sidebar({ open, onNavigate }) {
           const anyVisible = grp.items.some(itemVisible)
           if (!anyVisible) return null
           return (
-            <div key={grp.group || 'all'} className="nav-group">
-              {grp.group && (
-                <div className="nav-group-label"
-                  style={{ padding: '14px 12px 4px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', opacity: .45 }}>
-                  {grp.group}
-                </div>
-              )}
+            <div key={grp.group} className="nav-group">
+              <div className="nav-group-label"
+                style={{ padding: '14px 12px 4px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', opacity: .45 }}>
+                {grp.group}
+              </div>
               {grp.items.map(renderItem)}
             </div>
           )
@@ -242,10 +240,10 @@ export default function Sidebar({ open, onNavigate }) {
       </div>
 
       <div className="user-chip">
-        <div className="user-av">{avatarUrl ? <img src={avatarUrl} alt={name} /> : initial}</div>
+        <div className="user-av">{initial}</div>
         <div>
           <div className="user-name">{name}</div>
-          <div className="user-role">{isOwner ? 'Owner' : isAdmin ? 'Admin' : 'Agent'}</div>
+          <div className="user-role">{isOwner ? 'Owner' : isAdmin ? 'Admin' : formatRole(appRole)}</div>
         </div>
       </div>
 
