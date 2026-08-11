@@ -117,6 +117,7 @@ const CATALOG = [
     { key: 'schedule', name: 'Schedule Hours', q: 'What is hourly coverage, and who is on each hour?' },
     { key: 'sched_agent', name: 'Agent Schedule Summary', q: 'Per person: intervals, scheduled, checked-in, on-task, and Five9 time.' },
     { key: 'attendance', name: 'Attendance', q: 'Who showed up, was late, or no-showed against their schedule?' },
+    { key: 'payroll_week', name: 'Weekly Payroll (Five9 + Coaching)', q: 'By day per agent: scheduled hours, Five9 worked hours, and the one weekly coaching payment — summed for the week. Admins only.' },
   ] },
   { label: 'Chat', items: [
     { key: 'chat', name: 'Messages by Person', q: 'How many messages is each person sending, by channel and DM?' },
@@ -199,7 +200,12 @@ function catAllowed(role, label) {
   if (perm === '__admin__') return String(role || '').trim().toLowerCase() === 'admin'
   return perm.includes('.') ? can(role, perm) : canAny(role, perm)
 }
-const reportAllowed = (role, key) => { const c = REPORT_META[key]?.category; return !c || catAllowed(role, c) }
+// Individual reports that are admin-only regardless of their category (e.g. payroll pay data).
+const ADMIN_ONLY_REPORTS = new Set(['payroll_week'])
+const reportAllowed = (role, key) => {
+  if (ADMIN_ONLY_REPORTS.has(key)) return String(role || '').trim().toLowerCase() === 'admin'
+  const c = REPORT_META[key]?.category; return !c || catAllowed(role, c)
+}
 // Reports that don't use the shared date range.
 const NO_RANGE = new Set(['people', 'rawdata', 'scorecard', 'positions', 'kb', 'dispositions'])
 // Reports that expose the shared person/tag filter.
@@ -208,7 +214,7 @@ const FILTERABLE = new Set(['person', 'client', 'compare', 'quality', 'qa_by_que
 // Reports whose CSV export is the parent-owned shared button (older inline reports).
 const SHARED_EXPORT = new Set(['person', 'client', 'compare', 'quality', 'people'])
 // Reports rendered by their own standalone component.
-const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions', 'dispo_corrections', 'qa_by_question', 'ai_qa_spend'])
+const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions', 'dispo_corrections', 'qa_by_question', 'ai_qa_spend', 'payroll_week'])
 
 export default function Reporting() {
   const { isAdmin, appRole } = useAuth()
@@ -780,6 +786,7 @@ export default function Reporting() {
         : view === 'clients' ? <ClientsReport range={range} />
         : view === 'positions' ? <PositionsReport />
         : view === 'sched_agent' ? <SchedAgentReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
+        : view === 'payroll_week' ? <PayrollWeekReport range={range} />
         : view === 'tasks_person' ? <TasksByPersonReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
         : view === 'offclock' ? <OffClockReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
         : view === 'kb' ? <KbReport profiles={peopleFull} allowedIds={allowedIds} />
@@ -2643,6 +2650,96 @@ function hourSplit(start, end) {
   }
   return out
 }
+// Weekly payroll pull — by day per agent: scheduled hrs, Five9 worked hrs, and the one
+// weekly coaching payment (on the eligible day). Admin-only (payroll_week RPC is gated).
+function PayrollWeekReport({ range }) {
+  const [rows, setRows] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setRows(null); setErr('')
+    supabase.rpc('payroll_week', { p_from: range.from, p_to: range.to }).then(({ data, error }) => {
+      if (!active) return
+      if (error) setErr(error.message); else setRows(data || [])
+    })
+    return () => { active = false }
+  }, [range.from, range.to])
+
+  const money = (c) => '$' + ((c || 0) / 100).toFixed(2)
+  const byAgent = useMemo(() => {
+    const m = new Map()
+    for (const r of (rows || [])) {
+      if (!m.has(r.profile_id)) m.set(r.profile_id, { name: r.agent_name || '—', days: [], sched: 0, worked: 0, coach: 0 })
+      const a = m.get(r.profile_id)
+      a.days.push(r)
+      a.sched += Number(r.scheduled_hours) || 0
+      a.worked += Number(r.worked_hours) || 0
+      a.coach += Number(r.coaching_amount_cents) || 0
+    }
+    return Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name))
+  }, [rows])
+  const totals = useMemo(() => byAgent.reduce((t, a) => ({ sched: t.sched + a.sched, worked: t.worked + a.worked, coach: t.coach + a.coach }), { sched: 0, worked: 0, coach: 0 }), [byAgent])
+
+  const cH = { textAlign: 'left', fontSize: 12, color: 'var(--ink-soft,#6b7280)', fontWeight: 700, padding: '8px 10px', borderBottom: '1px solid var(--line,#e5e7eb)' }
+  const cHR = { ...cH, textAlign: 'right' }
+  const cC = { padding: '7px 10px', borderBottom: '1px solid var(--line-soft,#f1f1f1)', fontSize: 13.5 }
+  const cR = { ...cC, textAlign: 'right' }
+  const tile = { flex: 1, minWidth: 150, background: 'var(--card,#fff)', border: '1px solid var(--line,#e5e7eb)', borderRadius: 12, padding: 14 }
+
+  function exportCsv() {
+    const head = ['Agent', 'Date', 'Scheduled hrs', 'Five9 worked hrs', 'Coaching pay']
+    const out = [head]
+    for (const a of byAgent) {
+      for (const d of a.days) out.push([a.name, d.work_date, Number(d.scheduled_hours).toFixed(2), Number(d.worked_hours).toFixed(2), d.coaching_amount_cents ? (d.coaching_amount_cents / 100).toFixed(2) : ''])
+      out.push([`${a.name} — WEEK TOTAL`, '', a.sched.toFixed(2), a.worked.toFixed(2), (a.coach / 100).toFixed(2)])
+    }
+    out.push(['ALL — TOTAL', '', totals.sched.toFixed(2), totals.worked.toFixed(2), (totals.coach / 100).toFixed(2)])
+    downloadCSV(`weekly-payroll_${range.from}_to_${range.to}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
+  if (rows == null) return <p className="page-sub">Loading…</p>
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+        <div className="page-sub" style={{ maxWidth: 620 }}>Set the range to a Mon–Sun week. Scheduled = claimed interval hours · Worked = Five9 login hours · Coaching = one paid session/week ($15/hr up to 30 min), only once held &amp; recorded.</div>
+        <button className="btn" onClick={exportCsv} disabled={!byAgent.length}>Export Payroll CSV</button>
+      </div>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={tile}><div style={{ fontSize: 12, color: 'var(--ink-soft,#6b7280)' }}>Scheduled hrs</div><div style={{ fontSize: 22, fontWeight: 800 }}>{totals.sched.toFixed(1)}</div></div>
+        <div style={tile}><div style={{ fontSize: 12, color: 'var(--ink-soft,#6b7280)' }}>Five9 worked hrs</div><div style={{ fontSize: 22, fontWeight: 800 }}>{totals.worked.toFixed(1)}</div></div>
+        <div style={tile}><div style={{ fontSize: 12, color: 'var(--ink-soft,#6b7280)' }}>Coaching pay</div><div style={{ fontSize: 22, fontWeight: 800 }}>{money(totals.coach)}</div></div>
+      </div>
+      {byAgent.length === 0 ? <div className="card" style={{ padding: 16 }}>No hours or coaching in this range.</div> : (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th style={cH}>Agent</th><th style={cH}>Date</th><th style={cHR}>Scheduled</th><th style={cHR}>Five9 worked</th><th style={cHR}>Coaching</th></tr></thead>
+            <tbody>
+              {byAgent.map(a => (
+                <React.Fragment key={a.name}>
+                  {a.days.map((d, i) => (
+                    <tr key={a.name + d.work_date + i}>
+                      <td style={cC}>{i === 0 ? a.name : ''}</td>
+                      <td style={cC}>{d.work_date}</td>
+                      <td style={cR}>{Number(d.scheduled_hours) ? Number(d.scheduled_hours).toFixed(2) : '—'}</td>
+                      <td style={cR}>{Number(d.worked_hours) ? Number(d.worked_hours).toFixed(2) : '—'}</td>
+                      <td style={cR}>{d.coaching_amount_cents ? money(d.coaching_amount_cents) : '—'}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: 'var(--canvas,#f9fafb)', fontWeight: 700 }}>
+                    <td style={cC}>{a.name} — week total</td><td style={cC}></td>
+                    <td style={cR}>{a.sched.toFixed(2)}</td><td style={cR}>{a.worked.toFixed(2)}</td><td style={cR}>{money(a.coach)}</td>
+                  </tr>
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SchedAgentReport({ range, profiles, allowedIds }) {
   const [d, setD] = useState(null)
   const [err, setErr] = useState('')
