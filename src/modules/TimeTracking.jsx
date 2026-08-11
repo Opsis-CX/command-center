@@ -49,13 +49,49 @@ export default function TimeTracking({ taskId }) {
   }, [running, othersRunning.length])
 
   async function startTimer() {
-    // stop any other running timer for this user first (one at a time)
-    const other = timeEntries.find(e => e.user_id === userId && e.started_at && !e.ended_at)
-    if (other) await finalize(other)
+    // Check the DATABASE (not just this tab's state) for any running timer this
+    // user already has. A timer started in another tab or on another device won't
+    // be in local state — that's how people ended up with several running at once.
+    const { data: openRows, error: checkErr } = await supabase
+      .from('time_entries')
+      .select('id, task_id, started_at')
+      .eq('user_id', userId)
+      .is('ended_at', null)
+    if (checkErr) { window.alert('Could not start the timer — please try again.'); return }
+
+    // Already timing THIS task? Nothing to do.
+    if ((openRows || []).some(e => e.task_id === taskId)) return
+
+    const other = (openRows || []).find(e => e.task_id !== taskId)
+    if (other) {
+      const otherTask = tasks.find(t => t.id === other.task_id)
+      const label = otherTask ? `"${otherTask.name}"` : 'another task'
+      const mins = Math.max(1, Math.round((Date.now() - new Date(other.started_at).getTime()) / 60000))
+      const ok = window.confirm(
+        `You already have a timer running on ${label} (${mins} min so far).\n\n` +
+        `You can only run one timer at a time. Stop that timer and start timing this task instead?`
+      )
+      if (!ok) return
+      // Close every open timer for this user before starting the new one.
+      for (const e of openRows) {
+        await finalize(timeEntries.find(t => t.id === e.id) || e)
+      }
+    }
+
     const { data, error } = await supabase.from('time_entries').insert({
       task_id: taskId, user_id: userId, started_at: new Date().toISOString(), is_manual: false,
     }).select().single()
-    if (error) return
+    if (error) {
+      // Backstop: the DB enforces one running timer per user (unique index
+      // time_entries_one_running_per_user). If a race slips through, say so
+      // instead of failing silently.
+      if (error.code === '23505') {
+        window.alert('You already have a timer running somewhere else. Stop it first, then start this one.')
+      } else {
+        window.alert('Could not start the timer — please try again.')
+      }
+      return
+    }
     setTimeEntries(prev => [data, ...prev])
   }
 
