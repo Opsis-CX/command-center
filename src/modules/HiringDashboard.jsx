@@ -412,6 +412,27 @@ export default function HiringDashboard() {
     transition(app, 'denied', { email: 'denied', note: 'denied at first review' })
   }
 
+  // Universal remove/deny — available at ANY stage. Screens the applicant out
+  // (moves them to the screened-out list, reinstatable) and sends NO email, so
+  // it's safe for undeliverable-email or stale applicants. toStatus: 'withdrawn'
+  // (neutral removal) or 'denied' (rejection).
+  async function removeFromPipeline(app, toStatus, reason) {
+    const verb = toStatus === 'denied' ? 'Deny' : 'Remove'
+    if (!window.confirm(`${verb} ${app.full_name}? They'll move to the screened-out list. No email is sent.`)) return
+    setBusy(true)
+    const from = app.status
+    const patch = { status: toStatus, reviewer_id: user?.id, reviewed_at: new Date().toISOString(), screen_reason: reason || null }
+    const { error } = await supabase.from('hiring_applications').update(patch).eq('id', app.id)
+    if (error) { setErr(error.message); setBusy(false); return }
+    await supabase.from('hiring_stage_events').insert({
+      application_id: app.id, from_status: from, to_status: toStatus, actor_id: user?.id,
+      note: `${toStatus === 'denied' ? 'Denied' : 'Removed from pipeline'}${reason ? ': ' + reason : ''} (from "${STATUS_LABEL[from] || from}", no email sent)`,
+    })
+    setApps(prev => prev.map(a => a.id === app.id ? { ...a, ...patch } : a))
+    setSelected(prev => prev && prev.id === app.id ? { ...prev, ...patch } : prev)
+    setBusy(false)
+  }
+
   // Corrective move: set an applicant to any stage (usually to move them BACK
   // to the right one). Unlike the forward "advance" buttons this sends NO email
   // and fires NO side effects (no new Rippling task, Five9 alert, or account
@@ -579,7 +600,7 @@ export default function HiringDashboard() {
       )}
 
       {selected && <DetailPanel app={selected} onClose={() => setSelected(null)}
-        onApprove={approve} onDeny={deny} onTransition={transition} onMove={moveToStep} onHold={setHold} certTags={certTags} busy={busy} />}
+        onApprove={approve} onDeny={deny} onTransition={transition} onMove={moveToStep} onRemove={removeFromPipeline} onHold={setHold} certTags={certTags} busy={busy} />}
     </div>
   )
 }
@@ -616,12 +637,13 @@ function ApplicantCard({ app, onClick, onApprove, onDeny, busy }) {
   )
 }
 
-function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, onHold, certTags = [], busy }) {
+function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, onRemove, onHold, certTags = [], busy }) {
   const [resumeUrl, setResumeUrl] = useState(null)
   const [assessment, setAssessment] = useState(null)
   const [assessLoading, setAssessLoading] = useState(false)
   const [moveTo, setMoveTo] = useState('')
   const [holdReason, setHoldReason] = useState('')
+  const [removeReason, setRemoveReason] = useState('')
   // Certification to assign on onboard — defaults to the first available cert.
   const [certTag, setCertTag] = useState('')
   useEffect(() => { if (!certTag && certTags.length) setCertTag(certTags[0].tag_id) }, [certTags]) // eslint-disable-line
@@ -808,6 +830,25 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
                   style={{ border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 700, padding: '8px 16px', cursor: (busy || !moveTo) ? 'default' : 'pointer', opacity: (busy || !moveTo) ? 0.5 : 1, fontFamily: 'inherit', flex: 'none' }}>
                   Move
                 </button>
+              </div>
+            </details>
+          )}
+
+          {/* Universal remove / deny — works at ANY stage, sends NO email. Use for
+              undeliverable-email or stale applicants to keep the pipeline clean. */}
+          {onRemove && !SCREENED_OUT.includes(app.status) && (
+            <details style={{ marginBottom: 20, border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', background: '#fef2f2' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: '#b91c1c' }}>Remove from pipeline</summary>
+              <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', margin: '8px 0 10px', lineHeight: 1.4 }}>
+                Screens this applicant out from any stage (they move to the screened-out list and can be reinstated later). <strong>No email is sent</strong> — safe for bad-email or stale applicants.
+              </div>
+              <input value={removeReason} onChange={e => setRemoveReason(e.target.value)} placeholder="Reason (optional) — e.g. undeliverable email, no response"
+                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', marginBottom: 8 }} />
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button disabled={busy} onClick={() => { onRemove(app, 'withdrawn', removeReason.trim()); setRemoveReason('') }}
+                  style={{ flex: '1 1 140px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#b91c1c', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>Remove (no email)</button>
+                <button disabled={busy} onClick={() => { onRemove(app, 'denied', removeReason.trim()); setRemoveReason('') }}
+                  style={{ flex: '1 1 140px', border: 0, borderRadius: 8, background: '#DC2626', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>Deny</button>
               </div>
             </details>
           )}
