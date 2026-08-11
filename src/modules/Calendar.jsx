@@ -107,7 +107,7 @@ export default function Calendar() {
       fetchAllRows(() => supabase.from('time_entries').select('id, task_id, user_id, started_at, ended_at, duration_minutes').order('id')),
       supabase.from('calendar_shares').select('*').eq('viewer_id', uid),
       supabase.from('calendar_shares').select('*').eq('owner_id', uid),
-      supabase.from('coaching_sessions').select('id, asc_id, agent_id, session_date, start_time, end_time, status, topic, meeting_url').eq('status', 'booked'),
+      supabase.from('coaching_sessions').select('id, kind, asc_id, agent_id, applicant_name, session_date, start_time, end_time, status, topic, meeting_url').eq('status', 'booked'),
     ])
     setEvents(evRes.data || [])
     setTasks(taskRes.data || [])
@@ -245,12 +245,15 @@ export default function Calendar() {
       }))
 
     const coachIvs = coaching.filter(s => s.session_date === ds).map(s => {
-      const other = s.agent_id === userId ? nameOf(s.asc_id) : nameOf(s.agent_id)
+      const isMock = s.kind === 'mock_call'
+      const title = isMock
+        ? (s.agent_id === userId ? `🎧 Mock call with ${nameOf(s.asc_id)}` : `🎧 Mock call: ${s.applicant_name || 'candidate'}`)
+        : (s.agent_id === userId ? `🎯 Coaching with ${nameOf(s.asc_id)}` : `🎯 Coaching: ${nameOf(s.agent_id)}`)
       return {
-        kind: 'coaching', id: 'co-' + s.id, title: s.agent_id === userId ? `🎯 Coaching with ${other}` : `🎯 Coaching: ${other}`, allDay: false,
+        kind: 'coaching', id: 'co-' + s.id, title, allDay: false,
         start: toViewerHHMM(s.session_date, s.start_time, COMPANY_TZ, viewerTZ),
         end: toViewerHHMM(s.session_date, s.end_time, COMPANY_TZ, viewerTZ),
-        color: '#DB2777', hangoutLink: s.meeting_url || undefined,
+        color: isMock ? '#7C3AED' : '#DB2777', hangoutLink: s.meeting_url || undefined,
       }
     })
 
