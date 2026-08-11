@@ -51,16 +51,28 @@ export default function Coaching() {
   const isAsc = String(appRole || '').toLowerCase().includes('asc')
   const canManage = isAdmin || isAsc
 
+  // Is the current user the mock-call provider (e.g. Breanna)?
+  const [mockProvider, setMockProvider] = useState(null)
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('session_providers').select('provider_id').eq('kind', 'mock_call').eq('active', true).maybeSingle()
+      setMockProvider(data?.provider_id || null)
+    })()
+  }, [])
+  const isMockProvider = !!user && user.id === mockProvider
+
   const tabs = useMemo(() => {
     const t = []
-    if (!isAsc) t.push({ k: 'book', label: 'Book a session' })
+    if (!isAsc && !isMockProvider) t.push({ k: 'book', label: 'Book a session' })
     if (isAsc) t.push({ k: 'calendar', label: 'My coaching calendar' })
-    t.push({ k: 'mine', label: isAsc ? 'All my sessions' : 'My sessions' })
+    if (isAsc || (!isMockProvider)) t.push({ k: 'mine', label: isAsc ? 'All my sessions' : 'My sessions' })
+    if (isMockProvider || isAdmin) t.push({ k: 'mock', label: 'Mock calls' })
     if (canManage) t.push({ k: 'teams', label: 'Teams' })
     return t
-  }, [isAsc, canManage])
+  }, [isAsc, canManage, isMockProvider, isAdmin])
 
-  const [tab, setTab] = useState(tabs[0]?.k || 'book')
+  const [tab, setTab] = useState('book')
+  useEffect(() => { if (!tabs.some(t => t.k === tab)) setTab(tabs[0]?.k || 'book') }, [tabs, tab])
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '8px 12px 40px' }}>
@@ -79,6 +91,7 @@ export default function Coaching() {
       {tab === 'book' && <BookPanel user={user} />}
       {tab === 'calendar' && <SessionsPanel user={user} mode="asc" />}
       {tab === 'mine' && <SessionsPanel user={user} mode={isAsc ? 'asc' : 'agent'} />}
+      {tab === 'mock' && <MockCallsPanel user={user} isAdmin={isAdmin} providerId={mockProvider} />}
       {tab === 'teams' && <TeamsPanel />}
     </div>
   )
@@ -325,6 +338,107 @@ function SessionsPanel({ user, mode }) {
       {past.length > 0 && (
         <div style={card}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Past & cancelled</div>
+          {past.map(r => <Row key={r.id} r={r} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// MOCK CALLS PANEL — provider (Breanna) / admin view of booked mock calls
+// ============================================================
+function MockCallsPanel({ user, isAdmin, providerId }) {
+  const [rows, setRows] = useState([])
+  const [meetings, setMeetings] = useState({})
+  const [room, setRoom] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [msg, setMsg] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await supabase.rpc('get_mock_sessions')
+    if (error) { setMsg(error.message); setLoading(false); return }
+    const list = data || []
+    setRows(list)
+    const mids = [...new Set(list.map(r => r.meeting_id).filter(Boolean))]
+    if (mids.length) {
+      const { data: mts } = await supabase.from('meetings').select('id, status, recording_link, summary').in('id', mids)
+      const map = {}; (mts || []).forEach(m => { map[m.id] = m }); setMeetings(map)
+    } else setMeetings({})
+    if (providerId) {
+      const { data: p } = await supabase.from('profiles').select('coaching_room_url').eq('id', providerId).maybeSingle()
+      setRoom(p?.coaching_room_url || '')
+    }
+    setLoading(false)
+  }, [providerId])
+  useEffect(() => { load() }, [load])
+
+  async function cancel(r) {
+    if (!window.confirm('Cancel this mock call?')) return
+    const { error } = await supabase.rpc('cancel_coaching_session', { p_id: r.id, p_reason: null })
+    if (error) { setMsg(error.message); return }
+    load()
+  }
+  async function saveRoom() {
+    const { error } = await supabase.rpc('set_coaching_room', { p_asc_id: providerId, p_url: room })
+    setMsg(error ? error.message : 'Room saved ✓')
+  }
+
+  if (loading) return <div style={card}>Loading…</div>
+  const today = todayET()
+  const upcoming = rows.filter(r => r.status === 'booked' && r.session_date >= today)
+  const past = rows.filter(r => !(r.status === 'booked' && r.session_date >= today))
+
+  const Row = ({ r }) => {
+    const m = r.meeting_id ? meetings[r.meeting_id] : null
+    const recorded = m && (m.status === 'done' || m.status === 'ready') && m.recording_link
+    return (
+      <div style={{ padding: '10px 0', borderBottom: '1px solid var(--border,#eee)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontWeight: 600 }}>{fmtDate(r.session_date)} · {fmtTime(r.start_time)}–{fmtTime(r.end_time)}</div>
+            <div style={{ fontSize: 13, color: 'var(--muted,#6b7280)' }}>
+              {r.applicant_name || '—'}{r.status !== 'booked' ? ` · ${r.status}` : ''}
+              {recorded ? ' · 🎙️ Recorded' : (r.capture === 'scheduled' ? ' · 🎙️ scheduled' : '')}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {r.status === 'booked' && r.meeting_url && r.session_date >= today && (
+              <a href={r.meeting_url} target="_blank" rel="noreferrer" style={{ ...btn, textDecoration: 'none' }}>Join</a>
+            )}
+            {m && m.recording_link && <a href={m.recording_link} target="_blank" rel="noreferrer" style={{ ...btn, textDecoration: 'none' }}>▶ Recording</a>}
+            {r.status === 'booked' && r.session_date >= today && <button style={btn} onClick={() => cancel(r)}>Cancel</button>}
+          </div>
+        </div>
+        {m && m.summary && <div style={{ marginTop: 6, fontSize: 13, background: 'var(--bg,#f9fafb)', borderRadius: 8, padding: '8px 10px' }}>{m.summary}</div>}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {msg && <div style={{ ...card, color: msg.includes('✓') ? '#16a34a' : '#b91c1c' }}>{msg}</div>}
+      <div style={card}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>Mock-call room</div>
+        <p style={{ color: 'var(--muted,#6b7280)', marginTop: 0, fontSize: 13 }}>
+          Candidates at the mock-call step book from a private link. Availability comes from your claimed
+          “Certification / Social Media” intervals on the Schedule board — pick some up and slots open automatically.
+          Optional room below; blank = a Google Meet link is minted per booking.
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input value={room} onChange={e => setRoom(e.target.value)} placeholder="https://…  (blank = auto Meet link)"
+            style={{ flex: 1, padding: 6, borderRadius: 8, border: '1px solid var(--border,#e5e7eb)' }} />
+          <button style={btn} onClick={saveRoom}>Save</button>
+        </div>
+      </div>
+      <div style={card}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Upcoming mock calls</div>
+        {upcoming.length ? upcoming.map(r => <Row key={r.id} r={r} />) : <div style={{ color: 'var(--muted,#6b7280)' }}>Nothing scheduled.</div>}
+      </div>
+      {past.length > 0 && (
+        <div style={card}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Past</div>
           {past.map(r => <Row key={r.id} r={r} />)}
         </div>
       )}
