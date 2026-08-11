@@ -354,6 +354,12 @@ export default function HiringDashboard() {
       await inviteAgentAccount(app)
     }
 
+    // Reaching the end of the pipeline (Hired) unlocks their full agent access —
+    // clears in_training so they leave the Certification-only view.
+    if (toStatus === 'hired') {
+      await supabase.rpc('finish_onboarding', { p_application_id: app.id }).catch(() => {})
+    }
+
     const { error } = await supabase.from('hiring_applications').update(patch).eq('id', app.id)
     if (error) { setErr(error.message); setBusy(false); return }
     await supabase.from('hiring_stage_events').insert({
