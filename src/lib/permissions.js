@@ -14,18 +14,14 @@ export const ROLES = [
 // For each permission, the set of roles that have it.
 const MATRIX = {
   'dashboard': ['asc', 'support', 'certification', 'quality', 'marketing', 'admin'],
-  // Meetings (notetaker) — every staff role EXCEPT agents. Agents found it
-  // confusing; their meeting notes + recordings surface on their Scorecard's
-  // Coaching & Feedback section instead.
-  'meetings': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
   'weekly_sync': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard': ['agent'],
   // Quality Audit isn't on the roles sheet — left as-is. Confirm whether the new
   // "quality" role should be added here (and to is_qa_auditor() in Supabase).
-  'quality_audit': ['asc', 'certification', 'admin'],
-  'quality_audit.enter_audits': ['asc', 'certification', 'admin'],
-  'quality_audit.view_own': ['asc', 'certification', 'admin'],
-  'quality_audit.call_reviews': ['asc', 'certification', 'admin'],
+  'quality_audit': ['certification', 'admin'],
+  'quality_audit.enter_audits': ['certification', 'admin'],
+  'quality_audit.view_own': ['certification', 'admin'],
+  'quality_audit.call_reviews': ['agent', 'certification', 'admin'],
   'service_performance_scorecard.view_personal_scorecard': ['agent', 'admin'],
   'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard.edit_scorecard': ['admin'],
@@ -58,9 +54,8 @@ const MATRIX = {
   'schedule.accept_and_release_intervals_on_an_assigned_schedule': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
   'schedule.ability_to_assign_agents_to_schedules': ['certification', 'admin'],
   'schedule.view_my_schedule': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
-  // ASC (Kerri) added so coordinators can SEE all published schedules in the
-  // Schedule view (they manage staffing but aren't on any agent roster/audience).
-  'schedule.view_all_schedules': ['asc', 'certification', 'admin'],
+  // Not on the roles sheet — left as-is.
+  'schedule.view_all_schedules': ['certification', 'admin'],
   'reporting': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'people_and_tags.view_only': ['asc', 'quality', 'admin'],
   'people_and_tags.edit': ['certification', 'admin'],
@@ -74,35 +69,29 @@ const MATRIX = {
   'project_management.all': ['admin'],
   'project_management.create_projects': ['certification', 'quality', 'marketing', 'admin'],
   'project_management.add_tasks_to_projects_assigned_to': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
-  // Tokens (employee rewards). Everyone sees their own wallet + can redeem;
-  // managers can award (drawing from a per-manager budget); admins manage
-  // budgets, catalog, adjustments and the Tremendous connection.
-  'tokens.view_own': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
-  'tokens.award': ['asc', 'certification', 'quality', 'marketing', 'admin'],
-  'tokens.admin': ['admin'],
-  // Who's On — live check-ins + current task (floor oversight). Restores the
-  // old Dashboard's "On now" view.
-  'live_status': ['admin', 'asc', 'certification', 'quality'],
 }
-// can(role, "schedule.create_schedules") -> boolean
-// A person can hold MORE THAN ONE role, stored as a comma-separated list in
-// profiles.role (e.g. "asc,marketing"). They get the UNION of every listed
-// role's permissions. A single role (the common case) still works unchanged.
+
+// A person's role can be a comma-separated list ("asc,marketing"). A combined
+// role gets the UNION of its parts' permissions. A single role with no comma
+// splits to a one-item list, so existing single-role users behave exactly as
+// before this change.
 function rolesOf(role) {
   return String(role || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean)
 }
+
+// can(role, "schedule.create_schedules") -> boolean
 export function can(role, perm) {
-  const roles = rolesOf(role)
-  if (roles.includes('admin')) return true   // admin always passes
+  const rs = rolesOf(role)
+  if (rs.includes('admin')) return true            // admin always passes
   const allowed = MATRIX[perm]
   if (!allowed) return false
-  return roles.some(r => allowed.includes(r))
+  return rs.some(r => allowed.includes(r))
 }
 // Convenience: does this role have ANY capability under a page prefix?
 // Used for nav gating (show the page if they can do anything on it).
 export function canAny(role, pagePrefix) {
-  const roles = rolesOf(role)
-  if (roles.includes('admin')) return true
-  return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + '.')) && MATRIX[k].some(r => roles.includes(r)))
+  const rs = rolesOf(role)
+  if (rs.includes('admin')) return true
+  return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + ".")) && rs.some(r => MATRIX[k].includes(r)))
 }
 export const ALL_PERMS = Object.keys(MATRIX)
