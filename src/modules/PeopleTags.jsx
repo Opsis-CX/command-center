@@ -224,21 +224,25 @@ export default function PeopleTags() {
         five9_sent_at: new Date().toISOString(),
       }).eq('id', person.id)
 
+      // find their hiring record (matched by email) FIRST, so we can build a
+      // per-candidate mock-call scheduling link (public page /mock-call/:appId)
+      const { data: apps } = await supabase.from('hiring_applications')
+        .select('id, status').eq('email', person.email).order('created_at', { ascending: false }).limit(1)
+      const app = apps && apps[0]
+      const scheduleLink = app ? `${window.location.origin}/mock-call/${app.id}` : MOCK_CALL_SCHEDULE_LINK
+
       // email the agent their credentials + scheduling link
       await sendHiringEmail('five9_credentials', person.email, {
         name: person.full_name,
         username: five9User.trim(),
         tempPassword: five9Pass.trim(),
-        scheduleLink: MOCK_CALL_SCHEDULE_LINK,
+        scheduleLink,
       })
 
       // clear the temp password now that it's been sent (single-use)
       await supabase.from('profiles').update({ five9_temp_password: null }).eq('id', person.id)
 
-      // advance their hiring record (matched by email) to mock-call requested
-      const { data: apps } = await supabase.from('hiring_applications')
-        .select('id, status').eq('email', person.email).order('created_at', { ascending: false }).limit(1)
-      const app = apps && apps[0]
+      // advance their hiring record to mock-call requested
       if (app) {
         await supabase.from('hiring_applications').update({ status: 'mock_requested' }).eq('id', app.id)
         await supabase.from('hiring_stage_events').insert({
