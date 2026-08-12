@@ -1920,48 +1920,89 @@ function HaiBar({ color, textColor, label, value, max }) {
     </div>
   )
 }
+// AI opportunity samples are thin per brand, so close-rate reads below this many
+// opportunities are flagged as low-confidence (shown muted with a ° marker).
+const HAI_LOW_N = 30
 function HumanVsAI({ rows }) {
+  // Which lens: 'qa' = avg QA score (audit quality), 'close' = conversion
+  // (booked ÷ opportunities on scored calls).
+  const [metric, setMetric] = useState('qa')
   const data = useMemo(() => buildScorecardData(rows), [rows])
   const byBrand = useMemo(() => {
     const m = new Map()
     data.agents.forEach((a) => {
-      if (!m.has(a.brand)) m.set(a.brand, { brand: a.brand, hCalls: 0, hSum: 0, aCalls: 0, aSum: 0 })
+      if (!m.has(a.brand)) m.set(a.brand, { brand: a.brand, hCalls: 0, hSum: 0, aCalls: 0, aSum: 0, hOpps: 0, hBooked: 0, aOpps: 0, aBooked: 0 })
       const o = m.get(a.brand)
-      if (a.ai) { o.aCalls += a.calls; o.aSum += (a.avg || 0) * a.calls }
-      else { o.hCalls += a.calls; o.hSum += (a.avg || 0) * a.calls }
+      if (a.ai) { o.aCalls += a.calls; o.aSum += (a.avg || 0) * a.calls; o.aOpps += a.opps || 0; o.aBooked += a.booked || 0 }
+      else { o.hCalls += a.calls; o.hSum += (a.avg || 0) * a.calls; o.hOpps += a.opps || 0; o.hBooked += a.booked || 0 }
     })
     return Array.from(m.values()).map((o) => ({
       ...o,
       hAvg: o.hCalls ? o.hSum / o.hCalls : null,
       aAvg: o.aCalls ? o.aSum / o.aCalls : null,
+      hClose: o.hOpps ? (o.hBooked / o.hOpps) * 100 : null,
+      aClose: o.aOpps ? (o.aBooked / o.aOpps) * 100 : null,
       calls: o.hCalls + o.aCalls,
-      lift: (o.hCalls && o.aCalls) ? (o.aSum / o.aCalls - o.hSum / o.hCalls) : null,
+      qaLift: (o.hCalls && o.aCalls) ? (o.aSum / o.aCalls - o.hSum / o.hCalls) : null,
+      closeLift: (o.hOpps && o.aOpps) ? ((o.aBooked / o.aOpps) - (o.hBooked / o.hOpps)) * 100 : null,
     })).sort((a, b) => b.calls - a.calls)
   }, [data])
 
   const tot = useMemo(() => {
-    const t = byBrand.reduce((s, b) => ({ hCalls: s.hCalls + b.hCalls, hSum: s.hSum + b.hSum, aCalls: s.aCalls + b.aCalls, aSum: s.aSum + b.aSum }), { hCalls: 0, hSum: 0, aCalls: 0, aSum: 0 })
+    const t = byBrand.reduce((s, b) => ({ hCalls: s.hCalls + b.hCalls, hSum: s.hSum + b.hSum, aCalls: s.aCalls + b.aCalls, aSum: s.aSum + b.aSum, hOpps: s.hOpps + b.hOpps, hBooked: s.hBooked + b.hBooked, aOpps: s.aOpps + b.aOpps, aBooked: s.aBooked + b.aBooked }), { hCalls: 0, hSum: 0, aCalls: 0, aSum: 0, hOpps: 0, hBooked: 0, aOpps: 0, aBooked: 0 })
     const hAvg = t.hCalls ? t.hSum / t.hCalls : null
     const aAvg = t.aCalls ? t.aSum / t.aCalls : null
-    return { ...t, hAvg, aAvg, lift: (hAvg != null && aAvg != null) ? aAvg - hAvg : null, aiBrands: byBrand.filter((b) => b.aCalls > 0).length }
+    const hClose = t.hOpps ? (t.hBooked / t.hOpps) * 100 : null
+    const aClose = t.aOpps ? (t.aBooked / t.aOpps) * 100 : null
+    return { ...t, hAvg, aAvg, hClose, aClose,
+      qaLift: (hAvg != null && aAvg != null) ? aAvg - hAvg : null,
+      closeLift: (hClose != null && aClose != null) ? aClose - hClose : null,
+      aiBrands: byBrand.filter((b) => b.aCalls > 0).length }
   }, [byBrand])
 
-  const [sort, onSort] = useSort('Calls', 'desc')
-  const acc = { Brand: (b) => b.brand, 'Human calls': (b) => b.hCalls, 'Human avg QA': (b) => b.hAvg, 'AI calls': (b) => b.aCalls, 'AI avg QA': (b) => b.aAvg, 'AI lift': (b) => b.lift, Calls: (b) => b.calls }
+  const isQa = metric === 'qa'
+  // Per-metric accessors so the tiles, bars, and table share one code path.
+  const hVal = (b) => (isQa ? b.hAvg : b.hClose)
+  const aVal = (b) => (isQa ? b.aAvg : b.aClose)
+  const lift = (b) => (isQa ? b.qaLift : b.closeLift)
+  const hN = (b) => (isQa ? b.hCalls : b.hOpps)
+  const aN = (b) => (isQa ? b.aCalls : b.aOpps)
+  const lowN = (b) => (!isQa && aN(b) > 0 && aN(b) < HAI_LOW_N)   // thin AI close-rate sample
+  const nWord = isQa ? 'calls' : 'opps'
+  const totH = isQa ? tot.hAvg : tot.hClose
+  const totA = isQa ? tot.aAvg : tot.aClose
+  const totLift = isQa ? tot.qaLift : tot.closeLift
+  const totHN = isQa ? tot.hCalls : tot.hOpps
+  const totAN = isQa ? tot.aCalls : tot.aOpps
+  // In QA mode color = score band; in Close mode there's no universal "good" band,
+  // so use the series colors (teal / tan) instead.
+  const valColor = (v, ai) => (isQa ? scoreColor(v) : (v == null ? '#94a3b8' : ai ? AI_INK : TEAL))
+  const valBg = (v) => (isQa ? scoreBg(v) : '#f1f5f9')
+  const anyLowN = !isQa && byBrand.some((b) => lowN(b))
+
+  const [sort, onSort] = useSort('N', 'desc')
+  const acc = { Brand: (b) => b.brand, 'Human n': (b) => hN(b), 'Human val': (b) => hVal(b), 'AI n': (b) => aN(b), 'AI val': (b) => aVal(b), 'AI diff': (b) => lift(b), N: (b) => b.calls }
   const view = useTableView(sortRows(byBrand, sort, acc), { pageSize: 20, searchText: (b) => b.brand })
 
   const build = () => ([
-    { title: 'Human vs AI — summary', sheet: 'Summary', cols: ['Metric', 'Value'], rows: [
-      ['Human CSRs — avg QA %', r1(tot.hAvg)], ['Human scored calls', tot.hCalls],
-      ['AI CSRs — avg QA %', r1(tot.aAvg)], ['AI scored calls', tot.aCalls],
-      ['AI quality lift (pp)', tot.lift == null ? '' : r1(tot.lift)], ['Brands with AI coverage', tot.aiBrands],
+    { title: 'Human vs AI — summary', sheet: 'Summary', cols: ['Metric', 'Human', 'AI', 'AI diff'], rows: [
+      ['Avg QA %', r1(tot.hAvg), r1(tot.aAvg), tot.qaLift == null ? '' : r1(tot.qaLift)],
+      ['Scored calls', tot.hCalls, tot.aCalls, ''],
+      ['Close rate %', r1(tot.hClose), r1(tot.aClose), tot.closeLift == null ? '' : r1(tot.closeLift)],
+      ['Opportunities', tot.hOpps, tot.aOpps, ''],
+      ['Booked', tot.hBooked, tot.aBooked, ''],
+      ['Brands with AI coverage', tot.aiBrands, '', ''],
     ] },
-    { title: 'Human vs AI by brand', sheet: 'By brand', cols: ['Brand', 'Human calls', 'Human avg QA %', 'AI calls', 'AI avg QA %', 'AI lift (pp)'],
-      rows: byBrand.map((b) => [b.brand, b.hCalls, r1(b.hAvg), b.aCalls, r1(b.aAvg), b.lift == null ? '' : r1(b.lift)]) },
+    { title: 'By brand — Avg QA', sheet: 'QA by brand', cols: ['Brand', 'Human calls', 'Human avg QA %', 'AI calls', 'AI avg QA %', 'AI lift (pp)'],
+      rows: byBrand.map((b) => [b.brand, b.hCalls, r1(b.hAvg), b.aCalls, r1(b.aAvg), b.qaLift == null ? '' : r1(b.qaLift)]) },
+    { title: 'By brand — Close rate', sheet: 'Close by brand', cols: ['Brand', 'Human opps', 'Human booked', 'Human close %', 'AI opps', 'AI booked', 'AI close %', 'AI diff (pp)', 'AI sample'],
+      rows: byBrand.map((b) => [b.brand, b.hOpps, b.hBooked, r1(b.hClose), b.aOpps, b.aBooked, r1(b.aClose), b.closeLift == null ? '' : r1(b.closeLift), lowN(b) ? 'low (<' + HAI_LOW_N + ')' : (b.aOpps ? 'ok' : '')]) },
   ])
 
   const liftStr = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(1) + 'pp')
-  const withAi = byBrand.filter((b) => b.aCalls > 0 && b.hCalls > 0).sort((a, b) => (b.aAvg ?? 0) - (a.aAvg ?? 0))
+  const withAi = byBrand.filter((b) => aN(b) > 0 && hN(b) > 0).sort((a, b) => (aVal(b) ?? 0) - (aVal(a) ?? 0))
+
+  const seg = (k, l) => <button key={k} onClick={() => { setMetric(k); onSort('N') }} style={{ border: 'none', background: metric === k ? TEAL : '#fff', color: metric === k ? '#fff' : '#334155', padding: '7px 14px', borderRadius: 999, cursor: 'pointer', fontWeight: 700, fontSize: 13, boxShadow: metric === k ? 'none' : 'inset 0 0 0 1px #cbd5e1' }}>{l}</button>
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -1969,21 +2010,30 @@ function HumanVsAI({ rows }) {
         <div style={{ fontWeight: 700, fontSize: 15 }}>Human vs AI CSRs — by brand</div>
         <ExportBar name="callqa-human-vs-ai" title="Human vs AI CSRs" subtitle={tot.hCalls.toLocaleString() + ' human · ' + tot.aCalls.toLocaleString() + ' AI scored calls'} build={build} />
       </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {seg('qa', 'QA score')}{seg('close', 'Close rate')}
+        <span style={{ color: '#94a3b8', fontSize: 12.5, marginLeft: 4 }}>
+          {isQa ? 'Audit quality on the 10-point rubric.' : 'Conversion = booked ÷ opportunities on scored calls.'}
+        </span>
+      </div>
+
       <div style={{ fontSize: 12.5, color: '#64748b', marginTop: -6 }}>
         AI CSRs (Dane, Sophia, Jason) handle after-hours coverage and are audited for quality, not coached. Named agents only — unattributed calls are excluded.
+        {!isQa && ' Close rate here is on the QA-scored sample, not the full lead-to-booked funnel.'}
       </div>
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Tile label="Human CSRs — avg QA" value={pct(tot.hAvg)} color={scoreColor(tot.hAvg)} sub={tot.hCalls.toLocaleString() + ' scored calls'} />
-        <Tile label="AI CSRs — avg QA" value={pct(tot.aAvg)} color={scoreColor(tot.aAvg)} sub={tot.aCalls.toLocaleString() + ' scored calls · audit only'} />
-        <Tile label="AI quality lift" value={liftStr(tot.lift)} color={AI_INK} sub="AI avg minus human avg" />
+        <Tile label={isQa ? 'Human CSRs — avg QA' : 'Human CSRs — close rate'} value={pct(totH)} color={valColor(totH, false)} sub={totHN.toLocaleString() + ' ' + nWord} />
+        <Tile label={isQa ? 'AI CSRs — avg QA' : 'AI CSRs — close rate'} value={pct(totA)} color={valColor(totA, true)} sub={totAN.toLocaleString() + ' ' + nWord + (isQa ? ' · audit only' : '')} />
+        <Tile label={isQa ? 'AI quality lift' : 'AI close-rate diff'} value={liftStr(totLift)} color={AI_INK} sub={isQa ? 'AI avg minus human avg' : 'AI close minus human close'} />
         <Tile label="Brands with AI coverage" value={tot.aiBrands} sub={'of ' + byBrand.length + ' brands'} />
       </div>
 
       {withAi.length > 0 && (
         <Card>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-            <div style={{ fontWeight: 700 }}>Avg QA by brand — human vs AI</div>
+            <div style={{ fontWeight: 700 }}>{isQa ? 'Avg QA by brand — human vs AI' : 'Close rate by brand — human vs AI'}</div>
             <div style={{ display: 'flex', gap: 14, fontSize: 12.5, color: '#475569' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: TEAL }} />Human</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: AI_HUE }} />AI</span>
@@ -1993,15 +2043,16 @@ function HumanVsAI({ rows }) {
             {withAi.map((b) => (
               <div key={b.brand}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
-                  <span style={{ fontWeight: 600 }}>{b.brand}</span>
-                  <span style={{ color: '#94a3b8', fontSize: 12 }}>{b.hCalls.toLocaleString()} human · {b.aCalls.toLocaleString()} AI calls · {liftStr(b.lift)}</span>
+                  <span style={{ fontWeight: 600 }}>{b.brand}{lowN(b) && <span title={'Small AI sample (<' + HAI_LOW_N + ' opportunities) — interpret with caution'} style={{ color: '#b45309', fontWeight: 600 }}> °</span>}</span>
+                  <span style={{ color: '#94a3b8', fontSize: 12 }}>{hN(b).toLocaleString()} human · {aN(b).toLocaleString()} AI {nWord} · {liftStr(lift(b))}</span>
                 </div>
-                <HaiBar color={TEAL} label="Human" value={b.hAvg} max={100} />
+                <HaiBar color={TEAL} label="Human" value={hVal(b)} max={100} />
                 <div style={{ height: 4 }} />
-                <HaiBar color={AI_HUE} textColor={AI_INK} label="AI" value={b.aAvg} max={100} />
+                <HaiBar color={AI_HUE} textColor={AI_INK} label="AI" value={aVal(b)} max={100} />
               </div>
             ))}
           </div>
+          {anyLowN && <div style={{ fontSize: 11.5, color: '#b45309', marginTop: 10 }}>° Small AI sample (&lt;{HAI_LOW_N} opportunities) — treat the difference as directional, not conclusive.</div>}
         </Card>
       )}
 
@@ -2010,19 +2061,20 @@ function HumanVsAI({ rows }) {
         <TableToolbar view={view} placeholder="Search brands…" />
         <div style={{ overflowX: 'auto', maxHeight: 620 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <SortHead cols={['Brand', 'Human calls', 'Human avg QA', 'AI calls', 'AI avg QA', 'AI lift']} sort={sort} onSort={onSort} />
+            <SortHead cols={[['Brand', 'Brand'], [isQa ? 'Human calls' : 'Human opps', 'Human n'], [isQa ? 'Human avg QA' : 'Human close', 'Human val'], [isQa ? 'AI calls' : 'AI opps', 'AI n'], [isQa ? 'AI avg QA' : 'AI close', 'AI val'], [isQa ? 'AI lift' : 'AI diff', 'AI diff']]} sort={sort} onSort={onSort} />
             <tbody>{view.pageRows.map((b) => (
               <tr key={b.brand} style={{ borderTop: '1px solid #eef2f7' }}>
-                <td style={{ padding: '8px 12px', fontWeight: 600 }}>{b.brand}</td>
-                <td style={{ padding: '8px 12px' }}>{b.hCalls.toLocaleString()}</td>
-                <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(b.hAvg), color: scoreColor(b.hAvg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(b.hAvg)}</span></td>
-                <td style={{ padding: '8px 12px' }}>{b.aCalls ? b.aCalls.toLocaleString() : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
-                <td style={{ padding: '8px 12px' }}>{b.aCalls ? <span style={{ background: scoreBg(b.aAvg), color: scoreColor(b.aAvg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(b.aAvg)}</span> : <span style={{ color: '#cbd5e1' }}>no AI</span>}</td>
-                <td style={{ padding: '8px 12px', fontWeight: 700, color: b.lift == null ? '#cbd5e1' : b.lift >= 0 ? '#1b5e20' : '#b71c1c' }}>{liftStr(b.lift)}</td>
+                <td style={{ padding: '8px 12px', fontWeight: 600 }}>{b.brand}{lowN(b) && <span title={'Small AI sample (<' + HAI_LOW_N + ' opportunities)'} style={{ color: '#b45309' }}> °</span>}</td>
+                <td style={{ padding: '8px 12px' }}>{hN(b) ? hN(b).toLocaleString() : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                <td style={{ padding: '8px 12px' }}>{hN(b) ? <span style={{ background: valBg(hVal(b)), color: valColor(hVal(b), false), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(hVal(b))}</span> : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                <td style={{ padding: '8px 12px' }}>{aN(b) ? aN(b).toLocaleString() : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                <td style={{ padding: '8px 12px' }}>{aN(b) ? <span style={{ background: valBg(aVal(b)), color: valColor(aVal(b), true), fontWeight: 700, padding: '3px 8px', borderRadius: 8, opacity: lowN(b) ? 0.55 : 1 }}>{pct(aVal(b))}</span> : <span style={{ color: '#cbd5e1' }}>no AI</span>}</td>
+                <td style={{ padding: '8px 12px', fontWeight: 700, color: lift(b) == null ? '#cbd5e1' : lift(b) >= 0 ? '#1b5e20' : '#b71c1c', opacity: lowN(b) ? 0.55 : 1 }}>{liftStr(lift(b))}</td>
               </tr>
             ))}</tbody>
           </table>
         </div>
+        {anyLowN && <div style={{ fontSize: 11.5, color: '#b45309', padding: '0 14px 12px' }}>° Small AI sample (&lt;{HAI_LOW_N} opportunities) — AI close rate shown muted; treat as directional.</div>}
       </Card>
     </div>
   )
