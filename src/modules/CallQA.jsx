@@ -282,7 +282,7 @@ export default function CallQA({ portal = false } = {}) {
   const viewAll = canViewAll(appRole) || portalMode       // see all rows + agent names + agent filter
   const [meName, setMeName] = useState('')
   const [exporting, setExporting] = useState(false)
-  const [tab, setTab] = useState('overview')
+  const [tab, setTab] = useState(() => (viewAll ? 'dashboard' : 'overview'))
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
@@ -297,6 +297,8 @@ export default function CallQA({ portal = false } = {}) {
   const [brand, setBrand] = useState('all')
   const [agent, setAgent] = useState('all')
   const [topic, setTopic] = useState('all')
+  const [source, setSource] = useState('all')       // CallRail / Lightspeed / (internal Five9 for managers only)
+  const [callType, setCallType] = useState('conversation') // default: real conversations (hide voicemail/IVR/wrong#/spam)
   const [program, setProgram] = useState('garagedoor') // GarageCo vs internal programs (Lavin / Open Invoices)
   // Overview is served by a server-side aggregate (callqa_overview) for managers, so
   // it renders instantly instead of waiting for the full row download. Agents/portal
@@ -434,9 +436,11 @@ export default function CallQA({ portal = false } = {}) {
       if (brand !== 'all' && c.brand !== brand) return false
       if (agent !== 'all' && agentOf(r) !== agent) return false
       if (topic !== 'all' && !(r.topics || []).includes(topic)) return false
+      if (source !== 'all' && (c.source || null) !== source) return false
+      if (callType === 'conversation' ? !(r.call_class == null || r.call_class === 'conversation') : (callType !== 'all' && r.call_class !== callType)) return false
       return true
     })
-  }, [scoped, days, startDate, endDate, customRange, brand, agent, topic])
+  }, [scoped, days, startDate, endDate, customRange, brand, agent, topic, source, callType])
 
   // Date-range-only view (ignores the brand/agent/topic pickers) — the Scorecards
   // hub has its own brand/agent selectors, so it works off this wider set.
@@ -453,9 +457,11 @@ export default function CallQA({ portal = false } = {}) {
       const d = c.call_date ? new Date(c.call_date + 'T00:00:00') : new Date(r.created_at)
       if (customRange) { if (start && d < start) return false; if (end && d > end) return false }
       else if (d < cutoff) return false
+      if (source !== 'all' && ((r.call || {}).source || null) !== source) return false
+      if (callType === 'conversation' ? !(r.call_class == null || r.call_class === 'conversation') : (callType !== 'all' && r.call_class !== callType)) return false
       return true
     })
-  }, [scoped, days, startDate, endDate, customRange])
+  }, [scoped, days, startDate, endDate, customRange, source, callType])
 
   // Agent options are scoped to the current date range + selected brand, so picking
   // a brand narrows the CSR list to that brand's agents (not everyone).
@@ -465,6 +471,13 @@ export default function CallQA({ portal = false } = {}) {
   }, [dateFiltered, brand])
   const brands = useMemo(() => Array.from(new Set(scoped.map((r) => r.call?.brand).filter(Boolean))).sort(), [scoped])
   const topicList = useMemo(() => Array.from(new Set(scoped.flatMap((r) => r.topics || []))).sort(), [scoped])
+  // Source options are derived from the rows the viewer can actually see, so the
+  // client portal only ever lists its own sources (CallRail / Lightspeed) — Five9
+  // is internal and never present in portal rows, so it can't appear here.
+  const sourceList = useMemo(() => Array.from(new Set(scoped.map((r) => r.call?.source).filter(Boolean))).sort(), [scoped])
+  const SOURCE_LABELS = { callrail: 'CallRail', lightspeed: 'Lightspeed', five9: 'Five9' }
+  const CALLTYPE_OPTS = [['conversation', 'Real conversations'], ['all', 'All call types'], ['voicemail', 'Voicemail'], ['ivr_only', 'IVR only'], ['wrong_number', 'Wrong number'], ['no_agent', 'No agent'], ['spam', 'Spam']]
+  const CALLTYPE_LABELS = Object.fromEntries(CALLTYPE_OPTS)
 
   const agg = useMemo(() => {
     const scored = filtered.filter(isScored)
@@ -667,6 +680,7 @@ export default function CallQA({ portal = false } = {}) {
   // only Program + Range do. Reflect that honestly so the chips can't contradict
   // the numbers (e.g. "Brand: Omaha Door" over an all-brands aggregate).
   const dateOnlyTab = tab === 'scorecards' || tab === 'humanai'
+  const isOverviewTab = tab === 'overview'
   const filterChips = [
     ...(canManage ? [['Program', PROGRAM_LABELS[program] || program]] : []),
     ['Range', rangeLabel],
@@ -675,9 +689,14 @@ export default function CallQA({ portal = false } = {}) {
       ...(topic !== 'all' ? [['Topic', topic]] : []),
       ...(viewAll ? [['Agent', agent === 'all' ? 'All agents' : agent]] : []),
     ]),
+    // Source + Call-type apply client-side (all tabs except the Overview server aggregate).
+    ...(!isOverviewTab ? [
+      ['Call type', CALLTYPE_LABELS[callType] || callType],
+      ...(source !== 'all' ? [['Source', SOURCE_LABELS[source] || source]] : []),
+    ] : []),
   ]
   const filterText = filterChips.map(([, v]) => v).join(' · ')
-  const TABS = [['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards'], ['humanai', 'Human vs AI']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['bookings', 'Bookings & Card'], ['calls', 'Calls'], ['fails', 'Lowest Scores'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings'], ['import', 'Import']] : [])]
+  const TABS = [...(viewAll ? [['dashboard', 'Dashboard']] : []), ['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards'], ['humanai', 'Human vs AI']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['bookings', 'Bookings & Card'], ['calls', 'Calls'], ['fails', 'Lowest Scores'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings'], ['import', 'Import']] : [])]
 
   return (
     <div style={{ padding: 20, maxWidth: 1180, margin: '0 auto', color: INK }}>
@@ -702,6 +721,8 @@ export default function CallQA({ portal = false } = {}) {
         <Select label="Brand" value={brand} onChange={(v) => { setBrand(v); setAgent('all') }} opts={[['all', 'All brands'], ...brands.map((c) => [c, c])]} />
         <Select label="Topic" value={topic} onChange={setTopic} opts={[['all', 'All topics'], ...topicList.map((t) => [t, t])]} />
         {viewAll && <Select label="Agent" value={agent} onChange={setAgent} opts={[['all', 'All agents'], ...agents.map((a) => [a, a])]} />}
+        <Select label="Call type" value={callType} onChange={setCallType} opts={CALLTYPE_OPTS} title="Real conversations excludes voicemail, IVR, wrong-number and spam" />
+        {sourceList.length > 1 && <Select label="Source" value={source} onChange={setSource} opts={[['all', 'All sources'], ...sourceList.map((s) => [s, SOURCE_LABELS[s] || s])]} />}
       </div>
 
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #e2e8f0', marginBottom: 16, flexWrap: 'wrap' }}>
@@ -725,6 +746,7 @@ export default function CallQA({ portal = false } = {}) {
             : <div style={{ color: '#64748b' }}>Loading…</div>
       ) : loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
         <>
+          {tab === 'dashboard' && <ManagerDashboard rows={filtered} onOpen={setSelected} onGotoTab={setTab} onPickAgent={(a) => setAgent(a)} />}
           {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} brand={brand} setBrand={setBrand} />}
           {tab === 'humanai' && <HumanVsAI rows={dateFiltered} filterText={filterText} />}
           {tab === 'opportunities' && <Opportunities rows={filtered} agg={agg} onOpen={setSelected} viewAll={viewAll} />}
@@ -1934,6 +1956,220 @@ function buildScorecardData(rows) {
 // column so the client can see the AI's quality next to the human team without
 // the two being blended. Named agents only — unattributed calls aren't tied to a
 // CSR, so they sit out of this comparison (same rule the Scorecards tab uses).
+// ===========================================================================
+// Manager Dashboard — the "log in and see what's wrong" landing view.
+// Dashboard → Click → Investigate → Coach. Reuses buildScorecardData, the row
+// coaching signals already in ai_qa_reviews, and the existing call-detail drawer
+// (via onOpen). Additive: it does not replace any existing tab.
+// ===========================================================================
+const TAG_LABEL = {
+  'Capture complete contact info for follow-up': 'Capture customer contact info',
+  'Sell the appointment (book the repair)': 'Ask for / sell the appointment',
+  'Secure commitment before ending the call': 'Secure commitment before ending',
+  'Set trip/diagnostic/dispatch fee expectations': 'Explain the service fee',
+  'Collect info before quoting price': 'Collect info before quoting price',
+  'Offer a specific appointment time': 'Offer a specific appointment time',
+  'Verify customer & job details': 'Verify customer & job details',
+  'Branded greeting & identification': 'Branded greeting & identification',
+  'Offer an in-home estimate/quote (installs & sales)': 'Offer an in-home estimate',
+  'Overcome the price objection with value': 'Overcome the price objection',
+  'Professional tone & active listening': 'Professional tone & listening',
+}
+const friendlyTag = (t) => TAG_LABEL[t] || t
+const CONTACT_TAG = 'Capture complete contact info for follow-up'
+
+function ManagerDashboard({ rows, onOpen, onGotoTab, onPickAgent }) {
+  const [focus, setFocus] = useState(null) // { title, calls }
+  const data = useMemo(() => buildScorecardData(rows), [rows])
+  const k = useMemo(() => {
+    const scored = rows.filter(isScored)
+    const opps = rows.filter((r) => r.opportunity)
+    const booked = opps.filter((r) => r.outcome === 'Booked')
+    const lost = opps.filter((r) => r.outcome && r.outcome !== 'Booked')
+    const winnable = lost.filter((r) => r.winnable)
+    const noAsk = opps.filter((r) => r.asked_for_booking === false)
+    const priceBefore = rows.filter((r) => r.info_before_pricing === 'no')
+    const noContact = rows.filter((r) => (r.improvement_tags || []).includes(CONTACT_TAG))
+    const feeObj = rows.filter((r) => (r.objections || []).some((o) => /price|fee/i.test(o)))
+    const humans = data.agents.filter((a) => !a.ai); const ais = data.agents.filter((a) => a.ai)
+    const wavg = (arr) => { const c = arr.reduce((s, a) => s + a.calls, 0); return c ? arr.reduce((s, a) => s + (a.avg || 0) * a.calls, 0) / c : null }
+    return {
+      scored, avg: scored.length ? scored.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / scored.length : null,
+      opps, booked, lost, winnable, noAsk, priceBefore, noContact, feeObj,
+      bookingRate: opps.length ? (booked.length / opps.length) * 100 : null,
+      winPct: lost.length ? (winnable.length / lost.length) * 100 : null,
+      humanAvg: wavg(humans), aiAvg: wavg(ais), aiN: ais.reduce((s, a) => s + a.calls, 0),
+    }
+  }, [rows, data])
+
+  // Per-agent rollup (human CSRs only), scoped to whatever the top filters already narrowed to.
+  const agentRows = useMemo(() => {
+    const m = new Map()
+    rows.forEach((r) => {
+      const a = agentOf(r); if (!a || a === 'Unknown' || isAiCsr(a)) return
+      if (!m.has(a)) m.set(a, { name: a, scored: 0, sum: 0, opps: 0, booked: 0, winnable: 0 })
+      const o = m.get(a)
+      if (isScored(r)) { o.scored++; o.sum += Number(r.score_pct) || 0 }
+      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') o.booked++; else if (r.outcome && r.winnable) o.winnable++ }
+    })
+    return Array.from(m.values()).filter((o) => o.scored >= 5)
+      .map((o) => ({ ...o, avg: o.scored ? o.sum / o.scored : null, booking: o.opps ? (o.booked / o.opps) * 100 : null }))
+      .sort((a, b) => b.scored - a.scored)
+  }, [rows])
+
+  const priorities = useMemo(() => {
+    const m = {}
+    rows.forEach((r) => (r.improvement_tags || []).forEach((t) => { m[t] = (m[t] || 0) + 1 }))
+    return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 6)
+      .map(([t, n]) => ({ tag: t, label: friendlyTag(t), n, calls: rows.filter((r) => (r.improvement_tags || []).includes(t)) }))
+  }, [rows])
+
+  const queue = useMemo(() => k.winnable.slice()
+    .sort((a, b) => (Number(a.score_pct) || 0) - (Number(b.score_pct) || 0)).slice(0, 8), [k])
+
+  const go = (title, calls) => { setFocus({ title, calls }); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' }) }
+  const bookBand = (v) => (v == null ? '#94a3b8' : v >= 50 ? '#1b5e20' : v >= 35 ? '#8d6e00' : '#b71c1c')
+  const bookBg = (v) => (v == null ? '#f1f5f9' : v >= 50 ? '#e8f5e9' : v >= 35 ? '#fff8e1' : '#fdecea')
+
+  // clickable KPI card
+  const KpiCard = ({ label, value, sub, color, onClick }) => (
+    <div onClick={onClick} style={{ flex: 1, minWidth: 150, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 14, cursor: onClick ? 'pointer' : 'default', transition: '.12s' }}
+      onMouseEnter={(e) => { if (onClick) { e.currentTarget.style.borderColor = TEAL; e.currentTarget.style.boxShadow = '0 4px 14px rgba(15,118,110,.10)' } }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none' }}>
+      <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, lineHeight: 1.3 }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, marginTop: 6, color: color || '#0f172a', letterSpacing: '-.5px' }}>{value}</div>
+      <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{sub}{onClick ? <span style={{ color: TEAL }}> ›</span> : null}</div>
+    </div>
+  )
+  const CallLine = ({ r }) => {
+    const nm = agentOf(r) || 'Unknown'; const sc = Number(r.score_pct)
+    const miss = (r.improvement_tags || [])[0]
+    return (
+      <div onClick={() => onOpen(r)} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 11, marginBottom: 8, cursor: 'pointer' }}
+        onMouseEnter={(e) => e.currentTarget.style.borderColor = TEAL} onMouseLeave={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <b>{nm}</b><span style={{ color: '#94a3b8', fontSize: 12 }}>— {(r.call || {}).brand || '—'}</span>
+          <span style={{ marginLeft: 'auto', background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8, fontSize: 12.5 }}>{r.score_pct == null ? '—' : Math.round(sc) + '%'}</span>
+        </div>
+        <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{r.outcome || 'No outcome'}{miss ? ' · ' + friendlyTag(miss) : ''}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {focus && (
+        <Card style={{ padding: 0, overflow: 'hidden', border: `1px solid ${TEAL}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 14, borderBottom: '1px solid #eef2f7', flexWrap: 'wrap' }}>
+            <button onClick={() => setFocus(null)} style={{ ...btn('ghost'), padding: '5px 10px' }}>‹ Back</button>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>{focus.title}</div>
+            <span style={{ color: '#94a3b8', fontSize: 13 }}>{focus.calls.length.toLocaleString()} calls · click any to open the recording &amp; transcript</span>
+            <button onClick={() => onGotoTab('calls')} style={{ ...btn('ghost'), padding: '5px 10px', marginLeft: 'auto' }}>Open in Calls tab →</button>
+          </div>
+          <div style={{ padding: 14, maxHeight: 460, overflow: 'auto' }}>
+            {focus.calls.length ? focus.calls.slice(0, 100).map((r, i) => <CallLine key={r.id || i} r={r} />) : <div style={{ color: '#64748b' }}>No calls match in this range.</div>}
+            {focus.calls.length > 100 && <div style={{ color: '#94a3b8', fontSize: 12 }}>Showing first 100 · open the Calls tab for the full list.</div>}
+          </div>
+        </Card>
+      )}
+
+      <div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Performance snapshot</div>
+          <span style={{ color: '#94a3b8', fontSize: 12.5 }}>Every card is clickable — it opens the calls behind the number.</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 12 }}>
+          <KpiCard label="Average QA Score" value={pct(k.avg)} color={scoreColor(k.avg)} sub={k.scored.length.toLocaleString() + ' scored'} onClick={() => onGotoTab('scorecards')} />
+          <KpiCard label="Booking Rate" value={pct(k.bookingRate)} color={TEAL} sub={k.booked.length + ' of ' + k.opps.length + ' opps'} onClick={() => go('Booked opportunities', k.booked)} />
+          <KpiCard label="Calls Reviewed" value={k.scored.length.toLocaleString()} sub="real conversations" onClick={() => onGotoTab('calls')} />
+          <KpiCard label="Winnable Losses" value={k.winnable.length.toLocaleString()} color="#b71c1c" sub={pct(k.winPct) + ' of lost'} onClick={() => go('Winnable losses', k.winnable)} />
+          <KpiCard label="Booking Not Asked For" value={k.noAsk.length.toLocaleString()} color="#b71c1c" sub="opportunities, no ask" onClick={() => go('No booking attempt', k.noAsk)} />
+          <KpiCard label="Pricing Before Discovery" value={k.priceBefore.length.toLocaleString()} color="#8d6e00" sub="quoted before qualifying" onClick={() => go('Pricing before discovery', k.priceBefore)} />
+          <KpiCard label="Fee / Pricing Objections" value={k.feeObj.length.toLocaleString()} color="#8d6e00" sub="price / fee pushback" onClick={() => go('Fee / pricing objections', k.feeObj)} />
+          <KpiCard label="Customer Info Not Captured" value={k.noContact.length.toLocaleString()} color="#b71c1c" sub="no complete contact info" onClick={() => go('Customer info not captured', k.noContact)} />
+          {k.aiN > 0 && <KpiCard label="Human vs AI QA" value={pct(k.humanAvg) + ' / ' + pct(k.aiAvg)} color={TEAL} sub={'human vs AI · ' + k.aiN + ' AI calls'} onClick={() => onGotoTab('humanai')} />}
+        </div>
+      </div>
+
+      <div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Quick Views</div>
+          <span style={{ color: '#94a3b8', fontSize: 12.5 }}>One click → the applicable calls.</span>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9 }}>
+          {[
+            ['Needs Coaching', k.winnable], ['Winnable Losses', k.winnable],
+            ['Lowest Scoring Calls', k.scored.slice().sort((a, b) => (Number(a.score_pct) || 0) - (Number(b.score_pct) || 0))],
+            ['Great Calls', k.scored.filter((r) => (Number(r.score_pct) || 0) >= 85 && r.outcome === 'Booked')],
+            ['No Booking Attempt', k.noAsk], ['Pricing Objections', k.feeObj],
+            ['Customer Info Not Captured', k.noContact],
+            ['High Performing Calls', k.scored.filter((r) => (Number(r.score_pct) || 0) >= 85)],
+          ].map(([label, calls]) => (
+            <button key={label} onClick={() => go(label, calls)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '9px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = TEAL; e.currentTarget.style.color = TEAL }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = INK }}>
+              {label}<span style={{ fontWeight: 800, color: '#94a3b8', fontSize: 12 }}>{calls.length.toLocaleString()}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 16 }}>
+        <Card>
+          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Coaching Priorities</div>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Biggest systemic misses in this view. Click one to see the calls.</div>
+          {priorities.map((p, i) => (
+            <div key={p.tag} onClick={() => go(p.label, p.calls)} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '11px 0', borderTop: i ? '1px solid #eef2f7' : 'none', cursor: 'pointer' }}>
+              <div style={{ width: 26, height: 26, borderRadius: 8, background: TEAL, color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13 }}>{i + 1}</div>
+              <div style={{ fontWeight: 700 }}>{p.label}</div>
+              <div style={{ marginLeft: 'auto', textAlign: 'right' }}><b style={{ fontSize: 18 }}>{p.n.toLocaleString()}</b><span style={{ display: 'block', color: '#94a3b8', fontSize: 11 }}>calls</span></div>
+            </div>
+          ))}
+        </Card>
+        <Card>
+          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Coaching Queue <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12.5 }}>— auto-prioritized</span></div>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Highest-value calls to review — winnable losses, lowest score first.</div>
+          {queue.length ? queue.map((r, i) => {
+            const nm = agentOf(r) || 'Unknown'; const tags = (r.improvement_tags || []).slice(0, 3)
+            return (
+              <div key={r.id || i} style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 13, marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <b>{nm}</b><span style={{ color: '#64748b', fontSize: 12.5 }}>— {(r.call || {}).brand || '—'}</span>
+                  <span style={{ marginLeft: 'auto', background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8, fontSize: 12.5 }}>QA {r.score_pct == null ? '—' : Math.round(Number(r.score_pct)) + '%'}</span>
+                  <span style={{ background: '#fdecea', color: '#b71c1c', fontWeight: 800, padding: '2px 7px', borderRadius: 6, fontSize: 11 }}>Winnable loss</span>
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b', margin: '4px 0 0' }}>Outcome: {r.outcome || '—'}</div>
+                <ul style={{ margin: '8px 0 0', padding: 0, listStyle: 'none' }}>{tags.map((t, j) => <li key={j} style={{ fontSize: 13, color: '#475569' }}>▸ {friendlyTag(t)}</li>)}</ul>
+                <button onClick={() => onOpen(r)} style={{ marginTop: 10, background: TEAL, color: '#fff', border: 'none', borderRadius: 9, padding: '8px 14px', fontWeight: 800, cursor: 'pointer', fontSize: 13 }}>▶ Review Call</button>
+              </div>
+            )
+          }) : <div style={{ color: '#64748b' }}>No winnable losses in this range.</div>}
+        </Card>
+      </div>
+
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ fontWeight: 800, fontSize: 16, padding: 14 }}>Agent Performance <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12.5 }}>— click an agent to scope the page to them</span></div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>
+              <th style={{ padding: '8px 12px' }}>CSR</th><th style={{ padding: '8px 12px' }}>QA</th><th style={{ padding: '8px 12px' }}>Booking rate</th><th style={{ padding: '8px 12px' }}>Winnable losses</th><th style={{ padding: '8px 12px' }}>Calls</th>
+            </tr></thead>
+            <tbody>{agentRows.map((a) => (
+              <tr key={a.name} onClick={() => onPickAgent(a.name)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f0fdfa'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
+                <td style={{ padding: '9px 12px', fontWeight: 700, color: TEAL }}>{a.name} ›</td>
+                <td style={{ padding: '9px 12px' }}><span style={{ background: scoreBg(a.avg), color: scoreColor(a.avg), fontWeight: 700, padding: '2px 8px', borderRadius: 8 }}>{pct(a.avg)}</span></td>
+                <td style={{ padding: '9px 12px' }}><span style={{ background: bookBg(a.booking), color: bookBand(a.booking), fontWeight: 700, padding: '2px 8px', borderRadius: 8 }}>{pct(a.booking)}</span></td>
+                <td style={{ padding: '9px 12px' }}>{a.winnable}</td>
+                <td style={{ padding: '9px 12px' }}>{a.scored.toLocaleString()}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
 // Beige/tan for the AI series (was violet). AI_HUE = the soft fill used for bars
 // and legend swatches; AI_INK = a darker tan for text labels so they stay legible
 // on white (the fill tone is too light to read as text).
