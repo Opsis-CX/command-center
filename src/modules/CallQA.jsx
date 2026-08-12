@@ -2048,6 +2048,96 @@ function deriveDashAgg(agg) {
   }
 }
 
+// ===========================================================================
+// ScoreDotPlot — one dot per agent (or brand) at their PERIOD AVERAGE, plotted
+// against a chosen metric. Agents/brands are alphabetical along the x-axis; the
+// dot's height is the score, its size is call volume, its color is the band.
+// The metric toggle (QA / Booking rate / Winnable-loss rate) swaps the y-axis.
+// Click a dot to scope the page to that agent/brand. Replaces the old paginated
+// leaderboard table. Winnable is shown as a RATE (winnable ÷ calls) so volume
+// doesn't push the biggest brand/agent to the top.
+// ===========================================================================
+function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
+  const [metric, setMetric] = useState('qa')
+  const items = (rows || [])
+    .map((r) => ({
+      name: r[nameKey],
+      qa: r.avg == null ? null : Number(r.avg),
+      booking: r.booking == null ? null : Number(r.booking),
+      winnable: r.scored ? (100 * (r.winnable || 0)) / r.scored : 0,
+      scored: r.scored || 0,
+    }))
+    .filter((r) => r.name)
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+
+  const METRICS = {
+    qa: { label: 'QA score', ymax: 100, target: 70, unit: '%', get: (d) => d.qa, col: (v) => scoreColor(v) },
+    booking: { label: 'Booking rate', ymax: 100, target: 50, unit: '%', get: (d) => d.booking, col: (v) => (v == null ? '#94a3b8' : v >= 50 ? '#1b5e20' : v >= 35 ? '#8d6e00' : '#b71c1c') },
+    winnable: { label: 'Winnable-loss rate', ymax: null, target: null, unit: '%', get: (d) => d.winnable, col: (v) => (v == null ? '#94a3b8' : v >= 35 ? '#b71c1c' : v >= 25 ? '#8d6e00' : '#1b5e20') },
+  }
+  const M = METRICS[metric]
+  const n = items.length
+  if (!n) return <Card style={{ color: '#64748b' }}>No data in range.</Card>
+
+  const PADL = 44, PADR = 20, PADT = 26, PADB = 54
+  const W = Math.max(660, n * 64), H = 300
+  const PW = W - PADL - PADR, PH = H - PADT - PADB
+  let ymax = M.ymax
+  if (!ymax) { ymax = Math.max(10, ...items.map((d) => M.get(d) || 0)); ymax = Math.ceil((ymax * 1.15) / 10) * 10 }
+  const Y = (v) => PADT + (1 - v / ymax) * PH
+  const X = (i) => PADL + ((i + 0.5) / n) * PW
+  const maxCalls = Math.max(1, ...items.map((d) => d.scored))
+  const R = (c) => 5 + Math.sqrt(c / maxCalls) * 10
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => ymax * f)
+  const short = (s) => (String(s).length > 12 ? String(s).slice(0, 11) + '…' : s)
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '2px 0 12px' }}>
+        <span style={{ fontSize: 12, color: '#8a97a5', fontWeight: 600 }}>Metric</span>
+        {Object.entries(METRICS).map(([key, v]) => (
+          <button key={key} onClick={() => setMetric(key)} style={{ background: metric === key ? TEAL : '#fff', color: metric === key ? '#fff' : '#556372', border: `1px solid ${metric === key ? TEAL : '#e2e8f0'}`, borderRadius: 999, padding: '6px 13px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{v.label}</button>
+        ))}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <svg width={W} height={H} style={{ display: 'block', fontVariantNumeric: 'tabular-nums' }}>
+          {ticks.map((val, i) => { const y = Y(val); return (
+            <g key={'t' + i}>
+              <line x1={PADL} y1={y} x2={W - PADR} y2={y} stroke="#eef0ee" strokeWidth="1" />
+              <text x={PADL - 8} y={y + 4} textAnchor="end" fontSize="11" fill="#8a97a5">{Math.round(val)}{M.unit}</text>
+            </g>
+          ) })}
+          {M.target != null && (() => { const y = Y(M.target); return (
+            <g>
+              <line x1={PADL} y1={y} x2={W - PADR} y2={y} stroke="#8a97a5" strokeWidth="1.4" strokeDasharray="5 4" opacity="0.7" />
+              <text x={W - PADR} y={y - 6} textAnchor="end" fontSize="10.5" fill="#8a97a5" fontWeight="700">target {M.target}{M.unit}</text>
+            </g>
+          ) })()}
+          {items.map((d, i) => {
+            const v = M.get(d); const x = X(i); const y = Y(v == null ? 0 : v); const c = M.col(v); const r = R(d.scored)
+            return (
+              <g key={d.name} style={{ cursor: 'pointer' }} onClick={() => onPick && onPick(d.name)}>
+                <title>{d.name} · {M.label} {v == null ? '—' : v.toFixed(1) + M.unit} · {d.scored.toLocaleString()} calls</title>
+                <line x1={x} y1={H - PADB} x2={x} y2={y} stroke={c} strokeWidth="1.4" opacity="0.28" />
+                <circle cx={x} cy={y} r={r} fill={c} fillOpacity="0.9" stroke="#fff" strokeWidth="2" />
+                <text x={x} y={y - r - 6} textAnchor="middle" fontSize="11.5" fontWeight="700" fill={c}>{v == null ? '—' : v.toFixed(1) + M.unit}</text>
+                <text x={x} y={H - PADB + 20} textAnchor="middle" fontSize="11.5" fontWeight="600" fill="#556372">{short(d.name)}</text>
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', marginTop: 8, fontSize: 12, color: '#8a97a5' }}>
+        <span>dot size = call volume</span>
+        <span><b style={{ color: '#1b5e20' }}>●</b> good</span>
+        <span><b style={{ color: '#8d6e00' }}>●</b> watch</span>
+        <span><b style={{ color: '#b71c1c' }}>●</b> below</span>
+        {metric === 'winnable' && <span>· winnable ÷ calls — lower is better</span>}
+      </div>
+    </div>
+  )
+}
+
 function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, onPickAgent }) {
   const [focus, setFocus] = useState(null) // { title, calls }
   const [busy, setBusy] = useState(false)
@@ -2143,26 +2233,10 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
         </div>
       </div>
 
-      {/* Agent performance — moved above the coaching sections */}
-      <Card style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ fontWeight: 800, fontSize: 16, padding: 14 }}>Agent Performance <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12.5 }}>— click an agent to scope the page to them</span></div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
-            <thead><tr style={{ background: '#f8fafc', textAlign: 'left', color: '#475569' }}>
-              <th style={{ padding: '8px 12px' }}>CSR</th><th style={{ padding: '8px 12px' }}>QA</th><th style={{ padding: '8px 12px' }}>Booking rate</th><th style={{ padding: '8px 12px' }}>Winnable losses</th><th style={{ padding: '8px 12px' }}>Calls</th>
-            </tr></thead>
-            <tbody>{agentRows.map((a) => (
-              <tr key={a.name} onClick={() => onPickAgent(a.name)} style={{ borderTop: '1px solid #eef2f7', cursor: 'pointer' }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#f0fdfa'} onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
-                <td style={{ padding: '9px 12px', fontWeight: 700, color: TEAL }}>{a.name} ›</td>
-                <td style={{ padding: '9px 12px' }}><span style={{ background: scoreBg(a.avg), color: scoreColor(a.avg), fontWeight: 700, padding: '2px 8px', borderRadius: 8 }}>{pct(a.avg)}</span></td>
-                <td style={{ padding: '9px 12px' }}><span style={{ background: bookBg(a.booking), color: bookBand(a.booking), fontWeight: 700, padding: '2px 8px', borderRadius: 8 }}>{pct(a.booking)}</span></td>
-                <td style={{ padding: '9px 12px' }}>{a.winnable}</td>
-                <td style={{ padding: '9px 12px' }}>{a.scored.toLocaleString()}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
+      {/* Agent performance — dot plot: one dot per CSR at their period average */}
+      <Card>
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Agent Performance <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12.5 }}>— one dot per CSR · period average · click a dot to scope the page to them</span></div>
+        <ScoreDotPlot rows={agentRows} nameKey="name" onPick={onPickAgent} />
       </Card>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 16 }}>
@@ -2308,31 +2382,13 @@ function CoachingBriefing({ agg, loading, err, loadBucket, brand, agent, onOpen,
         {k.aiN > 0 && <KpiCell label="Human vs AI QA" value={`${P(k.humanAvg)} / ${P(k.aiAvg)}`} sub="human vs AI" />}
       </div>
 
-      {/* brand ranking — only when >1 brand */}
+      {/* brand ranking — only when >1 brand. Dot plot: one dot per brand at its
+          period average; the metric toggle swaps QA / Booking / Winnable-loss. */}
       {multiBrand && (
         <>
-          <div style={stitle}>Brand performance <span style={{ color: C.ink3, fontSize: 12.5, fontWeight: 400 }}>· sort by any metric · click a brand to drill in</span></div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-            <span style={{ fontSize: 12, color: C.ink3, fontWeight: 600 }}>Sort by</span>
-            {Object.entries(SORTS).map(([key, v]) => (
-              <button key={key} onClick={() => setSort(key)} style={{ background: sort === key ? C.teal : C.card, color: sort === key ? '#fff' : C.ink2, border: `1px solid ${sort === key ? C.teal : C.line}`, borderRadius: 999, padding: '6px 13px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: F }}>{v[0]}</button>
-            ))}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(250px,1fr))', gap: 13 }}>
-            {sortedBrands.map((b, i) => { const st = stat(b.avg); const em = (m) => (sort === m ? { borderBottom: `2px solid ${C.teal}`, paddingBottom: 3 } : {}); return (
-              <div key={b.brand} onClick={() => onPickBrand(b.brand)} style={{ ...box, padding: 16, cursor: 'pointer', position: 'relative' }}>
-                <div style={{ position: 'absolute', top: 14, right: 16, fontFamily: F, fontSize: 15, color: C.ink3 }}>#{i + 1}</div>
-                <div style={{ fontWeight: 700, fontSize: 17 }}>{b.brand}</div>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, marginTop: 6, display: 'inline-block', background: st[1], color: st[2] }}>{st[0]}</span>
-                <div style={{ display: 'flex', gap: 18, marginTop: 14 }}>
-                  <div style={em('qa')}><div style={{ fontSize: 10.5, color: C.ink3, textTransform: 'uppercase', fontWeight: 600 }}>QA</div><div className="num" style={{ fontSize: 19, fontWeight: 700, color: qCol(b.avg) }}>{P(b.avg)}</div></div>
-                  <div style={em('booking')}><div style={{ fontSize: 10.5, color: C.ink3, textTransform: 'uppercase', fontWeight: 600 }}>Booking</div><div className="num" style={{ fontSize: 19, fontWeight: 700, color: bCol(b.booking) }}>{P(b.booking)}</div></div>
-                  <div style={em('winnable')}><div style={{ fontSize: 10.5, color: C.ink3, textTransform: 'uppercase', fontWeight: 600 }}>Winnable</div><div className="num" style={{ fontSize: 19, fontWeight: 700 }}>{b.winnable}</div></div>
-                </div>
-                <div style={{ height: 6, background: C.line2, borderRadius: 4, marginTop: 14, overflow: 'hidden' }}><div style={{ width: Math.max(0, Math.min(100, b.avg || 0)) + '%', height: '100%', background: qCol(b.avg) }} /></div>
-                <div style={{ marginTop: 10, fontSize: 12, color: C.ink2 }}>{b.scored.toLocaleString()} calls · <span style={{ color: C.teal, fontWeight: 700 }}>drill in ›</span></div>
-              </div>
-            ) })}
+          <div style={stitle}>Brand performance <span style={{ color: C.ink3, fontSize: 12.5, fontWeight: 400 }}>· one dot per brand · pick a metric · click a brand to drill in</span></div>
+          <div style={{ ...box, padding: 18 }}>
+            <ScoreDotPlot rows={brandRows} nameKey="brand" onPick={onPickBrand} />
           </div>
         </>
       )}
