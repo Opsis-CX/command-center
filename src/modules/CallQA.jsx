@@ -336,19 +336,32 @@ export default function CallQA({ portal = false } = {}) {
     if (seq !== loadSeq.current) return
     setSettings(st || []); setSecretKeys(Array.isArray(sk) ? sk : [])
     const counts = {}; pipe.forEach(({ s, count: c }) => { counts[s] = c }); setPipeline(counts)
-    let from = 0; let all = []
-    for (;;) {
-      const { data, error } = await withCampaign(supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(from, from + page - 1))
-      if (seq !== loadSeq.current) return   // a newer load superseded this one — drop its result
+    let all = []
+    if (portalMode) {
+      // Client portal: ONE fast server-side query (callqa_portal_rows) instead of the
+      // 13-request paged RLS download that tripped statement_timeout at scale. The RPC
+      // self-scopes to the caller's own client (CallRail/LightSpeed only, never Five9)
+      // and returns rows in the exact { …review, call:{…} } shape this component expects,
+      // so all downstream tab math is unchanged.
+      const { data, error } = await supabase.rpc('callqa_portal_rows', { p_start: null, p_end: null })
+      if (seq !== loadSeq.current) return
       if (error) { setErr(error.message); setLoading(false); return }
-      all = all.concat(data || [])
-      if (!data || data.length < page) break
-      from += page
+      all = Array.isArray(data) ? data : []
+    } else {
+      let from = 0
+      for (;;) {
+        const { data, error } = await withCampaign(supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(from, from + page - 1))
+        if (seq !== loadSeq.current) return   // a newer load superseded this one — drop its result
+        if (error) { setErr(error.message); setLoading(false); return }
+        all = all.concat(data || [])
+        if (!data || data.length < page) break
+        from += page
+      }
     }
     if (seq !== loadSeq.current) return
     setRows(all)
     setLoading(false)
-  }, [canManage, program])
+  }, [canManage, program, portalMode])
   useEffect(() => { load() }, [load])
   // Server-side Overview aggregate for EVERYONE — instant landing. The RPC
   // self-scopes exactly like the row RLS (manager → all, portal → their client,
