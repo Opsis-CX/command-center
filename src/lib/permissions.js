@@ -21,7 +21,8 @@ const MATRIX = {
   'quality_audit': ['certification', 'admin'],
   'quality_audit.enter_audits': ['certification', 'admin'],
   'quality_audit.view_own': ['certification', 'admin'],
-  'quality_audit.call_reviews': ['agent', 'certification', 'admin'],
+  // Quality Audit call-review tool is for the QA/onboarding side, not line agents.
+  'quality_audit.call_reviews': ['certification', 'admin'],
   'service_performance_scorecard.view_personal_scorecard': ['agent', 'admin'],
   'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard.edit_scorecard': ['admin'],
@@ -69,6 +70,14 @@ const MATRIX = {
   'project_management.all': ['admin'],
   'project_management.create_projects': ['certification', 'quality', 'marketing', 'admin'],
   'project_management.add_tasks_to_projects_assigned_to': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
+  // Tokens / rewards — every employee has a wallet and can redeem; awarding is
+  // budget-limited to managers (enforced in Tokens.jsx + SECURITY DEFINER RPCs),
+  // and the Awards Log (ledger) is manager-only.
+  'tokens': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
+  'tokens.ledger': ['asc', 'certification', 'quality', 'marketing', 'admin'],
+  // Coaching — agents book sessions with their ASC; ASCs/admins manage. (Agent
+  // vs ASC vs admin behavior is decided inside Coaching.jsx by role.)
+  'coaching': ['agent', 'asc', 'admin'],
 }
 
 // A person's role can be a comma-separated list ("asc,marketing"). A combined
