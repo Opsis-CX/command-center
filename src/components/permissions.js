@@ -18,10 +18,11 @@ const MATRIX = {
   'service_performance_scorecard': ['agent'],
   // Quality Audit isn't on the roles sheet — left as-is. Confirm whether the new
   // "quality" role should be added here (and to is_qa_auditor() in Supabase).
-  'quality_audit': ['asc', 'certification', 'admin'],
-  'quality_audit.enter_audits': ['asc', 'certification', 'admin'],
-  'quality_audit.view_own': ['asc', 'certification', 'admin'],
-  'quality_audit.call_reviews': ['asc', 'certification', 'admin'],
+  'quality_audit': ['certification', 'admin'],
+  'quality_audit.enter_audits': ['certification', 'admin'],
+  'quality_audit.view_own': ['certification', 'admin'],
+  // Quality Audit call-review tool is for the QA/onboarding side, not line agents.
+  'quality_audit.call_reviews': ['certification', 'admin'],
   'service_performance_scorecard.view_personal_scorecard': ['agent', 'admin'],
   'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard.edit_scorecard': ['admin'],
@@ -69,37 +70,37 @@ const MATRIX = {
   'project_management.all': ['admin'],
   'project_management.create_projects': ['certification', 'quality', 'marketing', 'admin'],
   'project_management.add_tasks_to_projects_assigned_to': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
-  // Tokens (employee rewards). Everyone sees their own wallet + can redeem;
-  // managers can award (drawing from a per-manager budget); admins manage
-  // budgets, catalog, adjustments and the Tremendous connection.
-  'tokens.view_own': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
-  'tokens.award': ['asc', 'certification', 'quality', 'marketing', 'admin'],
-  'tokens.admin': ['admin'],
-  // Token ledger / Awards Log report — read-only audit of all token activity.
-  'tokens.ledger': ['certification', 'quality', 'admin'],
-  // Who's On — live check-ins + current task (floor oversight). Restores the
-  // old Dashboard's "On now" view.
-  'live_status': ['admin', 'asc', 'certification', 'quality'],
+  // Tokens / rewards — every employee has a wallet and can redeem; awarding is
+  // budget-limited to managers (enforced in Tokens.jsx + SECURITY DEFINER RPCs),
+  // and the Awards Log (ledger) is manager-only.
+  'tokens': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
+  'tokens.ledger': ['asc', 'certification', 'quality', 'marketing', 'admin'],
+  // Coaching — agents book sessions with their ASC; ASCs/admins manage. (Agent
+  // vs ASC vs admin behavior is decided inside Coaching.jsx by role.)
+  'coaching': ['agent', 'asc', 'admin'],
 }
-// can(role, "schedule.create_schedules") -> boolean
-// A person can hold MORE THAN ONE role, stored as a comma-separated list in
-// profiles.role (e.g. "asc,marketing"). They get the UNION of every listed
-// role's permissions. A single role (the common case) still works unchanged.
+
+// A person's role can be a comma-separated list ("asc,marketing"). A combined
+// role gets the UNION of its parts' permissions. A single role with no comma
+// splits to a one-item list, so existing single-role users behave exactly as
+// before this change.
 function rolesOf(role) {
   return String(role || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean)
 }
+
+// can(role, "schedule.create_schedules") -> boolean
 export function can(role, perm) {
-  const roles = rolesOf(role)
-  if (roles.includes('admin')) return true   // admin always passes
+  const rs = rolesOf(role)
+  if (rs.includes('admin')) return true            // admin always passes
   const allowed = MATRIX[perm]
   if (!allowed) return false
-  return roles.some(r => allowed.includes(r))
+  return rs.some(r => allowed.includes(r))
 }
 // Convenience: does this role have ANY capability under a page prefix?
 // Used for nav gating (show the page if they can do anything on it).
 export function canAny(role, pagePrefix) {
-  const roles = rolesOf(role)
-  if (roles.includes('admin')) return true
-  return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + '.')) && MATRIX[k].some(r => roles.includes(r)))
+  const rs = rolesOf(role)
+  if (rs.includes('admin')) return true
+  return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + ".")) && rs.some(r => MATRIX[k].includes(r)))
 }
 export const ALL_PERMS = Object.keys(MATRIX)
