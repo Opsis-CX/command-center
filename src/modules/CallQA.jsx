@@ -300,6 +300,18 @@ export default function CallQA({ portal = false } = {}) {
   const [source, setSource] = useState('all')       // CallRail / Lightspeed / (internal Five9 for managers only)
   const [callType, setCallType] = useState('conversation') // default: real conversations (hide voicemail/IVR/wrong#/spam)
   const [program, setProgram] = useState('garagedoor') // GarageCo vs internal programs (Lavin / Open Invoices)
+  // Dashboard/Briefing are served by the server-side callqa_dashboard aggregate
+  // (small payload) instead of the full row download — that's what fixes the 8s
+  // statement-timeout on large portals and makes those tabs instant.
+  const [dashAgg, setDashAgg] = useState(null)
+  const [dashLoading, setDashLoading] = useState(false)
+  const [dashErr, setDashErr] = useState('')
+  const dashBounds = useMemo(() => {
+    if (startDate || endDate) return { start: startDate || null, end: endDate || null }
+    if (days >= 3650) return { start: null, end: null }
+    const c = new Date(); c.setDate(c.getDate() - days)
+    return { start: c.toISOString().slice(0, 10), end: null }
+  }, [startDate, endDate, days])
   // Overview is served by a server-side aggregate (callqa_overview) for managers, so
   // it renders instantly instead of waiting for the full row download. Agents/portal
   // keep the client-side path (RLS-scoped rows). Verified to match the row math.
@@ -345,7 +357,10 @@ export default function CallQA({ portal = false } = {}) {
       // self-scopes to the caller's own client (CallRail/LightSpeed only, never Five9)
       // and returns rows in the exact { …review, call:{…} } shape this component expects,
       // so all downstream tab math is unchanged.
-      const { data, error } = await supabase.rpc('callqa_portal_rows', { p_start: null, p_end: null })
+      // Date-scoped so the portal never pulls the client's entire history in one
+      // blob (that was the 8s statement-timeout). The Dashboard/Briefing tabs no
+      // longer use these rows at all — they call callqa_dashboard instead.
+      const { data, error } = await supabase.rpc('callqa_portal_rows', { p_start: dashBounds.start, p_end: dashBounds.end })
       if (seq !== loadSeq.current) return
       if (error) { setErr(error.message); setLoading(false); return }
       all = Array.isArray(data) ? data : []
@@ -363,8 +378,12 @@ export default function CallQA({ portal = false } = {}) {
     if (seq !== loadSeq.current) return
     setRows(all)
     setLoading(false)
-  }, [canManage, program, portalMode])
-  useEffect(() => { load() }, [load])
+  }, [canManage, program, portalMode, dashBounds])
+  // Lazy: the heavy row set is only fetched for tabs that actually use it. The
+  // landing tabs (Dashboard, Briefing) use callqa_dashboard, and Overview uses
+  // callqa_overview — so landing never triggers the big download.
+  const ROW_TABS = ['scorecards', 'humanai', 'opportunities', 'missed', 'conversion', 'bookings', 'calls', 'fails']
+  useEffect(() => { if (ROW_TABS.includes(tab)) load() }, [tab, load])
   // Server-side Overview aggregate for EVERYONE — instant landing. The RPC
   // self-scopes exactly like the row RLS (manager → all, portal → their client,
   // agent → own), so it's safe for the client portal and far faster than the
@@ -478,6 +497,32 @@ export default function CallQA({ portal = false } = {}) {
   const SOURCE_LABELS = { callrail: 'CallRail', lightspeed: 'Lightspeed', five9: 'Five9' }
   const CALLTYPE_OPTS = [['conversation', 'Real conversations'], ['all', 'All call types'], ['voicemail', 'Voicemail'], ['ivr_only', 'IVR only'], ['wrong_number', 'Wrong number'], ['no_agent', 'No agent'], ['spam', 'Spam']]
   const CALLTYPE_LABELS = Object.fromEntries(CALLTYPE_OPTS)
+
+  // Params passed to the server-side dashboard aggregate + its drill-down fetcher.
+  const dashParams = useMemo(() => ({
+    p_start: dashBounds.start, p_end: dashBounds.end,
+    p_brand: brand === 'all' ? null : brand,
+    p_campaign: canManage && program !== 'all' ? program : null,
+    p_source: source === 'all' ? null : source,
+    p_call_type: callType,
+    p_agent: agent === 'all' ? null : agent,
+  }), [dashBounds, brand, canManage, program, source, callType, agent])
+  useEffect(() => {
+    if (tab !== 'dashboard' && tab !== 'briefing') return
+    let active = true
+    setDashLoading(true); setDashErr('')
+    supabase.rpc('callqa_dashboard', dashParams).then(({ data, error }) => {
+      if (!active) return
+      if (error) setDashErr(error.message); else setDashAgg(data)
+      setDashLoading(false)
+    })
+    return () => { active = false }
+  }, [tab, dashParams])
+  const loadBucket = useCallback(async (bucket, tag) => {
+    const { data, error } = await supabase.rpc('callqa_dashboard_calls', { ...dashParams, p_bucket: bucket, p_tag: tag || null, p_limit: 200 })
+    if (error) return []
+    return Array.isArray(data) ? data : []
+  }, [dashParams])
 
   const agg = useMemo(() => {
     const scored = filtered.filter(isScored)
@@ -744,10 +789,12 @@ export default function CallQA({ portal = false } = {}) {
         ovErr ? <Card style={{ color: '#b71c1c' }}>Error: {ovErr}</Card>
           : ovData ? <Overview agg={ovData.agg} trend={ovData.trend} prevAgg={ovData.prev} />
             : <div style={{ color: '#64748b' }}>Loading…</div>
+      ) : tab === 'dashboard' ? (
+        <ManagerDashboard agg={dashAgg} loading={dashLoading} err={dashErr} loadBucket={loadBucket} onOpen={setSelected} onGotoTab={setTab} onPickAgent={(a) => setAgent(a)} />
+      ) : tab === 'briefing' ? (
+        <CoachingBriefing agg={dashAgg} loading={dashLoading} err={dashErr} loadBucket={loadBucket} brand={brand} onOpen={setSelected} onPickBrand={(b) => { setBrand(b); setAgent('all') }} onPickAgent={(a) => setAgent(a)} />
       ) : loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
         <>
-          {tab === 'dashboard' && <ManagerDashboard rows={filtered} onOpen={setSelected} onGotoTab={setTab} onPickAgent={(a) => setAgent(a)} />}
-          {tab === 'briefing' && <CoachingBriefing rows={filtered} brand={brand} onOpen={setSelected} onPickBrand={(b) => { setBrand(b); setAgent('all') }} onPickAgent={(a) => setAgent(a)} />}
           {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} brand={brand} setBrand={setBrand} />}
           {tab === 'humanai' && <HumanVsAI rows={dateFiltered} filterText={filterText} />}
           {tab === 'opportunities' && <Opportunities rows={filtered} agg={agg} onOpen={setSelected} viewAll={viewAll} />}
@@ -1979,56 +2026,36 @@ const TAG_LABEL = {
 const friendlyTag = (t) => TAG_LABEL[t] || t
 const CONTACT_TAG = 'Capture complete contact info for follow-up'
 
-function ManagerDashboard({ rows, onOpen, onGotoTab, onPickAgent }) {
+// Shape the server-side callqa_dashboard aggregate into the fields the dashboard
+// and briefing render. Numbers come pre-computed from Postgres — no row crunching
+// in the browser, so it never downloads the full history (fixes the 8s timeout).
+function deriveDashAgg(agg) {
+  const o = (agg && agg.overall) || {}
+  const num = (v) => (v == null ? null : Number(v))
+  return {
+    k: {
+      avg: num(o.avg), scored: o.scored || 0, opps: o.opps || 0, booked: o.booked || 0,
+      bookingRate: o.opps ? (100 * o.booked) / o.opps : null,
+      winnable: o.winnable || 0, lost: o.lost || 0,
+      winPct: o.lost ? Math.round((100 * o.winnable) / o.lost) : null,
+      noAsk: o.no_ask || 0, priceBefore: o.price_before || 0, noContact: o.no_contact || 0, feeObj: o.fee_obj || 0,
+      humanAvg: num(o.human_avg), aiAvg: num(o.ai_avg), aiN: o.ai_n || 0,
+    },
+    brands: ((agg && agg.brands) || []).map((b) => ({ ...b, avg: num(b.avg), booking: b.opps ? (100 * b.booked) / b.opps : null })),
+    agents: ((agg && agg.agents) || []).map((a) => ({ ...a, avg: num(a.avg), booking: a.opps ? (100 * a.booked) / a.opps : null })),
+    priorities: ((agg && agg.priorities) || []).map((p) => ({ label: friendlyTag(p.tag), n: p.n, tag: p.tag })),
+    queue: (agg && agg.queue) || [],
+  }
+}
+
+function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, onPickAgent }) {
   const [focus, setFocus] = useState(null) // { title, calls }
-  const data = useMemo(() => buildScorecardData(rows), [rows])
-  const k = useMemo(() => {
-    const scored = rows.filter(isScored)
-    const opps = rows.filter((r) => r.opportunity)
-    const booked = opps.filter((r) => r.outcome === 'Booked')
-    const lost = opps.filter((r) => r.outcome && r.outcome !== 'Booked')
-    const winnable = lost.filter((r) => r.winnable)
-    const noAsk = opps.filter((r) => r.asked_for_booking === false)
-    const priceBefore = rows.filter((r) => r.info_before_pricing === 'no')
-    const noContact = rows.filter((r) => (r.improvement_tags || []).includes(CONTACT_TAG))
-    const feeObj = rows.filter((r) => (r.objections || []).some((o) => /price|fee/i.test(o)))
-    const humans = data.agents.filter((a) => !a.ai); const ais = data.agents.filter((a) => a.ai)
-    const wavg = (arr) => { const c = arr.reduce((s, a) => s + a.calls, 0); return c ? arr.reduce((s, a) => s + (a.avg || 0) * a.calls, 0) / c : null }
-    return {
-      scored, avg: scored.length ? scored.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / scored.length : null,
-      opps, booked, lost, winnable, noAsk, priceBefore, noContact, feeObj,
-      bookingRate: opps.length ? (booked.length / opps.length) * 100 : null,
-      winPct: lost.length ? (winnable.length / lost.length) * 100 : null,
-      humanAvg: wavg(humans), aiAvg: wavg(ais), aiN: ais.reduce((s, a) => s + a.calls, 0),
-    }
-  }, [rows, data])
-
-  // Per-agent rollup (human CSRs only), scoped to whatever the top filters already narrowed to.
-  const agentRows = useMemo(() => {
-    const m = new Map()
-    rows.forEach((r) => {
-      const a = agentOf(r); if (!a || a === 'Unknown' || isAiCsr(a)) return
-      if (!m.has(a)) m.set(a, { name: a, scored: 0, sum: 0, opps: 0, booked: 0, winnable: 0 })
-      const o = m.get(a)
-      if (isScored(r)) { o.scored++; o.sum += Number(r.score_pct) || 0 }
-      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') o.booked++; else if (r.outcome && r.winnable) o.winnable++ }
-    })
-    return Array.from(m.values()).filter((o) => o.scored >= 5)
-      .map((o) => ({ ...o, avg: o.scored ? o.sum / o.scored : null, booking: o.opps ? (o.booked / o.opps) * 100 : null }))
-      .sort((a, b) => b.scored - a.scored)
-  }, [rows])
-
-  const priorities = useMemo(() => {
-    const m = {}
-    rows.forEach((r) => (r.improvement_tags || []).forEach((t) => { m[t] = (m[t] || 0) + 1 }))
-    return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 6)
-      .map(([t, n]) => ({ tag: t, label: friendlyTag(t), n, calls: rows.filter((r) => (r.improvement_tags || []).includes(t)) }))
-  }, [rows])
-
-  const queue = useMemo(() => k.winnable.slice()
-    .sort((a, b) => (Number(a.score_pct) || 0) - (Number(b.score_pct) || 0)).slice(0, 8), [k])
-
-  const go = (title, calls) => { setFocus({ title, calls }); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' }) }
+  const [busy, setBusy] = useState(false)
+  const { k, agents: agentRows, priorities, queue } = deriveDashAgg(agg)
+  const openBucket = async (title, bucket, tag) => {
+    setBusy(true); const calls = await loadBucket(bucket, tag); setBusy(false)
+    setFocus({ title, calls: calls || [] }); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
   const bookBand = (v) => (v == null ? '#94a3b8' : v >= 50 ? '#1b5e20' : v >= 35 ? '#8d6e00' : '#b71c1c')
   const bookBg = (v) => (v == null ? '#f1f5f9' : v >= 50 ? '#e8f5e9' : v >= 35 ? '#fff8e1' : '#fdecea')
 
@@ -2057,8 +2084,11 @@ function ManagerDashboard({ rows, onOpen, onGotoTab, onPickAgent }) {
     )
   }
 
+  if (err) return <Card style={{ color: '#b71c1c' }}>Error: {err}</Card>
+  if (!agg && loading) return <div style={{ color: '#64748b' }}>Loading…</div>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {busy && <div style={{ color: '#64748b', fontSize: 12.5 }}>Loading calls…</div>}
       {focus && (
         <Card style={{ padding: 0, overflow: 'hidden', border: `1px solid ${TEAL}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 14, borderBottom: '1px solid #eef2f7', flexWrap: 'wrap' }}>
@@ -2080,14 +2110,14 @@ function ManagerDashboard({ rows, onOpen, onGotoTab, onPickAgent }) {
           <span style={{ color: '#94a3b8', fontSize: 12.5 }}>Every card is clickable — it opens the calls behind the number.</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 12 }}>
-          <KpiCard label="Average QA Score" value={pct(k.avg)} color={scoreColor(k.avg)} sub={k.scored.length.toLocaleString() + ' scored'} onClick={() => onGotoTab('scorecards')} />
-          <KpiCard label="Booking Rate" value={pct(k.bookingRate)} color={TEAL} sub={k.booked.length + ' of ' + k.opps.length + ' opps'} onClick={() => go('Booked opportunities', k.booked)} />
-          <KpiCard label="Calls Reviewed" value={k.scored.length.toLocaleString()} sub="real conversations" onClick={() => onGotoTab('calls')} />
-          <KpiCard label="Winnable Losses" value={k.winnable.length.toLocaleString()} color="#b71c1c" sub={pct(k.winPct) + ' of lost'} onClick={() => go('Winnable losses', k.winnable)} />
-          <KpiCard label="Booking Not Asked For" value={k.noAsk.length.toLocaleString()} color="#b71c1c" sub="opportunities, no ask" onClick={() => go('No booking attempt', k.noAsk)} />
-          <KpiCard label="Pricing Before Discovery" value={k.priceBefore.length.toLocaleString()} color="#8d6e00" sub="quoted before qualifying" onClick={() => go('Pricing before discovery', k.priceBefore)} />
-          <KpiCard label="Fee / Pricing Objections" value={k.feeObj.length.toLocaleString()} color="#8d6e00" sub="price / fee pushback" onClick={() => go('Fee / pricing objections', k.feeObj)} />
-          <KpiCard label="Customer Info Not Captured" value={k.noContact.length.toLocaleString()} color="#b71c1c" sub="no complete contact info" onClick={() => go('Customer info not captured', k.noContact)} />
+          <KpiCard label="Average QA Score" value={pct(k.avg)} color={scoreColor(k.avg)} sub={k.scored.toLocaleString() + ' scored'} onClick={() => onGotoTab('scorecards')} />
+          <KpiCard label="Booking Rate" value={pct(k.bookingRate)} color={TEAL} sub={k.booked + ' of ' + k.opps + ' opps'} onClick={() => openBucket('Booked opportunities', 'booked')} />
+          <KpiCard label="Calls Reviewed" value={k.scored.toLocaleString()} sub="real conversations" onClick={() => openBucket('All scored calls', 'scored')} />
+          <KpiCard label="Winnable Losses" value={k.winnable.toLocaleString()} color="#b71c1c" sub={pct(k.winPct) + ' of lost'} onClick={() => openBucket('Winnable losses', 'winnable')} />
+          <KpiCard label="Booking Not Asked For" value={k.noAsk.toLocaleString()} color="#b71c1c" sub="opportunities, no ask" onClick={() => openBucket('No booking attempt', 'noask')} />
+          <KpiCard label="Pricing Before Discovery" value={k.priceBefore.toLocaleString()} color="#8d6e00" sub="quoted before qualifying" onClick={() => openBucket('Pricing before discovery', 'price')} />
+          <KpiCard label="Fee / Pricing Objections" value={k.feeObj.toLocaleString()} color="#8d6e00" sub="price / fee pushback" onClick={() => openBucket('Fee / pricing objections', 'feeobj')} />
+          <KpiCard label="Customer Info Not Captured" value={k.noContact.toLocaleString()} color="#b71c1c" sub="no complete contact info" onClick={() => openBucket('Customer info not captured', 'nocontact')} />
           {k.aiN > 0 && <KpiCard label="Human vs AI QA" value={pct(k.humanAvg) + ' / ' + pct(k.aiAvg)} color={TEAL} sub={'human vs AI · ' + k.aiN + ' AI calls'} onClick={() => onGotoTab('humanai')} />}
         </div>
       </div>
@@ -2099,16 +2129,14 @@ function ManagerDashboard({ rows, onOpen, onGotoTab, onPickAgent }) {
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9 }}>
           {[
-            ['Needs Coaching', k.winnable], ['Winnable Losses', k.winnable],
-            ['Lowest Scoring Calls', k.scored.slice().sort((a, b) => (Number(a.score_pct) || 0) - (Number(b.score_pct) || 0))],
-            ['Great Calls', k.scored.filter((r) => (Number(r.score_pct) || 0) >= 85 && r.outcome === 'Booked')],
-            ['No Booking Attempt', k.noAsk], ['Pricing Objections', k.feeObj],
-            ['Customer Info Not Captured', k.noContact],
-            ['High Performing Calls', k.scored.filter((r) => (Number(r.score_pct) || 0) >= 85)],
-          ].map(([label, calls]) => (
-            <button key={label} onClick={() => go(label, calls)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '9px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}
+            ['Needs Coaching', 'winnable', k.winnable], ['Winnable Losses', 'winnable', k.winnable],
+            ['Lowest Scoring Calls', 'lowest', null], ['Great Calls', 'great', null],
+            ['No Booking Attempt', 'noask', k.noAsk], ['Pricing Objections', 'feeobj', k.feeObj],
+            ['Customer Info Not Captured', 'nocontact', k.noContact], ['High Performing Calls', 'great', null],
+          ].map(([label, bucket, count]) => (
+            <button key={label} onClick={() => openBucket(label, bucket)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '9px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = TEAL; e.currentTarget.style.color = TEAL }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = INK }}>
-              {label}<span style={{ fontWeight: 800, color: '#94a3b8', fontSize: 12 }}>{calls.length.toLocaleString()}</span>
+              {label}{count != null ? <span style={{ fontWeight: 800, color: '#94a3b8', fontSize: 12 }}>{count.toLocaleString()}</span> : null}
             </button>
           ))}
         </div>
@@ -2119,7 +2147,7 @@ function ManagerDashboard({ rows, onOpen, onGotoTab, onPickAgent }) {
           <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Coaching Priorities</div>
           <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Biggest systemic misses in this view. Click one to see the calls.</div>
           {priorities.map((p, i) => (
-            <div key={p.tag} onClick={() => go(p.label, p.calls)} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '11px 0', borderTop: i ? '1px solid #eef2f7' : 'none', cursor: 'pointer' }}>
+            <div key={p.tag} onClick={() => openBucket(p.label, 'tag', p.tag)} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '11px 0', borderTop: i ? '1px solid #eef2f7' : 'none', cursor: 'pointer' }}>
               <div style={{ width: 26, height: 26, borderRadius: 8, background: TEAL, color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13 }}>{i + 1}</div>
               <div style={{ fontWeight: 700 }}>{p.label}</div>
               <div style={{ marginLeft: 'auto', textAlign: 'right' }}><b style={{ fontSize: 18 }}>{p.n.toLocaleString()}</b><span style={{ display: 'block', color: '#94a3b8', fontSize: 11 }}>calls</span></div>
@@ -2178,60 +2206,24 @@ function ManagerDashboard({ rows, onOpen, onGotoTab, onPickAgent }) {
 // the view spans >1 brand), coaching priorities, queue and agent cards. Poppins
 // (already loaded in index.html). Additive tab — nothing else changes.
 // ===========================================================================
-function CoachingBriefing({ rows, brand, onOpen, onPickBrand, onPickAgent }) {
+function CoachingBriefing({ agg, loading, err, loadBucket, brand, onOpen, onPickBrand, onPickAgent }) {
   const F = 'Poppins,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif'
   const C = { paper: '#f7f5f0', card: '#fff', ink: '#1a2430', ink2: '#556372', ink3: '#8a97a5', line: '#e7e2d8', line2: '#eef0ee', teal: TEAL, tan: '#a97c3f', tanbg: '#f3ead9', good: '#1b7a3d', goodbg: '#e6f4ea', warn: '#9a7400', warnbg: '#fbf1cf', bad: '#c0342b', badbg: '#fbe7e4' }
   const [focus, setFocus] = useState(null)
+  const [busy, setBusy] = useState(false)
   const [sort, setSort] = useState('qa')
-  const data = useMemo(() => buildScorecardData(rows), [rows])
-  const k = useMemo(() => {
-    const scored = rows.filter(isScored)
-    const opps = rows.filter((r) => r.opportunity)
-    const booked = opps.filter((r) => r.outcome === 'Booked')
-    const lost = opps.filter((r) => r.outcome && r.outcome !== 'Booked')
-    const winnable = lost.filter((r) => r.winnable)
-    const noAsk = opps.filter((r) => r.asked_for_booking === false)
-    const priceBefore = rows.filter((r) => r.info_before_pricing === 'no')
-    const noContact = rows.filter((r) => (r.improvement_tags || []).includes(CONTACT_TAG))
-    const feeObj = rows.filter((r) => (r.objections || []).some((o) => /price|fee/i.test(o)))
-    const humans = data.agents.filter((a) => !a.ai); const ais = data.agents.filter((a) => a.ai)
-    const wavg = (arr) => { const c = arr.reduce((s, a) => s + a.calls, 0); return c ? arr.reduce((s, a) => s + (a.avg || 0) * a.calls, 0) / c : null }
-    return { scored, avg: scored.length ? scored.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / scored.length : null,
-      opps, booked, lost, winnable, noAsk, priceBefore, noContact, feeObj,
-      bookingRate: opps.length ? (booked.length / opps.length) * 100 : null,
-      winPct: lost.length ? Math.round((winnable.length / lost.length) * 100) : null,
-      humanAvg: wavg(humans), aiAvg: wavg(ais), aiN: ais.reduce((s, a) => s + a.calls, 0) }
-  }, [rows, data])
-
-  const brandRows = useMemo(() => {
-    const m = new Map()
-    rows.forEach((r) => { const b = (r.call || {}).brand || '—'; if (!m.has(b)) m.set(b, { brand: b, scored: 0, sum: 0, opps: 0, booked: 0, winnable: 0 })
-      const o = m.get(b); if (isScored(r)) { o.scored++; o.sum += Number(r.score_pct) || 0 }
-      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') o.booked++; else if (r.outcome && r.winnable) o.winnable++ } })
-    return Array.from(m.values()).filter((o) => o.scored >= 5).map((o) => ({ ...o, avg: o.scored ? o.sum / o.scored : null, booking: o.opps ? (o.booked / o.opps) * 100 : null }))
-  }, [rows])
+  const { k, brands: brandRows, agents: agentRows, priorities, queue } = deriveDashAgg(agg)
   const multiBrand = brandRows.length > 1
-
-  const agentRows = useMemo(() => {
-    const m = new Map()
-    rows.forEach((r) => { const a = agentOf(r); if (!a || a === 'Unknown' || isAiCsr(a)) return; if (!m.has(a)) m.set(a, { name: a, scored: 0, sum: 0, opps: 0, booked: 0, winnable: 0 })
-      const o = m.get(a); if (isScored(r)) { o.scored++; o.sum += Number(r.score_pct) || 0 }
-      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') o.booked++; else if (r.outcome && r.winnable) o.winnable++ } })
-    return Array.from(m.values()).filter((o) => o.scored >= 5).map((o) => ({ ...o, avg: o.scored ? o.sum / o.scored : null, booking: o.opps ? (o.booked / o.opps) * 100 : null })).sort((a, b) => b.scored - a.scored)
-  }, [rows])
-
-  const priorities = useMemo(() => {
-    const m = {}; rows.forEach((r) => (r.improvement_tags || []).forEach((t) => { m[t] = (m[t] || 0) + 1 }))
-    return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([t, n]) => ({ label: friendlyTag(t), n, calls: rows.filter((r) => (r.improvement_tags || []).includes(t)) }))
-  }, [rows])
-  const queue = useMemo(() => k.winnable.slice().sort((a, b) => (Number(a.score_pct) || 0) - (Number(b.score_pct) || 0)).slice(0, 6), [k])
 
   const qCol = (v) => (v == null ? C.ink3 : v >= 70 ? C.good : v >= 62 ? C.warn : C.bad)
   const bCol = (v) => (v == null ? C.ink3 : v >= 50 ? C.good : v >= 35 ? C.warn : C.bad)
   const stat = (v) => (v >= 70 ? ['Strong', C.goodbg, C.good] : v >= 62 ? ['Steady', C.warnbg, C.warn] : ['Needs attention', C.badbg, C.bad])
   const P = (v) => (v == null ? '—' : v.toFixed(1) + '%')
-  const go = (title, calls) => { setFocus({ title, calls }); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' }) }
-  const SORTS = { qa: ['QA score', (a, b) => b.avg - a.avg], booking: ['Booking rate', (a, b) => b.booking - a.booking], winnable: ['Winnable losses', (a, b) => b.winnable - a.winnable], calls: ['Call volume', (a, b) => b.scored - a.scored] }
+  const openBucket = async (title, bucket, tag) => {
+    setBusy(true); const calls = await loadBucket(bucket, tag); setBusy(false)
+    setFocus({ title, calls: calls || [] }); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  const SORTS = { qa: ['QA score', (a, b) => (b.avg ?? -1) - (a.avg ?? -1)], booking: ['Booking rate', (a, b) => (b.booking ?? -1) - (a.booking ?? -1)], winnable: ['Winnable losses', (a, b) => b.winnable - a.winnable], calls: ['Call volume', (a, b) => b.scored - a.scored] }
   const sortedBrands = brandRows.slice().sort(SORTS[sort][1])
   const title = brand && brand !== 'all' ? brand : 'Portfolio — all brands'
 
@@ -2256,8 +2248,11 @@ function CoachingBriefing({ rows, brand, onOpen, onPickBrand, onPickAgent }) {
     </div>
   )
 
+  if (err) return <Card style={{ color: '#b71c1c' }}>Error: {err}</Card>
+  if (!agg && loading) return <div style={{ color: '#64748b' }}>Loading…</div>
   return (
     <div style={{ fontFamily: F, background: C.paper, border: `1px solid ${C.line}`, borderRadius: 18, padding: 22, color: C.ink }}>
+      {busy && <div style={{ color: C.ink3, fontSize: 12.5, marginBottom: 10 }}>Loading calls…</div>}
       {focus && (
         <div style={{ ...box, border: `1px solid ${C.teal}`, marginBottom: 16, overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 14, borderBottom: `1px solid ${C.line2}`, flexWrap: 'wrap' }}>
@@ -2275,7 +2270,7 @@ function CoachingBriefing({ rows, brand, onOpen, onPickBrand, onPickAgent }) {
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, borderBottom: `2px solid ${C.ink}`, paddingBottom: 14 }}>
         <div><div style={kicker}>Call QA · Coaching Briefing</div>
           <h1 style={{ fontFamily: F, fontSize: 30, margin: '6px 0 0', fontWeight: 600 }}>{title}</h1></div>
-        <div style={{ textAlign: 'right', color: C.ink2, fontSize: 13 }}>{k.scored.length.toLocaleString()} calls reviewed{multiBrand ? ` · ${brandRows.length} brands` : ''}</div>
+        <div style={{ textAlign: 'right', color: C.ink2, fontSize: 13 }}>{k.scored.toLocaleString()} calls reviewed{multiBrand ? ` · ${brandRows.length} brands` : ''}</div>
       </div>
 
       {/* hero */}
@@ -2283,15 +2278,15 @@ function CoachingBriefing({ rows, brand, onOpen, onPickBrand, onPickAgent }) {
         <div>
           <div style={kicker}>What to fix this period</div>
           <h2 style={{ fontFamily: F, fontSize: 24, lineHeight: 1.3, margin: '10px 0 12px', fontWeight: 600 }}>
-            <span style={{ color: C.teal, borderBottom: `3px solid ${C.tanbg}` }}>{k.winPct == null ? '—' : k.winPct + '%'} of every lost opportunity was winnable</span> — and the ask for the appointment was missing on {k.noAsk.length.toLocaleString()} calls.
+            <span style={{ color: C.teal, borderBottom: `3px solid ${C.tanbg}` }}>{k.winPct == null ? '—' : k.winPct + '%'} of every lost opportunity was winnable</span> — and the ask for the appointment was missing on {k.noAsk.toLocaleString()} calls.
           </h2>
           <p style={{ color: C.ink2, lineHeight: 1.6, margin: 0 }}>QA is {P(k.avg)} and booking is {P(k.bookingRate)}. The same three coachable behaviors — asking for the appointment, capturing contact information, and framing the service fee — explain most of the gap{multiBrand ? ' across the portfolio' : ''}.</p>
           <div style={{ marginTop: 16, display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-            <button onClick={() => go('Coaching queue — winnable losses', k.winnable)} style={{ background: C.teal, color: '#fff', border: 'none', borderRadius: 10, padding: '9px 15px', fontWeight: 700, cursor: 'pointer', fontFamily: F }}>Open the coaching queue →</button>
+            <button onClick={() => openBucket('Coaching queue — winnable losses', 'winnable')} style={{ background: C.teal, color: '#fff', border: 'none', borderRadius: 10, padding: '9px 15px', fontWeight: 700, cursor: 'pointer', fontFamily: F }}>Open the coaching queue →</button>
           </div>
         </div>
         <div style={{ borderLeft: `1px solid ${C.line}`, paddingLeft: 24, display: 'flex', flexDirection: 'column', gap: 16, justifyContent: 'center' }}>
-          <div><div style={{ fontSize: 12, color: C.ink3, fontWeight: 600, textTransform: 'uppercase' }}>Winnable losses</div><div className="num" style={{ fontSize: 30, fontWeight: 700, color: C.bad }}>{k.winnable.length.toLocaleString()}</div></div>
+          <div><div style={{ fontSize: 12, color: C.ink3, fontWeight: 600, textTransform: 'uppercase' }}>Winnable losses</div><div className="num" style={{ fontSize: 30, fontWeight: 700, color: C.bad }}>{k.winnable.toLocaleString()}</div></div>
           <div><div style={{ fontSize: 12, color: C.ink3, fontWeight: 600, textTransform: 'uppercase' }}>Booking rate</div><div className="num" style={{ fontSize: 30, fontWeight: 700, color: C.teal }}>{P(k.bookingRate)}</div></div>
           {k.aiN > 0 && <div><div style={{ fontSize: 12, color: C.ink3, fontWeight: 600, textTransform: 'uppercase' }}>Human vs AI QA</div><div className="num" style={{ fontSize: 30, fontWeight: 700 }}>{P(k.humanAvg)} / {P(k.aiAvg)}</div></div>}
         </div>
@@ -2300,11 +2295,11 @@ function CoachingBriefing({ rows, brand, onOpen, onPickBrand, onPickAgent }) {
       {/* kpi strip */}
       <div style={stitle}>The numbers <span style={{ color: C.ink3, fontSize: 12.5, fontWeight: 400 }}>· click any to open the calls</span></div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 1, background: C.line, border: `1px solid ${C.line}`, borderRadius: 14, overflow: 'hidden' }}>
-        <KpiCell label="Average QA Score" value={P(k.avg)} color={qCol(k.avg)} sub={`${k.scored.length.toLocaleString()} scored`} onClick={() => go('All scored calls', k.scored)} />
-        <KpiCell label="Booking Rate" value={P(k.bookingRate)} color={C.teal} sub={`${k.booked.length} of ${k.opps.length} opps`} onClick={() => go('Booked opportunities', k.booked)} />
-        <KpiCell label="Booking Not Asked" value={k.noAsk.length.toLocaleString()} color={C.bad} sub="no ask on the opp" onClick={() => go('No booking attempt', k.noAsk)} />
-        <KpiCell label="Pricing Before Discovery" value={k.priceBefore.length.toLocaleString()} color={C.warn} sub="quoted too early" onClick={() => go('Pricing before discovery', k.priceBefore)} />
-        <KpiCell label="Info Not Captured" value={k.noContact.length.toLocaleString()} color={C.bad} sub="no contact details" onClick={() => go('Customer info not captured', k.noContact)} />
+        <KpiCell label="Average QA Score" value={P(k.avg)} color={qCol(k.avg)} sub={`${k.scored.toLocaleString()} scored`} onClick={() => openBucket('All scored calls', 'scored')} />
+        <KpiCell label="Booking Rate" value={P(k.bookingRate)} color={C.teal} sub={`${k.booked} of ${k.opps} opps`} onClick={() => openBucket('Booked opportunities', 'booked')} />
+        <KpiCell label="Booking Not Asked" value={k.noAsk.toLocaleString()} color={C.bad} sub="no ask on the opp" onClick={() => openBucket('No booking attempt', 'noask')} />
+        <KpiCell label="Pricing Before Discovery" value={k.priceBefore.toLocaleString()} color={C.warn} sub="quoted too early" onClick={() => openBucket('Pricing before discovery', 'price')} />
+        <KpiCell label="Info Not Captured" value={k.noContact.toLocaleString()} color={C.bad} sub="no contact details" onClick={() => openBucket('Customer info not captured', 'nocontact')} />
         {k.aiN > 0 && <KpiCell label="Human vs AI QA" value={`${P(k.humanAvg)} / ${P(k.aiAvg)}`} sub="human vs AI" />}
       </div>
 
@@ -2343,7 +2338,7 @@ function CoachingBriefing({ rows, brand, onOpen, onPickBrand, onPickAgent }) {
           <div style={{ ...stitle, margin: '0 0 4px' }}>Coaching priorities</div>
           <div style={{ color: C.ink2, fontSize: 13, marginBottom: 6 }}>The biggest systemic misses in this view.</div>
           {priorities.map((p, i) => (
-            <div key={p.label} onClick={() => go(p.label, p.calls)} style={{ display: 'flex', gap: 14, alignItems: 'baseline', padding: '13px 0', borderTop: i ? `1px solid ${C.line2}` : 'none', cursor: 'pointer' }}>
+            <div key={p.label} onClick={() => openBucket(p.label, 'tag', p.tag)} style={{ display: 'flex', gap: 14, alignItems: 'baseline', padding: '13px 0', borderTop: i ? `1px solid ${C.line2}` : 'none', cursor: 'pointer' }}>
               <div style={{ fontFamily: F, fontSize: 22, color: C.tan, fontWeight: 700, width: 22 }}>{i + 1}</div>
               <div style={{ fontWeight: 600, fontSize: 15.5 }}>{p.label}</div>
               <div style={{ marginLeft: 'auto', textAlign: 'right' }}><b className="num" style={{ fontSize: 20 }}>{p.n.toLocaleString()}</b><span style={{ display: 'block', color: C.ink3, fontSize: 11 }}>calls</span></div>
