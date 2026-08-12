@@ -5,6 +5,7 @@ import { useUnread } from '../lib/unread'
 import { supabase } from '../lib/supabase'
 import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
 import { canAny } from '../lib/permissions'
+import { useRsnAccess } from '../lib/rsnAccess'
 import ChangePassword from './ChangePassword'
 
 // Sidebar navigation, organized into labelled GROUPS.
@@ -79,6 +80,9 @@ const NAV = [
           // Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
           // and grant it to the right roles, like 'hiring'.
           { to: '/sales', label: 'Sales', perm: 'sales' },
+          // RSN pipeline — DB-gated (admins, marketing role, or 'access/rsn' tag),
+          // not role-matrix-gated. '__rsn' is special-cased in permOk below.
+          { to: '/rsn', label: 'RSN Pipeline', perm: '__rsn' },
         ],
       },
       {
@@ -114,6 +118,10 @@ export default function Sidebar({ open, onNavigate }) {
   const { isAdmin, level, roles, user, signOut, appRole } = useAuth()
   const { total: unreadTotal } = useUnread()
   const location = useLocation()
+  // RSN pipeline is gated by a DB check (not the role matrix); null = still loading → hidden.
+  const rsnOk = useRsnAccess()
+  // One place that answers "can this person see an item with this perm key?"
+  const permOk = (p) => p === '__rsn' ? rsnOk === true : (!p || canAny(appRole, p))
 
   const isOwner = level >= 100 || (roles || []).includes('owner')
 
@@ -161,15 +169,15 @@ export default function Sidebar({ open, onNavigate }) {
   // Is a single item visible to this person? Used to decide whether a group
   // header should render at all.
   const itemVisible = (item) => {
-    if (item.type === 'link') return !item.perm || canAny(appRole, item.perm)
-    return item.children.some(c => !c.perm || canAny(appRole, c.perm))
+    if (item.type === 'link') return permOk(item.perm)
+    return item.children.some(c => permOk(c.perm))
   }
 
   // Render one nav item (link or collapsible section).
   const renderItem = (item) => {
     // --- single top-level link ---
     if (item.type === 'link') {
-      if (item.perm && !canAny(appRole, item.perm)) return null
+      if (!permOk(item.perm)) return null
       return (
         <NavLink key={item.to} to={item.to} end={item.end}
           onClick={() => onNavigate && onNavigate()}
@@ -185,7 +193,7 @@ export default function Sidebar({ open, onNavigate }) {
     }
 
     // --- collapsible section ---
-    const children = item.children.filter(c => !c.perm || canAny(appRole, c.perm))
+    const children = item.children.filter(c => permOk(c.perm))
     if (!children.length) return null
     const isOpen = !!openSections[item.key]
     return (
