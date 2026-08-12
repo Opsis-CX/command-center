@@ -2119,7 +2119,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
           <KpiCard label="Pricing Before Discovery" value={k.priceBefore.toLocaleString()} color="#8d6e00" sub="quoted before qualifying" onClick={() => openBucket('Pricing before discovery', 'price')} />
           <KpiCard label="Fee / Pricing Objections" value={k.feeObj.toLocaleString()} color="#8d6e00" sub="price / fee pushback" onClick={() => openBucket('Fee / pricing objections', 'feeobj')} />
           <KpiCard label="Customer Info Not Captured" value={k.noContact.toLocaleString()} color="#b71c1c" sub="no complete contact info" onClick={() => openBucket('Customer info not captured', 'nocontact')} />
-          {k.aiN > 0 && <KpiCard wide label="Human vs AI QA" value={pct(k.humanAvg) + ' / ' + pct(k.aiAvg)} color={TEAL} sub={'human vs AI · ' + k.aiN + ' AI calls'} onClick={() => onGotoTab('humanai')} />}
+          {k.aiN > 0 && <KpiCard label="Human vs AI QA" value={pct(k.humanAvg) + ' / ' + pct(k.aiAvg)} color={TEAL} sub={'human vs AI · ' + k.aiN + ' AI calls'} onClick={() => onGotoTab('humanai')} />}
         </div>
       </div>
 
