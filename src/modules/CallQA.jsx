@@ -657,7 +657,7 @@ export default function CallQA({ portal = false } = {}) {
   const base = import.meta.env.VITE_SUPABASE_URL || ''
   const inFlight = (pipeline.needs_transcription || 0) + (pipeline.transcribing || 0) + (pipeline.ready || 0) + (pipeline.scoring || 0)
   const todayStr = new Date().toISOString().slice(0, 10)
-  const TABS = [['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['bookings', 'Bookings & Card'], ['calls', 'Calls'], ['fails', 'Lowest Scores'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings'], ['import', 'Import']] : [])]
+  const TABS = [['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards'], ['humanai', 'Human vs AI']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['bookings', 'Bookings & Card'], ['calls', 'Calls'], ['fails', 'Lowest Scores'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings'], ['import', 'Import']] : [])]
 
   return (
     <div style={{ padding: 20, maxWidth: 1180, margin: '0 auto', color: INK }}>
@@ -695,6 +695,7 @@ export default function CallQA({ portal = false } = {}) {
       ) : loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
         <>
           {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} brand={brand} setBrand={setBrand} />}
+          {tab === 'humanai' && <HumanVsAI rows={dateFiltered} />}
           {tab === 'opportunities' && <Opportunities rows={filtered} agg={agg} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'missed' && <MissedOpps rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'conversion' && <Conversion rows={filtered} prevAgg={prevAgg} onOpen={setSelected} viewAll={viewAll} />}
@@ -1895,6 +1896,132 @@ function buildScorecardData(rows) {
     return Object.entries(m).sort((a, b) => b[1] - a[1])
   }
   return { overall, brands, agents, gaps }
+}
+
+// Human vs AI CSRs, broken out by brand. AI CSRs (Dane/Sophia/Jason) handle
+// after-hours coverage and are audited like anyone else, but kept in their own
+// column so the client can see the AI's quality next to the human team without
+// the two being blended. Named agents only — unattributed calls aren't tied to a
+// CSR, so they sit out of this comparison (same rule the Scorecards tab uses).
+const AI_HUE = '#7c3aed'
+function HaiBar({ color, label, value, max }) {
+  const w = value == null ? 0 : Math.max(0, Math.min(100, (value / max) * 100))
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ width: 44, fontSize: 11.5, color: '#64748b', flexShrink: 0 }}>{label}</span>
+      <div style={{ flex: 1, background: '#f1f5f9', borderRadius: 6, height: 20, position: 'relative', overflow: 'hidden' }}>
+        <div style={{ width: w + '%', background: color, height: '100%', borderRadius: 6, transition: 'width .3s' }} />
+      </div>
+      <span style={{ width: 52, textAlign: 'right', fontWeight: 700, fontSize: 12.5, color, flexShrink: 0 }}>{pct(value)}</span>
+    </div>
+  )
+}
+function HumanVsAI({ rows }) {
+  const data = useMemo(() => buildScorecardData(rows), [rows])
+  const byBrand = useMemo(() => {
+    const m = new Map()
+    data.agents.forEach((a) => {
+      if (!m.has(a.brand)) m.set(a.brand, { brand: a.brand, hCalls: 0, hSum: 0, aCalls: 0, aSum: 0 })
+      const o = m.get(a.brand)
+      if (a.ai) { o.aCalls += a.calls; o.aSum += (a.avg || 0) * a.calls }
+      else { o.hCalls += a.calls; o.hSum += (a.avg || 0) * a.calls }
+    })
+    return Array.from(m.values()).map((o) => ({
+      ...o,
+      hAvg: o.hCalls ? o.hSum / o.hCalls : null,
+      aAvg: o.aCalls ? o.aSum / o.aCalls : null,
+      calls: o.hCalls + o.aCalls,
+      lift: (o.hCalls && o.aCalls) ? (o.aSum / o.aCalls - o.hSum / o.hCalls) : null,
+    })).sort((a, b) => b.calls - a.calls)
+  }, [data])
+
+  const tot = useMemo(() => {
+    const t = byBrand.reduce((s, b) => ({ hCalls: s.hCalls + b.hCalls, hSum: s.hSum + b.hSum, aCalls: s.aCalls + b.aCalls, aSum: s.aSum + b.aSum }), { hCalls: 0, hSum: 0, aCalls: 0, aSum: 0 })
+    const hAvg = t.hCalls ? t.hSum / t.hCalls : null
+    const aAvg = t.aCalls ? t.aSum / t.aCalls : null
+    return { ...t, hAvg, aAvg, lift: (hAvg != null && aAvg != null) ? aAvg - hAvg : null, aiBrands: byBrand.filter((b) => b.aCalls > 0).length }
+  }, [byBrand])
+
+  const [sort, onSort] = useSort('Calls', 'desc')
+  const acc = { Brand: (b) => b.brand, 'Human calls': (b) => b.hCalls, 'Human avg QA': (b) => b.hAvg, 'AI calls': (b) => b.aCalls, 'AI avg QA': (b) => b.aAvg, 'AI lift': (b) => b.lift, Calls: (b) => b.calls }
+  const view = useTableView(sortRows(byBrand, sort, acc), { pageSize: 20, searchText: (b) => b.brand })
+
+  const build = () => ([
+    { title: 'Human vs AI — summary', sheet: 'Summary', cols: ['Metric', 'Value'], rows: [
+      ['Human CSRs — avg QA %', r1(tot.hAvg)], ['Human scored calls', tot.hCalls],
+      ['AI CSRs — avg QA %', r1(tot.aAvg)], ['AI scored calls', tot.aCalls],
+      ['AI quality lift (pp)', tot.lift == null ? '' : r1(tot.lift)], ['Brands with AI coverage', tot.aiBrands],
+    ] },
+    { title: 'Human vs AI by brand', sheet: 'By brand', cols: ['Brand', 'Human calls', 'Human avg QA %', 'AI calls', 'AI avg QA %', 'AI lift (pp)'],
+      rows: byBrand.map((b) => [b.brand, b.hCalls, r1(b.hAvg), b.aCalls, r1(b.aAvg), b.lift == null ? '' : r1(b.lift)]) },
+  ])
+
+  const liftStr = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(1) + 'pp')
+  const withAi = byBrand.filter((b) => b.aCalls > 0 && b.hCalls > 0).sort((a, b) => (b.aAvg ?? 0) - (a.aAvg ?? 0))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>Human vs AI CSRs — by brand</div>
+        <ExportBar name="callqa-human-vs-ai" title="Human vs AI CSRs" subtitle={tot.hCalls.toLocaleString() + ' human · ' + tot.aCalls.toLocaleString() + ' AI scored calls'} build={build} />
+      </div>
+      <div style={{ fontSize: 12.5, color: '#64748b', marginTop: -6 }}>
+        AI CSRs (Dane, Sophia, Jason) handle after-hours coverage and are audited for quality, not coached. Named agents only — unattributed calls are excluded.
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Human CSRs — avg QA" value={pct(tot.hAvg)} color={scoreColor(tot.hAvg)} sub={tot.hCalls.toLocaleString() + ' scored calls'} />
+        <Tile label="AI CSRs — avg QA" value={pct(tot.aAvg)} color={scoreColor(tot.aAvg)} sub={tot.aCalls.toLocaleString() + ' scored calls · audit only'} />
+        <Tile label="AI quality lift" value={liftStr(tot.lift)} color={AI_HUE} sub="AI avg minus human avg" />
+        <Tile label="Brands with AI coverage" value={tot.aiBrands} sub={'of ' + byBrand.length + ' brands'} />
+      </div>
+
+      {withAi.length > 0 && (
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            <div style={{ fontWeight: 700 }}>Avg QA by brand — human vs AI</div>
+            <div style={{ display: 'flex', gap: 14, fontSize: 12.5, color: '#475569' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: TEAL }} />Human</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: AI_HUE }} />AI</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {withAi.map((b) => (
+              <div key={b.brand}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
+                  <span style={{ fontWeight: 600 }}>{b.brand}</span>
+                  <span style={{ color: '#94a3b8', fontSize: 12 }}>{b.hCalls.toLocaleString()} human · {b.aCalls.toLocaleString()} AI calls · {liftStr(b.lift)}</span>
+                </div>
+                <HaiBar color={TEAL} label="Human" value={b.hAvg} max={100} />
+                <div style={{ height: 4 }} />
+                <HaiBar color={AI_HUE} label="AI" value={b.aAvg} max={100} />
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ fontWeight: 700, padding: 14 }}>All brands</div>
+        <TableToolbar view={view} placeholder="Search brands…" />
+        <div style={{ overflowX: 'auto', maxHeight: 620 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <SortHead cols={['Brand', 'Human calls', 'Human avg QA', 'AI calls', 'AI avg QA', 'AI lift']} sort={sort} onSort={onSort} />
+            <tbody>{view.pageRows.map((b) => (
+              <tr key={b.brand} style={{ borderTop: '1px solid #eef2f7' }}>
+                <td style={{ padding: '8px 12px', fontWeight: 600 }}>{b.brand}</td>
+                <td style={{ padding: '8px 12px' }}>{b.hCalls.toLocaleString()}</td>
+                <td style={{ padding: '8px 12px' }}><span style={{ background: scoreBg(b.hAvg), color: scoreColor(b.hAvg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(b.hAvg)}</span></td>
+                <td style={{ padding: '8px 12px' }}>{b.aCalls ? b.aCalls.toLocaleString() : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                <td style={{ padding: '8px 12px' }}>{b.aCalls ? <span style={{ background: scoreBg(b.aAvg), color: scoreColor(b.aAvg), fontWeight: 700, padding: '3px 8px', borderRadius: 8 }}>{pct(b.aAvg)}</span> : <span style={{ color: '#cbd5e1' }}>no AI</span>}</td>
+                <td style={{ padding: '8px 12px', fontWeight: 700, color: b.lift == null ? '#cbd5e1' : b.lift >= 0 ? '#1b5e20' : '#b71c1c' }}>{liftStr(b.lift)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  )
 }
 
 function Scorecards({ rows, prevRows, viewAll, onOpen, brand: topBrand, setBrand: setTopBrand }) {
