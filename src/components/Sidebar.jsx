@@ -56,6 +56,7 @@ const NAV = [
         ],
       },
       { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
+      { type: 'link', to: '/call-qa', label: 'Call QA (AI)', ic: '🤖', perm: 'quality_audit.call_reviews' },
       { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
       { type: 'link', to: '/help', label: 'Help Center', ic: '🛟', perm: null },          // tickets private per RLS
       { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
