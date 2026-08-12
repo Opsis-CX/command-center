@@ -694,7 +694,7 @@ export default function CallQA({ portal = false } = {}) {
             : <div style={{ color: '#64748b' }}>Loading…</div>
       ) : loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
         <>
-          {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} />}
+          {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} brand={brand} setBrand={setBrand} />}
           {tab === 'opportunities' && <Opportunities rows={filtered} agg={agg} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'missed' && <MissedOpps rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'conversion' && <Conversion rows={filtered} prevAgg={prevAgg} onOpen={setSelected} viewAll={viewAll} />}
@@ -1897,9 +1897,8 @@ function buildScorecardData(rows) {
   return { overall, brands, agents, gaps }
 }
 
-function Scorecards({ rows, prevRows, viewAll, onOpen }) {
+function Scorecards({ rows, prevRows, viewAll, onOpen, brand: topBrand, setBrand: setTopBrand }) {
   const [tier, setTier] = useState('exec')
-  const [mgrBrand, setMgrBrand] = useState('')
   const [agentKey, setAgentKey] = useState('')
   const data = useMemo(() => buildScorecardData(rows), [rows])
   const prevData = useMemo(() => buildScorecardData(prevRows || []), [prevRows])
@@ -1911,9 +1910,12 @@ function Scorecards({ rows, prevRows, viewAll, onOpen }) {
 
   // Selected brand/agent fall back to the top-ranked one until the user picks
   // (or drills in via a click).
-  const brand = (mgrBrand && data.brands.some((x) => x.brand === mgrBrand)) ? mgrBrand : (data.brands[0]?.brand || '')
+  // Single source of truth for brand = the top filter bar. When it's on "All
+  // brands" the Manager tier falls back to the top-ranked brand; picking a brand
+  // up top (or clicking a brand row in Executive) drives this view.
+  const brand = (topBrand && topBrand !== 'all' && data.brands.some((x) => x.brand === topBrand)) ? topBrand : (data.brands[0]?.brand || '')
   const aKey = (agentKey && data.agents.some((x) => (x.name + '|||' + x.brand) === agentKey)) ? agentKey : (data.agents[0] ? data.agents[0].name + '|||' + data.agents[0].brand : '')
-  const goBrand = (b) => { setMgrBrand(b); setTier('mgr') }
+  const goBrand = (b) => { if (setTopBrand) setTopBrand(b); setTier('mgr') }
   const goAgent = (name, br) => { setAgentKey(name + '|||' + br); setTier('agent') }
 
   return (
@@ -1923,7 +1925,7 @@ function Scorecards({ rows, prevRows, viewAll, onOpen }) {
         <span style={{ color: '#94a3b8', fontSize: 12.5, marginLeft: 4 }}>Click a brand or agent to drill in · export any view as PDF, Excel, or CSV.</span>
       </div>
       {tier === 'exec' && <ScExec data={data} prevOverall={hasPrev ? prevData.overall : null} onBrand={goBrand} />}
-      {tier === 'mgr' && <ScMgr data={data} prevBrand={hasPrev ? prevBrand : null} prevAgent={hasPrev ? prevAgentMap : null} brand={brand} setBrand={setMgrBrand} onAgent={goAgent} onOpen={onOpen} />}
+      {tier === 'mgr' && <ScMgr data={data} prevBrand={hasPrev ? prevBrand : null} prevAgent={hasPrev ? prevAgentMap : null} brand={brand} onAgent={goAgent} onOpen={onOpen} />}
       {tier === 'agent' && <ScAgent data={data} prevAgent={hasPrev ? prevAgentMap : null} rows={rows} aKey={aKey} setKey={setAgentKey} onOpen={onOpen} />}
     </div>
   )
@@ -2004,7 +2006,7 @@ function ScExec({ data, prevOverall, onBrand }) {
   )
 }
 
-function ScMgr({ data, prevBrand, prevAgent, brand, setBrand, onAgent, onOpen }) {
+function ScMgr({ data, prevBrand, prevAgent, brand, onAgent, onOpen }) {
   const b = data.brands.find((x) => x.brand === brand) || data.brands[0]
   const prevB = prevBrand ? prevBrand[b?.brand] : null
   const roster = data.agents.filter((a) => a.brand === (b?.brand) && !a.ai)   // coachable humans
@@ -2026,7 +2028,7 @@ function ScMgr({ data, prevBrand, prevAgent, brand, setBrand, onAgent, onOpen })
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <Select label="Brand" value={brand} onChange={setBrand} opts={data.brands.map((x) => [x.brand, x.brand])} />
+        <div style={{ fontWeight: 800, fontSize: 16 }}>{b.brand} <span style={{ color: '#94a3b8', fontWeight: 500, fontSize: 13 }}>— team</span></div>
         <ExportBar name={'callqa-manager-' + b.brand.replace(/\W+/g, '-').toLowerCase()} title={b.brand + ' — Team Scorecard'} subtitle={b.calls + ' calls · ' + b.nAgents + ' agents'} build={build} />
       </div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
