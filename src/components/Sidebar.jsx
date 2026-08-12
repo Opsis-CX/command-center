@@ -41,6 +41,8 @@ const NAV = [
         ],
       },
       { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
+      { type: 'link', to: '/tokens', label: 'Tokens', ic: '🎟️', perm: 'tokens' },
+      { type: 'link', to: '/coaching', label: 'Coaching', ic: '🎧', perm: 'coaching' },
       {
         type: 'section', key: 'reporting', label: 'Reporting', ic: '📈',
         children: [
@@ -82,6 +84,7 @@ const NAV = [
         children: [
           { to: '/help', label: 'Help Center', perm: null },     // everyone; tickets are private per RLS
           { to: '/calendar', label: 'Calendar', perm: null },    // everyone gets calendar
+          { to: '/get-to-know-you', label: 'Get to Know You', perm: null }, // everyone; edit only your own card
         ],
       },
       {
