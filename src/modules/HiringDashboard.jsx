@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { can } from '../lib/permissions'
 // ============================================================
 //  ADMIN HIRING DASHBOARD  (Stage 3)
 //  Kanban pipeline board. Screened-out applicants (out_of_area,
@@ -100,7 +101,12 @@ function avatarColor(name) {
 }
 
 export default function HiringDashboard() {
-  const { user } = useAuth()
+  const { user, appRole } = useAuth()
+  // View-only mode: roles with hiring.view_stage_only (ASC, Marketing) can see the
+  // pipeline but get no approve/deny/advance/hold/move/remove controls. Full
+  // control requires hiring.all (Certification, Admin). DB read access for ASC is
+  // granted via the hiring_*_select RLS policies; write policies exclude them.
+  const readOnly = !can(appRole, 'hiring.all')
   const [apps, setApps] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
@@ -570,8 +576,8 @@ export default function HiringDashboard() {
               {byColumn[col.key].length === 0 && <div style={{ fontSize: 12, color: 'var(--ink-soft)', textAlign: 'center', padding: '16px 0' }}>—</div>}
               {byColumn[col.key].map(app => (
                 <ApplicantCard key={app.id} app={app} onClick={() => setSelected(app)}
-                  onApprove={col.key === 'pending_review' ? () => approve(app) : null}
-                  onDeny={col.key === 'pending_review' ? () => deny(app) : null}
+                  onApprove={!readOnly && col.key === 'pending_review' ? () => approve(app) : null}
+                  onDeny={!readOnly && col.key === 'pending_review' ? () => deny(app) : null}
                   busy={busy} />
               ))}
             </div>
@@ -600,7 +606,9 @@ export default function HiringDashboard() {
       )}
 
       {selected && <DetailPanel app={selected} onClose={() => setSelected(null)}
-        onApprove={approve} onDeny={deny} onTransition={transition} onMove={moveToStep} onRemove={removeFromPipeline} onHold={setHold} certTags={certTags} busy={busy} />}
+        onApprove={readOnly ? null : approve} onDeny={readOnly ? null : deny} onTransition={readOnly ? null : transition}
+        onMove={readOnly ? null : moveToStep} onRemove={readOnly ? null : removeFromPipeline} onHold={readOnly ? null : setHold}
+        certTags={certTags} busy={busy} />}
     </div>
   )
 }
@@ -727,13 +735,13 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
 
         <div style={{ padding: 20 }}>
           {/* action bar */}
-          {app.status === 'pending_review' && (
+          {onApprove && app.status === 'pending_review' && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
               <button disabled={busy} onClick={() => onApprove(app)} style={{ flex: 1, border: 0, borderRadius: 8, background: '#16A34A', color: '#fff', fontSize: 14, fontWeight: 700, padding: '10px 0', cursor: 'pointer', fontFamily: 'inherit' }}>Approve</button>
               <button disabled={busy} onClick={() => onDeny(app)} style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#DC2626', fontSize: 14, fontWeight: 700, padding: '10px 0', cursor: 'pointer', fontFamily: 'inherit' }}>Deny</button>
             </div>
           )}
-          {SCREENED_OUT.includes(app.status) && (
+          {onTransition && SCREENED_OUT.includes(app.status) && (
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 8 }}>
                 This applicant was screened out{app.screen_reason ? ` (${app.screen_reason})` : ''}. You can override that and put them back into review.
@@ -744,7 +752,7 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
               </button>
             </div>
           )}
-          {adv && (
+          {onTransition && adv && (
             <div style={{ marginBottom: 20 }}>
               {/* Onboarding step: choose which certification to assign to this hire. */}
               {adv.to === 'cert_assigned' && (
