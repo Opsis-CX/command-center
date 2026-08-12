@@ -657,6 +657,19 @@ export default function CallQA({ portal = false } = {}) {
   const base = import.meta.env.VITE_SUPABASE_URL || ''
   const inFlight = (pipeline.needs_transcription || 0) + (pipeline.transcribing || 0) + (pipeline.ready || 0) + (pipeline.scoring || 0)
   const todayStr = new Date().toISOString().slice(0, 10)
+  // Human-readable summary of the active top-bar filters, shown under the tabs so
+  // every view (and its exports) makes clear what range/brand/agent it reflects.
+  const rangeLabel = customRange
+    ? ((startDate || '…') + ' → ' + (endDate || '…'))
+    : (days === 7 ? 'Last 7 days' : days === 30 ? 'Last 30 days' : days === 90 ? 'Last 90 days' : days >= 3650 ? 'All time' : ('Last ' + days + ' days'))
+  const filterChips = [
+    ...(canManage ? [['Program', PROGRAM_LABELS[program] || program]] : []),
+    ['Range', rangeLabel],
+    ['Brand', brand === 'all' ? 'All brands' : brand],
+    ...(topic !== 'all' ? [['Topic', topic]] : []),
+    ...(viewAll ? [['Agent', agent === 'all' ? 'All agents' : agent]] : []),
+  ]
+  const filterText = filterChips.map(([, v]) => v).join(' · ')
   const TABS = [['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards'], ['humanai', 'Human vs AI']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['bookings', 'Bookings & Card'], ['calls', 'Calls'], ['fails', 'Lowest Scores'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings'], ['import', 'Import']] : [])]
 
   return (
@@ -688,6 +701,16 @@ export default function CallQA({ portal = false } = {}) {
         {TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} style={{ border: 'none', background: 'none', padding: '10px 14px', cursor: 'pointer', fontWeight: 600, fontSize: 14, color: tab === k ? TEAL : '#64748b', borderBottom: tab === k ? `2px solid ${TEAL}` : '2px solid transparent' }}>{l}</button>)}
       </div>
 
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 14px', fontSize: 12.5 }}>
+        <span style={{ color: '#94a3b8', fontWeight: 600 }}>Showing:</span>
+        {filterChips.map(([k, v]) => (
+          <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 10px' }}>
+            <span style={{ color: '#94a3b8' }}>{k}</span>
+            <span style={{ color: '#334155', fontWeight: 700 }}>{v}</span>
+          </span>
+        ))}
+      </div>
+
       {tab === 'overview' ? (
         ovErr ? <Card style={{ color: '#b71c1c' }}>Error: {ovErr}</Card>
           : ovData ? <Overview agg={ovData.agg} trend={ovData.trend} prevAgg={ovData.prev} />
@@ -695,7 +718,7 @@ export default function CallQA({ portal = false } = {}) {
       ) : loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
         <>
           {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} brand={brand} setBrand={setBrand} />}
-          {tab === 'humanai' && <HumanVsAI rows={dateFiltered} />}
+          {tab === 'humanai' && <HumanVsAI rows={dateFiltered} filterText={filterText} />}
           {tab === 'opportunities' && <Opportunities rows={filtered} agg={agg} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'missed' && <MissedOpps rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'conversion' && <Conversion rows={filtered} prevAgg={prevAgg} onOpen={setSelected} viewAll={viewAll} />}
@@ -1923,7 +1946,7 @@ function HaiBar({ color, textColor, label, value, max }) {
 // AI opportunity samples are thin per brand, so close-rate reads below this many
 // opportunities are flagged as low-confidence (shown muted with a ° marker).
 const HAI_LOW_N = 30
-function HumanVsAI({ rows }) {
+function HumanVsAI({ rows, filterText }) {
   // Which lens: 'qa' = avg QA score (audit quality), 'close' = conversion
   // (booked ÷ opportunities on scored calls).
   const [metric, setMetric] = useState('qa')
@@ -2008,7 +2031,7 @@ function HumanVsAI({ rows }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontWeight: 700, fontSize: 15 }}>Human vs AI CSRs — by brand</div>
-        <ExportBar name="callqa-human-vs-ai" title="Human vs AI CSRs" subtitle={tot.hCalls.toLocaleString() + ' human · ' + tot.aCalls.toLocaleString() + ' AI scored calls'} build={build} />
+        <ExportBar name="callqa-human-vs-ai" title="Human vs AI CSRs" subtitle={(filterText ? filterText + ' — ' : '') + tot.hCalls.toLocaleString() + ' human · ' + tot.aCalls.toLocaleString() + ' AI scored calls'} build={build} />
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
