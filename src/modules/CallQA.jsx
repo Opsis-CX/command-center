@@ -792,7 +792,7 @@ export default function CallQA({ portal = false } = {}) {
       ) : tab === 'dashboard' ? (
         <ManagerDashboard agg={dashAgg} loading={dashLoading} err={dashErr} loadBucket={loadBucket} onOpen={setSelected} onGotoTab={setTab} onPickAgent={(a) => setAgent(a)} />
       ) : tab === 'briefing' ? (
-        <CoachingBriefing agg={dashAgg} loading={dashLoading} err={dashErr} loadBucket={loadBucket} brand={brand} onOpen={setSelected} onPickBrand={(b) => { setBrand(b); setAgent('all') }} onPickAgent={(a) => setAgent(a)} />
+        <CoachingBriefing agg={dashAgg} loading={dashLoading} err={dashErr} loadBucket={loadBucket} brand={brand} agent={agent} onOpen={setSelected} onPickBrand={(b) => { setBrand(b); setAgent('all') }} onPickAgent={(a) => setAgent(a)} />
       ) : loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
         <>
           {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} brand={brand} setBrand={setBrand} />}
@@ -2181,7 +2181,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
           <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Coaching Queue <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12.5 }}>— by agent</span></div>
           <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Agents with the most winnable losses. Click to see their coaching calls.</div>
           {coachAgents.length ? coachAgents.map((a) => (
-            <div key={a.name} onClick={() => openBucket(a.name + ' — winnable losses to coach', 'winnable', null, a.name)} style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 13, marginBottom: 10, cursor: 'pointer' }}
+            <div key={a.name} onClick={() => { onPickAgent(a.name); openBucket(a.name + ' — winnable losses to coach', 'winnable', null, a.name) }} style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 13, marginBottom: 10, cursor: 'pointer' }}
               onMouseEnter={(e) => e.currentTarget.style.borderColor = TEAL} onMouseLeave={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <b style={{ fontSize: 15 }}>{a.name}</b>
@@ -2208,7 +2208,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
 // the view spans >1 brand), coaching priorities, queue and agent cards. Poppins
 // (already loaded in index.html). Additive tab — nothing else changes.
 // ===========================================================================
-function CoachingBriefing({ agg, loading, err, loadBucket, brand, onOpen, onPickBrand, onPickAgent }) {
+function CoachingBriefing({ agg, loading, err, loadBucket, brand, agent, onOpen, onPickBrand, onPickAgent }) {
   const F = 'Poppins,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif'
   const C = { paper: '#f7f5f0', card: '#fff', ink: '#1a2430', ink2: '#556372', ink3: '#8a97a5', line: '#e7e2d8', line2: '#eef0ee', teal: TEAL, tan: '#a97c3f', tanbg: '#f3ead9', good: '#1b7a3d', goodbg: '#e6f4ea', warn: '#9a7400', warnbg: '#fbf1cf', bad: '#c0342b', badbg: '#fbe7e4' }
   const [focus, setFocus] = useState(null)
@@ -2228,7 +2228,8 @@ function CoachingBriefing({ agg, loading, err, loadBucket, brand, onOpen, onPick
   }
   const SORTS = { qa: ['QA score', (a, b) => (b.avg ?? -1) - (a.avg ?? -1)], booking: ['Booking rate', (a, b) => (b.booking ?? -1) - (a.booking ?? -1)], winnable: ['Winnable losses', (a, b) => b.winnable - a.winnable], calls: ['Call volume', (a, b) => b.scored - a.scored] }
   const sortedBrands = brandRows.slice().sort(SORTS[sort][1])
-  const title = brand && brand !== 'all' ? brand : 'Portfolio — all brands'
+  const scopedAgent = agent && agent !== 'all'
+  const title = scopedAgent ? agent : (brand && brand !== 'all' ? brand : 'Portfolio — all brands')
 
   const box = { background: C.card, border: `1px solid ${C.line}`, borderRadius: 16 }
   const kicker = { fontSize: 12, letterSpacing: '.12em', textTransform: 'uppercase', color: C.tan, fontWeight: 700 }
@@ -2271,8 +2272,9 @@ function CoachingBriefing({ agg, loading, err, loadBucket, brand, onOpen, onPick
 
       {/* masthead */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, borderBottom: `2px solid ${C.ink}`, paddingBottom: 14 }}>
-        <div><div style={kicker}>Call QA · Coaching Briefing</div>
-          <h1 style={{ fontFamily: F, fontSize: 30, margin: '6px 0 0', fontWeight: 600 }}>{title}</h1></div>
+        <div><div style={kicker}>{scopedAgent ? 'Call QA · CSR Briefing' : 'Call QA · Coaching Briefing'}</div>
+          <h1 style={{ fontFamily: F, fontSize: 30, margin: '6px 0 0', fontWeight: 600 }}>{title}</h1>
+          {scopedAgent && <div style={{ color: C.ink2, fontSize: 13, marginTop: 2 }}>CSR{brand && brand !== 'all' ? ` · ${brand}` : ''} · <span onClick={() => onPickAgent('all')} style={{ color: C.teal, fontWeight: 700, cursor: 'pointer' }}>← back to portfolio</span></div>}</div>
         <div style={{ textAlign: 'right', color: C.ink2, fontSize: 13 }}>{k.scored.toLocaleString()} calls reviewed{multiBrand ? ` · ${brandRows.length} brands` : ''}</div>
       </div>
 
@@ -2371,7 +2373,7 @@ function CoachingBriefing({ agg, loading, err, loadBucket, brand, onOpen, onPick
           <div style={{ ...stitle, margin: '0 0 4px' }}>Coaching queue <span style={{ color: C.ink3, fontSize: 12.5, fontWeight: 400 }}>· by agent</span></div>
           <div style={{ color: C.ink2, fontSize: 13, marginBottom: 6 }}>Agents with the most winnable losses. Click to see their coaching calls.</div>
           {coachAgents.length ? coachAgents.map((a, i) => (
-            <div key={a.name} onClick={() => openBucket(a.name + ' — winnable losses to coach', 'winnable', null, a.name)} style={{ display: 'flex', gap: 13, padding: '13px 0', borderTop: i ? `1px solid ${C.line2}` : 'none', alignItems: 'center', cursor: 'pointer' }}>
+            <div key={a.name} onClick={() => { onPickAgent(a.name); openBucket(a.name + ' — winnable losses to coach', 'winnable', null, a.name) }} style={{ display: 'flex', gap: 13, padding: '13px 0', borderTop: i ? `1px solid ${C.line2}` : 'none', alignItems: 'center', cursor: 'pointer' }}>
               <div style={{ width: 40, height: 40, borderRadius: '50%', background: C.teal, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16, flexShrink: 0 }}>{a.name[0]}</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700 }}>{a.name} <span style={{ color: C.bad, fontWeight: 700, fontSize: 12.5 }}>· {a.winnable} winnable</span></div>
