@@ -24,7 +24,11 @@ import ChangePassword from './ChangePassword'
 // automatically when none of its items are visible — so you never see an empty
 // header. To move something, just cut/paste the item between groups; to add a
 // group, add another { group, items } block. Order in this array = order shown.
-const NAV = [
+//
+// There are TWO orderings: NAV_DEFAULT (agents/staff — Becky's approved agent order)
+// and NAV_ADMIN (admin/owner — most-used first: Chat, My Notes, Call QA, Project
+// Management, Calendar; Operations un-nested). The component picks by isAdmin.
+const NAV_DEFAULT = [
   {
     // One flat list, no group headers. Order follows Becky's numbering (Aug 2026):
     // Opsis Weekly, Updates, Chat, Schedule, My Notes, Scorecard, Coaching, Tokens,
@@ -97,6 +101,70 @@ const NAV = [
   },
 ]
 
+// Admin/Owner ordering — most-used pinned at the top (Chat, My Notes, Call QA,
+// Project Management, Calendar), Operations un-nested, no group headers.
+const NAV_ADMIN = [
+  {
+    group: '',
+    items: [
+      { type: 'link', to: '/home', label: 'Opsis Weekly', ic: '🏠', perm: null },
+      { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
+      { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },
+      { type: 'link', to: '/call-qa', label: 'Call QA (AI)', ic: '🤖', perm: 'quality_audit.call_reviews' },
+      { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
+      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
+      { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, perm: 'dashboard' },
+      {
+        type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
+        children: [
+          { to: '/schedule', label: 'Schedule', perm: 'schedule.view_my_schedule' },
+          { to: '/schedule-builder', label: 'Schedule builder', perm: 'schedule.create_schedules' },
+          { to: '/insights', label: 'Schedule insights', perm: 'schedule.view_insights_assigned' },
+        ],
+      },
+      { type: 'link', to: '/updates', label: 'Updates', ic: '📣', perm: null },
+      { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
+      { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
+      {
+        type: 'section', key: 'reporting', label: 'Reporting', ic: '📈',
+        children: [
+          { to: '/reporting', label: 'Reporting', perm: 'reporting' },
+          { to: '/reporting/hourly', label: 'Hourly', perm: 'reporting' },
+        ],
+      },
+      { type: 'link', to: '/coaching', label: 'Coaching', ic: '🎧', perm: 'coaching' },
+      { type: 'link', to: '/tokens', label: 'Tokens', ic: '🎟️', perm: 'tokens' },
+      // Operations — un-nested for admins.
+      { type: 'link', to: '/weekly-sync', label: 'Weekly Sync', ic: '🔄', perm: 'weekly_sync' },
+      { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧲', perm: 'hiring' },
+      { type: 'link', to: '/sales', label: 'Sales', ic: '📊', perm: 'sales' },
+      { type: 'link', to: '/rsn', label: 'RSN Pipeline', ic: '🔗', perm: '__rsn' },
+      {
+        type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
+        children: [
+          { to: '/certifications', label: 'Certifications', perm: 'certifications.all' },
+          { to: '/my-certifications', label: 'My certifications', perm: 'certifications.view_personal_score_and_content_assigned' },
+          { to: '/courses', label: 'Course builder', perm: 'certifications.builder' },
+          { to: '/my-courses', label: 'My courses', perm: 'certifications.assigned_to_complete' },
+        ],
+      },
+      { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },
+      { type: 'link', to: '/help', label: 'Help Center', ic: '🛟', perm: null },
+      { type: 'link', to: '/get-to-know-you', label: 'Get to Know You', ic: '👋', perm: null },
+      {
+        type: 'section', key: 'backend', label: 'Backend', ic: '⚙', perm: null,
+        children: [
+          { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
+          { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
+          { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
+          // Admin-only page; NAV_ADMIN itself is only shown to admins/owners.
+          { to: '/roles', label: 'Roles & permissions', perm: null },
+        ],
+      },
+    ],
+  },
+]
+
 // Turn a stored role string ("asc,marketing") into a readable label
 // ("ASC & Marketing"). A single role passes through unchanged; unknown keys are
 // Title-Cased as a safe fallback.
@@ -122,6 +190,8 @@ export default function Sidebar({ open, onNavigate }) {
   const rsnOk = useRsnAccess()
   // One place that answers "can this person see an item with this perm key?"
   const permOk = (p) => p === '__rsn' ? rsnOk === true : (!p || canAny(appRole, p))
+  // Admins/owners get their own ordering (most-used first, Operations un-nested).
+  const NAV = (isAdmin || level >= 100 || (roles || []).includes('owner')) ? NAV_ADMIN : NAV_DEFAULT
 
   const isOwner = level >= 100 || (roles || []).includes('owner')
 
