@@ -1903,8 +1903,12 @@ function buildScorecardData(rows) {
 // column so the client can see the AI's quality next to the human team without
 // the two being blended. Named agents only — unattributed calls aren't tied to a
 // CSR, so they sit out of this comparison (same rule the Scorecards tab uses).
-const AI_HUE = '#7c3aed'
-function HaiBar({ color, label, value, max }) {
+// Beige/tan for the AI series (was violet). AI_HUE = the soft fill used for bars
+// and legend swatches; AI_INK = a darker tan for text labels so they stay legible
+// on white (the fill tone is too light to read as text).
+const AI_HUE = '#c9a06a'
+const AI_INK = '#7a5a2e'
+function HaiBar({ color, textColor, label, value, max }) {
   const w = value == null ? 0 : Math.max(0, Math.min(100, (value / max) * 100))
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1912,7 +1916,7 @@ function HaiBar({ color, label, value, max }) {
       <div style={{ flex: 1, background: '#f1f5f9', borderRadius: 6, height: 20, position: 'relative', overflow: 'hidden' }}>
         <div style={{ width: w + '%', background: color, height: '100%', borderRadius: 6, transition: 'width .3s' }} />
       </div>
-      <span style={{ width: 52, textAlign: 'right', fontWeight: 700, fontSize: 12.5, color, flexShrink: 0 }}>{pct(value)}</span>
+      <span style={{ width: 52, textAlign: 'right', fontWeight: 700, fontSize: 12.5, color: textColor || color, flexShrink: 0 }}>{pct(value)}</span>
     </div>
   )
 }
@@ -1972,7 +1976,7 @@ function HumanVsAI({ rows }) {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Tile label="Human CSRs — avg QA" value={pct(tot.hAvg)} color={scoreColor(tot.hAvg)} sub={tot.hCalls.toLocaleString() + ' scored calls'} />
         <Tile label="AI CSRs — avg QA" value={pct(tot.aAvg)} color={scoreColor(tot.aAvg)} sub={tot.aCalls.toLocaleString() + ' scored calls · audit only'} />
-        <Tile label="AI quality lift" value={liftStr(tot.lift)} color={AI_HUE} sub="AI avg minus human avg" />
+        <Tile label="AI quality lift" value={liftStr(tot.lift)} color={AI_INK} sub="AI avg minus human avg" />
         <Tile label="Brands with AI coverage" value={tot.aiBrands} sub={'of ' + byBrand.length + ' brands'} />
       </div>
 
@@ -1994,7 +1998,7 @@ function HumanVsAI({ rows }) {
                 </div>
                 <HaiBar color={TEAL} label="Human" value={b.hAvg} max={100} />
                 <div style={{ height: 4 }} />
-                <HaiBar color={AI_HUE} label="AI" value={b.aAvg} max={100} />
+                <HaiBar color={AI_HUE} textColor={AI_INK} label="AI" value={b.aAvg} max={100} />
               </div>
             ))}
           </div>
