@@ -282,7 +282,7 @@ export default function CallQA({ portal = false } = {}) {
   const viewAll = canViewAll(appRole) || portalMode       // see all rows + agent names + agent filter
   const [meName, setMeName] = useState('')
   const [exporting, setExporting] = useState(false)
-  const [tab, setTab] = useState(() => (viewAll ? 'dashboard' : 'overview'))
+  const [tab, setTab] = useState(() => (viewAll ? 'briefing' : 'overview'))
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
@@ -518,8 +518,8 @@ export default function CallQA({ portal = false } = {}) {
     })
     return () => { active = false }
   }, [tab, dashParams])
-  const loadBucket = useCallback(async (bucket, tag) => {
-    const { data, error } = await supabase.rpc('callqa_dashboard_calls', { ...dashParams, p_bucket: bucket, p_tag: tag || null, p_limit: 200 })
+  const loadBucket = useCallback(async (bucket, tag, agentOverride) => {
+    const { data, error } = await supabase.rpc('callqa_dashboard_calls', { ...dashParams, p_agent: agentOverride !== undefined ? agentOverride : dashParams.p_agent, p_bucket: bucket, p_tag: tag || null, p_limit: 200 })
     if (error) return []
     return Array.isArray(data) ? data : []
   }, [dashParams])
@@ -741,7 +741,7 @@ export default function CallQA({ portal = false } = {}) {
     ] : []),
   ]
   const filterText = filterChips.map(([, v]) => v).join(' · ')
-  const TABS = [...(viewAll ? [['dashboard', 'Dashboard'], ['briefing', 'Briefing']] : []), ['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards'], ['humanai', 'Human vs AI']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['bookings', 'Bookings & Card'], ['calls', 'Calls'], ['fails', 'Lowest Scores'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings'], ['import', 'Import']] : [])]
+  const TABS = [...(viewAll ? [['briefing', 'Briefing'], ['dashboard', 'Dashboard']] : []), ['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards'], ['humanai', 'Human vs AI']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['bookings', 'Bookings & Card'], ['calls', 'Calls'], ['fails', 'Lowest Scores'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings'], ['import', 'Import']] : [])]
 
   return (
     <div style={{ padding: 20, maxWidth: 1180, margin: '0 auto', color: INK }}>
@@ -2051,21 +2051,22 @@ function deriveDashAgg(agg) {
 function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, onPickAgent }) {
   const [focus, setFocus] = useState(null) // { title, calls }
   const [busy, setBusy] = useState(false)
-  const { k, agents: agentRows, priorities, queue } = deriveDashAgg(agg)
-  const openBucket = async (title, bucket, tag) => {
-    setBusy(true); const calls = await loadBucket(bucket, tag); setBusy(false)
+  const { k, agents: agentRows, priorities } = deriveDashAgg(agg)
+  const coachAgents = agentRows.filter((a) => a.winnable > 0).sort((a, b) => b.winnable - a.winnable).slice(0, 8)
+  const openBucket = async (title, bucket, tag, agentName) => {
+    setBusy(true); const calls = await loadBucket(bucket, tag, agentName); setBusy(false)
     setFocus({ title, calls: calls || [] }); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const bookBand = (v) => (v == null ? '#94a3b8' : v >= 50 ? '#1b5e20' : v >= 35 ? '#8d6e00' : '#b71c1c')
   const bookBg = (v) => (v == null ? '#f1f5f9' : v >= 50 ? '#e8f5e9' : v >= 35 ? '#fff8e1' : '#fdecea')
 
   // clickable KPI card
-  const KpiCard = ({ label, value, sub, color, onClick }) => (
-    <div onClick={onClick} style={{ flex: 1, minWidth: 150, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 14, cursor: onClick ? 'pointer' : 'default', transition: '.12s' }}
+  const KpiCard = ({ label, value, sub, color, onClick, wide }) => (
+    <div onClick={onClick} style={{ minWidth: 150, gridColumn: wide ? 'span 2' : 'auto', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 14, cursor: onClick ? 'pointer' : 'default', transition: '.12s' }}
       onMouseEnter={(e) => { if (onClick) { e.currentTarget.style.borderColor = TEAL; e.currentTarget.style.boxShadow = '0 4px 14px rgba(15,118,110,.10)' } }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none' }}>
       <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, lineHeight: 1.3 }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 800, marginTop: 6, color: color || '#0f172a', letterSpacing: '-.5px' }}>{value}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, marginTop: 6, color: color || '#0f172a', letterSpacing: '-.5px', whiteSpace: 'nowrap' }}>{value}</div>
       <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{sub}{onClick ? <span style={{ color: TEAL }}> ›</span> : null}</div>
     </div>
   )
@@ -2118,7 +2119,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
           <KpiCard label="Pricing Before Discovery" value={k.priceBefore.toLocaleString()} color="#8d6e00" sub="quoted before qualifying" onClick={() => openBucket('Pricing before discovery', 'price')} />
           <KpiCard label="Fee / Pricing Objections" value={k.feeObj.toLocaleString()} color="#8d6e00" sub="price / fee pushback" onClick={() => openBucket('Fee / pricing objections', 'feeobj')} />
           <KpiCard label="Customer Info Not Captured" value={k.noContact.toLocaleString()} color="#b71c1c" sub="no complete contact info" onClick={() => openBucket('Customer info not captured', 'nocontact')} />
-          {k.aiN > 0 && <KpiCard label="Human vs AI QA" value={pct(k.humanAvg) + ' / ' + pct(k.aiAvg)} color={TEAL} sub={'human vs AI · ' + k.aiN + ' AI calls'} onClick={() => onGotoTab('humanai')} />}
+          {k.aiN > 0 && <KpiCard wide label="Human vs AI QA" value={pct(k.humanAvg) + ' / ' + pct(k.aiAvg)} color={TEAL} sub={'human vs AI · ' + k.aiN + ' AI calls'} onClick={() => onGotoTab('humanai')} />}
         </div>
       </div>
 
@@ -2142,39 +2143,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 16 }}>
-        <Card>
-          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Coaching Priorities</div>
-          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Biggest systemic misses in this view. Click one to see the calls.</div>
-          {priorities.map((p, i) => (
-            <div key={p.tag} onClick={() => openBucket(p.label, 'tag', p.tag)} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '11px 0', borderTop: i ? '1px solid #eef2f7' : 'none', cursor: 'pointer' }}>
-              <div style={{ width: 26, height: 26, borderRadius: 8, background: TEAL, color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13 }}>{i + 1}</div>
-              <div style={{ fontWeight: 700 }}>{p.label}</div>
-              <div style={{ marginLeft: 'auto', textAlign: 'right' }}><b style={{ fontSize: 18 }}>{p.n.toLocaleString()}</b><span style={{ display: 'block', color: '#94a3b8', fontSize: 11 }}>calls</span></div>
-            </div>
-          ))}
-        </Card>
-        <Card>
-          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Coaching Queue <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12.5 }}>— auto-prioritized</span></div>
-          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Highest-value calls to review — winnable losses, lowest score first.</div>
-          {queue.length ? queue.map((r, i) => {
-            const nm = agentOf(r) || 'Unknown'; const tags = (r.improvement_tags || []).slice(0, 3)
-            return (
-              <div key={r.id || i} style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 13, marginBottom: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <b>{nm}</b><span style={{ color: '#64748b', fontSize: 12.5 }}>— {(r.call || {}).brand || '—'}</span>
-                  <span style={{ marginLeft: 'auto', background: scoreBg(r.score_pct), color: scoreColor(r.score_pct), fontWeight: 700, padding: '3px 8px', borderRadius: 8, fontSize: 12.5 }}>QA {r.score_pct == null ? '—' : Math.round(Number(r.score_pct)) + '%'}</span>
-                  <span style={{ background: '#fdecea', color: '#b71c1c', fontWeight: 800, padding: '2px 7px', borderRadius: 6, fontSize: 11 }}>Winnable loss</span>
-                </div>
-                <div style={{ fontSize: 12, color: '#64748b', margin: '4px 0 0' }}>Outcome: {r.outcome || '—'}</div>
-                <ul style={{ margin: '8px 0 0', padding: 0, listStyle: 'none' }}>{tags.map((t, j) => <li key={j} style={{ fontSize: 13, color: '#475569' }}>▸ {friendlyTag(t)}</li>)}</ul>
-                <button onClick={() => onOpen(r)} style={{ marginTop: 10, background: TEAL, color: '#fff', border: 'none', borderRadius: 9, padding: '8px 14px', fontWeight: 800, cursor: 'pointer', fontSize: 13 }}>▶ Review Call</button>
-              </div>
-            )
-          }) : <div style={{ color: '#64748b' }}>No winnable losses in this range.</div>}
-        </Card>
-      </div>
-
+      {/* Agent performance — moved above the coaching sections */}
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ fontWeight: 800, fontSize: 16, padding: 14 }}>Agent Performance <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12.5 }}>— click an agent to scope the page to them</span></div>
         <div style={{ overflowX: 'auto' }}>
@@ -2195,6 +2164,39 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
           </table>
         </div>
       </Card>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 16 }}>
+        <Card>
+          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Coaching Priorities</div>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Biggest systemic misses in this view. Click one to see the calls.</div>
+          {priorities.map((p, i) => (
+            <div key={p.tag} onClick={() => openBucket(p.label, 'tag', p.tag)} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '11px 0', borderTop: i ? '1px solid #eef2f7' : 'none', cursor: 'pointer' }}>
+              <div style={{ width: 26, height: 26, borderRadius: 8, background: TEAL, color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13 }}>{i + 1}</div>
+              <div style={{ fontWeight: 700 }}>{p.label}</div>
+              <div style={{ marginLeft: 'auto', textAlign: 'right' }}><b style={{ fontSize: 18 }}>{p.n.toLocaleString()}</b><span style={{ display: 'block', color: '#94a3b8', fontSize: 11 }}>calls</span></div>
+            </div>
+          ))}
+        </Card>
+        <Card>
+          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Coaching Queue <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12.5 }}>— by agent</span></div>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Agents with the most winnable losses. Click to see their coaching calls.</div>
+          {coachAgents.length ? coachAgents.map((a) => (
+            <div key={a.name} onClick={() => openBucket(a.name + ' — winnable losses to coach', 'winnable', null, a.name)} style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 13, marginBottom: 10, cursor: 'pointer' }}
+              onMouseEnter={(e) => e.currentTarget.style.borderColor = TEAL} onMouseLeave={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <b style={{ fontSize: 15 }}>{a.name}</b>
+                <span style={{ marginLeft: 'auto', background: '#fdecea', color: '#b71c1c', fontWeight: 800, padding: '2px 8px', borderRadius: 8, fontSize: 12.5 }}>{a.winnable} winnable</span>
+              </div>
+              <div style={{ display: 'flex', gap: 14, marginTop: 7, fontSize: 12.5, color: '#475569', flexWrap: 'wrap' }}>
+                <span>QA <b style={{ color: scoreColor(a.avg) }}>{pct(a.avg)}</b></span>
+                <span>Booking <b style={{ color: bookBand(a.booking) }}>{pct(a.booking)}</b></span>
+                <span>{a.scored.toLocaleString()} calls</span>
+                <span style={{ marginLeft: 'auto', color: TEAL, fontWeight: 700 }}>review calls ›</span>
+              </div>
+            </div>
+          )) : <div style={{ color: '#64748b' }}>No winnable losses in this range.</div>}
+        </Card>
+      </div>
     </div>
   )
 }
@@ -2212,15 +2214,16 @@ function CoachingBriefing({ agg, loading, err, loadBucket, brand, onOpen, onPick
   const [focus, setFocus] = useState(null)
   const [busy, setBusy] = useState(false)
   const [sort, setSort] = useState('qa')
-  const { k, brands: brandRows, agents: agentRows, priorities, queue } = deriveDashAgg(agg)
+  const { k, brands: brandRows, agents: agentRows, priorities } = deriveDashAgg(agg)
   const multiBrand = brandRows.length > 1
+  const coachAgents = agentRows.filter((a) => a.winnable > 0).sort((a, b) => b.winnable - a.winnable).slice(0, 8)
 
   const qCol = (v) => (v == null ? C.ink3 : v >= 70 ? C.good : v >= 62 ? C.warn : C.bad)
   const bCol = (v) => (v == null ? C.ink3 : v >= 50 ? C.good : v >= 35 ? C.warn : C.bad)
   const stat = (v) => (v >= 70 ? ['Strong', C.goodbg, C.good] : v >= 62 ? ['Steady', C.warnbg, C.warn] : ['Needs attention', C.badbg, C.bad])
   const P = (v) => (v == null ? '—' : v.toFixed(1) + '%')
-  const openBucket = async (title, bucket, tag) => {
-    setBusy(true); const calls = await loadBucket(bucket, tag); setBusy(false)
+  const openBucket = async (title, bucket, tag, agentName) => {
+    setBusy(true); const calls = await loadBucket(bucket, tag, agentName); setBusy(false)
     setFocus({ title, calls: calls || [] }); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const SORTS = { qa: ['QA score', (a, b) => (b.avg ?? -1) - (a.avg ?? -1)], booking: ['Booking rate', (a, b) => (b.booking ?? -1) - (a.booking ?? -1)], winnable: ['Winnable losses', (a, b) => b.winnable - a.winnable], calls: ['Call volume', (a, b) => b.scored - a.scored] }
@@ -2234,7 +2237,7 @@ function CoachingBriefing({ agg, loading, err, loadBucket, brand, onOpen, onPick
   const KpiCell = ({ label, value, color, sub, onClick }) => (
     <div onClick={onClick} style={{ background: C.card, padding: '15px 16px', cursor: onClick ? 'pointer' : 'default' }}>
       <div style={{ fontSize: 12, color: C.ink3, fontWeight: 600 }}>{label}</div>
-      <div className="num" style={{ fontSize: 23, fontWeight: 700, marginTop: 5, color: color || C.ink }}>{value}</div>
+      <div className="num" style={{ fontSize: 20, fontWeight: 700, marginTop: 5, color: color || C.ink, whiteSpace: 'nowrap' }}>{value}</div>
       <div style={{ fontSize: 11.5, color: C.ink2, marginTop: 2 }}>{sub}{onClick ? <span style={{ color: C.teal }}> ›</span> : null}</div>
     </div>
   )
@@ -2332,37 +2335,7 @@ function CoachingBriefing({ agg, loading, err, loadBucket, brand, onOpen, onPick
         </>
       )}
 
-      {/* priorities + queue */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 18, marginTop: 12 }}>
-        <div style={{ ...box, padding: 20 }}>
-          <div style={{ ...stitle, margin: '0 0 4px' }}>Coaching priorities</div>
-          <div style={{ color: C.ink2, fontSize: 13, marginBottom: 6 }}>The biggest systemic misses in this view.</div>
-          {priorities.map((p, i) => (
-            <div key={p.label} onClick={() => openBucket(p.label, 'tag', p.tag)} style={{ display: 'flex', gap: 14, alignItems: 'baseline', padding: '13px 0', borderTop: i ? `1px solid ${C.line2}` : 'none', cursor: 'pointer' }}>
-              <div style={{ fontFamily: F, fontSize: 22, color: C.tan, fontWeight: 700, width: 22 }}>{i + 1}</div>
-              <div style={{ fontWeight: 600, fontSize: 15.5 }}>{p.label}</div>
-              <div style={{ marginLeft: 'auto', textAlign: 'right' }}><b className="num" style={{ fontSize: 20 }}>{p.n.toLocaleString()}</b><span style={{ display: 'block', color: C.ink3, fontSize: 11 }}>calls</span></div>
-            </div>
-          ))}
-        </div>
-        <div style={{ ...box, padding: 20 }}>
-          <div style={{ ...stitle, margin: '0 0 4px' }}>Coaching queue</div>
-          <div style={{ color: C.ink2, fontSize: 13, marginBottom: 6 }}>Winnable losses, lowest score first.</div>
-          {queue.length ? queue.map((r, i) => (
-            <div key={r.id || i} style={{ display: 'flex', gap: 13, padding: '13px 0', borderTop: i ? `1px solid ${C.line2}` : 'none', alignItems: 'flex-start' }}>
-              <div className="num" style={{ width: 48, height: 48, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 15, flexShrink: 0, background: scoreBg(r.score_pct), color: scoreColor(r.score_pct) }}>{r.score_pct == null ? '—' : Math.round(Number(r.score_pct))}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700 }}>{agentOf(r) || 'Unknown'} <span style={{ color: C.ink3, fontWeight: 400, fontSize: 12.5 }}>— {(r.call || {}).brand || '—'}</span></div>
-                <div style={{ color: C.ink2, fontSize: 12.5, margin: '2px 0 5px' }}>Winnable loss · {r.outcome || 'not booked'}</div>
-                <div style={{ fontSize: 12.5, color: C.ink2 }}>{(r.improvement_tags || []).slice(0, 2).map((t, j) => <div key={j}>▸ {friendlyTag(t)}</div>)}</div>
-                <button onClick={() => onOpen(r)} style={{ background: 'none', border: `1px solid ${C.teal}`, color: C.teal, borderRadius: 9, padding: '5px 11px', fontWeight: 700, fontSize: 12, cursor: 'pointer', marginTop: 7, fontFamily: F }}>▶ Review call</button>
-              </div>
-            </div>
-          )) : <div style={{ color: C.ink2 }}>No winnable losses in this view.</div>}
-        </div>
-      </div>
-
-      {/* agent spotlight */}
+      {/* agent spotlight — moved above the coaching sections */}
       <div style={stitle}>Agent spotlight <span style={{ color: C.ink3, fontSize: 12.5, fontWeight: 400 }}>· click to scope the page to a CSR</span></div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 14 }}>
         {agentRows.slice(0, 4).map((a) => (
@@ -2379,6 +2352,35 @@ function CoachingBriefing({ agg, loading, err, loadBucket, brand, onOpen, onPick
             <div style={{ marginTop: 12, paddingTop: 11, borderTop: `1px solid ${C.line2}`, fontSize: 12.5, color: C.teal, fontWeight: 700 }}>open scorecard ›</div>
           </div>
         ))}
+      </div>
+
+      {/* priorities + queue (grouped by agent) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 18, marginTop: 12 }}>
+        <div style={{ ...box, padding: 20 }}>
+          <div style={{ ...stitle, margin: '0 0 4px' }}>Coaching priorities</div>
+          <div style={{ color: C.ink2, fontSize: 13, marginBottom: 6 }}>The biggest systemic misses in this view.</div>
+          {priorities.map((p, i) => (
+            <div key={p.label} onClick={() => openBucket(p.label, 'tag', p.tag)} style={{ display: 'flex', gap: 14, alignItems: 'baseline', padding: '13px 0', borderTop: i ? `1px solid ${C.line2}` : 'none', cursor: 'pointer' }}>
+              <div style={{ fontFamily: F, fontSize: 22, color: C.tan, fontWeight: 700, width: 22 }}>{i + 1}</div>
+              <div style={{ fontWeight: 600, fontSize: 15.5 }}>{p.label}</div>
+              <div style={{ marginLeft: 'auto', textAlign: 'right' }}><b className="num" style={{ fontSize: 20 }}>{p.n.toLocaleString()}</b><span style={{ display: 'block', color: C.ink3, fontSize: 11 }}>calls</span></div>
+            </div>
+          ))}
+        </div>
+        <div style={{ ...box, padding: 20 }}>
+          <div style={{ ...stitle, margin: '0 0 4px' }}>Coaching queue <span style={{ color: C.ink3, fontSize: 12.5, fontWeight: 400 }}>· by agent</span></div>
+          <div style={{ color: C.ink2, fontSize: 13, marginBottom: 6 }}>Agents with the most winnable losses. Click to see their coaching calls.</div>
+          {coachAgents.length ? coachAgents.map((a, i) => (
+            <div key={a.name} onClick={() => openBucket(a.name + ' — winnable losses to coach', 'winnable', null, a.name)} style={{ display: 'flex', gap: 13, padding: '13px 0', borderTop: i ? `1px solid ${C.line2}` : 'none', alignItems: 'center', cursor: 'pointer' }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: C.teal, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16, flexShrink: 0 }}>{a.name[0]}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700 }}>{a.name} <span style={{ color: C.bad, fontWeight: 700, fontSize: 12.5 }}>· {a.winnable} winnable</span></div>
+                <div style={{ color: C.ink2, fontSize: 12.5, marginTop: 2 }}>QA {P(a.avg)} · Booking {P(a.booking)} · {a.scored.toLocaleString()} calls</div>
+              </div>
+              <span style={{ color: C.teal, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>review calls ›</span>
+            </div>
+          )) : <div style={{ color: C.ink2 }}>No winnable losses in this view.</div>}
+        </div>
       </div>
     </div>
   )
