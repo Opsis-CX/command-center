@@ -662,12 +662,19 @@ export default function CallQA({ portal = false } = {}) {
   const rangeLabel = customRange
     ? ((startDate || '…') + ' → ' + (endDate || '…'))
     : (days === 7 ? 'Last 7 days' : days === 30 ? 'Last 30 days' : days === 90 ? 'Last 90 days' : days >= 3650 ? 'All time' : ('Last ' + days + ' days'))
+  // Scorecards + Human vs AI run off the date-only row set (portfolio views with
+  // their own drill-in), so the Brand/Agent/Topic pickers don't apply there —
+  // only Program + Range do. Reflect that honestly so the chips can't contradict
+  // the numbers (e.g. "Brand: Omaha Door" over an all-brands aggregate).
+  const dateOnlyTab = tab === 'scorecards' || tab === 'humanai'
   const filterChips = [
     ...(canManage ? [['Program', PROGRAM_LABELS[program] || program]] : []),
     ['Range', rangeLabel],
-    ['Brand', brand === 'all' ? 'All brands' : brand],
-    ...(topic !== 'all' ? [['Topic', topic]] : []),
-    ...(viewAll ? [['Agent', agent === 'all' ? 'All agents' : agent]] : []),
+    ...(dateOnlyTab ? [] : [
+      ['Brand', brand === 'all' ? 'All brands' : brand],
+      ...(topic !== 'all' ? [['Topic', topic]] : []),
+      ...(viewAll ? [['Agent', agent === 'all' ? 'All agents' : agent]] : []),
+    ]),
   ]
   const filterText = filterChips.map(([, v]) => v).join(' · ')
   const TABS = [['overview', 'Overview'], ...(viewAll ? [['scorecards', 'Scorecards'], ['humanai', 'Human vs AI']] : []), ['opportunities', 'Opportunities'], ['missed', 'Large Missed Opps'], ['conversion', 'Conversion'], ['bookings', 'Bookings & Card'], ['calls', 'Calls'], ['fails', 'Lowest Scores'], ...(canManage ? [['rubric', 'Rubric'], ['settings', 'Settings'], ['import', 'Import']] : [])]
@@ -709,6 +716,7 @@ export default function CallQA({ portal = false } = {}) {
             <span style={{ color: '#334155', fontWeight: 700 }}>{v}</span>
           </span>
         ))}
+        {dateOnlyTab && <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>portfolio view — spans all brands &amp; agents (use the rows/segments to drill in)</span>}
       </div>
 
       {tab === 'overview' ? (
@@ -2003,6 +2011,24 @@ function HumanVsAI({ rows, filterText }) {
   const valBg = (v) => (isQa ? scoreBg(v) : '#f1f5f9')
   const anyLowN = !isQa && byBrand.some((b) => lowN(b))
 
+  // Unattributed bucket = portfolio total (all scored calls) minus the attributed
+  // human + AI. These calls have no agent name so they can't sit in a brand/agent
+  // row, but they ARE in the headline Avg QA / Conversion — surface them here so
+  // the segments reconcile to the portfolio and the average can't look impossible.
+  const ov = data.overall
+  const un = useMemo(() => {
+    const calls = Math.max(0, (ov.scored || 0) - tot.hCalls - tot.aCalls)
+    const qaSum = (ov.avg || 0) * (ov.scored || 0) - tot.hSum - tot.aSum
+    const opps = Math.max(0, (ov.opps || 0) - tot.hOpps - tot.aOpps)
+    const booked = Math.max(0, (ov.booked || 0) - tot.hBooked - tot.aBooked)
+    return { calls, opps, avg: calls ? qaSum / calls : null, close: opps ? (booked / opps) * 100 : null }
+  }, [ov, tot])
+  const unVal = isQa ? un.avg : un.close
+  const unN = isQa ? un.calls : un.opps
+  const attrN = isQa ? tot.hCalls + tot.aCalls : tot.hOpps + tot.aOpps
+  const portN = isQa ? (ov.scored || 0) : (ov.opps || 0)
+  const covPct = portN ? Math.round((100 * attrN) / portN) : 100
+
   const [sort, onSort] = useSort('N', 'desc')
   const acc = { Brand: (b) => b.brand, 'Human n': (b) => hN(b), 'Human val': (b) => hVal(b), 'AI n': (b) => aN(b), 'AI val': (b) => aVal(b), 'AI diff': (b) => lift(b), N: (b) => b.calls }
   const view = useTableView(sortRows(byBrand, sort, acc), { pageSize: 20, searchText: (b) => b.brand })
@@ -2020,6 +2046,12 @@ function HumanVsAI({ rows, filterText }) {
       rows: byBrand.map((b) => [b.brand, b.hCalls, r1(b.hAvg), b.aCalls, r1(b.aAvg), b.qaLift == null ? '' : r1(b.qaLift)]) },
     { title: 'By brand — Close rate', sheet: 'Close by brand', cols: ['Brand', 'Human opps', 'Human booked', 'Human close %', 'AI opps', 'AI booked', 'AI close %', 'AI diff (pp)', 'AI sample'],
       rows: byBrand.map((b) => [b.brand, b.hOpps, b.hBooked, r1(b.hClose), b.aOpps, b.aBooked, r1(b.aClose), b.closeLift == null ? '' : r1(b.closeLift), lowN(b) ? 'low (<' + HAI_LOW_N + ')' : (b.aOpps ? 'ok' : '')]) },
+    { title: 'Coverage / reconciliation', sheet: 'Coverage', cols: ['Bucket', 'Scored calls', 'Avg QA %', 'Opportunities', 'Booked', 'Close rate %'], rows: [
+      ['Human', tot.hCalls, r1(tot.hAvg), tot.hOpps, tot.hBooked, r1(tot.hClose)],
+      ['AI', tot.aCalls, r1(tot.aAvg), tot.aOpps, tot.aBooked, r1(tot.aClose)],
+      ['Unattributed', un.calls, r1(un.avg), un.opps, Math.max(0, (ov.booked || 0) - tot.hBooked - tot.aBooked), r1(un.close)],
+      ['Portfolio (all)', ov.scored || 0, r1(ov.avg), ov.opps || 0, ov.booked || 0, r1(ov.opps ? (ov.booked / ov.opps) * 100 : null)],
+    ] },
   ])
 
   const liftStr = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(1) + 'pp')
@@ -2042,16 +2074,23 @@ function HumanVsAI({ rows, filterText }) {
       </div>
 
       <div style={{ fontSize: 12.5, color: '#64748b', marginTop: -6 }}>
-        AI CSRs (Dane, Sophia, Jason) handle after-hours coverage and are audited for quality, not coached. Named agents only — unattributed calls are excluded.
+        AI CSRs (Dane, Sophia, Jason) handle after-hours coverage and are audited for quality, not coached. The per-brand rows below cover named agents only; calls with no agent name are shown in the Unattributed tile so the totals reconcile to the portfolio.
         {!isQa && ' Close rate here is on the QA-scored sample, not the full lead-to-booked funnel.'}
       </div>
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Tile label={isQa ? 'Human CSRs — avg QA' : 'Human CSRs — close rate'} value={pct(totH)} color={valColor(totH, false)} sub={totHN.toLocaleString() + ' ' + nWord} />
         <Tile label={isQa ? 'AI CSRs — avg QA' : 'AI CSRs — close rate'} value={pct(totA)} color={valColor(totA, true)} sub={totAN.toLocaleString() + ' ' + nWord + (isQa ? ' · audit only' : '')} />
+        {unN > 0 && <Tile label={isQa ? 'Unattributed — avg QA' : 'Unattributed — close rate'} value={pct(unVal)} color={isQa ? scoreColor(unVal) : '#64748b'} sub={unN.toLocaleString() + ' ' + nWord + ' · no agent name'} />}
         <Tile label={isQa ? 'AI quality lift' : 'AI close-rate diff'} value={liftStr(totLift)} color={AI_INK} sub={isQa ? 'AI avg minus human avg' : 'AI close minus human close'} />
         <Tile label="Brands with AI coverage" value={tot.aiBrands} sub={'of ' + byBrand.length + ' brands'} />
       </div>
+
+      {unN > 0 && (
+        <div style={{ fontSize: 12, color: '#64748b', marginTop: -6 }}>
+          {attrN.toLocaleString()} of {portN.toLocaleString()} {nWord} ({covPct}%) are attributed to a named CSR; the other {unN.toLocaleString()} have no agent name and appear only in the portfolio total, not the per-brand rows below.
+        </div>
+      )}
 
       {withAi.length > 0 && (
         <Card>
@@ -2168,16 +2207,32 @@ function ScExec({ data, prevOverall, onBrand }) {
       </div>
       {(() => {
         const humans = data.agents.filter((a) => !a.ai); const ais = data.agents.filter((a) => a.ai)
-        const wavg = (arr) => { const c = arr.reduce((s, a) => s + a.calls, 0); return c ? arr.reduce((s, a) => s + (a.avg || 0) * a.calls, 0) / c : null }
-        const hc = humans.reduce((s, a) => s + a.calls, 0); const ac = ais.reduce((s, a) => s + a.calls, 0)
-        if (!ais.length) return null
+        const sumW = (arr) => arr.reduce((s, a) => s + (a.avg || 0) * a.calls, 0)
+        const cnt = (arr) => arr.reduce((s, a) => s + a.calls, 0)
+        const wavg = (arr) => { const c = cnt(arr); return c ? sumW(arr) / c : null }
+        const hc = cnt(humans); const ac = cnt(ais)
+        // Distinct people, not name×brand rows (an agent working 3 brands is 1 CSR).
+        const nH = new Set(humans.map((a) => a.name)).size; const nA = new Set(ais.map((a) => a.name)).size
+        // Unattributed = scored calls with no agent name. They're inside the headline
+        // Avg QA but not in Human/AI, so they must be shown for the three to add up —
+        // otherwise the portfolio average can sit below both visible segments.
+        const unc = Math.max(0, (o.scored || 0) - hc - ac)
+        const unAvg = unc ? ((o.avg || 0) * (o.scored || 0) - sumW(humans) - sumW(ais)) / unc : null
+        const attrPct = o.scored ? Math.round((100 * (hc + ac)) / o.scored) : 100
+        if (!ais.length && !unc) return null
         return (
           <Card style={{ background: '#f8fafc' }}>
             <div style={{ fontWeight: 700, marginBottom: 10 }}>Human vs AI performance <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12.5 }}>— AI CSRs are audited for quality, not coached</span></div>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <Tile label="Human CSRs — avg QA" value={pct(wavg(humans))} color={scoreColor(wavg(humans))} sub={humans.length + ' CSRs · ' + hc.toLocaleString() + ' scored calls'} />
-              <Tile label="AI CSRs — avg QA" value={pct(wavg(ais))} color={scoreColor(wavg(ais))} sub={ais.length + ' AI agents · ' + ac.toLocaleString() + ' scored calls · audit only'} />
+              <Tile label="Human CSRs — avg QA" value={pct(wavg(humans))} color={scoreColor(wavg(humans))} sub={nH + (nH === 1 ? ' CSR · ' : ' CSRs · ') + hc.toLocaleString() + ' scored calls'} />
+              <Tile label="AI CSRs — avg QA" value={pct(wavg(ais))} color={scoreColor(wavg(ais))} sub={nA + (nA === 1 ? ' AI agent · ' : ' AI agents · ') + ac.toLocaleString() + ' scored calls · audit only'} />
+              {unc > 0 && <Tile label="Unattributed — avg QA" value={pct(unAvg)} color={scoreColor(unAvg)} sub={unc.toLocaleString() + ' scored calls · no agent name'} />}
             </div>
+            {unc > 0 && (
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 10 }}>
+                {(hc + ac).toLocaleString()} of {(o.scored || 0).toLocaleString()} scored calls ({attrPct}%) are attributed to a CSR. The remaining {unc.toLocaleString()} have no agent name in the source data, so they land in the portfolio Avg QA ({pct(o.avg)}) but not in the Human/AI split — which is why the portfolio number can fall below both. Attribution improves as agent identity is captured (mainly a CallRail gap).
+              </div>
+            )}
           </Card>
         )
       })()}
