@@ -18,11 +18,12 @@ const MATRIX = {
   'service_performance_scorecard': ['agent'],
   // Quality Audit isn't on the roles sheet — left as-is. Confirm whether the new
   // "quality" role should be added here (and to is_qa_auditor() in Supabase).
-  'quality_audit': ['certification', 'admin'],
-  'quality_audit.enter_audits': ['certification', 'admin'],
-  'quality_audit.view_own': ['certification', 'admin'],
+  'quality_audit': ['asc', 'certification', 'admin'],
+  'quality_audit.enter_audits': ['asc', 'certification', 'admin'],
+  'quality_audit.view_own': ['asc', 'certification', 'admin'],
   // Quality Audit call-review tool is for the QA/onboarding side, not line agents.
-  'quality_audit.call_reviews': ['certification', 'admin'],
+  // This key also gates the internal Call QA (AI) route/nav.
+  'quality_audit.call_reviews': ['asc', 'certification', 'admin'],
   'service_performance_scorecard.view_personal_scorecard': ['agent', 'admin'],
   'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard.edit_scorecard': ['admin'],
@@ -31,7 +32,9 @@ const MATRIX = {
   'chat.create_channels': ['admin'],
   'chat.create_dms': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'hiring.all': ['certification', 'admin'],
-  'hiring.view_stage_only': ['marketing', 'admin'],
+  // view_stage_only = can open the Hiring board but sees it read-only (no
+  // approve/deny/move/hold/remove) — enforced in HiringDashboard.jsx.
+  'hiring.view_stage_only': ['asc', 'marketing', 'admin'],
   // Sales page isn't on the roles sheet — left as-is.
   'sales.all': ['marketing', 'admin'],
   'sales.view_only': ['marketing', 'admin'],
