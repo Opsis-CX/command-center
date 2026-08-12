@@ -38,6 +38,9 @@ import Scorecard from './modules/Scorecard'
 import QualityAudit from './modules/QualityAudit'
 import CallQA from './modules/CallQA'
 import HelpCenter from './modules/HelpCenter'
+import Coaching from './modules/Coaching'
+import Tokens from './modules/Tokens'
+import TeamFavorites from './modules/TeamFavorites'
 import { UnreadProvider } from './lib/unread'
 // --- hiring pipeline ---
 import ApplicationForm from './modules/ApplicationForm'
@@ -53,7 +56,7 @@ function AssessmentRoute() {
   return <AssessmentForm applicationId={appId} />
 }
 export default function App() {
-  const { session, loading, isAdmin, appRole, clientId } = useAuth()
+  const { session, loading, isAdmin, appRole, clientId, inTraining } = useAuth()
   const [navOpen, setNavOpen] = useState(false)
   const location = useLocation()
   // apply the saved light/dark/system theme as early as possible
@@ -78,6 +81,9 @@ export default function App() {
   // Call QA (their own data, RLS-enforced — CallRail/LightSpeed only, never Five9).
   // No sidebar, no other modules.
   if (appRole === 'client') return <ClientPortal session={session} clientId={clientId} />
+  // New hires in the pipeline are locked to a Certification-only view until an
+  // admin marks them Hired (which clears in_training). No sidebar, no other modules.
+  if (inTraining) return <TraineePortal session={session} />
   return <AuthedApp session={session} isAdmin={isAdmin} appRole={appRole} navOpen={navOpen} setNavOpen={setNavOpen} location={location} />
 }
 // External client portal — a branded, single-page shell that renders ONLY the
@@ -129,6 +135,51 @@ function ClientPortal({ session, clientId }) {
     </div>
   )
 }
+// New-hire onboarding shell — a Certification-only view. New hires keep their agent
+// account (so certification data works exactly as it does for agents) but are locked
+// here — no sidebar, no other modules — until an admin marks them Hired, which clears
+// in_training (finish_onboarding). Questions route to onboarding@opsiscx.com.
+function TraineePortal({ session }) {
+  const { signOut } = useAuth()
+  const [tab, setTab] = useState('certs')
+  const [mustChange, setMustChange] = useState(null)
+  useEffect(() => {
+    let active = true
+    supabase.from('profiles').select('must_change_password').eq('id', session.user.id).single()
+      .then(({ data }) => { if (active) setMustChange(!!data?.must_change_password) })
+      .catch(() => { if (active) setMustChange(false) })
+    return () => { active = false }
+  }, [session.user.id])
+  if (mustChange === null) return <div className="loading-screen">Loading…</div>
+  if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
+
+  const tabBtn = (k, label) => (
+    <button onClick={() => setTab(k)} style={{ background: tab === k ? '#0077B6' : 'transparent', color: tab === k ? '#fff' : '#0f172a', border: '1px solid #0077B6', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>{label}</button>
+  )
+  return (
+    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+      <header style={{ background: '#0077B6', color: '#fff', padding: '0 20px', height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontWeight: 800, fontSize: 18 }}>Opsis Command Center</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <span style={{ fontSize: 13, opacity: 0.9 }}>{session.user.email}</span>
+          <button onClick={() => signOut()} style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Sign out</button>
+        </div>
+      </header>
+      <div style={{ maxWidth: 1000, margin: '0 auto', padding: '20px 16px 40px' }}>
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 14 }}>
+          👋 Welcome! Your first step is <strong>certification</strong> — complete it below to move forward in onboarding. The rest of Command Center unlocks once you're all set.
+          <div style={{ marginTop: 6 }}>Questions? Email <a href="mailto:onboarding@opsiscx.com" style={{ color: '#1d4ed8', fontWeight: 600 }}>onboarding@opsiscx.com</a>.</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          {tabBtn('certs', 'My Certifications')}
+          {tabBtn('courses', 'My Courses')}
+        </div>
+        {tab === 'certs' ? <MyCertifications /> : <MyCourses />}
+      </div>
+      <footer style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: '24px 0 32px' }}>Opsis CX</footer>
+    </div>
+  )
+}
 // Everything behind the login gate. Split out so the must-change-password
 // check can run with a session guaranteed to exist.
 function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location }) {
@@ -163,7 +214,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
           </div>
           <div className="content">
             <Routes>
-              <Route path="/" element={<Dashboard />} />
+              <Route path="/" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <OpsisWeekly />} />
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/settings" element={<Settings />} />
               {isAdmin && <Route path="/roles" element={<RolesPermissions />} />}
@@ -183,6 +234,9 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/updates" element={<Updates />} />
               <Route path="/home" element={<OpsisWeekly />} />
               <Route path="/notes" element={<Notes />} />
+              {canAny(appRole, 'coaching') && <Route path="/coaching" element={<Coaching />} />}
+              {canAny(appRole, 'tokens') && <Route path="/tokens" element={<Tokens />} />}
+              <Route path="/get-to-know-you" element={<TeamFavorites />} />{/* everyone; RLS lets you write only your own card */}
               {canAny(appRole, 'reporting') && <Route path="/reporting" element={<Reporting />} />}
               {canAny(appRole, 'reporting') && <Route path="/reporting/hourly" element={<HourlyReports />} />}
               {canAny(appRole, 'people_and_tags.view_only') && <Route path="/people" element={<PeopleTags />} />}
@@ -196,7 +250,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {canAny(appRole, 'schedule.create_schedules') && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
               {canAny(appRole, 'positions.view_only') && <Route path="/positions" element={<Positions />} />}
               {(canAny(appRole, 'schedule.all') || canAny(appRole, 'schedule.view_insights_assigned')) && <Route path="/insights" element={<ScheduleInsights />} />}
-              <Route path="*" element={<Dashboard />} />
+              <Route path="*" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <OpsisWeekly />} />
             </Routes>
           </div>
         </main>
@@ -211,6 +265,7 @@ function titleFor(path) {
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions',
+    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You',
   }
   return map[path] || 'Command Center'
 }
