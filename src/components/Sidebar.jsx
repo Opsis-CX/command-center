@@ -25,13 +25,17 @@ import ChangePassword from './ChangePassword'
 // group, add another { group, items } block. Order in this array = order shown.
 const NAV = [
   {
-    // Daily drivers, pinned at the top. Single-tap for the pages people live in.
-    group: 'Main',
+    // One flat list, no group headers. Order follows Becky's numbering (Aug 2026):
+    // Opsis Weekly, Updates, Chat, Schedule, My Notes, Scorecard, Coaching, Tokens,
+    // Knowledge Base, Help Center, Calendar, Certifications, Get to Know You.
+    // Manager-only items (Dashboard, Reporting, Quality, Operations, Backend) are
+    // perm-gated — agents never see them — and slot in where they fit naturally.
+    group: '',
     items: [
       { type: 'link', to: '/home', label: 'Opsis Weekly', ic: '🏠', perm: null },  // everyone; page scopes itself by tag/role
       { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, perm: 'dashboard' },
       { type: 'link', to: '/updates', label: 'Updates', ic: '📣', perm: null },  // everyone; RLS gates audience
-      { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },  // everyone; private per-user notebook
+      { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
       {
         type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
         children: [
@@ -40,9 +44,10 @@ const NAV = [
           { to: '/insights', label: 'Schedule insights', perm: 'schedule.view_insights_assigned' },
         ],
       },
+      { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },  // everyone; private per-user notebook
       { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
-      { type: 'link', to: '/tokens', label: 'Tokens', ic: '🎟️', perm: 'tokens' },
       { type: 'link', to: '/coaching', label: 'Coaching', ic: '🎧', perm: 'coaching' },
+      { type: 'link', to: '/tokens', label: 'Tokens', ic: '🎟️', perm: 'tokens' },
       {
         type: 'section', key: 'reporting', label: 'Reporting', ic: '📈',
         children: [
@@ -51,13 +56,19 @@ const NAV = [
         ],
       },
       { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
-      { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
-    ],
-  },
-  {
-    // Everything secondary, folded into collapsible sections so the list stays short.
-    group: 'More',
-    items: [
+      { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
+      { type: 'link', to: '/help', label: 'Help Center', ic: '🛟', perm: null },          // tickets private per RLS
+      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
+      {
+        type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
+        children: [
+          { to: '/certifications', label: 'Certifications', perm: 'certifications.all' },
+          { to: '/my-certifications', label: 'My certifications', perm: 'certifications.view_personal_score_and_content_assigned' },
+          { to: '/courses', label: 'Course builder', perm: 'certifications.builder' },
+          { to: '/my-courses', label: 'My courses', perm: 'certifications.assigned_to_complete' },
+        ],
+      },
+      { type: 'link', to: '/get-to-know-you', label: 'Get to Know You', ic: '👋', perm: null }, // edit only your own card
       {
         type: 'section', key: 'operations', label: 'Operations', ic: '🧰',
         children: [
@@ -69,20 +80,6 @@ const NAV = [
           { to: '/sales', label: 'Sales', perm: 'sales' },
         ],
       },
-      {
-        type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
-        children: [
-          { to: '/certifications', label: 'Certifications', perm: 'certifications.all' },
-          { to: '/my-certifications', label: 'My certifications', perm: 'certifications.view_personal_score_and_content_assigned' },
-          { to: '/courses', label: 'Course builder', perm: 'certifications.builder' },
-          { to: '/my-courses', label: 'My courses', perm: 'certifications.assigned_to_complete' },
-        ],
-      },
-      { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
-      // Flat top-level links (not nested) — everyone sees these.
-      { type: 'link', to: '/help', label: 'Help Center', ic: '🛟', perm: null },              // tickets private per RLS
-      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
-      { type: 'link', to: '/get-to-know-you', label: 'Get to Know You', ic: '👋', perm: null }, // edit only your own card
       {
         type: 'section', key: 'backend', label: 'Backend', ic: '⚙', perm: null,
         children: [
@@ -228,10 +225,12 @@ export default function Sidebar({ open, onNavigate }) {
           if (!anyVisible) return null
           return (
             <div key={grp.group} className="nav-group">
-              <div className="nav-group-label"
-                style={{ padding: '14px 12px 4px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', opacity: .45 }}>
-                {grp.group}
-              </div>
+              {grp.group ? (
+                <div className="nav-group-label"
+                  style={{ padding: '14px 12px 4px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', opacity: .45 }}>
+                  {grp.group}
+                </div>
+              ) : null}
               {grp.items.map(renderItem)}
             </div>
           )
