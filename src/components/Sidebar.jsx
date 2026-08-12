@@ -79,14 +79,10 @@ const NAV = [
         ],
       },
       { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
-      {
-        type: 'section', key: 'resources', label: 'Resources', ic: '🛟', perm: null,
-        children: [
-          { to: '/help', label: 'Help Center', perm: null },     // everyone; tickets are private per RLS
-          { to: '/calendar', label: 'Calendar', perm: null },    // everyone gets calendar
-          { to: '/get-to-know-you', label: 'Get to Know You', perm: null }, // everyone; edit only your own card
-        ],
-      },
+      // Flat top-level links (not nested) — everyone sees these.
+      { type: 'link', to: '/help', label: 'Help Center', ic: '🛟', perm: null },              // tickets private per RLS
+      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
+      { type: 'link', to: '/get-to-know-you', label: 'Get to Know You', ic: '👋', perm: null }, // edit only your own card
       {
         type: 'section', key: 'backend', label: 'Backend', ic: '⚙', perm: null,
         children: [
