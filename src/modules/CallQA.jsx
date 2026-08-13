@@ -368,7 +368,29 @@ export default function CallQA({ portal = false } = {}) {
       if (seq !== loadSeq.current) return
       if (error) { setErr(error.message); setLoading(false); return }
       all = Array.isArray(data) ? data : []
+    } else if (canManage) {
+      // Managers/staff: ONE server-side call (callqa_rows) instead of paging the
+      // entire history 1000 rows at a time — collapses ~14 sequential round trips
+      // into one. This is the fix for the whole-team slowness on the row tabs.
+      // We fetch back TWO windows (the selected range + the equal prior range) so
+      // the prev-period delta columns (Scorecards/Conversion) still have their
+      // comparison data; the tabs slice the current window client-side.
+      let fetchStart = dashBounds.start
+      if (fetchStart) {
+        const s = new Date(fetchStart + 'T00:00:00Z')
+        const e = dashBounds.end ? new Date(dashBounds.end + 'T00:00:00Z') : new Date()
+        const len = e - s
+        if (len > 0) fetchStart = new Date(s.getTime() - len).toISOString().slice(0, 10)
+      }
+      const { data, error } = await supabase.rpc('callqa_rows', {
+        p_start: fetchStart, p_end: dashBounds.end,
+        p_campaign: program !== 'all' ? program : null, p_source: null,
+      })
+      if (seq !== loadSeq.current) return
+      if (error) { setErr(error.message); setLoading(false); return }
+      all = Array.isArray(data) ? data : []
     } else {
+      // Individual agents: RLS-scoped to their own (small) review set — paging is fine.
       let from = 0
       for (;;) {
         const { data, error } = await withCampaign(supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(from, from + page - 1))
