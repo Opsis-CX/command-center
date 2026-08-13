@@ -42,6 +42,9 @@ import Coaching from './modules/Coaching'
 import Tokens from './modules/Tokens'
 import TeamFavorites from './modules/TeamFavorites'
 import Meetings from './modules/Meetings'
+// --- Who's On: live check-ins (LiveStatus) + Slack-style team presence board ---
+import LiveStatus from './modules/LiveStatus'
+import { usePresenceHeartbeat, MyStatusButton, TeamStatus } from './components/Presence'
 import { UnreadProvider } from './lib/unread'
 // --- hiring pipeline ---
 import ApplicationForm from './modules/ApplicationForm'
@@ -58,6 +61,25 @@ import { useParams } from 'react-router-dom'
 function AssessmentRoute() {
   const { appId } = useParams()
   return <AssessmentForm applicationId={appId} />
+}
+// Who's On — live check-in / current-task view (LiveStatus, shift-based) PLUS the
+// team presence board (who's online, self-set status, OOO). LiveStatus self-scopes:
+// admins/managers see the whole team. Gated by the 'live_status' page-key.
+function LiveStatusPage() {
+  return (
+    <div>
+      <div style={{ marginBottom: 12 }}>
+        <h1 className="page-title">Who's On</h1>
+        <p className="page-sub">Live check-ins and what each person is working on right now.</p>
+      </div>
+      <LiveStatus />
+      <div style={{ marginTop: 28, marginBottom: 12 }}>
+        <h2 className="page-title" style={{ fontSize: 20 }}>Team status</h2>
+        <p className="page-sub">Who's online, everyone's self-set status, and who's out of office. Set your own from the button up top.</p>
+      </div>
+      <TeamStatus />
+    </div>
+  )
 }
 export default function App() {
   const { session, loading, isAdmin, appRole, clientId, inTraining } = useAuth()
@@ -189,6 +211,9 @@ function TraineePortal({ session }) {
 function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location }) {
   // RSN pipeline visibility — DB-gated (admins, marketing role, or 'access/rsn' tag).
   const rsnOk = useRsnAccess()
+  // Presence heartbeat — quietly marks this user online while the app is open
+  // (feeds the Who's On page and presence dots).
+  usePresenceHeartbeat()
   // Agents handed the shared temporary password must set their own before
   // they can use the app. Checked once, on load.
   const [mustChange, setMustChange] = useState(null) // null = still checking
@@ -214,6 +239,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <div className="crumb"><b>{titleFor(location.pathname)}</b></div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <MyStatusButton />
               <HeaderTaskBar />
               <NotificationBell />
             </div>
@@ -244,6 +270,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/notes" element={<Notes />} />
               {canAny(appRole, 'coaching') && <Route path="/coaching" element={<Coaching />} />}
               {canAny(appRole, 'meetings') && <Route path="/meetings" element={<Meetings />} />}
+              {canAny(appRole, 'live_status') && <Route path="/live" element={<LiveStatusPage />} />}
               {canAny(appRole, 'tokens') && <Route path="/tokens" element={<Tokens />} />}
               <Route path="/get-to-know-you" element={<TeamFavorites />} />{/* everyone; RLS lets you write only your own card */}
               {canAny(appRole, 'reporting') && <Route path="/reporting" element={<Reporting />} />}
@@ -276,7 +303,7 @@ function titleFor(path) {
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions',
-    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings',
+    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings', '/live': "Who's On",
   }
   return map[path] || 'Command Center'
 }
