@@ -47,6 +47,7 @@ const NAV_DEFAULT = [
           { to: '/schedule', label: 'Schedule', perm: 'schedule.view_my_schedule' },
           { to: '/schedule-builder', label: 'Schedule builder', perm: 'schedule.create_schedules' },
           { to: '/insights', label: 'Schedule insights', perm: 'schedule.view_insights_assigned' },
+          { to: '/live', label: "Who's On", perm: 'live_status' },
         ],
       },
       { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },  // everyone; private per-user notebook
@@ -122,6 +123,7 @@ const NAV_ADMIN = [
           { to: '/schedule', label: 'Schedule', perm: 'schedule.view_my_schedule' },
           { to: '/schedule-builder', label: 'Schedule builder', perm: 'schedule.create_schedules' },
           { to: '/insights', label: 'Schedule insights', perm: 'schedule.view_insights_assigned' },
+          { to: '/live', label: "Who's On", perm: 'live_status' },
         ],
       },
       { type: 'link', to: '/updates', label: 'Updates', ic: '📣', perm: null },
