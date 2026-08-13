@@ -513,12 +513,32 @@ export default function CallQA({ portal = false } = {}) {
   }, [scoped, days, startDate, endDate, customRange, source, callType])
 
   // Agent options are scoped to the current date range + selected brand, so picking
-  // a brand narrows the CSR list to that brand's agents (not everyone).
+  // a brand narrows the CSR list to that brand's agents (not everyone). Union the
+  // downloaded rows (row tabs) with the server aggregate's agents so the list is
+  // populated on the Briefing/Dashboard landing too, where rows aren't downloaded.
   const agents = useMemo(() => {
     const pool = dateFiltered.filter((r) => brand === 'all' || (r.call || {}).brand === brand)
-    return Array.from(new Set(pool.map(agentOf).filter(Boolean))).sort()
-  }, [dateFiltered, brand])
-  const brands = useMemo(() => Array.from(new Set(scoped.map((r) => r.call?.brand).filter(Boolean))).sort(), [scoped])
+    const s = new Set(pool.map(agentOf).filter(Boolean))
+    ;((dashAgg && dashAgg.agents) || []).forEach((a) => { if (a.name) s.add(a.name) })
+    return Array.from(s).sort()
+  }, [dateFiltered, brand, dashAgg])
+  // Full brand list for the Brand switcher. On the Briefing/Dashboard landing the
+  // heavy rows aren't loaded, so the dropdown was empty — derive brands from the
+  // dashboard aggregate instead. Capture the list while UNFILTERED (brand === 'all')
+  // and keep it stable when a brand is selected; otherwise the aggregate returns only
+  // the chosen brand and the dropdown would collapse to a single option.
+  const [brandOpts, setBrandOpts] = useState([])
+  useEffect(() => {
+    if (brand === 'all' && dashAgg && Array.isArray(dashAgg.brands)) {
+      const list = dashAgg.brands.map((b) => b.brand).filter((x) => x && x !== '—')
+      if (list.length) setBrandOpts(list)
+    }
+  }, [brand, dashAgg])
+  const brands = useMemo(() => {
+    const s = new Set(brandOpts)
+    scoped.forEach((r) => { const b = r.call?.brand; if (b) s.add(b) })
+    return Array.from(s).sort()
+  }, [scoped, brandOpts])
   const topicList = useMemo(() => Array.from(new Set(scoped.flatMap((r) => r.topics || []))).sort(), [scoped])
   // Source options are derived from the rows the viewer can actually see, so the
   // client portal only ever lists its own sources (CallRail / Lightspeed) — Five9
