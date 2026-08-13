@@ -2079,8 +2079,8 @@ function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
   const n = items.length
   if (!n) return <Card style={{ color: '#64748b' }}>No data in range.</Card>
 
-  const PADL = 44, PADR = 20, PADT = 26, PADB = 54
-  const W = Math.max(660, n * 64), H = 300
+  const PADL = 46, PADR = 26, PADT = 26, PADB = 80
+  const W = Math.max(760, n * 100), H = 322
   const PW = W - PADL - PADR, PH = H - PADT - PADB
   let ymax = M.ymax
   if (!ymax) { ymax = Math.max(10, ...items.map((d) => M.get(d) || 0)); ymax = Math.ceil((ymax * 1.15) / 10) * 10 }
@@ -2089,7 +2089,7 @@ function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
   const maxCalls = Math.max(1, ...items.map((d) => d.scored))
   const R = (c) => 5 + Math.sqrt(c / maxCalls) * 10
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => ymax * f)
-  const short = (s) => (String(s).length > 12 ? String(s).slice(0, 11) + '…' : s)
+  const short = (s) => (String(s).length > 18 ? String(s).slice(0, 17) + '…' : s)
 
   return (
     <div>
@@ -2108,10 +2108,7 @@ function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
             </g>
           ) })}
           {M.target != null && (() => { const y = Y(M.target); return (
-            <g>
-              <line x1={PADL} y1={y} x2={W - PADR} y2={y} stroke="#8a97a5" strokeWidth="1.4" strokeDasharray="5 4" opacity="0.7" />
-              <text x={W - PADR} y={y - 6} textAnchor="end" fontSize="10.5" fill="#8a97a5" fontWeight="700">target {M.target}{M.unit}</text>
-            </g>
+            <line x1={PADL} y1={y} x2={W - PADR} y2={y} stroke="#8a97a5" strokeWidth="1.4" strokeDasharray="5 4" opacity="0.7" />
           ) })()}
           {items.map((d, i) => {
             const v = M.get(d); const x = X(i); const y = Y(v == null ? 0 : v); const c = M.col(v); const r = R(d.scored)
@@ -2121,7 +2118,7 @@ function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
                 <line x1={x} y1={H - PADB} x2={x} y2={y} stroke={c} strokeWidth="1.4" opacity="0.28" />
                 <circle cx={x} cy={y} r={r} fill={c} fillOpacity="0.9" stroke="#fff" strokeWidth="2" />
                 <text x={x} y={y - r - 6} textAnchor="middle" fontSize="11.5" fontWeight="700" fill={c}>{v == null ? '—' : v.toFixed(1) + M.unit}</text>
-                <text x={x} y={H - PADB + 20} textAnchor="middle" fontSize="11.5" fontWeight="600" fill="#556372">{short(d.name)}</text>
+                <text transform={`rotate(-24 ${x} ${H - PADB + 22})`} x={x} y={H - PADB + 22} textAnchor="end" fontSize="11" fontWeight="600" fill="#556372">{short(d.name)}</text>
               </g>
             )
           })}
@@ -2129,6 +2126,7 @@ function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
       </div>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', marginTop: 8, fontSize: 12, color: '#8a97a5' }}>
         <span>dot size = call volume</span>
+        {M.target != null && <span>· - - - {M.target}{M.unit} target</span>}
         <span><b style={{ color: '#1b5e20' }}>●</b> good</span>
         <span><b style={{ color: '#8d6e00' }}>●</b> watch</span>
         <span><b style={{ color: '#b71c1c' }}>●</b> below</span>
