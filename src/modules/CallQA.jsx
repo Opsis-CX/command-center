@@ -435,7 +435,11 @@ export default function CallQA({ portal = false } = {}) {
   // that avoids hiding an internal agent's own Lavin/Open-Invoices reviews.
   const scoped = useMemo(() => ((canManage && program !== 'all') ? rows.filter((r) => r.campaign === program) : rows), [rows, program, canManage])
   const programOpts = useMemo(() => {
-    const camps = Array.from(new Set(['garagedoor', ...settings.map((s) => s.campaign).filter(Boolean)]))
+    // Seed from the known internal programs (GarageCo, Lavin, Open Invoices) so the
+    // manager switcher always lists them — the ai_qa_settings query is RLS-limited and
+    // can return only garagedoor, which was hiding Lavin/Open Invoices. Any extra
+    // campaigns that show up in settings are appended.
+    const camps = Array.from(new Set([...Object.keys(PROGRAM_LABELS), ...settings.map((s) => s.campaign).filter(Boolean)]))
     return [['all', 'All programs'], ...camps.map((c) => [c, PROGRAM_LABELS[c] || c])]
   }, [settings])
   const customRange = Boolean(startDate || endDate) // explicit calendar dates take over from the Range preset
