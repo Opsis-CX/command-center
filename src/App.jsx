@@ -51,6 +51,7 @@ import HelpCenter from './modules/HelpCenter'
 import Coaching from './modules/Coaching'
 import Tokens from './modules/Tokens'
 import TeamFavorites from './modules/TeamFavorites'
+import Meetings from './modules/Meetings'
 import { UnreadProvider } from './lib/unread'
 // --- hiring pipeline ---
 import ApplicationForm from './modules/ApplicationForm'
@@ -252,6 +253,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/home" element={<OpsisWeekly />} />
               <Route path="/notes" element={<Notes />} />
               {canAny(appRole, 'coaching') && <Route path="/coaching" element={<Coaching />} />}
+              {canAny(appRole, 'meetings') && <Route path="/meetings" element={<Meetings />} />}
               {canAny(appRole, 'tokens') && <Route path="/tokens" element={<Tokens />} />}
               <Route path="/get-to-know-you" element={<TeamFavorites />} />{/* everyone; RLS lets you write only your own card */}
               {canAny(appRole, 'reporting') && <Route path="/reporting" element={<Reporting />} />}
@@ -284,7 +286,7 @@ function titleFor(path) {
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions',
-    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/rsn': 'RSN Pipeline',
+    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings',
   }
   return map[path] || 'Command Center'
 }
