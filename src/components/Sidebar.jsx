@@ -65,6 +65,7 @@ const NAV_DEFAULT = [
       { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
       { type: 'link', to: '/help', label: 'Help Center', ic: '🛟', perm: null },          // tickets private per RLS
       { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
+      { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings' },  // staff except agents
       {
         type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
         children: [
@@ -113,6 +114,7 @@ const NAV_ADMIN = [
       { type: 'link', to: '/call-qa', label: 'Call QA (AI)', ic: '🤖', perm: 'quality_audit.call_reviews' },
       { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
       { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
+      { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings' },
       { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, perm: 'dashboard' },
       {
         type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
