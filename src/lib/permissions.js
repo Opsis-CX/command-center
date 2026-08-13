@@ -87,6 +87,9 @@ const MATRIX = {
   // Meetings (notetaker captures + summaries) — all staff EXCEPT agents; clients
   // never see the sidebar at all. Row visibility inside is governed by RLS.
   'meetings': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
+  // Who's On (live check-ins + team presence) — everyone EXCEPT agents, support
+  // (and clients, who have no sidebar). Also read by LiveStatus.jsx internally.
+  'live_status': ['asc', 'certification', 'quality', 'marketing', 'sales', 'admin'],
 }
 
 // A person's role can be a comma-separated list ("asc,marketing"). A combined
