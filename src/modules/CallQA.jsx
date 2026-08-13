@@ -306,6 +306,10 @@ export default function CallQA({ portal = false } = {}) {
   const [dashAgg, setDashAgg] = useState(null)
   const [dashLoading, setDashLoading] = useState(false)
   const [dashErr, setDashErr] = useState('')
+  // Prior-period aggregate — used by the Briefing's Agent spotlight to find the
+  // "most improved" CSRs (QA delta vs. the immediately-preceding window of the
+  // same length). Null for all-time (no comparable prior window).
+  const [prevDashAgg, setPrevDashAgg] = useState(null)
   const dashBounds = useMemo(() => {
     if (startDate || endDate) return { start: startDate || null, end: endDate || null }
     if (days >= 3650) return { start: null, end: null }
@@ -518,6 +522,28 @@ export default function CallQA({ portal = false } = {}) {
     })
     return () => { active = false }
   }, [tab, dashParams])
+  // Prior window of the same length, ending the day before the current window.
+  const prevDashParams = useMemo(() => {
+    const s = dashBounds.start
+    if (!s) return null // all-time: nothing comparable to diff against
+    const start = new Date(s + 'T00:00:00Z')
+    const end = dashBounds.end ? new Date(dashBounds.end + 'T00:00:00Z') : new Date()
+    const lenMs = end - start
+    if (!(lenMs > 0)) return null
+    const prevEnd = new Date(start.getTime() - 86400000)
+    const prevStart = new Date(prevEnd.getTime() - lenMs)
+    const iso = (d) => d.toISOString().slice(0, 10)
+    return { ...dashParams, p_start: iso(prevStart), p_end: iso(prevEnd) }
+  }, [dashBounds, dashParams])
+  useEffect(() => {
+    if (tab !== 'briefing' || !prevDashParams) { setPrevDashAgg(null); return }
+    let active = true
+    supabase.rpc('callqa_dashboard', prevDashParams).then(({ data, error }) => {
+      if (!active) return
+      setPrevDashAgg(error ? null : data)
+    })
+    return () => { active = false }
+  }, [tab, prevDashParams])
   const loadBucket = useCallback(async (bucket, tag, agentOverride) => {
     const { data, error } = await supabase.rpc('callqa_dashboard_calls', { ...dashParams, p_agent: agentOverride !== undefined ? agentOverride : dashParams.p_agent, p_bucket: bucket, p_tag: tag || null, p_limit: 200 })
     if (error) return []
@@ -792,7 +818,7 @@ export default function CallQA({ portal = false } = {}) {
       ) : tab === 'dashboard' ? (
         <ManagerDashboard agg={dashAgg} loading={dashLoading} err={dashErr} loadBucket={loadBucket} onOpen={setSelected} onGotoTab={setTab} onPickAgent={(a) => setAgent(a)} />
       ) : tab === 'briefing' ? (
-        <CoachingBriefing agg={dashAgg} loading={dashLoading} err={dashErr} loadBucket={loadBucket} brand={brand} agent={agent} onOpen={setSelected} onPickBrand={(b) => { setBrand(b); setAgent('all') }} onPickAgent={(a) => setAgent(a)} />
+        <CoachingBriefing agg={dashAgg} prevAgg={prevDashAgg} loading={dashLoading} err={dashErr} loadBucket={loadBucket} brand={brand} agent={agent} onOpen={setSelected} onPickBrand={(b) => { setBrand(b); setAgent('all') }} onPickAgent={(a) => setAgent(a)} />
       ) : loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
         <>
           {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} brand={brand} setBrand={setBrand} />}
@@ -2281,7 +2307,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
 // the view spans >1 brand), coaching priorities, queue and agent cards. Poppins
 // (already loaded in index.html). Additive tab — nothing else changes.
 // ===========================================================================
-function CoachingBriefing({ agg, loading, err, loadBucket, brand, agent, onOpen, onPickBrand, onPickAgent }) {
+function CoachingBriefing({ agg, prevAgg, loading, err, loadBucket, brand, agent, onOpen, onPickBrand, onPickAgent }) {
   const F = 'Poppins,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif'
   const C = { paper: '#f7f5f0', card: '#fff', ink: '#1a2430', ink2: '#556372', ink3: '#8a97a5', line: '#e7e2d8', line2: '#eef0ee', teal: TEAL, tan: '#a97c3f', tanbg: '#f3ead9', good: '#1b7a3d', goodbg: '#e6f4ea', warn: '#9a7400', warnbg: '#fbf1cf', bad: '#c0342b', badbg: '#fbe7e4' }
   const [focus, setFocus] = useState(null)
@@ -2290,6 +2316,27 @@ function CoachingBriefing({ agg, loading, err, loadBucket, brand, agent, onOpen,
   const { k, brands: brandRows, agents: agentRows, priorities } = deriveDashAgg(agg)
   const multiBrand = brandRows.length > 1
   const coachAgents = agentRows.filter((a) => a.winnable > 0).sort((a, b) => b.winnable - a.winnable).slice(0, 8)
+
+  // Agent spotlight = STANDOUTS (top QA) + MOST IMPROVED (biggest QA gain vs the
+  // prior window). A volume floor keeps small-sample flukes out; if too few CSRs
+  // clear it, fall back to the full set. "Most improved" needs prevAgg (absent on
+  // all-time or the first load) — until it arrives the spotlight is top QA only.
+  const SPOT_FLOOR = 20
+  const spotlight = (() => {
+    const floored = agentRows.filter((a) => (a.scored || 0) >= SPOT_FLOOR)
+    const pool = floored.length >= 2 ? floored : agentRows
+    const prevMap = {}; ((prevAgg && prevAgg.agents) || []).forEach((p) => { if ((p.scored || 0) >= SPOT_FLOOR && p.avg != null) prevMap[p.name] = Number(p.avg) })
+    const withDelta = pool.map((a) => ({ ...a, delta: (prevMap[a.name] != null && a.avg != null) ? Number(a.avg) - prevMap[a.name] : null }))
+    const standouts = withDelta.slice().sort((x, y) => (y.avg ?? -1) - (x.avg ?? -1))
+    const improved = withDelta.filter((a) => a.delta != null && a.delta >= 1).sort((x, y) => y.delta - x.delta)
+    const out = []; const seen = new Set()
+    const push = (a, reason) => { if (a && !seen.has(a.name)) { seen.add(a.name); out.push({ ...a, reason }) } }
+    push(standouts[0], 'top'); push(standouts[1], 'top')
+    push(improved[0], 'improved'); push(improved[1], 'improved')
+    for (const a of standouts) { if (out.length >= 4) break; push(a, 'top') }
+    return out
+  })()
+  const hasImproved = spotlight.some((s) => s.reason === 'improved')
 
   const qCol = (v) => (v == null ? C.ink3 : v >= 70 ? C.good : v >= 62 ? C.warn : C.bad)
   const bCol = (v) => (v == null ? C.ink3 : v >= 50 ? C.good : v >= 35 ? C.warn : C.bad)
@@ -2392,14 +2439,19 @@ function CoachingBriefing({ agg, loading, err, loadBucket, brand, agent, onOpen,
         </>
       )}
 
-      {/* agent spotlight — the highest-volume CSRs in this view */}
-      <div style={stitle}>Agent spotlight <span style={{ color: C.ink3, fontSize: 12.5, fontWeight: 400 }}>· your highest-volume CSRs this period</span></div>
+      {/* agent spotlight — standouts (top QA) + most improved (vs prior window) */}
+      <div style={stitle}>Agent spotlight <span style={{ color: C.ink3, fontSize: 12.5, fontWeight: 400 }}>· standouts worth celebrating</span></div>
       <div style={{ color: C.ink2, fontSize: 12.5, margin: '-4px 0 12px', lineHeight: 1.55, maxWidth: 760 }}>
-        The four CSRs who handled the most calls{multiBrand ? ' across the portfolio' : ''} this period — where coaching reaches the most conversations. Each shows the brand they work most, plus QA, booking rate and winnable-loss count. Click a card to open that CSR's scorecard.
+        Your best CSRs{multiBrand ? ' across the portfolio' : ''} this period: the <b style={{ color: C.ink }}>highest QA scores</b>{hasImproved ? <> and the <b style={{ color: C.ink }}>biggest climbers</b> versus the previous period</> : ''} — shown only for CSRs with enough calls to be meaningful. Who needs coaching is in the queue below. Click a card to open a CSR's scorecard.
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 14 }}>
-        {agentRows.slice(0, 4).map((a) => (
-          <div key={a.name} onClick={() => onPickAgent(a.name)} style={{ ...box, padding: 16, cursor: 'pointer' }}>
+        {spotlight.map((a) => {
+          const badge = a.reason === 'improved'
+            ? { text: `▲ +${a.delta.toFixed(1)} pp`, bg: C.goodbg, fg: C.good, title: 'Most improved vs. the previous period' }
+            : { text: '★ Top QA', bg: C.tanbg, fg: C.tan, title: 'Among the highest QA scores this period' }
+          return (
+          <div key={a.name} onClick={() => onPickAgent(a.name)} style={{ ...box, padding: 16, cursor: 'pointer', position: 'relative' }}>
+            <span title={badge.title} style={{ position: 'absolute', top: 14, right: 14, background: badge.bg, color: badge.fg, fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999 }}>{badge.text}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
               <div style={{ width: 40, height: 40, borderRadius: '50%', background: C.teal, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16 }}>{a.name[0]}</div>
               <div style={{ minWidth: 0 }}>
@@ -2416,7 +2468,7 @@ function CoachingBriefing({ agg, loading, err, loadBucket, brand, agent, onOpen,
             </div>
             <div style={{ marginTop: 12, paddingTop: 11, borderTop: `1px solid ${C.line2}`, fontSize: 12.5, color: C.teal, fontWeight: 700 }}>open scorecard ›</div>
           </div>
-        ))}
+        ) })}
       </div>
 
       {/* priorities + queue (grouped by agent) */}
