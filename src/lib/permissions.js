@@ -18,12 +18,12 @@ const MATRIX = {
   'service_performance_scorecard': ['agent'],
   // Quality Audit isn't on the roles sheet — left as-is. Confirm whether the new
   // "quality" role should be added here (and to is_qa_auditor() in Supabase).
-  'quality_audit': ['asc', 'certification', 'admin'],
-  'quality_audit.enter_audits': ['asc', 'certification', 'admin'],
-  'quality_audit.view_own': ['asc', 'certification', 'admin'],
+  'quality_audit': ['asc', 'quality', 'certification', 'admin'],
+  'quality_audit.enter_audits': ['asc', 'quality', 'certification', 'admin'],
+  'quality_audit.view_own': ['asc', 'quality', 'certification', 'admin'],
   // Quality Audit call-review tool is for the QA/onboarding side, not line agents.
   // This key also gates the internal Call QA (AI) route/nav.
-  'quality_audit.call_reviews': ['asc', 'certification', 'admin'],
+  'quality_audit.call_reviews': ['asc', 'quality', 'certification', 'admin'],
   'service_performance_scorecard.view_personal_scorecard': ['agent', 'admin'],
   'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard.edit_scorecard': ['admin'],
@@ -34,12 +34,14 @@ const MATRIX = {
   'hiring.all': ['certification', 'admin'],
   // view_stage_only = can open the Hiring board but sees it read-only (no
   // approve/deny/move/hold/remove) — enforced in HiringDashboard.jsx.
-  'hiring.view_stage_only': ['asc', 'marketing', 'admin'],
+  'hiring.view_stage_only': ['asc', 'quality', 'marketing', 'admin'],
   // Sales page isn't on the roles sheet — left as-is.
   'sales.all': ['marketing', 'admin'],
   'sales.view_only': ['marketing', 'admin'],
-  'certifications.all': ['certification', 'admin'],
-  'certifications.builder': ['certification', 'admin'],
+  // quality gets the Certifications pages to VIEW everyone's certs/courses (Becky
+  // 2026-08-12). NOTE: these pages have no read-only mode yet — see project notes.
+  'certifications.all': ['quality', 'certification', 'admin'],
+  'certifications.builder': ['quality', 'certification', 'admin'],
   // certification is here so course authors can take (and preview) their own
   // quizzes end-to-end, exactly as an agent would see them.
   'certifications.assigned_to_complete': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'certification', 'admin'],
@@ -49,7 +51,7 @@ const MATRIX = {
   'schedule.create_schedules': ['admin'],
   'schedule.view_only_projects_assigned_to': ['asc', 'quality', 'admin'],
   // Insights limited to schedules the person is assigned to (audience membership).
-  'schedule.view_insights_assigned': ['asc', 'admin'],
+  'schedule.view_insights_assigned': ['asc', 'quality', 'admin'],
   // No release times or rolling-window lock: schedules/intervals on their
   // assigned schedules are ALWAYS fully available. Only agents are locked
   // to the 14-day rolling release window (and cert-gated).
@@ -68,7 +70,7 @@ const MATRIX = {
   'people_and_tags.delete': ['admin'],
   'clients.view_only': ['certification', 'quality', 'marketing', 'admin'],
   'clients.edit': ['admin'],
-  'positions.view_only': ['admin'],
+  'positions.view_only': ['quality', 'admin'],
   'positions.edit': ['admin'],
   'project_management.all': ['admin'],
   'project_management.create_projects': ['certification', 'quality', 'marketing', 'admin'],
@@ -80,7 +82,11 @@ const MATRIX = {
   'tokens.ledger': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   // Coaching — agents book sessions with their ASC; ASCs/admins manage. (Agent
   // vs ASC vs admin behavior is decided inside Coaching.jsx by role.)
-  'coaching': ['agent', 'asc', 'admin'],
+  // quality = read-only "All sessions" oversight view inside Coaching.jsx.
+  'coaching': ['agent', 'asc', 'quality', 'admin'],
+  // Meetings (notetaker captures + summaries) — all staff EXCEPT agents; clients
+  // never see the sidebar at all. Row visibility inside is governed by RLS.
+  'meetings': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
 }
 
 // A person's role can be a comma-separated list ("asc,marketing"). A combined
