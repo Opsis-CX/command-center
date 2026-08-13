@@ -291,7 +291,10 @@ export default function CallQA({ portal = false } = {}) {
   const [pipeline, setPipeline] = useState({})
   const [selected, setSelected] = useState(null)
   const [busy, setBusy] = useState('')
-  const [days, setDays] = useState(30)
+  // Default range is role-aware: the team lands on the last 7 days (weekly coaching
+  // cadence, lighter query), while the client portal keeps the broader 30-day view
+  // execs expect. Everyone can still switch the Range freely.
+  const [days, setDays] = useState(portalMode ? 30 : 7)
   const [startDate, setStartDate] = useState('') // YYYY-MM-DD; when set (with endDate) overrides the Range preset
   const [endDate, setEndDate] = useState('')
   const [brand, setBrand] = useState('all')
