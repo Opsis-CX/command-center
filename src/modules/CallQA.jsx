@@ -2066,6 +2066,7 @@ function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
       booking: r.booking == null ? null : Number(r.booking),
       winnable: r.scored ? (100 * (r.winnable || 0)) / r.scored : 0,
       scored: r.scored || 0,
+      brand: nameKey === 'name' ? (r.brand || null) : null,
     }))
     .filter((r) => r.name)
     .sort((a, b) => String(a.name).localeCompare(String(b.name)))
@@ -2114,7 +2115,7 @@ function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
             const v = M.get(d); const x = X(i); const y = Y(v == null ? 0 : v); const c = M.col(v); const r = R(d.scored)
             return (
               <g key={d.name} style={{ cursor: 'pointer' }} onClick={() => onPick && onPick(d.name)}>
-                <title>{d.name} · {M.label} {v == null ? '—' : v.toFixed(1) + M.unit} · {d.scored.toLocaleString()} calls</title>
+                <title>{d.name}{d.brand ? ` · ${d.brand}` : ''} · {M.label} {v == null ? '—' : v.toFixed(1) + M.unit} · {d.scored.toLocaleString()} calls</title>
                 <line x1={x} y1={H - PADB} x2={x} y2={y} stroke={c} strokeWidth="1.4" opacity="0.28" />
                 <circle cx={x} cy={y} r={r} fill={c} fillOpacity="0.9" stroke="#fff" strokeWidth="2" />
                 <text x={x} y={y - r - 6} textAnchor="middle" fontSize="11.5" fontWeight="700" fill={c}>{v == null ? '—' : v.toFixed(1) + M.unit}</text>
@@ -2391,14 +2392,22 @@ function CoachingBriefing({ agg, loading, err, loadBucket, brand, agent, onOpen,
         </>
       )}
 
-      {/* agent spotlight — moved above the coaching sections */}
-      <div style={stitle}>Agent spotlight <span style={{ color: C.ink3, fontSize: 12.5, fontWeight: 400 }}>· click to scope the page to a CSR</span></div>
+      {/* agent spotlight — the highest-volume CSRs in this view */}
+      <div style={stitle}>Agent spotlight <span style={{ color: C.ink3, fontSize: 12.5, fontWeight: 400 }}>· your highest-volume CSRs this period</span></div>
+      <div style={{ color: C.ink2, fontSize: 12.5, margin: '-4px 0 12px', lineHeight: 1.55, maxWidth: 760 }}>
+        The four CSRs who handled the most calls{multiBrand ? ' across the portfolio' : ''} this period — where coaching reaches the most conversations. Each shows the brand they work most, plus QA, booking rate and winnable-loss count. Click a card to open that CSR's scorecard.
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 14 }}>
         {agentRows.slice(0, 4).map((a) => (
           <div key={a.name} onClick={() => onPickAgent(a.name)} style={{ ...box, padding: 16, cursor: 'pointer' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
               <div style={{ width: 40, height: 40, borderRadius: '50%', background: C.teal, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16 }}>{a.name[0]}</div>
-              <div><div style={{ fontWeight: 700, fontSize: 16 }}>{a.name}</div><div style={{ color: C.ink3, fontSize: 12 }}>{a.scored.toLocaleString()} calls</div></div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>{a.name}</div>
+                <div style={{ color: C.ink3, fontSize: 12 }}>
+                  <span style={{ color: C.tan, fontWeight: 600 }}>{a.brand || '—'}</span>{a.nbrands > 1 ? ` +${a.nbrands - 1}` : ''} · {a.scored.toLocaleString()} calls
+                </div>
+              </div>
             </div>
             <div style={{ display: 'flex', gap: 16, marginTop: 14 }}>
               <div><div style={{ fontSize: 11, color: C.ink3, textTransform: 'uppercase', fontWeight: 600 }}>QA</div><div className="num" style={{ fontSize: 19, fontWeight: 700, color: qCol(a.avg) }}>{P(a.avg)}</div></div>
