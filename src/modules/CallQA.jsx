@@ -686,6 +686,18 @@ export default function CallQA({ portal = false } = {}) {
     if (error) { window.alert('Could not update scoring status: ' + error.message) }
     await load(); setBusy('')
   }
+  // Manager override of the AI's winnable call after human review. Mirrors
+  // setExcluded (direct update, RLS = can_manage_qa). Patches local state right
+  // away, then load() so the row tabs + counts catch up.
+  async function setWinnable(reviewId, val, callId) {
+    setBusy(reviewId)
+    const id = await liveReviewId(reviewId, callId)
+    const { error } = await supabase.from('ai_qa_reviews').update({ winnable: val, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', id)
+    if (error) { window.alert('Could not update winnable: ' + error.message) }
+    setRows((prev) => prev.map((r) => (r.id === reviewId || r.id === id ? { ...r, winnable: val } : r)))
+    setSelected((sel) => (sel && (sel.id === reviewId || sel.id === id) ? { ...sel, winnable: val } : sel))
+    await load(); setBusy('')
+  }
   async function saveAdjustment(reviewId, answers, note) {
     setBusy(reviewId)
     const { earned, max, pct, section_scores } = recomputeReview(answers)
@@ -838,7 +850,7 @@ export default function CallQA({ portal = false } = {}) {
         {tab === 'import' && canManage && <ImportPanel />}
         </>
       )}
-      {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onExclude={setExcluded} onSetReviewed={setReviewed} onAdjust={saveAdjustment} busy={busy} canManage={canManage} meName={meName} userId={user?.id} />}
+      {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onExclude={setExcluded} onSetReviewed={setReviewed} onAdjust={saveAdjustment} onSetWinnable={setWinnable} busy={busy} canManage={canManage} meName={meName} userId={user?.id} />}
     </div>
   )
 }
@@ -1459,7 +1471,7 @@ function Coaching({ byAgent }) {
   )
 }
 
-function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, busy, canManage, meName, userId }) {
+function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, onSetWinnable, busy, canManage, meName, userId }) {
   const c = row.call || {}
   const os = OUTCOME_STYLE[row.outcome] || OUTCOME_STYLE.Other
   const [transcript, setTranscript] = useState(c.transcript ?? null)
@@ -1551,7 +1563,21 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, b
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>ASKED FOR BOOKING</div><b style={{ color: row.asked_for_booking ? '#1b5e20' : '#b71c1c' }}>{row.asked_for_booking == null ? '—' : (row.asked_for_booking ? 'Yes' : 'No')}</b></div>
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>INFO BEFORE PRICING</div><b>{ynLabel(row.info_before_pricing)}</b></div>
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>FEE EXPECTATIONS SET</div><b>{ynLabel(row.set_fee_expectations)}</b></div>
-                <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>WINNABLE</div><b>{row.winnable == null ? '—' : (row.winnable ? 'Yes' : 'No')}</b></div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>WINNABLE {canManage && <span style={{ color: '#94a3b8', fontWeight: 500 }}>· set</span>}</div>
+                  {canManage ? (
+                    <div style={{ display: 'flex', gap: 4, marginTop: 3 }}>
+                      {[['Yes', true], ['No', false]].map(([lbl, val]) => (
+                        <button key={lbl} disabled={busy === row.id} title={row.winnable === val ? 'Current value' : `Mark this call ${lbl === 'Yes' ? 'winnable' : 'not winnable'}`}
+                          onClick={() => { if (row.winnable !== val) onSetWinnable(row.id, val, c.id) }}
+                          style={{ fontSize: 12, fontWeight: 700, padding: '2px 10px', borderRadius: 999, cursor: busy === row.id ? 'default' : 'pointer',
+                            border: `1px solid ${row.winnable === val ? (val ? '#1b5e20' : '#b71c1c') : '#cbd5e1'}`,
+                            background: row.winnable === val ? (val ? '#e8f5e9' : '#fdecea') : '#fff',
+                            color: row.winnable === val ? (val ? '#1b5e20' : '#b71c1c') : '#64748b' }}>{lbl}</button>
+                      ))}
+                    </div>
+                  ) : <b>{row.winnable == null ? '—' : (row.winnable ? 'Yes' : 'No')}</b>}
+                </div>
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CARD ASKED</div><b style={{ color: row.asked_for_cc == null ? '#64748b' : (row.asked_for_cc ? '#1b5e20' : '#b71c1c') }}>{row.asked_for_cc == null ? '—' : (row.asked_for_cc ? 'Yes' : 'No')}</b></div>
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CARD COLLECTED</div><b style={{ color: row.asked_for_cc !== true ? '#94a3b8' : (row.collected_cc == null ? '#8d6e00' : (row.collected_cc ? '#0f766e' : '#b71c1c')) }}>{row.asked_for_cc !== true ? 'N/A' : (row.collected_cc == null ? 'Pending' : (row.collected_cc ? 'Yes' : 'No'))}</b></div>
               </div>
