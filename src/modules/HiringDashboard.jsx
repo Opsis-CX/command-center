@@ -154,29 +154,42 @@ export default function HiringDashboard() {
   // sitting in assessment_passed with a linked task that's now done gets
   // advanced to certification automatically. We check on load, on a light
   // interval, and whenever the tasks table changes.
-  // Create the agent's login account (email invite → they set a password).
-  // Runs server-side via the invite-agent Edge Function.
-  // Returns true on success. A silent failure here would strand a new hire in
-  // Certification with no way to log in, so callers surface the error and a
-  // fallback task is raised for Becky.
+  // Safety net at the Certifying transition: make sure the hire really does
+  // have a login before they're expected to certify. The account is normally
+  // already created one stage earlier (Rippling signed → onboardHire).
+  //
+  // This used to call the legacy `invite-agent` function, which returns a
+  // non-2xx for an account that already exists — so it raised a critical
+  // "Create Command Center account for X" task for Becky on essentially every
+  // hire, all of them false. Worse, invite-agent's already-registered path
+  // resets the password and sets must_change_password BEFORE returning, so it
+  // could lock out a hire in the middle of their certification.
+  //
+  // `onboard-hire` is the robust one: idempotent, and it skips anyone who has
+  // already signed in (never touches their password). Only a genuine failure
+  // raises the fallback task now.
   async function inviteAgentAccount(app) {
     try {
-      const { data, error } = await supabase.functions.invoke('invite-agent', {
-        body: { email: app.email, fullName: app.full_name, phone: app.phone || null },
+      const { data, error } = await supabase.functions.invoke('onboard-hire', {
+        body: { email: app.email, fullName: app.full_name },
       })
-      const failure = error?.message || data?.error
+      let failure = error?.message || data?.error
+      if (error) {
+        try { failure = (await error.context?.json())?.error || failure } catch { /* ignore */ }
+      }
       if (failure) {
-        console.error('invite-agent failed:', failure)
+        console.error('onboard-hire failed:', failure)
         await createAccountFallbackTask(app, failure)
         return false
       }
-      if (data?.email_error) {
-        // Account exists but the welcome email didn't go out — still needs a human.
-        await createAccountFallbackTask(app, `Account created, but the invite email failed: ${data.email_error}`)
+      // Only a fresh or reactivated login sends a welcome email; an already
+      // active hire is skipped on purpose and needs no task.
+      if ((data?.created || data?.reactivated) && data?.emailError) {
+        await createAccountFallbackTask(app, `Account created, but the welcome email failed: ${data.emailError}`)
       }
       return true
     } catch (e) {
-      console.error('invite-agent failed:', e)
+      console.error('onboard-hire failed:', e)
       await createAccountFallbackTask(app, String(e?.message || e))
       return false
     }
@@ -184,8 +197,21 @@ export default function HiringDashboard() {
 
   // Fallback: if automatic account creation fails, tell Becky to do it by hand
   // rather than letting the new hire quietly fall through the cracks.
+  //
+  // BUT verify first. Every one of these tasks raised so far has been false —
+  // the login already existed and the call simply errored — which turned a
+  // "critical, do this by hand" task into noise. So we ask the database whether
+  // the account actually exists, and stay silent when it does. A task now means
+  // the hire genuinely has no login.
   async function createAccountFallbackTask(app, reason) {
     try {
+      try {
+        const { data: acct } = await supabase.rpc('account_exists_for_email', { p_email: app.email })
+        if (acct?.exists) {
+          console.info('account already exists for', app.email, '— no fallback task raised:', reason)
+          return
+        }
+      } catch (e) { /* can't verify → fall through and raise the task */ }
       const taskId = crypto.randomUUID()
       const contact = [
         app.email ? `Email: ${app.email}` : null,
