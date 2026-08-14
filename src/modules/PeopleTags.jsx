@@ -3,9 +3,10 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can, ROLES } from '../lib/permissions'
 
-// TODO: replace with your real mock-call scheduling link (Calendly, Google
-// appointment page, etc.) when you have it.
-const MOCK_CALL_SCHEDULE_LINK = 'https://REPLACE-WITH-YOUR-SCHEDULING-LINK'
+// Candidates book their mock call inside Command Center — the same place they do
+// their certification. The email just points at the app; the onboarding shell
+// drops them on the "Schedule my mock call" tab once they sign in.
+const MOCK_CALL_SCHEDULE_PATH = '/mock-call'
 
 async function sendHiringEmail(kind, to, data) {
   try {
@@ -224,12 +225,13 @@ export default function PeopleTags() {
         five9_sent_at: new Date().toISOString(),
       }).eq('id', person.id)
 
-      // find their hiring record (matched by email) FIRST, so we can build a
-      // per-candidate mock-call scheduling link (public page /mock-call/:appId)
+      // find their hiring record (matched by email) so we can advance it below
       const { data: apps } = await supabase.from('hiring_applications')
         .select('id, status').eq('email', person.email).order('created_at', { ascending: false }).limit(1)
       const app = apps && apps[0]
-      const scheduleLink = app ? `${window.location.origin}/mock-call/${app.id}` : MOCK_CALL_SCHEDULE_LINK
+      // They already have a Command Center login by this point, so the email
+      // sends them into the app rather than to a standalone page.
+      const scheduleLink = `${window.location.origin}${MOCK_CALL_SCHEDULE_PATH}`
 
       // email the agent their credentials + scheduling link
       await sendHiringEmail('five9_credentials', person.email, {
