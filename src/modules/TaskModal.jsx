@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useProjectsData } from './projectsData'
 import { Avatar } from './projectBits'
 import { statusLabel, STATUSES, PRIORITIES } from './projectHelpers'
-import { notifyTaskAssigned, notifyTaskAdded, notifyTaskCompleted } from '../lib/notify'
+import { notifyTaskAssigned, notifyTaskAdded } from '../lib/notify'
 import RichTextEditor from './RichTextEditor'
 
 // ============================================================
@@ -35,6 +35,8 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
   const [assignees, setAssignees] = useState([])
   const [busy, setBusy] = useState(false)
   const [nameError, setNameError] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState({})
+  const [formError, setFormError] = useState('')
 
   // Recurring options (offered only when creating a new task)
   const [recurring, setRecurring] = useState(false)
@@ -69,11 +71,34 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
   }, [taskId]) // eslint-disable-line
 
   function toggleAssignee(pid) {
+    setFieldErrors(f => ({ ...f, assignees: false }))
     setAssignees(prev => prev.includes(pid) ? prev.filter(x => x !== pid) : [...prev, pid])
   }
 
   async function save() {
-    if (!name.trim()) { setNameError(true); return }
+    // Every task needs a name, a client, an owner and a due date — an approximate
+    // due date is fine, but "someday, somebody, for someone" is not a task. The
+    // client is also what routes the completion announcement to the right
+    // channel, so a task without one goes nowhere when it's finished.
+    const missing = {
+      name: !name.trim(),
+      client: !clientId,
+      assignees: !assignees.length,
+      due: !recurring && !due,
+    }
+    setNameError(missing.name)
+    setFieldErrors(missing)
+    if (missing.name || missing.client || missing.assignees || missing.due) {
+      const labels = [
+        missing.name && 'a task name',
+        missing.client && 'a client',
+        missing.assignees && 'someone to assign it to',
+        missing.due && 'a due date (an approximate one is fine)',
+      ].filter(Boolean)
+      setFormError(`Please add ${labels.join(', ')}.`)
+      return
+    }
+    setFormError('')
     if (recurring && frequency === 'custom_days' && !customDays.length) { window.alert('Pick at least one day for the recurring task.'); return }
 
     // Read the notes once — an "empty" contenteditable still reports <br>.
@@ -167,7 +192,8 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
     } else if (taskId && prevStatus !== status) {
       if (status === 'done') {
         logActivity('completed', id, taskData.name, taskData.project_id, proj?.name)
-        if (existing?.created_by) notifyTaskCompleted({ recipientId: existing.created_by, actorId: userId, actorName: me?.full_name, taskName: taskData.name, projectName: proj?.name, taskId: id })
+        // Completion alerts are raised by the trg_task_done_alerts DB trigger
+        // (creator + watchers + the client's channel). See TaskDetail.jsx.
       } else {
         logActivity('status_changed', id, taskData.name, taskData.project_id, proj?.name, `Moved to ${statusLabel(status)}`)
       }
@@ -222,9 +248,10 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
                   {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </Grp>
-              <Grp label="Client">
-                <select value={clientId} onChange={e => setClientId(e.target.value)} style={inp}>
-                  <option value="">— No client —</option>
+              <Grp label="Client *">
+                <select value={clientId} onChange={e => { setClientId(e.target.value); setFieldErrors(f => ({ ...f, client: false })) }}
+                  style={{ ...inp, borderColor: fieldErrors.client ? 'var(--failed)' : 'var(--line)' }}>
+                  <option value="">— Select a client —</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </Grp>
@@ -309,13 +336,15 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
                 )}
               </>
             ) : (
-              <Grp label="Due date">
-                <input type="date" value={due} onChange={e => setDue(e.target.value)} style={inp} />
+              <Grp label="Due date *">
+                <input type="date" value={due} onChange={e => { setDue(e.target.value); setFieldErrors(f => ({ ...f, due: false })) }}
+                  style={{ ...inp, borderColor: fieldErrors.due ? 'var(--failed)' : 'var(--line)' }} />
+                <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>An approximate date is fine — it can always move.</div>
               </Grp>
             )}
 
-            <Grp label="Assign to">
-              <div style={{ border: '1px solid var(--line)', borderRadius: 8, padding: 6, maxHeight: 200, overflowY: 'auto' }}>
+            <Grp label="Assign to *">
+              <div style={{ border: `1px solid ${fieldErrors.assignees ? 'var(--failed)' : 'var(--line)'}`, borderRadius: 8, padding: 6, maxHeight: 200, overflowY: 'auto' }}>
                 {assignable.length === 0 ? <div style={{ fontSize: 12, color: 'var(--ink-soft)', padding: 8 }}>No team members yet.</div> :
                   assignable.map(p => {
                     const sel = assignees.includes(p.id)
@@ -342,6 +371,7 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
 
           <div style={{ padding: '14px 24px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
             {taskId && <button onClick={del} className="btn btn-ghost" style={{ marginRight: 'auto', color: 'var(--failed)' }}>Delete task</button>}
+            {formError && <div style={{ marginRight: 'auto', color: 'var(--failed)', fontSize: 12.5, fontWeight: 600 }}>{formError}</div>}
             <button onClick={() => onClose(false)} className="btn btn-ghost">Cancel</button>
             <button onClick={save} disabled={busy} className="btn btn-primary">{busy ? 'Saving…' : 'Save task'}</button>
           </div>
