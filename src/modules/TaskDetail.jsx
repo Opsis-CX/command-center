@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useProjectsData } from './projectsData'
 import { StatusBadge, PriorityBadge, Avatar } from './projectBits'
 import { esc, stripHtml, statusLabel, initials, formatCommentTime, AVATAR_COLORS, STATUSES, PRIORITIES, extractMentionedIds } from './projectHelpers'
-import { notifyTaskAssigned, notifyTaskCompleted, notifyTaskMention } from '../lib/notify'
+import { notifyTaskAssigned, notifyTaskMention } from '../lib/notify'
 import TimeTracking from './TimeTracking'
 import Attachments from './Attachments'
 import RichTextEditor from './RichTextEditor'
@@ -25,10 +25,38 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
   const notesRef = useRef(null)
   const commentRef = useRef(null)
   const [assigneeEditorOpen, setAssigneeEditorOpen] = useState(false)
+  // "Notify me when this is done" — opt-in for tasks you didn't create. The
+  // creator is always notified; this is for everyone else. The alert itself is
+  // raised by the trg_task_done_alerts DB trigger.
+  const [watching, setWatching] = useState(false)
+  const [watchBusy, setWatchBusy] = useState(false)
 
   useEffect(() => {
     if (task && notesRef.current) notesRef.current.setHtml(task.notes || '')
   }, [taskId]) // eslint-disable-line
+
+  useEffect(() => {
+    let active = true
+    setWatching(false)
+    if (!taskId || !userId) return
+    supabase.from('task_watchers').select('task_id').eq('task_id', taskId).eq('profile_id', userId).maybeSingle()
+      .then(({ data }) => { if (active) setWatching(!!data) })
+    return () => { active = false }
+  }, [taskId, userId])
+
+  async function toggleWatch() {
+    if (!userId || watchBusy) return
+    setWatchBusy(true)
+    if (watching) {
+      await supabase.from('task_watchers').delete().eq('task_id', taskId).eq('profile_id', userId)
+      setWatching(false)
+    } else {
+      await supabase.from('task_watchers')
+        .upsert({ task_id: taskId, profile_id: userId }, { onConflict: 'task_id,profile_id', ignoreDuplicates: true })
+      setWatching(true)
+    }
+    setWatchBusy(false)
+  }
 
   if (!task) return null
 
@@ -45,7 +73,9 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
     if (field === 'status' && oldValue !== v) {
       if (v === 'done') {
         logActivity('completed', taskId, task.name, task.project_id, proj?.name)
-        if (task.created_by) notifyTaskCompleted({ recipientId: task.created_by, actorId: userId, actorName: me?.full_name, taskName: task.name, projectName: proj?.name, taskId })
+        // Completion alerts — creator, watchers, and the client's channel — are
+        // raised by the trg_task_done_alerts DB trigger, transactionally, so they
+        // survive this tab dying mid-update. Notifying from here would double up.
       } else logActivity('status_changed', taskId, task.name, task.project_id, proj?.name, `Moved to ${statusLabel(v)}`)
     }
   }
@@ -121,6 +151,17 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+              <button
+                className="btn btn-ghost"
+                style={{ padding: '5px 10px', fontSize: 12, color: watching ? 'var(--accent)' : undefined }}
+                disabled={watchBusy}
+                onClick={toggleWatch}
+                title={watching
+                  ? "You'll get a notification when this task is marked Done. Click to stop."
+                  : 'Notify me when this task is marked Done'}
+              >
+                {watching ? '🔔 Notifying you' : '🔕 Notify me when done'}
+              </button>
               {onEdit && <button className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => onEdit(taskId)}>Edit</button>}
               <button onClick={onClose} style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--ink-soft)' }}>✕</button>
             </div>
