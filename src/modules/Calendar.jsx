@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { COMPANY_TZ, companyTimeToInstant, formatInTZ, detectedTZ, wallTimeToViewerHHMM } from '../lib/tz'
-
 // Convert a wall-clock time stored in `srcTZ` on `dateStr` into "HH:MM" as seen
 // in `viewerTZ` (robust/browser-safe, from tz.js).
 function toViewerHHMM(dateStr, timeStr, srcTZ, viewerTZ) {
@@ -10,7 +9,6 @@ function toViewerHHMM(dateStr, timeStr, srcTZ, viewerTZ) {
   if (!viewerTZ || viewerTZ === (srcTZ || COMPANY_TZ)) return timeStr
   return wallTimeToViewerHHMM(dateStr, timeStr, srcTZ || COMPANY_TZ, viewerTZ)
 }
-
 // ============================================================
 // CALENDAR — Phase 1 (Artful Agenda-style planner)
 // Two-page "book" spread with Month / Week / Day views.
@@ -30,10 +28,8 @@ function toViewerHHMM(dateStr, timeStr, srcTZ, viewerTZ) {
 // Plus a customizable day-tracker table day_trackers:
 //   id uuid pk, owner_id uuid, tracker_date date, label text, body text
 // ============================================================
-
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const DOW = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-
 function etNow() { return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })) }
 function isoDate(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 function mondayOf(d) { const x = new Date(d); const day = x.getDay(); const diff = (day === 0 ? -6 : 1 - day); x.setDate(x.getDate() + diff); x.setHours(0, 0, 0, 0); return x }
@@ -45,7 +41,6 @@ function fmtTime(t) {
   return m === 0 ? `${h12}${period}` : `${h12}:${String(m).padStart(2, '0')}${period}`
 }
 function parseHour(t) { return t ? parseInt(t.slice(0, 2), 10) : null }
-
 // Command Center accent palette (from the app's design tokens)
 const COLORS = {
   event: 'var(--accent, #0077B6)',
@@ -54,7 +49,6 @@ const COLORS = {
   priority: '#B91C1C',
   team: '#7C3AED',
 }
-
 export default function Calendar() {
   const { isAdmin } = useAuth()
   const [view, setView] = useState('day')             // month | week | day (default to Day)
@@ -82,7 +76,6 @@ export default function Calendar() {
   const [hiddenShares, setHiddenShares] = useState({})   // ownerId -> true (toggled off in my view)
   const [showShares, setShowShares] = useState(false)
   const [viewerTZ, setViewerTZ] = useState(COMPANY_TZ)
-
   const load = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -130,9 +123,7 @@ export default function Calendar() {
     setCoaching(coachRes.data || [])
     setLoading(false)
   }, [])
-
   useEffect(() => { load() }, [load])
-
   // --- task actions from the calendar (mirror the project tool) ---
   const runningEntry = timeEntries.find(e => e.user_id === userId && e.started_at && !e.ended_at)
   async function toggleTaskDone(task) {
@@ -158,7 +149,6 @@ export default function Calendar() {
     }
     load()
   }
-
   // After Google OAuth redirects back (?gcal=connected), sync once and clean the URL.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -169,14 +159,12 @@ export default function Calendar() {
       })
     }
   }, [load])
-
   // ---- visibility: events (personal to me OR team), tasks (mine or admin), intervals (mine) ----
   const myEvents = useMemo(() => events.filter(e => e.scope === 'team' || e.owner_id === userId || (e.invitee_ids || []).includes(userId)), [events, userId])
   const myTaskIds = useMemo(() => new Set(assignees.filter(a => a.profile_id === userId).map(a => a.task_id)), [assignees, userId])
   // Personal calendar: always only the current user's own tasks, even for admins.
   const myTasks = useMemo(() => tasks.filter(t => myTaskIds.has(t.id)), [tasks, myTaskIds])
   const myClaims = useMemo(() => claims.filter(c => c.profile_id === userId), [claims, userId])
-
   // items on a given ISO date
   const itemsOn = useCallback((ds) => {
     const evs = myEvents.filter(e => e.event_date === ds).map(e => ({
@@ -208,7 +196,6 @@ export default function Calendar() {
       color: gcalConn?.color || '#EA4335', calendarName: g.calendar_name,
       description: g.description, location: g.location, hangoutLink: g.hangout_link, htmlLink: g.html_link,
     }))
-
     // Shared calendars: other people's manual events + intervals + Google events,
     // when they've shared with me and I haven't toggled them off.
     const shareByOwner = {}; sharedWithMe.forEach(s => { shareByOwner[s.owner_id] = s })
@@ -243,7 +230,6 @@ export default function Calendar() {
         end: toViewerHHMM(b.block_date, b.end_time, COMPANY_TZ, viewerTZ),
         color: shareByOwner[c.profile_id]?.color || '#0891B2',
       }))
-
     const coachIvs = coaching.filter(s => s.session_date === ds).map(s => {
       const isMock = s.kind === 'mock_call'
       const title = isMock
@@ -256,14 +242,12 @@ export default function Calendar() {
         color: isMock ? '#7C3AED' : '#DB2777', hangoutLink: s.meeting_url || undefined,
       }
     })
-
     return [...evs, ...ivs, ...feeds, ...gcal, ...sharedEvs, ...sharedGcal, ...sharedIvs, ...coachIvs].sort((a, b) => {
       if (a.allDay && !b.allDay) return -1
       if (!a.allDay && b.allDay) return 1
       return (a.start || '').localeCompare(b.start || '')
     })
   }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn, events, claims, coaching, sharedWithMe, hiddenShares, profiles, userId, viewerTZ])
-
   const tasksOn = useCallback((ds) => {
     const due = myTasks.filter(t => t.due_date === ds)
     return {
@@ -271,11 +255,8 @@ export default function Calendar() {
       other: due.filter(t => t.priority !== 'high'),
     }
   }, [myTasks])
-
   if (loading) return <div className="page-sub" style={{ padding: 30 }}>Loading calendar…</div>
-
   const shared = { cursor, setCursor, itemsOn, tasksOn, userId, allTasks: myTasks, onAddEvent: (d) => setEditEvent({ event_date: isoDate(d || cursor) }), onEditEvent: setEditEvent, onShowDetail: setDetailItem, onToggleTaskDone: toggleTaskDone, onToggleTaskTimer: toggleTaskTimer, runningEntry, timeEntries }
-
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
@@ -287,22 +268,18 @@ export default function Calendar() {
         {view === 'week' && <WeekView {...shared} />}
         {view === 'day' && <DayView {...shared} />}
       </BookFrame>
-
       {showShares && (
         <SharesModal userId={userId} profiles={profiles} sharedWithMe={sharedWithMe} mySharedOut={mySharedOut}
           hiddenShares={hiddenShares} setHiddenShares={setHiddenShares}
           onClose={() => setShowShares(false)} onChanged={() => load()} />
       )}
-
       {showSubs && (
         <SubscriptionsModal subs={subs} userId={userId} gcalConn={gcalConn} setGcalConn={setGcalConn} gcalAccounts={gcalAccounts} setSubs={setSubs}
           onClose={() => setShowSubs(false)}
           onChanged={() => load()} />
       )}
-
       {detailItem && <EventDetailModal item={detailItem} onClose={() => setDetailItem(null)}
         onEdit={(raw) => { setDetailItem(null); setEditEvent(raw) }} />}
-
       {editEvent && (
         <EventModal event={editEvent} userId={userId} isAdmin={isAdmin} gcalConn={gcalConn} profiles={profiles}
           onClose={() => setEditEvent(null)}
@@ -311,12 +288,10 @@ export default function Calendar() {
     </div>
   )
 }
-
 // ---------- BOOK FRAME (leather cover + tabs) ----------
 function BookFrame({ view, setView, children }) {
   const narrow = useNarrow(700)
   const tabs = ['month', 'week', 'day']
-
   // On phones the vertical "spine" tabs + big leather margins waste the little
   // width there is. Switch to a compact horizontal tab bar above the page.
   if (narrow) {
@@ -336,7 +311,6 @@ function BookFrame({ view, setView, children }) {
       </div>
     )
   }
-
   return (
     <div style={{ background: '#4a6178', borderRadius: 16, padding: 18, boxShadow: 'inset 0 0 40px rgba(0,0,0,.22)', position: 'relative' }}>
       <div style={{ display: 'flex', background: 'var(--cal-paper)', borderRadius: 8, overflow: 'hidden', minHeight: 560 }}>
@@ -356,7 +330,6 @@ function BookFrame({ view, setView, children }) {
     </div>
   )
 }
-
 // ---------- shared left-rail (mini month + quote) ----------
 // A large curated library so the calendar shows a genuinely fresh quote each
 // day. quoteFor() advances by exactly one entry per calendar day and cycles
@@ -472,7 +445,6 @@ function quoteFor(d) {
   const dayNum = Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000)
   return QUOTES[((dayNum % QUOTES.length) + QUOTES.length) % QUOTES.length]
 }
-
 function LeftRail({ cursor, setCursor, onAddEvent, tasksOn, allTasks = [] }) {
   const today = etNow()
   const ds = isoDate(today)
@@ -484,7 +456,6 @@ function LeftRail({ cursor, setCursor, onAddEvent, tasksOn, allTasks = [] }) {
     .sort((a, b) => (a.due_date || '').localeCompare(b.due_date || ''))
   const dateLabel = today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   const fmtDue = (d) => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) } catch { return d } }
-
   // Task line that WRAPS (no truncation) so the text is always readable.
   const TaskRow = ({ t, overdue }) => (
     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '6px 0', fontSize: 12.5, lineHeight: 1.35 }}>
@@ -494,24 +465,20 @@ function LeftRail({ cursor, setCursor, onAddEvent, tasksOn, allTasks = [] }) {
       </span>
     </div>
   )
-
   return (
     <div style={{ width: 220, flexShrink: 0, padding: '20px 18px', borderRight: '1px solid var(--cal-line-2)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: 'var(--cal-ink-soft)', marginBottom: 2 }}>Today</div>
       <div style={{ fontFamily: 'Georgia, serif', fontSize: 19, color: 'var(--cal-ink)', lineHeight: 1.2, marginBottom: 14 }}>{dateLabel}</div>
-
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
         <button onClick={() => setCursor(etNow())} style={railBtn}>TODAY</button>
         <button onClick={() => onAddEvent()} style={railBtn}>ADD EVENT</button>
       </div>
-
       {pastDue.length > 0 && (
         <>
           <div style={{ color: '#DC2626', fontSize: 11, letterSpacing: 2, fontWeight: 700, marginBottom: 6 }}>PAST DUE ({pastDue.length})</div>
           {pastDue.map(t => <TaskRow key={t.id} t={t} overdue />)}
         </>
       )}
-
       <div style={{ color: '#c07a5a', fontSize: 11, letterSpacing: 2, margin: (pastDue.length ? '18px 0 6px' : '0 0 6px') }}>DUE TODAY</div>
       {dueTasks.length ? dueTasks.map(t => <TaskRow key={t.id} t={t} />)
         : <div style={{ fontSize: 12, color: 'var(--cal-ink-mute)', fontStyle: 'italic' }}>Nothing due today. 🎉</div>}
@@ -519,7 +486,6 @@ function LeftRail({ cursor, setCursor, onAddEvent, tasksOn, allTasks = [] }) {
   )
 }
 const railBtn = { border: '1px solid var(--cal-line)', borderRadius: 14, padding: '4px 12px', fontSize: 11, color: 'var(--cal-ink-soft)', letterSpacing: '.5px', background: 'transparent', cursor: 'pointer' }
-
 // ---------- MONTH VIEW ----------
 function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent, onShowDetail, allTasks }) {
   const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
@@ -530,16 +496,13 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
   const todayStr = isoDate(etNow())
   const [dayPopup, setDayPopup] = React.useState(null) // {date, items}
   const narrow = useNarrow(700)
-
   const CELL_H = narrow ? 86 : 132
   const MAX_SHOWN = narrow ? 2 : 4
-
   function openItem(i, e) {
     e.stopPropagation()
     if (i.kind === 'event' && i.raw) onEditEvent(i.raw)   // manual event → edit
     else onShowDetail(i)                                   // gcal/feed/interval → read-only detail
   }
-
   function DayCell({ d }) {
     const ds = isoDate(d)
     const items = itemsOn(ds)
@@ -575,9 +538,7 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
       </div>
     )
   }
-
   const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-
   const dayHeadNames = narrow ? ['M', 'T', 'W', 'T', 'F', 'S', 'S'] : dayNames
   return (
     <div style={{ display: 'flex' }}>
@@ -598,7 +559,6 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
           {days.map((d, i) => <DayCell key={i} d={d} />)}
         </div>
       </div>
-
       {dayPopup && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }} onClick={() => setDayPopup(null)}>
           <div className="card" style={{ width: 380, maxWidth: '90vw', maxHeight: '80vh', overflowY: 'auto', padding: 18 }} onClick={e => e.stopPropagation()}>
@@ -621,7 +581,6 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
     </div>
   )
 }
-
 // shared nav bar: ‹ label › + Today
 function ViewNav({ cursor, setCursor, label, onPrev, onNext }) {
   const narrow = useNarrow(700)
@@ -639,7 +598,6 @@ function ViewNav({ cursor, setCursor, label, onPrev, onNext }) {
   )
 }
 const navArrow = { border: '1px solid var(--cal-line)', background: 'transparent', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', color: 'var(--cal-ink-soft)', fontSize: 16, lineHeight: 1 }
-
 // ---------- WEEK VIEW ----------
 function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent, onShowDetail, allTasks }) {
   const openItem = (i, e) => { e.stopPropagation(); if (i.kind === 'event' && i.raw) onEditEvent(i.raw); else onShowDetail(i) }
@@ -652,13 +610,10 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
   const AXIS_W = narrow ? 24 : 38
   const todayStr = isoDate(etNow())
   const hourLabel = (h) => h === 0 ? '12a' : h === 12 ? '12p' : h > 12 ? `${h - 12}p` : `${h}a`
-
   const allDayByDay = week.map(d => itemsOn(isoDate(d)).filter(i => i.allDay))
   const hasAllDay = allDayByDay.some(a => a.length > 0)
-
   const cellStyle = { flex: 1, minWidth: 0, borderRight: '1px solid var(--cal-line-2)' }
   const axisSpacer = { width: AXIS_W, flexShrink: 0 }
-
   // ---- day-name header row (own row so the all-day band can line up under it)
   function DayHead({ d }) {
     const isToday = isoDate(d) === todayStr
@@ -674,7 +629,6 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
       </div>
     )
   }
-
   // ---- timed-events column
   function DayCol({ d }) {
     const ds = isoDate(d)
@@ -703,7 +657,6 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
       </div>
     )
   }
-
   // ---- per-day PRIORITY footer (wide screens only — 45px-wide columns can't hold it)
   function PriorityCol({ d }) {
     const { priority } = tasksOn(isoDate(d))
@@ -719,7 +672,6 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
       </div>
     )
   }
-
   // ---- left hour-label axis, aligned to the same rows
   function HourAxis() {
     return (
@@ -732,7 +684,6 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
       </div>
     )
   }
-
   // On phones the priority columns collapse into one readable list under the grid.
   function PriorityList() {
     const rows = week.map(d => ({ d, tasks: tasksOn(isoDate(d)).priority })).filter(r => r.tasks.length)
@@ -754,7 +705,6 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
       </div>
     )
   }
-
   return (
     <div style={{ display: 'flex' }}>
       {/* The rail eats ~2/3 of a phone's width and crushes the 7 day columns. */}
@@ -764,13 +714,11 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
           label={`${MONTHS[mon.getMonth()].slice(0, 3)} ${mon.getDate()} – ${MONTHS[week[6].getMonth()].slice(0, 3)} ${week[6].getDate()}`}
           onPrev={() => setCursor(addDays(cursor, -7))}
           onNext={() => setCursor(addDays(cursor, 7))} />
-
         {/* day names */}
         <div style={{ display: 'flex' }}>
           <div style={axisSpacer} />
           {week.map(d => <DayHead key={'h' + isoDate(d)} d={d} />)}
         </div>
-
         {/* all-day band — these events used to be dropped from week view entirely */}
         {hasAllDay && (
           <div style={{ display: 'flex', borderTop: '1px solid var(--cal-line-2)', background: 'var(--cal-line-3)' }}>
@@ -789,13 +737,11 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
             ))}
           </div>
         )}
-
         {/* hour grid */}
         <div style={{ display: 'flex' }}>
           <HourAxis />
           {week.map(d => <DayCol key={isoDate(d)} d={d} />)}
         </div>
-
         {/* priority tasks */}
         {narrow ? <PriorityList /> : (
           <div style={{ display: 'flex' }}>
@@ -807,7 +753,6 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
     </div>
   )
 }
-
 // Responsive: stack the day-view pages and the planner columns when the
 // viewport is narrow (small window or mobile) instead of crushing them
 // side-by-side until the text overlaps.
@@ -820,7 +765,6 @@ function useNarrow(breakpoint = 900) {
   }, [breakpoint])
   return narrow
 }
-
 // ---------- DAY VIEW ----------
 function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddEvent, onEditEvent, onShowDetail, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries }) {
   const openItem = (i, e) => { if (e) e.stopPropagation(); if (i.kind === 'event' && i.raw) onEditEvent(i.raw); else onShowDetail(i) }
@@ -832,7 +776,6 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
   const hours = Array.from({ length: 24 }, (_, i) => i) // 12a–11p (full day)
   const [q, who] = quoteFor(cursor)
   const narrow = useNarrow(900)
-
   return (
     <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', minHeight: narrow ? 0 : 820 }}>
       {/* left page: hourly column */}
@@ -868,7 +811,6 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
           ))}
         </div>
       </div>
-
       {/* right page: panels */}
       <div style={{ flex: 1, padding: narrow ? '12px 10px' : '18px 20px', minWidth: 0 }}>
         <DayPlanner userId={userId} ds={ds} priority={priority} other={other} quote={[q, who]} dayItems={items} onOpenItem={openItem}
@@ -877,11 +819,9 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
     </div>
   )
 }
-
 // ---------- DAY PLANNER (interactive: tasks + quick todos + meals + water) ----------
 const MEAL_FIELDS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snack', 'Snack']]
 const WATER_GOAL = 8
-
 function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenItem, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries }) {
   const narrow = useNarrow(700)
   const [water, setWater] = useState(0)
@@ -894,7 +834,6 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
   const [wellbeing, setWellbeing] = useState({})   // {break, air, connect} check-offs + goodThing note
   const [loaded, setLoaded] = useState(false)
   const [saveErr, setSaveErr] = useState('')
-
   useEffect(() => {
     let active = true
     ;(async () => {
@@ -912,7 +851,6 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
     })()
     return () => { active = false }
   }, [userId, ds])
-
   const save = useCallback(async (patch) => {
     if (!userId) return
     const { error } = await supabase.from('day_planner').upsert({
@@ -927,10 +865,8 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
       setSaveErr('')
     }
   }, [userId, ds, water, meals, todos, walkDone, walkNote, wellbeing])
-
   function toggleWalk() { const v = !walkDone; setWalkDone(v); save({ walk_done: v }) }
   function toggleWell(key) { const w = { ...wellbeing, [key]: !wellbeing[key] }; setWellbeing(w); save({ wellbeing: w }) }
-
   function setWaterTo(n) { const v = water === n ? n - 1 : n; setWater(v); save({ water: v }) }
   function setMeal(key, val) { const m = { ...meals, [key]: val }; setMeals(m) }
   function addTodo(pri) {
@@ -943,11 +879,9 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
   }
   function toggleTodo(id) { const next = todos.map(t => t.id === id ? { ...t, done: !t.done } : t); setTodos(next); save({ quick_todos: next }) }
   function delTodo(id) { const next = todos.filter(t => t.id !== id); setTodos(next); save({ quick_todos: next }) }
-
   const [q, who] = quote
   const myPriorityTodos = todos.filter(t => t.priority === 'high')
   const myOtherTodos = todos.filter(t => t.priority !== 'high')
-
   return (
     <div>
       {saveErr && (
@@ -961,20 +895,17 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
         <TaskAndTodoList tasks={priority} todos={myPriorityTodos} onToggle={toggleTodo} onDel={delTodo} emptyBoth="No priority items."
           onToggleTaskDone={onToggleTaskDone} onToggleTaskTimer={onToggleTaskTimer} runningEntry={runningEntry} />
         <QuickAdd value={newTodo} setValue={setNewTodo} onAdd={() => addTodo('high')} placeholder="Add a priority to-do…" />
-
         <div style={{ height: 22 }} />
         <PanelHead>OTHER TASKS</PanelHead>
         <TaskAndTodoList tasks={other} todos={myOtherTodos} onToggle={toggleTodo} onDel={delTodo} emptyBoth="Nothing else today."
           onToggleTaskDone={onToggleTaskDone} onToggleTaskTimer={onToggleTaskTimer} runningEntry={runningEntry} />
         <QuickAdd value={newOtherTodo} setValue={setNewOtherTodo} onAdd={() => addTodo('other')} placeholder="Add a to-do…" />
       </div>
-
       <div style={{ width: narrow ? '100%' : 250, flexShrink: 0 }}>
         <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 13, color: 'var(--cal-ink-soft)', lineHeight: 1.5 }}>
           &ldquo;{q}&rdquo;
           <div style={{ marginTop: 6, fontStyle: 'normal', fontSize: 12, color: 'var(--cal-ink-mute)' }}>— {who}</div>
         </div>
-
         <div style={{ marginTop: 22 }}>
           <PanelHead>MEALS</PanelHead>
           {MEAL_FIELDS.map(([key, label]) => (
@@ -985,7 +916,6 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
             </div>
           ))}
         </div>
-
         <div style={{ marginTop: 22 }}>
           <PanelHead>WATER</PanelHead>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginTop: 8 }}>
@@ -999,7 +929,6 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
           </div>
           <div style={{ fontSize: 11, color: 'var(--cal-ink-mute)', marginTop: 6 }}>{water} of {WATER_GOAL} glasses</div>
         </div>
-
         <div style={{ marginTop: 22 }}>
           <PanelHead>WELLBEING</PanelHead>
           <div onClick={toggleWalk}
@@ -1034,7 +963,6 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
     </div>
   )
 }
-
 function QuickAdd({ value, setValue, onAdd, placeholder }) {
   return (
     <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
@@ -1044,7 +972,6 @@ function QuickAdd({ value, setValue, onAdd, placeholder }) {
     </div>
   )
 }
-
 function TaskAndTodoList({ tasks, todos, onToggle, onDel, emptyBoth, onToggleTaskDone, onToggleTaskTimer, runningEntry }) {
   if (!tasks.length && !todos.length) return <div style={{ fontSize: 12, color: 'var(--cal-ink-mute)', fontStyle: 'italic', margin: '8px 0' }}>{emptyBoth}</div>
   return (
@@ -1076,11 +1003,9 @@ function TaskAndTodoList({ tasks, todos, onToggle, onDel, emptyBoth, onToggleTas
     </div>
   )
 }
-
 function PanelHead({ children }) {
   return <div style={{ color: '#c07a5a', fontSize: 12, letterSpacing: 2, fontWeight: 500 }}>{children}</div>
 }
-
 // ---------- SHARED CALENDARS ----------
 function SharesModal({ userId, profiles, sharedWithMe, mySharedOut, hiddenShares, setHiddenShares, onClose, onChanged }) {
   const [pick, setPick] = useState('')
@@ -1088,7 +1013,6 @@ function SharesModal({ userId, profiles, sharedWithMe, mySharedOut, hiddenShares
   const nameOf = (pid) => (profiles.find(p => p.id === pid) || {}).full_name || 'Unknown'
   const alreadyShared = new Set(mySharedOut.map(s => s.viewer_id))
   const candidates = profiles.filter(p => p.id !== userId && !alreadyShared.has(p.id))
-
   async function shareWith() {
     if (!pick) return
     setBusy(true)
@@ -1100,13 +1024,11 @@ function SharesModal({ userId, profiles, sharedWithMe, mySharedOut, hiddenShares
     onChanged()
   }
   function toggleHidden(ownerId) { setHiddenShares(prev => ({ ...prev, [ownerId]: !prev[ownerId] })) }
-
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }} onClick={onClose}>
       <div className="card" style={{ width: 480, maxWidth: '92vw', padding: 22, maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <h3 style={{ margin: '0 0 4px', fontSize: 17 }}>Shared calendars</h3>
         <p className="page-sub" style={{ marginTop: 0, marginBottom: 16, fontSize: 13 }}>Share your meetings and work times with teammates so they can see your availability. Read-only.</p>
-
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>People viewing my calendar</div>
         {mySharedOut.length ? mySharedOut.map(s => (
           <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--line-soft)' }}>
@@ -1114,7 +1036,6 @@ function SharesModal({ userId, profiles, sharedWithMe, mySharedOut, hiddenShares
             <button className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--failed)' }} onClick={() => unshare(s.viewer_id)}>Stop sharing</button>
           </div>
         )) : <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', fontStyle: 'italic', marginBottom: 6 }}>You haven't shared with anyone yet.</div>}
-
         <div style={{ display: 'flex', gap: 8, marginTop: 12, marginBottom: 20 }}>
           <select value={pick} onChange={e => setPick(e.target.value)} style={{ flex: 1, fontSize: 13, padding: '7px 9px', borderRadius: 6, border: '1px solid var(--line)' }}>
             <option value="">Share my calendar with…</option>
@@ -1122,7 +1043,6 @@ function SharesModal({ userId, profiles, sharedWithMe, mySharedOut, hiddenShares
           </select>
           <button className="btn btn-primary" onClick={shareWith} disabled={!pick || busy}>Share</button>
         </div>
-
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8, borderTop: '1px solid var(--line)', paddingTop: 16 }}>Calendars shared with me</div>
         {sharedWithMe.length ? sharedWithMe.map(s => (
           <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--line-soft)' }}>
@@ -1131,7 +1051,6 @@ function SharesModal({ userId, profiles, sharedWithMe, mySharedOut, hiddenShares
             <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => toggleHidden(s.owner_id)}>{hiddenShares[s.owner_id] ? 'Show' : 'Hide'}</button>
           </div>
         )) : <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', fontStyle: 'italic' }}>No one has shared their calendar with you yet.</div>}
-
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
           <button className="btn btn-ghost" onClick={onClose}>Done</button>
         </div>
@@ -1139,7 +1058,6 @@ function SharesModal({ userId, profiles, sharedWithMe, mySharedOut, hiddenShares
     </div>
   )
 }
-
 // ---------- CONNECTED CALENDARS (external .ics feeds) ----------
 function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts = [], setSubs, onClose, onChanged }) {
   const [label, setLabel] = useState('')
@@ -1151,7 +1069,6 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts 
   const [gcalSyncing, setGcalSyncing] = useState(false)
   const [gcals, setGcals] = useState(null)   // list of google calendars
   const [target, setTarget] = useState('primary')
-
   // load the user's Google calendars (for picking the push target)
   const isConnected = !!gcalConn
   useEffect(() => {
@@ -1162,13 +1079,11 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts 
     }).catch(() => {})
     return () => { active = false }
   }, [isConnected])
-
   async function setTargetCalendar(id) {
     setTarget(id)
     const cal = (gcals || []).find(c => c.id === id)
     await supabase.functions.invoke('google-calendar-write', { body: { action: 'set-target', calendar_id: id, calendar_name: cal?.name } })
   }
-
   // Google OAuth: send the user to Google's consent screen. state = user id so
   // the callback knows who connected. client id is public (only secret is sensitive).
   function connectGoogle() {
@@ -1189,7 +1104,6 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts 
     authUrl.searchParams.set('state', userId)
     window.location.href = authUrl.toString()
   }
-
   async function syncGoogle() {
     setGcalSyncing(true); setErr('')
     const { data, error } = await supabase.functions.invoke('google-calendar-sync', { body: {} })
@@ -1198,7 +1112,6 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts 
     if (data?.error) { setErr('Google sync failed: ' + data.error); return }
     onChanged()
   }
-
   async function disconnectGoogle(acct) {
     if (acct?.id) {
       // Disconnect one specific account + drop its pulled events.
@@ -1212,11 +1125,10 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts 
     }
     onChanged()
   }
-
   async function add() {
     setErr('')
     if (!label.trim() || !url.trim()) { setErr('Add a name and an .ics URL.'); return }
-    if (!/^https?:\/\/|^webcal:\/\//i.test(url.trim())) { setErr('That doesn\u2019t look like a calendar URL.'); return }
+    if (!/^https?:\/\/|^webcal:\/\//i.test(url.trim())) { setErr('That doesn’t look like a calendar URL.'); return }
     setBusy(true)
     const { data, error } = await supabase.from('calendar_subscriptions')
       .insert({ owner_id: userId, label: label.trim(), ics_url: url.trim(), color })
@@ -1227,7 +1139,6 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts 
     setLabel(''); setUrl(''); setBusy(false)
     onChanged()
   }
-
   async function sync(id, silent) {
     setSyncing(id); setErr('')
     const { data, error } = await supabase.functions.invoke('sync-calendar-feed', { body: { subscription_id: id } })
@@ -1236,22 +1147,17 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts 
     if (data?.error) { setErr('Sync failed: ' + data.error); return }
     if (!silent) onChanged()
   }
-
   async function remove(id) {
     await supabase.from('calendar_subscriptions').delete().eq('id', id)
     onChanged()
   }
-
   const PRESET = [['#7C3AED', 'Purple'], ['#0077B6', 'Blue'], ['#16A34A', 'Green'], ['#D97706', 'Amber'], ['#DC2626', 'Red']]
-
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }} onClick={onClose}>
       <div className="card" style={{ width: 500, maxWidth: '92vw', padding: 22, maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <h3 style={{ margin: '0 0 4px', fontSize: 17 }}>Connected calendars</h3>
         <p className="page-sub" style={{ marginTop: 0, marginBottom: 16, fontSize: 13 }}>Subscribe to Google, Outlook, or Apple calendars by their secret .ics link. Events show up on your calendar (read-only).</p>
-
         {err && <div style={{ color: 'var(--failed)', fontSize: 12, marginBottom: 10 }}>{err}</div>}
-
         {/* Google Calendar (OAuth) — multiple accounts */}
         <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', marginBottom: 16, background: 'var(--canvas)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1266,7 +1172,6 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts 
               <button className="btn btn-ghost" style={{ fontSize: 12 }} disabled={gcalSyncing} onClick={syncGoogle}>{gcalSyncing ? 'Syncing…' : 'Sync all'}</button>
             )}
           </div>
-
           {/* per-account rows */}
           {gcalAccounts.map(a => (
             <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line-soft)' }}>
@@ -1282,14 +1187,12 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts 
               <button className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--failed)' }} onClick={() => disconnectGoogle(a)}>Disconnect</button>
             </div>
           ))}
-
           {/* connect another / first account */}
           <div style={{ marginTop: 12 }}>
             <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={connectGoogle}>
               {gcalAccounts.length ? '+ Connect another Google account' : 'Connect Google'}
             </button>
           </div>
-
           {gcalConn && gcals && (
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--line-soft)' }}>
               <label style={{ fontSize: 11, color: 'var(--ink-soft)', fontWeight: 600 }}>New Command Center events are added to ({gcalConn.google_email}):</label>
@@ -1300,7 +1203,6 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts 
             </div>
           )}
         </div>
-
         {subs.length > 0 && (
           <div style={{ marginBottom: 18 }}>
             {subs.map(s => (
@@ -1318,7 +1220,6 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts 
             ))}
           </div>
         )}
-
         <div style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>Add a calendar</div>
           <div className="field"><label>Name</label>
@@ -1337,7 +1238,6 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts 
           </div>
           <button className="btn btn-primary" onClick={add} disabled={busy} style={{ marginTop: 6 }}>{busy ? 'Adding…' : 'Add calendar'}</button>
         </div>
-
         <details style={{ marginTop: 16, fontSize: 12, color: 'var(--ink-soft)' }}>
           <summary style={{ cursor: 'pointer' }}>Where do I find my .ics link?</summary>
           <div style={{ marginTop: 8, lineHeight: 1.6 }}>
@@ -1346,7 +1246,6 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts 
             <b>Apple iCloud:</b> Share the calendar as a Public Calendar, then copy the webcal:// link.
           </div>
         </details>
-
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
           <button className="btn btn-ghost" onClick={onClose}>Done</button>
         </div>
@@ -1354,7 +1253,6 @@ function SubscriptionsModal({ subs, userId, gcalConn, setGcalConn, gcalAccounts 
     </div>
   )
 }
-
 // ---------- EVENT DETAIL (read-only popup) ----------
 function EventDetailModal({ item, onClose, onEdit }) {
   // linkify a description that may contain a URL (Zoom, Meet, etc.)
@@ -1362,7 +1260,6 @@ function EventDetailModal({ item, onClose, onEdit }) {
   const desc = item.description || item.raw?.notes || ''
   const parts = desc ? desc.split(urlRe) : []
   const zoom = item.hangoutLink || (desc.match(/https?:\/\/[^\s]*(zoom\.us|meet\.google|teams\.microsoft)[^\s]*/) || [])[0]
-
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3100 }} onClick={onClose}>
       <div className="card" style={{ width: 440, maxWidth: '92vw', maxHeight: '85vh', overflowY: 'auto', padding: 22 }} onClick={e => e.stopPropagation()}>
@@ -1370,28 +1267,24 @@ function EventDetailModal({ item, onClose, onEdit }) {
           <span style={{ width: 12, height: 12, borderRadius: 3, background: item.color, marginTop: 5, flexShrink: 0 }} />
           <h3 style={{ margin: 0, fontSize: 18, lineHeight: 1.3 }}>{item.title}</h3>
         </div>
-
         <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginBottom: 14 }}>
           {item.allDay ? 'All day' : `${item.start ? fmtTime(item.start) : ''}${item.end ? ' – ' + fmtTime(item.end) : ''}`}
           {item.kind === 'gcal' && <span> · Google Calendar</span>}
           {item.kind === 'interval' && <span> · Scheduled interval</span>}
           {item.kind === 'feed' && <span> · Subscribed calendar</span>}
         </div>
-
         {zoom && (
           <a href={zoom} target="_blank" rel="noopener noreferrer"
             style={{ display: 'inline-block', background: '#2D8CFF', color: '#fff', padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: 'none', marginBottom: 14 }}>
             Join video call
           </a>
         )}
-
         {item.location && (
           <div style={{ fontSize: 13, marginBottom: 12 }}>
             <span style={{ color: 'var(--ink-soft)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>Location</span>
             <div>{item.location}</div>
           </div>
         )}
-
         {desc && (
           <div style={{ fontSize: 13, marginBottom: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }}>
             <span style={{ color: 'var(--ink-soft)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', display: 'block', marginBottom: 4 }}>Details</span>
@@ -1400,7 +1293,6 @@ function EventDetailModal({ item, onClose, onEdit }) {
               : <span key={idx}>{p}</span>)}
           </div>
         )}
-
         <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>
           {item.htmlLink && <a href={item.htmlLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--ink-soft)' }}>Open in Google ↗</a>}
           {item.kind === 'event' && item.raw && <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => onEdit(item.raw)}>Edit</button>}
@@ -1410,7 +1302,6 @@ function EventDetailModal({ item, onClose, onEdit }) {
     </div>
   )
 }
-
 // ---------- EVENT DETAIL end ----------
 // ---------- INVITEE PICKER ----------
 // A compact searchable multi-select over team members. Selected people show as
@@ -1454,7 +1345,6 @@ function InviteePicker({ profiles, userId, value, onChange }) {
     </div>
   )
 }
-
 // ---------- EVENT MODAL ----------
 function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, onSaved }) {
   const isNew = !event.id
@@ -1466,13 +1356,13 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, 
   const [start, setStart] = useState(event.start_time || '09:00')
   const [end, setEnd] = useState(event.end_time || '10:00')
   const [notes, setNotes] = useState(event.notes || '')
+  const [meetingUrl, setMeetingUrl] = useState(event.meeting_url || '')
   const [scope, setScope] = useState(event.scope || 'personal')
   const [color, setColor] = useState(event.color || '#0077B6')
   const [invitees, setInvitees] = useState(event.invitee_ids || [])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || 'Unknown'
-
   async function save() {
     if (!title.trim()) { setErr('Give the event a title.'); return }
     setSaving(true)
@@ -1480,7 +1370,7 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, 
       title: title.trim(), event_date: date, all_day: allDay,
       start_time: allDay ? null : start, end_time: allDay ? null : end,
       notes: notes.trim() || null, scope, color, owner_id: userId, tz: detectedTZ(),
-      invitee_ids: invitees,
+      invitee_ids: invitees, meeting_url: meetingUrl.trim() || null,
     }
     let savedId = event.id
     let res
@@ -1491,7 +1381,6 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, 
       res = await supabase.from('calendar_events').update(payload).eq('id', event.id).select().single()
     }
     if (res.error) { setSaving(false); setErr(res.error.message); return }
-
     // push to Google if connected
     if (gcalConn && savedId) {
       try {
@@ -1517,7 +1406,6 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, 
     await supabase.from('calendar_events').delete().eq('id', event.id)
     onSaved()
   }
-
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }} onClick={onClose}>
       <div className="card" style={{ width: 420, maxWidth: '90vw', padding: 20 }} onClick={e => e.stopPropagation()}>
@@ -1545,6 +1433,13 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, 
         )}
         <div className="field"><label>Notes</label>
           <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} disabled={!isOwner} />
+        </div>
+        <div className="field"><label>Meeting link</label>
+          <input value={meetingUrl} onChange={e => setMeetingUrl(e.target.value)} placeholder="Paste a Zoom / Teams / Meet link (optional)" disabled={!isOwner} />
+          {isOwner && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>Add a video link and the notetaker will join and record this meeting into Command Center. Leave blank for none.</div>}
+          {meetingUrl && /^https?:\/\//i.test(meetingUrl.trim()) && (
+            <a href={meetingUrl.trim()} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: 12, color: 'var(--accent, #0077B6)', wordBreak: 'break-all' }}>Join meeting ↗</a>
+          )}
         </div>
         <div className="field"><label>Invitees</label>
           {isOwner ? (
