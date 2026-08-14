@@ -50,6 +50,7 @@ import { UnreadProvider } from './lib/unread'
 import ApplicationForm from './modules/ApplicationForm'
 import AssessmentForm from './modules/AssessmentForm'
 import HiringDashboard from './modules/HiringDashboard'
+import MockCallScheduler from './modules/MockCallScheduler'
 // --- sales pipeline ---
 import SalesDashboard from './modules/SalesDashboard'
 // --- RSN pipeline (tag/role-gated variant of Sales with LinkedIn stages) ---
@@ -61,6 +62,14 @@ import { useParams } from 'react-router-dom'
 function AssessmentRoute() {
   const { appId } = useParams()
   return <AssessmentForm applicationId={appId} />
+}
+// Public fallback for the old emailed /mock-call/:appId link. The normal path
+// is now the "Schedule my mock call" tab inside the onboarding shell — by this
+// stage candidates have a Command Center login, so they book there the same way
+// they do their certification.
+function MockCallRoute() {
+  const { appId } = useParams()
+  return <MockCallScheduler appId={appId} />
 }
 // Who's On — live check-in / current-task view (LiveStatus, shift-based) PLUS the
 // team presence board (who's online, self-set status, OOO). LiveStatus self-scopes:
@@ -93,12 +102,19 @@ export default function App() {
   // signed in can reach the application and assessment forms.
   const publicPaths = ['/apply', '/assessment']
   const isPublic = publicPaths.some(p => location.pathname === p || location.pathname.startsWith(p + '/'))
-  if (isPublic) {
+  // /mock-call is public ONLY for someone with no session at all (the legacy
+  // emailed link). Anyone signed in — client portal, trainee, staff — must fall
+  // through to their own shell below, so this can never pre-empt the
+  // appRole === 'client' gate.
+  const isMockPublic = !session && (location.pathname === '/mock-call' || location.pathname.startsWith('/mock-call/'))
+  if (isPublic || isMockPublic) {
     return (
       <Routes>
         <Route path="/apply" element={<ApplicationForm />} />
         <Route path="/assessment/:appId" element={<AssessmentRoute />} />
         <Route path="/assessment" element={<AssessmentForm />} />
+        <Route path="/mock-call/:appId" element={<MockCallRoute />} />
+        <Route path="/mock-call" element={<Login />} />
       </Routes>
     )
   }
@@ -169,11 +185,28 @@ function TraineePortal({ session }) {
   const { signOut } = useAuth()
   const [tab, setTab] = useState('certs')
   const [mustChange, setMustChange] = useState(null)
+  // Is this person at the mock-call step? If so they get a booking tab here —
+  // same place they do their certification, no separate link to keep track of.
+  const [mock, setMock] = useState(null)   // {ok, status, booked, provider_name}
   useEffect(() => {
     let active = true
     supabase.from('profiles').select('must_change_password').eq('id', session.user.id).single()
       .then(({ data }) => { if (active) setMustChange(!!data?.must_change_password) })
       .catch(() => { if (active) setMustChange(false) })
+    return () => { active = false }
+  }, [session.user.id])
+  useEffect(() => {
+    let active = true
+    supabase.rpc('get_my_mock_application')
+      .then(({ data }) => {
+        if (!active) return
+        setMock(data || { ok: false })
+        // Land straight on booking when that's the step they're on — either
+        // because they followed the email link or because it's simply what's
+        // next for them.
+        if (data?.ok && !data?.booked) setTab('mock')
+      })
+      .catch(() => { if (active) setMock({ ok: false }) })
     return () => { active = false }
   }, [session.user.id])
   if (mustChange === null) return <div className="loading-screen">Loading…</div>
@@ -193,14 +226,19 @@ function TraineePortal({ session }) {
       </header>
       <div style={{ maxWidth: 1000, margin: '0 auto', padding: '20px 16px 40px' }}>
         <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 14 }}>
-          👋 Welcome! Your first step is <strong>certification</strong> — complete it below to move forward in onboarding. The rest of Command Center unlocks once you're all set.
+          {mock?.ok && !mock?.booked
+            ? <>🎧 You're almost done! Your last step is a <strong>mock call</strong> with {mock.provider_name || 'our team'} — pick a time on the <strong>Schedule my mock call</strong> tab below.</>
+            : mock?.ok && mock?.booked
+              ? <>🎧 Your <strong>mock call</strong> is booked — see the details on the <strong>My mock call</strong> tab below.</>
+              : <>👋 Welcome! Your first step is <strong>certification</strong> — complete it below to move forward in onboarding. The rest of Command Center unlocks once you're all set.</>}
           <div style={{ marginTop: 6 }}>Questions? Email <a href="mailto:onboarding@opsiscx.com" style={{ color: '#1d4ed8', fontWeight: 600 }}>onboarding@opsiscx.com</a>.</div>
         </div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
           {tabBtn('certs', 'My Certifications')}
           {tabBtn('courses', 'My Courses')}
+          {mock?.ok && tabBtn('mock', mock?.booked ? '🎧 My mock call' : '🎧 Schedule my mock call')}
         </div>
-        {tab === 'certs' ? <MyCertifications /> : <MyCourses />}
+        {tab === 'mock' ? <MockCallScheduler embedded /> : tab === 'certs' ? <MyCertifications /> : <MyCourses />}
       </div>
       <footer style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: '24px 0 32px' }}>Opsis CX</footer>
     </div>
@@ -248,6 +286,10 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             <Routes>
               <Route path="/" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <OpsisWeekly />} />
               <Route path="/calendar" element={<Calendar />} />
+              {/* Mock-call booking for anyone signed in but no longer in_training
+                  (e.g. unlocked early) — trainees get it as a tab instead. */}
+              <Route path="/mock-call" element={<MockCallScheduler embedded />} />
+              <Route path="/mock-call/:appId" element={<MockCallRoute />} />
               <Route path="/settings" element={<Settings />} />
               {isAdmin && <Route path="/roles" element={<RolesPermissions />} />}
               <Route path="/notifications" element={<Notifications />} />
@@ -303,7 +345,7 @@ function titleFor(path) {
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions',
-    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings', '/live': "Who's On",
+    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call',
   }
   return map[path] || 'Command Center'
 }
