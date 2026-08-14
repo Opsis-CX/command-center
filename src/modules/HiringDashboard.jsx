@@ -360,21 +360,32 @@ export default function HiringDashboard() {
       await inviteAgentAccount(app)
     }
 
-    // Reaching the end of the pipeline (Hired) unlocks their full agent access —
-    // clears in_training so they leave the Certification-only view.
+    // Passing the mock call is now the single activation event, handled in the
+    // database (migrations auto_activate_hire_on_mock_pass +
+    // auto_advance_mock_passed_to_hired, 2026-08-14): it clears in_training,
+    // adds them to the schedule matching the certification they passed, and
+    // advances the record to 'hired'. Nothing to call from here — and note there
+    // has never been a UI action producing 'hired' (no advanceMap entry for
+    // mock_passed), which is exactly why the old finish_onboarding call below
+    // never fired. Kept only for a manual/legacy jump straight to Hired.
     if (toStatus === 'hired') {
       await supabase.rpc('finish_onboarding', { p_application_id: app.id }).catch(() => {})
     }
 
-    const { error } = await supabase.from('hiring_applications').update(patch).eq('id', app.id)
+    // Read the row back instead of trusting the local patch: the database may
+    // have advanced the status past what we wrote (mock_passed -> hired), and
+    // the detail panel would otherwise keep showing the stale label.
+    const { data: saved, error } = await supabase.from('hiring_applications')
+      .update(patch).eq('id', app.id).select().single()
     if (error) { setErr(error.message); setBusy(false); return }
+    const applied = saved || { ...app, ...patch }
     await supabase.from('hiring_stage_events').insert({
       application_id: app.id, from_status: from, to_status: toStatus, actor_id: user?.id, note: note || null,
     })
     if (email) await sendHiringEmail(email, app.email, { name: app.full_name, appId: app.id, state: app.state })
     if (onboardResult) setLastOnboard({ name: app.full_name, ...onboardResult })
-    setApps(prev => prev.map(a => a.id === app.id ? { ...a, ...patch } : a))
-    setSelected(prev => prev && prev.id === app.id ? { ...prev, ...patch } : prev)
+    setApps(prev => prev.map(a => a.id === app.id ? { ...a, ...applied } : a))
+    setSelected(prev => prev && prev.id === app.id ? { ...prev, ...applied } : prev)
     setBusy(false)
   }
 
@@ -655,6 +666,23 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
   // Certification to assign on onboard — defaults to the first available cert.
   const [certTag, setCertTag] = useState('')
   useEffect(() => { if (!certTag && certTags.length) setCertTag(certTags[0].tag_id) }, [certTags]) // eslint-disable-line
+
+  // Did access actually land? Passing the mock call auto-unlocks the hire and
+  // puts them on the schedule matching their passed certification, but that all
+  // happens in the database — so show it here rather than finding out days later
+  // when they email someone that they can only see Certification. (2026-08-14)
+  const [access, setAccess] = useState(null)
+  const showAccess = ['mock_passed', 'hired'].includes(app.status)
+  useEffect(() => {
+    let active = true
+    setAccess(null)
+    if (!showAccess) return
+    ;(async () => {
+      const { data } = await supabase.rpc('hire_access_status', { p_application_id: app.id })
+      if (active) setAccess(data || null)
+    })()
+    return () => { active = false }
+  }, [app.id, app.status]) // eslint-disable-line
   useEffect(() => {
     if (app.resume_path) {
       const { data } = supabase.storage.from('hiring-files').getPublicUrl(app.resume_path)
@@ -734,6 +762,40 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
         </div>
 
         <div style={{ padding: 20 }}>
+          {/* Access check — only for people who have made it through. */}
+          {showAccess && access?.found && (() => {
+            const scheds = Array.isArray(access.schedules) ? access.schedules : []
+            const ok = access.has_login && !access.in_training && scheds.length > 0
+            const problems = []
+            if (!access.has_login) problems.push('no Command Center login')
+            else {
+              if (access.in_training) problems.push('still locked to the Certification-only view')
+              if (!scheds.length) problems.push('not on any schedule, so they see no intervals')
+              if (!access.is_active) problems.push('account is deactivated')
+            }
+            return (
+              <div style={{
+                border: `1px solid ${ok ? 'var(--line)' : '#DC2626'}`,
+                background: ok ? 'var(--canvas)' : 'rgba(220,38,38,.07)',
+                borderRadius: 8, padding: '10px 12px', marginBottom: 20, fontSize: 12.5, lineHeight: 1.5,
+              }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                  {ok ? '✓ Full access' : '⚠️ Access not complete'}
+                </div>
+                {ok ? (
+                  <div style={{ color: 'var(--ink-soft)' }}>
+                    Unlocked and on {scheds.join(', ')}.
+                    {access.passed_certs ? ` ${access.passed_certs} certification${access.passed_certs !== 1 ? 's' : ''} passed.` : ''}
+                  </div>
+                ) : (
+                  <div style={{ color: 'var(--ink-soft)' }}>
+                    {problems.join('; ')}. Fix on Schedule builder → Audience, or ask Claude to re-run activation.
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
           {/* action bar */}
           {onApprove && app.status === 'pending_review' && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
