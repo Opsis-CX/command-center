@@ -7,7 +7,6 @@ import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
 import { canAny } from '../lib/permissions'
 import { useRsnAccess } from '../lib/rsnAccess'
 import ChangePassword from './ChangePassword'
-
 // Sidebar navigation, organized into labelled GROUPS.
 //
 // NAV = [ { group: 'Main', items: [ ...items ] }, ... ]
@@ -15,32 +14,32 @@ import ChangePassword from './ChangePassword'
 // Each item is one of:
 //   - { type: 'link',    to, label, ic, end?, perm }
 //       → a single top-level link.
-//   - { type: 'section', key, label, ic, children: [{ to, label, perm }] }
+//   - { type: 'section', key, label, ic, children: [{ to, label, perm, end? }] }
 //       → a clickable header that expands/collapses its children.
 //
 // `perm` is a page-key; a person only sees an item if their role has any
-// capability under that key (perm: null = visible to everyone). A section is
-// hidden when none of its children are visible, and a GROUP is hidden
-// automatically when none of its items are visible — so you never see an empty
-// header. To move something, just cut/paste the item between groups; to add a
-// group, add another { group, items } block. Order in this array = order shown.
+// capability under that key (perm: null = visible to everyone). Two perm keys
+// are special-cased in permOk() below: '__rsn' (DB-gated RSN access) and
+// '__admin' (admins/owners only). A section is hidden when none of its children
+// are visible, and a GROUP is hidden automatically when none of its items are
+// visible — so you never see an empty header. Order in this array = order shown.
 //
-// There are TWO orderings: NAV_DEFAULT (agents/staff — Becky's approved agent order)
-// and NAV_ADMIN (admin/owner — most-used first: Chat, My Notes, Call QA, Project
-// Management, Calendar; Operations un-nested). The component picks by isAdmin.
-const NAV_DEFAULT = [
+// ONE shared ordering for everyone (Becky's Aug 2026 sidebar map). Everybody
+// sees the same sequence; the perm gates hide whatever a given role can't access
+// (so agents simply see fewer items in the same order). NAV_DEFAULT and
+// NAV_ADMIN both point at NAV_MAIN — kept as two names so the two orders can be
+// split again later without touching the component.
+const NAV_MAIN = [
   {
-    // One flat list, no group headers. Order follows Becky's numbering (Aug 2026):
-    // Opsis Weekly, Updates, Chat, Schedule, My Notes, Scorecard, Coaching, Tokens,
-    // Knowledge Base, Help Center, Calendar, Certifications, Get to Know You.
-    // Manager-only items (Dashboard, Reporting, Quality, Operations, Backend) are
-    // perm-gated — agents never see them — and slot in where they fit naturally.
     group: '',
     items: [
-      { type: 'link', to: '/home', label: 'Opsis Weekly', ic: '🏠', perm: null },  // everyone; page scopes itself by tag/role
-      { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, perm: 'dashboard' },
-      { type: 'link', to: '/updates', label: 'Updates', ic: '📣', perm: null },  // everyone; RLS gates audience
-      { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
+      {
+        type: 'section', key: 'opsis', label: 'Opsis Weekly', ic: '🏠',
+        children: [
+          { to: '/updates', label: 'Updates', perm: null },              // everyone; RLS gates audience
+          { to: '/', label: 'Dashboard', perm: 'dashboard', end: true }, // managers only (perm-gated)
+        ],
+      },
       {
         type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
         children: [
@@ -48,25 +47,27 @@ const NAV_DEFAULT = [
           { to: '/schedule-builder', label: 'Schedule builder', perm: 'schedule.create_schedules' },
           { to: '/insights', label: 'Schedule insights', perm: 'schedule.view_insights_assigned' },
           { to: '/live', label: "Who's On", perm: 'live_status' },
+          { to: '/time', label: 'Time', perm: 'schedule.view_my_schedule' }, // NEW — assumed route /time + this perm; change if different
         ],
       },
-      { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },  // everyone; private per-user notebook
+      { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
+      { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },
+      { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
+      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
       { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
+      { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },
       { type: 'link', to: '/coaching', label: 'Coaching', ic: '🎧', perm: 'coaching' },
+      { type: 'link', to: '/call-qa', label: 'Call QA (AI)', ic: '🤖', perm: 'quality_audit.call_reviews' },
       { type: 'link', to: '/tokens', label: 'Tokens', ic: '🎟️', perm: 'tokens' },
+      { type: 'link', to: '/help', label: 'Help Center', ic: '🛟', perm: null },
+      { type: 'link', to: '/get-to-know-you', label: 'Get to Know You', ic: '👋', perm: null },
       {
         type: 'section', key: 'reporting', label: 'Reporting', ic: '📈',
         children: [
-          { to: '/reporting', label: 'Reporting', perm: 'reporting' },
+          { to: '/reporting', label: 'Reporting hub', perm: 'reporting' },
           { to: '/reporting/hourly', label: 'Hourly', perm: 'reporting' },
         ],
       },
-      { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
-      { type: 'link', to: '/call-qa', label: 'Call QA (AI)', ic: '🤖', perm: 'quality_audit.call_reviews' },
-      { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },  // everyone; RLS gates content
-      { type: 'link', to: '/help', label: 'Help Center', ic: '🛟', perm: null },          // tickets private per RLS
-      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
-      { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings' },  // staff except agents
       {
         type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
         children: [
@@ -76,99 +77,26 @@ const NAV_DEFAULT = [
           { to: '/my-courses', label: 'My courses', perm: 'certifications.assigned_to_complete' },
         ],
       },
-      { type: 'link', to: '/get-to-know-you', label: 'Get to Know You', ic: '👋', perm: null }, // edit only your own card
-      {
-        type: 'section', key: 'operations', label: 'Operations', ic: '🧰',
-        children: [
-          { to: '/weekly-sync', label: 'Weekly Sync', perm: 'weekly_sync' },
-          { to: '/projects', label: 'Project Management', perm: 'project_management' },
-          { to: '/hiring', label: 'Hiring', perm: 'hiring' },
-          // Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
-          // and grant it to the right roles, like 'hiring'.
-          { to: '/sales', label: 'Sales', perm: 'sales' },
-          // RSN pipeline — DB-gated (admins, marketing role, or 'access/rsn' tag),
-          // not role-matrix-gated. '__rsn' is special-cased in permOk below.
-          { to: '/rsn', label: 'RSN Pipeline', perm: '__rsn' },
-        ],
-      },
-      {
-        type: 'section', key: 'backend', label: 'Backend', ic: '⚙', perm: null,
-        children: [
-          { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
-          { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
-          { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
-        ],
-      },
-    ],
-  },
-]
-
-// Admin/Owner ordering — most-used pinned at the top (Chat, My Notes, Call QA,
-// Project Management, Calendar), Operations un-nested, no group headers.
-const NAV_ADMIN = [
-  {
-    group: '',
-    items: [
-      { type: 'link', to: '/home', label: 'Opsis Weekly', ic: '🏠', perm: null },
-      { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
-      { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },
-      { type: 'link', to: '/call-qa', label: 'Call QA (AI)', ic: '🤖', perm: 'quality_audit.call_reviews' },
-      { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
-      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
-      { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings' },
-      { type: 'link', to: '/', label: 'Dashboard', ic: '▦', end: true, perm: 'dashboard' },
-      {
-        type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
-        children: [
-          { to: '/schedule', label: 'Schedule', perm: 'schedule.view_my_schedule' },
-          { to: '/schedule-builder', label: 'Schedule builder', perm: 'schedule.create_schedules' },
-          { to: '/insights', label: 'Schedule insights', perm: 'schedule.view_insights_assigned' },
-          { to: '/live', label: "Who's On", perm: 'live_status' },
-        ],
-      },
-      { type: 'link', to: '/updates', label: 'Updates', ic: '📣', perm: null },
-      { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
-      { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
-      {
-        type: 'section', key: 'reporting', label: 'Reporting', ic: '📈',
-        children: [
-          { to: '/reporting', label: 'Reporting', perm: 'reporting' },
-          { to: '/reporting/hourly', label: 'Hourly', perm: 'reporting' },
-        ],
-      },
-      { type: 'link', to: '/coaching', label: 'Coaching', ic: '🎧', perm: 'coaching' },
-      { type: 'link', to: '/tokens', label: 'Tokens', ic: '🎟️', perm: 'tokens' },
-      // Operations — un-nested for admins.
       { type: 'link', to: '/weekly-sync', label: 'Weekly Sync', ic: '🔄', perm: 'weekly_sync' },
       { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧲', perm: 'hiring' },
       { type: 'link', to: '/sales', label: 'Sales', ic: '📊', perm: 'sales' },
       { type: 'link', to: '/rsn', label: 'RSN Pipeline', ic: '🔗', perm: '__rsn' },
+      { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
+      { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings' },
       {
-        type: 'section', key: 'certifications', label: 'Certifications', ic: '✦',
-        children: [
-          { to: '/certifications', label: 'Certifications', perm: 'certifications.all' },
-          { to: '/my-certifications', label: 'My certifications', perm: 'certifications.view_personal_score_and_content_assigned' },
-          { to: '/courses', label: 'Course builder', perm: 'certifications.builder' },
-          { to: '/my-courses', label: 'My courses', perm: 'certifications.assigned_to_complete' },
-        ],
-      },
-      { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },
-      { type: 'link', to: '/help', label: 'Help Center', ic: '🛟', perm: null },
-      { type: 'link', to: '/get-to-know-you', label: 'Get to Know You', ic: '👋', perm: null },
-      {
-        type: 'section', key: 'backend', label: 'Backend', ic: '⚙', perm: null,
+        type: 'section', key: 'backend', label: 'Backend', ic: '⚙',
         children: [
           { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
           { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
           { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
-          // Admin-only page; NAV_ADMIN itself is only shown to admins/owners.
-          { to: '/roles', label: 'Roles & permissions', perm: null },
+          { to: '/roles', label: 'Roles & permissions', perm: '__admin' }, // admins/owners only
         ],
       },
     ],
   },
 ]
-
+const NAV_DEFAULT = NAV_MAIN
+const NAV_ADMIN = NAV_MAIN
 // Turn a stored role string ("asc,marketing") into a readable label
 // ("ASC & Marketing"). A single role passes through unchanged; unknown keys are
 // Title-Cased as a safe fallback.
@@ -185,20 +113,22 @@ function formatRole(raw) {
     .map(p => ROLE_LABELS[p] || p.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))
     .join(' & ')
 }
-
 export default function Sidebar({ open, onNavigate }) {
   const { isAdmin, level, roles, user, signOut, appRole } = useAuth()
   const { total: unreadTotal } = useUnread()
   const location = useLocation()
   // RSN pipeline is gated by a DB check (not the role matrix); null = still loading → hidden.
   const rsnOk = useRsnAccess()
-  // One place that answers "can this person see an item with this perm key?"
-  const permOk = (p) => p === '__rsn' ? rsnOk === true : (!p || canAny(appRole, p))
-  // Admins/owners get their own ordering (most-used first, Operations un-nested).
-  const NAV = (isAdmin || level >= 100 || (roles || []).includes('owner')) ? NAV_ADMIN : NAV_DEFAULT
-
   const isOwner = level >= 100 || (roles || []).includes('owner')
-
+  // One place that answers "can this person see an item with this perm key?"
+  //   '__rsn'   → DB-gated RSN access
+  //   '__admin' → admins/owners only (e.g. Roles & permissions)
+  const permOk = (p) =>
+    p === '__rsn' ? rsnOk === true
+    : p === '__admin' ? (isAdmin || isOwner)
+    : (!p || canAny(appRole, p))
+  // One shared ordering now; both names resolve to the same array.
+  const NAV = (isAdmin || level >= 100 || (roles || []).includes('owner')) ? NAV_ADMIN : NAV_DEFAULT
   // Show the person's real name. useAuth only gives us the auth user (email),
   // so pull full_name from their profile. Fall back to the email prefix only
   // if the profile has no name yet.
@@ -212,17 +142,14 @@ export default function Sidebar({ open, onNavigate }) {
   }, [user?.id])
   const name = fullName || user?.email?.split('@')[0] || 'User'
   const initial = (name.trim()[0] || 'U').toUpperCase()
-
   // Theme toggle (System → Light → Dark)
   const [theme, setThemeState] = useState(getTheme())
   const [pwOpen, setPwOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const cycleTheme = () => { const t = nextTheme(theme); setTheme(t); setThemeState(t) }
-
   // Which collapsible sections are open. Several can be open at once.
   const [openSections, setOpenSections] = useState({})
   const toggleSection = (key) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }))
-
   // Auto-open whichever section contains the current page, so you're never
   // sitting on a page whose section is collapsed.
   useEffect(() => {
@@ -239,14 +166,12 @@ export default function Sidebar({ open, onNavigate }) {
       return next
     })
   }, [location.pathname])
-
   // Is a single item visible to this person? Used to decide whether a group
   // header should render at all.
   const itemVisible = (item) => {
     if (item.type === 'link') return permOk(item.perm)
     return item.children.some(c => permOk(c.perm))
   }
-
   // Render one nav item (link or collapsible section).
   const renderItem = (item) => {
     // --- single top-level link ---
@@ -265,7 +190,6 @@ export default function Sidebar({ open, onNavigate }) {
         </NavLink>
       )
     }
-
     // --- collapsible section ---
     const children = item.children.filter(c => permOk(c.perm))
     if (!children.length) return null
@@ -280,7 +204,7 @@ export default function Sidebar({ open, onNavigate }) {
         {isOpen && (
           <div className="nav-section-body">
             {children.map(c => (
-              <NavLink key={c.to} to={c.to}
+              <NavLink key={c.to} to={c.to} end={c.end}
                 onClick={() => onNavigate && onNavigate()}
                 className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
                 style={{ paddingLeft: 34 }}>
@@ -292,13 +216,11 @@ export default function Sidebar({ open, onNavigate }) {
       </div>
     )
   }
-
   return (
     <aside className={'sidebar' + (open ? ' open' : '')}>
       <div className="brand">
         <img src="/opsis-logo.png" alt="Opsis" style={{ width: '100%', height: 'auto', maxHeight: 64, objectFit: 'contain' }} />
       </div>
-
       {/* Only THIS region scrolls when the nav outgrows the window — the page
           itself never gets a scrollbar, and the user chip stays pinned below. */}
       <div className="nav-scroll">
@@ -319,7 +241,6 @@ export default function Sidebar({ open, onNavigate }) {
           )
         })}
       </div>
-
       <div className="user-chip">
         <div className="user-av">{initial}</div>
         <div>
@@ -327,7 +248,6 @@ export default function Sidebar({ open, onNavigate }) {
           <div className="user-role">{isOwner ? 'Owner' : isAdmin ? 'Admin' : formatRole(appRole)}</div>
         </div>
       </div>
-
       {/* Settings dropdown (below the name) */}
       <div className="nav-section">
         <button className="nav-item nav-section-head" onClick={() => setSettingsOpen(o => !o)}
@@ -358,7 +278,6 @@ export default function Sidebar({ open, onNavigate }) {
           </div>
         )}
       </div>
-
       <button className="signout" onClick={signOut}>Sign out</button>
       {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} onDone={() => setPwOpen(false)} />}
     </aside>
