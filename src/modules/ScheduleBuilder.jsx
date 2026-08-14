@@ -93,16 +93,31 @@ export default function ScheduleBuilder() {
   useEffect(() => { supabase.auth.getUser().then(({ data }) => setMeId(data?.user?.id || null)) }, [])
   function flash(m) { setToast(m); setTimeout(() => setToast(''), 2800) }
 
+  // Destructive schedule actions go through DB functions that first return
+  // an exact preview (what gets deleted, whose claims disappear) and only
+  // then execute — see migration `schedule_destructive_guards` (2026-08-14).
   async function deleteSchedule(s) {
-    if (!window.confirm(`Delete "${s.title}" and all its intervals and claims? This cannot be undone.`)) return
-    const { error } = await supabase.from('schedules').delete().eq('id', s.id)
+    const { data: plan, error: pe } = await supabase.rpc('admin_delete_schedule',
+      { p_schedule_id: s.id, p_confirm_title: null, p_dry_run: true })
+    if (pe) { flash('Error: ' + pe.message); return }
+    if (!window.confirm(`${plan.summary}\n\nContinue?`)) return
+    const typed = window.prompt(`To confirm, type the schedule name exactly:\n\n${plan.title}`)
+    if (typed === null) return
+    const { error } = await supabase.rpc('admin_delete_schedule',
+      { p_schedule_id: s.id, p_confirm_title: typed, p_dry_run: false })
     if (error) { flash('Error: ' + error.message); return }
     flash('Schedule deleted'); load()
   }
 
   async function deleteBlock(b) {
-    if (!window.confirm('Delete this interval and any claims on it?')) return
-    const { error } = await supabase.from('shift_blocks').delete().eq('id', b.id)
+    const { data: plan, error: pe } = await supabase.rpc('admin_delete_intervals',
+      { p_block_ids: [b.id], p_release_claims: false, p_dry_run: true })
+    if (pe) { flash('Error: ' + pe.message); return }
+    if (!window.confirm(`${plan.summary}\n\nDelete this interval?`)) return
+    if (plan.claims_that_would_be_removed > 0 &&
+        !window.confirm(`This removes ${plan.claims_that_would_be_removed} claimed spot(s) from people's schedules. Are you sure?`)) return
+    const { error } = await supabase.rpc('admin_delete_intervals',
+      { p_block_ids: [b.id], p_release_claims: plan.claims_that_would_be_removed > 0, p_dry_run: false })
     if (error) { flash('Error: ' + error.message); return }
     flash('Interval deleted'); load()
   }
@@ -702,150 +717,210 @@ function addDaysISO(iso, days) {
   return d.toISOString().slice(0, 10)
 }
 
+// Monday that starts the week containing `iso`.
+function weekStartISO(iso) {
+  const d = new Date(iso + 'T00:00:00')
+  const dow = (d.getDay() + 6) % 7 // Mon=0 … Sun=6
+  d.setDate(d.getDate() - dow)
+  return d.toISOString().slice(0, 10)
+}
+function todayISO() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })).toISOString().slice(0, 10)
+}
+
+// ============================================================
+// COPY INTERVALS — preview-then-confirm.
+//
+// 2026-08-14: rewritten after a "Copy the week" click copied EVERY
+// interval in the schedule (not the selected week) and, with Replace on,
+// bulk-deleted 8 weeks of intervals — wiping people's claims, including
+// weeks already in the past.
+//
+// Now: you pick ONE source week, the copy runs through the
+// copy_schedule_week / copy_schedule_day database functions (which cap
+// the blast radius to a single week/day and refuse past targets), and
+// nothing is written until you have seen an exact preview of what will
+// be created and destroyed and confirmed it.
+// ============================================================
 function CopyModal({ schedule, schedules, blocks, onClose, onDone }) {
-  const [mode, setMode] = useState('day') // 'day' | 'week'
+  const [mode, setMode] = useState('week') // 'day' | 'week'
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  const [plan, setPlan] = useState(null)      // dry-run result from the DB
+  const [ack, setAck] = useState(false)       // "yes, remove those claims"
 
   const myBlocks = blocks.filter(b => b.schedule_id === schedule.id)
-
-  // distinct source days present in this schedule
   const days = [...new Set(myBlocks.map(b => b.block_date))].sort()
+  const weeks = [...new Set(myBlocks.map(b => weekStartISO(b.block_date)))].sort()
 
-  // ---- Copy Day state ----
   const [srcDay, setSrcDay] = useState(days[0] || '')
   const [tgtDay, setTgtDay] = useState('')
-  const [dayReplace, setDayReplace] = useState(false)
-
-  // ---- Copy Week state ----
-  // target: another schedule to receive the copied week (defaults to same schedule)
+  const [srcWeek, setSrcWeek] = useState(weeks[weeks.length - 1] || '')
   const [tgtScheduleId, setTgtScheduleId] = useState(schedule.id)
-  const [weekOffset, setWeekOffset] = useState(1) // shift dates by N weeks
-  const [weekReplace, setWeekReplace] = useState(false)
+  const [tgtWeek, setTgtWeek] = useState('')
+  const [replace, setReplace] = useState(false)
 
-  const srcDayBlocks = myBlocks.filter(b => b.block_date === srcDay)
-
-  async function copyDay() {
-    setErr('')
-    if (!srcDay || !tgtDay) { setErr('Pick both a source day and a target day.'); return }
-    if (srcDay === tgtDay) { setErr('Source and target days are the same.'); return }
-    setSaving(true)
-    try {
-      // optionally clear existing blocks on target day first
-      if (dayReplace) {
-        const existing = myBlocks.filter(b => b.block_date === tgtDay).map(b => b.id)
-        if (existing.length) await supabase.from('shift_blocks').delete().in('id', existing)
-      }
-      const payload = srcDayBlocks.map(b => ({
-        schedule_id: schedule.id, block_date: tgtDay,
-        start_time: b.start_time, end_time: b.end_time,
-        role: b.role, total_spots: b.total_spots, notes: b.notes,
-      }))
-      if (!payload.length) { setErr('That day has no intervals to copy.'); setSaving(false); return }
-      const { error } = await supabase.from('shift_blocks').insert(payload)
-      if (error) throw error
-      onDone(`Copied ${payload.length} interval${payload.length !== 1 ? 's' : ''} to ${fmtDate(tgtDay)}`)
-    } catch (e) { setErr(e.message); setSaving(false) }
+  // Any change to the inputs invalidates the preview — you can never
+  // confirm a plan that doesn't match what's on screen.
+  function change(setter) {
+    return v => { setPlan(null); setAck(false); setErr(''); setter(v) }
   }
 
-  async function copyWeek() {
+  const srcCount = mode === 'day'
+    ? myBlocks.filter(b => b.block_date === srcDay).length
+    : myBlocks.filter(b => weekStartISO(b.block_date) === srcWeek).length
+
+  async function run(dryRun) {
     setErr('')
-    const shiftDays = weekOffset * 7
-    if (!shiftDays) { setErr('Choose how many weeks forward to copy.'); return }
     setSaving(true)
     try {
-      const tgt = schedules.find(s => s.id === tgtScheduleId) || schedule
-      // new dates = source dates shifted by N weeks
-      const payload = myBlocks.map(b => ({
-        schedule_id: tgt.id, block_date: addDaysISO(b.block_date, shiftDays),
-        start_time: b.start_time, end_time: b.end_time,
-        role: b.role, total_spots: b.total_spots, notes: b.notes,
-      }))
-      if (!payload.length) { setErr('This schedule has no intervals to copy.'); setSaving(false); return }
-      // optionally clear the target schedule's blocks in the destination date range first
-      if (weekReplace) {
-        const newDates = [...new Set(payload.map(p => p.block_date))]
-        const existing = blocks.filter(b => b.schedule_id === tgt.id && newDates.includes(b.block_date)).map(b => b.id)
-        if (existing.length) await supabase.from('shift_blocks').delete().in('id', existing)
-      }
-      const { error } = await supabase.from('shift_blocks').insert(payload)
+      const args = mode === 'day'
+        ? {
+            p_source_schedule_id: schedule.id, p_source_day: srcDay,
+            p_target_schedule_id: schedule.id, p_target_day: tgtDay,
+            p_replace: replace, p_release_claims: ack, p_dry_run: dryRun,
+          }
+        : {
+            p_source_schedule_id: schedule.id, p_source_week_start: srcWeek,
+            p_target_schedule_id: tgtScheduleId, p_target_week_start: tgtWeek,
+            p_replace: replace, p_release_claims: ack, p_dry_run: dryRun,
+          }
+      const fn = mode === 'day' ? 'copy_schedule_day' : 'copy_schedule_week'
+      const { data, error } = await supabase.rpc(fn, args)
       if (error) throw error
-      const label = tgt.id === schedule.id ? `${weekOffset} week${weekOffset !== 1 ? 's' : ''} forward` : `"${tgt.title}"`
-      onDone(`Copied ${payload.length} interval${payload.length !== 1 ? 's' : ''} to ${label}`)
-    } catch (e) { setErr(e.message); setSaving(false) }
+      if (dryRun) {
+        setPlan(data)
+      } else {
+        onDone(
+          `Created ${data.created} interval(s)` +
+          (data.deleted ? `, deleted ${data.deleted}` : '') +
+          (data.claims_removed ? `, removed ${data.claims_removed} claimed spot(s)` : '')
+        )
+      }
+    } catch (e) {
+      setErr(e.message || String(e))
+      setSaving(false)
+      return
+    }
+    setSaving(false)
   }
+
+  const ready = mode === 'day' ? (srcDay && tgtDay) : (srcWeek && tgtWeek)
+  const destructive = !!(plan && plan.claims_that_would_be_removed > 0)
+  const canConfirm = plan && (!destructive || ack)
 
   return (
     <div className="modal-back open" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
         <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 700 }}>Copy intervals</h3>
-        <div className="page-sub" style={{ marginBottom: 14 }}>From <b>{schedule.title}</b>. Copies time slots only — claims are never copied, so everything lands open.</div>
+        <div className="page-sub" style={{ marginBottom: 14 }}>
+          From <b>{schedule.title}</b>. Copies time slots only — claims are never copied, so everything lands open.
+          You'll see exactly what will change before anything is saved.
+        </div>
 
         <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
-          <button className="btn" style={{ flex: 1, borderRadius: 0, background: mode === 'day' ? 'var(--accent)' : 'var(--surface)', color: mode === 'day' ? '#fff' : 'var(--ink-soft)' }} onClick={() => setMode('day')}>Copy a day</button>
-          <button className="btn" style={{ flex: 1, borderRadius: 0, background: mode === 'week' ? 'var(--accent)' : 'var(--surface)', color: mode === 'week' ? '#fff' : 'var(--ink-soft)' }} onClick={() => setMode('week')}>Copy the week</button>
+          {['week', 'day'].map(m => (
+            <button key={m} className="btn"
+              style={{ flex: 1, borderRadius: 0, background: mode === m ? 'var(--accent)' : 'var(--surface)', color: mode === m ? '#fff' : 'var(--ink-soft)' }}
+              onClick={() => { setMode(m); setPlan(null); setAck(false); setErr('') }}>
+              {m === 'week' ? 'Copy one week' : 'Copy one day'}
+            </button>
+          ))}
         </div>
 
         {err && <div className="login-err" style={{ marginBottom: 12 }}>{err}</div>}
 
-        {mode === 'day' ? (
-          <>
-            {days.length === 0 ? <div className="page-sub">This schedule has no intervals yet.</div> : (
-              <>
-                <div className="field">
-                  <label>Copy from (source day)</label>
-                  <select value={srcDay} onChange={e => setSrcDay(e.target.value)}>
-                    {days.map(d => <option key={d} value={d}>{fmtDate(d)} — {myBlocks.filter(b => b.block_date === d).length} interval(s)</option>)}
-                  </select>
+        {mode === 'week' ? (
+          weeks.length === 0 ? <div className="page-sub">This schedule has no intervals yet.</div> : (
+            <>
+              <div className="field">
+                <label>Copy the week of (source)</label>
+                <select value={srcWeek} onChange={e => change(setSrcWeek)(e.target.value)}>
+                  {weeks.map(w => (
+                    <option key={w} value={w}>
+                      {fmtDate(w)} — {myBlocks.filter(b => weekStartISO(b.block_date) === w).length} interval(s)
+                    </option>
+                  ))}
+                </select>
+                <div className="hint">Only this one week is copied — never the whole schedule.</div>
+              </div>
+              <div className="field">
+                <label>Into schedule</label>
+                <select value={tgtScheduleId} onChange={e => change(setTgtScheduleId)(e.target.value)}>
+                  <option value={schedule.id}>{schedule.title} (same schedule)</option>
+                  {schedules.filter(s => s.id !== schedule.id).map(s => (
+                    <option key={s.id} value={s.id}>{s.title}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Target week starts (Monday)</label>
+                <input type="date" min={todayISO()} value={tgtWeek}
+                  onChange={e => change(setTgtWeek)(e.target.value ? weekStartISO(e.target.value) : '')} />
+                <div className="hint">
+                  {tgtWeek ? `Week of ${fmtDate(tgtWeek)} — ${fmtDate(tgtWeek)} through ${fmtDate(addDaysISO(tgtWeek, 6))}.` : 'Pick any date in the target week; it snaps to that Monday.'}
+                  {' '}Past weeks are refused.
                 </div>
-                <div className="field">
-                  <label>Copy to (target day)</label>
-                  <input type="date" value={tgtDay} onChange={e => setTgtDay(e.target.value)} />
-                  <div className="hint">The {srcDayBlocks.length} interval(s) from the source day will be added to this date, open for claiming.</div>
-                </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 8, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={dayReplace} onChange={e => setDayReplace(e.target.checked)} />
-                  Replace any existing intervals on the target day first
-                </label>
-                <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-                  <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
-                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={copyDay} disabled={saving}>{saving ? 'Copying…' : 'Copy day'}</button>
-                </div>
-              </>
-            )}
-          </>
+              </div>
+            </>
+          )
         ) : (
-          <>
-            {myBlocks.length === 0 ? <div className="page-sub">This schedule has no intervals yet.</div> : (
-              <>
-                <div className="field">
-                  <label>Copy this schedule\u2019s {myBlocks.length} interval(s) into</label>
-                  <select value={tgtScheduleId} onChange={e => setTgtScheduleId(e.target.value)}>
-                    <option value={schedule.id}>Same schedule (move dates forward)</option>
-                    {schedules.filter(s => s.id !== schedule.id).map(s => (
-                      <option key={s.id} value={s.id}>{s.title} — week of {fmtDate(s.week_start_date)}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label>Move dates forward by</label>
-                  <select value={weekOffset} onChange={e => setWeekOffset(Number(e.target.value))}>
-                    {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n} week{n !== 1 ? 's' : ''}</option>)}
-                  </select>
-                  <div className="hint">Each interval\u2019s date moves forward this many weeks (same weekday). Claims are not copied.</div>
-                </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 8, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={weekReplace} onChange={e => setWeekReplace(e.target.checked)} />
-                  Replace existing intervals on those target dates first
-                </label>
-                <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-                  <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
-                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={copyWeek} disabled={saving}>{saving ? 'Copying…' : 'Copy week'}</button>
-                </div>
-              </>
-            )}
-          </>
+          days.length === 0 ? <div className="page-sub">This schedule has no intervals yet.</div> : (
+            <>
+              <div className="field">
+                <label>Copy from (source day)</label>
+                <select value={srcDay} onChange={e => change(setSrcDay)(e.target.value)}>
+                  {days.map(d => <option key={d} value={d}>{fmtDate(d)} — {myBlocks.filter(b => b.block_date === d).length} interval(s)</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label>Copy to (target day)</label>
+                <input type="date" min={todayISO()} value={tgtDay} onChange={e => change(setTgtDay)(e.target.value)} />
+                <div className="hint">Past days are refused.</div>
+              </div>
+            </>
+          )
         )}
+
+        {ready && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '4px 0 12px', cursor: 'pointer' }}>
+            <input type="checkbox" checked={replace} onChange={e => change(setReplace)(e.target.checked)} />
+            Replace what's already there (deletes existing intervals first)
+          </label>
+        )}
+
+        {plan && (
+          <div style={{
+            border: `1px solid ${destructive ? 'var(--danger, #d33)' : 'var(--line)'}`,
+            background: destructive ? 'rgba(211,51,51,0.06)' : 'var(--surface)',
+            borderRadius: 8, padding: '12px 14px', marginBottom: 14, fontSize: 13.5, lineHeight: 1.5,
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>
+              {destructive ? '⚠️ This will remove people from intervals' : 'Here’s what will happen'}
+            </div>
+            <div>{plan.summary}</div>
+            {destructive && (
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 10, cursor: 'pointer', fontWeight: 600 }}>
+                <input type="checkbox" checked={ack} onChange={e => setAck(e.target.checked)} style={{ marginTop: 3 }} />
+                <span>Yes — un-assign those {plan.claims_that_would_be_removed} claimed spot(s). I know those people lose the interval.</span>
+              </label>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
+          {!plan ? (
+            <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => run(true)} disabled={saving || !ready || !srcCount}>
+              {saving ? 'Checking…' : 'Preview changes'}
+            </button>
+          ) : (
+            <button className="btn btn-primary" style={{ flex: 1, background: destructive ? 'var(--danger, #d33)' : undefined }}
+              onClick={() => run(false)} disabled={saving || !canConfirm}>
+              {saving ? 'Saving…' : destructive ? 'Yes, do it' : 'Confirm copy'}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
