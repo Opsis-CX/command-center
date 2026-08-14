@@ -2,14 +2,23 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 
 // ============================================================
-// MOCK CALL SCHEDULER — PUBLIC page (no login).
-// Reached from the "schedule your mock call" link emailed when a hire gets
-// their Five9 credentials: /mock-call/:appId  (appId = hiring_applications.id).
+// MOCK CALL SCHEDULER
 //
-// Availability comes straight from the mock-call provider's (Breanna's) claimed
-// intervals on the Schedule board — no accepted interval → no availability.
-// A Recall notetaker is attached automatically when a slot is booked.
-// Backend: get_mock_context / get_mock_availability / book_mock_call (anon-granted).
+// Two ways in, one component:
+//  1. embedded  — the "Schedule my mock call" tab inside the new-hire
+//     onboarding shell (App.jsx → TraineePortal). This is the normal path:
+//     candidates already have a Command Center login by the mock-call stage,
+//     so they book here the same way they do their certification. The
+//     application is resolved from the signed-in user via
+//     get_my_mock_application() — no id needed in a link.
+//  2. public /mock-call/:appId — kept as a fallback for anyone who somehow
+//     has no login. Pass appId explicitly.
+//
+// Availability comes straight from the mock-call provider's (Breanna's)
+// claimed intervals on the Schedule board — no accepted interval → no
+// availability. A Recall notetaker is attached automatically on booking.
+// Backend: get_my_mock_application / get_mock_context / get_mock_availability
+// / book_mock_call.
 // ============================================================
 
 const SLOT_MIN = 30
@@ -31,36 +40,59 @@ function todayET() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-const wrap = { minHeight: '100vh', background: '#f3f4f6', display: 'flex', justifyContent: 'center', padding: '32px 16px', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }
+const pageWrap = { minHeight: '100vh', background: '#f3f4f6', display: 'flex', justifyContent: 'center', padding: '32px 16px', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }
 const cardW = { width: '100%', maxWidth: 620 }
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: 20, marginBottom: 16, boxShadow: '0 1px 2px rgba(0,0,0,.04)' }
 const slotBtn = { padding: '8px 12px', margin: '0 8px 8px 0', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 600 }
 
-export default function MockCallScheduler({ appId }) {
+export default function MockCallScheduler({ appId: appIdProp, embedded = false }) {
   const [ctx, setCtx] = useState(null)      // {ok, applicant_name, provider_name, status}
+  const [appId, setAppId] = useState(appIdProp || null)
   const [slots, setSlots] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [confirmed, setConfirmed] = useState(null)   // {date, start}
   const [err, setErr] = useState('')
 
-  const loadSlots = useCallback(async () => {
+  // Shell — full page when standalone, plain block when it's a portal tab.
+  const Shell = useCallback(({ children }) => (
+    embedded ? <div>{children}</div> : <div style={pageWrap}><div style={cardW}>{children}</div></div>
+  ), [embedded])
+
+  const loadSlots = useCallback(async (id) => {
+    if (!id) return
     const to = new Date(); to.setDate(to.getDate() + 21)
     const toStr = `${to.getFullYear()}-${String(to.getMonth() + 1).padStart(2, '0')}-${String(to.getDate()).padStart(2, '0')}`
-    const { data } = await supabase.rpc('get_mock_availability', { p_application_id: appId, p_from: todayET(), p_to: toStr, p_slot_min: SLOT_MIN })
+    const { data } = await supabase.rpc('get_mock_availability', { p_application_id: id, p_from: todayET(), p_to: toStr, p_slot_min: SLOT_MIN })
     setSlots(data || [])
-  }, [appId])
+  }, [])
 
   useEffect(() => {
-    (async () => {
+    let active = true
+    ;(async () => {
       setLoading(true)
-      const { data } = await supabase.rpc('get_mock_context', { p_application_id: appId })
-      const c = Array.isArray(data) ? data[0] : data
+      let id = appIdProp || null
+      let c = null
+      if (id) {
+        // public link — look the application up by id
+        const { data } = await supabase.rpc('get_mock_context', { p_application_id: id })
+        c = Array.isArray(data) ? data[0] : data
+      } else {
+        // signed in — resolve the candidate's own application
+        const { data } = await supabase.rpc('get_my_mock_application')
+        c = data || { ok: false }
+        id = c?.application_id || null
+        // already booked? show the confirmation rather than the picker
+        if (c?.booked?.date) setConfirmed({ date: c.booked.date, start: c.booked.start, meeting_url: c.booked.meeting_url })
+      }
+      if (!active) return
       setCtx(c || { ok: false })
-      if (c?.ok) await loadSlots()
-      setLoading(false)
+      setAppId(id)
+      if (c?.ok && id && !c?.booked?.date) await loadSlots(id)
+      if (active) setLoading(false)
     })()
-  }, [appId, loadSlots])
+    return () => { active = false }
+  }, [appIdProp, loadSlots])
 
   const byDate = useMemo(() => {
     const g = {}
@@ -69,50 +101,55 @@ export default function MockCallScheduler({ appId }) {
   }, [slots])
 
   async function book(s) {
-    if (busy) return
+    if (busy || !appId) return
     setBusy(true); setErr('')
     const { error } = await supabase.rpc('book_mock_call', { p_application_id: appId, p_date: s.session_date, p_start: s.start_time, p_slot_min: SLOT_MIN })
     setBusy(false)
-    if (error) { setErr(error.message); loadSlots(); return }
+    if (error) { setErr(error.message); loadSlots(appId); return }
     setConfirmed({ date: s.session_date, start: s.start_time })
   }
 
-  if (loading) return <div style={wrap}><div style={cardW}><div style={card}>Loading…</div></div></div>
+  if (loading) return <Shell><div style={card}>Loading…</div></Shell>
 
   if (!ctx?.ok) {
     return (
-      <div style={wrap}><div style={cardW}>
+      <Shell>
         <div style={card}>
           <h2 style={{ marginTop: 0 }}>Mock call scheduling</h2>
           <p style={{ color: '#6b7280' }}>
-            This scheduling link isn’t active{ctx?.status ? ` (status: ${ctx.status})` : ''}. If you believe this is a mistake,
-            reply to your onboarding email and we’ll help you get scheduled.
+            There’s no mock call to book right now{ctx?.status ? ` (status: ${ctx.status})` : ''}. If you believe this is a mistake,
+            email <a href="mailto:onboarding@opsiscx.com" style={{ color: '#1d4ed8', fontWeight: 600 }}>onboarding@opsiscx.com</a> and we’ll help you get scheduled.
           </p>
         </div>
-      </div></div>
+      </Shell>
     )
   }
 
   if (confirmed) {
     return (
-      <div style={wrap}><div style={cardW}>
+      <Shell>
         <div style={card}>
           <h2 style={{ marginTop: 0 }}>You’re booked! 🎉</h2>
           <p style={{ fontSize: 16 }}>
             Your mock call with <b>{ctx.provider_name}</b> is set for<br />
             <b>{fmtDate(confirmed.date)} at {fmtTime(confirmed.start)} (Eastern)</b>.
           </p>
-          <p style={{ color: '#6b7280' }}>
-            You’ll receive the video link by email. The session is recorded so your coach can give you feedback.
-            Need to change it? Reply to your onboarding email.
+          {confirmed.meeting_url && (
+            <p style={{ margin: '16px 0' }}>
+              <a href={confirmed.meeting_url} target="_blank" rel="noreferrer" style={{ background: '#0077B6', color: '#fff', textDecoration: 'none', padding: '10px 18px', borderRadius: 8, fontWeight: 700, display: 'inline-block' }}>Join the call</a>
+            </p>
+          )}
+          <p style={{ color: '#6b7280', marginBottom: 0 }}>
+            You’ll also receive the video link by email. The session is recorded so your coach can give you feedback.
+            Need to change it? Email <a href="mailto:onboarding@opsiscx.com" style={{ color: '#1d4ed8', fontWeight: 600 }}>onboarding@opsiscx.com</a>.
           </p>
         </div>
-      </div></div>
+      </Shell>
     )
   }
 
   return (
-    <div style={wrap}><div style={cardW}>
+    <Shell>
       <div style={card}>
         <h2 style={{ marginTop: 0, marginBottom: 4 }}>Schedule your mock call</h2>
         <p style={{ color: '#6b7280', marginTop: 0 }}>
@@ -141,6 +178,6 @@ export default function MockCallScheduler({ appId }) {
           </div>
         </div>
       ))}
-    </div></div>
+    </Shell>
   )
 }
