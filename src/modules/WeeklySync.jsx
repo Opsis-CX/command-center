@@ -96,19 +96,24 @@ export default function WeeklySync() {
   const [updates, setUpdates] = useState([])
   const [profiles, setProfiles] = useState([])
   const [hygiene, setHygiene] = useState([])   // per-person live task-board counts
+  const [chat, setChat] = useState(null)       // team-chat volume for the week
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [upRes, profRes, hygRes] = await Promise.all([
+    // Sunday of the selected week — addWeeks gives next Monday, so back off a day.
+    const weekEnd = new Date(new Date(week + 'T00:00:00').getTime() + 6 * 864e5).toISOString().slice(0, 10)
+    const [upRes, profRes, hygRes, chatRes] = await Promise.all([
       supabase.from('weekly_updates').select('*').eq('week_start_date', week),
       supabase.from('profiles').select('id, full_name, role').order('full_name'),
       supabase.rpc('weekly_task_hygiene'),
+      supabase.rpc('weekly_team_chat_activity', { p_from: week, p_to: weekEnd }),
     ])
     setUpdates(upRes.data || [])
     setProfiles(profRes.data || [])
     setHygiene(hygRes.data || [])
+    setChat(chatRes?.data?.ok ? chatRes.data : null)
     setLoading(false)
   }, [week])
 
@@ -144,7 +149,7 @@ export default function WeeklySync() {
       {loading ? <p className="page-sub">Loading…</p> :
         tab === 'mine'
           ? <MyUpdate week={week} userId={userId} existing={mine} locked={locked} lockLabelText={lockLabel(week)} dueLabelText={dueLabel(week)} myHygiene={hygieneOf(userId)} onSaved={(msg) => { load(); flash(msg) }} />
-          : <Presentation week={week} updates={updates} profiles={profiles} nameOf={nameOf} hygiene={hygiene} />
+          : <Presentation week={week} updates={updates} profiles={profiles} nameOf={nameOf} hygiene={hygiene} chat={chat} />
       }
     </div>
   )
@@ -382,7 +387,60 @@ function MyUpdate({ week, userId, existing, locked, lockLabelText, dueLabelText,
   )
 }
 
-function Presentation({ week, updates, profiles, nameOf, hygiene }) {
+// ---- Team chat activity ----
+// "How are we developing our teams?" — message COUNTS only (never content), so
+// this is safe to put on screen in the weekly sync regardless of who is in which
+// channel. Team channels are called out separately from the general ones,
+// because that split is the actual answer to the question.
+function ChatActivity({ chat }) {
+  if (!chat) return null
+  const channels = chat.channels || []
+  const teams = channels.filter(c => c.is_team)
+  const others = channels.filter(c => !c.is_team)
+  const delta = (cur, prev) => {
+    const d = (cur || 0) - (prev || 0)
+    if (!prev && !cur) return null
+    const up = d > 0
+    return <span style={{ fontSize: 11.5, fontWeight: 700, color: d === 0 ? 'var(--ink-soft)' : up ? 'var(--passed)' : 'var(--failed)' }}>
+      {d === 0 ? '±0' : `${up ? '▲' : '▼'}${Math.abs(d)}`}
+    </span>
+  }
+  const row = (c) => (
+    <div key={c.name} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0', fontSize: 13 }}>
+      <span style={{ flex: 1 }}>{c.name}</span>
+      <b>{c.messages}</b>
+      {delta(c.messages, c.prev_messages)}
+      <span style={{ fontSize: 11.5, color: 'var(--ink-soft)', width: 74, textAlign: 'right' }}>
+        {c.people} {c.people === 1 ? 'person' : 'people'}
+      </span>
+    </div>
+  )
+  return (
+    <div className="card" style={{ padding: '14px 16px', marginBottom: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 2 }}>
+        💬 Team chat activity <span style={{ fontWeight: 500, color: 'var(--ink-soft)', fontSize: 12.5 }}>— messages this week vs last</span>
+      </div>
+      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', margin: '10px 0 14px' }}>
+        <div><div style={{ fontSize: 22, fontWeight: 800 }}>{chat.total} {delta(chat.total, chat.prev_total)}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>messages, all channels</div></div>
+        <div><div style={{ fontSize: 22, fontWeight: 800 }}>{chat.team_total} {delta(chat.team_total, chat.team_prev_total)}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>in team channels</div></div>
+        <div><div style={{ fontSize: 22, fontWeight: 800 }}>{chat.people}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>people posting</div></div>
+      </div>
+      {!!teams.length && (<>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: .4, marginBottom: 2 }}>Team channels</div>
+        {teams.map(row)}
+      </>)}
+      {!!others.length && (<>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: .4, margin: '12px 0 2px' }}>Everything else</div>
+        {others.map(row)}
+      </>)}
+    </div>
+  )
+}
+
+function Presentation({ week, updates, profiles, nameOf, hygiene, chat }) {
   const submitted = updates.filter(u => u.submitted_at)
   const submittedIds = new Set(submitted.map(u => u.profile_id))
   // Only non-agents are expected to submit, so only they can be "missing".
@@ -393,6 +451,8 @@ function Presentation({ week, updates, profiles, nameOf, hygiene }) {
     <div>
       {/* Live task-board hygiene for the whole team — review and clean weekly. */}
       <HygieneTable hygiene={hygiene} profiles={profiles} />
+      {/* Are the team channels actually being used? */}
+      <ChatActivity chat={chat} />
 
       {submitted.length === 0 ? (
         <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
