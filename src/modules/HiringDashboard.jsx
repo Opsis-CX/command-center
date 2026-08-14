@@ -765,14 +765,17 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
           {/* Access check — only for people who have made it through. */}
           {showAccess && access?.found && (() => {
             const scheds = Array.isArray(access.schedules) ? access.schedules : []
-            const ok = access.has_login && !access.in_training && scheds.length > 0
+            const chans = Array.isArray(access.channels) ? access.channels : []
+            const ok = access.has_login && !access.in_training && scheds.length > 0 && chans.length > 0
             const problems = []
             if (!access.has_login) problems.push('no Command Center login')
             else {
               if (access.in_training) problems.push('still locked to the Certification-only view')
               if (!scheds.length) problems.push('not on any schedule, so they see no intervals')
+              if (!chans.length) problems.push('not in the team chat channel for their schedule')
               if (!access.is_active) problems.push('account is deactivated')
             }
+            const certCount = access.passed_certs || access.assigned_certs || 0
             return (
               <div style={{
                 border: `1px solid ${ok ? 'var(--line)' : '#DC2626'}`,
@@ -784,8 +787,8 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
                 </div>
                 {ok ? (
                   <div style={{ color: 'var(--ink-soft)' }}>
-                    Unlocked and on {scheds.join(', ')}.
-                    {access.passed_certs ? ` ${access.passed_certs} certification${access.passed_certs !== 1 ? 's' : ''} passed.` : ''}
+                    Unlocked, on {scheds.join(', ')}, and in #{chans.join(', #')}.
+                    {certCount ? ` ${certCount} certification${certCount !== 1 ? 's' : ''}${access.passed_certs ? ' passed' : ' assigned'}.` : ''}
                   </div>
                 ) : (
                   <div style={{ color: 'var(--ink-soft)' }}>
