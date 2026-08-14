@@ -1622,7 +1622,9 @@ function HiringReport({ range }) {
   const byStatus = useMemo(() => { const m = {}; for (const a of (rows || [])) { const k = a.status || '—'; m[k] = (m[k] || 0) + 1 } return m }, [rows])
   const byRole = useMemo(() => { const m = {}; for (const a of (rows || [])) { const k = a.role_applying || '—'; m[k] = (m[k] || 0) + 1 } return m }, [rows])
   // No 'approved' status exists in the pipeline. Group the real stages into buckets.
-  const ADVANCING = ['assessment_passed', 'mock_passed', 'certifying']
+  // 'hired' counts as advancing: passing the mock call now auto-advances
+  // mock_passed -> hired (2026-08-14), so without it these fall into inReview.
+  const ADVANCING = ['assessment_passed', 'mock_passed', 'certifying', 'hired']
   const REJECTED = ['denied', 'out_of_area', 'mock_failed']
   const totals = useMemo(() => {
     const rs = rows || []
