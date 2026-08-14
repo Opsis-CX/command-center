@@ -45,6 +45,7 @@ import Meetings from './modules/Meetings'
 // --- Who's On: live check-ins (LiveStatus) + Slack-style team presence board ---
 import LiveStatus from './modules/LiveStatus'
 import { usePresenceHeartbeat, MyStatusButton, TeamStatus } from './components/Presence'
+import MeetingReminder from './components/MeetingReminder'
 import { UnreadProvider } from './lib/unread'
 // --- hiring pipeline ---
 import ApplicationForm from './modules/ApplicationForm'
@@ -266,6 +267,9 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
   if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
   return (
     <UnreadProvider>
+      {/* Full-screen meeting alert at T-10 and T-2. Internal staff only —
+          it sits inside AuthedApp, which the client portal never reaches. */}
+      <MeetingReminder />
       <div className="app">
         <Sidebar open={navOpen} onNavigate={() => setNavOpen(false)} />
         {/* tap-to-close backdrop, only visible on mobile when the nav is open */}
