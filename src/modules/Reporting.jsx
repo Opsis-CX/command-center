@@ -130,6 +130,7 @@ const CATALOG = [
   { label: 'Quality', items: [
     { key: 'quality', name: 'QA Audits', q: 'How did agents score on QA audits?' },
     { key: 'qa_by_question', name: 'QA by Question', q: 'Which QA questions are passed or missed most — plus every audit’s answers on one line?' },
+    { key: 'ai_qa_by_question', name: 'AI QA by Question', q: 'How does each agent score on each AI QA question — pass rate and points, agent by agent?' },
     { key: 'dispositions', name: 'Call Dispositions', q: 'How are calls dispositioned — by disposition, deal and agent (recent)?' },
     { key: 'dispo_corrections', name: 'Disposition Corrections', q: 'Which call dispositions did QA correct — current vs correct disposition?' },
   ] },
@@ -214,7 +215,7 @@ const FILTERABLE = new Set(['person', 'client', 'compare', 'quality', 'qa_by_que
 // Reports whose CSV export is the parent-owned shared button (older inline reports).
 const SHARED_EXPORT = new Set(['person', 'client', 'compare', 'quality', 'people'])
 // Reports rendered by their own standalone component.
-const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions', 'dispo_corrections', 'qa_by_question', 'ai_qa_spend', 'payroll_week'])
+const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions', 'dispo_corrections', 'qa_by_question', 'ai_qa_by_question', 'ai_qa_spend', 'payroll_week'])
 
 export default function Reporting() {
   const { isAdmin, appRole } = useAuth()
@@ -779,6 +780,7 @@ export default function Reporting() {
         : view === 'certifications' ? <CertificationsReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
         : view === 'cert_quiz' ? <CertQuizReport range={range} allowedIds={allowedIds} />
         : view === 'qa_by_question' ? <QaByQuestionReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
+        : view === 'ai_qa_by_question' ? <AiQaByQuestionReport range={range} />
         : view === 'scorecard' ? <ScorecardReport />
         : view === 'ai_qa_spend' ? <AiQaSpendReport range={range} />
         : view === 'dispositions' ? <DispositionsReport />
@@ -1907,6 +1909,183 @@ function CertQuizReport({ range, allowedIds }) {
 // range. Cost is reconstructed from stored transcript/output sizes + audio length
 // (token usage isn't logged); rates and the client price/call are editable and
 // live in ai_qa_cost_config. Admins only. RPC: report_ai_qa_spend.
+// ============================================================
+// AI QA BY QUESTION — every AI-scored question, agent by agent.
+//
+// Distinct from `qa_by_question` above, which reports the HUMAN audits in
+// `qa_audits`. This one reads the AI reviews in `ai_qa_reviews.answers`
+// through callqa_question_breakdown(), which mirrors callqa_overview's agent
+// resolution, its is_scored rule, and its access gate — so a manager sees
+// everyone, a client-portal user sees only their own brand, and an agent sees
+// only themselves, with no extra checks here.
+//
+// Scoped to ONE campaign on purpose: rubric keys are reused across campaigns
+// with different labels and point values (e.g. `closing` exists in all three),
+// so mixing them would silently average unlike questions together.
+// ============================================================
+const AIQA_CAMPAIGNS = [
+  { key: 'lavin', label: 'Lavin' },
+  { key: 'open_invoices', label: 'Open Invoices' },
+  { key: 'garagedoor', label: 'Garage Door' },
+]
+const AIQA_SOURCES = [
+  { key: 'five9', label: 'Five9 (our agents)' },
+  { key: 'callrail', label: 'CallRail' },
+  { key: 'lightspeed', label: 'LightSpeed' },
+  { key: '', label: 'All sources' },
+]
+function AiQaByQuestionReport({ range }) {
+  const [campaign, setCampaign] = useState('lavin')
+  const [source, setSource] = useState('five9')
+  const [minCalls, setMinCalls] = useState(3)
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    let active = true; setData(null); setErr('')
+    supabase.rpc('callqa_question_breakdown', {
+      p_campaign: campaign || null,
+      p_start: range.from,
+      p_end: range.to,
+      p_brand: null,
+      p_agent: null,
+      p_source: source || null,
+      p_min_calls: Number(minCalls) || 1,
+    }).then(({ data, error }) => {
+      if (!active) return
+      if (error) setErr(error.message); else setData(data)
+    })
+    return () => { active = false }
+  }, [campaign, source, minCalls, range.from, range.to])
+
+  const questions = data?.questions || []
+  const agents = data?.agents || []
+  // (agent, question) -> cell, for the matrix below
+  const cell = useMemo(() => {
+    const m = {}
+    for (const r of (data?.matrix || [])) m[`${r.agent}||${r.key}`] = r
+    return m
+  }, [data])
+
+  const pctColor = (v) => v == null ? 'var(--ink-soft)' : v >= 90 ? 'var(--passed)' : v >= 75 ? 'var(--needed)' : 'var(--failed)'
+  const show = (v) => v == null ? '—' : `${v}%`
+
+  function exportCsv() {
+    const out = [['Question', 'Section', 'Max points', 'Answered', 'Yes', 'No', 'N/A', 'Pass rate %', 'Points %', ...agents.map(a => a.agent)]]
+    questions.forEach(q => out.push([
+      q.label, q.section || '', q.max_points, q.calls, q.yes, q.no, q.na, q.pass_rate, q.pct,
+      ...agents.map(a => cell[`${a.agent}||${q.key}`]?.pct ?? ''),
+    ]))
+    out.push([])
+    out.push(['Agent', 'Calls scored', 'Points earned', 'Points possible', 'Overall %'])
+    agents.forEach(a => out.push([a.agent, a.calls, a.earned, a.possible, a.pct]))
+    downloadCSV(`ai-qa-by-question-${campaign}-${range.from}_to_${range.to}.csv`, out)
+  }
+
+  const sel = { padding: '6px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13 }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+        <label style={{ fontSize: 13, fontWeight: 600 }}>Campaign{' '}
+          <select value={campaign} onChange={e => setCampaign(e.target.value)} style={sel}>
+            {AIQA_CAMPAIGNS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
+        </label>
+        <label style={{ fontSize: 13, fontWeight: 600 }}>Source{' '}
+          <select value={source} onChange={e => setSource(e.target.value)} style={sel}>
+            {AIQA_SOURCES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+          </select>
+        </label>
+        <label style={{ fontSize: 13, fontWeight: 600 }}>Min calls per agent{' '}
+          <input type="number" min={1} value={minCalls} onChange={e => setMinCalls(e.target.value)} style={{ ...sel, width: 70 }} />
+        </label>
+        <div style={{ flex: 1 }} />
+        <button className="btn btn-ghost" onClick={exportCsv} disabled={!questions.length}>⬇ Export CSV</button>
+      </div>
+
+      {err && <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>}
+      {!err && data == null && <p className="page-sub">Loading…</p>}
+      {!err && data != null && !questions.length && (
+        <div className="card" style={{ padding: 16 }}>
+          <b>No AI-scored calls in this range.</b>
+          <p className="page-sub" style={{ marginBottom: 0 }}>
+            Try a wider date range, a different campaign, or lower the minimum calls per agent.
+          </p>
+        </div>
+      )}
+
+      {!!questions.length && (
+        <>
+          <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+            <div style={{ padding: '12px 16px', fontWeight: 700 }}>Every question — how often it passes</div>
+            <table className="table" style={{ width: '100%' }}>
+              <thead><tr>
+                <th style={{ textAlign: 'left' }}>Question</th>
+                <th>Section</th><th>Max pts</th><th>Answered</th><th>Yes</th><th>No</th><th>N/A</th>
+                <th>Pass rate</th><th>Points</th>
+              </tr></thead>
+              <tbody>
+                {questions.map(q => (
+                  <tr key={q.key}>
+                    <td style={{ textAlign: 'left' }}>{q.label}</td>
+                    <td style={{ color: 'var(--ink-soft)', fontSize: 12 }}>{(q.section || '').replace(/_/g, ' ')}</td>
+                    <td>{q.max_points}</td>
+                    <td>{q.calls}</td>
+                    <td>{q.yes}</td>
+                    <td>{q.no}</td>
+                    <td>{q.na}</td>
+                    <td style={{ fontWeight: 700, color: pctColor(q.pass_rate) }}>{show(q.pass_rate)}</td>
+                    <td style={{ fontWeight: 700, color: pctColor(q.pct) }}>{show(q.pct)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+            <div style={{ padding: '12px 16px', fontWeight: 700 }}>
+              Question by agent <span style={{ fontWeight: 400, color: 'var(--ink-soft)', fontSize: 12.5 }}>— % of available points earned on that question</span>
+            </div>
+            <table className="table" style={{ width: '100%' }}>
+              <thead><tr>
+                <th style={{ textAlign: 'left', position: 'sticky', left: 0, background: 'var(--card)' }}>Question</th>
+                {agents.map(a => <th key={a.agent} title={`${a.calls} calls scored`}>{a.agent}</th>)}
+              </tr></thead>
+              <tbody>
+                {questions.map(q => (
+                  <tr key={q.key}>
+                    <td style={{ textAlign: 'left', position: 'sticky', left: 0, background: 'var(--card)' }}>{q.label}</td>
+                    {agents.map(a => {
+                      const c = cell[`${a.agent}||${q.key}`]
+                      return (
+                        <td key={a.agent} style={{ fontWeight: 700, color: pctColor(c?.pct) }}
+                            title={c ? `${c.yes} yes / ${c.no} no${c.na ? ` / ${c.na} n‑a` : ''} of ${c.calls}` : 'No calls'}>
+                          {show(c?.pct)}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+                <tr style={{ borderTop: '2px solid var(--line)' }}>
+                  <td style={{ textAlign: 'left', fontWeight: 800, position: 'sticky', left: 0, background: 'var(--card)' }}>Overall</td>
+                  {agents.map(a => (
+                    <td key={a.agent} style={{ fontWeight: 800, color: pctColor(a.pct) }} title={`${a.calls} calls scored`}>{show(a.pct)}</td>
+                  ))}
+                </tr>
+                <tr>
+                  <td style={{ textAlign: 'left', color: 'var(--ink-soft)', fontSize: 12, position: 'sticky', left: 0, background: 'var(--card)' }}>Calls scored</td>
+                  {agents.map(a => <td key={a.agent} style={{ color: 'var(--ink-soft)', fontSize: 12 }}>{a.calls}</td>)}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function AiQaSpendReport({ range }) {
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
