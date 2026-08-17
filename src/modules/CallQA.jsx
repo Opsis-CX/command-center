@@ -2136,14 +2136,21 @@ function deriveDashAgg(agg) {
   return {
     k: {
       avg: num(o.avg), scored: o.scored || 0, opps: o.opps || 0, booked: o.booked || 0,
-      bookingRate: o.opps ? (100 * o.booked) / o.opps : null,
+      // Booking rate is booked / DECIDED, not booked / all opportunities.
+      // A transferred call is handed to another department and frequently books
+      // there — scoring it as a miss contradicts the scoring rubric, which since
+      // v18 explicitly does not penalize an agent for anything after a clean
+      // handoff. `decided` = Booked + Not Booked; `handed_off` is surfaced
+      // separately so handoffs stay visible instead of silently vanishing.
+      decided: o.decided || 0, handedOff: o.handed_off || 0,
+      bookingRate: o.decided ? (100 * o.booked) / o.decided : null,
       winnable: o.winnable || 0, lost: o.lost || 0,
       winPct: o.lost ? Math.round((100 * o.winnable) / o.lost) : null,
       noAsk: o.no_ask || 0, priceBefore: o.price_before || 0, noContact: o.no_contact || 0, feeObj: o.fee_obj || 0,
       humanAvg: num(o.human_avg), aiAvg: num(o.ai_avg), aiN: o.ai_n || 0,
     },
-    brands: ((agg && agg.brands) || []).map((b) => ({ ...b, avg: num(b.avg), booking: b.opps ? (100 * b.booked) / b.opps : null })),
-    agents: ((agg && agg.agents) || []).map((a) => ({ ...a, avg: num(a.avg), booking: a.opps ? (100 * a.booked) / a.opps : null })),
+    brands: ((agg && agg.brands) || []).map((b) => ({ ...b, avg: num(b.avg), booking: b.decided ? (100 * b.booked) / b.decided : null })),
+    agents: ((agg && agg.agents) || []).map((a) => ({ ...a, avg: num(a.avg), booking: a.decided ? (100 * a.booked) / a.decided : null })),
     priorities: ((agg && agg.priorities) || []).map((p) => ({ label: friendlyTag(p.tag), n: p.n, tag: p.tag })),
     queue: (agg && agg.queue) || [],
   }
@@ -2302,7 +2309,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 12 }}>
           <KpiCard label="Average QA Score" value={pct(k.avg)} color={scoreColor(k.avg)} sub={k.scored.toLocaleString() + ' scored'} onClick={() => onGotoTab('scorecards')} />
-          <KpiCard label="Booking Rate" value={pct(k.bookingRate)} color={TEAL} sub={k.booked + ' of ' + k.opps + ' opps'} onClick={() => openBucket('Booked opportunities', 'booked')} />
+          <KpiCard label="Booking Rate" value={pct(k.bookingRate)} color={TEAL} sub={k.booked + ' of ' + k.decided + ' decided' + (k.handedOff ? ` · ${k.handedOff} handed off` : '')} onClick={() => openBucket('Booked opportunities', 'booked')} />
           <KpiCard label="Calls Reviewed" value={k.scored.toLocaleString()} sub="real conversations" onClick={() => openBucket('All scored calls', 'scored')} />
           <KpiCard label="Winnable Losses" value={k.winnable.toLocaleString()} color="#b71c1c" sub={pct(k.winPct) + ' of lost'} onClick={() => openBucket('Winnable losses', 'winnable')} />
           <KpiCard label="Booking Not Asked For" value={k.noAsk.toLocaleString()} color="#b71c1c" sub="opportunities, no ask" onClick={() => openBucket('No booking attempt', 'noask')} />
@@ -2496,7 +2503,7 @@ function CoachingBriefing({ agg, prevAgg, loading, err, loadBucket, brand, agent
       <div style={stitle}>The numbers <span style={{ color: C.ink3, fontSize: 12.5, fontWeight: 400 }}>· click any to open the calls</span></div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 1, background: C.line, border: `1px solid ${C.line}`, borderRadius: 14, overflow: 'hidden' }}>
         <KpiCell label="Average QA Score" value={P(k.avg)} color={qCol(k.avg)} sub={`${k.scored.toLocaleString()} scored`} onClick={() => openBucket('All scored calls', 'scored')} />
-        <KpiCell label="Booking Rate" value={P(k.bookingRate)} color={C.teal} sub={`${k.booked} of ${k.opps} opps`} onClick={() => openBucket('Booked opportunities', 'booked')} />
+        <KpiCell label="Booking Rate" value={P(k.bookingRate)} color={C.teal} sub={`${k.booked} of ${k.decided} decided${k.handedOff ? ` · ${k.handedOff} handed off` : ''}`} onClick={() => openBucket('Booked opportunities', 'booked')} />
         <KpiCell label="Booking Not Asked" value={k.noAsk.toLocaleString()} color={C.bad} sub="no ask on the opp" onClick={() => openBucket('No booking attempt', 'noask')} />
         <KpiCell label="Pricing Before Discovery" value={k.priceBefore.toLocaleString()} color={C.warn} sub="quoted too early" onClick={() => openBucket('Pricing before discovery', 'price')} />
         <KpiCell label="Info Not Captured" value={k.noContact.toLocaleString()} color={C.bad} sub="no contact details" onClick={() => openBucket('Customer info not captured', 'nocontact')} />
