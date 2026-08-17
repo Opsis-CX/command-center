@@ -12,23 +12,50 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const activeChannelRef = useRef(null)
 
+  // Read the profile row, retrying a couple of times on a transient failure.
+  // Returns { ok, data }. ok=false means we never got a trustworthy answer —
+  // the caller must NOT treat that as "this person has no role".
+  async function fetchProfileRole(uid, attempts = 3) {
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles').select('role, client_id, timezone, in_training').eq('id', uid).maybeSingle()
+        // supabase-js returns errors, it does not throw them — checking `error`
+        // is what stops a failed read from looking like an empty profile.
+        if (!error) return { ok: true, data }
+      } catch { /* fall through to retry */ }
+      if (i < attempts - 1) await new Promise(r => setTimeout(r, 400 * (i + 1)))
+    }
+    return { ok: false, data: null }
+  }
+
   async function loadAppRole(sess) {
     const uid = sess?.user?.id
     if (!uid) { setAppRole('agent'); setClientId(null); setInTraining(false); return }
+
+    const { ok, data } = await fetchProfileRole(uid)
+
+    // Never demote on a read failure. Dropping someone to 'agent' because of a
+    // network blip silently strips their whole role for the session — they lose
+    // the Dashboard, the EOD card, and everything else their real role grants,
+    // with no error shown. Hold whatever we already have and try again later.
+    if (!ok) {
+      console.warn('[auth] could not read profile role; keeping the current role rather than falling back to agent')
+      return
+    }
+
+    setAppRole(data?.role || 'agent')
+    setClientId(data?.client_id || null)
+    setInTraining(!!data?.in_training)
+
+    // Auto-capture each person's real timezone from their computer so timezones
+    // stay accurate without manual entry. Only writes when it actually changed.
     try {
-      const { data } = await supabase.from('profiles').select('role, client_id, timezone, in_training').eq('id', uid).maybeSingle()
-      setAppRole(data?.role || 'agent')
-      setClientId(data?.client_id || null)
-      setInTraining(!!data?.in_training)
-      // Auto-capture each person's real timezone from their computer so timezones
-      // stay accurate without manual entry. Only writes when it actually changed.
-      try {
-        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-        if (tz && data && data.timezone !== tz) {
-          await supabase.from('profiles').update({ timezone: tz }).eq('id', uid)
-        }
-      } catch { /* ignore timezone detection errors */ }
-    } catch { setAppRole('agent'); setClientId(null); setInTraining(false) }
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      if (tz && data && data.timezone !== tz) {
+        await supabase.from('profiles').update({ timezone: tz }).eq('id', uid)
+      }
+    } catch { /* ignore timezone detection errors */ }
   }
 
   // If this user has been made inactive on People & Tags, kick them out now.
