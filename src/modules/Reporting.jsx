@@ -1940,6 +1940,12 @@ function AiQaByQuestionReport({ range }) {
   const [minCalls, setMinCalls] = useState(3)
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
+  // Per-audit breakdown (Sarah's request): one row per scored call showing that
+  // call's answer on every question. Loaded lazily — it is one row per call, not
+  // per agent, so it can be a few thousand rows on a wide range.
+  const [showAudits, setShowAudits] = useState(false)
+  const [audits, setAudits] = useState(null)
+  const [auditErr, setAuditErr] = useState('')
 
   useEffect(() => {
     let active = true; setData(null); setErr('')
@@ -1957,6 +1963,28 @@ function AiQaByQuestionReport({ range }) {
     })
     return () => { active = false }
   }, [campaign, source, minCalls, range.from, range.to])
+
+  // Reset the per-audit list whenever the filters move, so a stale list can
+  // never be read against the wrong range.
+  useEffect(() => { setAudits(null); setAuditErr('') }, [campaign, source, range.from, range.to])
+
+  useEffect(() => {
+    if (!showAudits || audits != null) return
+    let active = true; setAuditErr('')
+    supabase.rpc('callqa_question_audits', {
+      p_campaign: campaign || null,
+      p_start: range.from,
+      p_end: range.to,
+      p_brand: null,
+      p_agent: null,
+      p_source: source || null,
+      p_limit: 2000,
+    }).then(({ data, error }) => {
+      if (!active) return
+      if (error) setAuditErr(error.message); else setAudits(data)
+    })
+    return () => { active = false }
+  }, [showAudits, audits, campaign, source, range.from, range.to])
 
   const questions = data?.questions || []
   const agents = data?.agents || []
@@ -1982,6 +2010,21 @@ function AiQaByQuestionReport({ range }) {
     downloadCSV(`ai-qa-by-question-${campaign}-${range.from}_to_${range.to}.csv`, out)
   }
 
+  // One line per audit, one column per question — the AI equivalent of the
+  // per-audit answers export the human QA-by-Question report already offers.
+  function exportAuditsCsv() {
+    const aq = audits?.questions || []
+    const rows = audits?.audits || []
+    const out = [['Date', 'Brand', 'Agent', 'Source', 'Score %', 'Outcome', 'Opportunity', 'Duration (s)', 'Customer', ...aq.map(q => q.label)]]
+    rows.forEach(a => out.push([
+      a.call_date, a.brand || '', a.agent || '', a.source || '',
+      a.score_pct ?? '', a.outcome || '', a.opportunity === true ? 'yes' : a.opportunity === false ? 'no' : '',
+      a.duration_seconds ?? '', a.customer_number || '',
+      ...aq.map(q => (a.marks || {})[q.key] || ''),
+    ]))
+    downloadCSV(`ai-qa-by-audit-${campaign}-${range.from}_to_${range.to}.csv`, out)
+  }
+
   const sel = { padding: '6px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', fontSize: 13 }
 
   return (
@@ -2001,6 +2044,9 @@ function AiQaByQuestionReport({ range }) {
           <input type="number" min={1} value={minCalls} onChange={e => setMinCalls(e.target.value)} style={{ ...sel, width: 70 }} />
         </label>
         <div style={{ flex: 1 }} />
+        <button className="btn btn-ghost" onClick={() => setShowAudits(v => !v)} disabled={!questions.length}>
+          {showAudits ? '▾ Hide per-audit breakdown' : '▸ Show per-audit breakdown'}
+        </button>
         <button className="btn btn-ghost" onClick={exportCsv} disabled={!questions.length}>⬇ Export CSV</button>
       </div>
 
@@ -2080,6 +2126,57 @@ function AiQaByQuestionReport({ range }) {
               </tbody>
             </table>
           </div>
+
+          {showAudits && (
+            <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+              <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 700 }}>Every audit — question by question</span>
+                <span style={{ fontWeight: 400, color: 'var(--ink-soft)', fontSize: 12.5 }}>
+                  one row per scored call{audits?.audits?.length ? ` · ${audits.audits.length.toLocaleString()} audits` : ''}
+                  {audits?.truncated ? ' · showing the 2,000 most recent — narrow the date range for the full set' : ''}
+                </span>
+                <div style={{ flex: 1 }} />
+                <button className="btn btn-ghost" onClick={exportAuditsCsv} disabled={!audits?.audits?.length}>⬇ Export per-audit CSV</button>
+              </div>
+              {auditErr && <div style={{ padding: 16, color: 'var(--failed)' }}>Error: {auditErr}</div>}
+              {!auditErr && audits == null && <p className="page-sub" style={{ padding: '0 16px 16px' }}>Loading audits…</p>}
+              {!auditErr && audits != null && !audits.audits?.length && (
+                <p className="page-sub" style={{ padding: '0 16px 16px' }}>No audits in this range.</p>
+              )}
+              {!auditErr && !!audits?.audits?.length && (
+                <table className="table" style={{ width: '100%' }}>
+                  <thead><tr>
+                    <th style={{ textAlign: 'left', position: 'sticky', left: 0, background: 'var(--card)' }}>Call</th>
+                    <th>Score</th>
+                    <th>Outcome</th>
+                    {(audits.questions || []).map(q => (
+                      <th key={q.key} title={q.label} style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>
+                        {q.key.replace(/_/g, ' ')}
+                      </th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {audits.audits.map(a => (
+                      <tr key={a.call_id}>
+                        <td style={{ textAlign: 'left', position: 'sticky', left: 0, background: 'var(--card)', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontWeight: 600 }}>{a.agent || 'Unknown'}</div>
+                          <div style={{ color: 'var(--ink-soft)', fontSize: 11.5 }}>{a.call_date}{a.brand ? ` · ${a.brand}` : ''}</div>
+                        </td>
+                        <td style={{ fontWeight: 700, color: pctColor(a.score_pct) }}>{show(a.score_pct)}</td>
+                        <td style={{ fontSize: 12, color: 'var(--ink-soft)', whiteSpace: 'nowrap' }}>{a.outcome || '—'}</td>
+                        {(audits.questions || []).map(q => {
+                          const m = (a.marks || {})[q.key]
+                          const col = m === 'yes' ? 'var(--passed)' : m === 'no' ? 'var(--failed)' : 'var(--ink-soft)'
+                          const glyph = m === 'yes' ? '✓' : m === 'no' ? '✕' : m === 'na' ? '–' : ''
+                          return <td key={q.key} style={{ color: col, fontWeight: 700 }} title={`${q.label}: ${m || 'not answered'}`}>{glyph}</td>
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
