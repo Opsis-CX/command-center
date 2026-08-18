@@ -412,7 +412,11 @@ export default function CallQA({ portal = false } = {}) {
   // landing tabs (Dashboard, Briefing) use callqa_dashboard, and Overview uses
   // callqa_overview — so landing never triggers the big download.
   const ROW_TABS = ['scorecards', 'humanai', 'opportunities', 'missed', 'conversion', 'bookings', 'calls', 'fails']
-  useEffect(() => { if (ROW_TABS.includes(tab)) load() }, [tab, load])
+  // Rubric + Settings don't need the rows, but they DO need the settings /
+  // secret-presence / pipeline-count queries that live at the top of load() —
+  // and they were hanging on "Loading…" for the same reason Import was.
+  const LOAD_TABS = [...ROW_TABS, 'rubric', 'settings']
+  useEffect(() => { if (LOAD_TABS.includes(tab)) load() }, [tab, load])
   // Server-side Overview aggregate for EVERYONE — instant landing. The RPC
   // self-scopes exactly like the row RLS (manager → all, portal → their client,
   // agent → own), so it's safe for the client portal and far faster than the
@@ -880,6 +884,11 @@ export default function CallQA({ portal = false } = {}) {
         <ManagerDashboard agg={dashAgg} loading={dashLoading} err={dashErr} loadBucket={loadBucket} onOpen={setSelected} onGotoTab={setTab} onPickAgent={(a) => setAgent(a)} />
       ) : tab === 'briefing' ? (
         <CoachingBriefing agg={dashAgg} prevAgg={prevDashAgg} loading={dashLoading} err={dashErr} loadBucket={loadBucket} brand={brand} agent={agent} onOpen={setSelected} onPickBrand={(b) => { setBrand(b); setAgent('all') }} onPickAgent={(a) => setAgent(a)} />
+      ) : tab === 'import' ? (
+        // Import needs NOTHING from the review-row download — gating it behind
+        // `loading` left it stuck on "Loading…" forever whenever you jumped
+        // straight here from Briefing/Dashboard (load() only runs for ROW_TABS).
+        canManage ? <ImportPanel /> : null
       ) : loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
         <>
           {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} brand={brand} setBrand={setBrand} />}
@@ -892,7 +901,6 @@ export default function CallQA({ portal = false } = {}) {
           {tab === 'fails' && <EpicFails rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'rubric' && canManage && <RubricTab campaigns={settings.map((s) => s.campaign)} />}
         {tab === 'settings' && canManage && <SettingsTab settings={settings} secretKeys={secretKeys} pipeline={pipeline} base={base} onSave={saveSetting} busy={busy} />}
-        {tab === 'import' && canManage && <ImportPanel />}
         </>
       )}
       {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onExclude={setExcluded} onSetReviewed={setReviewed} onAdjust={saveAdjustment} onSetWinnable={setWinnable} busy={busy} canManage={canManage} meName={meName} userId={user?.id} />}
