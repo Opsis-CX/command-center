@@ -3243,8 +3243,25 @@ function ImportPanel() {
   const [prog, setProg] = useState({ done: 0, total: 0, failed: 0, cur: '' })
   const [status, setStatus] = useState(null)
   const [err, setErr] = useState('')
+  // Always-on per-brand import status (callqa_lightspeed_overview). Independent of
+  // whether you just uploaded in this session — opening the tab answers "is my
+  // batch done?" on its own. Counts files straight from Storage as well as rows,
+  // so an ingest gap shows as "waiting to ingest" instead of silently doing nothing.
+  const [ov, setOv] = useState(null)
+  const [ovErr, setOvErr] = useState('')
 
   const AUDIO_RE = /\.(wav|mp3|m4a|gsm|ogg|flac)$/i
+
+  const loadOverview = useCallback(async () => {
+    const { data, error } = await supabase.rpc('callqa_lightspeed_overview')
+    if (error) { setOvErr(error.message); return }
+    setOvErr(''); setOv(data)
+  }, [])
+  useEffect(() => {
+    loadOverview()
+    const t = setInterval(loadOverview, 15000)
+    return () => clearInterval(t)
+  }, [loadOverview])
 
   useEffect(() => {
     supabase.from('clients').select('id, portal_name').order('portal_name').then(({ data }) => {
@@ -3329,6 +3346,7 @@ function ImportPanel() {
     for (const r of readers) { try { await r.close() } catch { /* ignore */ } }
     setPhase('done')
     await refreshStatus(brand.trim())
+    loadOverview()
   }
 
   // Poll processing status after upload so the counts + checks stay live.
@@ -3344,7 +3362,9 @@ function ImportPanel() {
   const tsOk = status && (status.scored || 0) > 0 && status.scored_missing_timestamps === 0
 
   return (
-    <div style={{ display: 'grid', gap: 16, maxWidth: 720 }}>
+    <div style={{ display: 'grid', gap: 16, maxWidth: 860 }}>
+      <ImportStatusCard ov={ov} err={ovErr} onRefresh={loadOverview} />
+
       <Card>
         <div style={{ fontWeight: 700, marginBottom: 4 }}>Bulk import — Lightspeed recordings</div>
         <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
@@ -3403,6 +3423,83 @@ function ImportPanel() {
         </Card>
       )}
     </div>
+  )
+}
+
+// ---- Import status (always-on, per brand) ---------------------------------
+// Answers "did my upload finish?" without needing to have uploaded in this
+// session. `files` comes from Storage and `rows` from ai_qa_calls, so a stalled
+// ingest surfaces as "waiting to ingest" rather than looking complete.
+function fmtWhen(ts) {
+  if (!ts) return '—'
+  const d = new Date(ts)
+  if (isNaN(d)) return '—'
+  const mins = Math.round((Date.now() - d.getTime()) / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins} min ago`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return `${hrs} hr${hrs === 1 ? '' : 's'} ago`
+  return d.toLocaleDateString()
+}
+
+function ImportStatusCard({ ov, err, onRefresh }) {
+  const brands = (ov && Array.isArray(ov.brands)) ? ov.brands : null
+  return (
+    <Card>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <div style={{ fontWeight: 700 }}>Import status</div>
+        <button onClick={onRefresh} style={{ ...btn('ghost'), padding: '4px 10px', fontSize: 12.5 }}>↻ Refresh</button>
+      </div>
+      <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
+        Every Lightspeed brand, refreshed automatically every 15 seconds. “Held” calls are
+        internal/parked/transfer fragments kept on file but never scored — that’s by design, not a backlog.
+      </div>
+
+      {err && <div style={{ color: '#b71c1c', fontSize: 13 }}>Could not load status: {err}</div>}
+      {!err && !brands && <div style={{ color: '#64748b', fontSize: 13 }}>Loading status…</div>}
+      {!err && brands && brands.length === 0 && <div style={{ color: '#64748b', fontSize: 13 }}>No Lightspeed brands registered yet.</div>}
+
+      <div style={{ display: 'grid', gap: 12 }}>
+        {(brands || []).map((b) => {
+          const waiting = b.not_ingested || 0
+          const inFlight = b.in_flight || 0
+          const done = waiting === 0 && inFlight === 0
+          const denom = (b.scored || 0) + inFlight + (b.error || 0)
+          const pct = denom ? ((b.scored || 0) / denom) * 100 : (b.rows ? 100 : 0)
+          const tone = done ? { bg: '#e8f5e9', fg: '#1b5e20', bar: '#2e7d32' }
+            : { bg: '#fff8e1', fg: '#8d6e00', bar: '#f9a825' }
+          const label = waiting ? `Waiting to ingest — ${waiting} file${waiting === 1 ? '' : 's'}`
+            : inFlight ? `Processing — ${inFlight} to go`
+              : 'Complete'
+          return (
+            <div key={b.brand} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{b.brand}</div>
+                <Pill bg={tone.bg} fg={tone.fg}>{done ? '✓ ' : '⏳ '}{label}</Pill>
+                {b.error > 0 && <Pill bg="#fdecea" fg="#b71c1c">{b.error} error</Pill>}
+                {b.missing_recording > 0 && <Pill bg="#fff8e1" fg="#8d6e00">{b.missing_recording} missing recording</Pill>}
+                {b.registered === false && <Pill bg="#eef2f7" fg="#475569">legacy — no source row</Pill>}
+              </div>
+
+              <Bar v={pct} color={tone.bar} />
+
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8, fontSize: 12.5, color: '#475569' }}>
+                <span><b>{(b.files || 0).toLocaleString()}</b> files uploaded</span>
+                <span><b>{(b.rows || 0).toLocaleString()}</b> rows</span>
+                <span style={{ color: '#1b5e20' }}><b>{(b.scored || 0).toLocaleString()}</b> scored</span>
+                <span><b>{inFlight.toLocaleString()}</b> in flight</span>
+                <span style={{ color: '#94a3b8' }}><b>{(b.held || 0).toLocaleString()}</b> held</span>
+              </div>
+
+              <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
+                Last file received {fmtWhen(b.last_file_at)}
+                {b.first_call ? ` · calls ${b.first_call} → ${b.last_call}` : ''}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </Card>
   )
 }
 
