@@ -42,6 +42,8 @@ import Coaching from './modules/Coaching'
 import Tokens from './modules/Tokens'
 import TeamFavorites from './modules/TeamFavorites'
 import Meetings from './modules/Meetings'
+import TimeAdmin from './modules/TimeAdmin'
+import NewHireSurvey from './modules/NewHireSurvey'
 // --- Who's On: live check-ins (LiveStatus) + Slack-style team presence board ---
 import LiveStatus from './modules/LiveStatus'
 import { usePresenceHeartbeat, MyStatusButton, TeamStatus } from './components/Presence'
@@ -317,6 +319,15 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {canAny(appRole, 'coaching') && <Route path="/coaching" element={<Coaching />} />}
               {canAny(appRole, 'meetings') && <Route path="/meetings" element={<Meetings />} />}
               {canAny(appRole, 'live_status') && <Route path="/live" element={<LiveStatusPage />} />}
+              {/* Time (admin) — find/adjust anyone's tracked time, stop runaway timers.
+                  The Sidebar has linked here since the module landed, but the route was
+                  never registered, so /time fell through to "*" and rendered Dashboard.
+                  TimeAdmin re-checks isAdmin itself and RLS enforces it server-side. */}
+              <Route path="/time" element={<TimeAdmin />} />
+              {/* New Hire Survey — open to any signed-in user. Agents arrive from the
+                  notification link and see only the form; admins/reporting also get
+                  the aggregate results below it. Responses are anonymous by DB design. */}
+              <Route path="/survey" element={<NewHireSurvey />} />
               {canAny(appRole, 'tokens') && <Route path="/tokens" element={<Tokens />} />}
               <Route path="/get-to-know-you" element={<TeamFavorites />} />{/* everyone; RLS lets you write only your own card */}
               {canAny(appRole, 'reporting') && <Route path="/reporting" element={<Reporting />} />}
@@ -349,7 +360,7 @@ function titleFor(path) {
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions',
-    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call',
+    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
   }
   return map[path] || 'Command Center'
 }
