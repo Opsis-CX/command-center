@@ -32,6 +32,18 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const DOW = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 function etNow() { return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })) }
 function isoDate(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+// series_id is a uuid column, so the fallback has to be a real UUID — not the
+// Date.now()+random string used elsewhere in the app for text ids. crypto.randomUUID
+// is missing in non-secure contexts and older Safari; getRandomValues is not.
+function newUuid() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
+  const b = new Uint8Array(16)
+  crypto.getRandomValues(b)
+  b[6] = (b[6] & 0x0f) | 0x40
+  b[8] = (b[8] & 0x3f) | 0x80
+  const h = [...b].map(x => x.toString(16).padStart(2, '0')).join('')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
+}
 function mondayOf(d) { const x = new Date(d); const day = x.getDay(); const diff = (day === 0 ? -6 : 1 - day); x.setDate(x.getDate() + diff); x.setHours(0, 0, 0, 0); return x }
 function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x }
 function fmtTime(t) {
@@ -1362,9 +1374,50 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, 
   const [invitees, setInvitees] = useState(event.invitee_ids || [])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  // --- recurrence (new events only) ---------------------------------------
+  // Occurrences are written as real rows sharing a series_id rather than
+  // expanded on read, so invitees, Google push, meeting links and the T-10/T-2
+  // reminders all keep working with no special cases, and any single occurrence
+  // can be moved or edited on its own.
+  const [repeat, setRepeat] = useState('none')   // none | daily | weekdays | weekly | biweekly | monthly
+  const [repeatUntil, setRepeatUntil] = useState('')
   const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || 'Unknown'
+  // Dates after the first for the chosen pattern, capped so a typo can't create
+  // thousands of rows.
+  function occurrenceDates() {
+    if (repeat === 'none' || !repeatUntil) return []
+    const out = []
+    const last = new Date(repeatUntil + 'T00:00:00')
+    const cur = new Date(date + 'T00:00:00')
+    const MAX = 366
+    while (out.length < MAX) {
+      if (repeat === 'daily') cur.setDate(cur.getDate() + 1)
+      else if (repeat === 'weekdays') { do { cur.setDate(cur.getDate() + 1) } while (cur.getDay() === 0 || cur.getDay() === 6) }
+      else if (repeat === 'weekly') cur.setDate(cur.getDate() + 7)
+      else if (repeat === 'biweekly') cur.setDate(cur.getDate() + 14)
+      else if (repeat === 'monthly') {
+        // Clamp instead of letting Date roll over: naive setMonth on Jan 31 gives
+        // Mar 3, skipping February entirely and permanently drifting the series
+        // onto the 3rd. Anchor to the ORIGINAL day-of-month each time and clamp to
+        // the target month's length.
+        const anchorDay = new Date(date + 'T00:00:00').getDate()
+        const y = cur.getFullYear(), m = cur.getMonth() + 1
+        const daysInTarget = new Date(y, m + 1, 0).getDate()
+        cur.setDate(1) // avoid rolling over while we move the month
+        cur.setFullYear(y, m, Math.min(anchorDay, daysInTarget))
+      }
+      else break
+      if (cur > last) break
+      out.push(isoDate(cur))
+    }
+    return out
+  }
   async function save() {
     if (!title.trim()) { setErr('Give the event a title.'); return }
+    if (isNew && repeat !== 'none') {
+      if (!repeatUntil) { setErr('Pick an end date for the repeat, or set Repeat to "Does not repeat".'); return }
+      if (repeatUntil < date) { setErr('The repeat end date is before the event date.'); return }
+    }
     setSaving(true)
     const payload = {
       title: title.trim(), event_date: date, all_day: allDay,
@@ -1374,9 +1427,22 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, 
     }
     let savedId = event.id
     let res
+    let madeExtras = []
     if (isNew) {
-      res = await supabase.from('calendar_events').insert(payload).select().single()
+      const extras = occurrenceDates()
+      // Give the whole series one id up front so the first row carries it too —
+      // that's what makes "delete the whole series" find every occurrence.
+      const seriesId = extras.length ? newUuid() : null
+      // ONE insert for the whole series. Inserting the base row first and the
+      // repeats second left a window where a failure on the second call had
+      // already committed the base row — the modal stayed open with isNew still
+      // true, so pressing Save again created a duplicate. A single statement is
+      // all-or-nothing.
+      const rows = [{ ...payload, series_id: seriesId }, ...extras.map(d => ({ ...payload, event_date: d, series_id: seriesId }))]
+      const { data: made, error: insErr } = await supabase.from('calendar_events').insert(rows).select()
+      res = { data: (made || []).find(r => r.event_date === date) || (made || [])[0], error: insErr }
       savedId = res.data?.id
+      madeExtras = (made || []).filter(r => r.id !== savedId)
     } else {
       res = await supabase.from('calendar_events').update(payload).eq('id', event.id).select().single()
     }
@@ -1394,16 +1460,51 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, 
         }
       } catch { /* non-fatal: local save already succeeded */ }
     }
+    // Push the rest of the series to Google too — a recurring meeting that shows
+    // up once in Google would be worse than not syncing at all. Bounded at 60:
+    // past that we skip and TELL the user, rather than firing hundreds of invokes
+    // or leaving them to discover the gap in Google weeks later.
+    let gcalSkipped = 0
+    if (gcalConn && madeExtras.length) {
+      if (madeExtras.length > 60) {
+        gcalSkipped = madeExtras.length
+      } else {
+        const pushOne = async (row) => {
+          try {
+            const { data: pushed } = await supabase.functions.invoke('google-calendar-write', { body: { action: 'push', op: 'create', event: row } })
+            if (pushed?.google_event_id) {
+              await supabase.from('calendar_events').update({
+                google_event_id: pushed.google_event_id, google_calendar_id: pushed.google_calendar_id,
+              }).eq('id', row.id)
+            }
+          } catch { /* non-fatal */ }
+        }
+        // Small concurrent batches so a 60-occurrence series doesn't sit on
+        // "Saving…" through 60 sequential round trips.
+        for (let i = 0; i < madeExtras.length; i += 5) {
+          await Promise.all(madeExtras.slice(i, i + 5).map(pushOne))
+        }
+      }
+    }
     setSaving(false)
+    if (gcalSkipped) {
+      window.alert(`Saved ${gcalSkipped + 1} events in Command Center.\n\nThey were not added to your Google Calendar — that's only done automatically for series of 60 or fewer. Shorten the repeat, or add it in Google directly.`)
+    }
     onSaved()
   }
-  async function del() {
+  async function del(whole = false) {
     if (!event.id) return
     // push delete to Google first (while we still have the id), then remove locally
     if (gcalConn && event.google_event_id) {
       try { await supabase.functions.invoke('google-calendar-write', { body: { action: 'push', op: 'delete', event } }) } catch { /* non-fatal */ }
     }
-    await supabase.from('calendar_events').delete().eq('id', event.id)
+    if (whole && event.series_id) {
+      // Google copies of the other occurrences are removed on the next sync;
+      // clearing the local rows is what the user asked for here.
+      await supabase.from('calendar_events').delete().eq('series_id', event.series_id)
+    } else {
+      await supabase.from('calendar_events').delete().eq('id', event.id)
+    }
     onSaved()
   }
   return (
@@ -1429,6 +1530,35 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, 
           <div style={{ display: 'flex', gap: 10 }}>
             <div className="field" style={{ flex: 1 }}><label>Start</label><input type="time" value={start} onChange={e => setStart(e.target.value)} disabled={!isOwner} /></div>
             <div className="field" style={{ flex: 1 }}><label>End</label><input type="time" value={end} onChange={e => setEnd(e.target.value)} disabled={!isOwner} /></div>
+          </div>
+        )}
+        {isNew && isOwner && (
+          <>
+            <div className="field"><label>Repeat</label>
+              <select value={repeat} onChange={e => setRepeat(e.target.value)}>
+                <option value="none">Does not repeat</option>
+                <option value="daily">Daily</option>
+                <option value="weekdays">Every weekday (Mon–Fri)</option>
+                <option value="weekly">Weekly</option>
+                <option value="biweekly">Every 2 weeks</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            {repeat !== 'none' && (
+              <div className="field"><label>Repeat until</label>
+                <input type="date" value={repeatUntil} min={date} onChange={e => setRepeatUntil(e.target.value)} />
+                <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>
+                  {repeatUntil && repeatUntil >= date
+                    ? `Creates ${occurrenceDates().length + 1} events. Each one can be edited or deleted on its own.`
+                    : 'Pick the last date this should appear on.'}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+        {!isNew && event.series_id && (
+          <div style={{ fontSize: 12, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+            🔁 Part of a repeating series. Editing here changes <strong>only this date</strong>.
           </div>
         )}
         <div className="field"><label>Notes</label>
@@ -1479,7 +1609,11 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, 
             <>
               <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
               <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-              {!isNew && <button className="btn btn-ghost" style={{ marginLeft: 'auto', color: 'var(--failed)' }} onClick={del}>Delete</button>}
+              {!isNew && <button className="btn btn-ghost" style={{ marginLeft: 'auto', color: 'var(--failed)' }} onClick={() => del(false)}>{event.series_id ? 'Delete this date' : 'Delete'}</button>}
+              {!isNew && event.series_id && (
+                <button className="btn btn-ghost" style={{ color: 'var(--failed)' }}
+                  onClick={() => { if (window.confirm('Delete every date in this repeating series? This cannot be undone.')) del(true) }}>Delete series</button>
+              )}
             </>
           ) : (
             <button className="btn btn-ghost" onClick={onClose}>Close</button>
