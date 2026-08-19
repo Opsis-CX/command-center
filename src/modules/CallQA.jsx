@@ -896,7 +896,7 @@ export default function CallQA({ portal = false } = {}) {
           {tab === 'opportunities' && <Opportunities rows={filtered} agg={agg} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'missed' && <MissedOpps rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'conversion' && <Conversion rows={filtered} prevAgg={prevAgg} onOpen={setSelected} viewAll={viewAll} />}
-          {tab === 'bookings' && <BookingsCard rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
+          {tab === 'bookings' && <BookingsCard rows={filtered} onOpen={setSelected} viewAll={viewAll} bounds={dashBounds} brand={brand} />}
           {tab === 'calls' && <Calls rows={filtered} onOpen={setSelected} viewAll={viewAll} canManage={canManage} onSetReviewed={setReviewed} busy={busy} />}
           {tab === 'fails' && <EpicFails rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'rubric' && canManage && <RubricTab campaigns={settings.map((s) => s.campaign)} />}
@@ -1402,15 +1402,46 @@ function Calls({ rows, onOpen, viewAll, canManage, onSetReviewed, busy }) {
 
 // ---- Bookings & Card: every booked call, with TWO layers — did the CSR ASK for a card
 // to secure the appointment (agent metric), and given they asked, did we COLLECT it (corporate metric) ----
-function BookingsCard({ rows, onOpen, viewAll }) {
+function BookingsCard({ rows, onOpen, viewAll, bounds, brand }) {
   const [filter, setFilter] = useState('all') // all | asked | collected | failed
+  // ---------------------------------------------------------------------
+  // THE HEADLINE NUMBERS COME FROM `callqa_cc_capture_report()` — the SAME
+  // function that generates the 7:00 AM client email. They are NOT computed
+  // from `rows`. That is deliberate: the old client-side math skipped the
+  // service-only filter, the excluded/scoreable drops and the CallRail↔
+  // LightSpeed dedupe, so the dashboard and the client's email disagreed.
+  // Sourcing both from one function makes them match by construction.
+  // ---------------------------------------------------------------------
+  const [serviceOnly, setServiceOnly] = useState(true)   // true = exactly what the email reports
+  const [rep, setRep] = useState(null)
+  const [repErr, setRepErr] = useState('')
+  const [repBusy, setRepBusy] = useState(true)
+  const startP = bounds?.start || '2020-01-01'
+  const endP = bounds?.end || null
+  useEffect(() => {
+    let dead = false
+    setRepBusy(true); setRepErr('')
+    supabase.rpc('callqa_cc_capture_report', {
+      p_start: startP, p_end: endP,
+      p_brands: brand && brand !== 'all' ? [brand] : null,
+      p_service_only: serviceOnly, p_by_agent: true,
+    }).then(({ data, error }) => {
+      if (dead) return
+      if (error) { setRepErr(error.message); setRep(null) } else setRep(data)
+      setRepBusy(false)
+    })
+    return () => { dead = true }
+  }, [startP, endP, brand, serviceOnly])
+
+  const ov = rep?.overall || null
   const booked = useMemo(() => rows.filter((r) => r.outcome === 'Booked'), [rows])
-  const asked = booked.filter((r) => r.asked_for_cc === true).length
-  const collected = booked.filter((r) => r.collected_cc === true).length
+  const asked = ov ? (ov.asked_cc || 0) : 0
+  const collected = ov ? (ov.captured_cc || 0) : 0
+  const bookedN = ov ? (ov.booked || 0) : 0
   const askedButNot = booked.filter((r) => r.asked_for_cc === true && r.collected_cc === false).length
   const notAsked = booked.filter((r) => r.asked_for_cc === false).length
   const pending = booked.filter((r) => r.asked_for_cc == null).length
-  const askPct = booked.length ? Math.round((asked / booked.length) * 1000) / 10 : null      // Layer A: ask rate (of bookings)
+  const askPct = bookedN ? Math.round((asked / bookedN) * 1000) / 10 : null      // Layer A: ask rate (of bookings)
   const collectPct = asked ? Math.round((collected / asked) * 1000) / 10 : null                // Layer B: collect rate (of asks)
   // Sort: asked-first, and within asked, collected-first.
   const rank = (r) => (r.asked_for_cc === true ? (r.collected_cc === true ? 0 : r.collected_cc === false ? 1 : 2) : r.asked_for_cc == null ? 3 : 4)
@@ -1424,7 +1455,6 @@ function BookingsCard({ rows, onOpen, viewAll }) {
   const [bkSort, bkOnSort] = useSort()
   const bkAcc = { Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'What they wanted': (r) => r.opportunity_context || (r.topics || [])[0], 'Card asked': (r) => (r.asked_for_cc === true ? 1 : r.asked_for_cc === false ? 0 : null), Collected: (r) => (r.asked_for_cc !== true ? null : r.collected_cc === true ? 1 : r.collected_cc === false ? 0 : null), 'What the rep said': (r) => r.cc_quote, Score: (r) => (isScored(r) ? Number(r.score_pct) : null) }
   const bkView = useTableView(sortRows(shown, bkSort, bkAcc), { searchText: (r) => `${fmtDate(r.call?.call_date)} ${agentOf(r)} ${r.call?.brand || ''} ${r.opportunity_context || (r.topics || [])[0] || ''} ${r.cc_quote || ''}` })
-  if (!booked.length) return <Card style={{ color: '#64748b' }}>No booked calls in this range.</Card>
   const askPill = (v) => v === true
     ? <Pill bg="#e8f5e9" fg="#1b5e20">Yes</Pill>
     : v === false ? <Pill bg="#f1f5f9" fg="#64748b">No</Pill>
@@ -1437,20 +1467,109 @@ function BookingsCard({ rows, onOpen, viewAll }) {
         : <Pill bg="#fff8e1" fg="#8d6e00">Pending</Pill>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Tile label="Bookings" value={booked.length} sub="calls that booked" />
-        <Tile label="Card asked" value={asked} color="#1b5e20" sub={askPct == null ? '' : `${askPct}% of bookings · agent metric`} />
-        <Tile label="Card collected" value={collected} color="#0f766e" sub={collectPct == null ? 'no asks yet' : `${collectPct}% of asks · corporate metric`} />
-        {askedButNot > 0 && <Tile label="Asked, not collected" value={askedButNot} color="#b71c1c" />}
-        {pending > 0 && <Tile label="Pending" value={pending} color="#8d6e00" sub="not yet evaluated" />}
-      </div>
+      <Card style={{ background: '#f8fafc' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+          <div>
+            <div style={{ fontWeight: 700 }}>Card capture{serviceOnly ? ' — service calls only' : ' — all call types'}</div>
+            <div style={{ fontSize: 12.5, color: '#64748b' }}>
+              These figures come from the same report that is emailed to the client, so they match it exactly.
+              {bounds?.start ? ` ${bounds.start} → ${bounds.end || 'today'}.` : ' All time.'}
+              {brand && brand !== 'all' ? ` ${brand}.` : ' All brands.'}
+            </div>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <input type="checkbox" checked={serviceOnly} onChange={(e) => setServiceOnly(e.target.checked)} />
+            Service calls only
+          </label>
+        </div>
+
+        {repErr && <div style={{ color: '#b71c1c', fontSize: 13 }}>Could not load: {repErr}</div>}
+        {repBusy && !rep && <div style={{ color: '#64748b', fontSize: 13 }}>Loading…</div>}
+
+        {ov && (
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <Tile label="Bookings" value={bookedN} sub={serviceOnly ? 'booked service calls' : 'calls that booked'} />
+            <Tile label="Card asked" value={asked} color="#1b5e20" sub={askPct == null ? '' : `${askPct}% of bookings · agent metric`} />
+            <Tile label="Card collected" value={collected} color="#0f766e" sub={collectPct == null ? 'no asks yet' : `${collectPct}% of asks · corporate metric`} />
+          </div>
+        )}
+
+        {Array.isArray(rep?.by_brand) && rep.by_brand.length > 1 && (
+          <div style={{ marginTop: 14, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead><tr style={{ textAlign: 'left', color: '#64748b' }}>
+                <th style={{ padding: '6px 8px' }}>Brand</th><th style={{ padding: '6px 8px' }}>Booked</th>
+                <th style={{ padding: '6px 8px' }}>Asked</th><th style={{ padding: '6px 8px' }}>Ask&nbsp;%</th>
+                <th style={{ padding: '6px 8px' }}>Captured</th><th style={{ padding: '6px 8px' }}>Capture&nbsp;%</th>
+              </tr></thead>
+              <tbody>{rep.by_brand.map((b) => (
+                <tr key={b.brand} style={{ borderTop: '1px solid #eef2f7' }}>
+                  <td style={{ padding: '6px 8px', fontWeight: 600 }}>{b.brand}</td>
+                  <td style={{ padding: '6px 8px' }}>{b.booked}</td>
+                  <td style={{ padding: '6px 8px' }}>{b.asked_cc}</td>
+                  <td style={{ padding: '6px 8px' }}>{b.booked ? `${Math.round(b.asked_cc / b.booked * 1000) / 10}%` : '—'}</td>
+                  <td style={{ padding: '6px 8px' }}>{b.captured_cc}</td>
+                  <td style={{ padding: '6px 8px' }}>{b.asked_cc ? `${Math.round(b.captured_cc / b.asked_cc * 1000) / 10}%` : '—'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
+
+        {Array.isArray(rep?.by_agent) && rep.by_agent.length > 0 && viewAll && (
+          <details style={{ marginTop: 12 }}>
+            <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: TEAL }}>Per CSR ({rep.by_agent.length})</summary>
+            <div style={{ marginTop: 8, overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead><tr style={{ textAlign: 'left', color: '#64748b' }}>
+                  <th style={{ padding: '6px 8px' }}>CSR</th><th style={{ padding: '6px 8px' }}>Brand</th>
+                  <th style={{ padding: '6px 8px' }}>Booked</th><th style={{ padding: '6px 8px' }}>Asked</th>
+                  <th style={{ padding: '6px 8px' }}>Ask&nbsp;%</th><th style={{ padding: '6px 8px' }}>Captured</th>
+                </tr></thead>
+                <tbody>{rep.by_agent.map((a, i) => (
+                  <tr key={`${a.brand}:${a.agent}:${i}`} style={{ borderTop: '1px solid #eef2f7' }}>
+                    <td style={{ padding: '6px 8px', fontWeight: 600 }}>{a.agent}</td>
+                    <td style={{ padding: '6px 8px', color: '#64748b' }}>{a.brand}</td>
+                    <td style={{ padding: '6px 8px' }}>{a.booked}</td>
+                    <td style={{ padding: '6px 8px' }}>{a.asked_cc}</td>
+                    <td style={{ padding: '6px 8px' }}>{a.booked ? `${Math.round(a.asked_cc / a.booked * 1000) / 10}%` : '—'}</td>
+                    <td style={{ padding: '6px 8px' }}>{a.captured_cc}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
+                Calls where the recording doesn’t identify the CSR are counted in the totals above but have no row here,
+                so this table can sum to less than the headline.
+              </div>
+            </div>
+          </details>
+        )}
+
+        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 10 }}>
+          <b>Counted:</b> booked calls{serviceOnly ? ' whose topics start with Repair or Maintenance' : ''}, excluding manually-excluded and
+          non-scoreable calls, and de-duplicated where CallRail and LightSpeed recorded the same conversation.
+          “Asked” means a card to hold the appointment — not paying an invoice or a part deposit.
+        </div>
+      </Card>
+
+      {(askedButNot > 0 || pending > 0) && (
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          {askedButNot > 0 && <Tile label="Asked, not collected" value={askedButNot} color="#b71c1c" sub="from the call list below" />}
+          {pending > 0 && <Tile label="Pending" value={pending} color="#8d6e00" sub="not yet evaluated" />}
+        </div>
+      )}
       <Card style={{ background: '#f0fdfa', border: '1px solid #99f6e4' }}>
         <div style={{ fontWeight: 700, color: TEAL }}>Booked calls — two layers: did we ask for a card, and did we collect it?</div>
         <div style={{ fontSize: 12.5, color: '#334155', marginTop: 2 }}><b>Layer A — Card asked</b> (agent metric): the CSR asks the customer for a credit card <b>to secure or hold the appointment</b> (e.g. “we'll need a card to hold it — no charge until we come out”). Paying for a product/part over the phone, paying an existing invoice, or the customer offering to pay on arrival do <b>not</b> count. <b>Layer B — Card collected</b> (corporate metric): given the rep asked, the customer actually provided the card. An agent gets credit for asking even if the customer declines — collection is a corporate outcome, not an agent ding. Click any row to open the full call — timestamped transcript, recording, scoring and notes.</div>
       </Card>
+      <div style={{ fontSize: 12.5, color: '#8d6e00', background: '#fff8e1', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 12px' }}>
+        <b>Note:</b> the call list below is for browsing and drill-down — it follows the filters at the top of the page and
+        may include calls the headline doesn’t count (installs and new-door quotes when “Service calls only” is on, plus
+        duplicate recordings of the same conversation). Trust the tiles above for any number you report.
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, flexWrap: 'wrap' }}>
         <span style={{ color: '#64748b' }}>Show:</span>
-        {[['all', `All bookings (${booked.length})`], ['asked', `Asked (${asked})`], ['collected', `Collected (${collected})`], ['failed', `Asked but not collected (${askedButNot})`]].map(([k, lbl]) => (
+        {[['all', `All bookings (${booked.length})`], ['asked', `Asked (${booked.filter((r) => r.asked_for_cc === true).length})`], ['collected', `Collected (${booked.filter((r) => r.collected_cc === true).length})`], ['failed', `Asked but not collected (${askedButNot})`]].map(([k, lbl]) => (
           <button key={k} onClick={() => setFilter(k)} style={{ padding: '4px 10px', borderRadius: 999, border: '1px solid ' + (filter === k ? TEAL : '#e2e8f0'), background: filter === k ? '#f0fdfa' : '#fff', color: filter === k ? TEAL : '#475569', fontWeight: filter === k ? 700 : 500, cursor: 'pointer' }}>{lbl}</button>
         ))}
       </div>
