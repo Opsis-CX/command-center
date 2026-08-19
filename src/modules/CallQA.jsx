@@ -382,7 +382,10 @@ export default function CallQA({ portal = false } = {}) {
       if (fetchStart) {
         const s = new Date(fetchStart + 'T00:00:00Z')
         const e = dashBounds.end ? new Date(dashBounds.end + 'T00:00:00Z') : new Date()
-        const len = e - s
+        // Inclusive span: a start==end window is ONE day, not zero. Treating it as
+        // zero meant the single-day presets (Today / Yesterday) fetched no prior
+        // window at all, so every delta column silently vanished.
+        const len = (e - s) + 86400000
         if (len > 0) fetchStart = new Date(s.getTime() - len).toISOString().slice(0, 10)
       }
       const { data, error } = await supabase.rpc('callqa_rows', {
@@ -581,7 +584,7 @@ export default function CallQA({ portal = false } = {}) {
     if (!s) return null // all-time: nothing comparable to diff against
     const start = new Date(s + 'T00:00:00Z')
     const end = dashBounds.end ? new Date(dashBounds.end + 'T00:00:00Z') : new Date()
-    const lenMs = end - start
+    const lenMs = (end - start) + 86400000 // inclusive: start==end is one day, not zero
     if (!(lenMs > 0)) return null
     const prevEnd = new Date(start.getTime() - 86400000)
     const prevStart = new Date(prevEnd.getTime() - lenMs)
@@ -750,7 +753,9 @@ export default function CallQA({ portal = false } = {}) {
   async function saveAdjustment(reviewId, answers, note) {
     setBusy(reviewId)
     const { earned, max, pct, section_scores } = recomputeReview(answers)
-    await supabase.from('ai_qa_reviews').update({ answers, earned_points: earned, max_points: max, score_pct: pct, section_scores, manager_adjusted: true, adjustment_note: note || null, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', reviewId)
+    // This used to swallow failures silently — an RLS denial looked like a save.
+    const { error } = await supabase.from('ai_qa_reviews').update({ answers, earned_points: earned, max_points: max, score_pct: pct, section_scores, manager_adjusted: true, adjustment_note: note || null, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', reviewId)
+    if (error) { window.alert('Could not save adjustments: ' + error.message); setBusy(''); return }
     await load(); setBusy('')
   }
   async function saveSetting(s) { setBusy('settings'); await supabase.from('ai_qa_settings').upsert(s, { onConflict: 'campaign' }); await load(); setBusy('') }
@@ -805,10 +810,27 @@ export default function CallQA({ portal = false } = {}) {
 
   const base = import.meta.env.VITE_SUPABASE_URL || ''
   const inFlight = (pipeline.needs_transcription || 0) + (pipeline.transcribing || 0) + (pipeline.ready || 0) + (pipeline.scoring || 0)
-  const todayStr = new Date().toISOString().slice(0, 10)
+  // Local calendar date — NOT toISOString(), which is UTC and would roll over to
+  // "tomorrow" for anyone in the US after 8pm ET.
+  const localYmd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const todayStr = localYmd(new Date())
+  const yesterdayStr = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return localYmd(d) })()
+  // Today / Yesterday are single-day windows, so they ride the custom start+end
+  // path (which every tab already honours) rather than the "last N days" preset.
+  const rangeValue = (customRange && startDate === endDate && startDate === todayStr) ? 'today'
+    : (customRange && startDate === endDate && startDate === yesterdayStr) ? 'yesterday'
+      : (customRange ? 'custom' : days)
+  const onRangeChange = (v) => {
+    if (v === 'today') { setStartDate(todayStr); setEndDate(todayStr); return }
+    if (v === 'yesterday') { setStartDate(yesterdayStr); setEndDate(yesterdayStr); return }
+    if (v === 'custom') return           // informational only; use the date pickers
+    setStartDate(''); setEndDate(''); setDays(Number(v))
+  }
   // Human-readable summary of the active top-bar filters, shown under the tabs so
   // every view (and its exports) makes clear what range/brand/agent it reflects.
-  const rangeLabel = customRange
+  const rangeLabel = rangeValue === 'today' ? `Today (${todayStr})`
+    : rangeValue === 'yesterday' ? `Yesterday (${yesterdayStr})`
+    : customRange
     ? ((startDate || '…') + ' → ' + (endDate || '…'))
     : (days === 7 ? 'Last 7 days' : days === 30 ? 'Last 30 days' : days === 90 ? 'Last 90 days' : days >= 3650 ? 'All time' : ('Last ' + days + ' days'))
   // Scorecards + Human vs AI run off the date-only row set (portfolio views with
@@ -850,7 +872,9 @@ export default function CallQA({ portal = false } = {}) {
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', margin: '16px 0' }}>
         {canManage && <Select label="Program" value={program} onChange={(v) => { setProgram(v); setBrand('all'); setAgent('all') }} opts={programOpts} />}
-        <Select label="Range" value={days} onChange={(v) => setDays(Number(v))} opts={[[7, 'Last 7 days'], [30, 'Last 30 days'], [90, 'Last 90 days'], [3650, 'All time']]} disabled={customRange} title={customRange ? 'Using the custom date range below' : undefined} />
+        <Select label="Range" value={rangeValue} onChange={onRangeChange}
+          opts={[['today', 'Today'], ['yesterday', 'Yesterday'], [7, 'Last 7 days'], [30, 'Last 30 days'], [90, 'Last 90 days'], [3650, 'All time'], ...(rangeValue === 'custom' ? [['custom', 'Custom dates']] : [])]}
+          title={rangeValue === 'custom' ? 'Using the custom date range below — pick a preset to clear it' : undefined} />
         <DateField label="Start date" value={startDate} max={endDate || todayStr} onChange={setStartDate} />
         <DateField label="End date" value={endDate} min={startDate || undefined} max={todayStr} onChange={setEndDate} />
         {customRange && <button onClick={() => { setStartDate(''); setEndDate('') }} style={{ ...btn('ghost'), padding: '7px 10px' }}>✕ Clear dates</button>}
@@ -1667,6 +1691,37 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
   }, [row.id])
   const [note, setNote] = useState(row.adjustment_note || '')
   const [downloading, setDownloading] = useState(false)
+  // --- editable AI feedback (the AI's words, not its points) -----------------
+  // Managers could always change a question's mark; the rationale text was
+  // read-only. `qa_update_answer_feedback` merges server-side so a background
+  // re-score can't have its marks clobbered by a stale client copy of `answers`.
+  const [fbKey, setFbKey] = useState(null)     // question key being edited
+  const [fbText, setFbText] = useState('')
+  const [fbBusy, setFbBusy] = useState(false)
+  const beginFb = (k, a) => { setFbKey(k); setFbText(a?.rationale || '') }
+  const cancelFb = () => { setFbKey(null); setFbText('') }
+  // value === null reverts that question to the AI's original wording.
+  async function saveFb(k, value) {
+    setFbBusy(true)
+    const { data, error } = await supabase.rpc('qa_update_answer_feedback', { p_review_id: row.id, p_edits: { [k]: value } })
+    setFbBusy(false)
+    if (error) { window.alert('Could not save feedback: ' + error.message); return }
+    const server = (Array.isArray(data) ? data[0] : data)?.answers || {}
+    // Server truth becomes the new baseline. Local unsaved *mark* edits on other
+    // questions are preserved — we only pull this question's wording across, so
+    // the `dirty` flag stays honest.
+    setOrigAns(server)
+    setAns((prev) => {
+      if (!prev || !prev[k] || !server[k]) return server
+      // Take the server's object for this question VERBATIM. Rebuilding it field by
+      // field produced a different key order than Postgres jsonb returns, and
+      // `dirty` compares with JSON.stringify — which is key-order sensitive — so the
+      // drawer would show a phantom "adjusted preview" after every feedback edit.
+      // Unsaved mark edits on OTHER questions are still preserved.
+      return { ...prev, [k]: server[k] }
+    })
+    cancelFb()
+  }
   // Build a clean, print-ready one-call report and open it for Save-as-PDF.
   // Answers / transcript / notes may be lazy-loaded, so make sure we have them.
   async function downloadPdf(includeTranscript = false) {
@@ -1765,7 +1820,7 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
           <Card><div style={{ fontWeight: 700, marginBottom: 4 }}>Summary</div><div style={{ fontSize: 13.5, color: '#334155' }}>{row.summary || '—'}</div></Card>
 
           <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}><div style={{ fontWeight: 700 }}>Detailed scoring</div>{canManage && ans != null && <span style={{ fontSize: 12, color: '#94a3b8' }}>managers can change any item ↓</span>}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}><div style={{ fontWeight: 700 }}>Detailed scoring</div>{canManage && ans != null && <span style={{ fontSize: 12, color: '#94a3b8' }}>managers can change any mark — and ✎ the AI's feedback ↓</span>}</div>
             {ans == null && <div style={{ fontSize: 13, color: '#94a3b8' }}>Loading detailed scoring…</div>}
             {items.map(([k, a]) => {
               const isNa = a.na || a.answer === 'na'; const isYes = a.answer === 'yes'
@@ -1781,7 +1836,38 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
                       <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>({isNa ? 0 : a.max} pts)</span>
                     </div>
                   </div>
-                  {a.rationale && <div style={{ fontSize: 12.5, color: '#475569', marginTop: 2 }}>{a.rationale}</div>}
+                  {fbKey === k ? (
+                    <div style={{ marginTop: 6 }}>
+                      <textarea value={fbText} onChange={(e) => setFbText(e.target.value)} rows={3} autoFocus
+                        placeholder="Feedback shown to the agent for this question"
+                        style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 12.5, color: '#334155', padding: '7px 9px', borderRadius: 8, border: '1px solid #94a3b8', resize: 'vertical' }} />
+                      <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                        <button disabled={fbBusy || !fbText.trim()} onClick={() => saveFb(k, fbText.trim())} style={{ ...btn('primary'), padding: '3px 10px', fontSize: 12 }}>{fbBusy ? 'Saving…' : 'Save'}</button>
+                        <button disabled={fbBusy} onClick={cancelFb} style={{ ...btn('ghost'), padding: '3px 10px', fontSize: 12 }}>Cancel</button>
+                        {a.rationale_ai !== undefined && (
+                          <button disabled={fbBusy} title="Put the AI's original wording back" onClick={() => saveFb(k, null)} style={{ ...btn('ghost'), padding: '3px 10px', fontSize: 12 }}>↺ Revert to AI</button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    (a.rationale || canManage) && (
+                      <div style={{ fontSize: 12.5, color: '#475569', marginTop: 2, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                        <span style={{ flex: 1 }}>{a.rationale || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>No feedback yet</span>}</span>
+                        {/* Managers only. The client portal and agents render this same
+                            drawer with canManage=false — showing them an "edited" chip
+                            whose tooltip is the pre-edit AI wording would tell a client
+                            we rewrote the feedback, and hand them the original. */}
+                        {canManage && a.rationale_ai !== undefined && (
+                          <span title={`AI's original wording: ${a.rationale_ai || '(none)'}`}
+                            style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: '#8d6e00', background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 999, padding: '1px 7px', cursor: 'help' }}>· edited</span>
+                        )}
+                        {canManage && (
+                          <button title="Edit this feedback" onClick={() => beginFb(k, a)}
+                            style={{ flexShrink: 0, background: 'none', border: 0, cursor: 'pointer', color: '#94a3b8', fontSize: 12, padding: '0 2px', fontFamily: 'inherit' }}>✎</button>
+                        )}
+                      </div>
+                    )
+                  )}
                   {(a.misses || []).length > 0 && !isNa && !isYes && <div style={{ fontSize: 12, color: '#b71c1c', marginTop: 2 }}>Missed: {a.misses.join(', ')}</div>}
                   {a.evidence && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, fontStyle: 'italic' }}>“{a.evidence}”</div>}
                 </div>
@@ -1811,7 +1897,7 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
               {dirty && <input placeholder="Why are you adjusting this? (optional note)" value={note} onChange={(e) => setNote(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, marginBottom: 10, boxSizing: 'border-box' }} />}
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {dirty && <button disabled={busy === row.id} onClick={() => onAdjust(row.id, ans, note)} style={btn('primary')}>{busy === row.id ? 'Saving…' : `Save adjustments → ${pct(preview.pct)}`}</button>}
-                <button disabled={busy === c.id} onClick={() => onRescore(c.id)} style={btn('ghost')}>{busy === c.id ? 'Scoring…' : '↻ Re-score with AI'}</button>
+                <button disabled={busy === c.id} onClick={() => onRescore(c.id)} title="Heads up: re-scoring regenerates every question, which replaces any feedback you've edited by hand." style={btn('ghost')}>{busy === c.id ? 'Scoring…' : '↻ Re-score with AI'}</button>
                 {row.excluded
                   ? <button disabled={busy === row.id} onClick={() => onExclude(row.id, false, row.call?.id)} style={btn('ghost')}>Include in scoring</button>
                   : <button disabled={busy === row.id} onClick={() => onExclude(row.id, true, row.call?.id)} style={btn('ghost')}>Exclude from scoring</button>}
