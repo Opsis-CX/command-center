@@ -47,7 +47,7 @@ const NAV_MAIN = [
           { to: '/schedule-builder', label: 'Schedule builder', perm: 'schedule.create_schedules' },
           { to: '/insights', label: 'Schedule insights', perm: 'schedule.view_insights_assigned' },
           { to: '/live', label: "Who's On", perm: 'live_status' },
-          { to: '/time', label: 'Time', perm: 'schedule.view_my_schedule' }, // NEW — assumed route /time + this perm; change if different
+          { to: '/time', label: 'Time', perm: '__admin' }, // TimeAdmin is admin-only (it renders "This page is for admins" otherwise)
         ],
       },
       { type: 'link', to: '/chat', label: 'Chat', ic: '💬', perm: 'chat' },
@@ -90,6 +90,7 @@ const NAV_MAIN = [
           { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
           { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
           { to: '/roles', label: 'Roles & permissions', perm: '__admin' }, // admins/owners only
+          { to: '/survey', label: 'New Hire Survey', perm: '__admin' },   // results view; agents reach the form from their notification
         ],
       },
     ],
