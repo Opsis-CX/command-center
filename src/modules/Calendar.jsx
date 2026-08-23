@@ -53,6 +53,59 @@ function fmtTime(t) {
   return m === 0 ? `${h12}${period}` : `${h12}:${String(m).padStart(2, '0')}${period}`
 }
 function parseHour(t) { return t ? parseInt(t.slice(0, 2), 10) : null }
+// Minutes since midnight from an "HH:MM" / "HH:MM:SS" string. Minute-precision is
+// what makes a 9:30 event land on the half-hour and a 10a-12p event render two
+// hours tall instead of one generic hour-sized chip.
+function minsOf(t) {
+  if (!t) return null
+  const [h, m] = String(t).split(':').map(Number)
+  if (!Number.isFinite(h)) return null
+  return h * 60 + (Number.isFinite(m) ? m : 0)
+}
+// Lay timed items into side-by-side columns so overlaps are visible instead of
+// silently stacking on top of each other. Standard interval-graph sweep: build
+// clusters of mutually-overlapping items, then pack each cluster into the fewest
+// columns. Returns [{ i, s, e, col, cols, overlapped }].
+const MIN_EVENT_MINS = 20 // floor so zero/short/missing-end events stay clickable
+function layoutTimed(items) {
+  const rows = items
+    .map(i => {
+      const s = minsOf(i.start)
+      if (s === null) return null
+      let e = minsOf(i.end)
+      if (e === null || e <= s) e = s + MIN_EVENT_MINS
+      return { i, s, e: Math.max(e, s + MIN_EVENT_MINS) }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.s - b.s || b.e - a.e)
+  const out = []
+  let group = []
+  let groupEnd = -1
+  const flush = () => {
+    if (!group.length) return
+    const colEnds = [] // colEnds[k] = end minute of the last item placed in column k
+    for (const r of group) {
+      let k = 0
+      while (k < colEnds.length && colEnds[k] > r.s) k++
+      colEnds[k] = r.e
+      r.col = k
+    }
+    const cols = colEnds.length
+    for (const r of group) out.push({ ...r, cols, overlapped: cols > 1 })
+    group = []
+    groupEnd = -1
+  }
+  for (const r of rows) {
+    if (group.length && r.s >= groupEnd) flush()
+    group.push(r)
+    groupEnd = Math.max(groupEnd, r.e)
+  }
+  flush()
+  return out
+}
+// Minutes since midnight in the viewer's own zone — the day grid renders viewer
+// local wall time, so the "now" line has to be measured the same way.
+function localNowMins() { const d = new Date(); return d.getHours() * 60 + d.getMinutes() }
 // Command Center accent palette (from the app's design tokens)
 const COLORS = {
   event: 'var(--accent, #0077B6)',
@@ -649,17 +702,23 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
       <div style={cellStyle}>
         <div style={{ position: 'relative', height: hours.length * ROW, borderTop: '1px solid var(--cal-line-2)' }} onClick={() => onAddEvent(d)}>
           {hours.map((h, i) => <div key={h} style={{ position: 'absolute', top: i * ROW, left: 0, right: 0, height: ROW, borderBottom: '1px solid var(--cal-line-3)' }} />)}
-          {timed.map(i => {
-            const startH = parseHour(i.start)
-            const endH = i.end ? parseHour(i.end) : startH + 1
-            const top = Math.max(0, (startH - START_HOUR) * ROW)
-            const h = Math.max(18, ((endH || startH + 1) - startH) * ROW - 2)
+          {layoutTimed(timed).map(({ i, s, e, col, cols, overlapped }) => {
+            const top = (s / 60 - START_HOUR) * ROW
+            const h = Math.max(14, ((e - s) / 60) * ROW - 2)
+            // Clip to the visible 7a–10p window rather than dropping the event.
+            const clippedTop = Math.max(0, top)
+            const clippedH = Math.max(14, h - (clippedTop - top))
+            const widthPct = 100 / cols
             return (
-              <div key={i.kind + i.id} onClick={(e) => openItem(i, e)} title={`${fmtTime(i.start)} ${i.title}`}
+              <div key={i.kind + i.id} onClick={(ev) => openItem(i, ev)}
+                title={`${fmtTime(i.start)}${i.end ? ' – ' + fmtTime(i.end) : ''} · ${i.title}`}
                 style={{
-                  position: 'absolute', top, left: 1, right: 1, height: h, background: i.color, color: '#fff',
+                  position: 'absolute', top: clippedTop, height: clippedH,
+                  left: `calc(${col * widthPct}% + 1px)`, width: `calc(${widthPct}% - 2px)`,
+                  background: i.color, color: '#fff',
                   fontSize: narrow ? 8.5 : 10, lineHeight: 1.15, padding: narrow ? '1px 2px' : '2px 4px',
                   borderRadius: 3, overflow: 'hidden', cursor: 'pointer',
+                  boxShadow: overlapped ? 'inset 2px 0 0 rgba(255,255,255,.9)' : 'none',
                 }}>
                 {narrow ? i.title : `${fmtTime(i.start)} ${i.title}`}
               </div>
@@ -788,6 +847,19 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
   const hours = Array.from({ length: 24 }, (_, i) => i) // 12a–11p (full day)
   const [q, who] = quoteFor(cursor)
   const narrow = useNarrow(900)
+  // Fixed pixels-per-hour so block height == duration. (The old grid used flex:1
+  // rows, which meant a row grew when events stacked in it and the timeline was
+  // no longer linear.)
+  const ROW = narrow ? 52 : 40
+  const AXIS_W = 46
+  const laid = layoutTimed(timed)
+  const isToday = ds === isoDate(new Date())
+  const [nowMins, setNowMins] = useState(localNowMins())
+  useEffect(() => {
+    if (!isToday) return
+    const t = setInterval(() => setNowMins(localNowMins()), 60000)
+    return () => clearInterval(t)
+  }, [isToday])
   return (
     <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', minHeight: narrow ? 0 : 820 }}>
       {/* left page: hourly column */}
@@ -807,20 +879,51 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
         {allDay.map(i => (
           <div key={i.id} onClick={(e) => openItem(i, e)} style={{ background: i.color, color: '#fff', fontSize: 11, padding: '3px 6px', borderRadius: 3, marginBottom: 4, cursor: 'pointer' }}>{i.title}</div>
         ))}
-        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 760 }}>
+        <div style={{ position: 'relative', height: 24 * ROW }}>
+          {/* hour gutter + gridlines */}
           {hours.map(h => (
-            <div key={h} style={{ display: 'flex', borderTop: '1px solid var(--cal-line-3)', flex: 1, minHeight: 34 }}>
-              <div style={{ width: 44, fontSize: 11, color: 'var(--cal-ink-mute)', paddingTop: 2 }}>{h === 0 ? '12 am' : h === 12 ? '12 pm' : h > 12 ? `${h - 12} pm` : `${h} am`}</div>
-              <div style={{ flex: 1 }} onClick={() => onAddEvent(cursor)}>
-                {timed.filter(i => parseHour(i.start) === h).map(i => (
-                  <div key={i.id} onClick={(e) => openItem(i, e)}
-                    style={{ background: i.color, color: '#fff', fontSize: 11, padding: '3px 6px', borderRadius: 3, margin: '1px 0', cursor: 'pointer' }}>
-                    {fmtTime(i.start)} {i.title}
-                  </div>
-                ))}
+            <div key={h} style={{ position: 'absolute', top: h * ROW, left: 0, right: 0, height: ROW, borderTop: '1px solid var(--cal-line-3)' }}>
+              <div style={{ width: AXIS_W, fontSize: 11, color: 'var(--cal-ink-mute)', paddingTop: 2 }}>
+                {h === 0 ? '12 am' : h === 12 ? '12 pm' : h > 12 ? `${h - 12} pm` : `${h} am`}
               </div>
+              <div style={{ position: 'absolute', top: ROW / 2, left: AXIS_W, right: 0, borderTop: '1px dotted var(--cal-line-3)', opacity: 0.5 }} />
             </div>
           ))}
+          {/* event surface — click empty space to add */}
+          <div style={{ position: 'absolute', top: 0, bottom: 0, left: AXIS_W, right: 0 }} onClick={() => onAddEvent(cursor)}>
+            {laid.map(({ i, s, e, col, cols, overlapped }) => {
+              const top = (s / 60) * ROW
+              const height = Math.max(16, ((e - s) / 60) * ROW - 2)
+              const widthPct = 100 / cols
+              return (
+                <div key={i.kind + i.id} onClick={(ev) => openItem(i, ev)}
+                  title={`${fmtTime(i.start)}${i.end ? ' – ' + fmtTime(i.end) : ''} · ${i.title}`}
+                  style={{
+                    position: 'absolute', top, height,
+                    left: `${col * widthPct}%`, width: `calc(${widthPct}% - 3px)`,
+                    background: i.color, color: '#fff', fontSize: 11, lineHeight: 1.2,
+                    padding: '2px 6px', borderRadius: 3, overflow: 'hidden', cursor: 'pointer',
+                    // Overlap indicator: a bright inset rail + ring so a shared slot
+                    // reads as shared even when the columns are narrow on a phone.
+                    boxShadow: overlapped
+                      ? 'inset 3px 0 0 rgba(255,255,255,.9), 0 0 0 1px var(--cal-paper, rgba(0,0,0,.35))'
+                      : 'none',
+                  }}>
+                  <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {fmtTime(i.start)}{i.end ? `–${fmtTime(i.end)}` : ''}{overlapped && cols > 1 ? ` · ${col + 1}/${cols}` : ''}
+                  </div>
+                  {height > 26 && <div style={{ opacity: 0.95 }}>{i.title}</div>}
+                </div>
+              )
+            })}
+            {/* current-time line */}
+            {isToday && (
+              <div style={{ position: 'absolute', top: (nowMins / 60) * ROW, left: 0, right: 0, pointerEvents: 'none', zIndex: 5 }}>
+                <div style={{ borderTop: '2px solid ' + COLORS.priority }} />
+                <div style={{ position: 'absolute', top: -4, left: -4, width: 8, height: 8, borderRadius: '50%', background: COLORS.priority }} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
       {/* right page: panels */}
@@ -1508,118 +1611,4 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, 
     onSaved()
   }
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }} onClick={onClose}>
-      <div className="card" style={{ width: 420, maxWidth: '90vw', padding: 20 }} onClick={e => e.stopPropagation()}>
-        <h3 style={{ margin: '0 0 14px', fontSize: 16 }}>{isNew ? 'Add event' : isOwner ? 'Edit event' : 'Event details'}</h3>
-        {!isOwner && (
-          <div style={{ fontSize: 12, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
-            You're invited to this event{event.owner_id ? ` by ${nameOf(event.owner_id)}` : ''}. View only.
-          </div>
-        )}
-        {err && <div style={{ color: 'var(--failed)', fontSize: 12, marginBottom: 8 }}>{err}</div>}
-        <div className="field"><label>Title</label>
-          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Event title" autoFocus={isOwner} disabled={!isOwner} />
-        </div>
-        <div className="field"><label>Date</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} disabled={!isOwner} />
-        </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '8px 0' }}>
-          <input type="checkbox" checked={allDay} onChange={e => setAllDay(e.target.checked)} disabled={!isOwner} style={{ width: 'auto' }} /> All day
-        </label>
-        {!allDay && (
-          <div style={{ display: 'flex', gap: 10 }}>
-            <div className="field" style={{ flex: 1 }}><label>Start</label><input type="time" value={start} onChange={e => setStart(e.target.value)} disabled={!isOwner} /></div>
-            <div className="field" style={{ flex: 1 }}><label>End</label><input type="time" value={end} onChange={e => setEnd(e.target.value)} disabled={!isOwner} /></div>
-          </div>
-        )}
-        {isNew && isOwner && (
-          <>
-            <div className="field"><label>Repeat</label>
-              <select value={repeat} onChange={e => setRepeat(e.target.value)}>
-                <option value="none">Does not repeat</option>
-                <option value="daily">Daily</option>
-                <option value="weekdays">Every weekday (Mon–Fri)</option>
-                <option value="weekly">Weekly</option>
-                <option value="biweekly">Every 2 weeks</option>
-                <option value="monthly">Monthly</option>
-              </select>
-            </div>
-            {repeat !== 'none' && (
-              <div className="field"><label>Repeat until</label>
-                <input type="date" value={repeatUntil} min={date} onChange={e => setRepeatUntil(e.target.value)} />
-                <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>
-                  {repeatUntil && repeatUntil >= date
-                    ? `Creates ${occurrenceDates().length + 1} events. Each one can be edited or deleted on its own.`
-                    : 'Pick the last date this should appear on.'}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-        {!isNew && event.series_id && (
-          <div style={{ fontSize: 12, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
-            🔁 Part of a repeating series. Editing here changes <strong>only this date</strong>.
-          </div>
-        )}
-        <div className="field"><label>Notes</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} disabled={!isOwner} />
-        </div>
-        <div className="field"><label>Meeting link</label>
-          <input value={meetingUrl} onChange={e => setMeetingUrl(e.target.value)} placeholder="Paste a Zoom / Teams / Meet link (optional)" disabled={!isOwner} />
-          {isOwner && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>Add a video link and the notetaker will join and record this meeting into Command Center. Leave blank for none.</div>}
-          {meetingUrl && /^https?:\/\//i.test(meetingUrl.trim()) && (
-            <a href={meetingUrl.trim()} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: 12, color: 'var(--accent, #0077B6)', wordBreak: 'break-all' }}>Join meeting ↗</a>
-          )}
-        </div>
-        <div className="field"><label>Invitees</label>
-          {isOwner ? (
-            <>
-              <InviteePicker profiles={profiles} userId={userId} value={invitees} onChange={setInvitees} />
-              <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>Invited people see this event on their calendar, even if it's set to Personal.</div>
-            </>
-          ) : (
-            <div style={{ fontSize: 13, color: invitees.length ? 'var(--ink)' : 'var(--ink-soft)' }}>
-              {invitees.length ? invitees.map(nameOf).join(', ') : 'No invitees'}
-            </div>
-          )}
-        </div>
-        <div className="field"><label>Color</label>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', pointerEvents: isOwner ? 'auto' : 'none', opacity: isOwner ? 1 : .7 }}>
-            {['#0077B6', '#16A34A', '#D97706', '#7C3AED', '#DC2626', '#0891B2', '#DB2777', '#65A30D', '#4B5563'].map(c => (
-              <span key={c} onClick={() => setColor(c)} title={c}
-                style={{ width: 26, height: 26, borderRadius: 6, background: c, cursor: 'pointer', border: color === c ? '3px solid var(--ink)' : '3px solid transparent' }} />
-            ))}
-            <label title="Custom color" style={{ position: 'relative', width: 26, height: 26, borderRadius: 6, cursor: 'pointer', border: '2px dashed var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-              <input type="color" value={color} onChange={e => setColor(e.target.value)}
-                style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
-              <span style={{ fontSize: 13, color: 'var(--ink-soft)' }}>+</span>
-            </label>
-            <span style={{ width: 18, height: 18, borderRadius: 4, background: color, marginLeft: 4 }} />
-          </div>
-        </div>
-        <div className="field"><label>Visibility</label>
-          <select value={scope} onChange={e => setScope(e.target.value)} disabled={!isOwner || (!isAdmin && scope !== 'team')}>
-            <option value="personal">Personal{invitees.length ? ' + invitees' : ' (only me)'}</option>
-            <option value="team">Team (everyone)</option>
-          </select>
-        </div>
-        {isOwner && !isAdmin && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: -6, marginBottom: 8 }}>Only admins can create team events, but you can invite specific people above.</div>}
-        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          {isOwner ? (
-            <>
-              <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
-              <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-              {!isNew && <button className="btn btn-ghost" style={{ marginLeft: 'auto', color: 'var(--failed)' }} onClick={() => del(false)}>{event.series_id ? 'Delete this date' : 'Delete'}</button>}
-              {!isNew && event.series_id && (
-                <button className="btn btn-ghost" style={{ color: 'var(--failed)' }}
-                  onClick={() => { if (window.confirm('Delete every date in this repeating series? This cannot be undone.')) del(true) }}>Delete series</button>
-              )}
-            </>
-          ) : (
-            <button className="btn btn-ghost" onClick={onClose}>Close</button>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignI
