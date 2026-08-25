@@ -589,6 +589,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
       title: deal.title || '', contact_email: deal.contact_email || '',
       contact_phone: deal.contact_phone || '', value: deal.value ?? '',
       owner_name: deal.owner_name || '', source: deal.source || '', notes: deal.notes || '',
+      type: deal.type || '',
     })
     setEditErr(''); setEditing(true)
   }
@@ -602,6 +603,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
       title: clean(form.title), contact_email: clean(form.contact_email),
       contact_phone: clean(form.contact_phone), owner_name: clean(form.owner_name),
       source: clean(form.source), notes: clean(form.notes),
+      type: clean(form.type),
       value: form.value === '' ? null : Number(form.value),
     }
     try { await onUpdate(deal, patch); setEditing(false) }
@@ -738,6 +740,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
                 <FormField lbl="Organization *" value={form.organization} onChange={setFld('organization')} placeholder="Acme Corp" full />
                 <FormField lbl="Contact person" value={form.contact_person} onChange={setFld('contact_person')} placeholder="Jane Doe" />
                 <FormField lbl="Role / title" value={form.title} onChange={setFld('title')} placeholder="VP Marketing" />
+                <FormField lbl="Type" value={form.type} onChange={setFld('type')} placeholder="Service, Product, etc." />
                 <FormField lbl="Email" value={form.contact_email} onChange={setFld('contact_email')} type="email" placeholder="jane@acme.com" />
                 <FormField lbl="Phone" value={form.contact_phone} onChange={setFld('contact_phone')} placeholder="(555) 123-4567" />
                 <FormField lbl="Value ($)" value={form.value} onChange={setFld('value')} type="number" placeholder="0" />
@@ -752,6 +755,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
             <>
               <RowShow label="Contact" value={deal.contact_person} />
               <Row label="Role / title" value={deal.title && deal.title !== deal.organization ? deal.title : null} />
+              <Row label="Type" value={deal.type} />
               <RowShow label="Email" value={deal.contact_email} />
               <RowShow label="Phone" value={deal.contact_phone} />
               <Row label="Value" value={money(deal.value)} />
@@ -875,7 +879,7 @@ function parseCSV(text) {
   let row = [], field = '', inQuotes = false
   const endField = () => { row.push(field); field = '' }
   const endRow = () => { endField(); rows.push(row); row = [] }
-  text = text.replace(/^\uFEFF/, '')   // strip BOM
+  text = text.replace(/^﻿/, '')   // strip BOM
   for (let i = 0; i < text.length; i++) {
     const c = text[i]
     if (inQuotes) {
@@ -907,6 +911,7 @@ const IMPORT_FIELDS = [
   { key: 'organization',   label: 'Organization', required: true, match: ['organization', 'company', 'account'] },
   { key: 'contact_person', label: 'Contact person', match: ['contact person', 'person - name', 'contact name', 'full name', 'name'], avoid: ['date', 'time'] },
   { key: 'title',          label: 'Role / title', match: ['title', 'role', 'job'] },
+  { key: 'type',           label: 'Type', match: ['type', 'deal type', 'service type'] },
   { key: 'status',         label: 'Stage', match: ['stage'] },
   { key: 'contact_email',  label: 'Email', match: ['email', 'e-mail'], avoid: ['date', 'time', 'sent', 'opened', 'clicked', 'count', 'status'] },
   { key: 'contact_phone',  label: 'Phone', match: ['phone', 'mobile', 'tel'], avoid: ['date', 'time', 'count'] },
@@ -984,6 +989,7 @@ function ImportModal({ pipelineKey = 'sales', onCancel, onDone, onError }) {
       organization: clean(cell(r, 'organization')),
       contact_person: clean(cell(r, 'contact_person')),
       title: clean(cell(r, 'title')),
+      type: clean(cell(r, 'type')),
       contact_email: clean(cell(r, 'contact_email')),
       contact_phone: clean(cell(r, 'contact_phone')),
       owner_name: clean(cell(r, 'owner_name')),
@@ -1014,7 +1020,7 @@ function ImportModal({ pipelineKey = 'sales', onCancel, onDone, onError }) {
       <div style={box}>
         <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 800 }}>Import leads from CSV</h3>
         <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--ink-soft)' }}>
-          Each row becomes a lead at the “New Lead” stage. Only mapped columns are imported.
+          Each row becomes a lead at the "New Lead" stage. Only mapped columns are imported.
         </p>
         {localErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{localErr}</div>}
 
@@ -1112,7 +1118,7 @@ function FormField({ lbl, value, onChange, type = 'text', placeholder, full, aut
 
 function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
   const [f, setF] = useState({
-    organization: '', contact_person: '', title: '', contact_email: '',
+    organization: '', contact_person: '', title: '', type: '', contact_email: '',
     contact_phone: '', value: '', owner_name: '', source: '', notes: '',
   })
   const [saving, setSaving] = useState(false)
@@ -1130,6 +1136,7 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
       organization: f.organization.trim(),
       contact_person: clean(f.contact_person),
       title: clean(f.title),
+      type: clean(f.type),
       contact_email: clean(f.contact_email),
       contact_phone: clean(f.contact_phone),
       owner_name: clean(f.owner_name),
@@ -1156,7 +1163,7 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
       <div style={{ width: 520, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14, padding: 22, boxShadow: '0 18px 50px rgba(0,0,0,.25)' }}>
         <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 800 }}>New lead</h3>
         <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--ink-soft)' }}>
-          Adds a deal to the pipeline at the “New Lead” stage.
+          Adds a deal to the pipeline at the "New Lead" stage.
         </p>
         {localErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{localErr}</div>}
 
@@ -1164,6 +1171,7 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
           <FormField lbl="Organization *" value={f.organization} onChange={set('organization')} placeholder="Acme Corp" full autoFocus />
           <FormField lbl="Contact person" value={f.contact_person} onChange={set('contact_person')} placeholder="Jane Doe" />
           <FormField lbl="Role / title" value={f.title} onChange={set('title')} placeholder="VP Marketing" />
+          <FormField lbl="Type" value={f.type} onChange={set('type')} placeholder="Service, Product, etc." />
           <FormField lbl="Email" value={f.contact_email} onChange={set('contact_email')} type="email" placeholder="jane@acme.com" />
           <FormField lbl="Phone" value={f.contact_phone} onChange={set('contact_phone')} placeholder="(555) 123-4567" />
           <FormField lbl="Deal value ($)" value={f.value} onChange={set('value')} type="number" placeholder="0" />
