@@ -16,6 +16,14 @@ import { can } from '../lib/permissions'
 const RATE = 10 // tokens per USD
 export const usd = (tokens) => `$${(Number(tokens || 0) / RATE).toFixed(2)}`
 const AWARD_ROLES = ['asc', 'certification'] // + admin (always). Budget-limited; admin is unlimited.
+// Who may see the WHOLE team on the Leaderboard. Everyone else — agents
+// included — only ever sees their own standing. Mirrors the DB helper
+// tokens_is_manager() (admin/asc/certification/quality), which token_leaderboard()
+// and the token_wallets RLS policy both enforce, so the UI can never render
+// more than the server would hand back.
+const LEADERBOARD_ROLES = ['admin', 'asc', 'certification', 'quality']
+const rolesOf = (r) => String(r || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean)
+const canViewAllTokens = (isAdmin, appRole) => !!isAdmin || rolesOf(appRole).some(r => LEADERBOARD_ROLES.includes(r))
 const REASONS = ['Recognition', 'Performance', 'Attendance', 'Contest', 'Milestone', 'Other']
 
 function tabBtn(active) {
@@ -43,6 +51,7 @@ export default function Tokens() {
   const { user, isAdmin, appRole } = useAuth()
   const canAward = isAdmin || AWARD_ROLES.includes(String(appRole || '').toLowerCase())
   const canViewLedger = isAdmin || can(appRole, 'tokens.ledger')
+  const viewAllTokens = canViewAllTokens(isAdmin, appRole)
   const [tab, setTab] = useState('wallet')
 
   return (
@@ -63,7 +72,7 @@ export default function Tokens() {
       {tab === 'wallet' && <WalletTab user={user} onRedeem={() => setTab('redeem')} />}
       {tab === 'redeem' && <RedeemTab user={user} />}
       {tab === 'award' && canAward && <AwardTab user={user} isAdmin={isAdmin} />}
-      {tab === 'leaderboard' && <LeaderboardTab user={user} />}
+      {tab === 'leaderboard' && <LeaderboardTab user={user} viewAll={viewAllTokens} />}
       {tab === 'ledger' && canViewLedger && <AdminLedger />}
       {tab === 'admin' && isAdmin && <AdminTab />}
     </div>
@@ -356,13 +365,42 @@ function AwardTab({ user, isAdmin }) {
 }
 
 // ---------------------------------------------------------------- LEADERBOARD
-function LeaderboardTab({ user }) {
+// Managers see the ranked team board. Everyone else — agents included — sees
+// ONLY their own standing: no other names, no rank number and no medal (with a
+// single row a medal would wrongly read as "you're #1"). token_leaderboard()
+// enforces the same split server-side, so a non-manager cannot get other rows
+// even if this component were bypassed.
+function LeaderboardTab({ user, viewAll }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   useEffect(() => {
     supabase.rpc('token_leaderboard').then(({ data }) => { setRows(data || []); setLoading(false) })
   }, [])
   if (loading) return <div className="card">Loading…</div>
+
+  if (!viewAll) {
+    // Belt and braces: never render a row that isn't this person's own.
+    const mine = (rows || []).find(r => r.profile_id === user?.id) || null
+    return (
+      <div className="card">
+        <div style={{ fontWeight: 700, marginBottom: 12 }}>Your lifetime tokens</div>
+        {!mine ? (
+          <div style={{ color: 'var(--ink-soft)', fontSize: 14 }}>You haven't earned any tokens yet.</div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+              <div style={{ fontSize: 34, fontWeight: 800, color: 'var(--ink)' }}>{mine.lifetime_earned}</div>
+              <div style={{ fontSize: 15, color: 'var(--ink-soft)', fontWeight: 600 }}>{usd(mine.lifetime_earned)}</div>
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginTop: 6 }}>
+              Total earned since you started{mine.lifetime_redeemed ? ` · ${mine.lifetime_redeemed} redeemed` : ''}.
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
+
   const medals = ['🥇', '🥈', '🥉']
   return (
     <div className="card">
