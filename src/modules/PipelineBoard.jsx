@@ -589,7 +589,6 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
       title: deal.title || '', contact_email: deal.contact_email || '',
       contact_phone: deal.contact_phone || '', value: deal.value ?? '',
       owner_name: deal.owner_name || '', source: deal.source || '', notes: deal.notes || '',
-      type: deal.type || '',
     })
     setEditErr(''); setEditing(true)
   }
@@ -603,7 +602,6 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
       title: clean(form.title), contact_email: clean(form.contact_email),
       contact_phone: clean(form.contact_phone), owner_name: clean(form.owner_name),
       source: clean(form.source), notes: clean(form.notes),
-      type: clean(form.type),
       value: form.value === '' ? null : Number(form.value),
     }
     try { await onUpdate(deal, patch); setEditing(false) }
@@ -740,7 +738,6 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
                 <FormField lbl="Organization *" value={form.organization} onChange={setFld('organization')} placeholder="Acme Corp" full />
                 <FormField lbl="Contact person" value={form.contact_person} onChange={setFld('contact_person')} placeholder="Jane Doe" />
                 <FormField lbl="Role / title" value={form.title} onChange={setFld('title')} placeholder="VP Marketing" />
-                <FormField lbl="Type" value={form.type} onChange={setFld('type')} placeholder="Service, Product, etc." />
                 <FormField lbl="Email" value={form.contact_email} onChange={setFld('contact_email')} type="email" placeholder="jane@acme.com" />
                 <FormField lbl="Phone" value={form.contact_phone} onChange={setFld('contact_phone')} placeholder="(555) 123-4567" />
                 <FormField lbl="Value ($)" value={form.value} onChange={setFld('value')} type="number" placeholder="0" />
@@ -1118,7 +1115,7 @@ function FormField({ lbl, value, onChange, type = 'text', placeholder, full, aut
 
 function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
   const [f, setF] = useState({
-    organization: '', contact_person: '', title: '', type: '', contact_email: '',
+    organization: '', contact_person: '', title: '', contact_email: '',
     contact_phone: '', value: '', owner_name: '', source: '', notes: '',
   })
   const [saving, setSaving] = useState(false)
@@ -1136,7 +1133,6 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
       organization: f.organization.trim(),
       contact_person: clean(f.contact_person),
       title: clean(f.title),
-      type: clean(f.type),
       contact_email: clean(f.contact_email),
       contact_phone: clean(f.contact_phone),
       owner_name: clean(f.owner_name),
@@ -1171,7 +1167,6 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
           <FormField lbl="Organization *" value={f.organization} onChange={set('organization')} placeholder="Acme Corp" full autoFocus />
           <FormField lbl="Contact person" value={f.contact_person} onChange={set('contact_person')} placeholder="Jane Doe" />
           <FormField lbl="Role / title" value={f.title} onChange={set('title')} placeholder="VP Marketing" />
-          <FormField lbl="Type" value={f.type} onChange={set('type')} placeholder="Service, Product, etc." />
           <FormField lbl="Email" value={f.contact_email} onChange={set('contact_email')} type="email" placeholder="jane@acme.com" />
           <FormField lbl="Phone" value={f.contact_phone} onChange={set('contact_phone')} placeholder="(555) 123-4567" />
           <FormField lbl="Deal value ($)" value={f.value} onChange={set('value')} type="number" placeholder="0" />
