@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import ProposalBuilder from './ProposalBuilder'
+import SalesEmailTemplates from './SalesEmailTemplates'
+import { useSalesEmailConfig, sendSalesEmail } from '../lib/salesEmails'
 // ============================================================
 //  SALES PIPELINE DASHBOARD
 //  Kanban board for outbound B2B deals. Mirrors HiringDashboard:
@@ -77,15 +79,17 @@ const STAGE_LABEL = {
 // direct status -> column indirection is derived per-board inside PipelineBoard
 // (from its `stages` prop), so Sales and RSN can differ without touching columns.
 
-// which email (if any) fires when you move INTO a stage. null = no email.
-// These `kind` strings are what the send-sales-email Edge Function switches on.
-const STAGE_EMAIL = {
-  email_1_sent: 'intro',        // first cold outreach
-  email_2_sent: 'followup',     // second email in the sequence
-  proposal_sent: 'proposal',
-  contract_sent: 'contract',
-  won: 'won_welcome',
-}
+// Which email fires when you move INTO a stage is no longer decided here.
+// The mapping lives in src/lib/salesEmails.js and the on/off switch lives in
+// the `sales_email_templates` table, edited from the "Stage emails" button on
+// this board. `emailForStage(stageKey)` returns a kind ONLY when that
+// template is switched on; otherwise null.
+//
+// This matters: the board used to warn "this will send the intro email" and
+// stamp `deals.last_emailed_at` for five stages, while the edge function
+// actually sent only the proposal. Deals looked emailed when the prospect had
+// heard nothing. Both the warning and the timestamp now follow what really
+// happens.
 
 // ---- Lost reasons -------------------------------------------
 // Shown in the "Mark as Lost" dialog. Edit freely — this list is the
@@ -101,15 +105,6 @@ const LOST_REASONS = [
   'Company closed / restructured',
   'Other',
 ]
-
-// ---- email stub (mirrors sendHiringEmail) -------------------
-async function sendSalesEmail(kind, to, data) {
-  if (!kind || !to) return
-  try {
-    const { error } = await supabase.functions.invoke('send-sales-email', { body: { kind, to, data } })
-    if (error) console.error('email send failed:', error)
-  } catch (e) { console.error('email send failed:', e) }
-}
 
 // ---- small helpers (copied from the hiring board for consistency) ----
 function timeAgo(iso) {
@@ -154,7 +149,11 @@ function fileIcon(type) {
 }
 
 export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAGES = SALES_STAGES, pipelineKey = 'sales' }) {
-  const { user } = useAuth()
+  const { user, appRole, isAdmin } = useAuth()
+  // Which stages actually email, read from the templates table. Off = silent.
+  const { emailForStage, reload: reloadEmailConfig } = useSalesEmailConfig()
+  const canEditEmails = isAdmin || ['admin', 'marketing'].includes(String(appRole || '').toLowerCase())
+  const [editingEmails, setEditingEmails] = useState(false)
   // status -> column indirection, derived from this board's stage set.
   const STATUS_TO_COLUMN = useMemo(() => Object.fromEntries(STAGES.map(s => [s.key, s.key])), [STAGES])
   const [deals, setDeals] = useState([])
@@ -199,11 +198,14 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
   // drags, the dropdown, and the quick buttons alike.
   async function transition(deal, toStatus, { note, skipConfirm, extraPatch } = {}) {
     if (toStatus === deal.status) return
-    const emailKind = STAGE_EMAIL[toStatus]
+    // null unless that stage's template is switched ON — so we only warn about
+    // an email that is genuinely about to go out.
+    const emailKind = emailForStage(toStatus)
+    const willEmail = !!emailKind && !!deal.contact_email
     if (emailKind && !skipConfirm) {
       const ok = window.confirm(
-        `Moving ${deal.organization} to "${STAGE_LABEL[toStatus]}" will send the "${emailKind}" email` +
-        (deal.contact_email ? ` to ${deal.contact_email}.` : ' (no email on file, so nothing will send).') +
+        `Moving ${deal.organization} to "${STAGE_LABEL[toStatus]}" will email` +
+        (deal.contact_email ? ` ${deal.contact_email}.` : ' the contact — but this deal has no email address, so nothing will send.') +
         `\n\nContinue?`
       )
       if (!ok) return
@@ -213,7 +215,8 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
     const patch = { status: toStatus, reviewer_id: user?.id, ...(extraPatch || {}) }
     // reopening a lost deal clears its stale reason
     if (from === 'lost' && toStatus !== 'lost') patch.lost_reason = null
-    if (emailKind) patch.last_emailed_at = new Date().toISOString()
+    // NOTE: last_emailed_at is deliberately NOT set here. It is written below,
+    // only after the send actually succeeds.
 
     const { error } = await supabase.from('deals').update(patch).eq('id', deal.id)
     if (error) { setErr(error.message); setBusy(false); return }
@@ -221,18 +224,32 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
     await supabase.from('deal_stage_events').insert({
       deal_id: deal.id, from_status: from, to_status: toStatus, actor_id: user?.id, note: note || null,
     })
-    if (emailKind && deal.contact_email) {
-      await sendSalesEmail(emailKind, deal.contact_email, {
+
+    if (willEmail) {
+      const res = await sendSalesEmail(emailKind, deal.contact_email, {
         name: deal.contact_person, org: deal.organization, dealId: deal.id, title: deal.title,
       })
+      if (res.sent) {
+        // Only a real send earns the timestamp.
+        const stamp = new Date().toISOString()
+        patch.last_emailed_at = stamp
+        await supabase.from('deals').update({ last_emailed_at: stamp }).eq('id', deal.id)
+      } else {
+        // The deal still moved — say plainly that the email did not go, so
+        // nobody assumes the prospect was contacted.
+        setErr(`${deal.organization} moved to ${STAGE_LABEL[toStatus]}, but the email did not send: ` +
+          (res.error || res.reason || 'unknown reason') + '. The deal is not marked as emailed.')
+      }
     }
+
     setDeals(prev => prev.map(d => d.id === deal.id ? { ...d, ...patch } : d))
     setSelected(prev => prev && prev.id === deal.id ? { ...prev, ...patch } : prev)
     setBusy(false)
   }
   const markWon = (deal) => {
+    const wonEmails = !!emailForStage('won') && !!deal.contact_email
     if (!window.confirm(`Mark ${deal.organization} as WON? This removes it from the pipeline` +
-      (deal.contact_email ? ` and sends the welcome email to ${deal.contact_email}.` : '.'))) return
+      (wonEmails ? ` and emails the welcome message to ${deal.contact_email}.` : '. No email is sent.'))) return
     transition(deal, 'won', { note: 'marked won', skipConfirm: true })
   }
   // Lost goes through a dialog so a reason is always captured.
@@ -325,6 +342,13 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
             style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', fontSize: 13.5, fontWeight: 700, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>
             ⭱ Import CSV
           </button>
+          {canEditEmails && (
+            <button onClick={() => setEditingEmails(true)}
+              title="Edit the emails this board sends, and turn each one on or off"
+              style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', fontSize: 13.5, fontWeight: 700, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>
+              ✉ Stage emails
+            </button>
+          )}
           <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search org, contact, role…"
             style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '7px 11px', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', minWidth: 200, fontFamily: 'inherit' }} />
           <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)}
@@ -396,8 +420,15 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
         </div>
       )}
 
+      {editingEmails && (
+        <SalesEmailTemplates
+          onClose={() => setEditingEmails(false)}
+          onSaved={reloadEmailConfig} />
+      )}
+
       {selected && <DealPanel deal={selected} user={user} stages={STAGES} onClose={() => setSelected(null)}
         onTransition={transition} onWon={markWon} onLost={markLost} onUpdate={updateDeal} busy={busy}
+        emailForStage={emailForStage}
         onOpenProposal={(d) => setProposalDeal(d)} />}
 
       {proposalDeal && <ProposalBuilder deal={proposalDeal} userName={user?.email}
@@ -466,8 +497,9 @@ const PROP_STATUS = {
   declined: { label: 'Declined', bg: '#fdecea', fg: '#b71c1c' },
 }
 
-function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, onLost, onUpdate, busy, onOpenProposal }) {
+function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, onLost, onUpdate, busy, onOpenProposal, emailForStage = () => null }) {
   const [events, setEvents] = useState([])
+  const [emailLog, setEmailLog] = useState([])
   const [proposal, setProposal] = useState(undefined)   // undefined = loading, null = none yet
   const [activities, setActivities] = useState([])
   const [noteText, setNoteText] = useState('')
@@ -482,11 +514,14 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
   const attList = deal.attachments || []
 
   const loadHistory = useCallback(async () => {
-    const [{ data: ev }, { data: act }] = await Promise.all([
+    const [{ data: ev }, { data: act }, { data: mail }] = await Promise.all([
       supabase.from('deal_stage_events').select('*').eq('deal_id', deal.id).order('created_at', { ascending: false }),
       supabase.from('deal_activities').select('*').eq('deal_id', deal.id).order('created_at', { ascending: false }),
+      // Every email attempt on this deal — sent, skipped or failed. This is the
+      // record that answers "did this person actually hear from us?"
+      supabase.from('sales_email_log').select('*').eq('deal_id', deal.id).order('created_at', { ascending: false }),
     ])
-    setEvents(ev || []); setActivities(act || [])
+    setEvents(ev || []); setActivities(act || []); setEmailLog(mail || [])
   }, [deal.id])
   useEffect(() => { loadHistory() }, [loadHistory])
 
@@ -639,17 +674,17 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
                 style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, padding: '7px 10px', fontSize: 13, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }}>
                 {STAGES.map(s => (
                   <option key={s.key} value={s.key}>
-                    {s.title}{STAGE_EMAIL[s.key] ? ' (sends email)' : ''}
+                    {s.title}{emailForStage(s.key) ? ' (sends email)' : ''}
                   </option>
                 ))}
-                <option value="won">Won — remove from pipeline{STAGE_EMAIL.won ? ' (sends email)' : ''}</option>
+                <option value="won">Won — remove from pipeline{emailForStage('won') ? ' (sends email)' : ''}</option>
                 <option value="lost">Lost — remove from pipeline</option>
                 <option value="email_unreachable">Email Unreachable — remove from pipeline</option>
               </select>
             </div>
-            {next && STAGE_EMAIL[next.key] && (
+            {next && emailForStage(next.key) && (
               <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 7 }}>
-                Moving to {next.title} will send the “{STAGE_EMAIL[next.key]}” email (once the Edge Function is connected to your Gmail).
+                Moving to {next.title} emails {deal.contact_email || 'the contact'}.
               </div>
             )}
           </div>
@@ -769,6 +804,37 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
             <textarea value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a note…"
               style={{ width: '100%', minHeight: 60, border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 13, fontFamily: 'inherit', background: 'var(--canvas)', color: 'var(--ink)', resize: 'vertical' }} />
             <button onClick={addNote} style={{ marginTop: 6, border: 0, borderRadius: 7, background: 'var(--accent)', color: '#fff', fontSize: 12.5, fontWeight: 700, padding: '7px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>Save note</button>
+          </div>
+
+          {/* emails sent on this deal */}
+          <div style={{ marginTop: 8, paddingTop: 16, borderTop: '2px solid var(--line)' }}>
+            <h3 style={{ fontSize: 14, fontWeight: 800, margin: '0 0 10px' }}>Emails</h3>
+            {emailLog.length === 0 ? (
+              <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: 0 }}>
+                No email has been sent to this contact from the pipeline.
+              </p>
+            ) : (
+              <div style={{ display: 'grid', gap: 7 }}>
+                {emailLog.map(m => {
+                  const tone = m.status === 'sent'
+                    ? { bg: '#ECFDF5', bd: '#A7F3D0', fg: '#065F46', word: 'Sent' }
+                    : m.status === 'failed'
+                      ? { bg: '#FEF2F2', bd: '#FECACA', fg: '#B91C1C', word: 'Failed' }
+                      : { bg: 'var(--canvas)', bd: 'var(--line)', fg: 'var(--ink-soft)', word: m.status === 'test' ? 'Test' : 'Not sent' }
+                  return (
+                    <div key={m.id} style={{ display: 'flex', gap: 9, alignItems: 'baseline', fontSize: 12.5 }}>
+                      <span style={{ flex: 'none', background: tone.bg, border: `1px solid ${tone.bd}`, color: tone.fg, borderRadius: 6, padding: '1px 7px', fontSize: 11, fontWeight: 700 }}>{tone.word}</span>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ color: 'var(--ink)' }}>{m.subject || m.kind}</span>
+                        {m.to_email ? <span style={{ color: 'var(--ink-soft)' }}> → {m.to_email}</span> : null}
+                        {m.detail ? <span style={{ color: 'var(--ink-soft)' }}> · {m.detail}</span> : null}
+                      </span>
+                      <span style={{ marginLeft: 'auto', flex: 'none', color: 'var(--ink-soft)' }}>{timeAgo(m.created_at)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           {/* activity + stage history */}
