@@ -234,6 +234,9 @@ export default function Reporting() {
   const [sblocks, setSblocks] = useState([])
   const [qaAudits, setQaAudits] = useState([])
   const [five9ByProfile, setFive9ByProfile] = useState({}) // profileId -> occupancy minutes (login−NR) in range (agents)
+  // profileId -> [{ date, loginMin, nrMin }] for agents in range. The payroll report counts
+  // LOGIN hours (same basis as Weekly Payroll), not occupancy.
+  const [five9DaysByProfile, setFive9DaysByProfile] = useState({})
   // People & Tags report data — a current snapshot, independent of the date range.
   const [peopleFull, setPeopleFull] = useState([])
   const [tags, setTags] = useState([])
@@ -355,6 +358,16 @@ export default function Reporting() {
     const agByName = {}; for (const a of (agRes.data || [])) if (a.profile_id) agByName[a.agent_name] = a.profile_id
     const five9 = {}; for (const o of (f9Res.error ? [] : (f9Res.data || []))) { const pid = agByName[o.agent_name]; if (pid) five9[pid] = (five9[pid] || 0) + Math.max(0, (Number(o.login_hours) || 0) - (Number(o.nr_hours) || 0)) * 60 }
     setFive9ByProfile(five9)
+    // Same rows kept per-day so the payroll report can show an agent's daily breakdown.
+    const five9Days = {}
+    for (const o of (f9Res.error ? [] : (f9Res.data || []))) {
+      const pid = agByName[o.agent_name]; if (!pid) continue
+      const loginMin = Math.max(0, Number(o.login_hours) || 0) * 60
+      if (!loginMin) continue
+      ;(five9Days[pid] = five9Days[pid] || []).push({ date: o.work_date, loginMin, nrMin: Math.max(0, Number(o.nr_hours) || 0) * 60 })
+    }
+    for (const pid of Object.keys(five9Days)) five9Days[pid].sort((a, b) => a.date.localeCompare(b.date))
+    setFive9DaysByProfile(five9Days)
     // keep only claims whose block falls in range
     const blocks = blkRes.data || []
     const inRange = (blocks).filter(b => b.block_date >= range.from && b.block_date <= range.to)
@@ -401,7 +414,35 @@ export default function Reporting() {
     return { byPerson, byClient, clientLabel }
   }, [entries, clientOfEntry, allowedIds, filters.clientIds])
 
-  const grandTotal = useMemo(() => hoursFromMinutes(entries.filter(e => (!allowedIds || allowedIds.has(e.user_id)) && (filters.clientIds.length === 0 || filters.clientIds.includes((clientOfEntry(e)?.id) || '__none__'))).reduce((s, e) => s + (e.duration_minutes || 0), 0)), [entries, allowedIds, filters.clientIds, clientOfEntry])
+  // AGENT HOURS (payroll). Agents don't log time_entries — their worked hours come from
+  // Five9. Surface them in the payroll report so an agent isn't silently blank. Obeys the
+  // same person/tag/role filters as everything else. Five9 hours are NOT client-attributable,
+  // so they're withheld when a client filter is active.
+  const five9Person = useMemo(() => {
+    if (filters.clientIds.length) return {}
+    const roleById = {}
+    for (const p of profiles) roleById[p.id] = p.role
+    const out = {}
+    for (const [pid, days] of Object.entries(five9DaysByProfile)) {
+      if (allowedIds && !allowedIds.has(pid)) continue
+      if (roleById[pid] !== 'agent') continue
+      const total = days.reduce((s, d) => s + d.loginMin, 0)
+      if (!total) continue
+      out[pid] = { total, days }
+    }
+    return out
+  }, [five9DaysByProfile, allowedIds, profiles, filters.clientIds])
+
+  const five9PersonRows = useMemo(() => Object.entries(five9Person)
+    .sort((a, b) => nameOf(a[0], profiles).localeCompare(nameOf(b[0], profiles))), [five9Person, nameOf, profiles])
+
+  const five9PersonTotal = useMemo(() => Object.values(five9Person).reduce((s, d) => s + d.total, 0), [five9Person])
+
+  const grandTotal = useMemo(() => {
+    const tracked = entries.filter(e => (!allowedIds || allowedIds.has(e.user_id)) && (filters.clientIds.length === 0 || filters.clientIds.includes((clientOfEntry(e)?.id) || '__none__'))).reduce((s, e) => s + (e.duration_minutes || 0), 0)
+    // The payroll view also counts agent Five9 hours; invoicing/compare do not.
+    return hoursFromMinutes(tracked + (view === 'person' ? five9PersonTotal : 0))
+  }, [entries, allowedIds, filters.clientIds, clientOfEntry, view, five9PersonTotal])
 
   // COMPARE: per-person scheduled vs clock vs task minutes
   const comparison = useMemo(() => {
@@ -497,6 +538,11 @@ export default function Reporting() {
         })
         rows.push([nameOf(pid, profiles), 'TOTAL', '', hoursFromMinutes(grouped.byPerson[pid].total)])
       })
+    // Agents: Five9 login hours, one row per day, so the CSV matches what's on screen.
+    five9PersonRows.forEach(([pid, d]) => {
+      d.days.forEach(day => rows.push([nameOf(pid, profiles), 'Five9 (not client-allocated)', day.date, hoursFromMinutes(day.loginMin)]))
+      rows.push([nameOf(pid, profiles), 'TOTAL', '', hoursFromMinutes(d.total)])
+    })
     downloadCSV(`payroll-hours-${range.from}_to_${range.to}.csv`, rows)
   }
 
@@ -1010,7 +1056,7 @@ export default function Reporting() {
                 </div>
               </div>
             )
-          ) : entries.length === 0 ? (
+          ) : (entries.length === 0 && !(view === 'person' && five9PersonRows.length)) ? (
             <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
               <h3 style={{ fontSize: 14, marginBottom: 4 }}>No tracked time in this range</h3>
               <p style={{ fontSize: 13 }}>Time entries logged on tasks between these dates will appear here.</p>
@@ -1047,6 +1093,53 @@ export default function Reporting() {
                   </table>
                 </div>
               ))}
+
+              {/* AGENTS — hours come from Five9, not task timers. Shown with a daily breakdown
+                  so the total is auditable on screen without exporting. */}
+              {five9PersonRows.map(([pid, d]) => (
+                <div key={'f9-' + pid} className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 15, fontWeight: 600 }}>
+                      {nameOf(pid, profiles)}
+                      <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, letterSpacing: '.03em', color: 'var(--accent)' }}>FIVE9</span>
+                    </span>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--accent)' }}>{hoursFromMinutes(d.total)} hrs</span>
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ ...cellL, fontWeight: 600 }}>Five9 phone time <span style={{ fontWeight: 400, color: 'var(--ink-soft)', fontSize: 12 }}>· not client-allocated</span></td>
+                        <td style={cellR}>{hoursFromMinutes(d.total)} hrs</td>
+                      </tr>
+                      {d.days.map(day => (
+                        <tr key={day.date}>
+                          <td style={{ ...cellL, paddingLeft: 32, color: 'var(--ink-soft)', fontSize: 12 }}>
+                            {new Date(day.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </td>
+                          <td style={{ ...cellR, color: 'var(--ink-soft)', fontWeight: 500, fontSize: 12 }}>{hoursFromMinutes(day.loginMin)} hrs</td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td style={{ ...cellL, paddingLeft: 32, color: 'var(--ink-soft)', fontSize: 12, fontStyle: 'italic' }}>Days worked</td>
+                        <td style={{ ...cellR, color: 'var(--ink-soft)', fontWeight: 500, fontSize: 12 }}>{d.days.length}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+
+              {five9PersonRows.length > 0 && (
+                <p className="page-sub" style={{ fontSize: 11.5, margin: 0 }}>
+                  Agents don't log task time — their hours are <b>Five9 login hours</b> (the same basis as the Weekly Payroll report) and can't be split by client, so they're hidden when a client filter is applied.
+                </p>
+              )}
+
+              {personRows.length === 0 && five9PersonRows.length === 0 && (
+                <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
+                  <h3 style={{ fontSize: 14, marginBottom: 4 }}>No hours for this selection</h3>
+                  <p style={{ fontSize: 13 }}>Nobody matching these filters logged task time or Five9 time in this range.</p>
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
