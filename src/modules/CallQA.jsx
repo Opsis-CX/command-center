@@ -878,7 +878,7 @@ export default function CallQA({ portal = false } = {}) {
         <DateField label="Start date" value={startDate} max={endDate || todayStr} onChange={setStartDate} />
         <DateField label="End date" value={endDate} min={startDate || undefined} max={todayStr} onChange={setEndDate} />
         {customRange && <button onClick={() => { setStartDate(''); setEndDate('') }} style={{ ...btn('ghost'), padding: '7px 10px' }}>✕ Clear dates</button>}
-        <Select label="Brand" value={brand} onChange={(v) => { setBrand(v); setAgent('all') }} opts={[['all', 'All brands'], ...brands.map((c) => [c, c])]} />
+        {brands.length > 1 && <Select label="Brand" value={brand} onChange={(v) => { setBrand(v); setAgent('all') }} opts={[['all', 'All brands'], ...brands.map((c) => [c, c])]} />}
         <Select label="Topic" value={topic} onChange={setTopic} opts={[['all', 'All topics'], ...topicList.map((t) => [t, t])]} />
         {viewAll && <Select label="Agent" value={agent} onChange={setAgent} opts={[['all', 'All agents'], ...agents.map((a) => [a, a])]} />}
         <Select label="Call type" value={callType} onChange={setCallType} opts={CALLTYPE_OPTS} title="Real conversations excludes voicemail, IVR, wrong-number and spam" />
@@ -3442,6 +3442,7 @@ function ImportPanel() {
   const [clients, setClients] = useState([])
   const [clientId, setClientId] = useState('')
   const [brand, setBrand] = useState('')
+  const [newBrand, setNewBrand] = useState('')
   const [scope, setScope] = useState('inout')
   const [prefix, setPrefix] = useState('')
   const [phase, setPhase] = useState('idle') // idle | preparing | uploading | done | error
@@ -3457,6 +3458,17 @@ function ImportPanel() {
 
   const AUDIO_RE = /\.(wav|mp3|m4a|gsm|ogg|flac)$/i
 
+  // Brand is picked from the brands already registered for Lightspeed rather than
+  // typed. config.brand has to match the existing brand string exactly or the
+  // uploaded calls split off into a duplicate brand instead of merging with the
+  // CallRail ones. '__new__' reveals a text box so a genuinely new brand can
+  // still be registered.
+  const knownBrands = useMemo(
+    () => Array.from(new Set(((ov && ov.brands) || []).map((b) => b.brand).filter(Boolean))).sort(),
+    [ov])
+  const addingBrand = brand === '__new__'
+  const effBrand = (addingBrand ? newBrand : brand).trim()
+
   const loadOverview = useCallback(async () => {
     const { data, error } = await supabase.rpc('callqa_lightspeed_overview')
     if (error) { setOvErr(error.message); return }
@@ -3467,6 +3479,9 @@ function ImportPanel() {
     const t = setInterval(loadOverview, 15000)
     return () => clearInterval(t)
   }, [loadOverview])
+  useEffect(() => {
+    if (!brand && knownBrands.length) setBrand(knownBrands[0])
+  }, [knownBrands, brand])
 
   useEffect(() => {
     supabase.from('clients').select('id, portal_name').order('portal_name').then(({ data }) => {
@@ -3497,13 +3512,13 @@ function ImportPanel() {
     const files = Array.from(fileList || [])
     if (!files.length) return
     if (!clientId) { setErr('Pick a client first.'); return }
-    if (!brand.trim()) { setErr('Enter a brand (e.g. Apple Door).'); return }
+    if (!effBrand) { setErr(addingBrand ? 'Enter the new brand name.' : 'Pick a brand first.'); return }
 
     let dest
     try {
       setPhase('preparing')
       const { data, error } = await supabase.rpc('callqa_lightspeed_register_source',
-        { p_client: clientId, p_brand: brand.trim(), p_scope: scope, p_campaign: 'garagedoor' })
+        { p_client: clientId, p_brand: effBrand, p_scope: scope, p_campaign: 'garagedoor' })
       if (error) throw error
       dest = data; setPrefix(data)
     } catch (e) { setPhase('error'); setErr('Could not prepare destination: ' + (e.message || e)); return }
@@ -3550,17 +3565,17 @@ function ImportPanel() {
     }
     for (const r of readers) { try { await r.close() } catch { /* ignore */ } }
     setPhase('done')
-    await refreshStatus(brand.trim())
+    await refreshStatus(effBrand)
     loadOverview()
   }
 
   // Poll processing status after upload so the counts + checks stay live.
   useEffect(() => {
     if (phase !== 'done') return
-    const b = brand.trim(); if (!b) return
+    const b = effBrand; if (!b) return
     const t = setInterval(() => refreshStatus(b), 5000)
     return () => clearInterval(t)
-  }, [phase, brand])
+  }, [phase, effBrand])
 
   const busyUp = phase === 'uploading' || phase === 'preparing'
   const recOk = status && status.missing_recording === 0
@@ -3580,11 +3595,19 @@ function ImportPanel() {
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <Select label="Client" value={clientId} onChange={setClientId} opts={clients.map((c) => [c.id, c.portal_name])} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Brand</label>
-            <input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Apple Door"
-              style={{ padding: '7px 10px', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14 }} />
-          </div>
+          <Select label="Brand" value={brand} onChange={(v) => { setBrand(v); if (v !== '__new__') setNewBrand('') }}
+            opts={[...(knownBrands.length ? [] : [['', 'No brands registered yet']]), ...knownBrands.map((b) => [b, b]), ['__new__', '+ New brand…']]} />
+          {addingBrand && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>New brand name</label>
+              <input value={newBrand} onChange={(e) => setNewBrand(e.target.value)} placeholder="Apple Door"
+                style={{ padding: '7px 10px', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14 }} />
+              <div style={{ fontSize: 11.5, color: '#8d6e00', maxWidth: 260 }}>
+                Must match the brand name already used elsewhere, character for character, or these calls
+                will not merge with the existing ones.
+              </div>
+            </div>
+          )}
           <Select label="Scope" value={scope} onChange={setScope} opts={[['inout', 'Inbound + outbound'], ['all', 'All call types']]} />
         </div>
       </Card>
