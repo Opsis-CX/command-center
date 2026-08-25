@@ -227,7 +227,7 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
 
     if (willEmail) {
       const res = await sendSalesEmail(emailKind, deal.contact_email, {
-        name: deal.contact_person, org: deal.organization, dealId: deal.id, title: deal.title,
+        name: deal.contact_person, org: deal.organization, dealId: deal.id, title: deal.title, strategy: deal.strategy,
       })
       if (res.sent) {
         // Only a real send earns the timestamp.
@@ -589,6 +589,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
       title: deal.title || '', contact_email: deal.contact_email || '',
       contact_phone: deal.contact_phone || '', value: deal.value ?? '',
       owner_name: deal.owner_name || '', source: deal.source || '', notes: deal.notes || '',
+      strategy: deal.strategy || 'customer_service',
     })
     setEditErr(''); setEditing(true)
   }
@@ -601,7 +602,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
       organization: form.organization.trim(), contact_person: clean(form.contact_person),
       title: clean(form.title), contact_email: clean(form.contact_email),
       contact_phone: clean(form.contact_phone), owner_name: clean(form.owner_name),
-      source: clean(form.source), notes: clean(form.notes),
+      source: clean(form.source), notes: clean(form.notes), strategy: form.strategy,
       value: form.value === '' ? null : Number(form.value),
     }
     try { await onUpdate(deal, patch); setEditing(false) }
@@ -743,6 +744,14 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
                 <FormField lbl="Value ($)" value={form.value} onChange={setFld('value')} type="number" placeholder="0" />
                 <FormField lbl="Owner" value={form.owner_name} onChange={setFld('owner_name')} placeholder="Lead owner" />
                 <FormField lbl="Source" value={form.source} onChange={setFld('source')} placeholder="Referral, LinkedIn…" full />
+                <div style={{ marginBottom: 12, gridColumn: '1 / -1' }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', margin: '0 0 4px', display: 'block' }}>Strategy</label>
+                  <select value={form.strategy} onChange={setFld('strategy')}
+                    style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 8, padding: '9px 11px', fontSize: 13.5, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }}>
+                    <option value="customer_service">Customer Service</option>
+                    <option value="speed_to_lead">Speed to Lead</option>
+                  </select>
+                </div>
               </div>
               <label style={elabel}>Notes</label>
               <textarea value={form.notes} onChange={setFld('notes')} placeholder="Anything useful about this lead…"
@@ -753,6 +762,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
               <RowShow label="Contact" value={deal.contact_person} />
               <Row label="Role / title" value={deal.title && deal.title !== deal.organization ? deal.title : null} />
               <Row label="Type" value={deal.type} />
+              <Row label="Strategy" value={deal.strategy === 'customer_service' ? 'Customer Service' : deal.strategy === 'speed_to_lead' ? 'Speed to Lead' : deal.strategy} />
               <RowShow label="Email" value={deal.contact_email} />
               <RowShow label="Phone" value={deal.contact_phone} />
               <Row label="Value" value={money(deal.value)} />
@@ -1116,7 +1126,7 @@ function FormField({ lbl, value, onChange, type = 'text', placeholder, full, aut
 function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
   const [f, setF] = useState({
     organization: '', contact_person: '', title: '', contact_email: '',
-    contact_phone: '', value: '', owner_name: '', source: '', notes: '',
+    contact_phone: '', value: '', owner_name: '', source: '', notes: '', strategy: 'customer_service',
   })
   const [saving, setSaving] = useState(false)
   const [localErr, setLocalErr] = useState('')
@@ -1138,6 +1148,7 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
       owner_name: clean(f.owner_name),
       source: clean(f.source),
       notes: clean(f.notes),
+      strategy: f.strategy,
       value: f.value === '' ? null : Number(f.value),
     }
     const { data, error } = await supabase.from('deals').insert(row).select().single()
@@ -1172,6 +1183,14 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
           <FormField lbl="Deal value ($)" value={f.value} onChange={set('value')} type="number" placeholder="0" />
           <FormField lbl="Owner" value={f.owner_name} onChange={set('owner_name')} placeholder="Who owns this lead" />
           <FormField lbl="Source" value={f.source} onChange={set('source')} placeholder="Referral, LinkedIn, list…" full />
+          <div style={{ marginBottom: 12, gridColumn: '1 / -1' }}>
+            <label style={label}>Strategy</label>
+            <select value={f.strategy} onChange={set('strategy')}
+              style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 8, padding: '9px 11px', fontSize: 13.5, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }}>
+              <option value="customer_service">Customer Service</option>
+              <option value="speed_to_lead">Speed to Lead</option>
+            </select>
+          </div>
           <div style={{ marginBottom: 4, gridColumn: '1 / -1' }}>
             <label style={label}>Notes</label>
             <textarea value={f.notes} onChange={set('notes')} placeholder="Anything useful about this lead…"
