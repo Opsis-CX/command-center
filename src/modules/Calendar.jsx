@@ -1611,4 +1611,118 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, 
     onSaved()
   }
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignI
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }} onClick={onClose}>
+      <div className="card" style={{ width: 420, maxWidth: '90vw', padding: 20 }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 14px', fontSize: 16 }}>{isNew ? 'Add event' : isOwner ? 'Edit event' : 'Event details'}</h3>
+        {!isOwner && (
+          <div style={{ fontSize: 12, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+            You're invited to this event{event.owner_id ? ` by ${nameOf(event.owner_id)}` : ''}. View only.
+          </div>
+        )}
+        {err && <div style={{ color: 'var(--failed)', fontSize: 12, marginBottom: 8 }}>{err}</div>}
+        <div className="field"><label>Title</label>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Event title" autoFocus={isOwner} disabled={!isOwner} />
+        </div>
+        <div className="field"><label>Date</label>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} disabled={!isOwner} />
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '8px 0' }}>
+          <input type="checkbox" checked={allDay} onChange={e => setAllDay(e.target.checked)} disabled={!isOwner} style={{ width: 'auto' }} /> All day
+        </label>
+        {!allDay && (
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div className="field" style={{ flex: 1 }}><label>Start</label><input type="time" value={start} onChange={e => setStart(e.target.value)} disabled={!isOwner} /></div>
+            <div className="field" style={{ flex: 1 }}><label>End</label><input type="time" value={end} onChange={e => setEnd(e.target.value)} disabled={!isOwner} /></div>
+          </div>
+        )}
+        {isNew && isOwner && (
+          <>
+            <div className="field"><label>Repeat</label>
+              <select value={repeat} onChange={e => setRepeat(e.target.value)}>
+                <option value="none">Does not repeat</option>
+                <option value="daily">Daily</option>
+                <option value="weekdays">Every weekday (Mon–Fri)</option>
+                <option value="weekly">Weekly</option>
+                <option value="biweekly">Every 2 weeks</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            {repeat !== 'none' && (
+              <div className="field"><label>Repeat until</label>
+                <input type="date" value={repeatUntil} min={date} onChange={e => setRepeatUntil(e.target.value)} />
+                <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>
+                  {repeatUntil && repeatUntil >= date
+                    ? `Creates ${occurrenceDates().length + 1} events. Each one can be edited or deleted on its own.`
+                    : 'Pick the last date this should appear on.'}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+        {!isNew && event.series_id && (
+          <div style={{ fontSize: 12, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+            🔁 Part of a repeating series. Editing here changes <strong>only this date</strong>.
+          </div>
+        )}
+        <div className="field"><label>Notes</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} disabled={!isOwner} />
+        </div>
+        <div className="field"><label>Meeting link</label>
+          <input value={meetingUrl} onChange={e => setMeetingUrl(e.target.value)} placeholder="Paste a Zoom / Teams / Meet link (optional)" disabled={!isOwner} />
+          {isOwner && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>Add a video link and the notetaker will join and record this meeting into Command Center. Leave blank for none.</div>}
+          {meetingUrl && /^https?:\/\//i.test(meetingUrl.trim()) && (
+            <a href={meetingUrl.trim()} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: 12, color: 'var(--accent, #0077B6)', wordBreak: 'break-all' }}>Join meeting ↗</a>
+          )}
+        </div>
+        <div className="field"><label>Invitees</label>
+          {isOwner ? (
+            <>
+              <InviteePicker profiles={profiles} userId={userId} value={invitees} onChange={setInvitees} />
+              <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>Invited people see this event on their calendar, even if it's set to Personal.</div>
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: invitees.length ? 'var(--ink)' : 'var(--ink-soft)' }}>
+              {invitees.length ? invitees.map(nameOf).join(', ') : 'No invitees'}
+            </div>
+          )}
+        </div>
+        <div className="field"><label>Color</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', pointerEvents: isOwner ? 'auto' : 'none', opacity: isOwner ? 1 : .7 }}>
+            {['#0077B6', '#16A34A', '#D97706', '#7C3AED', '#DC2626', '#0891B2', '#DB2777', '#65A30D', '#4B5563'].map(c => (
+              <span key={c} onClick={() => setColor(c)} title={c}
+                style={{ width: 26, height: 26, borderRadius: 6, background: c, cursor: 'pointer', border: color === c ? '3px solid var(--ink)' : '3px solid transparent' }} />
+            ))}
+            <label title="Custom color" style={{ position: 'relative', width: 26, height: 26, borderRadius: 6, cursor: 'pointer', border: '2px dashed var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <input type="color" value={color} onChange={e => setColor(e.target.value)}
+                style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+              <span style={{ fontSize: 13, color: 'var(--ink-soft)' }}>+</span>
+            </label>
+            <span style={{ width: 18, height: 18, borderRadius: 4, background: color, marginLeft: 4 }} />
+          </div>
+        </div>
+        <div className="field"><label>Visibility</label>
+          <select value={scope} onChange={e => setScope(e.target.value)} disabled={!isOwner || (!isAdmin && scope !== 'team')}>
+            <option value="personal">Personal{invitees.length ? ' + invitees' : ' (only me)'}</option>
+            <option value="team">Team (everyone)</option>
+          </select>
+        </div>
+        {isOwner && !isAdmin && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: -6, marginBottom: 8 }}>Only admins can create team events, but you can invite specific people above.</div>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          {isOwner ? (
+            <>
+              <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+              <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+              {!isNew && <button className="btn btn-ghost" style={{ marginLeft: 'auto', color: 'var(--failed)' }} onClick={() => del(false)}>{event.series_id ? 'Delete this date' : 'Delete'}</button>}
+              {!isNew && event.series_id && (
+                <button className="btn btn-ghost" style={{ color: 'var(--failed)' }}
+                  onClick={() => { if (window.confirm('Delete every date in this repeating series? This cannot be undone.')) del(true) }}>Delete series</button>
+              )}
+            </>
+          ) : (
+            <button className="btn btn-ghost" onClick={onClose}>Close</button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
