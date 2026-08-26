@@ -22,9 +22,72 @@ const STATUS_STYLE = {
 const todayISO = () => new Date().toISOString().slice(0, 10)
 const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
 
+// ---------- Shareable recording links ----------
+// Every meeting row carries a `share_token` (uuid, defaulted in the DB). The
+// public `meeting-share` edge function turns that token into a watch page and
+// re-fetches a FRESH presigned video URL from Recall on every click, so a link
+// you paste in an email never goes stale. The token is the only secret —
+// anyone with the link can watch, exactly like a Fathom share link.
+const FN_BASE = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/+$/, '')
+const shareUrl = (m) => (m?.share_token ? `${FN_BASE}/functions/v1/meeting-share?t=${m.share_token}` : '')
+const hasRecording = (m) => !!m?.recording_link
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      return ok
+    } catch { return false }
+  }
+}
+
 function StatusBadge({ status }) {
   const s = STATUS_STYLE[status] || STATUS_STYLE.new
   return <span className="badge" style={{ background: s.bg, color: s.fg, fontWeight: 700, fontSize: 12 }}>{s.label}</span>
+}
+
+// Small copy-the-share-link control. Rendered as a span (not a button) so it can
+// live inside the clickable meeting rows without nesting buttons.
+function CopyShareLink({ meeting, compact }) {
+  const [copied, setCopied] = useState(false)
+  const url = shareUrl(meeting)
+  if (!url || !hasRecording(meeting)) return null
+
+  async function onCopy(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    await copyText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1800)
+  }
+
+  const base = {
+    cursor: 'pointer', userSelect: 'none', borderRadius: 8, fontWeight: 600,
+    border: '1px solid var(--line)', background: copied ? 'var(--ok-bg, #dcfce7)' : 'transparent',
+    color: copied ? 'var(--ok, #166534)' : 'inherit', whiteSpace: 'nowrap',
+  }
+  const style = compact
+    ? { ...base, fontSize: 11, padding: '2px 7px' }
+    : { ...base, fontSize: 13, padding: '6px 11px' }
+
+  return (
+    <span role="button" tabIndex={0} onClick={onCopy}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onCopy(e) }}
+      title={compact ? 'Copy shareable recording link' : url}
+      style={style}>
+      {copied ? '✓ Copied' : compact ? '🔗' : '🔗 Copy share link'}
+    </span>
+  )
 }
 
 export default function Meetings() {
@@ -39,7 +102,7 @@ export default function Meetings() {
 
   const load = useCallback(async () => {
     const [{ data: m }, { data: c }] = await Promise.all([
-      supabase.from('meetings').select('id, title, meeting_date, client_name, status, source, created_at').order('meeting_date', { ascending: false }).order('created_at', { ascending: false }),
+      supabase.from('meetings').select('id, title, meeting_date, client_name, status, source, created_at, share_token, recording_link').order('meeting_date', { ascending: false }).order('created_at', { ascending: false }),
       supabase.from('clients').select('id, name').order('name'),
     ])
     setMeetings(m || [])
@@ -64,7 +127,7 @@ export default function Meetings() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
         <div>
           <h1 className="page-title">Meetings</h1>
-          <p className="page-sub">Upload a recording or paste a transcript — get a summary, decisions, and action items you can turn into tasks. Auto-tagged to the client by attendee email.</p>
+          <p className="page-sub">Upload a recording or paste a transcript — get a summary, decisions, and action items you can turn into tasks. Auto-tagged to the client by attendee email. Every captured meeting gets a 🔗 shareable recording link.</p>
         </div>
         <button className="btn btn-primary" onClick={() => { setShowNew(true); setErr('') }}>+ New meeting</button>
       </div>
@@ -94,10 +157,14 @@ export default function Meetings() {
                 style={{ display: 'block', width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', borderBottom: '1px solid var(--line)', background: selId === m.id ? 'var(--canvas, #f1f5f9)' : 'transparent', cursor: 'pointer' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
                   <span style={{ fontWeight: 600 }}>{m.title || '(untitled)'}</span>
-                  <StatusBadge status={m.status} />
+                  <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <CopyShareLink meeting={m} compact />
+                    <StatusBadge status={m.status} />
+                  </span>
                 </div>
                 <div className="page-sub" style={{ fontSize: 12, marginTop: 2 }}>
                   {fmtDate(m.meeting_date)}{m.client_name ? ` · ${m.client_name}` : ''}
+                  {hasRecording(m) ? ' · 🎥 Recording' : ''}
                 </div>
               </button>
             ))}
@@ -218,6 +285,36 @@ function NewMeeting({ clients, userId, busy, setBusy, onCancel, onDone, onError 
   )
 }
 
+// ---------- Shareable recording link ----------
+function ShareCard({ meeting }) {
+  const url = shareUrl(meeting)
+  const has = hasRecording(meeting)
+
+  if (!has) {
+    return (
+      <div className="card page-sub" style={{ padding: 14, fontSize: 13 }}>
+        🎥 No recording is available for this meeting yet, so there’s nothing to share.
+        {meeting.status === 'error' ? ' The notetaker didn’t capture it — see the reason above.' : ''}
+      </div>
+    )
+  }
+
+  return (
+    <div className="card" style={{ padding: 16 }}>
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>Share recording</div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input readOnly value={url} onFocus={e => e.target.select()}
+          style={{ flex: '1 1 320px', minWidth: 240, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--canvas, #f8fafc)', fontSize: 13 }} />
+        <CopyShareLink meeting={meeting} />
+        <a className="btn btn-ghost" href={url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>Open ↗</a>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12, marginTop: 10, marginBottom: 0, lineHeight: 1.6 }}>
+        Anyone with this link can watch the recording — no Command Center login needed. The link shows the video, title and date only (never the summary, transcript or action items), and it pulls a fresh video URL from Recall each time it’s opened, so it won’t expire.
+      </p>
+    </div>
+  )
+}
+
 // ---------- Meeting detail ----------
 function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted }) {
   const { meeting, items } = detail
@@ -274,8 +371,12 @@ function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted })
               {(meeting.participants || []).length ? ` · ${meeting.participants.length} participant${meeting.participants.length === 1 ? '' : 's'}` : ''}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <StatusBadge status={meeting.status} />
+            {hasRecording(meeting) && (
+              <a className="btn btn-ghost" href={shareUrl(meeting)} target="_blank" rel="noopener noreferrer"
+                title="Open the recording in a new tab" style={{ textDecoration: 'none' }}>▶ Play recording</a>
+            )}
             <button className="btn btn-ghost" onClick={reprocess} disabled={working} title="Re-run summary + action items">
               {busy === 'processing' ? 'Working…' : '↻ Re-summarize'}
             </button>
@@ -291,6 +392,8 @@ function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted })
           <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: 'var(--failed-bg, #fef2f2)', color: 'var(--failed, #b42318)', fontSize: 13 }}>{meeting.error}</div>
         )}
       </div>
+
+      <ShareCard meeting={meeting} />
 
       {meeting.summary && (
         <div className="card" style={{ padding: 16 }}>
