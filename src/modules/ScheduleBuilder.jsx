@@ -122,6 +122,44 @@ export default function ScheduleBuilder() {
     flash('Interval deleted'); load()
   }
 
+  // Delete every interval on ONE day of ONE schedule. Same guarded RPC as the
+  // single-interval delete (admin-only, 200 cap, past days blocked server-side),
+  // just with the whole day's block ids. Dry run first so the confirm shows the
+  // real counts; if anyone has claimed a spot that day we name them and ask again.
+  async function deleteDay(schedule, dayISO) {
+    const dayBlocks = blocks.filter(b => b.schedule_id === schedule.id && b.block_date === dayISO)
+    if (!dayBlocks.length) { flash('No intervals on that day'); return }
+    const ids = dayBlocks.map(b => b.id)
+    const label = new Date(dayISO + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })
+
+    const { data: plan, error: pe } = await supabase.rpc('admin_delete_intervals',
+      { p_block_ids: ids, p_release_claims: false, p_dry_run: true })
+    // The past-day / limit guards raise here, on the dry run — surface them as-is.
+    if (pe) { flash(pe.message); return }
+
+    if (!window.confirm(
+      `Delete ALL ${plan.intervals} interval(s) on ${label} from “${schedule.title}”?\n\n` +
+      `${plan.summary}\n\nThis cannot be undone.`
+    )) return
+
+    const affected = plan.claims_that_would_be_removed
+    if (affected > 0) {
+      const names = [...new Set(
+        claims.filter(c => ids.includes(c.shift_block_id))
+          .map(c => profiles.find(p => p.id === c.profile_id)?.full_name || 'Unknown')
+      )].sort()
+      const shown = names.slice(0, 12).join(', ') + (names.length > 12 ? `, +${names.length - 12} more` : '')
+      if (!window.confirm(
+        `This un-assigns ${affected} claimed spot(s) on ${label}.\n\nThese people lose the day:\n${shown}\n\nAre you sure?`
+      )) return
+    }
+
+    const { error } = await supabase.rpc('admin_delete_intervals',
+      { p_block_ids: ids, p_release_claims: affected > 0, p_dry_run: false })
+    if (error) { flash(error.message); return }
+    flash(`Deleted ${plan.intervals} interval(s) on ${label}`); load()
+  }
+
   if (loading) return <p className="page-sub">Loading…</p>
 
   return (
@@ -218,22 +256,46 @@ export default function ScheduleBuilder() {
             {!sBlocks.length ? (
               <div className="page-sub" style={{ padding: '6px 0' }}>No intervals yet.</div>
             ) : (viewBySchedule[s.id] || 'grid') === 'grid' ? (
-              <ScheduleGrid blocks={sBlocks} claims={claims} onEdit={(b) => setEditBlock({ scheduleId: s.id, block: b })} />
-            ) : sBlocks.map(b => {
-              const cl = claims.filter(c => c.shift_block_id === b.id)
-              return (
-                <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--canvas)', borderRadius: 8, marginBottom: 6, fontSize: 13 }}>
-                  <div style={{ flex: 1 }}>
-                    <b>{formatTime(b.start_time)}–{formatTime(b.end_time)}</b>
-                    {b.role ? ` · ${b.role}` : ''}
-                    {' · '}{new Date(b.block_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    {' · '}{cl.length}/{b.total_spots} claimed
+              <ScheduleGrid blocks={sBlocks} claims={claims}
+                onEdit={(b) => setEditBlock({ scheduleId: s.id, block: b })}
+                onDeleteDay={(dayISO) => deleteDay(s, dayISO)} />
+            ) : (
+              // List view is grouped by day so a whole day can be removed in one go.
+              [...new Set(sBlocks.map(b => b.block_date))].sort().map(dayISO => {
+                const dayBlocks = sBlocks.filter(b => b.block_date === dayISO)
+                const dayClaims = claims.filter(c => dayBlocks.some(b => b.id === c.shift_block_id)).length
+                const daySpots = dayBlocks.reduce((sum, b) => sum + b.total_spots, 0)
+                return (
+                  <div key={dayISO} style={{ marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 2px 6px', borderBottom: '1px solid var(--line)', marginBottom: 6 }}>
+                      <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
+                        {new Date(dayISO + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                        <span className="page-sub" style={{ fontWeight: 400, marginLeft: 8 }}>
+                          {dayBlocks.length} interval{dayBlocks.length !== 1 ? 's' : ''} · {dayClaims}/{daySpots} claimed
+                        </span>
+                      </div>
+                      <button className="btn btn-ghost" title={`Delete all ${dayBlocks.length} interval(s) on this day`}
+                        style={{ fontSize: 12, padding: '5px 10px', color: 'var(--failed)' }}
+                        onClick={() => deleteDay(s, dayISO)}>Delete day</button>
+                    </div>
+                    {dayBlocks.map(b => {
+                      const cl = claims.filter(c => c.shift_block_id === b.id)
+                      return (
+                        <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--canvas)', borderRadius: 8, marginBottom: 6, fontSize: 13 }}>
+                          <div style={{ flex: 1 }}>
+                            <b>{formatTime(b.start_time)}–{formatTime(b.end_time)}</b>
+                            {b.role ? ` · ${b.role}` : ''}
+                            {' · '}{cl.length}/{b.total_spots} claimed
+                          </div>
+                          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px' }} onClick={() => setEditBlock({ scheduleId: s.id, block: b })}>Edit</button>
+                          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', color: 'var(--failed)' }} onClick={() => deleteBlock(b)}>Delete</button>
+                        </div>
+                      )
+                    })}
                   </div>
-                  <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px' }} onClick={() => setEditBlock({ scheduleId: s.id, block: b })}>Edit</button>
-                  <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', color: 'var(--failed)' }} onClick={() => deleteBlock(b)}>Delete</button>
-                </div>
-              )
-            })}
+                )
+              })
+            )}
           </div>
         )
           })
@@ -346,7 +408,7 @@ function ReviewCard({ claim, block, person, meId, onDone }) {
 // Days as columns, hour-rows as rows, built from the schedule's own blocks.
 // Cell color = coverage: green full, amber partial, red unfilled.
 // Clicking a cell opens the same edit modal as the list view.
-function ScheduleGrid({ blocks, claims, onEdit }) {
+function ScheduleGrid({ blocks, claims, onEdit, onDeleteDay }) {
   const claimCount = (b) => claims.filter(c => c.shift_block_id === b.id).length
 
   // unique day columns (sorted) and start-time rows (sorted)
@@ -379,9 +441,22 @@ function ScheduleGrid({ blocks, claims, onEdit }) {
         <thead>
           <tr>
             <th style={{ width: 52 }} />
-            {dayKeys.map(dk => (
-              <th key={dk} style={{ width: 84, fontSize: 11.5, fontWeight: 600, color: 'var(--ink-soft)', paddingBottom: 4, textAlign: 'center' }}>{dayLabel(dk)}</th>
-            ))}
+            {dayKeys.map(dk => {
+              const n = blocks.filter(b => b.block_date === dk).length
+              return (
+                <th key={dk} style={{ width: 84, fontSize: 11.5, fontWeight: 600, color: 'var(--ink-soft)', paddingBottom: 4, textAlign: 'center' }}>
+                  <div>{dayLabel(dk)}</div>
+                  {onDeleteDay && (
+                    <button onClick={() => onDeleteDay(dk)}
+                      title={`Delete all ${n} interval${n !== 1 ? 's' : ''} on ${dayLabel(dk)}`}
+                      aria-label={`Delete all intervals on ${dayLabel(dk)}`}
+                      style={{ marginTop: 2, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--failed)', fontSize: 11, fontWeight: 600, padding: '1px 5px', lineHeight: 1.4, borderRadius: 4 }}>
+                      🗑 Day
+                    </button>
+                  )}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>
