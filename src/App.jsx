@@ -13,6 +13,17 @@ import MyCertifications from './modules/MyCertifications'
 import MyCourses from './modules/MyCourses'
 import Dashboard from './modules/Dashboard'
 import { Placeholder } from './modules/Placeholders'
+
+// Shown instead of a page when the signed-in role isn't allowed to see it.
+// Previously these routes simply weren't registered, so a denied user fell
+// through to "*" and landed on the Dashboard with no explanation — which reads
+// as "the app is broken" rather than "you don't have access".
+const NoAccess = () => (
+  <Placeholder
+    title="No access"
+    note="You don't have access to this area. If you think that's wrong, contact an admin."
+  />
+)
 import PeopleTags from './modules/PeopleTags'
 import CourseBuilder from './modules/CourseBuilder'
 import Schedule from './modules/Schedule'
@@ -297,28 +308,28 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/mock-call" element={<MockCallScheduler embedded />} />
               <Route path="/mock-call/:appId" element={<MockCallRoute />} />
               <Route path="/settings" element={<Settings />} />
-              {isAdmin && <Route path="/roles" element={<RolesPermissions />} />}
+              <Route path="/roles" element={isAdmin ? <RolesPermissions /> : <NoAccess />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/knowledge" element={<KnowledgeBase />} />
-              {canAny(appRole, 'service_performance_scorecard') && <Route path="/scorecard" element={<Scorecard />} />}
+              <Route path="/scorecard" element={canAny(appRole, 'service_performance_scorecard') ? <Scorecard /> : <NoAccess />} />
               <Route path="/help" element={<HelpCenter />} />
-              <Route path="/quality" element={(canAny(appRole, 'quality_audit.view_own') || canAny(appRole, 'quality_audit.call_reviews')) ? <QualityAudit /> : <Placeholder title="No access" note="You don't have access to this area." />} />
+              <Route path="/quality" element={(canAny(appRole, 'quality_audit.view_own') || canAny(appRole, 'quality_audit.call_reviews')) ? <QualityAudit /> : <NoAccess />} />
               {/* Internal Call QA (AI) — full manager view incl. Rubric, all campaigns (GarageCo / Lavin / Open Invoices). */}
-              <Route path="/call-qa" element={canAny(appRole, 'quality_audit.call_reviews') ? <CallQA /> : <Placeholder title="No access" note="You don't have access to this area." />} />
+              <Route path="/call-qa" element={canAny(appRole, 'quality_audit.call_reviews') ? <CallQA /> : <NoAccess />} />
               <Route path="/schedule" element={<Schedule />} />
-              <Route path="/chat" element={canAny(appRole, 'chat') ? <Chat /> : <Placeholder title="No access" note="You don't have access to this area." />} />
-              {canAny(appRole, 'certifications.all') && <Route path="/certifications" element={<Certifications />} />}
-              {canAny(appRole, 'certifications.builder') && <Route path="/courses" element={<CourseBuilder />} />}
-              {canAny(appRole, 'certifications.assigned_to_complete') && <Route path="/my-certifications" element={<MyCertifications />} />}
-              {canAny(appRole, 'certifications.assigned_to_complete') && <Route path="/my-courses" element={<MyCourses />} />}
-              {canAny(appRole, 'project_management') && <Route path="/projects" element={<Projects />} />}
-              {canAny(appRole, 'clients.view_only') && <Route path="/clients" element={<Clients />} />}
+              <Route path="/chat" element={canAny(appRole, 'chat') ? <Chat /> : <NoAccess />} />
+              <Route path="/certifications" element={canAny(appRole, 'certifications.all') ? <Certifications /> : <NoAccess />} />
+              <Route path="/courses" element={canAny(appRole, 'certifications.builder') ? <CourseBuilder /> : <NoAccess />} />
+              <Route path="/my-certifications" element={canAny(appRole, 'certifications.assigned_to_complete') ? <MyCertifications /> : <NoAccess />} />
+              <Route path="/my-courses" element={canAny(appRole, 'certifications.assigned_to_complete') ? <MyCourses /> : <NoAccess />} />
+              <Route path="/projects" element={canAny(appRole, 'project_management') ? <Projects /> : <NoAccess />} />
+              <Route path="/clients" element={canAny(appRole, 'clients.view_only') ? <Clients /> : <NoAccess />} />
               <Route path="/updates" element={<Updates />} />
               <Route path="/home" element={<OpsisWeekly />} />
               <Route path="/notes" element={<Notes />} />
-              {canAny(appRole, 'coaching') && <Route path="/coaching" element={<Coaching />} />}
-              {canAny(appRole, 'meetings') && <Route path="/meetings" element={<Meetings />} />}
-              {canAny(appRole, 'live_status') && <Route path="/live" element={<LiveStatusPage />} />}
+              <Route path="/coaching" element={canAny(appRole, 'coaching') ? <Coaching /> : <NoAccess />} />
+              <Route path="/meetings" element={canAny(appRole, 'meetings') ? <Meetings /> : <NoAccess />} />
+              <Route path="/live" element={canAny(appRole, 'live_status') ? <LiveStatusPage /> : <NoAccess />} />
               {/* Time (admin) — find/adjust anyone's tracked time, stop runaway timers.
                   The Sidebar has linked here since the module landed, but the route was
                   never registered, so /time fell through to "*" and rendered Dashboard.
@@ -328,23 +339,23 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
                   notification link and see only the form; admins/reporting also get
                   the aggregate results below it. Responses are anonymous by DB design. */}
               <Route path="/survey" element={<NewHireSurvey />} />
-              {canAny(appRole, 'tokens') && <Route path="/tokens" element={<Tokens />} />}
+              <Route path="/tokens" element={canAny(appRole, 'tokens') ? <Tokens /> : <NoAccess />} />
               <Route path="/get-to-know-you" element={<TeamFavorites />} />{/* everyone; RLS lets you write only your own card */}
-              {canAny(appRole, 'reporting') && <Route path="/reporting" element={<Reporting />} />}
-              {canAny(appRole, 'reporting') && <Route path="/reporting/hourly" element={<HourlyReports />} />}
-              {canAny(appRole, 'people_and_tags.view_only') && <Route path="/people" element={<PeopleTags />} />}
-              {canAny(appRole, 'hiring') && <Route path="/hiring" element={<HiringDashboard />} />}
+              <Route path="/reporting" element={canAny(appRole, 'reporting') ? <Reporting /> : <NoAccess />} />
+              <Route path="/reporting/hourly" element={canAny(appRole, 'reporting') ? <HourlyReports /> : <NoAccess />} />
+              <Route path="/people" element={canAny(appRole, 'people_and_tags.view_only') ? <PeopleTags /> : <NoAccess />} />
+              <Route path="/hiring" element={canAny(appRole, 'hiring') ? <HiringDashboard /> : <NoAccess />} />
               {/* Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
                   and grant it to the right roles, exactly like 'hiring'. To open it to
                   everyone temporarily, replace this line with:
                   <Route path="/sales" element={<SalesDashboard />} /> */}
-              {canAny(appRole, 'sales') && <Route path="/sales" element={<SalesDashboard />} />}
+              <Route path="/sales" element={canAny(appRole, 'sales') ? <SalesDashboard /> : <NoAccess />} />
               {/* RSN pipeline — gated by can_access_rsn_pipeline() (RsnPipeline re-checks on direct hits). */}
-              {rsnOk && <Route path="/rsn" element={<RsnPipeline />} />}
-              {canAny(appRole, 'weekly_sync') && <Route path="/weekly-sync" element={<WeeklySync />} />}
-              {canAny(appRole, 'schedule.create_schedules') && <Route path="/schedule-builder" element={<ScheduleBuilder />} />}
-              {canAny(appRole, 'positions.view_only') && <Route path="/positions" element={<Positions />} />}
-              {(canAny(appRole, 'schedule.all') || canAny(appRole, 'schedule.view_insights_assigned')) && <Route path="/insights" element={<ScheduleInsights />} />}
+              <Route path="/rsn" element={rsnOk ? <RsnPipeline /> : <NoAccess />} />
+              <Route path="/weekly-sync" element={canAny(appRole, 'weekly_sync') ? <WeeklySync /> : <NoAccess />} />
+              <Route path="/schedule-builder" element={canAny(appRole, 'schedule.create_schedules') ? <ScheduleBuilder /> : <NoAccess />} />
+              <Route path="/positions" element={canAny(appRole, 'positions.view_only') ? <Positions /> : <NoAccess />} />
+              <Route path="/insights" element={(canAny(appRole, 'schedule.all') || canAny(appRole, 'schedule.view_insights_assigned')) ? <ScheduleInsights /> : <NoAccess />} />
               <Route path="*" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <OpsisWeekly />} />
             </Routes>
           </div>
