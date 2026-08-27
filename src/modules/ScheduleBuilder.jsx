@@ -61,7 +61,11 @@ export default function ScheduleBuilder() {
   const [editBlock, setEditBlock] = useState(null)         // {scheduleId, block?}
   const [importFor, setImportFor] = useState(null)         // scheduleId
   const [copyFor, setCopyFor] = useState(null)             // schedule obj for copy modal
+  const [deleteFor, setDeleteFor] = useState(null)         // {title, subtitle, blockIds} for the delete modal
+  const [deleteSchedFor, setDeleteSchedFor] = useState(null) // schedule obj for the delete-schedule modal
   const [viewBySchedule, setViewBySchedule] = useState({}) // scheduleId -> 'list' | 'grid'
+  const [pastBySchedule, setPastBySchedule] = useState({}) // scheduleId -> true when past days are expanded
+  const [showPastScheds, setShowPastScheds] = useState(false) // schedules that are entirely in the past
   const [tab, setTab] = useState('schedules')              // 'schedules' | 'review'
   const [schedSearch, setSchedSearch] = useState('')       // filter the schedules list
   const [meId, setMeId] = useState(null)
@@ -96,68 +100,33 @@ export default function ScheduleBuilder() {
   // Destructive schedule actions go through DB functions that first return
   // an exact preview (what gets deleted, whose claims disappear) and only
   // then execute — see migration `schedule_destructive_guards` (2026-08-14).
-  async function deleteSchedule(s) {
-    const { data: plan, error: pe } = await supabase.rpc('admin_delete_schedule',
-      { p_schedule_id: s.id, p_confirm_title: null, p_dry_run: true })
-    if (pe) { flash('Error: ' + pe.message); return }
-    if (!window.confirm(`${plan.summary}\n\nContinue?`)) return
-    const typed = window.prompt(`To confirm, type the schedule name exactly:\n\n${plan.title}`)
-    if (typed === null) return
-    const { error } = await supabase.rpc('admin_delete_schedule',
-      { p_schedule_id: s.id, p_confirm_title: typed, p_dry_run: false })
-    if (error) { flash('Error: ' + error.message); return }
-    flash('Schedule deleted'); load()
+  function deleteSchedule(s) { setDeleteSchedFor(s) }
+
+  // Both interval deletes (one interval, or a whole day) open the same in-app
+  // modal. They used to chain window.confirm() calls — Chrome suppresses repeat
+  // native dialogs and a suppressed confirm silently returns false, so the second
+  // "are you sure" never appeared and the delete never ran. Nothing native now.
+  function deleteBlock(b) {
+    setDeleteFor({
+      title: 'Delete this interval?',
+      subtitle: `${new Date(b.block_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })} · ${formatTime(b.start_time)}–${formatTime(b.end_time)}${b.role ? ' · ' + b.role : ''}`,
+      blockIds: [b.id],
+      doneMsg: 'Interval deleted',
+    })
   }
 
-  async function deleteBlock(b) {
-    const { data: plan, error: pe } = await supabase.rpc('admin_delete_intervals',
-      { p_block_ids: [b.id], p_release_claims: false, p_dry_run: true })
-    if (pe) { flash('Error: ' + pe.message); return }
-    if (!window.confirm(`${plan.summary}\n\nDelete this interval?`)) return
-    if (plan.claims_that_would_be_removed > 0 &&
-        !window.confirm(`This removes ${plan.claims_that_would_be_removed} claimed spot(s) from people's schedules. Are you sure?`)) return
-    const { error } = await supabase.rpc('admin_delete_intervals',
-      { p_block_ids: [b.id], p_release_claims: plan.claims_that_would_be_removed > 0, p_dry_run: false })
-    if (error) { flash('Error: ' + error.message); return }
-    flash('Interval deleted'); load()
-  }
-
-  // Delete every interval on ONE day of ONE schedule. Same guarded RPC as the
-  // single-interval delete (admin-only, 200 cap, past days blocked server-side),
-  // just with the whole day's block ids. Dry run first so the confirm shows the
-  // real counts; if anyone has claimed a spot that day we name them and ask again.
-  async function deleteDay(schedule, dayISO) {
+  // Every interval on ONE day of ONE schedule, through the same guarded RPC
+  // (admin-only, 200 cap, past days refused server-side).
+  function deleteDay(schedule, dayISO) {
     const dayBlocks = blocks.filter(b => b.schedule_id === schedule.id && b.block_date === dayISO)
     if (!dayBlocks.length) { flash('No intervals on that day'); return }
-    const ids = dayBlocks.map(b => b.id)
     const label = new Date(dayISO + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })
-
-    const { data: plan, error: pe } = await supabase.rpc('admin_delete_intervals',
-      { p_block_ids: ids, p_release_claims: false, p_dry_run: true })
-    // The past-day / limit guards raise here, on the dry run — surface them as-is.
-    if (pe) { flash(pe.message); return }
-
-    if (!window.confirm(
-      `Delete ALL ${plan.intervals} interval(s) on ${label} from “${schedule.title}”?\n\n` +
-      `${plan.summary}\n\nThis cannot be undone.`
-    )) return
-
-    const affected = plan.claims_that_would_be_removed
-    if (affected > 0) {
-      const names = [...new Set(
-        claims.filter(c => ids.includes(c.shift_block_id))
-          .map(c => profiles.find(p => p.id === c.profile_id)?.full_name || 'Unknown')
-      )].sort()
-      const shown = names.slice(0, 12).join(', ') + (names.length > 12 ? `, +${names.length - 12} more` : '')
-      if (!window.confirm(
-        `This un-assigns ${affected} claimed spot(s) on ${label}.\n\nThese people lose the day:\n${shown}\n\nAre you sure?`
-      )) return
-    }
-
-    const { error } = await supabase.rpc('admin_delete_intervals',
-      { p_block_ids: ids, p_release_claims: affected > 0, p_dry_run: false })
-    if (error) { flash(error.message); return }
-    flash(`Deleted ${plan.intervals} interval(s) on ${label}`); load()
+    setDeleteFor({
+      title: `Delete every interval on ${label}?`,
+      subtitle: `${schedule.title} · ${dayBlocks.length} interval${dayBlocks.length !== 1 ? 's' : ''} on this day`,
+      blockIds: dayBlocks.map(b => b.id),
+      doneMsg: `Deleted ${dayBlocks.length} interval(s) on ${label}`,
+    })
   }
 
   if (loading) return <p className="page-sub">Loading…</p>
@@ -213,13 +182,33 @@ export default function ScheduleBuilder() {
             return (s.title || '').toLowerCase().includes(q) || cn.includes(q) || ctn.includes(q)
           }).slice().sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }))
           if (!visible.length) return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 20 }}>No schedules match “{schedSearch}”.</div></div>
-          return visible.map(s => {
-        const sBlocks = blocks.filter(b => b.schedule_id === s.id).sort((a, b) => (a.block_date + a.start_time).localeCompare(b.block_date + b.start_time))
+
+          // Past = every interval on it is before today (ET). A schedule with no
+          // intervals yet is NOT past — it's a new one waiting to be filled in.
+          const today = todayISO()
+          const blocksOf = (s) => blocks.filter(b => b.schedule_id === s.id)
+          const isPastSchedule = (s) => { const bs = blocksOf(s); return bs.length > 0 && bs.every(b => b.block_date < today) }
+          const currentScheds = visible.filter(s => !isPastSchedule(s))
+          const pastScheds = visible.filter(isPastSchedule)
+
+          const card = (s) => {
+        const sBlocks = blocksOf(s).slice().sort((a, b) => (a.block_date + a.start_time).localeCompare(b.block_date + b.start_time))
         const totalSpots = sBlocks.reduce((sum, b) => sum + b.total_spots, 0)
         const totalClaimed = sBlocks.reduce((sum, b) => sum + claims.filter(c => c.shift_block_id === b.id).length, 0)
         const callTypeName = callTypes.find(ct => ct.id === s.call_type_id)?.name || 'No position'
         const clientName = clients.find(cl => cl.id === s.client_id)?.name || 'No client'
         const audienceCount = audience.filter(a => a.schedule_id === s.id).length
+
+        // Past days are collapsed by default — they can't be edited into
+        // anything useful (the DB refuses to delete or move them) and they push
+        // the days that still matter off the side of the grid.
+        const pastDayCount = new Set(sBlocks.filter(b => b.block_date < today).map(b => b.block_date)).size
+        // A schedule that is entirely in the past opens expanded — you only got
+        // to it by deliberately opening "finished schedules", and collapsing it
+        // to nothing would be silly. Everything else starts collapsed.
+        const showPast = pastBySchedule[s.id] ?? isPastSchedule(s)
+        const shownBlocks = showPast ? sBlocks : sBlocks.filter(b => b.block_date >= today)
+
         return (
           <div className="card" key={s.id} style={{ marginBottom: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -253,16 +242,24 @@ export default function ScheduleBuilder() {
                 <button className="btn btn-ghost" style={{ color: 'var(--failed)' }} onClick={() => deleteSchedule(s)}>Delete</button>
               </div>
             </div>
+            {pastDayCount > 0 && (
+              <button onClick={() => setPastBySchedule(v => ({ ...v, [s.id]: !showPast }))}
+                style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 12.5, fontWeight: 600, padding: '2px 0', marginBottom: 8 }}>
+                {showPast ? '▾ Hide' : '▸ Show'} {pastDayCount} past day{pastDayCount !== 1 ? 's' : ''}
+              </button>
+            )}
             {!sBlocks.length ? (
               <div className="page-sub" style={{ padding: '6px 0' }}>No intervals yet.</div>
+            ) : !shownBlocks.length ? (
+              <div className="page-sub" style={{ padding: '6px 0' }}>Nothing upcoming — every interval on this schedule is in the past.</div>
             ) : (viewBySchedule[s.id] || 'grid') === 'grid' ? (
-              <ScheduleGrid blocks={sBlocks} claims={claims}
+              <ScheduleGrid blocks={shownBlocks} claims={claims} today={today}
                 onEdit={(b) => setEditBlock({ scheduleId: s.id, block: b })}
                 onDeleteDay={(dayISO) => deleteDay(s, dayISO)} />
             ) : (
               // List view is grouped by day so a whole day can be removed in one go.
-              [...new Set(sBlocks.map(b => b.block_date))].sort().map(dayISO => {
-                const dayBlocks = sBlocks.filter(b => b.block_date === dayISO)
+              [...new Set(shownBlocks.map(b => b.block_date))].sort().map(dayISO => {
+                const dayBlocks = shownBlocks.filter(b => b.block_date === dayISO)
                 const dayClaims = claims.filter(c => dayBlocks.some(b => b.id === c.shift_block_id)).length
                 const daySpots = dayBlocks.reduce((sum, b) => sum + b.total_spots, 0)
                 return (
@@ -274,9 +271,13 @@ export default function ScheduleBuilder() {
                           {dayBlocks.length} interval{dayBlocks.length !== 1 ? 's' : ''} · {dayClaims}/{daySpots} claimed
                         </span>
                       </div>
-                      <button className="btn btn-ghost" title={`Delete all ${dayBlocks.length} interval(s) on this day`}
-                        style={{ fontSize: 12, padding: '5px 10px', color: 'var(--failed)' }}
-                        onClick={() => deleteDay(s, dayISO)}>Delete day</button>
+                      {dayISO >= today ? (
+                        <button className="btn btn-ghost" title={`Delete all ${dayBlocks.length} interval(s) on this day`}
+                          style={{ fontSize: 12, padding: '5px 10px', color: 'var(--failed)' }}
+                          onClick={() => deleteDay(s, dayISO)}>Delete day</button>
+                      ) : (
+                        <span className="page-sub" style={{ fontSize: 11.5 }}>past</span>
+                      )}
                     </div>
                     {dayBlocks.map(b => {
                       const cl = claims.filter(c => c.shift_block_id === b.id)
@@ -298,7 +299,27 @@ export default function ScheduleBuilder() {
             )}
           </div>
         )
-          })
+          }
+
+          return (
+            <>
+              {currentScheds.length === 0 && pastScheds.length > 0 && (
+                <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 20 }}>
+                  Nothing current. Every schedule here has finished — open the past ones below.
+                </div></div>
+              )}
+              {currentScheds.map(card)}
+              {pastScheds.length > 0 && (
+                <div style={{ margin: '4px 0 14px' }}>
+                  <button onClick={() => setShowPastScheds(v => !v)}
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, fontWeight: 600, padding: '4px 0' }}>
+                    {showPastScheds ? '▾ Hide' : '▸ Show'} {pastScheds.length} finished schedule{pastScheds.length !== 1 ? 's' : ''}
+                  </button>
+                </div>
+              )}
+              {showPastScheds && pastScheds.map(card)}
+            </>
+          )
         })()}
         </>
       )}
@@ -311,6 +332,10 @@ export default function ScheduleBuilder() {
         onClose={() => setImportFor(null)} onDone={(n) => { setImportFor(null); load(); flash(`Imported ${n} interval${n !== 1 ? 's' : ''}`) }} />}
       {copyFor && <CopyModal schedule={copyFor} schedules={schedules} blocks={blocks}
         onClose={() => setCopyFor(null)} onDone={(msg) => { setCopyFor(null); load(); flash(msg) }} />}
+      {deleteFor && <DeleteIntervalsModal request={deleteFor} claims={claims} profiles={profiles}
+        onClose={() => setDeleteFor(null)} onDone={(msg) => { setDeleteFor(null); load(); flash(msg) }} />}
+      {deleteSchedFor && <DeleteScheduleModal schedule={deleteSchedFor}
+        onClose={() => setDeleteSchedFor(null)} onDone={(msg) => { setDeleteSchedFor(null); load(); flash(msg) }} />}
     </div>
   )
 }
@@ -408,7 +433,7 @@ function ReviewCard({ claim, block, person, meId, onDone }) {
 // Days as columns, hour-rows as rows, built from the schedule's own blocks.
 // Cell color = coverage: green full, amber partial, red unfilled.
 // Clicking a cell opens the same edit modal as the list view.
-function ScheduleGrid({ blocks, claims, onEdit, onDeleteDay }) {
+function ScheduleGrid({ blocks, claims, onEdit, onDeleteDay, today }) {
   const claimCount = (b) => claims.filter(c => c.shift_block_id === b.id).length
 
   // unique day columns (sorted) and start-time rows (sorted)
@@ -446,11 +471,12 @@ function ScheduleGrid({ blocks, claims, onEdit, onDeleteDay }) {
               return (
                 <th key={dk} style={{ width: 84, fontSize: 11.5, fontWeight: 600, color: 'var(--ink-soft)', paddingBottom: 4, textAlign: 'center' }}>
                   <div>{dayLabel(dk)}</div>
-                  {onDeleteDay && (
+                  {/* Past days are history — the DB refuses to delete them, so no button. */}
+                  {onDeleteDay && (!today || dk >= today) && (
                     <button onClick={() => onDeleteDay(dk)}
                       title={`Delete all ${n} interval${n !== 1 ? 's' : ''} on ${dayLabel(dk)}`}
                       aria-label={`Delete all intervals on ${dayLabel(dk)}`}
-                      style={{ marginTop: 2, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--failed)', fontSize: 11, fontWeight: 600, padding: '1px 5px', lineHeight: 1.4, borderRadius: 4 }}>
+                      style={{ marginTop: 2, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--failed)', fontSize: 10.5, fontWeight: 600, padding: '1px 4px', lineHeight: 1.3, borderRadius: 4, whiteSpace: 'nowrap' }}>
                       🗑 Day
                     </button>
                   )}
@@ -478,6 +504,173 @@ function ScheduleGrid({ blocks, claims, onEdit, onDeleteDay }) {
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// ---------- DELETE INTERVALS (one interval, or a whole day) ----------
+// Opens, immediately asks the DB for an exact plan (dry run), and shows it.
+// Nothing is deleted until the button is pressed, and if the plan destroys
+// claimed spots the button stays disabled until the checkbox is ticked.
+// Errors from the guards (past day, 200 cap, not an admin) render right here
+// instead of a toast that can be missed.
+function DeleteIntervalsModal({ request, claims, profiles, onClose, onDone }) {
+  const { title, subtitle, blockIds, doneMsg } = request
+  const [plan, setPlan] = useState(null)
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(true)
+  const [ack, setAck] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const { data, error } = await supabase.rpc('admin_delete_intervals',
+        { p_block_ids: blockIds, p_release_claims: false, p_dry_run: true })
+      if (!alive) return
+      if (error) setErr(error.message || String(error))
+      else setPlan(data)
+      setBusy(false)
+    })()
+    return () => { alive = false }
+  }, [blockIds])
+
+  const affected = plan?.claims_that_would_be_removed || 0
+  const destructive = affected > 0
+  const names = destructive
+    ? [...new Set(claims.filter(c => blockIds.includes(c.shift_block_id))
+        .map(c => profiles.find(p => p.id === c.profile_id)?.full_name || 'Unknown'))].sort()
+    : []
+
+  async function confirmDelete() {
+    setBusy(true); setErr('')
+    const { error } = await supabase.rpc('admin_delete_intervals',
+      { p_block_ids: blockIds, p_release_claims: destructive, p_dry_run: false })
+    if (error) { setErr(error.message || String(error)); setBusy(false); return }
+    onDone(doneMsg)
+  }
+
+  return (
+    <div className="modal-back open" onClick={busy ? undefined : onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 700 }}>{title}</h3>
+        <div className="page-sub" style={{ marginBottom: 14 }}>{subtitle}</div>
+
+        {err && <div className="login-err" style={{ marginBottom: 12 }}>{err}</div>}
+
+        {!err && !plan && <div className="page-sub" style={{ marginBottom: 14 }}>Checking what this would remove…</div>}
+
+        {plan && (
+          <div style={{
+            border: `1px solid ${destructive ? 'var(--danger, #d33)' : 'var(--line)'}`,
+            background: destructive ? 'rgba(211,51,51,0.06)' : 'var(--surface)',
+            borderRadius: 8, padding: '12px 14px', marginBottom: 14, fontSize: 13.5, lineHeight: 1.5,
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>
+              {destructive ? '⚠️ This will remove people from intervals' : 'Here’s what will happen'}
+            </div>
+            <div>{plan.summary}</div>
+            <div style={{ marginTop: 6 }}>This cannot be undone.</div>
+            {destructive && (
+              <>
+                <div style={{ marginTop: 8 }}>
+                  <span style={{ fontWeight: 600 }}>Losing the spot:</span>{' '}
+                  {names.slice(0, 12).join(', ')}{names.length > 12 ? `, +${names.length - 12} more` : ''}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 10, cursor: 'pointer', fontWeight: 600 }}>
+                  <input type="checkbox" checked={ack} onChange={e => setAck(e.target.checked)} style={{ marginTop: 3 }} />
+                  <span>Yes — un-assign those {affected} claimed spot(s). I know those people lose the time.</span>
+                </label>
+              </>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={busy}>
+            {err && !plan ? 'Close' : 'Cancel'}
+          </button>
+          {plan && (
+            <button className="btn btn-primary" style={{ flex: 1, background: 'var(--danger, #d33)' }}
+              onClick={confirmDelete} disabled={busy || (destructive && !ack)}>
+              {busy ? 'Deleting…' : destructive ? 'Yes, delete anyway' : 'Delete'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------- DELETE A WHOLE SCHEDULE ----------
+// Same shape as the interval delete, plus the type-the-name step the DB
+// function itself enforces (`p_confirm_title` must match exactly).
+function DeleteScheduleModal({ schedule, onClose, onDone }) {
+  const [plan, setPlan] = useState(null)
+  const [typed, setTyped] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(true)
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const { data, error } = await supabase.rpc('admin_delete_schedule',
+        { p_schedule_id: schedule.id, p_confirm_title: null, p_dry_run: true })
+      if (!alive) return
+      if (error) setErr(error.message || String(error))
+      else setPlan(data)
+      setBusy(false)
+    })()
+    return () => { alive = false }
+  }, [schedule.id])
+
+  const matches = !!plan && typed === plan.title
+
+  async function confirmDelete() {
+    setBusy(true); setErr('')
+    const { error } = await supabase.rpc('admin_delete_schedule',
+      { p_schedule_id: schedule.id, p_confirm_title: typed, p_dry_run: false })
+    if (error) { setErr(error.message || String(error)); setBusy(false); return }
+    onDone('Schedule deleted')
+  }
+
+  return (
+    <div className="modal-back open" onClick={busy ? undefined : onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 700 }}>Delete this schedule?</h3>
+        <div className="page-sub" style={{ marginBottom: 14 }}>{schedule.title}</div>
+
+        {err && <div className="login-err" style={{ marginBottom: 12 }}>{err}</div>}
+        {!err && !plan && <div className="page-sub" style={{ marginBottom: 14 }}>Checking what this would remove…</div>}
+
+        {plan && (
+          <>
+            <div style={{
+              border: '1px solid var(--danger, #d33)', background: 'rgba(211,51,51,0.06)',
+              borderRadius: 8, padding: '12px 14px', marginBottom: 14, fontSize: 13.5, lineHeight: 1.5,
+            }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>⚠️ This deletes history too</div>
+              <div>{plan.summary}</div>
+            </div>
+            <div className="field">
+              <label>Type the schedule name exactly to confirm</label>
+              <input value={typed} onChange={e => setTyped(e.target.value)} placeholder={plan.title} autoFocus />
+              <div className="hint">{plan.title}</div>
+            </div>
+          </>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={busy}>
+            {err && !plan ? 'Close' : 'Cancel'}
+          </button>
+          {plan && (
+            <button className="btn btn-primary" style={{ flex: 1, background: 'var(--danger, #d33)' }}
+              onClick={confirmDelete} disabled={busy || !matches}>
+              {busy ? 'Deleting…' : 'Delete schedule'}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -799,8 +992,11 @@ function weekStartISO(iso) {
   d.setDate(d.getDate() - dow)
   return d.toISOString().slice(0, 10)
 }
+// Today in Eastern, as YYYY-MM-DD. en-CA formats as ISO, so this is a direct
+// read of the ET calendar date — no round-trip through UTC. (The old version
+// went through toISOString(), which rolled over to tomorrow after 8pm ET.)
 function todayISO() {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })).toISOString().slice(0, 10)
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 }
 
 // ============================================================
