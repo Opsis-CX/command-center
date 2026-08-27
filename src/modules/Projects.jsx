@@ -10,6 +10,7 @@ import ProjectModal from './ProjectModal'
 import ProjectMyDay from './ProjectMyDay'
 import ProjectActivity from './ProjectActivity'
 import ProjectRecurring from './ProjectRecurring'
+import ProjectNotes from './ProjectNotes'
 
 // ============================================================
 // PROJECTS MODULE — shell + sub-view navigation
@@ -23,6 +24,7 @@ const SUBVIEWS = [
   { key: 'myday', label: 'My Day' },
   { key: 'projects', label: 'Projects' },
   { key: 'kanban', label: 'Kanban' },
+  { key: 'notes', label: 'Notes' },
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'recurring', label: 'Recurring' },
   { key: 'activity', label: 'Activity' },
@@ -87,6 +89,7 @@ function ProjectsInner() {
       {view === 'dashboard' && <ProjectDashboard onOpenTask={setOpenTaskId} onEditTask={openEdit} onAddTask={openAdd} />}
       {view === 'kanban' && <ProjectKanban activeProject={kanbanProject} setActiveProject={setKanbanProject} onOpenTask={setOpenTaskId} onAddTask={openAdd} />}
       {view === 'projects' && <ProjectGrid onOpenProject={jumpToProjectKanban} onNewProject={() => setProjectModal(null)} onEditProject={(id) => setProjectModal(id)} />}
+      {view === 'notes' && <ProjectNotes activeProject={kanbanProject} setActiveProject={setKanbanProject} />}
       {view === 'recurring' && <ProjectRecurring />}
       {view === 'activity' && <ProjectActivity />}
 
