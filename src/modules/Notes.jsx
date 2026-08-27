@@ -23,7 +23,8 @@ export default function Notes() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from('notes').select('*').is('deleted_at', null)
+    // Project notes live in the Projects module's Notes tab, not here.
+    const { data } = await supabase.from('notes').select('*').is('deleted_at', null).is('project_id', null)
       .order('pinned', { ascending: false }).order('updated_at', { ascending: false })
     const list = data || []
     setNotes(list)
