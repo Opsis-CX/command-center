@@ -33,13 +33,18 @@ const badColor = (v) => (v == null ? 'inherit' : v >= 0.20 ? '#b71c1c' : v >= 0.
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—')
 const qaFilterInp = { padding: '6px 9px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }
 
+// Ranked tiers, assigned by position (cutoff_top / cutoff_high / cutoff_developing).
+// Non-ranked states describe *why* an agent isn't ranked — they are not performance
+// judgements and must stay visually distinct from Improvement Opportunity.
 const TIER_STYLE = {
   'Top Performer': { bg: '#e8f5e9', fg: '#1b5e20' },
   'High Performer': { bg: '#fff8e1', fg: '#8d6e00' },
-  // Nesting: new agents without ranked data yet — sits between High and Developing.
-  'Nesting': { bg: '#ede7f6', fg: '#4527a0' },
   'Developing Performer': { bg: '#e3f2fd', fg: '#0d47a1' },
   'Improvement Opportunity': { bg: '#fdecea', fg: '#b71c1c' },
+  // Not ranked — neutral colours on purpose.
+  'Onboarding': { bg: '#ede7f6', fg: '#4527a0' },
+  'Unrated': { bg: '#eceff1', fg: '#455a64' },
+  'Not Working': { bg: '#eceff1', fg: '#607d8b' },
 }
 
 export default function Scorecard() {
@@ -102,14 +107,14 @@ export default function Scorecard() {
   return (
     <div>
       <h1 className="page-title">Service Performance Scorecard</h1>
-      <p className="page-sub">Team performance — last 30 days. Ranked by weighted score (Conversion 30% · Quality 20% · ACW% 20% · Not Ready% 10% · Adherence 20%). ACW% and Not Ready% are measured against login time — higher is worse.</p>
+      <p className="page-sub">Team performance. Tiers are assigned by rank — #1 is Top Performer. Rank comes from a weighted score of Conversion 35% · Quality 30% · Adherence 25% · ACW% 10%. Conversion and Quality are adjusted for sample size, so a couple of lucky calls can&rsquo;t outrank a long track record. Agents need 30+ handled calls in 30 days to be ranked; below that they show as Unrated with their numbers still visible. ACW% is measured against login time — higher is worse. NR% is shown for context and is not scored.</p>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginTop: 20 }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, minWidth: 860 }}>
             <thead>
               <tr style={{ background: 'var(--canvas)', textAlign: 'left' }}>
-                <Th>#</Th><Th>Agent</Th><Th>Tier</Th><Th right>Conversion</Th><Th right>Quality</Th><Th right>ACW%</Th><Th right>NR%</Th><Th right>Adherence</Th><Th right>Calls</Th>
+                <Th>#</Th><Th>Agent</Th><Th>Tier</Th><Th right>Conversion</Th><Th right>Quality</Th><Th right>ACW%</Th><Th right>NR%</Th><Th right>Adherence</Th><Th right>Calls 30d</Th>
               </tr>
             </thead>
             <tbody>
@@ -123,11 +128,13 @@ export default function Scorecard() {
                     <Td>{r.agent_rank ?? '—'}</Td>
                     <Td><span style={{ fontWeight: 600 }}>{r.agent_name}</span>{r.status !== 'Active' && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--ink-soft)' }}>{r.status}</span>}</Td>
                     <Td>{r.performance_tier ? <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: ts?.bg, color: ts?.fg }}>{r.performance_tier}</span> : <span style={{ color: 'var(--ink-soft)' }}>—</span>}</Td>
-                    <Td right>{pct(r.conversion_rate_last_30_days)}</Td>
-                    <Td right>{pct(r.avg_clean_qa_score_last_30_days)}</Td>
-                    <Td right><span style={{ color: badColor(r.acw_pct_last_30_days), fontWeight: 600 }}>{pct(r.acw_pct_last_30_days)}</span></Td>
-                    <Td right><span style={{ color: badColor(r.nr_pct_last_30_days), fontWeight: 600 }}>{pct(r.nr_pct_last_30_days)}</span></Td>
-                    <Td right>{pct(r.schedule_adherence_last_30_days)}</Td>
+                    {/* These are the sample-size-adjusted values the rank is actually computed from.
+                        Showing the raw rates here would contradict the tier beside them. */}
+                    <Td right>{pct(r.adj_conversion_rate ?? r.conversion_rate_last_30_days)}</Td>
+                    <Td right>{pct(r.adj_quality ?? r.avg_clean_qa_score_last_30_days)}</Td>
+                    <Td right><span style={{ color: badColor(r.acw_pct_last_14_days), fontWeight: 600 }}>{pct(r.acw_pct_last_14_days)}</span></Td>
+                    <Td right><span style={{ color: badColor(r.nr_pct_last_14_days), fontWeight: 600 }}>{pct(r.nr_pct_last_14_days)}</span></Td>
+                    <Td right>{pct(r.schedule_adherence_last_14_days)}</Td>
                     <Td right>{r.calls_handled_last_30_days ?? '—'}</Td>
                   </tr>
                 )
