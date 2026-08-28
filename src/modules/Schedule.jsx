@@ -76,10 +76,33 @@ function hoursUntilStart(block) {
   const s = new Date(`${block.block_date}T${block.start_time.slice(0, 5)}:00`)
   return (s.getTime() - Date.now()) / 3600000
 }
+
+// VTO (Voluntary Time Off) windows. Inside an open window the schedule lock is
+// waived: an agent may hand back any interval they hold whose date falls in the
+// window, for any reason, with no attendance consequence and no pay. The
+// server-side release_interval RPC is the real authority (it re-checks
+// active_vto_window); this copy only drives the button and the banner.
+//
+// Held at module scope rather than threaded through ClaimView → the day grids →
+// IntervalPopover, because canReleaseBlock() is called from four component
+// layers. Refreshed by load() on every poll, before the setState that re-renders.
+let VTO_WINDOWS = []
+function setVtoWindows(rows) { VTO_WINDOWS = rows || [] }
+function vtoForBlock(block) {
+  if (!block?.block_date) return null
+  const now = Date.now()
+  return VTO_WINDOWS.find(w =>
+    (!w.schedule_id || w.schedule_id === block.schedule_id) &&
+    block.block_date >= w.covers_from && block.block_date <= w.covers_to &&
+    now >= new Date(w.opens_at).getTime() && now <= new Date(w.closes_at).getTime()
+  ) || null
+}
+
 // Release is only allowed while the interval hasn't started AND is before the
-// 4-day (96h) schedule lock. Once locked, an agent must use the Trade board.
+// 4-day (96h) schedule lock — unless VTO is open for that day, which waives it.
 function canReleaseBlock(block, started) {
-  return !started && hoursUntilStart(block) >= RELEASE_CUTOFF_HOURS
+  if (started) return false
+  return hoursUntilStart(block) >= RELEASE_CUTOFF_HOURS || !!vtoForBlock(block)
 }
 
 function avatarColor(name) {
@@ -137,6 +160,7 @@ export default function Schedule() {
   const [blocks, setBlocks] = useState([])
   const [claims, setClaims] = useState([])
   const [trades, setTrades] = useState([])   // open interval-trade offers
+  const [vtoRows, setVtoRows] = useState([]) // active VTO windows (for the banner)
   const [audience, setAudience] = useState([])
   const [certRecords, setCertRecords] = useState([])
   const [certifications, setCertifications] = useState([])
@@ -158,7 +182,7 @@ export default function Schedule() {
     setErr('')
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      const [meRes, profRes, tierRes, schRes, blkRes, clmRes, audRes, recRes, certRes, trdRes] = await Promise.all([
+      const [meRes, profRes, tierRes, schRes, blkRes, clmRes, audRes, recRes, certRes, trdRes, vtoRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         supabase.from('profiles').select('id, full_name, email, tier_id, is_admin, is_active, release_penalty_until_thu').order('full_name'),
         supabase.from('performance_tiers').select('*').order('sort_order'),
@@ -169,6 +193,7 @@ export default function Schedule() {
         supabase.from('agent_cert_records').select('*'),
         supabase.from('certifications').select('id, call_type_id, active'),
         supabase.from('interval_trades').select('*').eq('status', 'open'),
+        supabase.from('vto_windows').select('*').eq('is_active', true),
       ])
       if (meRes.error) throw meRes.error
       setMe(meRes.data)
@@ -178,6 +203,10 @@ export default function Schedule() {
       setBlocks(blkRes.data || [])
       setClaims(clmRes.data || [])
       setTrades(trdRes.data || [])
+      // Module-scope first, then state — so the re-render this triggers already
+      // sees the fresh windows in canReleaseBlock()/vtoForBlock().
+      setVtoWindows(vtoRes.data || [])
+      setVtoRows(vtoRes.data || [])
       setAudience(audRes.data || [])
       setCertRecords(recRes.data || [])
       setCertifications(certRes.data || [])
@@ -351,10 +380,15 @@ export default function Schedule() {
     // Release is only allowed before the 4-day (96h) schedule lock. Once locked,
     // the interval is committed and the agent must use the Trade board. The RPC
     // re-checks this server-side.
-    if (hoursUntilStart(block) < RELEASE_CUTOFF_HOURS) {
+    const vto = vtoForBlock(block)
+    if (!vto && hoursUntilStart(block) < RELEASE_CUTOFF_HOURS) {
       flash("This interval is locked (within 4 days of start) — you can't release it. Put it up for trade instead."); return
     }
-    if (!window.confirm('Release this interval? It goes back to the schedule for anyone to claim.')) return
+    // Inside a VTO window the lock is waived and the hand-back is penalty-free.
+    // Say so plainly, including the part people ask about: it is unpaid time.
+    if (!window.confirm(vto
+      ? `Take VTO for this interval?\n\nIt won't count against your attendance and nobody will be asked to cover it — but it is unpaid, so you won't be paid for these hours.`
+      : 'Release this interval? It goes back to the schedule for anyone to claim.')) return
 
     // release_interval (SECURITY DEFINER): re-validates hold + not-started + 96h lock,
     // logs a shift_cancellations audit row (fires the "released" channel post),
@@ -363,17 +397,25 @@ export default function Schedule() {
     if (error) { flash(error.message || 'Could not release'); return }
     logActivity('released', block)
 
-    try {
-      const { data: aud } = await supabase.from('schedule_audience').select('profile_id').eq('schedule_id', block.schedule_id)
-      notifyIntervalReleased({
-        eligibleIds: (aud || []).map(a => a.profile_id),
-        actorId: me.id, actorName: me.full_name,
-        when: `${formatTime(block.start_time)}–${formatTime(block.end_time)} on ${block.block_date}`,
-        position: block.role || null,
-      })
-    } catch (e) { /* non-blocking */ }
+    // A normal release nudges the audience to pick the interval up. A VTO
+    // hand-back is deliberately NOT backfilled, so sending that nudge would be
+    // telling people to cover time we've decided nobody needs to cover.
+    if (!vto) {
+      try {
+        const { data: aud } = await supabase.from('schedule_audience').select('profile_id').eq('schedule_id', block.schedule_id)
+        notifyIntervalReleased({
+          eligibleIds: (aud || []).map(a => a.profile_id),
+          actorId: me.id, actorName: me.full_name,
+          when: `${formatTime(block.start_time)}–${formatTime(block.end_time)} on ${block.block_date}`,
+          position: block.role || null,
+        })
+      } catch (e) { /* non-blocking */ }
+    }
 
-    flash('Interval released — it\'s back on the schedule for anyone to claim'); load(true)
+    flash(vto
+      ? 'VTO taken — you\'re off for that interval, and it won\'t count against you'
+      : 'Interval released — it\'s back on the schedule for anyone to claim')
+    load(true)
   }
 
   // ---------- interval trading ----------
@@ -558,6 +600,8 @@ export default function Schedule() {
         </div>
       </div>
 
+      <VtoBanner rows={vtoRows} schedules={schedules} />
+
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
       {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, background: 'var(--ink)', color: '#fff', padding: '11px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, zIndex: 2000, boxShadow: '0 8px 24px rgba(0,0,0,.3)' }}>{toast}</div>}
 
@@ -583,6 +627,36 @@ export default function Schedule() {
         <MyScheduleView me={me} blocks={blocks} claims={claims} hasIntervalStarted={hasIntervalStarted} onUnclaim={unclaimBlock} onCheckIn={checkIn} onCheckOut={checkOut} openBreaks={openBreaks} onStartBreak={startBreak} onEndBreak={endBreak}
           onOfferTrade={offerTrade} onCancelTrade={cancelTrade} myOpenTradeFor={myOpenTradeFor} />
       )}
+    </div>
+  )
+}
+
+// Announces an open VTO window at the top of the Schedule page. Without this the
+// only clue is that a Release button quietly appears on locked intervals, which
+// nobody would notice.
+function VtoBanner({ rows, schedules }) {
+  const now = Date.now()
+  const live = (rows || []).filter(w =>
+    now >= new Date(w.opens_at).getTime() && now <= new Date(w.closes_at).getTime())
+  if (!live.length) return null
+  const dayLabel = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+  return (
+    <div style={{ marginBottom: 16, display: 'grid', gap: 10 }}>
+      {live.map(w => {
+        const scope = w.schedule_id ? (schedules.find(s => s.id === w.schedule_id)?.title || 'your schedule') : 'all schedules'
+        const closes = new Date(w.closes_at).toLocaleString('en-US', { timeZone: COMPANY_TZ, weekday: 'short', hour: 'numeric', minute: '2-digit' })
+        return (
+          <div key={w.id} className="card" style={{ borderColor: 'var(--cta)', background: 'var(--cta-bg, rgba(0,119,182,.06))', padding: '13px 16px' }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>🟢 VTO is open — {w.label}</div>
+            <p className="page-sub" style={{ margin: 0, fontSize: 13 }}>
+              For intervals {w.covers_from === w.covers_to ? `on ${dayLabel(w.covers_from)}` : `from ${dayLabel(w.covers_from)} through ${dayLabel(w.covers_to)}`} on {scope},
+              you can hand back any interval you're holding — the 4-day lock is waived and you don't need a reason.
+              {' '}<b>It won't count against your attendance</b>, and nobody will be asked to cover it. VTO is unpaid, so you won't be paid for hours you hand back.
+              {' '}Open <b>My schedule</b> (or click your interval on the grid) and choose <b>Release</b>. Closes {closes} ET.
+            </p>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -940,6 +1014,7 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, canAs
               : <>
                   {canReleaseBlock(block, started) && <button className="btn btn-ghost" onClick={() => onUnclaim(block)} title="Release this interval back to the schedule for anyone to claim. Allowed until the 4-day schedule lock; after it locks you must trade it.">Release</button>}
                   {!canReleaseBlock(block, started) && <span title="This interval is locked (within 4 days of start). It's part of your committed schedule — you can only move it through the Trade Board, and you stay responsible until someone claims it." style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: 700, color: 'var(--cta)', padding: '0 4px' }}>🔒 Locked</span>}
+                  {!started && vtoForBlock(block) && hoursUntilStart(block) < RELEASE_CUTOFF_HOURS && <span title="VTO is open for this day — you can release this interval with no attendance consequence. It's unpaid." style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: 700, color: 'var(--passed, #16A34A)', padding: '0 4px' }}>🟢 VTO</span>}
                   <button className="btn btn-ghost" style={{ color: 'var(--accent)' }} onClick={() => onOfferTrade(block)} title="Can't make it? Put it up for trade. You still hold it (and stay accountable) until someone takes it.">🔁 Put up for trade</button>
                 </>
           )}
@@ -1139,6 +1214,7 @@ function ShiftCard({ block, claim, isPast, started, viewerTZ, onUnclaim, onCheck
           </div>
         : <div style={{ marginTop: 6 }}>
             {!canReleaseBlock(block, started) && <div title="This interval is locked (within 4 days of start). It's part of your committed schedule — you can only move it through the Trade Board, and you stay responsible until someone claims it." style={{ fontSize: 11, color: 'var(--cta)', fontWeight: 700, marginBottom: 4 }}>🔒 Locked — trade only</div>}
+            {!started && vtoForBlock(block) && hoursUntilStart(block) < RELEASE_CUTOFF_HOURS && <div title="VTO is open for this day — you can release this interval with no attendance consequence. It's unpaid." style={{ fontSize: 11, color: 'var(--passed, #16A34A)', fontWeight: 700, marginBottom: 4 }}>🟢 VTO open — Release is penalty-free (unpaid)</div>}
             <div style={{ display: 'flex', gap: 6 }}>
               {canReleaseBlock(block, started) && onUnclaim && <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12, border: '1px solid var(--line)' }} onClick={() => onUnclaim(block)} title="Release this interval back to the schedule for anyone to claim. Allowed until the 4-day schedule lock.">Release</button>}
               <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12, border: '1px solid var(--line)' }} onClick={() => onOfferTrade(block)} title="Can't make it? Put it up for trade. You still hold it (and stay accountable) until someone takes it — it shows on the Trade board and the Schedule.">🔁 {canReleaseBlock(block, started) ? 'Put up for trade' : "Can't make it? Put up for trade"}</button>
