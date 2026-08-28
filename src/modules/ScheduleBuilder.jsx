@@ -69,11 +69,21 @@ export default function ScheduleBuilder() {
   const [tab, setTab] = useState('schedules')              // 'schedules' | 'review'
   const [schedSearch, setSchedSearch] = useState('')       // filter the schedules list
   const [meId, setMeId] = useState(null)
+  const [vtoWindows, setVtoWindows] = useState([])          // active VTO windows
+  const [vtoFor, setVtoFor] = useState(null)                // schedule obj for the VTO modal
+
+  // The window currently in force for a schedule, if any (schedule-specific or
+  // an all-schedules one). Drives the button's "🟢 VTO open" state.
+  const liveVtoFor = (scheduleId) => {
+    const now = Date.now()
+    return vtoWindows.find(w => (!w.schedule_id || w.schedule_id === scheduleId) &&
+      now >= new Date(w.opens_at).getTime() && now <= new Date(w.closes_at).getTime()) || null
+  }
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     try {
-      const [schRes, blkRes, clmRes, ctRes, profRes, audRes, cliRes] = await Promise.all([
+      const [schRes, blkRes, clmRes, ctRes, profRes, audRes, cliRes, vtoRes] = await Promise.all([
         supabase.from('schedules').select('*').order('week_start_date', { ascending: false }),
         fetchAllRows(() => supabase.from('shift_blocks').select('*').order('block_date').order('start_time').order('id')),
         fetchAllRows(() => supabase.from('shift_claims').select('*').order('id')),
@@ -81,6 +91,7 @@ export default function ScheduleBuilder() {
         supabase.from('profiles').select('id, full_name, email, is_active').eq('is_active', true).order('full_name'),
         supabase.from('schedule_audience').select('*'),
         supabase.from('clients').select('*').order('name'),
+        supabase.from('vto_windows').select('*').eq('is_active', true).order('created_at', { ascending: false }),
       ])
       if (schRes.error) throw schRes.error
       setSchedules(schRes.data || [])
@@ -90,6 +101,7 @@ export default function ScheduleBuilder() {
       setProfiles(profRes.data || [])
       setAudience(audRes.data || [])
       setClients(cliRes.data || [])
+      setVtoWindows(vtoRes.data || [])
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }, [])
 
@@ -238,6 +250,11 @@ export default function ScheduleBuilder() {
                 <button className="btn btn-ghost" onClick={() => setEditBlock({ scheduleId: s.id })}>+ Add interval</button>
                 <button className="btn btn-ghost" onClick={() => setImportFor(s.id)}>Import CSV</button>
                 <button className="btn btn-ghost" onClick={() => setCopyFor(s)}>Copy</button>
+                <button className="btn btn-ghost" onClick={() => setVtoFor(s)}
+                  title="Offer Voluntary Time Off: let people hand back intervals on these days with no attendance hit and no pay."
+                  style={liveVtoFor(s.id) ? { color: 'var(--passed)', fontWeight: 700 } : undefined}>
+                  {liveVtoFor(s.id) ? '🟢 VTO open' : 'VTO'}
+                </button>
                 <button className="btn btn-ghost" onClick={() => setEditSchedule(s)}>Edit</button>
                 <button className="btn btn-ghost" style={{ color: 'var(--failed)' }} onClick={() => deleteSchedule(s)}>Delete</button>
               </div>
@@ -336,6 +353,120 @@ export default function ScheduleBuilder() {
         onClose={() => setDeleteFor(null)} onDone={(msg) => { setDeleteFor(null); load(); flash(msg) }} />}
       {deleteSchedFor && <DeleteScheduleModal schedule={deleteSchedFor}
         onClose={() => setDeleteSchedFor(null)} onDone={(msg) => { setDeleteSchedFor(null); load(); flash(msg) }} />}
+      {vtoFor && <VtoModal schedule={vtoFor} live={liveVtoFor(vtoFor.id)} meId={meId} blocks={blocks} claims={claims}
+        onClose={() => setVtoFor(null)} onDone={(msg) => { setVtoFor(null); load(); flash(msg) }} />}
+    </div>
+  )
+}
+
+// ---------- VTO (Voluntary Time Off) ----------
+// Opening a window waives the 4-day Schedule Lock for the days it covers, so
+// people can hand intervals back for any reason. Those hand-backs never touch
+// attendance (the claim row disappears, so the day leaves sc_no_show_days
+// entirely) and are unpaid (pay follows Five9 login hours, not scheduled hours).
+function VtoModal({ schedule, live, meId, blocks, claims, onClose, onDone }) {
+  const todayET = todayISO()
+  const [from, setFrom] = useState(todayET)
+  const [to, setTo] = useState(todayET)
+  const [closesAt, setClosesAt] = useState(() => {
+    const d = new Date(); d.setHours(23, 59, 0, 0); return isoToLocalInput(d.toISOString())
+  })
+  const [closeSeat, setCloseSeat] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  // How much time is actually on the table, so nobody opens a window blind.
+  const affected = blocks.filter(b => b.schedule_id === schedule.id && b.block_date >= from && b.block_date <= to)
+  const affectedClaims = claims.filter(c => affected.some(b => b.id === c.shift_block_id))
+  const people = new Set(affectedClaims.map(c => c.profile_id)).size
+  const hours = affected.reduce((s, b) => {
+    const n = affectedClaims.filter(c => c.shift_block_id === b.id).length
+    const [sh, sm] = b.start_time.split(':').map(Number); const [eh, em] = b.end_time.split(':').map(Number)
+    return s + n * ((eh * 60 + em) - (sh * 60 + sm)) / 60
+  }, 0)
+
+  async function open() {
+    setBusy(true); setErr('')
+    const { error } = await supabase.from('vto_windows').insert({
+      label: schedule.title,
+      schedule_id: schedule.id,
+      covers_from: from, covers_to: to,
+      closes_at: new Date(closesAt).toISOString(),
+      close_seat: closeSeat,
+      created_by: meId,
+    })
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    onDone('VTO is open — agents can now hand back those intervals')
+  }
+
+  async function close() {
+    setBusy(true); setErr('')
+    const { error } = await supabase.from('vto_windows').update({ is_active: false }).eq('id', live.id)
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    onDone('VTO closed — the 4-day schedule lock is back in force')
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'grid', placeItems: 'center', zIndex: 3000, padding: 20 }} onClick={onClose}>
+      <div className="card" style={{ maxWidth: 520, width: '100%', maxHeight: '88vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ marginTop: 0, marginBottom: 4 }}>Voluntary Time Off</h3>
+        <p className="page-sub" style={{ marginTop: 0 }}>{schedule.title}</p>
+
+        {live ? (
+          <>
+            <div className="card" style={{ borderColor: 'var(--passed)', padding: '12px 14px', marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 4 }}>🟢 VTO is open right now</div>
+              <p className="page-sub" style={{ margin: 0, fontSize: 12.5 }}>
+                Covering {live.covers_from} through {live.covers_to}. Closes {new Date(live.closes_at).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', minute: '2-digit' })} ET.
+                {live.close_seat ? ' Seats nobody is left on are closed to 0 spots, so they are not backfilled.' : ' Freed seats stay open for others to claim.'}
+              </p>
+            </div>
+            {err && <p style={{ color: 'var(--failed)', fontSize: 13 }}>{err}</p>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn btn-ghost" onClick={onClose}>Done</button>
+              <button className="btn btn-primary" disabled={busy} onClick={close} style={{ background: 'var(--failed)' }}>
+                {busy ? 'Closing…' : 'Close VTO now'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="page-sub" style={{ fontSize: 13, marginTop: 10 }}>
+              While this is open, anyone holding an interval on these days can release it for any reason — the 4-day
+              schedule lock is waived. It <b>won't count against their attendance</b>, and it's <b>unpaid</b>.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, margin: '14px 0' }}>
+              <label style={{ fontSize: 12.5, fontWeight: 600 }}>Covers days from
+                <input type="date" value={from} min={todayET} onChange={e => setFrom(e.target.value)}
+                  style={{ width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)' }} />
+              </label>
+              <label style={{ fontSize: 12.5, fontWeight: 600 }}>through
+                <input type="date" value={to} min={from} onChange={e => setTo(e.target.value)}
+                  style={{ width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)' }} />
+              </label>
+            </div>
+            <label style={{ fontSize: 12.5, fontWeight: 600, display: 'block' }}>Offer closes (ET)
+              <input type="datetime-local" value={closesAt} onChange={e => setClosesAt(e.target.value)}
+                style={{ width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)' }} />
+            </label>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, margin: '12px 0 4px' }}>
+              <input type="checkbox" checked={closeSeat} onChange={e => setCloseSeat(e.target.checked)} style={{ marginTop: 2 }} />
+              <span>Don't backfill — when nobody is left on an interval, close it to 0 spots instead of putting it back on the board.</span>
+            </label>
+            <p className="page-sub" style={{ fontSize: 12.5, marginTop: 12 }}>
+              In range right now: <b>{affected.length}</b> interval{affected.length !== 1 ? 's' : ''} · <b>{people}</b> {people === 1 ? 'person' : 'people'} holding <b>{Math.round(hours * 10) / 10}</b> hour{hours === 1 ? '' : 's'}.
+              That's the most that could be handed back.
+            </p>
+            {err && <p style={{ color: 'var(--failed)', fontSize: 13 }}>{err}</p>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+              <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+              <button className="btn btn-primary" disabled={busy || to < from} onClick={open}>{busy ? 'Opening…' : 'Open VTO'}</button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }
