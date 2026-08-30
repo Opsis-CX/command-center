@@ -28,10 +28,19 @@ const MATRIX = {
   'quality_audit': ['certification', 'admin'],
   'quality_audit.enter_audits': ['certification', 'admin'],
   'quality_audit.view_own': ['certification', 'admin'],
-  // Call QA: all staff, plus 'agent' — an agent still reaches this page to read
-  // reviews of their OWN calls, which RLS narrows to profile_id = auth.uid().
-  // Removing 'agent' here would hide their own scores from them.
-  'quality_audit.call_reviews': [...STAFF, 'agent'],
+  // Call QA (AI) and the Quality page. STAFF ONLY — no agent.
+  //
+  // 2026-08-30: an agent signed in and got the full Call QA portfolio, including
+  // the Rubric, Settings and Import tabs. 'agent' had been on this key since it
+  // was created, and this ONE key gates four things: the /call-qa route, the
+  // /quality route, and both sidebar links. Row security limited the call data
+  // they could see to their own, so no other agent's calls leaked — but the page,
+  // the rubric and the QA configuration were all reachable.
+  //
+  // Agents see their own scores on the Scorecard page instead. If they should
+  // ever read their own call reviews, that needs its own agent-facing view and
+  // its own key — not this one.
+  'quality_audit.call_reviews': STAFF,
   'service_performance_scorecard.view_personal_scorecard': ['agent', 'admin'],
   'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard.edit_scorecard': ['admin'],
