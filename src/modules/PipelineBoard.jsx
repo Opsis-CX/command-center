@@ -688,7 +688,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
       contact_phone: deal.contact_phone || '', value: deal.value ?? '',
       owner_name: deal.owner_name || '', source: deal.source || '', notes: deal.notes || '',
       strategy: deal.strategy || 'customer_service', website: deal.website || '',
-      company_phone: deal.company_phone || '',
+      company_phone: deal.company_phone || '', email_observation: deal.email_observation || '',
     })
     setEditErr(''); setEditing(true)
   }
@@ -704,6 +704,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
       source: clean(form.source), notes: clean(form.notes), strategy: form.strategy,
       website: normalizeUrl(form.website),
       company_phone: clean(form.company_phone),
+      email_observation: clean(form.email_observation),
       value: form.value === '' ? null : Number(form.value),
     }
     try { await onUpdate(deal, patch); setEditing(false) }
@@ -872,6 +873,13 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
                   </select>
                 </div>
               </div>
+              {/* The one line that turns a template into a researched email.
+                  Rendered as {{observation}} in the intro; blank disappears
+                  cleanly, so an unresearched deal still reads correctly. */}
+              <label style={elabel}>Observation — the one line about them</label>
+              <textarea value={form.email_observation} onChange={setFld('email_observation')}
+                placeholder="e.g. Your contact page lists one number and no after-hours option, and two reviews this year mention nobody picking up."
+                style={{ ...efield, minHeight: 54, resize: 'vertical', marginBottom: 12 }} />
               <label style={elabel}>Notes</label>
               <textarea value={form.notes} onChange={setFld('notes')} placeholder="Anything useful about this lead…"
                 style={{ ...efield, minHeight: 64, resize: 'vertical' }} />
@@ -888,6 +896,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
                   contact's direct line. Kept as its own row so nobody dials a main
                   number believing it is the person's cell. */}
               <Row label="Company phone" value={deal.company_phone} />
+              <Row label="Observation (used in the intro email)" value={deal.email_observation} />
               <RowLink label="Website" value={deal.website} />
               <Row label="Value" value={money(deal.value)} />
               <Row label="Owner" value={deal.owner_name} />
