@@ -27,6 +27,8 @@ import { useAuth } from '../lib/auth'
 // Spec: project doc claude/website-chat-backend-and-inbox-spec-2026-08-29.md
 
 const HEARTBEAT_MS = 30_000
+const TYPING_TTL_MS = 8_000      // must match the edge function
+const TYPING_THROTTLE_MS = 3_000 // at most one write per 3s of typing
 const LIST_POLL_MS = 10_000
 const THREAD_POLL_MS = 5_000
 
@@ -270,11 +272,12 @@ function Thread({ id, userId, onBack }) {
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
   const endRef = useRef(null)
+  const lastTypingPing = useRef(0)
 
   const load = useCallback(async () => {
     const [{ data: c }, { data: m }] = await Promise.all([
       supabase.from('web_conversations')
-        .select('id, status, visitor_name, visitor_email, visitor_company, visitor_phone, page, assignee_id, deal_id, created_at')
+        .select('id, status, visitor_name, visitor_email, visitor_company, visitor_phone, page, assignee_id, deal_id, created_at, visitor_typing_until')
         .eq('id', id).maybeSingle(),
       supabase.from('web_messages')
         .select('id, seq, role, body, created_at, deferred')
@@ -292,6 +295,18 @@ function Thread({ id, userId, onBack }) {
     if (conv && conv.id) supabase.from('web_conversations').update({ staff_unread: 0 }).eq('id', conv.id)
   }, [conv?.id])
 
+  // Tell the visitor someone is composing. Throttled, and written as an
+  // expiry, so closing the tab mid-sentence clears itself within 8 seconds
+  // instead of leaving a permanent "typing...".
+  const pingTyping = useCallback(() => {
+    const now = Date.now()
+    if (now - lastTypingPing.current < TYPING_THROTTLE_MS) return
+    lastTypingPing.current = now
+    supabase.from('web_conversations')
+      .update({ staff_typing_until: new Date(now + TYPING_TTL_MS).toISOString() })
+      .eq('id', id)
+  }, [id])
+
   const send = async () => {
     const text = body.trim()
     if (!text || sending) return
@@ -303,6 +318,7 @@ function Thread({ id, userId, onBack }) {
     await supabase.from('web_conversations').update({
       status: 'live',
       assignee_id: conv?.assignee_id || userId,
+      staff_typing_until: null,
     }).eq('id', id)
     setBody('')
     setSending(false)
@@ -316,6 +332,10 @@ function Thread({ id, userId, onBack }) {
       .eq('id', id)
     onBack()
   }
+
+  // Derived, never stored as a flag: an expiry in the past is simply not typing.
+  const visitorTyping = !!conv?.visitor_typing_until &&
+    new Date(conv.visitor_typing_until).getTime() > Date.now()
 
   if (!conv) return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 26 }}>Loading…</div></div>
 
@@ -339,13 +359,18 @@ function Thread({ id, userId, onBack }) {
 
       <div className="card" style={{ padding: 14, maxHeight: '52vh', overflowY: 'auto' }}>
         {msgs.map(m => <Bubble key={m.id} m={m} />)}
+        {visitorTyping && (
+          <div className="page-sub" style={{ fontSize: 12, margin: '4px 0 0', fontStyle: 'italic' }}>
+            Visitor is typing…
+          </div>
+        )}
         <div ref={endRef} />
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'flex-end' }}>
         <textarea
           value={body}
-          onChange={e => setBody(e.target.value)}
+          onChange={e => { setBody(e.target.value); if (e.target.value.trim()) pingTyping() }}
           onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send() }}
           rows={2}
           placeholder="Write a reply… (Cmd/Ctrl+Enter to send)"
