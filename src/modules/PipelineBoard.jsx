@@ -1,9 +1,19 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import ProposalBuilder from './ProposalBuilder'
 import SalesEmailTemplates from './SalesEmailTemplates'
 import { useSalesEmailConfig, sendSalesEmail } from '../lib/salesEmails'
+
+// People type "acme.com", not "https://acme.com". Store it with a scheme so
+// the link in the panel actually opens instead of resolving relative to the
+// Command Center. Blank stays null rather than becoming "https://".
+function normalizeUrl(v) {
+  const t = (v || '').trim()
+  if (!t) return null
+  return /^https?:\/\//i.test(t) ? t : 'https://' + t
+}
 // ============================================================
 //  SALES PIPELINE DASHBOARD
 //  Kanban board for outbound B2B deals. Mirrors HiringDashboard:
@@ -175,6 +185,9 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
   // whether the "import CSV" dialog is open
   const [importing, setImporting] = useState(false)
 
+  // Notifications about a website submission link to /sales?deal=<id>.
+  const [params, setParams] = useSearchParams()
+
   const load = useCallback(async () => {
     setLoading(true); setErr('')
     const { data, error } = await supabase.from('deals')
@@ -184,6 +197,20 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
     setLoading(false)
   }, [pipelineKey])
   useEffect(() => { load() }, [load])
+
+  // A website lead that matched an EXISTING deal used to be invisible: the
+  // notification dropped you on the board with no idea which of a hundred
+  // rows had changed. Open that deal directly, then clear the parameter so a
+  // refresh or the back button doesn't keep re-opening it.
+  const wantDeal = params.get('deal')
+  useEffect(() => {
+    if (!wantDeal || !deals.length) return
+    const match = deals.find(d => d.id === wantDeal)
+    if (match) setSelected(match)
+    const next = new URLSearchParams(params)
+    next.delete('deal')
+    setParams(next, { replace: true })
+  }, [wantDeal, deals])   // eslint-disable-line react-hooks/exhaustive-deps
 
   // realtime: refresh when deals change (separate channel per board)
   useEffect(() => {
@@ -589,7 +616,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
       title: deal.title || '', contact_email: deal.contact_email || '',
       contact_phone: deal.contact_phone || '', value: deal.value ?? '',
       owner_name: deal.owner_name || '', source: deal.source || '', notes: deal.notes || '',
-      strategy: deal.strategy || 'customer_service',
+      strategy: deal.strategy || 'customer_service', website: deal.website || '',
     })
     setEditErr(''); setEditing(true)
   }
@@ -603,6 +630,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
       title: clean(form.title), contact_email: clean(form.contact_email),
       contact_phone: clean(form.contact_phone), owner_name: clean(form.owner_name),
       source: clean(form.source), notes: clean(form.notes), strategy: form.strategy,
+      website: normalizeUrl(form.website),
       value: form.value === '' ? null : Number(form.value),
     }
     try { await onUpdate(deal, patch); setEditing(false) }
@@ -630,13 +658,29 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
     </div>
   )
 
+  // Website is worth one click - a row that shows "Not set" but opens the site
+  // in a new tab the moment there is one.
+  const RowLink = ({ label, value }) => (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', marginBottom: 2 }}>{label}</div>
+      {value ? (
+        <a href={value} target="_blank" rel="noreferrer"
+          style={{ fontSize: 13.5, lineHeight: 1.5, color: 'var(--accent)', textDecoration: 'none', wordBreak: 'break-all' }}>
+          {value.replace(/^https?:\/\//, '')}
+        </a>
+      ) : (
+        <div style={{ fontSize: 13.5, lineHeight: 1.5, color: 'var(--ink-soft)', fontStyle: 'italic' }}>Not set</div>
+      )}
+    </div>
+  )
+
   const efield = { width: '100%', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', fontSize: 13.5, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }
   const elabel = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', margin: '0 0 3px', display: 'block' }
 
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 100, display: 'flex', justifyContent: 'flex-end' }}>
-      <div style={{ width: 460, maxWidth: '92%', height: '100%', background: 'var(--surface)', overflowY: 'auto', boxShadow: '-10px 0 30px rgba(0,0,0,.15)' }}>
+      <div style={{ width: 620, maxWidth: '96%', height: '100%', background: 'var(--surface)', overflowY: 'auto', boxShadow: '-10px 0 30px rgba(0,0,0,.15)' }}>
         <div style={{ position: 'sticky', top: 0, background: 'var(--surface)', borderBottom: '1px solid var(--line)', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12, zIndex: 2 }}>
           <span style={{ width: 40, height: 40, borderRadius: '50%', background: avatarColor(deal.organization), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 700, flex: 'none' }}>{initials(deal.organization)}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -741,6 +785,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
                 <FormField lbl="Role / title" value={form.title} onChange={setFld('title')} placeholder="VP Marketing" />
                 <FormField lbl="Email" value={form.contact_email} onChange={setFld('contact_email')} type="email" placeholder="jane@acme.com" />
                 <FormField lbl="Phone" value={form.contact_phone} onChange={setFld('contact_phone')} placeholder="(555) 123-4567" />
+                <FormField lbl="Website" value={form.website} onChange={setFld('website')} placeholder="acme.com" full />
                 <FormField lbl="Value ($)" value={form.value} onChange={setFld('value')} type="number" placeholder="0" />
                 <FormField lbl="Owner" value={form.owner_name} onChange={setFld('owner_name')} placeholder="Lead owner" />
                 <FormField lbl="Source" value={form.source} onChange={setFld('source')} placeholder="Referral, LinkedIn…" full />
@@ -765,6 +810,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
               <Row label="Strategy" value={deal.strategy === 'customer_service' ? 'Customer Service' : deal.strategy === 'speed_to_lead' ? 'Speed to Lead' : deal.strategy} />
               <RowShow label="Email" value={deal.contact_email} />
               <RowShow label="Phone" value={deal.contact_phone} />
+              <RowLink label="Website" value={deal.website} />
               <Row label="Value" value={money(deal.value)} />
               <Row label="Owner" value={deal.owner_name} />
               <Row label="Source" value={deal.source} />
@@ -1127,6 +1173,7 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
   const [f, setF] = useState({
     organization: '', contact_person: '', title: '', contact_email: '',
     contact_phone: '', value: '', owner_name: '', source: '', notes: '', strategy: 'customer_service',
+    website: '',
   })
   const [saving, setSaving] = useState(false)
   const [localErr, setLocalErr] = useState('')
@@ -1149,6 +1196,7 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
       source: clean(f.source),
       notes: clean(f.notes),
       strategy: f.strategy,
+      website: normalizeUrl(f.website),
       value: f.value === '' ? null : Number(f.value),
     }
     const { data, error } = await supabase.from('deals').insert(row).select().single()
@@ -1180,6 +1228,7 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
           <FormField lbl="Role / title" value={f.title} onChange={set('title')} placeholder="VP Marketing" />
           <FormField lbl="Email" value={f.contact_email} onChange={set('contact_email')} type="email" placeholder="jane@acme.com" />
           <FormField lbl="Phone" value={f.contact_phone} onChange={set('contact_phone')} placeholder="(555) 123-4567" />
+          <FormField lbl="Website" value={f.website} onChange={set('website')} placeholder="acme.com" full />
           <FormField lbl="Deal value ($)" value={f.value} onChange={set('value')} type="number" placeholder="0" />
           <FormField lbl="Owner" value={f.owner_name} onChange={set('owner_name')} placeholder="Who owns this lead" />
           <FormField lbl="Source" value={f.source} onChange={set('source')} placeholder="Referral, LinkedIn, list…" full />
