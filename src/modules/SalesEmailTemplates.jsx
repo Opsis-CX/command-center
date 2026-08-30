@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { MERGE_FIELDS, sendSalesEmail, invalidateSalesEmailCache } from '../lib/salesEmails'
+import { MERGE_FIELDS, sendSalesEmail, invalidateSalesEmailCache, variantLabel } from '../lib/salesEmails'
 
 // ============================================================================
 //  SALES EMAIL TEMPLATES
@@ -17,6 +17,25 @@ import { MERGE_FIELDS, sendSalesEmail, invalidateSalesEmailCache } from '../lib/
 //  again inside the send-sales-email function).
 // ============================================================================
 
+// The verticals a version can be written for — same list as deals.industry.
+// A law firm and a church are sold the same service and must not read the same
+// letter, so this is the key that changes the voice.
+const VERTICALS = [
+  'Legal', 'Accounting & Finance', 'Healthcare & Medical', 'Home & Trade Services',
+  'Construction & Contracting', 'Industrial & Manufacturing', 'Distribution & Wholesale',
+  'Energy & Utilities', 'Environmental & Sustainability', 'Real Estate & Property',
+  'Technology & Software', 'Marketing & Media', 'Professional Services',
+  'Education & Nonprofit', 'Faith & Religious Organizations', 'Security & Life Safety',
+  'Hospitality Travel & Events', 'Transportation & Logistics', 'Consumer & Retail',
+  'Telecom', 'Other',
+]
+
+// The service line a version can be written for — same list as deals.service_fit.
+const SERVICE_LINES = [
+  'Inbound Answering', 'Outbound Appointment Setting', 'Back-Office Operations',
+  'Fractional Ops Leadership', 'Systems Implementation', 'Low fit',
+]
+
 const STAGE_TITLE = {
   email_1_sent: 'Email 1 Sent',
   email_2_sent: 'Email 2 Sent',
@@ -30,7 +49,7 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
   const canEdit = isAdmin || ['admin', 'marketing'].includes(String(appRole || '').toLowerCase())
 
   const [rows, setRows] = useState([])
-  const [activeKind, setActiveKind] = useState(null)
+  const [activeId, setActiveId] = useState(null)
   const [draft, setDraft] = useState(null)         // working copy of the active row
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -51,25 +70,82 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
         if (error) setErr(error.message)
         else {
           setRows(data || [])
-          if (data && data.length) { setActiveKind(data[0].kind); setDraft({ ...data[0] }) }
+          if (data && data.length) { setActiveId(data[0].id); setDraft({ ...data[0] }) }
         }
         setLoading(false)
       })
     return () => { cancel = true }
   }, [])
 
-  const active = useMemo(() => rows.find(r => r.kind === activeKind) || null, [rows, activeKind])
+  const active = useMemo(() => rows.find(r => r.id === activeId) || null, [rows, activeId])
   const dirty = !!draft && !!active && (
     draft.subject !== active.subject ||
     draft.body_html !== active.body_html ||
-    draft.enabled !== active.enabled
+    draft.enabled !== active.enabled ||
+    (draft.industry || null) !== (active.industry || null) ||
+    (draft.audience || null) !== (active.audience || null) ||
+    (draft.variant_name || '') !== (active.variant_name || '')
   )
 
-  function pick(kind) {
-    if (dirty && !window.confirm('You have unsaved changes to this email. Discard them?')) return
-    const row = rows.find(r => r.kind === kind)
-    setActiveKind(kind); setDraft(row ? { ...row } : null)
+  // Stages, each holding its versions. The default (no vertical, no service
+  // line) sorts first — it is the one everything else falls back to.
+  const groups = useMemo(() => {
+    const by = new Map()
+    for (const r of rows) {
+      if (!by.has(r.kind)) by.set(r.kind, { kind: r.kind, label: r.label, stage_key: r.stage_key, items: [] })
+      by.get(r.kind).items.push(r)
+    }
+    for (const g of by.values()) {
+      g.items.sort((a, b) =>
+        (a.industry || a.audience ? 1 : 0) - (b.industry || b.audience ? 1 : 0) ||
+        variantLabel(a).localeCompare(variantLabel(b)))
+    }
+    return [...by.values()]
+  }, [rows])
+
+  function pick(id) {
+    if (dirty && !window.confirm('You have unsaved changes to this version. Discard them?')) return
+    const row = rows.find(r => r.id === id)
+    setActiveId(id); setDraft(row ? { ...row } : null)
     setPreview(null); setFlash(''); setErr('')
+  }
+
+  // A new version starts as a copy of the one you are looking at, switched off,
+  // with no vertical set — so it cannot start sending before you have written it.
+  async function addVersion() {
+    if (!draft || !canEdit) return
+    setSaving(true); setErr(''); setFlash('')
+    const { id, updated_at, updated_by, ...rest } = draft
+    const { data, error } = await supabase.from('sales_email_templates')
+      .insert({ ...rest, enabled: false, is_default: false, industry: null, audience: null,
+                variant_name: 'New version', updated_at: new Date().toISOString() })
+      .select().single()
+    setSaving(false)
+    if (error) {
+      setErr(error.message.includes('duplicate key')
+        ? 'There is already a version of this email with no vertical and no service line. Set one on the new version first.'
+        : error.message)
+      return
+    }
+    setRows(prev => [...prev, data]); setActiveId(data.id); setDraft({ ...data })
+    invalidateSalesEmailCache()
+    setFlash('New version created, switched off. Give it a vertical and write the copy.')
+  }
+
+  async function deleteVersion() {
+    if (!draft || !canEdit) return
+    if (!draft.industry && !draft.audience) { setErr('This is the fallback version for the stage — it cannot be deleted.'); return }
+    if (!window.confirm(`Delete the "${variantLabel(draft)}" version of the ${draft.label}? Deals in that vertical will fall back to the default.`)) return
+    setSaving(true); setErr('')
+    const { error } = await supabase.from('sales_email_templates').delete().eq('id', draft.id)
+    setSaving(false)
+    if (error) { setErr(error.message); return }
+    const next = rows.filter(r => r.id !== draft.id)
+    setRows(next)
+    const fallback = next.find(r => r.kind === draft.kind) || next[0] || null
+    setActiveId(fallback?.id || null); setDraft(fallback ? { ...fallback } : null)
+    invalidateSalesEmailCache()
+    setFlash('Version deleted.')
   }
 
   // Drop a merge field in at the cursor of whichever field was last focused.
@@ -91,12 +167,24 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
   async function save() {
     if (!draft || !canEdit) return
     setSaving(true); setErr(''); setFlash('')
+    // By id, not by kind. A stage now holds several versions, and updating by
+    // kind would overwrite every one of them with this one's copy.
     const { data, error } = await supabase.from('sales_email_templates')
-      .update({ subject: draft.subject, body_html: draft.body_html, enabled: draft.enabled })
-      .eq('kind', draft.kind).select().single()
+      .update({
+        subject: draft.subject, body_html: draft.body_html, enabled: draft.enabled,
+        industry: draft.industry || null, audience: draft.audience || null,
+        variant_name: (draft.variant_name || '').trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', draft.id).select().single()
     setSaving(false)
-    if (error) { setErr(error.message); return }
-    setRows(prev => prev.map(r => r.kind === data.kind ? data : r))
+    if (error) {
+      setErr(error.message.includes('duplicate key')
+        ? 'Another version of this email already covers that vertical and service line. Pick a different one.'
+        : error.message)
+      return
+    }
+    setRows(prev => prev.map(r => r.id === data.id ? data : r))
     setDraft({ ...data })
     invalidateSalesEmailCache()
     onSaved?.()
@@ -110,7 +198,7 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
     setErr(''); setFlash('')
     // Preview the unsaved draft by saving nothing: the function renders from
     // the stored row, so preview what's stored and tell them if it's stale.
-    const res = await sendSalesEmail(draft.kind, '', {}, 'preview')
+    const res = await sendSalesEmail(draft.kind, '', {}, 'preview', draft.id)
     if (res.error) { setErr(res.error); return }
     setPreview({ subject: res.subject, html: res.html })
   }
@@ -118,7 +206,7 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
   async function sendTest() {
     if (!draft) return
     setErr(''); setFlash(''); setTesting(true)
-    const res = await sendSalesEmail(draft.kind, '', {}, 'test')
+    const res = await sendSalesEmail(draft.kind, '', {}, 'test', draft.id)
     setTesting(false)
     if (res.error) { setErr(res.error); return }
     if (!res.sent) { setErr(res.reason || 'Nothing was sent.'); return }
@@ -150,26 +238,34 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
           <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
             {/* list */}
             <div style={{ width: 226, flex: 'none', borderRight: '1px solid var(--line)', overflowY: 'auto', background: 'var(--canvas)' }}>
-              {rows.map(r => {
-                const on = activeKind === r.kind
-                return (
-                  <button key={r.kind} onClick={() => pick(r.kind)}
-                    style={{
-                      display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
-                      border: 0, borderLeft: on ? '3px solid var(--accent)' : '3px solid transparent',
-                      background: on ? 'var(--surface)' : 'transparent',
-                      padding: '11px 14px',
-                    }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span style={{ width: 7, height: 7, borderRadius: '50%', flex: 'none', background: r.enabled ? '#16A34A' : 'var(--line)' }} />
-                      <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>{r.label}</span>
-                    </div>
-                    <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginTop: 2, paddingLeft: 14 }}>
-                      {r.enabled ? 'On' : 'Off'} · {STAGE_TITLE[r.stage_key] || r.stage_key}
-                    </div>
-                  </button>
-                )
-              })}
+              {groups.map(g => (
+                <div key={g.kind}>
+                  <div style={{ padding: '12px 14px 5px', fontSize: 11, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--ink-soft)' }}>
+                    {g.label} <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>· {STAGE_TITLE[g.stage_key] || g.stage_key}</span>
+                  </div>
+                  {g.items.map(r => {
+                    const on = activeId === r.id
+                    const isFallback = !r.industry && !r.audience
+                    return (
+                      <button key={r.id} onClick={() => pick(r.id)}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+                          border: 0, borderLeft: on ? '3px solid var(--accent)' : '3px solid transparent',
+                          background: on ? 'var(--surface)' : 'transparent',
+                          padding: '8px 14px 8px 20px',
+                        }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', flex: 'none', background: r.enabled ? '#16A34A' : 'var(--line)' }} />
+                          <span style={{ fontSize: 13, fontWeight: on ? 700 : 600, color: 'var(--ink)' }}>{variantLabel(r)}</span>
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginTop: 1, paddingLeft: 14 }}>
+                          {r.enabled ? 'On' : 'Off'}{isFallback ? ' · everyone else' : ''}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
             </div>
 
             {/* editor */}
@@ -182,6 +278,59 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
                   {flash && <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{flash}</div>}
 
                   <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--ink-soft)' }}>{draft.help}</p>
+
+                  {/* Who this version is for. The most specific match wins, and a
+                      vertical beats a service line — see pickTemplate(). */}
+                  <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '14px 15px', marginBottom: 18, background: 'var(--canvas)' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
+                      <b style={{ fontSize: 13.5 }}>Who gets this version</b>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={addVersion} disabled={!canEdit || saving}
+                          style={{ border: '1px solid var(--line)', borderRadius: 7, background: 'var(--surface)', color: 'var(--ink)', fontSize: 12.5, fontWeight: 600, padding: '5px 11px', cursor: canEdit ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>
+                          ＋ Add a version
+                        </button>
+                        {(draft.industry || draft.audience) && (
+                          <button onClick={deleteVersion} disabled={!canEdit || saving}
+                            style={{ border: '1px solid var(--line)', borderRadius: 7, background: 'var(--surface)', color: 'var(--failed, #DC2626)', fontSize: 12.5, fontWeight: 600, padding: '5px 11px', cursor: canEdit ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={label}>Vertical</label>
+                        <select value={draft.industry || ''} disabled={!canEdit}
+                          onChange={e => setDraft(d => ({ ...d, industry: e.target.value || null }))} style={input}>
+                          <option value="">Any vertical (the fallback)</option>
+                          {VERTICALS.map(v => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={label}>Service line</label>
+                        <select value={draft.audience || ''} disabled={!canEdit}
+                          onChange={e => setDraft(d => ({ ...d, audience: e.target.value || null }))} style={input}>
+                          <option value="">Any service line</option>
+                          {SERVICE_LINES.map(v => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <label style={label}>Name this version</label>
+                        <input value={draft.variant_name || ''} disabled={!canEdit} placeholder="Church / Faith"
+                          onChange={e => setDraft(d => ({ ...d, variant_name: e.target.value }))} style={input} />
+                      </div>
+                    </div>
+
+                    <p style={{ margin: '11px 0 0', fontSize: 12.5, color: 'var(--ink-soft)' }}>
+                      {draft.industry
+                        ? <>Only deals whose vertical is <b>{draft.industry}</b>{draft.audience ? <> and whose service line is <b>{draft.audience}</b></> : null} get this one.</>
+                        : draft.audience
+                          ? <>Deals whose service line is <b>{draft.audience}</b> get this one, whatever their vertical.</>
+                          : <>This is the fallback — it goes to any deal no other version covers. Leave it general.</>}
+                      {' '}The most specific match wins, and a vertical beats a service line.
+                    </p>
+                  </div>
 
                   {/* the switch */}
                   <div style={{
