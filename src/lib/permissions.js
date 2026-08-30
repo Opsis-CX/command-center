@@ -11,6 +11,13 @@ export const ROLES = [
   { key: 'sales', label: 'Sales' },
   { key: 'agent', label: 'Agent' },
 ]
+// "Everyone except agents and clients." Written ONCE and reused below, so a
+// page that follows this rule can never drift out of step with the others.
+// The database mirror of this list is public.is_staff(); if you change one,
+// change the other. (Clients never appear in ROLES at all - the portal is
+// gated separately - so STAFF is simply every role except 'agent'.)
+const STAFF = ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin']
+
 // For each permission, the set of roles that have it.
 const MATRIX = {
   'dashboard': ['asc', 'support', 'certification', 'quality', 'marketing', 'admin'],
@@ -21,7 +28,10 @@ const MATRIX = {
   'quality_audit': ['certification', 'admin'],
   'quality_audit.enter_audits': ['certification', 'admin'],
   'quality_audit.view_own': ['certification', 'admin'],
-  'quality_audit.call_reviews': ['agent', 'certification', 'admin'],
+  // Call QA: all staff, plus 'agent' — an agent still reaches this page to read
+  // reviews of their OWN calls, which RLS narrows to profile_id = auth.uid().
+  // Removing 'agent' here would hide their own scores from them.
+  'quality_audit.call_reviews': [...STAFF, 'agent'],
   'service_performance_scorecard.view_personal_scorecard': ['agent', 'admin'],
   'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard.edit_scorecard': ['admin'],
@@ -31,9 +41,10 @@ const MATRIX = {
   'chat.create_dms': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'hiring.all': ['certification', 'admin'],
   'hiring.view_stage_only': ['marketing', 'admin'],
-  // Sales page isn't on the roles sheet — left as-is.
-  'sales.all': ['marketing', 'admin'],
-  'sales.view_only': ['marketing', 'admin'],
+  // Sales pipeline: everyone except agents and clients (Becky, 2026-08-30).
+  // DB mirror: public.is_staff(), via can_see_sales_pipeline().
+  'sales.all': STAFF,
+  'sales.view_only': STAFF,
   // Website chat inbox (opsiscx.com). Same audience as Sales, since a website
   // visitor is a prospect. 'web_chat.reply' also includes support so someone can
   // cover chat without seeing the rest of the sales pipeline — drop it if chat
