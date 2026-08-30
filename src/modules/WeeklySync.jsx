@@ -106,7 +106,7 @@ export default function WeeklySync() {
     const weekEnd = new Date(new Date(week + 'T00:00:00').getTime() + 6 * 864e5).toISOString().slice(0, 10)
     const [upRes, profRes, hygRes, chatRes] = await Promise.all([
       supabase.from('weekly_updates').select('*').eq('week_start_date', week),
-      supabase.from('profiles').select('id, full_name, role').order('full_name'),
+      supabase.from('profiles').select('id, full_name, role').eq('is_active', true).order('full_name'),
       supabase.rpc('weekly_task_hygiene'),
       supabase.rpc('weekly_team_chat_activity', { p_from: week, p_to: weekEnd }),
     ])
