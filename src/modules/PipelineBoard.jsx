@@ -617,6 +617,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
       contact_phone: deal.contact_phone || '', value: deal.value ?? '',
       owner_name: deal.owner_name || '', source: deal.source || '', notes: deal.notes || '',
       strategy: deal.strategy || 'customer_service', website: deal.website || '',
+      company_phone: deal.company_phone || '',
     })
     setEditErr(''); setEditing(true)
   }
@@ -631,6 +632,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
       contact_phone: clean(form.contact_phone), owner_name: clean(form.owner_name),
       source: clean(form.source), notes: clean(form.notes), strategy: form.strategy,
       website: normalizeUrl(form.website),
+      company_phone: clean(form.company_phone),
       value: form.value === '' ? null : Number(form.value),
     }
     try { await onUpdate(deal, patch); setEditing(false) }
@@ -785,6 +787,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
                 <FormField lbl="Role / title" value={form.title} onChange={setFld('title')} placeholder="VP Marketing" />
                 <FormField lbl="Email" value={form.contact_email} onChange={setFld('contact_email')} type="email" placeholder="jane@acme.com" />
                 <FormField lbl="Phone" value={form.contact_phone} onChange={setFld('contact_phone')} placeholder="(555) 123-4567" />
+                <FormField lbl="Company phone" value={form.company_phone} onChange={setFld('company_phone')} placeholder="Main office line" />
                 <FormField lbl="Website" value={form.website} onChange={setFld('website')} placeholder="acme.com" full />
                 <FormField lbl="Value ($)" value={form.value} onChange={setFld('value')} type="number" placeholder="0" />
                 <FormField lbl="Owner" value={form.owner_name} onChange={setFld('owner_name')} placeholder="Lead owner" />
@@ -810,6 +813,10 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
               <Row label="Strategy" value={deal.strategy === 'customer_service' ? 'Customer Service' : deal.strategy === 'speed_to_lead' ? 'Speed to Lead' : deal.strategy} />
               <RowShow label="Email" value={deal.contact_email} />
               <RowShow label="Phone" value={deal.contact_phone} />
+              {/* The company switchboard, verified from their website - NOT the
+                  contact's direct line. Kept as its own row so nobody dials a main
+                  number believing it is the person's cell. */}
+              <Row label="Company phone" value={deal.company_phone} />
               <RowLink label="Website" value={deal.website} />
               <Row label="Value" value={money(deal.value)} />
               <Row label="Owner" value={deal.owner_name} />
@@ -1173,7 +1180,7 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
   const [f, setF] = useState({
     organization: '', contact_person: '', title: '', contact_email: '',
     contact_phone: '', value: '', owner_name: '', source: '', notes: '', strategy: 'customer_service',
-    website: '',
+    website: '', company_phone: '',
   })
   const [saving, setSaving] = useState(false)
   const [localErr, setLocalErr] = useState('')
@@ -1197,6 +1204,7 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
       notes: clean(f.notes),
       strategy: f.strategy,
       website: normalizeUrl(f.website),
+      company_phone: clean(f.company_phone),
       value: f.value === '' ? null : Number(f.value),
     }
     const { data, error } = await supabase.from('deals').insert(row).select().single()
@@ -1228,6 +1236,7 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
           <FormField lbl="Role / title" value={f.title} onChange={set('title')} placeholder="VP Marketing" />
           <FormField lbl="Email" value={f.contact_email} onChange={set('contact_email')} type="email" placeholder="jane@acme.com" />
           <FormField lbl="Phone" value={f.contact_phone} onChange={set('contact_phone')} placeholder="(555) 123-4567" />
+          <FormField lbl="Company phone" value={f.company_phone} onChange={set('company_phone')} placeholder="Main office line" />
           <FormField lbl="Website" value={f.website} onChange={set('website')} placeholder="acme.com" full />
           <FormField lbl="Deal value ($)" value={f.value} onChange={set('value')} type="number" placeholder="0" />
           <FormField lbl="Owner" value={f.owner_name} onChange={set('owner_name')} placeholder="Who owns this lead" />
