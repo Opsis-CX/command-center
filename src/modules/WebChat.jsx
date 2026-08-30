@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 
-// Website Chat — the inbox for conversations coming from opsiscx.com.
+// Web Chat — the inbox for conversations coming from opsiscx.com.
 //
 // Turri (the site assistant) answers first and hands off to a person. This is
 // where that handoff lands, where you go "on chat", and where you answer.
@@ -64,7 +64,7 @@ export default function WebChat() {
   return (
     <div>
       <div style={{ marginBottom: 18 }}>
-        <h1 className="page-title">Website Chat</h1>
+        <h1 className="page-title">Web Chat</h1>
         <p className="page-sub">
           Conversations from opsiscx.com. Turri answers first and hands off to you.
         </p>
