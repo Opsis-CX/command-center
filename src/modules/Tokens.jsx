@@ -283,7 +283,7 @@ function AwardTab({ user, isAdmin }) {
 
   const load = useCallback(async () => {
     const [{ data: p }, { data: b }, { data: r }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, role').neq('id', user.id).order('full_name'),
+      supabase.from('profiles').select('id, full_name, role').eq('is_active', true).neq('id', user.id).order('full_name'),
       supabase.from('token_budgets').select('*').eq('manager_id', user.id).maybeSingle(),
       supabase.from('token_transactions').select('*, profiles!token_transactions_profile_id_fkey(full_name)').eq('actor_id', user.id).eq('kind', 'award').order('created_at', { ascending: false }).limit(15),
     ])
@@ -589,7 +589,7 @@ function AdminBudgets() {
 
   const load = useCallback(async () => {
     const [{ data: p }, { data: b }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, role').in('role', ['admin', ...AWARD_ROLES]).order('full_name'),
+      supabase.from('profiles').select('id, full_name, role').eq('is_active', true).in('role', ['admin', ...AWARD_ROLES]).order('full_name'),
       supabase.from('token_budgets').select('*, profiles!token_budgets_manager_id_fkey(full_name)'),
     ])
     setManagers(p || []); setBudgets(b || [])
