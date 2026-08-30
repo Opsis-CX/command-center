@@ -75,6 +75,25 @@ export const RSN_STAGES = [
 // (like the hiring "screened out"). won/lost are the real exits;
 // email_unreachable is a third exit for dead email addresses.
 const CLOSED = ['won', 'lost', 'email_unreachable']
+
+// The vertical decides WHICH EMAIL VERSION a deal gets — a law firm and a
+// church are sold the same thing and must not read the same letter — so it has
+// to be editable here, not only in the database. Same list as deals.industry
+// and as the vertical selector on the Stage emails screen.
+const VERTICALS = [
+  'Legal', 'Accounting & Finance', 'Healthcare & Medical', 'Home & Trade Services',
+  'Construction & Contracting', 'Industrial & Manufacturing', 'Distribution & Wholesale',
+  'Energy & Utilities', 'Environmental & Sustainability', 'Real Estate & Property',
+  'Technology & Software', 'Marketing & Media', 'Professional Services',
+  'Education & Nonprofit', 'Faith & Religious Organizations', 'Security & Life Safety',
+  'Hospitality Travel & Events', 'Transportation & Logistics', 'Consumer & Retail',
+  'Telecom', 'Other',
+]
+const SERVICE_LINES = [
+  'Inbound Answering', 'Outbound Appointment Setting', 'Back-Office Operations',
+  'Fractional Ops Leadership', 'Systems Implementation', 'Low fit',
+]
+const FIT_RATINGS = ['Strong', 'Moderate', 'Weak']
 // LinkedIn stages were retired from the board (July 2026). Their labels stay
 // so historical deals/stage events still display a readable name.
 const STAGE_LABEL = {
@@ -527,6 +546,7 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
       {selected && <DealPanel deal={selected} user={user} stages={STAGES} onClose={() => setSelected(null)}
         onTransition={transition} onWon={markWon} onLost={markLost} onUpdate={updateDeal} busy={busy}
         emailForStage={emailForStage}
+        templateForDeal={templateForDeal}
         onOpenProposal={(d) => setProposalDeal(d)} />}
 
       {proposalDeal && <ProposalBuilder deal={proposalDeal} userName={user?.email}
@@ -595,7 +615,7 @@ const PROP_STATUS = {
   declined: { label: 'Declined', bg: '#fdecea', fg: '#b71c1c' },
 }
 
-function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, onLost, onUpdate, busy, onOpenProposal, emailForStage = () => null }) {
+function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, onLost, onUpdate, busy, onOpenProposal, emailForStage = () => null, templateForDeal = () => null }) {
   const [events, setEvents] = useState([])
   const [emailLog, setEmailLog] = useState([])
   const [proposal, setProposal] = useState(undefined)   // undefined = loading, null = none yet
@@ -689,6 +709,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
       owner_name: deal.owner_name || '', source: deal.source || '', notes: deal.notes || '',
       strategy: deal.strategy || 'customer_service', website: deal.website || '',
       company_phone: deal.company_phone || '', email_observation: deal.email_observation || '',
+      industry: deal.industry || '', service_fit: deal.service_fit || '', fit_rating: deal.fit_rating || '',
     })
     setEditErr(''); setEditing(true)
   }
@@ -705,6 +726,9 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
       website: normalizeUrl(form.website),
       company_phone: clean(form.company_phone),
       email_observation: clean(form.email_observation),
+      industry: form.industry || null,
+      service_fit: form.service_fit || null,
+      fit_rating: form.fit_rating || null,
       value: form.value === '' ? null : Number(form.value),
     }
     try { await onUpdate(deal, patch); setEditing(false) }
@@ -864,6 +888,27 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
                 <FormField lbl="Value ($)" value={form.value} onChange={setFld('value')} type="number" placeholder="0" />
                 <FormField lbl="Owner" value={form.owner_name} onChange={setFld('owner_name')} placeholder="Lead owner" />
                 <FormField lbl="Source" value={form.source} onChange={setFld('source')} placeholder="Referral, LinkedIn…" full />
+                <div style={{ marginBottom: 12 }}>
+                  <label style={elabel}>Industry / vertical</label>
+                  <select value={form.industry} onChange={setFld('industry')} style={efield}>
+                    <option value="">Not set — gets the default email</option>
+                    {VERTICALS.map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={elabel}>Service line to pitch</label>
+                  <select value={form.service_fit} onChange={setFld('service_fit')} style={efield}>
+                    <option value="">Not set</option>
+                    {SERVICE_LINES.map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={elabel}>Fit</label>
+                  <select value={form.fit_rating} onChange={setFld('fit_rating')} style={efield}>
+                    <option value="">Not rated</option>
+                    {FIT_RATINGS.map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
                 <div style={{ marginBottom: 12, gridColumn: '1 / -1' }}>
                   <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', margin: '0 0 4px', display: 'block' }}>Strategy</label>
                   <select value={form.strategy} onChange={setFld('strategy')}
@@ -889,6 +934,24 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
               <RowShow label="Contact" value={deal.contact_person} />
               <Row label="Role / title" value={deal.title && deal.title !== deal.organization ? deal.title : null} />
               <Row label="Type" value={deal.type} />
+              <RowShow label="Industry / vertical" value={deal.industry} />
+              <Row label="Service line" value={deal.service_fit} />
+              <Row label="Fit" value={deal.fit_rating} />
+              {/* The whole point of setting a vertical is which letter goes out.
+                  Say it here rather than making anyone infer it. */}
+              {(() => {
+                const t = templateForDeal('email_1_sent', deal)
+                return (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', marginBottom: 2 }}>Intro email this deal would get</div>
+                    <div style={{ fontSize: 13.5, lineHeight: 1.5, color: t ? 'var(--ink)' : 'var(--ink-soft)', fontStyle: t ? 'normal' : 'italic' }}>
+                      {t
+                        ? <><b>{t.variant_name || t.industry || 'Default'}</b> — “{t.subject}”</>
+                        : 'None — no intro version is switched on for this deal yet.'}
+                    </div>
+                  </div>
+                )
+              })()}
               <Row label="Strategy" value={deal.strategy === 'customer_service' ? 'Customer Service' : deal.strategy === 'speed_to_lead' ? 'Speed to Lead' : deal.strategy} />
               <RowShow label="Email" value={deal.contact_email} />
               <RowShow label="Phone" value={deal.contact_phone} />
@@ -1415,7 +1478,7 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
   const [f, setF] = useState({
     organization: '', contact_person: '', title: '', contact_email: '',
     contact_phone: '', value: '', owner_name: '', source: '', notes: '', strategy: 'customer_service',
-    website: '', company_phone: '',
+    website: '', company_phone: '', industry: '', service_fit: '',
   })
   const [saving, setSaving] = useState(false)
   const [localErr, setLocalErr] = useState('')
@@ -1440,6 +1503,8 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
       strategy: f.strategy,
       website: normalizeUrl(f.website),
       company_phone: clean(f.company_phone),
+      industry: f.industry || null,
+      service_fit: f.service_fit || null,
       value: f.value === '' ? null : Number(f.value),
     }
     const { data, error } = await supabase.from('deals').insert(row).select().single()
@@ -1476,6 +1541,20 @@ function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
           <FormField lbl="Deal value ($)" value={f.value} onChange={set('value')} type="number" placeholder="0" />
           <FormField lbl="Owner" value={f.owner_name} onChange={set('owner_name')} placeholder="Who owns this lead" />
           <FormField lbl="Source" value={f.source} onChange={set('source')} placeholder="Referral, LinkedIn, list…" full />
+          <div style={{ marginBottom: 12 }}>
+            <label style={label}>Industry / vertical</label>
+            <select value={f.industry} onChange={set('industry')} style={field}>
+              <option value="">Not set — gets the default email</option>
+              {VERTICALS.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={label}>Service line to pitch</label>
+            <select value={f.service_fit} onChange={set('service_fit')} style={field}>
+              <option value="">Not set</option>
+              {SERVICE_LINES.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
           <div style={{ marginBottom: 12, gridColumn: '1 / -1' }}>
             <label style={label}>Strategy</label>
             <select value={f.strategy} onChange={set('strategy')}
