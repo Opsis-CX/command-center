@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, Fragment } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
@@ -187,6 +187,12 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
 
   // Notifications about a website submission link to /sales?deal=<id>.
   const [params, setParams] = useSearchParams()
+  // 'board' = the kanban. 'accounts' = one row per COMPANY. Ownership belongs to
+  // the company, not the contact: several people at one org are one buying
+  // decision, and two reps calling the same company reads as disorganised. The
+  // board is sorted by stage so it can never show you that; this view can.
+  const [view, setView] = useState('board')
+  const [owners, setOwners] = useState([])
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -211,6 +217,33 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
     next.delete('deal')
     setParams(next, { replace: true })
   }, [wantDeal, deals])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Who a company can be assigned to. The Sales page-key is granted to admin and
+  // marketing, so those are the people who can actually work a lead.
+  useEffect(() => {
+    let alive = true
+    supabase.from('profiles').select('id, full_name, role').eq('is_active', true)
+      .then(({ data }) => {
+        if (!alive || !data) return
+        const ok = data.filter(p => /admin|marketing|sales|owner/i.test(p.role || ''))
+        setOwners(ok.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')))
+      })
+    return () => { alive = false }
+  }, [])
+
+  // Assign EVERY contact at one company to the same person, in one write.
+  // This is the whole point of the view - doing it card by card is how a
+  // company ends up split across two reps without anyone noticing.
+  async function assignCompany(org, owner) {
+    const ids = deals.filter(d => (d.organization || '') === org && !CLOSED.includes(d.status)).map(d => d.id)
+    if (!ids.length) return
+    const patch = { owner_name: owner ? owner.full_name : null, owner_id: owner ? owner.id : null, updated_at: new Date().toISOString() }
+    setBusy(true)
+    const { error } = await supabase.from('deals').update(patch).in('id', ids)
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    setDeals(prev => prev.map(d => ids.includes(d.id) ? { ...d, ...patch } : d))
+  }
 
   // realtime: refresh when deals change (separate channel per board)
   useEffect(() => {
@@ -361,6 +394,14 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'inline-flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
+            {[['board', 'Board'], ['accounts', 'Accounts']].map(([k, label]) => (
+              <button key={k} onClick={() => setView(k)}
+                style={{ border: 0, background: view === k ? 'var(--accent)' : 'var(--surface)', color: view === k ? '#fff' : 'var(--ink)', fontSize: 13, fontWeight: 700, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                {label}
+              </button>
+            ))}
+          </div>
           <button onClick={() => setCreating(true)}
             style={{ border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>
             ＋ New lead
@@ -392,7 +433,13 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
 
       {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>{err}</div>}
 
+      {view === 'accounts' && (
+        <AccountsView deals={deals.filter(matches)} owners={owners} busy={busy}
+          onAssign={assignCompany} onOpenDeal={setSelected} />
+      )}
+
       {/* Kanban board */}
+      {view === 'board' && (
       <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start' }}>
         {STAGES.map(col => (
           <div key={col.key}
@@ -426,6 +473,7 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
           </div>
         ))}
       </div>
+      )}
 
       {/* Won / Lost list */}
       {showClosed && closed.length > 0 && (
@@ -930,6 +978,151 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
 // Create-a-lead dialog. Inserts a row into `deals` at the first stage
 // ('new_lead'). Only writes columns the board already reads/writes, so it
 // matches the existing schema. Organization is the one required field.
+// ---- Accounts: one row per COMPANY --------------------------------
+// The board is organised by stage, so it can only ever show you contacts. But
+// ownership is a property of the company: assigning Richard Ross and Dana Buck
+// at Alamo Alarm to two different reps means two people cold-call the same
+// business in the same week. This view is where a company gets an owner, and
+// the dropdown writes it to every contact at that company at once.
+function AccountsView({ deals, owners, busy, onAssign, onOpenDeal }) {
+  const [expanded, setExpanded] = useState({})
+  const [ownerFilter, setOwnerFilter] = useState('')   // '' all, '~none' unassigned, else a name
+  const [sort, setSort] = useState('contacts')         // contacts | name | owner
+
+  const accounts = useMemo(() => {
+    const map = new Map()
+    for (const d of deals) {
+      if (CLOSED.includes(d.status)) continue
+      const org = d.organization || '(no organization)'
+      if (!map.has(org)) map.set(org, { org, rows: [], ownerNames: new Set(), stages: new Set() })
+      const a = map.get(org)
+      a.rows.push(d)
+      a.ownerNames.add(d.owner_name || '')
+      a.stages.add(d.status)
+    }
+    return [...map.values()]
+  }, [deals])
+
+  const shown = accounts
+    .filter(a => {
+      if (!ownerFilter) return true
+      if (ownerFilter === '~none') return a.ownerNames.size === 1 && a.ownerNames.has('')
+      return a.ownerNames.has(ownerFilter)
+    })
+    .sort((a, b) =>
+      sort === 'name' ? a.org.localeCompare(b.org)
+      : sort === 'owner' ? ([...a.ownerNames][0] || '~').localeCompare([...b.ownerNames][0] || '~') || b.rows.length - a.rows.length
+      : b.rows.length - a.rows.length || a.org.localeCompare(b.org))
+
+  const unassigned = accounts.filter(a => a.ownerNames.size === 1 && a.ownerNames.has('')).length
+  const contactsUnassigned = accounts
+    .filter(a => a.ownerNames.size === 1 && a.ownerNames.has(''))
+    .reduce((n, a) => n + a.rows.length, 0)
+  // A company whose contacts sit with different people - the thing this view exists to prevent.
+  const splitCount = accounts.filter(a => a.ownerNames.size > 1).length
+
+  const th = { textAlign: 'left', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', padding: '0 10px 8px' }
+  const td = { padding: '10px', borderTop: '1px solid var(--line)', fontSize: 13.5, verticalAlign: 'middle' }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <span style={{ fontSize: 13, color: 'var(--ink-soft)' }}>
+          <b style={{ color: 'var(--ink)' }}>{accounts.length}</b> companies · <b style={{ color: 'var(--ink)' }}>{deals.filter(d => !CLOSED.includes(d.status)).length}</b> contacts
+          {unassigned > 0 && <> · <b style={{ color: 'var(--ink)' }}>{unassigned}</b> unassigned ({contactsUnassigned} contacts)</>}
+        </span>
+        <select value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)}
+          style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '7px 11px', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'inherit' }}>
+          <option value="">All owners</option>
+          <option value="~none">Unassigned only</option>
+          {owners.map(o => <option key={o.id} value={o.full_name}>{o.full_name}</option>)}
+        </select>
+        <select value={sort} onChange={e => setSort(e.target.value)}
+          style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '7px 11px', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'inherit' }}>
+          <option value="contacts">Most contacts first</option>
+          <option value="name">Company A–Z</option>
+          <option value="owner">By owner</option>
+        </select>
+      </div>
+
+      {splitCount > 0 && (
+        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E', borderRadius: 8, padding: '9px 12px', fontSize: 13, marginBottom: 12 }}>
+          {splitCount} {splitCount === 1 ? 'company has contacts' : 'companies have contacts'} owned by different people. Pick one owner below to pull the whole company back together.
+        </div>
+      )}
+
+      <div style={{ border: '1px solid var(--line)', borderRadius: 12, background: 'var(--surface)', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={{ ...th, paddingLeft: 14 }}>Company</th>
+              <th style={th}>Contacts</th>
+              <th style={th}>Stage</th>
+              <th style={{ ...th, width: 220 }}>Owner</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map(a => {
+              const names = [...a.ownerNames].filter(Boolean)
+              const mixed = a.ownerNames.size > 1
+              const current = mixed ? '' : (names[0] || '')
+              const isOpen = !!expanded[a.org]
+              return (
+                <Fragment key={a.org}>
+                  <tr>
+                    <td style={{ ...td, paddingLeft: 14 }}>
+                      <button onClick={() => setExpanded(p => ({ ...p, [a.org]: !p[a.org] }))}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, border: 0, background: 'transparent', padding: 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', color: 'var(--ink)' }}>
+                        <span style={{ width: 28, height: 28, borderRadius: '50%', background: avatarColor(a.org), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>{initials(a.org)}</span>
+                        <span style={{ fontWeight: 600, fontSize: 13.5 }}>{a.org}</span>
+                        <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{isOpen ? '▾' : '▸'}</span>
+                      </button>
+                    </td>
+                    <td style={td}>{a.rows.length}</td>
+                    <td style={{ ...td, color: 'var(--ink-soft)', fontSize: 12.5 }}>
+                      {[...a.stages].map(st => STAGE_LABEL[st] || st).join(', ')}
+                    </td>
+                    <td style={td}>
+                      <select value={current} disabled={busy}
+                        onChange={e => {
+                          const o = owners.find(x => x.full_name === e.target.value) || null
+                          if (!window.confirm(
+                            `Assign all ${a.rows.length} contact${a.rows.length === 1 ? '' : 's'} at ${a.org} to ` +
+                            (o ? o.full_name : 'nobody') + '?')) return
+                          onAssign(a.org, o)
+                        }}
+                        style={{ width: '100%', border: mixed ? '1px solid #FDE68A' : '1px solid var(--line)', borderRadius: 8, padding: '7px 10px', fontSize: 13, background: mixed ? '#FFFBEB' : 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }}>
+                        <option value="">{mixed ? `Mixed (${names.join(', ')})` : 'Unassigned'}</option>
+                        {owners.map(o => <option key={o.id} value={o.full_name}>{o.full_name}</option>)}
+                      </select>
+                    </td>
+                  </tr>
+                  {isOpen && a.rows.map(d => (
+                    <tr key={d.id}>
+                      <td style={{ ...td, paddingLeft: 56, borderTop: '1px solid var(--line-soft, var(--line))' }}>
+                        <button onClick={() => onOpenDeal(d)}
+                          style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--accent)', fontSize: 13 }}>
+                          {d.contact_person || d.contact_email || '(no contact)'}
+                        </button>
+                      </td>
+                      <td style={{ ...td, fontSize: 12.5, color: 'var(--ink-soft)' }}>{d.contact_email || '—'}</td>
+                      <td style={{ ...td, fontSize: 12.5, color: 'var(--ink-soft)' }}>{STAGE_LABEL[d.status] || d.status}</td>
+                      <td style={{ ...td, fontSize: 12.5, color: 'var(--ink-soft)' }}>{d.owner_name || 'Unassigned'}</td>
+                    </tr>
+                  ))}
+                </Fragment>
+              )
+            })}
+            {shown.length === 0 && (
+              <tr><td colSpan={4} style={{ ...td, textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No companies match.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 // ---- CSV import -------------------------------------------------
 // Minimal but correct CSV parser: handles quoted fields, embedded commas,
 // escaped double-quotes (""), and CRLF/LF line endings. Returns the header
