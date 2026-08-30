@@ -18,12 +18,10 @@ const MATRIX = {
   'service_performance_scorecard': ['agent'],
   // Quality Audit isn't on the roles sheet — left as-is. Confirm whether the new
   // "quality" role should be added here (and to is_qa_auditor() in Supabase).
-  'quality_audit': ['asc', 'quality', 'certification', 'admin'],
-  'quality_audit.enter_audits': ['asc', 'quality', 'certification', 'admin'],
-  'quality_audit.view_own': ['asc', 'quality', 'certification', 'admin'],
-  // Quality Audit call-review tool is for the QA/onboarding side, not line agents.
-  // This key also gates the internal Call QA (AI) route/nav.
-  'quality_audit.call_reviews': ['asc', 'quality', 'certification', 'admin'],
+  'quality_audit': ['certification', 'admin'],
+  'quality_audit.enter_audits': ['certification', 'admin'],
+  'quality_audit.view_own': ['certification', 'admin'],
+  'quality_audit.call_reviews': ['agent', 'certification', 'admin'],
   'service_performance_scorecard.view_personal_scorecard': ['agent', 'admin'],
   'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard.edit_scorecard': ['admin'],
@@ -32,16 +30,23 @@ const MATRIX = {
   'chat.create_channels': ['admin'],
   'chat.create_dms': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'hiring.all': ['certification', 'admin'],
-  // view_stage_only = can open the Hiring board but sees it read-only (no
-  // approve/deny/move/hold/remove) — enforced in HiringDashboard.jsx.
-  'hiring.view_stage_only': ['asc', 'quality', 'marketing', 'admin'],
+  'hiring.view_stage_only': ['marketing', 'admin'],
   // Sales page isn't on the roles sheet — left as-is.
   'sales.all': ['marketing', 'admin'],
   'sales.view_only': ['marketing', 'admin'],
-  // quality gets the Certifications pages to VIEW everyone's certs/courses (Becky
-  // 2026-08-12). NOTE: these pages have no read-only mode yet — see project notes.
-  'certifications.all': ['quality', 'certification', 'admin'],
-  'certifications.builder': ['quality', 'certification', 'admin'],
+  // Website chat inbox (opsiscx.com). Same audience as Sales, since a website
+  // visitor is a prospect. 'web_chat.reply' also includes support so someone can
+  // cover chat without seeing the rest of the sales pipeline — drop it if chat
+  // should stay purely sales.
+  //
+  // NOTE: the database gate on web_conversations / web_messages is
+  // can_see_sales_pipeline() AND NOT is_portal_client(), the same as deals. If a
+  // role is granted 'web_chat' here but excluded by that gate, the page renders
+  // and the queries come back empty. Keep the two in step.
+  'web_chat.all': ['marketing', 'admin'],
+  'web_chat.reply': ['marketing', 'admin', 'support'],
+  'certifications.all': ['certification', 'admin'],
+  'certifications.builder': ['certification', 'admin'],
   // certification is here so course authors can take (and preview) their own
   // quizzes end-to-end, exactly as an agent would see them.
   'certifications.assigned_to_complete': ['agent', 'asc', 'support', 'quality', 'marketing', 'sales', 'certification', 'admin'],
@@ -51,7 +56,7 @@ const MATRIX = {
   'schedule.create_schedules': ['admin'],
   'schedule.view_only_projects_assigned_to': ['asc', 'quality', 'admin'],
   // Insights limited to schedules the person is assigned to (audience membership).
-  'schedule.view_insights_assigned': ['asc', 'quality', 'admin'],
+  'schedule.view_insights_assigned': ['asc', 'admin'],
   // No release times or rolling-window lock: schedules/intervals on their
   // assigned schedules are ALWAYS fully available. Only agents are locked
   // to the 14-day rolling release window (and cert-gated).
@@ -70,49 +75,25 @@ const MATRIX = {
   'people_and_tags.delete': ['admin'],
   'clients.view_only': ['certification', 'quality', 'marketing', 'admin'],
   'clients.edit': ['admin'],
-  'positions.view_only': ['quality', 'admin'],
+  'positions.view_only': ['admin'],
   'positions.edit': ['admin'],
   'project_management.all': ['admin'],
   'project_management.create_projects': ['certification', 'quality', 'marketing', 'admin'],
   'project_management.add_tasks_to_projects_assigned_to': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
-  // Tokens / rewards — every employee has a wallet and can redeem; awarding is
-  // budget-limited to managers (enforced in Tokens.jsx + SECURITY DEFINER RPCs),
-  // and the Awards Log (ledger) is manager-only.
-  'tokens': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
-  'tokens.ledger': ['asc', 'certification', 'quality', 'marketing', 'admin'],
-  // Coaching — agents book sessions with their ASC; ASCs/admins manage. (Agent
-  // vs ASC vs admin behavior is decided inside Coaching.jsx by role.)
-  // quality = read-only "All sessions" oversight view inside Coaching.jsx.
-  'coaching': ['agent', 'asc', 'quality', 'admin'],
-  // Meetings (notetaker captures + summaries) — all staff EXCEPT agents; clients
-  // never see the sidebar at all. Row visibility inside is governed by RLS.
-  'meetings': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
-  // Who's On (live check-ins + team presence) — everyone EXCEPT agents, support
-  // (and clients, who have no sidebar). Also read by LiveStatus.jsx internally.
-  'live_status': ['asc', 'certification', 'quality', 'marketing', 'sales', 'admin'],
 }
-
-// A person's role can be a comma-separated list ("asc,marketing"). A combined
-// role gets the UNION of its parts' permissions. A single role with no comma
-// splits to a one-item list, so existing single-role users behave exactly as
-// before this change.
-function rolesOf(role) {
-  return String(role || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean)
-}
-
 // can(role, "schedule.create_schedules") -> boolean
 export function can(role, perm) {
-  const rs = rolesOf(role)
-  if (rs.includes('admin')) return true            // admin always passes
+  const r = String(role || '').trim().toLowerCase()
+  if (r === 'admin') return true            // admin always passes
   const allowed = MATRIX[perm]
   if (!allowed) return false
-  return rs.some(r => allowed.includes(r))
+  return allowed.includes(r)
 }
 // Convenience: does this role have ANY capability under a page prefix?
 // Used for nav gating (show the page if they can do anything on it).
 export function canAny(role, pagePrefix) {
-  const rs = rolesOf(role)
-  if (rs.includes('admin')) return true
-  return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + ".")) && rs.some(r => MATRIX[k].includes(r)))
+  const r = String(role || '').trim().toLowerCase()
+  if (r === 'admin') return true
+  return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + ".")) && MATRIX[k].includes(r))
 }
 export const ALL_PERMS = Object.keys(MATRIX)
