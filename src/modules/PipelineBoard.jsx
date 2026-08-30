@@ -955,23 +955,33 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
             <h3 style={{ fontSize: 14, fontWeight: 800, margin: '0 0 10px' }}>Emails</h3>
             {emailLog.length === 0 ? (
               <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: 0 }}>
-                No email has been sent to this contact from the pipeline.
+                No email sent to this contact yet, and no reply received.
               </p>
             ) : (
               <div style={{ display: 'grid', gap: 7 }}>
                 {emailLog.map(m => {
-                  const tone = m.status === 'sent'
-                    ? { bg: '#ECFDF5', bd: '#A7F3D0', fg: '#065F46', word: 'Sent' }
-                    : m.status === 'failed'
-                      ? { bg: '#FEF2F2', bd: '#FECACA', fg: '#B91C1C', word: 'Failed' }
-                      : { bg: 'var(--canvas)', bd: 'var(--line)', fg: 'var(--ink-soft)', word: m.status === 'test' ? 'Test' : 'Not sent' }
+                  // A reply is the most important row in this list, so it reads
+                  // differently from anything we sent.
+                  const inbound = m.direction === 'inbound'
+                  const tone = inbound
+                    ? { bg: 'var(--accent-bg, #EFF6FF)', bd: 'var(--accent, #2563EB)', fg: 'var(--accent, #2563EB)', word: 'Reply' }
+                    : m.status === 'sent'
+                      ? { bg: '#ECFDF5', bd: '#A7F3D0', fg: '#065F46', word: 'Sent' }
+                      : m.status === 'failed'
+                        ? { bg: '#FEF2F2', bd: '#FECACA', fg: '#B91C1C', word: 'Failed' }
+                        : { bg: 'var(--canvas)', bd: 'var(--line)', fg: 'var(--ink-soft)', word: m.status === 'test' ? 'Test' : 'Not sent' }
                   return (
-                    <div key={m.id} style={{ display: 'flex', gap: 9, alignItems: 'baseline', fontSize: 12.5 }}>
+                    <div key={m.id} style={{ display: 'flex', gap: 9, alignItems: 'baseline', fontSize: 12.5, background: inbound ? 'var(--canvas)' : 'transparent', borderRadius: inbound ? 7 : 0, padding: inbound ? '6px 8px' : 0 }}>
                       <span style={{ flex: 'none', background: tone.bg, border: `1px solid ${tone.bd}`, color: tone.fg, borderRadius: 6, padding: '1px 7px', fontSize: 11, fontWeight: 700 }}>{tone.word}</span>
                       <span style={{ minWidth: 0 }}>
-                        <span style={{ color: 'var(--ink)' }}>{m.subject || m.kind}</span>
-                        {m.to_email ? <span style={{ color: 'var(--ink-soft)' }}> → {m.to_email}</span> : null}
+                        <span style={{ color: 'var(--ink)', fontWeight: inbound ? 600 : 400 }}>{m.subject || m.kind}</span>
+                        {inbound
+                          ? (m.from_email ? <span style={{ color: 'var(--ink-soft)' }}> ← {m.from_email}</span> : null)
+                          : (m.to_email ? <span style={{ color: 'var(--ink-soft)' }}> → {m.to_email}</span> : null)}
                         {m.detail ? <span style={{ color: 'var(--ink-soft)' }}> · {m.detail}</span> : null}
+                        {inbound && m.body_text
+                          ? <div style={{ color: 'var(--ink)', marginTop: 4, whiteSpace: 'pre-wrap' }}>{String(m.body_text).slice(0, 600)}</div>
+                          : null}
                       </span>
                       <span style={{ marginLeft: 'auto', flex: 'none', color: 'var(--ink-soft)' }}>{timeAgo(m.created_at)}</span>
                     </div>
