@@ -46,11 +46,47 @@ let inflight = null
 async function fetchTemplates() {
   const { data, error } = await supabase
     .from('sales_email_templates')
-    .select('kind, label, stage_key, sort_order, enabled, subject, body_html, help, updated_at')
+    .select('id, kind, label, stage_key, sort_order, enabled, subject, body_html, help, updated_at, industry, audience, pipeline, variant_name, is_default')
     .order('sort_order', { ascending: true })
   if (error) throw error
   return data || []
 }
+
+// ---- variants -------------------------------------------------------------
+// A stage can hold several versions of the same email, each scoped to a
+// vertical (deals.industry), a service line (deals.service_fit) and/or a
+// pipeline. A law firm and a church are sold the same thing and must not read
+// the same letter, so VERTICAL outranks service line — it is the key that
+// changes the voice rather than the offer.
+//
+// A named key that does not match disqualifies the row outright. That is what
+// lets a switched-off "Low fit" variant shield those deals from the general
+// pitch instead of letting them fall through to it.
+export function variantScore(tpl, deal) {
+  if (tpl.industry && tpl.industry !== (deal?.industry || null)) return -1
+  if (tpl.audience && tpl.audience !== (deal?.service_fit || null)) return -1
+  if (tpl.pipeline && tpl.pipeline !== (deal?.pipeline || null)) return -1
+  let s = 0
+  if (tpl.industry) s += 4
+  if (tpl.audience) s += 2
+  if (tpl.pipeline) s += 1
+  return s
+}
+
+export function pickTemplate(rows, kind, deal) {
+  let best = null
+  let bestScore = -1
+  for (const t of rows) {
+    if (t.kind !== kind) continue
+    const sc = variantScore(t, deal)
+    if (sc > bestScore) { best = t; bestScore = sc }
+  }
+  return best
+}
+
+export const variantLabel = (t) =>
+  t?.variant_name || [t?.industry, t?.audience, t?.pipeline].filter(Boolean).join(' \u00b7 ') || 'Default'
+
 
 export function invalidateSalesEmailCache() {
   cache = null
@@ -99,13 +135,27 @@ export function useSalesEmailConfig() {
 
   const enabledKinds = new Set(templates.filter(t => t.enabled).map(t => t.kind))
 
-  const emailForStage = useCallback((stageKey) => {
+  // Which template would actually go to THIS deal, or null. Resolving here means
+  // the rep is warned about — and confirms — the exact variant that sends.
+  const templateForDeal = useCallback((stageKey, deal) => {
     const kind = STAGE_EMAIL_KIND[stageKey]
     if (!kind) return null
-    return enabledKinds.has(kind) ? kind : null
-  }, [templates]) // eslint-disable-line react-hooks/exhaustive-deps
+    const tpl = pickTemplate(templates, kind, deal)
+    return tpl && tpl.enabled ? tpl : null
+  }, [templates])
 
-  return { templates, loading, error, emailForStage, enabledKinds, reload: () => load(true) }
+  // Back-compat: returns the kind, but only when a variant genuinely covers
+  // this deal. Passing the deal is strongly preferred; without it this falls
+  // back to "is any variant of this kind on?", which can promise an email that
+  // no variant actually covers.
+  const emailForStage = useCallback((stageKey, deal) => {
+    const kind = STAGE_EMAIL_KIND[stageKey]
+    if (!kind) return null
+    if (deal) return templateForDeal(stageKey, deal) ? kind : null
+    return enabledKinds.has(kind) ? kind : null
+  }, [templates, templateForDeal]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { templates, loading, error, emailForStage, templateForDeal, enabledKinds, reload: () => load(true) }
 }
 
 /**
@@ -114,11 +164,13 @@ export function useSalesEmailConfig() {
  * rolled back by a mail problem.
  *   mode: undefined = real send · 'preview' = render only · 'test' = send to self
  */
-export async function sendSalesEmail(kind, to, data, mode) {
+export async function sendSalesEmail(kind, to, data, mode, templateId) {
   if (!kind) return { sent: false, reason: 'no email for this stage' }
   try {
+    // templateId is passed whenever the caller has already resolved a variant,
+    // so the email that leaves is the one the rep was shown and confirmed.
     const { data: res, error } = await supabase.functions.invoke('send-sales-email', {
-      body: { kind, to, data, mode },
+      body: { kind, to, data, mode, templateId: templateId || null },
     })
     if (error) return { sent: false, error: error.message || String(error) }
     if (res?.error) return { sent: false, error: res.error }
