@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import ProposalBuilder from './ProposalBuilder'
 import SalesEmailTemplates from './SalesEmailTemplates'
-import { useSalesEmailConfig, sendSalesEmail } from '../lib/salesEmails'
+import { useSalesEmailConfig, sendSalesEmail, variantLabel } from '../lib/salesEmails'
 
 // People type "acme.com", not "https://acme.com". Store it with a scheme so
 // the link in the panel actually opens instead of resolving relative to the
@@ -161,7 +161,7 @@ function fileIcon(type) {
 export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAGES = SALES_STAGES, pipelineKey = 'sales' }) {
   const { user, appRole, isAdmin } = useAuth()
   // Which stages actually email, read from the templates table. Off = silent.
-  const { emailForStage, reload: reloadEmailConfig } = useSalesEmailConfig()
+  const { emailForStage, templateForDeal, reload: reloadEmailConfig } = useSalesEmailConfig()
   const canEditEmails = isAdmin || ['admin', 'marketing'].includes(String(appRole || '').toLowerCase())
   const [editingEmails, setEditingEmails] = useState(false)
   // status -> column indirection, derived from this board's stage set.
@@ -218,15 +218,30 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
     setParams(next, { replace: true })
   }, [wantDeal, deals])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Who a company can be assigned to. The Sales page-key is granted to admin and
-  // marketing, so those are the people who can actually work a lead.
+  // Who a company can be assigned to. This is an EXPLICIT roster
+  // (profiles.can_own_deals), not a role filter: the people who work leads here
+  // span admin, certification and asc, so no role expression describes them.
+  // To change who appears, flip can_own_deals on the profile - no deploy needed.
+  //
+  // Falls back to the old role filter only if the column is missing or the
+  // roster is empty, so the dropdown can never come up blank.
   useEffect(() => {
     let alive = true
-    supabase.from('profiles').select('id, full_name, role').eq('is_active', true)
-      .then(({ data }) => {
-        if (!alive || !data) return
-        const ok = data.filter(p => /admin|marketing|sales|owner/i.test(p.role || ''))
-        setOwners(ok.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')))
+    const byName = (a, b) => (a.full_name || '').localeCompare(b.full_name || '')
+    supabase.from('profiles').select('id, full_name, role, can_own_deals').eq('is_active', true)
+      .then(({ data, error }) => {
+        if (!alive) return
+        if (error || !data) {
+          supabase.from('profiles').select('id, full_name, role').eq('is_active', true)
+            .then(({ data: d2 }) => {
+              if (!alive || !d2) return
+              setOwners(d2.filter(p => /admin|marketing|sales|owner/i.test(p.role || '')).sort(byName))
+            })
+          return
+        }
+        const roster = data.filter(p => p.can_own_deals)
+        setOwners((roster.length ? roster
+          : data.filter(p => /admin|marketing|sales|owner/i.test(p.role || ''))).sort(byName))
       })
     return () => { alive = false }
   }, [])
@@ -260,12 +275,18 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
     if (toStatus === deal.status) return
     // null unless that stage's template is switched ON — so we only warn about
     // an email that is genuinely about to go out.
-    const emailKind = emailForStage(toStatus)
+    // Resolve the VARIANT for this specific deal, not just the stage. A law firm
+    // and a church are sold the same thing and must not read the same letter.
+    const tpl = templateForDeal(toStatus, deal)
+    const emailKind = tpl ? emailForStage(toStatus, deal) : null
     const willEmail = !!emailKind && !!deal.contact_email
     if (emailKind && !skipConfirm) {
       const ok = window.confirm(
         `Moving ${deal.organization} to "${STAGE_LABEL[toStatus]}" will email` +
-        (deal.contact_email ? ` ${deal.contact_email}.` : ' the contact — but this deal has no email address, so nothing will send.') +
+        (deal.contact_email ? ` ${deal.contact_email}` : ' the contact — but this deal has no email address, so nothing will send') +
+        `\n\nVersion: ${variantLabel(tpl)}` +
+        (deal.industry ? `  (vertical: ${deal.industry})` : '') +
+        `\nSubject: ${tpl.subject}` +
         `\n\nContinue?`
       )
       if (!ok) return
@@ -286,9 +307,11 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
     })
 
     if (willEmail) {
+      // Pass the resolved template id so the email that leaves is the one the
+      // rep just confirmed, not whatever the server would pick on its own.
       const res = await sendSalesEmail(emailKind, deal.contact_email, {
         name: deal.contact_person, org: deal.organization, dealId: deal.id, title: deal.title, strategy: deal.strategy,
-      })
+      }, undefined, tpl?.id)
       if (res.sent) {
         // Only a real send earns the timestamp.
         const stamp = new Date().toISOString()
