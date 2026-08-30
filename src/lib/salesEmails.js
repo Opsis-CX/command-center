@@ -32,9 +32,11 @@ export const MERGE_FIELDS = [
   { token: '{{full_name}}', hint: 'Jordan Reyes' },
   { token: '{{company}}', hint: 'Acme Corp' },
   { token: '{{title}}', hint: 'Operations Manager' },
+  { token: '{{observation}}', hint: 'the one line about them' },
   { token: '{{sender_name}}', hint: 'your name' },
   { token: '{{sender_email}}', hint: 'your address' },
-  { token: '{{calendly}}', hint: 'booking link' },
+  { token: '{{calendly}}', hint: '15-min booking link' },
+  { token: '{{calendly_30}}', hint: '30-min booking link' },
   { token: '{{phone}}', hint: '656-234-8009' },
 ]
 
