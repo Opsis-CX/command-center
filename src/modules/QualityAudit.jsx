@@ -187,7 +187,9 @@ function NewAudit({ prefill, editAudit, onDone }) {
       const [qRes, sRes, aRes, meRes, brRes] = await Promise.all([
         supabase.from('qa_questions').select('*').eq('active', true).order('sort_order'),
         supabase.from('qa_sub_items').select('*').eq('active', true).order('sort_order'),
-        supabase.from('profiles').select('id, full_name, role, is_active').eq('role', 'agent').order('full_name'),
+        // Agents are the SUBJECT of a QA audit, so they belong here — but only
+        // the ones still employed.
+        supabase.from('profiles').select('id, full_name, role, is_active').eq('role', 'agent').eq('is_active', true).order('full_name'),
         supabase.from('profiles').select('full_name').eq('id', user?.id).maybeSingle(),
         supabase.from('qa_brands').select('campaign, name').eq('active', true).order('sort_order'),
       ])
@@ -686,7 +688,7 @@ function CallReviews({ isAuditor }) {
       const [rRes, pRes] = await Promise.all([
         supabase.from('call_reviews').select('*').order('created_at', { ascending: false }),
         isAuditor
-          ? supabase.from('profiles').select('id, full_name, role, is_active').order('full_name')
+          ? supabase.from('profiles').select('id, full_name, role, is_active').eq('is_active', true).order('full_name')
           : Promise.resolve({ data: [] }),
       ])
       if (rRes.error) throw rRes.error
