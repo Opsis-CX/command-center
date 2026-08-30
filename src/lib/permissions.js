@@ -80,6 +80,21 @@ const MATRIX = {
   'project_management.all': ['admin'],
   'project_management.create_projects': ['certification', 'quality', 'marketing', 'admin'],
   'project_management.add_tasks_to_projects_assigned_to': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
+  // Tokens / rewards — every employee has a wallet and can redeem; awarding is
+  // budget-limited to managers (enforced in Tokens.jsx + SECURITY DEFINER RPCs),
+  // and the Awards Log (ledger) is manager-only.
+  'tokens': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
+  'tokens.ledger': ['asc', 'certification', 'quality', 'marketing', 'admin'],
+  // Coaching — agents book sessions with their ASC; ASCs/admins manage. (Agent
+  // vs ASC vs admin behavior is decided inside Coaching.jsx by role.)
+  // quality = read-only "All sessions" oversight view inside Coaching.jsx.
+  'coaching': ['agent', 'asc', 'quality', 'admin'],
+  // Meetings (notetaker captures + summaries) — all staff EXCEPT agents; clients
+  // never see the sidebar at all. Row visibility inside is governed by RLS.
+  'meetings': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
+  // Who's On (live check-ins + team presence) — everyone EXCEPT agents, support
+  // (and clients, who have no sidebar). Also read by LiveStatus.jsx internally.
+  'live_status': ['asc', 'certification', 'quality', 'marketing', 'sales', 'admin'],
 }
 // can(role, "schedule.create_schedules") -> boolean
 export function can(role, perm) {
