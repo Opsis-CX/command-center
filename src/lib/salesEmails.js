@@ -64,6 +64,25 @@ async function fetchTemplates() {
 // A named key that does not match disqualifies the row outright. That is what
 // lets a switched-off "Low fit" variant shield those deals from the general
 // pitch instead of letting them fall through to it.
+
+// ---- do-not-pitch guard ---------------------------------------------------
+// The variant shield alone stopped being sufficient once VERTICAL was made to
+// outrank AUDIENCE (2026-08-30). A Low fit LEGAL deal matches the Legal variant
+// at score 4 and the "Low fit — do not pitch" variant at score 2, so the Legal
+// pitch wins and the shield never fires. 186 deals are rated Low fit.
+//
+// So the rule is enforced as a RULE, not as a template: cold outreach never
+// goes to a deal we have already decided not to pitch. Mirrored byte-for-byte
+// in the `send-sales-email` edge function — change one, change the other.
+const COLD_KINDS = new Set(['intro', 'followup'])
+
+export function pitchBlockReason(kind, deal) {
+  if (!COLD_KINDS.has(kind)) return ''
+  if (deal?.service_fit === 'Low fit') return 'this deal is rated Low fit — do not pitch'
+  if (deal?.fit_rating === 'Weak') return 'this deal is rated Weak fit — do not pitch'
+  return ''
+}
+
 export function variantScore(tpl, deal) {
   if (tpl.industry && tpl.industry !== (deal?.industry || null)) return -1
   if (tpl.audience && tpl.audience !== (deal?.service_fit || null)) return -1
@@ -142,6 +161,8 @@ export function useSalesEmailConfig() {
   const templateForDeal = useCallback((stageKey, deal) => {
     const kind = STAGE_EMAIL_KIND[stageKey]
     if (!kind) return null
+    // A do-not-pitch deal resolves to NO email, whatever the templates say.
+    if (pitchBlockReason(kind, deal)) return null
     const tpl = pickTemplate(templates, kind, deal)
     return tpl && tpl.enabled ? tpl : null
   }, [templates])
@@ -180,4 +201,42 @@ export async function sendSalesEmail(kind, to, data, mode, templateId) {
   } catch (e) {
     return { sent: false, error: e.message || String(e) }
   }
+}
+
+// ============================================================================
+//  RESEARCH READINESS
+// ============================================================================
+//  Kerri and Sylvia's first job on a lead is research: find the person, the
+//  numbers, the website, decide what we would actually sell them, and write the
+//  one line that makes the email sound like it was written to them. Until that
+//  is done, calling is guesswork and the stage email has nothing to merge.
+//
+//  Defined once here so the card badge, the move warning and the "Needs
+//  research" filter can never disagree about what "done" means.
+//
+//  {{observation}} is the field that decides whether a cold email reads as
+//  written-to-you or as a blast, so it counts even though it is free text.
+export const RESEARCH_FIELDS = [
+  { key: 'contact_person',   label: 'Contact name' },
+  { key: 'contact_email',    label: 'Contact email' },
+  { key: 'contact_phone',    label: 'Direct phone' },
+  { key: 'company_phone',    label: 'Company phone' },
+  { key: 'website',          label: 'Website' },
+  { key: 'industry',         label: 'Vertical' },
+  { key: 'service_fit',      label: 'What we would sell them' },
+  { key: 'email_observation', label: 'The one-line observation' },
+]
+
+const filled = (v) => String(v ?? '').trim().length > 0
+
+/** Which research fields this deal is still missing, by label. */
+export function missingResearch(deal) {
+  return RESEARCH_FIELDS.filter(f => !filled(deal?.[f.key])).map(f => f.label)
+}
+
+/** { done, total, missing[], complete } — the whole readiness picture. */
+export function researchStatus(deal) {
+  const missing = missingResearch(deal)
+  const total = RESEARCH_FIELDS.length
+  return { done: total - missing.length, total, missing, complete: missing.length === 0 }
 }
