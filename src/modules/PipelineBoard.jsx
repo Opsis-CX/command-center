@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import ProposalBuilder from './ProposalBuilder'
 import SalesEmailTemplates from './SalesEmailTemplates'
-import { useSalesEmailConfig, sendSalesEmail, variantLabel } from '../lib/salesEmails'
+import SalesSprintReport from './SalesSprintReport'
+import { useSalesEmailConfig, sendSalesEmail, variantLabel, researchStatus, RESEARCH_FIELDS, pitchBlockReason, STAGE_EMAIL_KIND } from '../lib/salesEmails'
 
 // People type "acme.com", not "https://acme.com". Store it with a scheme so
 // the link in the panel actually opens instead of resolving relative to the
@@ -38,12 +39,18 @@ function normalizeUrl(v) {
 //   SALES_STAGES — the standard Sales pipeline (Marketing/Admin).
 //   RSN_STAGES   — same cadence with LinkedIn Message 1/2/3 interleaved,
 //                  for the RSN-tagged pipeline.
+// CADENCE: CALL FIRST, THEN EMAIL. Decided on the 2026-08-31 sales call
+// (Becky: "I think a phone call needs to be made before an email sent";
+// Corinne: "make the phone call and then send the follow-up email"). The email
+// is the recap of a conversation that was attempted, not a cold opener that a
+// call later chases. Only the ORDER changed — the keys are untouched, so no
+// deal moved and no history was rewritten.
 export const SALES_STAGES = [
-  { key: 'new_lead',        title: 'New Lead',              hint: 'Imported / not yet worked' },
-  { key: 'email_1_sent',    title: 'Email 1 Sent',          hint: 'First email out' },
-  { key: 'call_1_made',     title: 'Call 1 Made',           hint: 'First call attempt' },
-  { key: 'email_2_sent',    title: 'Email 2 Sent',          hint: 'Second email out' },
+  { key: 'new_lead',        title: 'New Lead',              hint: 'Imported / not yet researched' },
+  { key: 'call_1_made',     title: 'Call 1 Made',           hint: 'First call attempt — always call before emailing' },
+  { key: 'email_1_sent',    title: 'Email 1 Sent',          hint: 'Recap / intro email after the first call' },
   { key: 'call_2_made',     title: 'Call 2 Made',           hint: 'Second call attempt' },
+  { key: 'email_2_sent',    title: 'Email 2 Sent',          hint: 'Follow-up email after the second call' },
   { key: 'drip_campaign',   title: 'Added to Drip Campaign', hint: 'In nurture sequence' },
   { key: 'contact_made',    title: 'Contact Made',          hint: 'They responded' },
   { key: 'discovery_call',  title: 'Discovery Call Scheduled', hint: 'Call booked' },
@@ -55,13 +62,13 @@ export const SALES_STAGES = [
 // RSN pipeline: identical to Sales, with LinkedIn Message 1/2/3 added back,
 // interleaved into the outreach cadence.
 export const RSN_STAGES = [
-  { key: 'new_lead',        title: 'New Lead',              hint: 'Imported / not yet worked' },
-  { key: 'email_1_sent',    title: 'Email 1 Sent',          hint: 'First email out' },
+  { key: 'new_lead',        title: 'New Lead',              hint: 'Imported / not yet researched' },
+  { key: 'call_1_made',     title: 'Call 1 Made',           hint: 'First call attempt — always call before emailing' },
+  { key: 'email_1_sent',    title: 'Email 1 Sent',          hint: 'Recap / intro email after the first call' },
   { key: 'linkedin_1_sent', title: 'LinkedIn Message 1',    hint: 'First LinkedIn touch' },
-  { key: 'call_1_made',     title: 'Call 1 Made',           hint: 'First call attempt' },
-  { key: 'email_2_sent',    title: 'Email 2 Sent',          hint: 'Second email out' },
-  { key: 'linkedin_2_sent', title: 'LinkedIn Message 2',    hint: 'Second LinkedIn touch' },
   { key: 'call_2_made',     title: 'Call 2 Made',           hint: 'Second call attempt' },
+  { key: 'email_2_sent',    title: 'Email 2 Sent',          hint: 'Follow-up email after the second call' },
+  { key: 'linkedin_2_sent', title: 'LinkedIn Message 2',    hint: 'Second LinkedIn touch' },
   { key: 'linkedin_3_sent', title: 'LinkedIn Message 3',    hint: 'Third LinkedIn touch' },
   { key: 'drip_campaign',   title: 'Added to Drip Campaign', hint: 'In nurture sequence' },
   { key: 'contact_made',    title: 'Contact Made',          hint: 'They responded' },
@@ -183,17 +190,25 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
   const { emailForStage, templateForDeal, reload: reloadEmailConfig } = useSalesEmailConfig()
   const canEditEmails = isAdmin || ['admin', 'marketing'].includes(String(appRole || '').toLowerCase())
   const [editingEmails, setEditingEmails] = useState(false)
+  const [showReport, setShowReport] = useState(false)
   // status -> column indirection, derived from this board's stage set.
   const STATUS_TO_COLUMN = useMemo(() => Object.fromEntries(STAGES.map(s => [s.key, s.key])), [STAGES])
   const [deals, setDeals] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
+  // Amber, not red: "the move worked but no email went" is information, not a
+  // failure, and dressing it as an error trains people to ignore the red box.
+  const [notice, setNotice] = useState('')
   const [showClosed, setShowClosed] = useState(false)
   const [selected, setSelected] = useState(null)
   const [proposalDeal, setProposalDeal] = useState(null)   // deal whose proposal builder is open
   const [busy, setBusy] = useState(false)
   const [query, setQuery] = useState('')
   const [orgFilter, setOrgFilter] = useState('')
+  // The two queues that actually exist for an SDR: "what still needs research"
+  // and "what is mine". Without these, 632 cards is one undifferentiated pile
+  // and nobody can tell where their own day starts.
+  const [workFilter, setWorkFilter] = useState('')
   // drag-and-drop state: which deal is being dragged, which column is hovered
   const [dragId, setDragId] = useState(null)
   const [dragOverCol, setDragOverCol] = useState(null)
@@ -265,6 +280,11 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
     return () => { alive = false }
   }, [])
 
+  // The signed-in user AS AN ASSIGNABLE OWNER. Null if they are not on the
+  // can_own_deals roster, which is what hides the Claim button from people who
+  // are not meant to be working leads.
+  const me = useMemo(() => owners.find(o => o.id === user?.id) || null, [owners, user])
+
   // Assign EVERY contact at one company to the same person, in one write.
   // This is the whole point of the view - doing it card by card is how a
   // company ends up split across two reps without anyone noticing.
@@ -292,6 +312,7 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
   // drags, the dropdown, and the quick buttons alike.
   async function transition(deal, toStatus, { note, skipConfirm, extraPatch } = {}) {
     if (toStatus === deal.status) return
+    setNotice('')
     // null unless that stage's template is switched ON — so we only warn about
     // an email that is genuinely about to go out.
     // Resolve the VARIANT for this specific deal, not just the stage. A law firm
@@ -299,6 +320,24 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
     const tpl = templateForDeal(toStatus, deal)
     const emailKind = tpl ? emailForStage(toStatus, deal) : null
     const willEmail = !!emailKind && !!deal.contact_email
+
+    // Research gate — a WARNING, not a wall (Becky's call). Leaving New Lead
+    // with blanks means calling a company you know nothing about and sending an
+    // email with an empty {{observation}}. Naming the gaps here is what makes
+    // them get filled; blocking the move would just strand the companies where
+    // a field genuinely doesn't exist.
+    if (!skipConfirm && deal.status === 'new_lead' && toStatus !== 'new_lead' && !CLOSED.includes(toStatus)) {
+      const { done, total, missing } = researchStatus(deal)
+      if (missing.length) {
+        const ok = window.confirm(
+          `${deal.organization} is only ${done}/${total} researched.\n\n` +
+          `Still missing:\n  • ${missing.join('\n  • ')}\n\n` +
+          `You can carry on, but the call is a guess and the email will have gaps.\n\nMove it anyway?`
+        )
+        if (!ok) return
+      }
+    }
+
     if (emailKind && !skipConfirm) {
       const ok = window.confirm(
         `Moving ${deal.organization} to "${STAGE_LABEL[toStatus]}" will email` +
@@ -310,9 +349,18 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
       )
       if (!ok) return
     }
+    // Booking a discovery call is the thing Becky pays $15 for, so the person
+    // who booked it has to be recorded AT THE MOMENT it is booked — not
+    // reconstructed later from a calendar. Set once: a deal that comes back
+    // round to Discovery Call a second time keeps its original booker.
+    const bookingPatch = (toStatus === 'discovery_call' && !deal.booked_by_id)
+      ? { booked_by_id: user?.id || null, booked_by_name: user?.user_metadata?.full_name || user?.email || null,
+          meeting_outcome: deal.meeting_outcome || 'scheduled' }
+      : {}
+
     setBusy(true)
     const from = deal.status
-    const patch = { status: toStatus, reviewer_id: user?.id, ...(extraPatch || {}) }
+    const patch = { status: toStatus, reviewer_id: user?.id, ...bookingPatch, ...(extraPatch || {}) }
     // reopening a lost deal clears its stale reason
     if (from === 'lost' && toStatus !== 'lost') patch.lost_reason = null
     // NOTE: last_emailed_at is deliberately NOT set here. It is written below,
@@ -324,6 +372,17 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
     await supabase.from('deal_stage_events').insert({
       deal_id: deal.id, from_status: from, to_status: toStatus, actor_id: user?.id, note: note || null,
     })
+
+    // Silence was the bug Becky hit on 8/31: she dragged a card into Email 1
+    // Sent, nothing sent, and nothing said so. A stage that is SUPPOSED to email
+    // and didn't now explains itself.
+    if (!willEmail && STAGE_EMAIL_KIND[toStatus]) {
+      const blocked = pitchBlockReason(STAGE_EMAIL_KIND[toStatus], deal)
+      const why = blocked ? blocked
+        : !deal.contact_email ? 'this deal has no email address on it'
+        : 'no version of that email is switched on for this deal (Stage emails → turn one on)'
+      setNotice(`${deal.organization} moved to ${STAGE_LABEL[toStatus]}. No email was sent — ${why}.`)
+    }
 
     if (willEmail) {
       // Pass the resolved template id so the email that leaves is the one the
@@ -404,6 +463,11 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
   )
   const matches = (d) => {
     if (orgFilter && d.organization !== orgFilter) return false
+    if (workFilter === 'mine' && d.owner_id !== user?.id) return false
+    if (workFilter === 'unassigned' && d.owner_id) return false
+    if (workFilter === 'needs' && researchStatus(d).complete) return false
+    if (workFilter === 'ready' && !researchStatus(d).complete) return false
+    if (workFilter === 'pitchable' && (d.service_fit === 'Low fit' || d.fit_rating === 'Weak')) return false
     if (!query) return true
     const q = query.toLowerCase()
     return (d.organization || '').toLowerCase().includes(q)
@@ -452,6 +516,11 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
             style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', fontSize: 13.5, fontWeight: 700, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>
             ⭱ Import CSV
           </button>
+          <button onClick={() => setShowReport(true)}
+            title="Activity and incentive payouts per person"
+            style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', fontSize: 13.5, fontWeight: 700, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>
+            ⌁ Sprint report
+          </button>
           {canEditEmails && (
             <button onClick={() => setEditingEmails(true)}
               title="Edit the emails this board sends, and turn each one on or off"
@@ -461,6 +530,16 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
           )}
           <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search org, contact, role…"
             style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '7px 11px', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', minWidth: 200, fontFamily: 'inherit' }} />
+          <select value={workFilter} onChange={e => setWorkFilter(e.target.value)}
+            title="Narrow the board to the queue you are actually working"
+            style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '7px 11px', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'inherit' }}>
+            <option value="">All leads</option>
+            <option value="mine">Mine only</option>
+            <option value="unassigned">Unassigned</option>
+            <option value="needs">Needs research</option>
+            <option value="ready">Research complete</option>
+            <option value="pitchable">Pitchable (hide Low fit)</option>
+          </select>
           <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)}
             style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '7px 11px', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'inherit' }}>
             <option value="">All organizations</option>
@@ -474,9 +553,15 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
       </div>
 
       {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>{err}</div>}
+      {notice && (
+        <div style={{ background: '#FFF7E6', border: '1px solid #FBD38D', color: '#8A5200', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <span style={{ flex: 1 }}>{notice}</span>
+          <button onClick={() => setNotice('')} style={{ border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer', fontWeight: 700, fontFamily: 'inherit' }}>Dismiss</button>
+        </div>
+      )}
 
       {view === 'accounts' && (
-        <AccountsView deals={deals.filter(matches)} owners={owners} busy={busy}
+        <AccountsView deals={deals.filter(matches)} owners={owners} busy={busy} me={me}
           onAssign={assignCompany} onOpenDeal={setSelected} />
       )}
 
@@ -571,12 +656,34 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
         }}
         onError={setErr} />}
 
+      {showReport && <SalesSprintReport pipelineKey={pipelineKey} onClose={() => setShowReport(false)} />}
+
       {importing && <ImportModal
         pipelineKey={pipelineKey}
         onCancel={() => setImporting(false)}
         onDone={() => { setImporting(false); load() }}
         onError={setErr} />}
     </div>
+  )
+}
+
+// The research meter. Eight fields decide whether this lead can be called and
+// emailed like a real prospect rather than a row in a spreadsheet; the chip says
+// how many are in, and hovering names the ones that aren't. Green only at 8/8.
+function ResearchChip({ deal, compact }) {
+  const { done, total, missing, complete } = researchStatus(deal)
+  const tone = complete
+    ? { bg: '#e8f5e9', fg: '#1b5e20' }
+    : done >= total - 2 ? { bg: '#fff4e5', fg: '#8a5200' } : { bg: '#fdecea', fg: '#b71c1c' }
+  return (
+    <span
+      title={complete ? 'Research complete' : 'Still needed: ' + missing.join(', ')}
+      style={{
+        background: tone.bg, color: tone.fg, borderRadius: 999, fontWeight: 700,
+        fontSize: compact ? 10.5 : 11.5, padding: compact ? '1px 7px' : '2px 9px', whiteSpace: 'nowrap',
+      }}>
+      {complete ? '✓ researched' : `${done}/${total} researched`}
+    </span>
   )
 }
 
@@ -597,12 +704,79 @@ function DealCard({ deal, onClick, dragging, onDragStart, onDragEnd }) {
           <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{deal.contact_person || '—'}{deal.title && deal.title !== deal.organization ? ` · ${deal.title}` : ''}</div>
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 11, color: 'var(--ink-soft)' }}>
-        <span>{money(deal.value)}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 11, color: 'var(--ink-soft)', flexWrap: 'wrap' }}>
+        <ResearchChip deal={deal} compact />
+        {Number(deal.value) > 0 && <span>{money(deal.value)}</span>}
+        {deal.owner_name && <span title={'Owner: ' + deal.owner_name}>{deal.owner_name.split(' ')[0]}</span>}
         {deal.attachments && deal.attachments.length > 0 && (
           <span title={`${deal.attachments.length} attachment${deal.attachments.length === 1 ? '' : 's'}`}>📎 {deal.attachments.length}</span>
         )}
         <span style={{ marginLeft: 'auto' }}>{timeAgo(deal.created_at)}</span>
+      </div>
+    </div>
+  )
+}
+
+// ---- Booked meeting & incentive ------------------------------------------
+const MEETING_OUTCOMES = [
+  { key: 'scheduled',   label: 'Scheduled — not happened yet', pays: false },
+  { key: 'showed',      label: 'They showed up',               pays: true },
+  { key: 'no_show',     label: 'No-show',                      pays: false },
+  { key: 'rescheduled', label: 'Rescheduled',                  pays: false },
+  { key: 'cancelled',   label: 'Cancelled',                    pays: false },
+]
+export const MEETING_INCENTIVE = 15
+
+function MeetingBlock({ deal, onUpdate, busy }) {
+  const [saving, setSaving] = useState(false)
+  const outcome = deal.meeting_outcome || ''
+  const pays = MEETING_OUTCOMES.find(o => o.key === outcome)?.pays
+
+  // Nothing to show until a meeting exists — an empty block on 600 cards is
+  // noise. It appears the moment somebody books one.
+  if (!deal.booked_by_id && !deal.meeting_at && !outcome) return null
+
+  // onUpdate takes the DEAL, not its id, and throws on failure — the banner is
+  // already raised by then, so swallowing it here just stops the panel breaking.
+  const save = async (patch) => {
+    setSaving(true)
+    try { await onUpdate(deal, patch) } catch (_e) { /* surfaced by the board */ }
+    setSaving(false)
+  }
+  const lbl = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', margin: '0 0 4px', display: 'block' }
+  const fld = { width: '100%', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', fontSize: 13, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }
+
+  return (
+    <div style={{ marginTop: 4, marginBottom: 20, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+      <h3 style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', margin: '0 0 10px' }}>Discovery meeting</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div>
+          <label style={lbl}>Booked by</label>
+          <div style={{ fontSize: 13.5, padding: '8px 0' }}>{deal.booked_by_name || '—'}</div>
+        </div>
+        <div>
+          <label style={lbl}>When</label>
+          <input type="datetime-local" disabled={busy || saving} style={fld}
+            value={deal.meeting_at ? new Date(deal.meeting_at).toISOString().slice(0, 16) : ''}
+            onChange={e => save({ meeting_at: e.target.value ? new Date(e.target.value).toISOString() : null })} />
+        </div>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={lbl}>Outcome</label>
+          <select value={outcome} disabled={busy || saving} style={fld}
+            onChange={e => save({ meeting_outcome: e.target.value || null })}>
+            <option value="">Not set</option>
+            {MEETING_OUTCOMES.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+          </select>
+        </div>
+      </div>
+      <div style={{ marginTop: 10, fontSize: 12.5, borderRadius: 8, padding: '8px 11px',
+        background: pays ? '#e8f5e9' : 'var(--canvas)', color: pays ? '#1b5e20' : 'var(--ink-soft)', border: '1px solid ' + (pays ? '#c8e6c9' : 'var(--line)') }}>
+        {pays
+          ? <>Earns <b>${MEETING_INCENTIVE}</b> for {deal.booked_by_name || 'whoever booked it'}
+              {deal.meeting_incentive_paid_at ? ' — already paid.' : ' — not yet paid.'}</>
+          : outcome === 'scheduled' ? 'Pays nothing until the prospect actually shows up.'
+          : outcome ? 'No incentive — the meeting did not happen.'
+          : 'Set an outcome once the meeting date passes.'}
       </div>
     </div>
   )
@@ -969,6 +1143,14 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
             </>
           )}
 
+          {/* ---- Booked meeting & incentive ---------------------------------
+              $15 per meeting BOOKED AND SHOWED. Both halves of that sentence
+              have to be recorded by the person who did it, at the time they did
+              it, or payday becomes an argument. `booked_by` is stamped
+              automatically when the deal reaches Discovery Call; the date and
+              the outcome are set here. */}
+          <MeetingBlock deal={deal} onUpdate={onUpdate} busy={busy} />
+
           {/* Attachments (proposals, contracts, docs) */}
           <div style={{ marginTop: 4, marginBottom: 20, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -1089,7 +1271,7 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
 // at Alamo Alarm to two different reps means two people cold-call the same
 // business in the same week. This view is where a company gets an owner, and
 // the dropdown writes it to every contact at that company at once.
-function AccountsView({ deals, owners, busy, onAssign, onOpenDeal }) {
+function AccountsView({ deals, owners, busy, onAssign, onOpenDeal, me }) {
   const [expanded, setExpanded] = useState({})
   const [ownerFilter, setOwnerFilter] = useState('')   // '' all, '~none' unassigned, else a name
   const [sort, setSort] = useState('contacts')         // contacts | name | owner
@@ -1164,6 +1346,8 @@ function AccountsView({ deals, owners, busy, onAssign, onOpenDeal }) {
               <th style={th}>Contacts</th>
               <th style={th}>Stage</th>
               <th style={{ ...th, width: 220 }}>Owner</th>
+              <th style={{ ...th, width: 92 }}>Research</th>
+              <th style={{ ...th, width: 88 }} />
             </tr>
           </thead>
           <tbody>
@@ -1201,6 +1385,26 @@ function AccountsView({ deals, owners, busy, onAssign, onOpenDeal }) {
                         {owners.map(o => <option key={o.id} value={o.full_name}>{o.full_name}</option>)}
                       </select>
                     </td>
+                    <td style={{ ...td, fontSize: 12, color: 'var(--ink-soft)' }}>
+                      {a.rows.filter(d => researchStatus(d).complete).length}/{a.rows.length} done
+                    </td>
+                    <td style={td}>
+                      {/* Self-service claim. Becky on 8/31: "they can assign them
+                          to themselves as they go through here — that might be
+                          better actually." Waiting to be handed a list is how a
+                          morning gets lost. */}
+                      {me && !(current === me.full_name && !mixed) && (
+                        <button disabled={busy}
+                          onClick={() => {
+                            if (!window.confirm(`Claim all ${a.rows.length} contact${a.rows.length === 1 ? '' : 's'} at ${a.org}?` +
+                              (names.length ? `\n\nCurrently with: ${names.join(', ')}` : ''))) return
+                            onAssign(a.org, me)
+                          }}
+                          style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--canvas)', color: 'var(--ink)', fontSize: 12.5, fontWeight: 700, padding: '6px 11px', cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                          Claim
+                        </button>
+                      )}
+                    </td>
                   </tr>
                   {isOpen && a.rows.map(d => (
                     <tr key={d.id}>
@@ -1213,13 +1417,15 @@ function AccountsView({ deals, owners, busy, onAssign, onOpenDeal }) {
                       <td style={{ ...td, fontSize: 12.5, color: 'var(--ink-soft)' }}>{d.contact_email || '—'}</td>
                       <td style={{ ...td, fontSize: 12.5, color: 'var(--ink-soft)' }}>{STAGE_LABEL[d.status] || d.status}</td>
                       <td style={{ ...td, fontSize: 12.5, color: 'var(--ink-soft)' }}>{d.owner_name || 'Unassigned'}</td>
+                      <td style={td}><ResearchChip deal={d} compact /></td>
+                      <td style={td} />
                     </tr>
                   ))}
                 </Fragment>
               )
             })}
             {shown.length === 0 && (
-              <tr><td colSpan={4} style={{ ...td, textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No companies match.</td></tr>
+              <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No companies match.</td></tr>
             )}
           </tbody>
         </table>
