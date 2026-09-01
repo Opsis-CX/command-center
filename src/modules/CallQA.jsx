@@ -331,6 +331,7 @@ export default function CallQA({ portal = false } = {}) {
   // that stale fetch's setRows() lands late and — because `scoped` filters to the NOW-
   // selected program — every row gets filtered out ("No scored calls in this range").
   const loadSeq = useRef(0)
+  const loadedKey = useRef(null) // see the tab effect below; reset on error so the next tab click retries
   const load = useCallback(async () => {
     const seq = ++loadSeq.current
     setLoading(true); setErr('')
@@ -367,10 +368,30 @@ export default function CallQA({ portal = false } = {}) {
       // Date-scoped so the portal never pulls the client's entire history in one
       // blob (that was the 8s statement-timeout). The Dashboard/Briefing tabs no
       // longer use these rows at all — they call callqa_dashboard instead.
-      const { data, error } = await supabase.rpc('callqa_portal_rows', { p_start: dashBounds.start, p_end: dashBounds.end })
-      if (seq !== loadSeq.current) return
-      if (error) { setErr(error.message); setLoading(false); return }
-      all = Array.isArray(data) ? data : []
+      //
+      // 2026-09-01 INCIDENT: at ~1,450 scored calls/day the 30-day window is ~27k
+      // rows / ~70 MB, and building it in ONE statement took 30 s+ on the
+      // instance, spilled ~200 MB of sort to disk, and starved every other query
+      // (dashboard, notifications, tasks, pg_cron) until the client saw a timeout.
+      // The RPC is now keyset-paged (<= 5000 rows per call, ~1 s each, measured
+      // 6 pages / 7.6 s for the full window). We walk the pages sequentially —
+      // never concurrently — so the database only ever runs one short statement
+      // for this user at a time. Row shape is unchanged.
+      const PAGE = 5000
+      let cursorTs = null, cursorId = null
+      for (let page = 0; page < 40; page++) {
+        const { data, error } = await supabase.rpc('callqa_portal_rows', {
+          p_start: dashBounds.start, p_end: dashBounds.end,
+          p_limit: PAGE, p_before_ts: cursorTs, p_before_id: cursorId,
+        })
+        if (seq !== loadSeq.current) return
+        if (error) { loadedKey.current = null; setErr(error.message); setLoading(false); return }
+        const chunk = Array.isArray(data) ? data : []
+        all = all.concat(chunk)
+        if (chunk.length < PAGE) break
+        const last = chunk[chunk.length - 1]
+        cursorTs = last.created_at; cursorId = last.id
+      }
     } else if (canManage) {
       // Managers/staff: ONE server-side call (callqa_rows) instead of paging the
       // entire history 1000 rows at a time — collapses ~14 sequential round trips
@@ -393,7 +414,7 @@ export default function CallQA({ portal = false } = {}) {
         p_campaign: program !== 'all' ? program : null, p_source: null,
       })
       if (seq !== loadSeq.current) return
-      if (error) { setErr(error.message); setLoading(false); return }
+      if (error) { loadedKey.current = null; setErr(error.message); setLoading(false); return }
       all = Array.isArray(data) ? data : []
     } else {
       // Individual agents: RLS-scoped to their own (small) review set — paging is fine.
@@ -401,7 +422,7 @@ export default function CallQA({ portal = false } = {}) {
       for (;;) {
         const { data, error } = await withCampaign(supabase.from('ai_qa_reviews').select(sel).order('created_at', { ascending: false }).range(from, from + page - 1))
         if (seq !== loadSeq.current) return   // a newer load superseded this one — drop its result
-        if (error) { setErr(error.message); setLoading(false); return }
+        if (error) { loadedKey.current = null; setErr(error.message); setLoading(false); return }
         all = all.concat(data || [])
         if (!data || data.length < page) break
         from += page
@@ -419,7 +440,18 @@ export default function CallQA({ portal = false } = {}) {
   // secret-presence / pipeline-count queries that live at the top of load() —
   // and they were hanging on "Loading…" for the same reason Import was.
   const LOAD_TABS = [...ROW_TABS, 'rubric', 'settings']
-  useEffect(() => { if (LOAD_TABS.includes(tab)) load() }, [tab, load])
+  // Only re-download when the row set's inputs actually change (role / program /
+  // date window) — NOT on every tab switch. Before 2026-09-01 each click between
+  // row tabs re-ran the full multi-MB download, so a client browsing four tabs
+  // put 4x the load on the database for identical data. Explicit refreshes
+  // (re-score, reviewed toggles, program change) still call load() directly.
+  const loadKey = JSON.stringify([canManage, program, portalMode, dashBounds.start, dashBounds.end])
+  useEffect(() => {
+    if (!LOAD_TABS.includes(tab)) return
+    if (loadedKey.current === loadKey) return
+    loadedKey.current = loadKey
+    load()
+  }, [tab, load, loadKey]) // eslint-disable-line react-hooks/exhaustive-deps
   // Server-side Overview aggregate for EVERYONE — instant landing. The RPC
   // self-scopes exactly like the row RLS (manager → all, portal → their client,
   // agent → own), so it's safe for the client portal and far faster than the
