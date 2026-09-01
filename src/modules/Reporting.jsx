@@ -349,15 +349,20 @@ export default function Reporting() {
     const fromISO = new Date(range.from + 'T00:00:00').toISOString()
     const toISO = new Date(range.to + 'T23:59:59').toISOString()
     const [teRes, profRes, taskRes, cliRes, clmRes, blkRes, qaRes, agRes, f9Res] = await Promise.all([
-      supabase.from('time_entries').select('*')
+      // PAGINATED. PostgREST caps an un-ranged select at 1000 rows and returns
+      // the truncated set with NO error, so this silently under-reported every
+      // month busier than 1000 entries — August 2026 has 1777, and the report
+      // stopped dead on the 17th. Invoicing reads off this query, so the
+      // shortfall was money. .order('id') gives paging a unique tiebreaker.
+      fetchAllRows(() => supabase.from('time_entries').select('*')
         .not('duration_minutes', 'is', null)
-        .gte('started_at', fromISO).lte('started_at', toISO),
+        .gte('started_at', fromISO).lte('started_at', toISO).order('id')),
       supabase.from('profiles').select('id, full_name, role'),
       fetchAllRows(() => supabase.from('tasks').select('id, name, client_id').order('id')),
       supabase.from('clients').select('id, name'),
       fetchAllRows(() => supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at, checked_out_at').order('id')),
       fetchAllRows(() => supabase.from('shift_blocks').select('id, block_date, start_time, end_time').order('id')),
-      supabase.from('qa_audits').select('*').gte('created_at', fromISO).lte('created_at', toISO),
+      fetchAllRows(() => supabase.from('qa_audits').select('*').gte('created_at', fromISO).lte('created_at', toISO).order('id')),
       supabase.from('sc_agents').select('agent_name, profile_id'),
       supabase.from('sc_occupancy_day').select('agent_name, login_hours, nr_hours, work_date').gte('work_date', range.from).lte('work_date', range.to),
     ])
@@ -3175,7 +3180,7 @@ function SchedAgentReport({ range, profiles, allowedIds }) {
         claims = claims.concat(c || [])
       }
       const [{ data: te }, { data: agents }, { data: occDay }] = await Promise.all([
-        supabase.from('time_entries').select('user_id, duration_minutes, started_at').not('duration_minutes', 'is', null).gte('started_at', dayStart(range.from)).lte('started_at', dayEnd(range.to)),
+        fetchAllRows(() => supabase.from('time_entries').select('user_id, duration_minutes, started_at').not('duration_minutes', 'is', null).gte('started_at', dayStart(range.from)).lte('started_at', dayEnd(range.to)).order('id')),
         supabase.from('sc_agents').select('agent_name, profile_id'),
         supabase.from('sc_occupancy_day').select('agent_name, work_date, login_hours, nr_hours').gte('work_date', range.from).lte('work_date', range.to),
       ])
@@ -3380,7 +3385,7 @@ function OffClockReport({ range, profiles, allowedIds }) {
       const cFrom = new Date(range.from + 'T00:00:00'); cFrom.setDate(cFrom.getDate() - 1)
       const cTo = new Date(range.to + 'T23:59:59'); cTo.setDate(cTo.getDate() + 1)
       const [{ data: te, error }, { data: claims }] = await Promise.all([
-        supabase.from('time_entries').select('user_id, duration_minutes, started_at').not('duration_minutes', 'is', null).gte('started_at', dayStart(range.from)).lte('started_at', dayEnd(range.to)),
+        fetchAllRows(() => supabase.from('time_entries').select('user_id, duration_minutes, started_at').not('duration_minutes', 'is', null).gte('started_at', dayStart(range.from)).lte('started_at', dayEnd(range.to)).order('id')),
         supabase.from('shift_claims').select('profile_id, checked_in_at, checked_out_at').not('checked_in_at', 'is', null).gte('checked_in_at', cFrom.toISOString()).lte('checked_in_at', cTo.toISOString()),
       ])
       if (!active) return
@@ -3566,7 +3571,7 @@ const BUILDER_SOURCES = {
     ],
     load: async (range, ctx) => {
       const [{ data: te }, { data: tasks }, { data: clients }] = await Promise.all([
-        supabase.from('time_entries').select('user_id, task_id, client_id, duration_minutes, started_at, note').not('duration_minutes', 'is', null).gte('started_at', dayStart(range.from)).lte('started_at', dayEnd(range.to)),
+        fetchAllRows(() => supabase.from('time_entries').select('user_id, task_id, client_id, duration_minutes, started_at, note').not('duration_minutes', 'is', null).gte('started_at', dayStart(range.from)).lte('started_at', dayEnd(range.to)).order('id')),
         fetchAllRows(() => supabase.from('tasks').select('id, name, client_id').order('id')),
         supabase.from('clients').select('id, name'),
       ])
