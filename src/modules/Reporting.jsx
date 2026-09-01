@@ -3953,6 +3953,13 @@ const stepLbl = { fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', textT
 function AiQaBillingReport({ range }) {
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
+  // Filtering is client-side on purpose: the RPC returns one row per brand
+  // (about 20), so re-querying the database to hide a few of them would be
+  // slower and no more correct. Every total below follows the filter, because a
+  // filtered list with an unfiltered total is how a wrong invoice gets sent.
+  const [campaign, setCampaign] = useState('')
+  const [q, setQ] = useState('')
+  const [minCalls, setMinCalls] = useState('')
 
   useEffect(() => {
     let active = true; setData(null); setErr('')
@@ -3971,21 +3978,41 @@ function AiQaBillingReport({ range }) {
 
   function exportCSV() {
     if (!data) return
+    // Exports exactly what is on screen — a CSV that silently contained rows the
+    // filter had hidden would be worse than no filter at all.
     const rows = [['Brand', 'Campaign', 'Scored calls', 'Rate', 'Amount', 'Billable']]
-    for (const r of data.rows || []) {
+    for (const r of shown) {
       rows.push([r.brand, r.campaigns, r.calls, data.rate, r.amount, r.billable ? 'Yes' : 'No — internal'])
     }
     rows.push([])
-    rows.push(['BILLABLE TOTAL', '', data.billable?.calls ?? 0, data.rate, data.billable?.amount ?? 0, ''])
-    rows.push(['Internal (not billed)', '', data.internal?.calls ?? 0, data.rate, data.internal?.amount ?? 0, ''])
+    rows.push(['BILLABLE TOTAL', '', billTotal.calls, data.rate, billTotal.amount, ''])
+    rows.push(['Internal (not billed)', '', sum(internalRows, 'calls'), data.rate, sum(internalRows, 'amount'), ''])
     downloadCSV(`ai-qa-billing-${range.from}_to_${range.to}.csv`, rows)
   }
 
   if (err) return <div className="card" style={{ padding: 24, color: 'var(--failed)', fontSize: 13.5 }}>{err}</div>
   if (!data) return <p className="page-sub">Loading AI QA billing…</p>
 
-  const billableRows = (data.rows || []).filter(r => r.billable)
-  const internalRows = (data.rows || []).filter(r => !r.billable)
+  // Every distinct campaign present, for the dropdown. A brand can span more
+  // than one, so split the comma-joined value rather than treating it as an id.
+  const campaigns = [...new Set((data.rows || [])
+    .flatMap(r => String(r.campaigns || '').split(',').map(c => c.trim()).filter(Boolean)))].sort()
+
+  const matches = (r) => {
+    if (campaign && !String(r.campaigns || '').split(',').map(c => c.trim()).includes(campaign)) return false
+    if (q && !r.brand.toLowerCase().includes(q.toLowerCase())) return false
+    if (minCalls && Number(r.calls) < Number(minCalls)) return false
+    return true
+  }
+  const shown = (data.rows || []).filter(matches)
+  const billableRows = shown.filter(r => r.billable)
+  const internalRows = shown.filter(r => !r.billable)
+
+  // Totals are recomputed from what is on screen, never read from the RPC's
+  // unfiltered summary.
+  const sum = (rows, k) => rows.reduce((n, r) => n + Number(r[k] || 0), 0)
+  const billTotal = { calls: sum(billableRows, 'calls'), amount: sum(billableRows, 'amount'), brands: billableRows.length }
+  const filtered = shown.length !== (data.rows || []).length
 
   const th = { textAlign: 'left', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', padding: '0 12px 8px' }
   const thR = { ...th, textAlign: 'right' }
@@ -4019,14 +4046,42 @@ function AiQaBillingReport({ range }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div className="card" style={{ padding: '14px 18px', minWidth: 190 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)' }}>Billable this period</div>
-          <div style={{ fontSize: 26, fontWeight: 800, marginTop: 2 }}>{money(data.billable?.amount)}</div>
-          <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>
-            {num(data.billable?.calls)} calls × {money(data.rate)} · {num(data.billable?.brands)} brands
+        <div className="card" style={{ padding: '14px 18px', minWidth: 200 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)' }}>
+            {filtered ? 'Billable — filtered' : 'Billable this period'}
           </div>
+          <div style={{ fontSize: 26, fontWeight: 800, marginTop: 2 }}>{money(billTotal.amount)}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>
+            {num(billTotal.calls)} calls × {money(data.rate)} · {num(billTotal.brands)} brands
+          </div>
+          {filtered && (
+            <div style={{ fontSize: 11.5, color: 'var(--needed, #8a5a12)', marginTop: 4 }}>
+              of {money(data.billable?.amount)} unfiltered
+            </div>
+          )}
         </div>
         <button className="btn btn-ghost" onClick={exportCSV}>Export Billing CSV</button>
+      </div>
+
+      <div className="card" style={{ padding: '12px 14px', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <select value={campaign} onChange={e => setCampaign(e.target.value)}
+          style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '7px 11px', fontSize: 13, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }}>
+          <option value="">All campaigns</option>
+          {campaigns.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search brand…"
+          style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '7px 11px', fontSize: 13, background: 'var(--canvas)', color: 'var(--ink)', minWidth: 190, fontFamily: 'inherit' }} />
+        <label style={{ fontSize: 12.5, color: 'var(--ink-soft)', display: 'flex', alignItems: 'center', gap: 7 }}>
+          Min calls
+          <input type="number" min="0" value={minCalls} onChange={e => setMinCalls(e.target.value)} placeholder="0"
+            style={{ width: 90, border: '1px solid var(--line)', borderRadius: 8, padding: '7px 9px', fontSize: 13, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }} />
+        </label>
+        {filtered && (
+          <button className="btn btn-ghost" onClick={() => { setCampaign(''); setQ(''); setMinCalls('') }}>Clear filters</button>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--ink-soft)' }}>
+          Showing {shown.length} of {(data.rows || []).length} brands
+        </span>
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -4035,8 +4090,8 @@ function AiQaBillingReport({ range }) {
         </div>
         <Table rows={billableRows} />
         <div style={{ padding: '11px 16px', borderTop: '2px solid var(--line)', display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 800 }}>
-          <span>Total to bill</span>
-          <span>{num(data.billable?.calls)} calls · {money(data.billable?.amount)}</span>
+          <span>Total to bill{filtered ? ' (filtered)' : ''}</span>
+          <span>{num(billTotal.calls)} calls · {money(billTotal.amount)}</span>
         </div>
       </div>
 
