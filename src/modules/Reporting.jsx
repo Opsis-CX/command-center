@@ -217,6 +217,18 @@ const SHARED_EXPORT = new Set(['person', 'client', 'compare', 'quality', 'people
 // Reports rendered by their own standalone component.
 const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions', 'dispo_corrections', 'qa_by_question', 'ai_qa_by_question', 'ai_qa_spend', 'payroll_week'])
 
+// The calendar date a timestamp falls on IN EASTERN TIME. toLocaleDateString
+// with en-CA yields YYYY-MM-DD directly — deliberately NOT
+// `new Date(toLocaleString(...)).toISOString().slice(0,10)`, which rolls over to
+// tomorrow after 8pm ET and is a bug already found elsewhere in this codebase.
+const etDate = (ts) => ts
+  ? new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+  : ''
+// Short display form: "Mon Aug 4".
+const etDateShort = (d) => d
+  ? new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+  : ''
+
 export default function Reporting() {
   const { isAdmin, appRole } = useAuth()
   const [range, setRange] = useState(defaultRange())
@@ -518,6 +530,31 @@ export default function Reporting() {
     return Object.values(map)
   }, [entries, clientOfEntry, allowedIds, filters.clientIds])
 
+  // Same line items, but SPLIT BY DAY — used only by the Invoicing report.
+  // A client querying a bill asks "what did you do on the 12th?", so a task
+  // worked across several days has to appear once per day rather than as one
+  // rolled-up total. Deliberately separate from `lineItems`: the Payroll report
+  // renders that one and should keep its per-task rollup.
+  const lineItemsByDate = useMemo(() => {
+    const map = {}
+    for (const e of entries) {
+      if (allowedIds && !allowedIds.has(e.user_id)) continue
+      const min = e.duration_minutes || 0
+      if (!min) continue
+      const cl = clientOfEntry(e)
+      const clientKey = cl ? cl.id : '__none__'
+      if (filters.clientIds.length && !filters.clientIds.includes(clientKey)) continue
+      const isMeeting = !e.task_id
+      const day = etDate(e.started_at)
+      const itemKey = (isMeeting ? ('m:' + e.id) : ('t:' + e.task_id)) + '|' + day
+      const key = e.user_id + '||' + itemKey
+      if (!map[key]) map[key] = { personId: e.user_id, taskId: e.task_id, itemKey, isMeeting, label: isMeeting ? (e.note || 'Meeting') : null, clientKey, date: day, minutes: 0 }
+      map[key].minutes += min
+    }
+    // Newest first within a person — an invoice reads chronologically.
+    return Object.values(map).sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+  }, [entries, clientOfEntry, allowedIds, filters.clientIds])
+
   function exportPersonCSV() {
     const header = ['Person', 'Client', 'Task', 'Hours']
     const rows = [header]
@@ -547,11 +584,15 @@ export default function Reporting() {
   }
 
   function exportClientCSV() {
-    const header = ['Client', 'Person', 'Task', 'Hours']
+    // Date is the column an invoice gets queried on, so it leads the line.
+    // ISO (YYYY-MM-DD) rather than the on-screen "Mon Aug 4" — Excel sorts and
+    // filters it correctly, and a US-format string in a CSV is a date-parsing
+    // trap for whoever opens it.
+    const header = ['Client', 'Person', 'Date', 'Task', 'Hours']
     const rows = [header]
-    // group line items by client, then person, then task
+    // group line items by client, then person, then date
     const byClient = {}
-    lineItems.forEach(li => {
+    lineItemsByDate.forEach(li => {
       ;(byClient[li.clientKey] = byClient[li.clientKey] || []).push(li)
     })
     Object.keys(byClient)
@@ -559,12 +600,12 @@ export default function Reporting() {
       .forEach(ck => {
         const items = byClient[ck].sort((a, b) => {
           const pa = nameOf(a.personId, profiles), pb = nameOf(b.personId, profiles)
-          return pa.localeCompare(pb) || itemLabel(a).localeCompare(itemLabel(b))
+          return pa.localeCompare(pb) || (a.date || '').localeCompare(b.date || '') || itemLabel(a).localeCompare(itemLabel(b))
         })
         items.forEach(li => {
-          rows.push([grouped.clientLabel[ck], nameOf(li.personId, profiles), itemLabel(li) + (li.isMeeting ? ' (meeting)' : ''), hoursFromMinutes(li.minutes)])
+          rows.push([grouped.clientLabel[ck], nameOf(li.personId, profiles), li.date || '', itemLabel(li) + (li.isMeeting ? ' (meeting)' : ''), hoursFromMinutes(li.minutes)])
         })
-        rows.push([grouped.clientLabel[ck], 'TOTAL', '', hoursFromMinutes(grouped.byClient[ck].total)])
+        rows.push([grouped.clientLabel[ck], 'TOTAL', '', '', hoursFromMinutes(grouped.byClient[ck].total)])
       })
     downloadCSV(`invoicing-hours-${range.from}_to_${range.to}.csv`, rows)
   }
@@ -1157,13 +1198,17 @@ export default function Reporting() {
                           <React.Fragment key={pid}>
                             <tr>
                               <td style={{ ...cellL, fontWeight: 600 }}>{nameOf(pid, profiles)}</td>
+                              <td style={dateCell} />
                               <td style={cellR}>{hoursFromMinutes(min)} hrs</td>
                             </tr>
-                            {lineItems.filter(li => li.clientKey === ck && li.personId === pid)
-                              .sort((a, b) => itemLabel(a).localeCompare(itemLabel(b)))
+                            {/* Dated lines, oldest first — an invoice reads as a
+                                diary, so date order beats alphabetical here. */}
+                            {lineItemsByDate.filter(li => li.clientKey === ck && li.personId === pid)
+                              .sort((a, b) => (a.date || '').localeCompare(b.date || '') || itemLabel(a).localeCompare(itemLabel(b)))
                               .map(li => (
                                 <tr key={li.itemKey}>
                                   <td style={{ ...cellL, paddingLeft: 32, color: 'var(--ink-soft)', fontSize: 12 }}>{itemLabel(li)}{li.isMeeting && <span style={meetingTag}>meeting</span>}</td>
+                                  <td style={dateCell}>{etDateShort(li.date)}</td>
                                   <td style={{ ...cellR, color: 'var(--ink-soft)', fontWeight: 500, fontSize: 12 }}>{hoursFromMinutes(li.minutes)} hrs</td>
                                 </tr>
                               ))}
@@ -1191,6 +1236,9 @@ const lbl = { fontSize: 12, fontWeight: 600, color: 'var(--ink-soft)' }
 const inp = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }
 const cellL = { padding: '9px 16px', borderBottom: '1px solid var(--line-soft)', fontSize: 13 }
 const cellR = { padding: '9px 16px', borderBottom: '1px solid var(--line-soft)', fontSize: 13, fontWeight: 600, textAlign: 'right', whiteSpace: 'nowrap' }
+// Date column on the Invoicing report. Tabular figures so the dates line up as
+// a column rather than drifting with the digit widths.
+const dateCell = { padding: '9px 10px', borderBottom: '1px solid var(--line-soft)', fontSize: 12, color: 'var(--ink-soft)', textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', width: 110 }
 const meetingTag = { marginLeft: 8, background: 'var(--accent-bg, var(--line-soft))', color: 'var(--accent)', fontSize: 10, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', padding: '1px 6px', borderRadius: 8, verticalAlign: 'middle' }
 // ---- Schedule Hours: hourly coverage + roster, scoped by client/role ----
 function hourLabel(h) { const ap = h < 12 ? 'AM' : 'PM'; return `${h % 12 || 12}:00 ${ap}` }
