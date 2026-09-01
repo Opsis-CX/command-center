@@ -240,3 +240,75 @@ export function researchStatus(deal) {
   const total = RESEARCH_FIELDS.length
   return { done: total - missing.length, total, missing, complete: missing.length === 0 }
 }
+
+// ============================================================================
+//  VERTICALS & SERVICE LINES
+// ============================================================================
+//  These used to be hardcoded arrays in PipelineBoard.jsx and
+//  SalesEmailTemplates.jsx, mirrored by a CHECK constraint in the database.
+//  Three copies of one list, so adding a vertical meant a migration AND a
+//  deploy — which is exactly where Corinne got stuck on 2026-08-31 with two
+//  emails written and nowhere to put them.
+//
+//  They are now `sales_verticals` and `sales_service_lines`, referenced by real
+//  foreign keys. The database still refuses a value nobody defined; defining one
+//  is now a row an admin can add from the Stage emails screen.
+let listCache = null
+let listInflight = null
+
+export function invalidateSalesListCache() { listCache = null; listInflight = null }
+
+async function fetchLists() {
+  const [v, s] = await Promise.all([
+    supabase.from('sales_verticals').select('label, sort_order, is_active').order('sort_order'),
+    supabase.from('sales_service_lines').select('label, sort_order, is_active').order('sort_order'),
+  ])
+  if (v.error) throw v.error
+  if (s.error) throw s.error
+  return { verticals: v.data || [], serviceLines: s.data || [] }
+}
+
+/**
+ * The two lists, plus `reload` for after the manage screen saves.
+ * `verticals` / `serviceLines` are the ACTIVE labels, ready for a <select>.
+ * `allVerticals` keeps the deactivated ones too, so a deal already carrying a
+ * retired vertical still renders its own value instead of showing blank.
+ */
+export function useSalesLists() {
+  const [lists, setLists] = useState(listCache || { verticals: [], serviceLines: [] })
+  const [loading, setLoading] = useState(!listCache)
+
+  const load = useCallback(async (force = false) => {
+    if (force) invalidateSalesListCache()
+    if (listCache) { setLists(listCache); setLoading(false); return listCache }
+    setLoading(true)
+    try {
+      listInflight = listInflight || fetchLists()
+      const rows = await listInflight
+      listCache = rows; listInflight = null
+      setLists(rows)
+      return rows
+    } catch (_e) {
+      listInflight = null
+      // A failed read must not empty the dropdowns and make every deal look
+      // unclassified — fall back to whatever is cached, or nothing.
+      return listCache || { verticals: [], serviceLines: [] }
+    } finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  return {
+    loading,
+    verticals: lists.verticals.filter(r => r.is_active).map(r => r.label),
+    serviceLines: lists.serviceLines.filter(r => r.is_active).map(r => r.label),
+    allVerticals: lists.verticals.map(r => r.label),
+    allServiceLines: lists.serviceLines.map(r => r.label),
+    reload: () => load(true),
+  }
+}
+
+/** Keep a value the deal already has visible even if it was later retired. */
+export function withCurrent(options, current) {
+  return current && !options.includes(current) ? [current, ...options] : options
+}
