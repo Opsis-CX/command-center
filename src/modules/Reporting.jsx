@@ -141,8 +141,9 @@ const CATALOG = [
   { label: 'Scorecard', items: [
     { key: 'scorecard', name: 'Agent Productivity', q: 'Per-agent Five9 calls, AHT, bookings and hours (rolling 7 / 30 day).' },
   ] },
-  { label: 'AI QA Spend', items: [
+  { label: 'AI QA', items: [
     { key: 'ai_qa_spend', name: 'AI QA Spend vs Billing', q: 'What did AI QA cost to run vs what we bill — cost, revenue and margin by brand.' },
+    { key: 'ai_qa_billing', name: 'AI QA Client Billing', q: 'How many calls did we score for each brand, and what is that worth at the per-call rate? Invoice backup — no cost or margin.' },
   ] },
   { label: 'Help Center', items: [
     { key: 'support', name: 'Support Tickets', q: 'Ticket volume, first-response and resolution times, by category.' },
@@ -185,7 +186,7 @@ const CAT_PERM = {
   'Quality': 'quality_audit',
   'Certifications': 'certifications',
   'Scorecard': 'service_performance_scorecard',
-  'AI QA Spend': '__admin__',
+  'AI QA': '__admin__',   // both reports are money — admin/owner only
   'Tokens': 'tokens.award',
   'Sales': 'sales',
   'RSN Pipeline': 'sales',
@@ -215,7 +216,7 @@ const FILTERABLE = new Set(['person', 'client', 'compare', 'quality', 'qa_by_que
 // Reports whose CSV export is the parent-owned shared button (older inline reports).
 const SHARED_EXPORT = new Set(['person', 'client', 'compare', 'quality', 'people'])
 // Reports rendered by their own standalone component.
-const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions', 'dispo_corrections', 'qa_by_question', 'ai_qa_by_question', 'ai_qa_spend', 'payroll_week'])
+const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions', 'dispo_corrections', 'qa_by_question', 'ai_qa_by_question', 'ai_qa_spend', 'ai_qa_billing', 'payroll_week'])
 
 // The calendar date a timestamp falls on IN EASTERN TIME. toLocaleDateString
 // with en-CA yields YYYY-MM-DD directly — deliberately NOT
@@ -875,6 +876,7 @@ export default function Reporting() {
         : view === 'ai_qa_by_question' ? <AiQaByQuestionReport range={range} />
         : view === 'scorecard' ? <ScorecardReport />
         : view === 'ai_qa_spend' ? <AiQaSpendReport range={range} />
+        : view === 'ai_qa_billing' ? <AiQaBillingReport range={range} />
         : view === 'dispositions' ? <DispositionsReport />
         : view === 'dispo_corrections' ? <DispoCorrectionsReport range={range} />
         : view === 'clients' ? <ClientsReport range={range} />
@@ -3934,3 +3936,125 @@ function CustomBuilder({ range, profiles, allowedIds, initial, onSaved }) {
   )
 }
 const stepLbl = { fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }
+
+// ================= AI QA Client Billing =================
+// Invoice backup: how many calls we SCORED for each brand in the range, and what
+// that is worth at ai_qa_cost_config.price_per_call.
+//
+// Deliberately NOT the same screen as AI QA Spend vs Billing. That one exists to
+// answer "are we making money on this" and shows cost, margin and per-call cost.
+// This one is meant to be defensible to a client — volume, rate, amount, nothing
+// else. Same underlying count as the spend report, so the two can't disagree.
+//
+// Counts SCORED calls, not calls ingested. In August 39,891 were ingested and
+// 32,758 scored; billing 7,133 calls that produced no review is not something
+// you want to have to defend line by line.
+// ========================================================
+function AiQaBillingReport({ range }) {
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    let active = true; setData(null); setErr('')
+    supabase.rpc('report_ai_qa_billing', { p_from: range.from, p_to: range.to })
+      .then(({ data, error }) => {
+        if (!active) return
+        if (error) setErr(error.message.includes('not authorized')
+          ? 'This report is limited to owners and admins.' : error.message)
+        else setData(data)
+      })
+    return () => { active = false }
+  }, [range.from, range.to])
+
+  const money = (v) => v == null ? '—' : '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const num = (v) => Number(v || 0).toLocaleString()
+
+  function exportCSV() {
+    if (!data) return
+    const rows = [['Brand', 'Campaign', 'Scored calls', 'Rate', 'Amount', 'Billable']]
+    for (const r of data.rows || []) {
+      rows.push([r.brand, r.campaigns, r.calls, data.rate, r.amount, r.billable ? 'Yes' : 'No — internal'])
+    }
+    rows.push([])
+    rows.push(['BILLABLE TOTAL', '', data.billable?.calls ?? 0, data.rate, data.billable?.amount ?? 0, ''])
+    rows.push(['Internal (not billed)', '', data.internal?.calls ?? 0, data.rate, data.internal?.amount ?? 0, ''])
+    downloadCSV(`ai-qa-billing-${range.from}_to_${range.to}.csv`, rows)
+  }
+
+  if (err) return <div className="card" style={{ padding: 24, color: 'var(--failed)', fontSize: 13.5 }}>{err}</div>
+  if (!data) return <p className="page-sub">Loading AI QA billing…</p>
+
+  const billableRows = (data.rows || []).filter(r => r.billable)
+  const internalRows = (data.rows || []).filter(r => !r.billable)
+
+  const th = { textAlign: 'left', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', padding: '0 12px 8px' }
+  const thR = { ...th, textAlign: 'right' }
+  const td = { padding: '10px 12px', borderTop: '1px solid var(--line-soft)', fontSize: 13.5 }
+  const tdR = { ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
+
+  const Table = ({ rows, muted }) => (
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead>
+        <tr>
+          <th style={{ ...th, paddingLeft: 16 }}>Brand</th>
+          <th style={th}>Campaign</th>
+          <th style={thR}>Calls scored</th>
+          <th style={thR}>Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(r => (
+          <tr key={r.brand}>
+            <td style={{ ...td, paddingLeft: 16, fontWeight: 600, color: muted ? 'var(--ink-soft)' : 'var(--ink)' }}>{r.brand}</td>
+            <td style={{ ...td, color: 'var(--ink-soft)', fontSize: 12.5 }}>{r.campaigns}</td>
+            <td style={tdR}>{num(r.calls)}</td>
+            <td style={{ ...tdR, fontWeight: 700, color: muted ? 'var(--ink-soft)' : 'var(--ink)' }}>{money(r.amount)}</td>
+          </tr>
+        ))}
+        {rows.length === 0 && <tr><td colSpan={4} style={{ ...td, color: 'var(--ink-soft)', textAlign: 'center', padding: 22 }}>Nothing in this range.</td></tr>}
+      </tbody>
+    </table>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="card" style={{ padding: '14px 18px', minWidth: 190 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)' }}>Billable this period</div>
+          <div style={{ fontSize: 26, fontWeight: 800, marginTop: 2 }}>{money(data.billable?.amount)}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>
+            {num(data.billable?.calls)} calls × {money(data.rate)} · {num(data.billable?.brands)} brands
+          </div>
+        </div>
+        <button className="btn btn-ghost" onClick={exportCSV}>Export Billing CSV</button>
+      </div>
+
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontSize: 14, fontWeight: 700 }}>
+          Billable brands
+        </div>
+        <Table rows={billableRows} />
+        <div style={{ padding: '11px 16px', borderTop: '2px solid var(--line)', display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 800 }}>
+          <span>Total to bill</span>
+          <span>{num(data.billable?.calls)} calls · {money(data.billable?.amount)}</span>
+        </div>
+      </div>
+
+      {internalRows.length > 0 && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden', opacity: .85 }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontSize: 13.5, fontWeight: 700, color: 'var(--ink-soft)' }}>
+            Internal — not billed
+            <span style={{ fontWeight: 400, fontSize: 12.5 }}> · shown for volume only, excluded from the total above</span>
+          </div>
+          <Table rows={internalRows} muted />
+        </div>
+      )}
+
+      <p className="page-sub" style={{ fontSize: 11.5, margin: 0 }}>
+        Counts calls the AI actually <b>scored</b> in this range — not calls merely added to the queue, which
+        would include ones that produced no review. Rate comes from the AI QA Spend screen, so changing it there
+        changes it here. To move a brand in or out of billing, edit <code>ai_qa_nonbillable_brands</code>.
+      </p>
+    </div>
+  )
+}
