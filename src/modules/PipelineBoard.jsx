@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth'
 import ProposalBuilder from './ProposalBuilder'
 import SalesEmailTemplates from './SalesEmailTemplates'
 import SalesSprintReport from './SalesSprintReport'
-import { useSalesEmailConfig, sendSalesEmail, variantLabel, researchStatus, RESEARCH_FIELDS, pitchBlockReason, STAGE_EMAIL_KIND } from '../lib/salesEmails'
+import { useSalesEmailConfig, sendSalesEmail, variantLabel, researchStatus, RESEARCH_FIELDS, pitchBlockReason, STAGE_EMAIL_KIND, useSalesLists, withCurrent } from '../lib/salesEmails'
 
 // People type "acme.com", not "https://acme.com". Store it with a scheme so
 // the link in the panel actually opens instead of resolving relative to the
@@ -87,19 +87,10 @@ const CLOSED = ['won', 'lost', 'email_unreachable']
 // church are sold the same thing and must not read the same letter — so it has
 // to be editable here, not only in the database. Same list as deals.industry
 // and as the vertical selector on the Stage emails screen.
-const VERTICALS = [
-  'Legal', 'Accounting & Finance', 'Healthcare & Medical', 'Home & Trade Services',
-  'Construction & Contracting', 'Industrial & Manufacturing', 'Distribution & Wholesale',
-  'Energy & Utilities', 'Environmental & Sustainability', 'Real Estate & Property',
-  'Technology & Software', 'Marketing & Media', 'Professional Services',
-  'Education & Nonprofit', 'Faith & Religious Organizations', 'Security & Life Safety',
-  'Hospitality Travel & Events', 'Transportation & Logistics', 'Consumer & Retail',
-  'Telecom', 'Other',
-]
-const SERVICE_LINES = [
-  'Inbound Answering', 'Outbound Appointment Setting', 'Back-Office Operations',
-  'Fractional Ops Leadership', 'Systems Implementation', 'Low fit',
-]
+// VERTICALS and SERVICE_LINES used to be hardcoded here, mirrored in
+// SalesEmailTemplates.jsx and locked by a CHECK constraint — three copies of one
+// list. They now live in `sales_verticals` / `sales_service_lines` and are read
+// through useSalesLists(), so marketing can add one without a deploy.
 const FIT_RATINGS = ['Strong', 'Moderate', 'Weak']
 // LinkedIn stages were retired from the board (July 2026). Their labels stay
 // so historical deals/stage events still display a readable name.
@@ -790,6 +781,10 @@ const PROP_STATUS = {
 }
 
 function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, onLost, onUpdate, busy, onOpenProposal, emailForStage = () => null, templateForDeal = () => null }) {
+  // Verticals and service lines come from the database now. withCurrent keeps a
+  // value the deal already carries visible even if that option was later
+  // retired, so editing an old deal can't silently blank its vertical.
+  const { verticals: VERTICALS, serviceLines: SERVICE_LINES } = useSalesLists()
   const [events, setEvents] = useState([])
   const [emailLog, setEmailLog] = useState([])
   const [proposal, setProposal] = useState(undefined)   // undefined = loading, null = none yet
@@ -1066,14 +1061,14 @@ function DealPanel({ deal, user, stages: STAGES, onClose, onTransition, onWon, o
                   <label style={elabel}>Industry / vertical</label>
                   <select value={form.industry} onChange={setFld('industry')} style={efield}>
                     <option value="">Not set — gets the default email</option>
-                    {VERTICALS.map(v => <option key={v} value={v}>{v}</option>)}
+                    {withCurrent(VERTICALS, form.industry).map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
                 </div>
                 <div style={{ marginBottom: 12 }}>
                   <label style={elabel}>Service line to pitch</label>
                   <select value={form.service_fit} onChange={setFld('service_fit')} style={efield}>
                     <option value="">Not set</option>
-                    {SERVICE_LINES.map(v => <option key={v} value={v}>{v}</option>)}
+                    {withCurrent(SERVICE_LINES, form.service_fit).map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
                 </div>
                 <div style={{ marginBottom: 12 }}>
@@ -1681,6 +1676,7 @@ function FormField({ lbl, value, onChange, type = 'text', placeholder, full, aut
 }
 
 function NewLeadModal({ pipelineKey = 'sales', onCancel, onCreated, onError }) {
+  const { verticals: VERTICALS, serviceLines: SERVICE_LINES } = useSalesLists()
   const [f, setF] = useState({
     organization: '', contact_person: '', title: '', contact_email: '',
     contact_phone: '', value: '', owner_name: '', source: '', notes: '', strategy: 'customer_service',

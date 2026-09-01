@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { MERGE_FIELDS, sendSalesEmail, invalidateSalesEmailCache, variantLabel } from '../lib/salesEmails'
+import { MERGE_FIELDS, sendSalesEmail, invalidateSalesEmailCache, variantLabel,
+         useSalesLists, withCurrent } from '../lib/salesEmails'
 
 // ============================================================================
 //  SALES EMAIL TEMPLATES
@@ -17,24 +18,11 @@ import { MERGE_FIELDS, sendSalesEmail, invalidateSalesEmailCache, variantLabel }
 //  again inside the send-sales-email function).
 // ============================================================================
 
-// The verticals a version can be written for — same list as deals.industry.
-// A law firm and a church are sold the same service and must not read the same
-// letter, so this is the key that changes the voice.
-const VERTICALS = [
-  'Legal', 'Accounting & Finance', 'Healthcare & Medical', 'Home & Trade Services',
-  'Construction & Contracting', 'Industrial & Manufacturing', 'Distribution & Wholesale',
-  'Energy & Utilities', 'Environmental & Sustainability', 'Real Estate & Property',
-  'Technology & Software', 'Marketing & Media', 'Professional Services',
-  'Education & Nonprofit', 'Faith & Religious Organizations', 'Security & Life Safety',
-  'Hospitality Travel & Events', 'Transportation & Logistics', 'Consumer & Retail',
-  'Telecom', 'Other',
-]
-
-// The service line a version can be written for — same list as deals.service_fit.
-const SERVICE_LINES = [
-  'Inbound Answering', 'Outbound Appointment Setting', 'Back-Office Operations',
-  'Fractional Ops Leadership', 'Systems Implementation', 'Low fit',
-]
+// The verticals and service lines a version can be written for now come from
+// `sales_verticals` / `sales_service_lines` — see useSalesLists. They used to be
+// hardcoded here AND in PipelineBoard.jsx AND enforced by a CHECK constraint, so
+// adding one took a migration and a deploy. That is what blocked Corinne on
+// 2026-08-31 with two emails written and nowhere to file them.
 
 const STAGE_TITLE = {
   email_1_sent: 'Email 1 Sent',
@@ -47,6 +35,8 @@ const STAGE_TITLE = {
 export default function SalesEmailTemplates({ onClose, onSaved }) {
   const { appRole, isAdmin } = useAuth()
   const canEdit = isAdmin || ['admin', 'marketing'].includes(String(appRole || '').toLowerCase())
+  const { verticals: VERTICALS, serviceLines: SERVICE_LINES, reload: reloadLists } = useSalesLists()
+  const [managing, setManaging] = useState(false)
 
   const [rows, setRows] = useState([])
   const [activeId, setActiveId] = useState(null)
@@ -111,14 +101,28 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
   }
 
   // A new version starts as a copy of the one you are looking at, switched off,
-  // with no vertical set — so it cannot start sending before you have written it.
+  // so it cannot start sending before you have written it.
+  //
+  // It is created against the first vertical that does not already have a
+  // version of this email — NOT against no vertical at all. The old code did the
+  // latter, which collided with the stage's existing default on
+  // `sales_email_templates_slot_idx` every single time: every stage has a
+  // default, so "+ Add version" raised a duplicate-key error and created
+  // nothing, on every stage. That is the bug Corinne hit ("I can't figure out
+  // how to add more options on the left side") — the button never worked.
   async function addVersion() {
     if (!draft || !canEdit) return
+    const taken = new Set(rows.filter(r => r.kind === draft.kind && r.industry).map(r => r.industry))
+    const free = VERTICALS.find(v => !taken.has(v))
+    if (!free) {
+      setErr('Every vertical already has a version of this email. Add a new vertical first, or edit an existing version.')
+      return
+    }
     setSaving(true); setErr(''); setFlash('')
     const { id, updated_at, updated_by, ...rest } = draft
     const { data, error } = await supabase.from('sales_email_templates')
-      .insert({ ...rest, enabled: false, is_default: false, industry: null, audience: null,
-                variant_name: 'New version', updated_at: new Date().toISOString() })
+      .insert({ ...rest, enabled: false, is_default: false, industry: free, audience: null,
+                variant_name: free, updated_at: new Date().toISOString() })
       .select().single()
     setSaving(false)
     if (error) {
@@ -129,7 +133,7 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
     }
     setRows(prev => [...prev, data]); setActiveId(data.id); setDraft({ ...data })
     invalidateSalesEmailCache()
-    setFlash('New version created, switched off. Give it a vertical and write the copy.')
+    setFlash(`New version created for ${free}, switched off. Change the vertical if you meant a different one, then write the copy.`)
   }
 
   async function deleteVersion() {
@@ -289,6 +293,12 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
                           style={{ border: '1px solid var(--line)', borderRadius: 7, background: 'var(--surface)', color: 'var(--ink)', fontSize: 12.5, fontWeight: 600, padding: '5px 11px', cursor: canEdit ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>
                           ＋ Add a version
                         </button>
+                        {canEdit && (
+                          <button onClick={() => setManaging(true)} title="Add or hide the verticals and service lines these dropdowns offer"
+                            style={{ border: '1px solid var(--line)', borderRadius: 7, background: 'var(--surface)', color: 'var(--ink)', fontSize: 12.5, fontWeight: 600, padding: '5px 11px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                            ⚙ Manage lists
+                          </button>
+                        )}
                         {(draft.industry || draft.audience) && (
                           <button onClick={deleteVersion} disabled={!canEdit || saving}
                             style={{ border: '1px solid var(--line)', borderRadius: 7, background: 'var(--surface)', color: 'var(--failed, #DC2626)', fontSize: 12.5, fontWeight: 600, padding: '5px 11px', cursor: canEdit ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>
@@ -304,7 +314,7 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
                         <select value={draft.industry || ''} disabled={!canEdit}
                           onChange={e => setDraft(d => ({ ...d, industry: e.target.value || null }))} style={input}>
                           <option value="">Any vertical (the fallback)</option>
-                          {VERTICALS.map(v => <option key={v} value={v}>{v}</option>)}
+                          {withCurrent(VERTICALS, draft.industry).map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       </div>
                       <div style={{ marginBottom: 10 }}>
@@ -312,7 +322,7 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
                         <select value={draft.audience || ''} disabled={!canEdit}
                           onChange={e => setDraft(d => ({ ...d, audience: e.target.value || null }))} style={input}>
                           <option value="">Any service line</option>
-                          {SERVICE_LINES.map(v => <option key={v} value={v}>{v}</option>)}
+                          {withCurrent(SERVICE_LINES, draft.audience).map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       </div>
                       <div style={{ gridColumn: '1 / -1' }}>
@@ -428,6 +438,155 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
             </div>
           </div>
         )}
+
+        {managing && (
+          <ManageSalesLists
+            onClose={() => setManaging(false)}
+            onSaved={() => { reloadLists(); }}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+//  MANAGE LISTS — verticals and service lines, without a deploy
+// ============================================================================
+//  The list a version can be written for is now data (`sales_verticals` /
+//  `sales_service_lines`), referenced by foreign keys from deals and templates.
+//  So the database still refuses a value nobody defined — but defining one is a
+//  row, and this is the screen that adds it.
+//
+//  Deactivate, don't delete. A vertical in use is protected by the foreign key
+//  and the delete will be refused; deactivating hides it from the dropdowns
+//  while leaving every deal that already carries it intact.
+export function ManageSalesLists({ onClose, onSaved }) {
+  const { appRole, isAdmin } = useAuth()
+  const canEdit = isAdmin || ['admin', 'marketing'].includes(String(appRole || '').toLowerCase())
+  const [tab, setTab] = useState('verticals')
+  const [rows, setRows] = useState([])
+  const [label, setLabel] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [flash, setFlash] = useState('')
+
+  const table = tab === 'verticals' ? 'sales_verticals' : 'sales_service_lines'
+  const noun = tab === 'verticals' ? 'vertical' : 'service line'
+
+  const load = async () => {
+    const { data, error } = await supabase.from(table).select('*').order('sort_order')
+    if (error) { setErr(error.message); return }
+    setRows(data || []); setErr('')
+  }
+  useEffect(() => { load() }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function add() {
+    const clean = label.trim()
+    if (!clean || !canEdit) return
+    setBusy(true); setErr(''); setFlash('')
+    const next = Math.max(0, ...rows.map(r => r.sort_order || 0)) + 10
+    const { error } = await supabase.from(table).insert({ label: clean, sort_order: next })
+    setBusy(false)
+    if (error) {
+      setErr(error.message.includes('duplicate key')
+        ? `“${clean}” is already on the list.` : error.message)
+      return
+    }
+    setLabel(''); setFlash(`Added “${clean}”. It is selectable everywhere now.`)
+    await load(); onSaved?.()
+  }
+
+  async function toggle(row) {
+    if (!canEdit) return
+    setBusy(true); setErr('')
+    const { error } = await supabase.from(table).update({ is_active: !row.is_active }).eq('label', row.label)
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    await load(); onSaved?.()
+  }
+
+  async function remove(row) {
+    if (!canEdit) return
+    if (!window.confirm(`Delete “${row.label}” from the ${noun} list?\n\nIf any deal or email version still uses it this will be refused — deactivate it instead.`)) return
+    setBusy(true); setErr(''); setFlash('')
+    const { error } = await supabase.from(table).delete().eq('label', row.label)
+    setBusy(false)
+    if (error) {
+      // 23503 = foreign_key_violation. Say what it means, not what Postgres said.
+      setErr(error.code === '23503' || /foreign key/i.test(error.message)
+        ? `“${row.label}” is still in use by at least one deal or email version, so it can't be deleted. Switch it off instead — that hides it from the dropdowns without touching those records.`
+        : error.message)
+      return
+    }
+    setFlash(`Deleted “${row.label}”.`)
+    await load(); onSaved?.()
+  }
+
+  const btn = { border: '1px solid var(--line)', borderRadius: 8, background: 'var(--canvas)', color: 'var(--ink)', fontSize: 12.5, fontWeight: 700, padding: '6px 11px', cursor: 'pointer', fontFamily: 'inherit' }
+  const td = { padding: '9px 10px', borderTop: '1px solid var(--line)', fontSize: 13.5 }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 70, padding: 24, overflowY: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 14, width: 'min(560px, 100%)', padding: 20, color: 'var(--ink)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+          <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0, flex: 1 }}>Manage lists</h2>
+          <button onClick={onClose} style={btn}>Close</button>
+        </div>
+        <p style={{ fontSize: 13, color: 'var(--ink-soft)', margin: '0 0 14px' }}>
+          What you can write an email version for, and what a lead can be tagged as. Adding here takes effect everywhere immediately.
+        </p>
+
+        <div style={{ display: 'inline-flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
+          {[['verticals', 'Verticals — who we sell to'], ['service', 'Service lines — what we sell']].map(([k, t]) => (
+            <button key={k} onClick={() => setTab(k)}
+              style={{ border: 0, background: tab === k ? 'var(--accent)' : 'var(--surface)', color: tab === k ? '#fff' : 'var(--ink)', fontSize: 12.5, fontWeight: 700, padding: '7px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '9px 12px', fontSize: 13, marginBottom: 12 }}>{err}</div>}
+        {flash && <div style={{ background: '#e8f5e9', border: '1px solid #c8e6c9', color: '#1b5e20', borderRadius: 8, padding: '9px 12px', fontSize: 13, marginBottom: 12 }}>{flash}</div>}
+
+        {canEdit && (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            <input value={label} onChange={e => setLabel(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') add() }}
+              placeholder={tab === 'verticals' ? 'e.g. Call Center' : 'e.g. Overflow Support'}
+              style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, padding: '8px 11px', fontSize: 13.5, background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'inherit' }} />
+            <button onClick={add} disabled={busy || !label.trim()}
+              style={{ ...btn, background: 'var(--accent)', color: '#fff', border: 0, opacity: busy || !label.trim() ? .5 : 1 }}>
+              Add {noun}
+            </button>
+          </div>
+        )}
+
+        <div style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.label}>
+                  <td style={{ ...td, fontWeight: r.is_active ? 600 : 400, color: r.is_active ? 'var(--ink)' : 'var(--ink-soft)' }}>
+                    {r.label}
+                    {!r.is_active && <span style={{ fontSize: 11.5, marginLeft: 8, color: 'var(--ink-soft)' }}>· hidden</span>}
+                  </td>
+                  <td style={{ ...td, width: 190, textAlign: 'right' }}>
+                    {canEdit && (
+                      <>
+                        <button onClick={() => toggle(r)} disabled={busy} style={{ ...btn, marginRight: 6 }}>
+                          {r.is_active ? 'Switch off' : 'Switch on'}
+                        </button>
+                        <button onClick={() => remove(r)} disabled={busy} style={{ ...btn, color: '#B91C1C' }}>Delete</button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 && <tr><td style={{ ...td, color: 'var(--ink-soft)', textAlign: 'center', padding: 20 }}>Nothing on this list yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )
