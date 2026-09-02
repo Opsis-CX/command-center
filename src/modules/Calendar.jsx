@@ -1615,7 +1615,10 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, 
   }
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }} onClick={onClose}>
-      <div className="card" style={{ width: 420, maxWidth: '90vw', padding: 20 }} onClick={e => e.stopPropagation()}>
+      {/* Capped to the viewport and scrollable inside — the form grew past most
+          laptop screens (title/date at the top and Save at the bottom were both
+          cut off, 2026-09-02). Same treatment as the other calendar modals. */}
+      <div className="card" style={{ width: 420, maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto', padding: 20, boxSizing: 'border-box' }} onClick={e => e.stopPropagation()}>
         <h3 style={{ margin: '0 0 14px', fontSize: 16 }}>{isNew ? 'Add event' : isOwner ? 'Edit event' : 'Event details'}</h3>
         {!isOwner && (
           <div style={{ fontSize: 12, color: 'var(--ink-soft)', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
