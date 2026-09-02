@@ -3,6 +3,7 @@ import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { ROLES, can, canAny } from '../lib/permissions'
 import RawDataExport from './RawDataExport'
+import { SALES_STAGES, RSN_STAGES } from './PipelineBoard'
 
 const ROLE_LABELS = Object.fromEntries(ROLES.map(r => [r.key, r.label]))
 
@@ -1684,9 +1685,19 @@ function TokensReport({ range, profiles, allowedIds }) {
 }
 
 // ================= Sales / RSN pipeline (deals) =================
-const DEAL_STATUS_LABELS = { new_lead: 'New lead', email_1_sent: 'Email sent', email_unreachable: 'Unreachable', proposal_sent: 'Proposal sent', lost: 'Lost' }
+const DEAL_STATUS_LABELS = {
+  ...Object.fromEntries(RSN_STAGES.map(s => [s.key, s.title])),
+  won: 'Won', lost: 'Lost', email_unreachable: 'Unreachable',
+}
+// Terminal states that also get a "date reached" column in the export.
+const DEAL_TERMINAL_STAGES = [
+  { key: 'won', title: 'Won' },
+  { key: 'lost', title: 'Lost' },
+  { key: 'email_unreachable', title: 'Unreachable' },
+]
 function DealsReport({ range, pipeline, allowedIds }) {
   const [rows, setRows] = useState(null)
+  const [history, setHistory] = useState({})
   const [err, setErr] = useState('')
   useEffect(() => {
     let active = true; setRows(null); setErr('')
@@ -1698,6 +1709,21 @@ function DealsReport({ range, pipeline, allowedIds }) {
       if (!active) return
       if (error) { setErr(error.message); return }
       setRows(data || [])
+      // Stage history: first time each deal entered each stage (deal_stage_events.to_status).
+      // Fetched in id chunks to stay under the URL length limit.
+      const ids = (data || []).map(d => d.id)
+      const firstAt = {}
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data: ev } = await supabase.from('deal_stage_events')
+          .select('deal_id, to_status, created_at')
+          .in('deal_id', ids.slice(i, i + 200))
+          .order('created_at', { ascending: true })
+        for (const e of (ev || [])) {
+          if (!firstAt[e.deal_id]) firstAt[e.deal_id] = {}
+          if (!firstAt[e.deal_id][e.to_status]) firstAt[e.deal_id][e.to_status] = e.created_at
+        }
+      }
+      if (active) setHistory(firstAt)
     })()
     return () => { active = false }
   }, [range.from, range.to, pipeline])
@@ -1719,8 +1745,23 @@ function DealsReport({ range, pipeline, allowedIds }) {
   }), [filtered])
 
   function exportCsv() {
-    const out = [['Deal', 'Status', 'Value', 'Owner', 'Next activity', 'Last emailed', 'Created', 'Lost reason']]
-    filtered.forEach(d => out.push([d.title || '', DEAL_STATUS_LABELS[d.status] || d.status || '', d.value || '', d.owner_name || '', d.next_activity || '', d.last_emailed_at ? new Date(d.last_emailed_at).toLocaleDateString() : '', d.created_at ? new Date(d.created_at).toLocaleDateString() : '', d.lost_reason || '']))
+    // One "date reached" column per pipeline stage (Call 1 Made, Email 1 Sent, …) plus Won/Lost/Unreachable,
+    // so the history behind each lead survives even after its status moves on.
+    const stageCols = [...(pipeline === 'rsn' ? RSN_STAGES : SALES_STAGES).filter(s => s.key !== 'new_lead'), ...DEAL_TERMINAL_STAGES]
+    const day = (ts) => ts ? new Date(ts).toLocaleDateString() : ''
+    const out = [['Deal', 'Status', 'Value', 'Owner', 'Next activity', 'Last emailed', 'Created', 'Lost reason', ...stageCols.map(s => s.title)]]
+    filtered.forEach(d => {
+      const h = history[d.id] || {}
+      const stageDates = stageCols.map(s => {
+        let ts = h[s.key]
+        // Deals bulk-imported before stage logging existed have no event rows; fall back to the
+        // current status (reached by unknown date → mark with the last known email/created stamp).
+        if (!ts && d.status === s.key) ts = (s.key === 'email_1_sent' && d.last_emailed_at) || d.created_at
+        if (!ts && s.key === 'email_1_sent' && d.last_emailed_at) ts = d.last_emailed_at
+        return day(ts)
+      })
+      out.push([d.title || '', DEAL_STATUS_LABELS[d.status] || d.status || '', d.value || '', d.owner_name || '', d.next_activity || '', day(d.last_emailed_at), day(d.created_at), d.lost_reason || '', ...stageDates])
+    })
     downloadCSV(`${pipeline}-pipeline-${range.from}_to_${range.to}.csv`, out)
   }
 
