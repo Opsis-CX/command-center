@@ -291,10 +291,11 @@ export default function CallQA({ portal = false } = {}) {
   const [pipeline, setPipeline] = useState({})
   const [selected, setSelected] = useState(null)
   const [busy, setBusy] = useState('')
-  // Default range is role-aware: the team lands on the last 7 days (weekly coaching
-  // cadence, lighter query), while the client portal keeps the broader 30-day view
-  // execs expect. Everyone can still switch the Range freely.
-  const [days, setDays] = useState(portalMode ? 30 : 7)
+  // Default range is the last 7 days for everyone, including the client portal
+  // (2026-09-02, Becky: the 30-day portal default was ~28k rows / ~72 MB and the
+  // cause of every Call QA timeout incident). Clients who want 30 days pick it
+  // from the Range dropdown — the presets are unchanged.
+  const [days, setDays] = useState(7)
   const [startDate, setStartDate] = useState('') // YYYY-MM-DD; when set (with endDate) overrides the Range preset
   const [endDate, setEndDate] = useState('')
   const [brand, setBrand] = useState('all')
