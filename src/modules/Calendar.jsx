@@ -124,7 +124,7 @@ export default function Calendar() {
   const [assignees, setAssignees] = useState([])
   const [claims, setClaims] = useState([])
   const [blocks, setBlocks] = useState([])
-  const [coaching, setCoaching] = useState([])   // coaching sessions (own or team) — CC-only, never Google
+  const [coaching, setCoaching] = useState([])   // coaching sessions the viewer is on — CC-only, never Google
   const [profiles, setProfiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [editEvent, setEditEvent] = useState(null)   // event obj or {} for new
@@ -165,7 +165,10 @@ export default function Calendar() {
       fetchAllRows(() => supabase.from('time_entries').select('id, task_id, user_id, started_at, ended_at, duration_minutes').order('id')),
       supabase.from('calendar_shares').select('*').eq('viewer_id', uid),
       supabase.from('calendar_shares').select('*').eq('owner_id', uid),
-      supabase.from('coaching_sessions').select('id, kind, asc_id, agent_id, applicant_name, session_date, start_time, end_time, status, topic, meeting_url').eq('status', 'booked'),
+      // Only sessions the viewer is actually on (as coach/ASC or as agent). Admins can read every
+      // session via RLS, so without this filter every mock call / coaching session in the company
+      // would land on an admin's personal calendar.
+      supabase.from('coaching_sessions').select('id, kind, asc_id, agent_id, applicant_name, session_date, start_time, end_time, status, topic, meeting_url').eq('status', 'booked').or(`asc_id.eq.${uid},agent_id.eq.${uid}`),
     ])
     setEvents(evRes.data || [])
     setTasks(taskRes.data || [])
