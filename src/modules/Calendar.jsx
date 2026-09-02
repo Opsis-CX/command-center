@@ -125,7 +125,8 @@ export default function Calendar() {
   const [claims, setClaims] = useState([])
   const [blocks, setBlocks] = useState([])
   const [coaching, setCoaching] = useState([])   // coaching sessions the viewer is on — CC-only, never Google
-  const [profiles, setProfiles] = useState([])
+  const [profiles, setProfiles] = useState([])       // name lookup for historical rows — NOT a picker
+  const [invitable, setInvitable] = useState([])     // staff-only picker list (people_assignable view)
   const [loading, setLoading] = useState(true)
   const [editEvent, setEditEvent] = useState(null)   // event obj or {} for new
   const [detailItem, setDetailItem] = useState(null) // item to show read-only detail
@@ -151,13 +152,17 @@ export default function Calendar() {
       const { data: prof } = await supabase.from('profiles').select('timezone').eq('id', uid).maybeSingle()
       setViewerTZ(prof?.timezone || COMPANY_TZ)
     }
-    const [evRes, taskRes, taRes, clmRes, blkRes, profRes, subRes, feedRes, gtRes, geRes, timeRes, shareInRes, shareOutRes, coachRes] = await Promise.all([
+    const [evRes, taskRes, taRes, clmRes, blkRes, profRes, invRes, subRes, feedRes, gtRes, geRes, timeRes, shareInRes, shareOutRes, coachRes] = await Promise.all([
       supabase.from('calendar_events').select('*'),
       fetchAllRows(() => supabase.from('tasks').select('id, name, due_date, priority, status, project_id').is('deleted_at', null).order('id')),
       fetchAllRows(() => supabase.from('task_assignees').select('task_id, profile_id').order('id')),
       fetchAllRows(() => supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at').order('id')),
       fetchAllRows(() => supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role').order('id')),
       supabase.from('profiles').select('id, full_name'),
+      // Invitee picker: active staff only — agents, clients and deactivated accounts are
+      // excluded by the view (2026-09-02, Becky). `profiles` above stays unfiltered so
+      // existing invitees who have since left still render by name.
+      supabase.from('people_assignable').select('id, full_name'),
       supabase.from('calendar_subscriptions').select('*'),
       supabase.from('calendar_feed_events').select('*'),
       supabase.from('calendar_accounts').select('id, provider, account_email, color, is_default, target_calendar_name, last_synced_at, last_error, sync_enabled, connected_at').eq('provider', 'google'),
@@ -176,6 +181,7 @@ export default function Calendar() {
     setClaims(clmRes.data || [])
     setBlocks(blkRes.data || [])
     setProfiles(profRes.data || [])
+    setInvitable((invRes.data || []).filter(p => !/\btest$/i.test((p.full_name || '').trim())))
     setSubs(subRes.data || [])
     setFeedEvents(feedRes.data || [])
     // Multi-account Google: gtRes is now a list of connected google accounts.
@@ -337,7 +343,7 @@ export default function Calendar() {
         {view === 'day' && <DayView {...shared} />}
       </BookFrame>
       {showShares && (
-        <SharesModal userId={userId} profiles={profiles} sharedWithMe={sharedWithMe} mySharedOut={mySharedOut}
+        <SharesModal userId={userId} profiles={profiles} invitable={invitable} sharedWithMe={sharedWithMe} mySharedOut={mySharedOut}
           hiddenShares={hiddenShares} setHiddenShares={setHiddenShares}
           onClose={() => setShowShares(false)} onChanged={() => load()} />
       )}
@@ -349,7 +355,7 @@ export default function Calendar() {
       {detailItem && <EventDetailModal item={detailItem} onClose={() => setDetailItem(null)}
         onEdit={(raw) => { setDetailItem(null); setEditEvent(raw) }} />}
       {editEvent && (
-        <EventModal event={editEvent} userId={userId} isAdmin={isAdmin} gcalConn={gcalConn} profiles={profiles}
+        <EventModal event={editEvent} userId={userId} isAdmin={isAdmin} gcalConn={gcalConn} profiles={profiles} invitable={invitable}
           onClose={() => setEditEvent(null)}
           onSaved={() => { setEditEvent(null); load() }} />
       )}
@@ -1125,12 +1131,12 @@ function PanelHead({ children }) {
   return <div style={{ color: '#c07a5a', fontSize: 12, letterSpacing: 2, fontWeight: 500 }}>{children}</div>
 }
 // ---------- SHARED CALENDARS ----------
-function SharesModal({ userId, profiles, sharedWithMe, mySharedOut, hiddenShares, setHiddenShares, onClose, onChanged }) {
+function SharesModal({ userId, profiles, invitable = [], sharedWithMe, mySharedOut, hiddenShares, setHiddenShares, onClose, onChanged }) {
   const [pick, setPick] = useState('')
   const [busy, setBusy] = useState(false)
   const nameOf = (pid) => (profiles.find(p => p.id === pid) || {}).full_name || 'Unknown'
   const alreadyShared = new Set(mySharedOut.map(s => s.viewer_id))
-  const candidates = profiles.filter(p => p.id !== userId && !alreadyShared.has(p.id))
+  const candidates = invitable.filter(p => p.id !== userId && !alreadyShared.has(p.id))   // staff only
   async function shareWith() {
     if (!pick) return
     setBusy(true)
@@ -1425,10 +1431,10 @@ function EventDetailModal({ item, onClose, onEdit }) {
 // A compact searchable multi-select over team members. Selected people show as
 // removable chips; the list below toggles membership. Excludes the current user
 // (the owner is implicitly attending their own event).
-function InviteePicker({ profiles, userId, value, onChange }) {
+function InviteePicker({ profiles, invitable, userId, value, onChange }) {
   const [q, setQ] = useState('')
   const nameOf = (id) => (profiles.find(p => p.id === id) || {}).full_name || 'Unknown'
-  const list = profiles
+  const list = (invitable || [])
     .filter(p => p.id !== userId)
     .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
   const needle = q.trim().toLowerCase()
@@ -1464,7 +1470,7 @@ function InviteePicker({ profiles, userId, value, onChange }) {
   )
 }
 // ---------- EVENT MODAL ----------
-function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, onSaved }) {
+function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], invitable = [], onClose, onSaved }) {
   const isNew = !event.id
   // Only the owner (or a brand-new event) can edit; invitees see it read-only.
   const isOwner = isNew || event.owner_id === userId
@@ -1683,7 +1689,7 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], onClose, 
         <div className="field"><label>Invitees</label>
           {isOwner ? (
             <>
-              <InviteePicker profiles={profiles} userId={userId} value={invitees} onChange={setInvitees} />
+              <InviteePicker profiles={profiles} invitable={invitable} userId={userId} value={invitees} onChange={setInvitees} />
               <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>Invited people see this event on their calendar, even if it's set to Personal.</div>
             </>
           ) : (
