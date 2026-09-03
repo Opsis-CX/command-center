@@ -650,6 +650,7 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
       {showReport && <SalesSprintReport pipelineKey={pipelineKey} onClose={() => setShowReport(false)} />}
 
       {importing && <ImportModal
+        stages={STAGES}
         pipelineKey={pipelineKey}
         onCancel={() => setImporting(false)}
         onDone={() => { setImporting(false); load() }}
@@ -1467,17 +1468,46 @@ const LABEL_TO_STATUS = Object.fromEntries(
 const stageToStatus = (text) => LABEL_TO_STATUS[(text || '').toLowerCase().trim()] || 'new_lead'
 
 const IMPORT_FIELDS = [
-  { key: 'organization',   label: 'Organization', required: true, match: ['organization', 'company', 'account'] },
-  { key: 'contact_person', label: 'Contact person', match: ['contact person', 'person - name', 'contact name', 'full name', 'name'], avoid: ['date', 'time'] },
+  { key: 'organization',   label: 'Organization', required: true, match: ['organization', 'company', 'account'], avoid: ['phone', 'website', 'url'] },
+  { key: 'contact_person', label: 'Contact person', match: ['contact person', 'person - name', 'contact name', 'full name', 'name'], avoid: ['date', 'time', 'company', 'organization'] },
   { key: 'title',          label: 'Role / title', match: ['title', 'role', 'job'] },
-  { key: 'type',           label: 'Type', match: ['type', 'deal type', 'service type'] },
-  { key: 'status',         label: 'Stage', match: ['stage'] },
   { key: 'contact_email',  label: 'Email', match: ['email', 'e-mail'], avoid: ['date', 'time', 'sent', 'opened', 'clicked', 'count', 'status'] },
-  { key: 'contact_phone',  label: 'Phone', match: ['phone', 'mobile', 'tel'], avoid: ['date', 'time', 'count'] },
-  { key: 'value',          label: 'Value', match: ['value', 'amount'] },
+  { key: 'contact_phone',  label: 'Phone', match: ['phone', 'mobile', 'tel'], avoid: ['date', 'time', 'count', 'company', 'main'] },
+  { key: 'company_phone',  label: 'Company phone', match: ['company phone', 'main phone', 'office phone'] },
+  { key: 'website',        label: 'Website', match: ['website', 'url', 'domain'] },
+  { key: 'industry',       label: 'Industry', match: ['industry', 'vertical'] },
+  { key: 'type',           label: 'Type', match: ['type', 'deal type', 'service type'] },
+  { key: 'service_fit',    label: 'Service fit', match: ['service fit', 'service line', 'fit'] },
+  { key: 'strategy',       label: 'Strategy', match: ['strategy'] },
+  { key: 'status',         label: 'Stage', match: ['stage'] },
   { key: 'owner_name',     label: 'Owner', match: ['owner'] },
   { key: 'source',         label: 'Source', match: ['source', 'channel'] },
+  { key: 'value',          label: 'Value', match: ['value', 'amount'] },
+  { key: 'notes',          label: 'Notes', match: ['notes', 'comments', 'description'] },
 ]
+// Allowed values (mirror the CHECK constraints on `deals`). Anything else is
+// coerced so an import never dies on a constraint half-way through a file.
+const DEAL_TYPES = ['Professional Services', 'Home & Trades', 'Healthcare', 'Technology', 'Industrial & Logistics', 'Real Estate', 'Retail & Hospitality', 'Other']
+const coerceType = (v) => { const t = (v || '').trim().toLowerCase(); return DEAL_TYPES.find(d => d.toLowerCase() === t) || 'Other' }
+const coerceStrategy = (v) => { const t = (v || '').trim().toLowerCase().replace(/[\s-]+/g, '_'); return t === 'speed_to_lead' ? 'speed_to_lead' : 'customer_service' }
+
+// The blank import template. Same headers autoMap() recognises, one example
+// row, and a second row that lists the allowed values so nobody has to guess.
+const TEMPLATE_HEADERS = ['Organization', 'Contact person', 'Title', 'Email', 'Phone', 'Company phone', 'Website', 'Industry', 'Type', 'Service fit', 'Strategy', 'Stage', 'Owner', 'Source', 'Value', 'Notes']
+function downloadImportTemplate(stages) {
+  const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"'
+  const rows = [
+    TEMPLATE_HEADERS,
+    ['Acme Garage Doors', 'Jane Smith', 'Operations Manager', 'jane@acmedoors.com', '555-201-0100', '555-201-0000', 'https://acmedoors.com', 'Home & Trade Services', 'Home & Trades', 'Inbound Answering', 'Customer Service', 'New Lead', 'Becky Jackson', 'Import', '2500', 'Met at trade show; wants after-hours coverage'],
+    ['(delete this row) Only Organization is required. Type must be one of: ' + DEAL_TYPES.join(' / ') + '. Strategy: Customer Service or Speed to Lead. Stage: ' + stages.map(s => s.title).join(' / ') + ' (blank = New Lead). Value = numbers only.', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+  ]
+  const csv = '\uFEFF' + rows.map(r => r.map(q).join(',')).join('\r\n') + '\r\n'
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob); a.download = 'lead-import-template.csv'
+  document.body.appendChild(a); a.click(); document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+}
 // Guess a column for each field. We rank candidates: an exact header match wins
 // over a prefix match, which wins over a loose substring match — and a column is
 // never reused for two fields. `avoid` terms disqualify a header outright, so a
@@ -1507,7 +1537,7 @@ function autoMap(headers) {
   return map
 }
 
-function ImportModal({ pipelineKey = 'sales', onCancel, onDone, onError }) {
+function ImportModal({ pipelineKey = 'sales', stages = SALES_STAGES, onCancel, onDone, onError }) {
   const [parsed, setParsed] = useState(null)   // { headers, rows }
   const [map, setMap] = useState({})
   const [fileName, setFileName] = useState('')
@@ -1547,13 +1577,21 @@ function ImportModal({ pipelineKey = 'sales', onCancel, onDone, onError }) {
       status: (map.status != null && map.status >= 0) ? stageToStatus(cell(r, 'status')) : 'new_lead',
       organization: clean(cell(r, 'organization')),
       contact_person: clean(cell(r, 'contact_person')),
-      title: clean(cell(r, 'title')),
-      type: clean(cell(r, 'type')),
+      // `title` and `type` are NOT NULL on deals — a blank used to abort the
+      // whole import ("null value in column title"). Coerce instead.
+      title: clean(cell(r, 'title')) || '',
+      type: coerceType(cell(r, 'type')),
+      strategy: coerceStrategy(cell(r, 'strategy')),
       contact_email: clean(cell(r, 'contact_email')),
       contact_phone: clean(cell(r, 'contact_phone')),
+      company_phone: clean(cell(r, 'company_phone')),
+      website: clean(cell(r, 'website')) ? normalizeUrl(cell(r, 'website')) : null,
+      industry: clean(cell(r, 'industry')),
+      service_fit: clean(cell(r, 'service_fit')),
       owner_name: clean(cell(r, 'owner_name')),
-      source: clean(cell(r, 'source')),
+      source: clean(cell(r, 'source')) || 'Import',
       value: toNum(cell(r, 'value')),
+      notes: clean(cell(r, 'notes')),
     }))
     let inserted = 0
     for (let i = 0; i < rows.length; i += 200) {
@@ -1595,8 +1633,15 @@ function ImportModal({ pipelineKey = 'sales', onCancel, onDone, onError }) {
           </div>
         ) : !parsed ? (
           <div style={{ border: '1px dashed var(--line)', borderRadius: 10, padding: 28, textAlign: 'center', background: 'var(--canvas)' }}>
-            <div style={{ fontSize: 13.5, color: 'var(--ink-soft)', marginBottom: 10 }}>Choose a .csv file exported from your CRM</div>
+            <div style={{ fontSize: 13.5, color: 'var(--ink-soft)', marginBottom: 10 }}>Choose a .csv file exported from your CRM, or fill in the template</div>
             <input type="file" accept=".csv,text/csv" onChange={onFile} />
+            <div style={{ marginTop: 14 }}>
+              <button type="button" onClick={() => downloadImportTemplate(stages)}
+                style={{ border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', fontSize: 12.5, fontWeight: 700, padding: '6px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                ⬇ Download import template (.csv)
+              </button>
+              <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginTop: 6 }}>Only Organization is required. Columns in the template map automatically.</div>
+            </div>
           </div>
         ) : (
           <div>
