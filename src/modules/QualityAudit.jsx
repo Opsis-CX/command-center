@@ -712,6 +712,22 @@ function Td({ children, right }) {
 // ============================================================
 const MAX_REVIEW_AUDIO_BYTES = 50 * 1024 * 1024 // 50MB
 
+// Agent-facing page for the call reviews ("ICRs"). Agents lost the /quality
+// route in the 2026-08-12 access correction, and this form only lived there —
+// so 12 reviews sat pending with nowhere to complete them. /my-call-reviews
+// (2026-09-03) gives every agent their own page; auditors keep the tab here.
+export function MyCallReviews() {
+  return (
+    <div>
+      <div style={{ marginBottom: 18 }}>
+        <h1 className="page-title">My Call Reviews</h1>
+        <p className="page-sub">Listen to the call your coach picked, then share 3 things you did well and 3 things you'd improve.</p>
+      </div>
+      <CallReviews isAuditor={false} />
+    </div>
+  )
+}
+
 function CallReviews({ isAuditor }) {
   const { user } = useAuth()
   const [me, setMe] = useState(null)
