@@ -65,6 +65,7 @@ import ApplicationForm from './modules/ApplicationForm'
 import AssessmentForm from './modules/AssessmentForm'
 import HiringDashboard from './modules/HiringDashboard'
 import MockCallScheduler from './modules/MockCallScheduler'
+import TradeBoardChannel from './modules/TradeBoardChannel'
 // --- sales pipeline ---
 import SalesDashboard from './modules/SalesDashboard'
 // Website chat inbox - conversations from opsiscx.com, where Turri hands off
@@ -226,6 +227,17 @@ function TraineePortal({ session }) {
       .catch(() => { if (active) setMock({ ok: false }) })
     return () => { active = false }
   }, [session.user.id])
+  // 2026-09-03 (Becky): once the certification is PASSED, a hire may start
+  // taking intervals ("nesting") before the pipeline reaches Hired — so the
+  // Schedule and Trade Board unlock here. Everything else stays locked.
+  const [certPassed, setCertPassed] = useState(false)
+  useEffect(() => {
+    let active = true
+    supabase.from('agent_cert_records').select('id').eq('profile_id', session.user.id).eq('status', 'passed').limit(1)
+      .then(({ data }) => { if (active) setCertPassed(!!(data && data.length)) })
+      .catch(() => {})
+    return () => { active = false }
+  }, [session.user.id])
   if (mustChange === null) return <div className="loading-screen">Loading…</div>
   if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
 
@@ -254,8 +266,18 @@ function TraineePortal({ session }) {
           {tabBtn('certs', 'My Certifications')}
           {tabBtn('courses', 'My Courses')}
           {mock?.ok && tabBtn('mock', mock?.booked ? '🎧 My mock call' : '🎧 Schedule my mock call')}
+          {certPassed && tabBtn('schedule', '◷ Schedule')}
+          {certPassed && tabBtn('trades', '🔁 Trade Board')}
         </div>
-        {tab === 'mock' ? <MockCallScheduler embedded /> : tab === 'certs' ? <MyCertifications /> : <MyCourses />}
+        {certPassed && (tab === 'schedule' || tab === 'trades') && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#14532d', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}>
+            🎉 Certification passed — you can pick up intervals while you finish onboarding. Accepting an interval is a commitment to service it.
+          </div>
+        )}
+        {tab === 'mock' ? <MockCallScheduler embedded />
+          : tab === 'schedule' && certPassed ? <Schedule />
+          : tab === 'trades' && certPassed ? <TradeBoardChannel />
+          : tab === 'certs' ? <MyCertifications /> : <MyCourses />}
       </div>
       <footer style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: '24px 0 32px' }}>Opsis CX</footer>
     </div>
