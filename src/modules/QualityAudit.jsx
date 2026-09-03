@@ -711,6 +711,11 @@ function Td({ children, right }) {
 // agents scoped to their own rows.
 // ============================================================
 const MAX_REVIEW_AUDIO_BYTES = 50 * 1024 * 1024 // 50MB
+// A review can be completed for 7 days after it was assigned (Becky, 2026-09-03).
+// The database enforces it (expires_at + RLS + nightly sweep → status 'expired');
+// this is just the display side.
+const isExpired = (r) => r.status === 'expired' || (r.status === 'pending' && r.expires_at && new Date(r.expires_at) < new Date())
+const daysLeft = (r) => r.expires_at ? Math.max(0, Math.ceil((new Date(r.expires_at) - new Date()) / 86400000)) : null
 
 // Agent-facing page for the call reviews ("ICRs"). Agents lost the /quality
 // route in the 2026-08-12 access correction, and this form only lived there —
@@ -880,14 +885,15 @@ function AuditorReviewList({ reviews, nameOf, onChanged }) {
       <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
         {reviews.map(r => {
           const submitted = r.status === 'submitted'
+          const expired = !submitted && isExpired(r)
           const open = openId === r.id
           return (
             <div key={r.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <b style={{ fontSize: 13.5 }}>{nameOf(r.agent_id)}</b>
                 <span className="page-sub" style={{ fontSize: 12 }}>{fmtDate(r.call_date)} · assigned {fmtDate(r.created_at)}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: submitted ? 'var(--passed-bg)' : 'var(--needed-bg)', color: submitted ? 'var(--passed)' : 'var(--needed)' }}>
-                  {submitted ? 'Submitted' : 'Waiting on agent'}
+                <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: submitted ? 'var(--passed-bg)' : expired ? 'var(--failed-bg, #fee2e2)' : 'var(--needed-bg)', color: submitted ? 'var(--passed)' : expired ? 'var(--failed)' : 'var(--needed)' }}>
+                  {submitted ? 'Submitted' : expired ? 'Expired (7 days)' : `Waiting on agent · ${daysLeft(r) ?? '?'}d left`}
                 </span>
                 {submitted && <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => setOpenId(open ? null : r.id)}>{open ? 'Hide' : 'View answers'}</button>}
                 <button onClick={() => remove(r)} title="Delete review"
@@ -922,11 +928,12 @@ function ReviewAnswers({ title, items }) {
 
 // ---- Agent: my reviews (pending form / submitted read-only) ----
 function AgentReviewList({ reviews, me, onChanged }) {
-  if (!reviews.length) {
+  if (!reviews.length || (!reviews.some(r => r.status === 'submitted') && !reviews.some(r => r.status === 'pending' && !isExpired(r)))) {
     return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 24 }}>No call reviews assigned to you yet. When a call is ready to review, it appears here (you'll also get a notification).</div></div>
   }
-  const pending = reviews.filter(r => r.status !== 'submitted')
+  const pending = reviews.filter(r => r.status === 'pending' && !isExpired(r))
   const doneOnes = reviews.filter(r => r.status === 'submitted')
+  const expiredOnes = reviews.filter(r => r.status !== 'submitted' && isExpired(r))
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       {pending.map(r => <AgentReviewForm key={r.id} review={r} me={me} onChanged={onChanged} />)}
@@ -990,6 +997,7 @@ function AgentReviewForm({ review, me, onChanged }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <b style={{ fontSize: 14 }}>Call review — {fmtDate(review.call_date)}</b>
         <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: 'var(--needed-bg)', color: 'var(--needed)' }}>Needs your review</span>
+        {daysLeft(review) != null && <span className="page-sub" style={{ fontSize: 12 }}>· {daysLeft(review) === 0 ? 'expires today' : `${daysLeft(review)} day${daysLeft(review) === 1 ? '' : 's'} left`}</span>}
       </div>
       {review.note && <p className="page-sub" style={{ fontSize: 12.5, margin: '6px 0 0' }}>Note from your coach: {review.note}</p>}
       <p className="page-sub" style={{ fontSize: 12.5, margin: '6px 0 10px' }}>Listen to your call, then share 3 things you did well and 3 things you'd improve.</p>
