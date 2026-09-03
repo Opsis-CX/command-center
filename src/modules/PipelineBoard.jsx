@@ -1489,6 +1489,23 @@ const IMPORT_FIELDS = [
 // coerced so an import never dies on a constraint half-way through a file.
 const DEAL_TYPES = ['Professional Services', 'Home & Trades', 'Healthcare', 'Technology', 'Industrial & Logistics', 'Real Estate', 'Retail & Hospitality', 'Other']
 const coerceType = (v) => { const t = (v || '').trim().toLowerCase(); return DEAL_TYPES.find(d => d.toLowerCase() === t) || 'Other' }
+// Industry / Service fit are FOREIGN KEYS to the editable lists
+// (sales_verticals / sales_service_lines). A value that isn't an exact label
+// aborted the whole import ("violates foreign key constraint deals_industry_fk").
+// Match loosely — exact, then case-insensitive, then a word in common — and
+// otherwise leave the field blank rather than fail.
+function matchLabel(v, labels) {
+  const t = (v || '').trim(); if (!t || !labels?.length) return null
+  const low = t.toLowerCase()
+  const exact = labels.find(l => l === t) || labels.find(l => l.toLowerCase() === low)
+  if (exact) return exact
+  const norm = (x) => x.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ' ').trim()
+  const nt = norm(t)
+  const contains = labels.find(l => norm(l).includes(nt) || nt.includes(norm(l)))
+  if (contains) return contains
+  const words = nt.split(' ').filter(w => w.length > 3 && !['services', 'service', 'other', 'general'].includes(w))
+  return labels.find(l => words.some(w => norm(l).split(' ').includes(w))) || null
+}
 const coerceStrategy = (v) => { const t = (v || '').trim().toLowerCase().replace(/[\s-]+/g, '_'); return t === 'speed_to_lead' ? 'speed_to_lead' : 'customer_service' }
 
 // The blank import template. Same headers autoMap() recognises, one example
@@ -1538,6 +1555,7 @@ function autoMap(headers) {
 }
 
 function ImportModal({ pipelineKey = 'sales', stages = SALES_STAGES, onCancel, onDone, onError }) {
+  const { verticals, serviceLines } = useSalesLists()
   const [parsed, setParsed] = useState(null)   // { headers, rows }
   const [map, setMap] = useState({})
   const [fileName, setFileName] = useState('')
@@ -1586,8 +1604,8 @@ function ImportModal({ pipelineKey = 'sales', stages = SALES_STAGES, onCancel, o
       contact_phone: clean(cell(r, 'contact_phone')),
       company_phone: clean(cell(r, 'company_phone')),
       website: clean(cell(r, 'website')) ? normalizeUrl(cell(r, 'website')) : null,
-      industry: clean(cell(r, 'industry')),
-      service_fit: clean(cell(r, 'service_fit')),
+      industry: matchLabel(cell(r, 'industry'), verticals),
+      service_fit: matchLabel(cell(r, 'service_fit'), serviceLines),
       owner_name: clean(cell(r, 'owner_name')),
       source: clean(cell(r, 'source')) || 'Import',
       value: toNum(cell(r, 'value')),
@@ -1665,6 +1683,17 @@ function ImportModal({ pipelineKey = 'sales', stages = SALES_STAGES, onCancel, o
               ))}
             </div>
 
+            {(() => {
+              // Warn up front when Industry / Service fit values won't match the
+              // lists — they import blank rather than failing, but say so.
+              const badInd = (map.industry ?? -1) >= 0 ? buildable.filter(r => clean(cell(r, 'industry')) && !matchLabel(cell(r, 'industry'), verticals)).length : 0
+              const badFit = (map.service_fit ?? -1) >= 0 ? buildable.filter(r => clean(cell(r, 'service_fit')) && !matchLabel(cell(r, 'service_fit'), serviceLines)).length : 0
+              if (!badInd && !badFit) return null
+              return <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, marginBottom: 12 }}>
+                {badInd > 0 && <div>{badInd} row{badInd === 1 ? '' : 's'} have an Industry that isn't one of the pipeline's verticals — those will import with Industry blank (set it in the panel afterwards).</div>}
+                {badFit > 0 && <div>{badFit} row{badFit === 1 ? '' : 's'} have a Service fit that isn't a known service line — imported blank.</div>}
+              </div>
+            })()}
             <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', marginBottom: 8 }}>Preview (first 3)</div>
             <div style={{ border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden', marginBottom: 8 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
