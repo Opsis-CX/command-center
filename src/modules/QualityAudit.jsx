@@ -169,6 +169,9 @@ function NewAudit({ prefill, editAudit, onDone }) {
   const [campaign, setCampaign] = useState(editAudit?.campaign || 'lavin')
   const [auditType, setAuditType] = useState(editAudit?.audit_type || 'conversation')
   const [agentName, setAgentName] = useState(editAudit?.agent_name || prefill?.agent_name || '')
+  // "Other" in the Agent dropdown: lets the auditor type a name that isn't
+  // on the agent list (e.g. an ASC or a new hire who took a call).
+  const [manualAgent, setManualAgent] = useState(false)
   const [callId, setCallId] = useState(editAudit?.call_id || prefill?.call_id || '')
   const [callDate, setCallDate] = useState(editAudit?.call_date || prefill?.call_date || new Date().toISOString().slice(0, 10))
   const [recording, setRecording] = useState(editAudit?.recording_link || prefill?.recording_link || '')
@@ -271,11 +274,18 @@ function NewAudit({ prefill, editAudit, onDone }) {
   }
 
   async function save() {
-    if (!agentName) { setErr('Pick an agent.'); return }
+    const name = agentName.trim()
+    if (!name) { setErr(manualAgent ? 'Type the person\'s name.' : 'Pick an agent.'); return }
     setSaving(true); setErr(''); setSavedMsg('')
-    const agent = agents.find(a => a.agent_name === agentName)
+    let agent = agents.find(a => a.agent_name === name)
+    if (!agent) {
+      // Typed-in name: link it to a profile if one matches (any role), so the
+      // audit still lands on that person's scorecard / reports.
+      const { data: p } = await supabase.from('profiles').select('id, full_name').ilike('full_name', name).limit(1).maybeSingle()
+      if (p) agent = { agent_name: p.full_name, profile_id: p.id }
+    }
     const row = {
-      agent_name: agentName,
+      agent_name: agent?.agent_name || name,
       profile_id: agent?.profile_id || null,
       auditor_id: user?.id || null,
       audit_type: auditType,
@@ -372,10 +382,40 @@ function NewAudit({ prefill, editAudit, onDone }) {
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
           <Field label="Agent">
-            <select value={agentName} onChange={e => setAgentName(e.target.value)} style={inputStyle}>
-              <option value="">Select agent…</option>
-              {agents.map(a => <option key={a.agent_name} value={a.agent_name}>{a.agent_name}{a.status !== 'Active' ? ` (${a.status})` : ''}</option>)}
-            </select>
+            {(() => {
+              // A prefilled / edited name that isn't on the agent list (e.g. an
+              // ASC) shows as a typed-in name rather than a blank dropdown.
+              const inList = agents.some(a => a.agent_name === agentName)
+              const isManual = manualAgent || (!!agentName && !inList)
+              return (
+                <>
+                  <select
+                    value={isManual ? '__other__' : agentName}
+                    onChange={e => {
+                      if (e.target.value === '__other__') { setManualAgent(true); setAgentName('') }
+                      else { setManualAgent(false); setAgentName(e.target.value) }
+                    }}
+                    style={inputStyle}>
+                    <option value="">Select agent…</option>
+                    {agents.map(a => <option key={a.agent_name} value={a.agent_name}>{a.agent_name}{a.status !== 'Active' ? ` (${a.status})` : ''}</option>)}
+                    <option value="__other__">Other — type a name…</option>
+                  </select>
+                  {isManual && (
+                    <input
+                      autoFocus={manualAgent}
+                      value={agentName}
+                      onChange={e => setAgentName(e.target.value)}
+                      placeholder="Full name (e.g. Kerri Denter)"
+                      style={{ ...inputStyle, marginTop: 6 }} />
+                  )}
+                  {isManual && (
+                    <div className="page-sub" style={{ fontSize: 11.5, marginTop: 4 }}>
+                      Not on the agent list. If the name matches a profile, the audit is linked to that person.
+                    </div>
+                  )}
+                </>
+              )
+            })()}
           </Field>
           <Field label="Call ID / Link"><input value={callId} onChange={e => setCallId(e.target.value)} style={inputStyle} placeholder="Call ID" /></Field>
           <Field label="Call date"><input type="date" value={callDate} onChange={e => setCallDate(e.target.value)} style={inputStyle} /></Field>
