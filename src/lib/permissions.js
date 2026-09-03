@@ -63,8 +63,10 @@ const MATRIX = {
   // can_see_sales_pipeline() AND NOT is_portal_client(), the same as deals. If a
   // role is granted 'web_chat' here but excluded by that gate, the page renders
   // and the queries come back empty. Keep the two in step.
-  'web_chat.all': ['marketing', 'admin'],
-  'web_chat.reply': ['marketing', 'admin', 'support'],
+  // certification added 2026-09-03 (task "Bre needs Web Chat", Breanna Reynolds is
+  // certification). The DB gate is is_staff(), which already includes it.
+  'web_chat.all': ['marketing', 'admin', 'certification'],
+  'web_chat.reply': ['marketing', 'admin', 'support', 'certification'],
   'certifications.all': ['certification', 'admin'],
   'certifications.builder': ['certification', 'admin'],
   // certification is here so course authors can take (and preview) their own
