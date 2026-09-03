@@ -41,6 +41,9 @@ const MATRIX = {
   // ever read their own call reviews, that needs its own agent-facing view and
   // its own key — not this one.
   'quality_audit.call_reviews': STAFF,
+  // Agent self-reviews of a recorded call ("ICRs") — the agent's own page at
+  // /my-call-reviews. Staff keep the assign/track view on /quality.
+  'call_reviews.mine': ['agent', ...STAFF],
   'service_performance_scorecard.view_personal_scorecard': ['agent', 'admin'],
   'service_performance_scorecard.view_all_scorecards': ['asc', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard.edit_scorecard': ['admin'],
