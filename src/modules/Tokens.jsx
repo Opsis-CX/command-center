@@ -49,7 +49,9 @@ function statusBadge(s) {
 
 export default function Tokens() {
   const { user, isAdmin, appRole } = useAuth()
-  const canAward = isAdmin || AWARD_ROLES.includes(String(appRole || '').toLowerCase())
+  // Multi-role users (e.g. 'asc,marketing') never matched the exact-string check,
+  // so the Award tab was hidden for them (task "App Fixes", Alyssa, 2026-08-25).
+  const canAward = isAdmin || rolesOf(appRole).some((r) => AWARD_ROLES.includes(r))
   const canViewLedger = isAdmin || can(appRole, 'tokens.ledger')
   const viewAllTokens = canViewAllTokens(isAdmin, appRole)
   const [tab, setTab] = useState('wallet')
@@ -589,7 +591,7 @@ function AdminBudgets() {
 
   const load = useCallback(async () => {
     const [{ data: p }, { data: b }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, role').eq('is_active', true).in('role', ['admin', ...AWARD_ROLES]).order('full_name'),
+      supabase.from('profiles').select('id, full_name, role').eq('is_active', true).order('full_name').then((res) => ({ ...res, data: (res.data || []).filter((p) => rolesOf(p.role).some((r) => r === 'admin' || AWARD_ROLES.includes(r))) })),
       supabase.from('token_budgets').select('*, profiles!token_budgets_manager_id_fkey(full_name)'),
     ])
     setManagers(p || []); setBudgets(b || [])

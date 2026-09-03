@@ -410,13 +410,29 @@ export default function CallQA({ portal = false } = {}) {
         const len = (e - s) + 86400000
         if (len > 0) fetchStart = new Date(s.getTime() - len).toISOString().slice(0, 10)
       }
-      const { data, error } = await supabase.rpc('callqa_rows', {
-        p_start: fetchStart, p_end: dashBounds.end,
-        p_campaign: program !== 'all' ? program : null, p_source: null,
-      })
-      if (seq !== loadSeq.current) return
-      if (error) { loadedKey.current = null; setErr(error.message); setLoading(false); return }
-      all = Array.isArray(data) ? data : []
+      // 2026-09-03: this path had the same failure the portal path had on
+      // 2026-09-01 — the whole window built as ONE json blob (18,754 rows for
+      // GarageCo over 14 days, ~50 MB), which hit the 20 s statement timeout
+      // and starved the instance ("canceling statement due to statement
+      // timeout" on the 7-day GarageCo view). callqa_rows is now keyset-paged
+      // exactly like callqa_portal_rows; walk the pages sequentially so the
+      // database only ever runs one short statement for this user at a time.
+      const PAGE = 5000
+      let cursorTs = null, cursorId = null
+      for (let page = 0; page < 40; page++) {
+        const { data, error } = await supabase.rpc('callqa_rows', {
+          p_start: fetchStart, p_end: dashBounds.end,
+          p_campaign: program !== 'all' ? program : null, p_source: null,
+          p_limit: PAGE, p_before_ts: cursorTs, p_before_id: cursorId,
+        })
+        if (seq !== loadSeq.current) return
+        if (error) { loadedKey.current = null; setErr(error.message); setLoading(false); return }
+        const chunk = Array.isArray(data) ? data : []
+        all = all.concat(chunk)
+        if (chunk.length < PAGE) break
+        const last = chunk[chunk.length - 1]
+        cursorTs = last.created_at; cursorId = last.id
+      }
     } else {
       // Individual agents: RLS-scoped to their own (small) review set — paging is fine.
       let from = 0
@@ -783,6 +799,19 @@ export default function CallQA({ portal = false } = {}) {
     setSelected((sel) => (sel && (sel.id === reviewId || sel.id === id) ? { ...sel, winnable: val } : sel))
     await load(); setBusy('')
   }
+  // 2026-09-03: CallRail / LightSpeed dealer calls carry no agent name, so they
+  // show as "Unknown". Managers can assign (or revert) the agent per call via
+  // qa_set_call_agent (can_manage_qa gate, audit-stamped, original kept).
+  async function setCallAgent(callId, name) {
+    setBusy(callId)
+    const { data, error } = await supabase.rpc('qa_set_call_agent', { p_call_id: callId, p_agent_name: name || '' })
+    setBusy('')
+    if (error) { window.alert('Could not set the agent: ' + error.message); return false }
+    const patch = (r) => (r.call && r.call.id === callId ? { ...r, call: { ...r.call, agent_name: data?.agent_name ?? null, profile_id: data?.profile_id ?? null, agent_name_manual: !!data?.agent_name_manual } } : r)
+    setRows((prev) => prev.map(patch))
+    setSelected((sel) => (sel ? patch(sel) : sel))
+    return true
+  }
   async function saveAdjustment(reviewId, answers, note) {
     setBusy(reviewId)
     const { earned, max, pct, section_scores } = recomputeReview(answers)
@@ -960,7 +989,7 @@ export default function CallQA({ portal = false } = {}) {
         {tab === 'settings' && canManage && <SettingsTab settings={settings} secretKeys={secretKeys} pipeline={pipeline} base={base} onSave={saveSetting} busy={busy} />}
         </>
       )}
-      {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onExclude={setExcluded} onSetReviewed={setReviewed} onAdjust={saveAdjustment} onSetWinnable={setWinnable} busy={busy} canManage={canManage} meName={meName} userId={user?.id} />}
+      {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onExclude={setExcluded} onSetReviewed={setReviewed} onAdjust={saveAdjustment} onSetWinnable={setWinnable} onSetAgent={setCallAgent} agentOptions={agents} busy={busy} canManage={canManage} meName={meName} userId={user?.id} />}
     </div>
   )
 }
@@ -1700,8 +1729,20 @@ function Coaching({ byAgent }) {
   )
 }
 
-function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, onSetWinnable, busy, canManage, meName, userId }) {
+function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, onSetWinnable, onSetAgent, agentOptions = [], busy, canManage, meName, userId }) {
   const c = row.call || {}
+  // --- manual agent assignment (managers) ------------------------------------
+  const [agentEdit, setAgentEdit] = useState(false)
+  const [agentText, setAgentText] = useState('')
+  const [agentBusy, setAgentBusy] = useState(false)
+  const beginAgent = () => { setAgentText(c.agent_name || row.extracted_agent_name || ''); setAgentEdit(true) }
+  async function saveAgent(name) {
+    if (!onSetAgent || !c.id) return
+    setAgentBusy(true)
+    const ok = await onSetAgent(c.id, name)
+    setAgentBusy(false)
+    if (ok) setAgentEdit(false)
+  }
   const os = OUTCOME_STYLE[row.outcome] || OUTCOME_STYLE.Other
   const [transcript, setTranscript] = useState(c.transcript ?? null)
   // Timestamped, speaker-labeled lines from Deepgram (null = not yet fetched,
@@ -1788,7 +1829,21 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
       <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(720px, 100%)', background: '#f8fafc', color: INK, height: '100%', overflowY: 'auto', boxShadow: '-8px 0 24px rgba(0,0,0,0.12)' }}>
         <div style={{ position: 'sticky', top: 0, background: '#fff', borderBottom: '1px solid #e2e8f0', padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 1 }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>{agentOf(row)} · {c.brand}</div>
+            {agentEdit ? (
+              <form onSubmit={(e) => { e.preventDefault(); saveAgent(agentText) }} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input list="callqa-agent-names" value={agentText} onChange={(e) => setAgentText(e.target.value)} placeholder="Agent name" autoFocus style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 14, minWidth: 180 }} />
+                <datalist id="callqa-agent-names">{agentOptions.filter((a) => a && a !== 'Unknown').map((a) => <option key={a} value={a} />)}</datalist>
+                <button type="submit" disabled={agentBusy || !agentText.trim()} style={{ ...btn('primary'), padding: '3px 10px' }}>{agentBusy ? 'Saving…' : 'Save'}</button>
+                {c.agent_name_manual && <button type="button" disabled={agentBusy} onClick={() => saveAgent('')} title="Revert to the name the source / AI gave" style={{ ...btn('ghost'), padding: '3px 8px' }}>↺ Revert</button>}
+                <button type="button" onClick={() => setAgentEdit(false)} style={{ ...btn('ghost'), padding: '3px 8px' }}>Cancel</button>
+                <span style={{ fontSize: 11, color: '#64748b', width: '100%' }}>· {c.brand}</span>
+              </form>
+            ) : (
+              <div style={{ fontWeight: 700, fontSize: 16 }}>
+                {agentOf(row)} · {c.brand}
+                {canManage && c.id && <button onClick={beginAgent} title={c.agent_name_manual ? 'Agent was set by a manager — click to change or revert' : 'Assign the agent for this call'} style={{ ...btn('ghost'), padding: '1px 7px', marginLeft: 8, fontSize: 12, fontWeight: 500 }}>✎ {c.agent_name_manual ? 'agent set' : 'assign agent'}</button>}
+              </div>
+            )}
             <div style={{ fontSize: 12, color: '#64748b' }}>{fmtDate(c.call_date)} · {c.source} · {c.direction} · {fmtDur(c.duration_seconds)}{c.customer_number ? ` · 📞 ${c.customer_number}` : ''}{c.customer_name ? ` · ${c.customer_name}` : ''}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
