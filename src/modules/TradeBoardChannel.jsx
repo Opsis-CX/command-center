@@ -4,6 +4,10 @@ import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
 import { COMPANY_TZ, wallTimeToViewer } from '../lib/tz'
 
+// Interval acceptance verbiage (Becky picked Option 2, 2026-09-03). Same text
+// as Schedule.jsx.
+const INTERVAL_COMMITMENT = "By accepting this interval, you are committing to service it. Once the 4-day (96-hour) schedule lock has passed, responsibility for the interval remains with you unless it is successfully transferred through the Trade Board."
+
 // ============================================================
 // TRADE BOARD CHANNEL
 // Renders inside Chat in place of the #GarageCo: Appointment
@@ -140,6 +144,7 @@ export default function TradeBoardChannel({ me: meProp, isMobile, onBack }) {
 
   // ---- actions ----
   async function acceptTrade(tr) {
+    if (!window.confirm(INTERVAL_COMMITMENT + '\n\nAccept this interval?')) return
     setBusy(tr.id)
     const { error } = await supabase.rpc('accept_interval_trade', { p_trade_id: tr.id })
     setBusy(null)
@@ -154,6 +159,7 @@ export default function TradeBoardChannel({ me: meProp, isMobile, onBack }) {
     flash('Taken back off the board'); load(true)
   }
   async function claimSeat(block) {
+    if (!window.confirm(INTERVAL_COMMITMENT + '\n\nAccept this interval?')) return
     setBusy(block.id)
     const { error } = await supabase.from('shift_claims').insert({ shift_block_id: block.id, profile_id: me.id, status: 'claimed' })
     setBusy(null)
