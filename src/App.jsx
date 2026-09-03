@@ -66,6 +66,7 @@ import AssessmentForm from './modules/AssessmentForm'
 import HiringDashboard from './modules/HiringDashboard'
 import MockCallScheduler from './modules/MockCallScheduler'
 import TradeBoardChannel from './modules/TradeBoardChannel'
+import { MyCallReviews } from './modules/QualityAudit'
 // --- sales pipeline ---
 import SalesDashboard from './modules/SalesDashboard'
 // Website chat inbox - conversations from opsiscx.com, where Turri hands off
@@ -341,6 +342,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/quality" element={(canAny(appRole, 'quality_audit.view_own') || canAny(appRole, 'quality_audit.call_reviews')) ? <QualityAudit /> : <NoAccess />} />
               {/* Internal Call QA (AI) — full manager view incl. Rubric, all campaigns (GarageCo / Lavin / Open Invoices). */}
               <Route path="/call-qa" element={canAny(appRole, 'quality_audit.call_reviews') ? <CallQA /> : <NoAccess />} />
+              <Route path="/my-call-reviews" element={canAny(appRole, 'call_reviews.mine') ? <MyCallReviews /> : <NoAccess />} />
               <Route path="/schedule" element={<Schedule />} />
               <Route path="/chat" element={canAny(appRole, 'chat') ? <Chat /> : <NoAccess />} />
               <Route path="/certifications" element={canAny(appRole, 'certifications.all') ? <Certifications /> : <NoAccess />} />
@@ -401,7 +403,7 @@ function titleFor(path) {
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions',
     '/web-chat': 'Web Chat',
-    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
+    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
   }
   return map[path] || 'Command Center'
 }
