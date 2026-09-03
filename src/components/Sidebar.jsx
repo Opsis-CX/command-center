@@ -59,6 +59,7 @@ const NAV_MAIN = [
       { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
       { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
       { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
+      { type: 'link', to: '/my-call-reviews', label: 'My Call Reviews', ic: '🎧', perm: 'call_reviews.mine' },
       { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },
       { type: 'link', to: '/coaching', label: 'Coaching', ic: '🎧', perm: 'coaching' },
       { type: 'link', to: '/call-qa', label: 'Call QA (AI)', ic: '🤖', perm: 'quality_audit.call_reviews' },
