@@ -5,6 +5,10 @@ import { can } from '../lib/permissions'
 import { notifyIntervalReleased, notifyNoShow, notifyIntervalAssigned } from '../lib/notify'
 import { COMPANY_TZ, wallTimeToViewer } from '../lib/tz'
 
+// Shown before an agent accepts an interval (Schedule + Trade Board). Keep in
+// step with TradeBoardChannel.jsx.
+export const INTERVAL_COMMITMENT = "By accepting this interval, you are committing to service it. Once the 4-day (96-hour) schedule lock has passed, responsibility for the interval remains with you unless it is successfully transferred through the Trade Board."
+
 // Convert a company-zone wall time on a given date to the viewer's local "h:mm AM".
 function blockTimeInViewer(dateStr, timeStr, viewerTZ) {
   if (!timeStr) return ''
@@ -357,6 +361,8 @@ export default function Schedule() {
       flash(`No more than ${WEEKLY_HOUR_CAP} hours per week`); return
     }
 
+    // Interval acceptance verbiage (Becky picked Option 2, 2026-09-03).
+    if (!window.confirm(INTERVAL_COMMITMENT + '\n\nAccept this interval?')) return
     const { error } = await supabase.from('shift_claims').insert({ shift_block_id: block.id, profile_id: me.id, status: 'claimed' })
     if (error) {
       // The database rejected it — it knows the truth even when this page
