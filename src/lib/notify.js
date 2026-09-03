@@ -681,7 +681,7 @@ export async function notifyCallReviewAssigned({
       type: 'call_review_assigned',
       title: 'A call is ready for your review',
       body: `${actorName || 'Someone'} assigned you a call recording. Listen and share 3 things you did well and 3 things to improve.`,
-      link: '/quality',
+      link: '/my-call-reviews',
       actor_id: actorId || null,
       actor_name: actorName || null,
     },
