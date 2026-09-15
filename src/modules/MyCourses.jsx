@@ -76,6 +76,10 @@ export default function MyCourses() {
             const outOfAttempts = !s.has_passed && s.attempts_left === 0
             const prereq = s.has_passed ? null : blockedBy(c, ci)
             const locked = outOfAttempts || !!prereq
+            // New course types. Both still gate on a quiz_attempts row, so the
+            // status view / attempt cap / cert grant work exactly as for a quiz.
+            const isTyping = c.course_type === 'typing_test'
+            const isTimed = c.course_type === 'timed_quiz'
             return (
               <div className="card" key={c.id} style={{ display: 'flex', flexDirection: 'column', opacity: prereq ? .72 : 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
@@ -87,23 +91,35 @@ export default function MyCourses() {
                   {outOfAttempts && !prereq && <span className="badge failed">Locked</span>}
                 </div>
 
+                {(isTyping || isTimed) && (
+                  <div style={{ marginTop: 6 }}>
+                    <span className="badge" style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}>
+                      {isTyping ? '⌨ Typing test' : '⏱ Timed test'}
+                    </span>
+                  </div>
+                )}
+
                 {c.description && <p className="page-sub" style={{ marginTop: 5 }}>{c.description}</p>}
 
                 <p className="page-sub" style={{ marginTop: 10, fontSize: 12.5 }}>
                   {s.has_passed
-                    ? (c.quiz_required ? `Certified — scored ${s.best_score_pct ?? ''}%` : 'Completed ✓')
+                    ? (isTyping ? `Passed — ${s.best_score_pct ?? ''}% accuracy`
+                        : c.quiz_required ? `Certified — scored ${s.best_score_pct ?? ''}%`
+                        : 'Completed ✓')
                     : prereq
                       ? <>Finish <b>{prereq.title}</b> first.</>
-                      : !c.quiz_required
-                        ? 'Informational — finish the lessons to complete. No quiz.'
-                        : outOfAttempts
-                          ? 'You have used both attempts. Ask an admin to reset your quiz.'
-                          : s.attempts_used === 0
-                            ? 'Pass mark ' + c.pass_threshold + '%. You get 2 attempts.'
-                            : `${s.attempts_left} attempt${s.attempts_left === 1 ? '' : 's'} remaining.`}
+                      : outOfAttempts
+                        ? `You have used both attempts. Ask an admin to reset your ${isTyping ? 'typing test' : 'quiz'}.`
+                        : isTyping
+                          ? `Type at ${c.typing_min_wpm ?? 35} WPM with ${c.typing_min_accuracy ?? 95}% accuracy in ${c.typing_duration_seconds ?? 60}s. ${s.attempts_used === 0 ? 'You get 2 attempts.' : `${s.attempts_left} attempt${s.attempts_left === 1 ? '' : 's'} remaining.`}`
+                          : !c.quiz_required
+                            ? 'Informational — finish the lessons to complete. No quiz.'
+                            : s.attempts_used === 0
+                              ? `Pass mark ${c.pass_threshold}%.${isTimed && c.time_limit_seconds ? ` ${Math.round(c.time_limit_seconds / 60)}-minute timer.` : ''} You get 2 attempts.`
+                              : `${s.attempts_left} attempt${s.attempts_left === 1 ? '' : 's'} remaining.`}
                 </p>
 
-                {!s.has_passed && started && !locked && (
+                {!s.has_passed && started && !locked && !isTyping && (
                   <p className="page-sub" style={{ marginTop: 6, fontSize: 12, color: 'var(--accent)' }}>
                     {pr.completed_lessons ? (c.quiz_required ? 'Lessons finished — quiz is next.' : 'Lessons finished — ready to complete.') : `Resume at lesson ${pr.last_lesson_idx + 1}.`}
                   </p>
@@ -113,7 +129,11 @@ export default function MyCourses() {
                     title={prereq ? `Finish ${prereq.title} first` : undefined}
                     style={locked ? { opacity: .45, cursor: 'not-allowed' } : undefined}
                     onClick={() => { if (!locked) setOpenCourse(c) }}>
-                    {prereq ? '🔒 Locked' : s.has_passed ? 'Review lessons' : (started || s.attempts_used > 0) ? 'Continue' : 'Start course'}
+                    {prereq ? '🔒 Locked'
+                      : s.has_passed ? (isTyping ? 'Review' : 'Review lessons')
+                      : (started || s.attempts_used > 0) ? 'Continue'
+                      : isTyping ? 'Start typing test'
+                      : 'Start course'}
                   </button>
                 </div>
               </div>
@@ -125,11 +145,12 @@ export default function MyCourses() {
   )
 }
 
-// Lessons, then quiz, then results.
+// Lessons, then quiz/typing test, then results.
 function CourseRunner({ course, status, progress, onExit }) {
+  const isTyping = course.course_type === 'typing_test'
   const [lessons, setLessons] = useState([])
   const [idx, setIdx] = useState(0)
-  const [phase, setPhase] = useState('lessons')   // lessons | quiz | done
+  const [phase, setPhase] = useState('lessons')   // lessons | quiz | typing | done
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(true)
   const [completing, setCompleting] = useState(false)
@@ -154,6 +175,11 @@ function CourseRunner({ course, status, progress, onExit }) {
         setLoading(false)
       })
   }, [course.id])
+
+  // A typing test with no instructional lessons goes straight to the test.
+  useEffect(() => {
+    if (!loading && isTyping && lessons.length === 0 && phase === 'lessons') setPhase('typing')
+  }, [loading, isTyping, lessons.length, phase])
 
   // Persist the furthest lesson reached (never moves backward).
   async function saveProgress(newIdx, finishedLessons) {
@@ -198,6 +224,12 @@ function CourseRunner({ course, status, progress, onExit }) {
     return <Results course={course} result={result} onExit={onExit} />
   }
 
+  if (phase === 'typing') {
+    return <TypingRunner course={course}
+      onDone={(r) => { setResult(r); setPhase('done') }}
+      onBack={() => (total ? setPhase('lessons') : onExit())} />
+  }
+
   if (phase === 'quiz') {
     return <QuizRunner course={course} onDone={(r) => { setResult(r); setPhase('done') }}
       onBack={() => setPhase('lessons')} />
@@ -233,12 +265,15 @@ function CourseRunner({ course, status, progress, onExit }) {
               ? <button className="btn btn-primary" onClick={goNext}>Next →</button>
               : status.has_passed
                 ? <span className="page-sub">You've already {course.quiz_required ? 'passed' : 'completed'} this course.</span>
-                : course.quiz_required
+                : isTyping
                   ? <button className="btn btn-cta"
-                      onClick={() => { saveProgress(total - 1, true); setPhase('quiz') }}>Start quiz →</button>
-                  : <button className="btn btn-cta" disabled={completing}
-                      style={completing ? { opacity: .6, cursor: 'not-allowed' } : undefined}
-                      onClick={completeInformational}>{completing ? 'Completing…' : 'Complete course →'}</button>}
+                      onClick={() => { saveProgress(total - 1, true); setPhase('typing') }}>Start typing test →</button>
+                  : course.quiz_required
+                    ? <button className="btn btn-cta"
+                        onClick={() => { saveProgress(total - 1, true); setPhase('quiz') }}>Start quiz →</button>
+                    : <button className="btn btn-cta" disabled={completing}
+                        style={completing ? { opacity: .6, cursor: 'not-allowed' } : undefined}
+                        onClick={completeInformational}>{completing ? 'Completing…' : 'Complete course →'}</button>}
           </div>
         </div>
       )}
@@ -246,12 +281,17 @@ function CourseRunner({ course, status, progress, onExit }) {
   )
 }
 
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.max(0, s) % 60).padStart(2, '0')}`
+
 function QuizRunner({ course, onDone, onBack }) {
+  const timeLimit = course.time_limit_seconds || null   // seconds; null = untimed
   const [questions, setQuestions] = useState([])
   const [answers, setAnswers] = useState({})   // question_id -> option_id
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [remaining, setRemaining] = useState(timeLimit)
   const [err, setErr] = useState('')
+  const submittedRef = useRef(false)
 
   useEffect(() => { load() }, [course.id])
 
@@ -282,7 +322,18 @@ function QuizRunner({ course, onDone, onBack }) {
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }
 
-  async function submit() {
+  // Countdown for a timed quiz. Ticks once questions are on screen; when it
+  // reaches zero the attempt auto-submits with whatever is answered so far.
+  useEffect(() => {
+    if (!timeLimit || loading || questions.length === 0 || remaining == null) return
+    if (remaining <= 0) { doSubmit(true); return }
+    const t = setTimeout(() => setRemaining(r => r - 1), 1000)
+    return () => clearTimeout(t)
+  }, [timeLimit, loading, questions.length, remaining])
+
+  async function doSubmit(auto) {
+    if (submittedRef.current) return
+    submittedRef.current = true
     setSubmitting(true); setErr('')
     try {
       const { data, error } = await supabase.rpc('submit_quiz', {
@@ -290,8 +341,9 @@ function QuizRunner({ course, onDone, onBack }) {
         p_answers: answers,
       })
       if (error) throw error
-      onDone(data)
+      onDone({ ...data, timed_out: !!auto })
     } catch (e) {
+      submittedRef.current = false
       setErr(e.message.includes('Attempt limit')
         ? 'You have used both attempts on this quiz. Ask an admin to reset it for you.'
         : e.message.includes('already passed')
@@ -305,12 +357,20 @@ function QuizRunner({ course, onDone, onBack }) {
 
   const answered = Object.keys(answers).length
   const complete = answered === questions.length && questions.length > 0
+  const low = timeLimit && remaining != null && remaining <= 30
 
   return (
     <div>
-      <button className="btn btn-ghost" onClick={onBack} style={{ marginBottom: 12 }}>← Lessons</button>
-      <h1 className="page-title" style={{ fontSize: 20 }}>{course.title} — quiz</h1>
+      <button className="btn btn-ghost" onClick={onBack} style={{ marginBottom: 12 }} disabled={!!timeLimit}>← Lessons</button>
+      <h1 className="page-title" style={{ fontSize: 20 }}>{course.title} — {timeLimit ? 'timed test' : 'quiz'}</h1>
       <p className="page-sub">Pass mark {course.pass_threshold}%. Answer every question, then submit.</p>
+
+      {timeLimit && (
+        <div className="card" style={{ margin: '12px 0', borderColor: low ? 'var(--failed)' : 'var(--accent)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <b style={{ color: low ? 'var(--failed)' : 'var(--accent)', fontSize: 15 }}>⏱ Time remaining: {mmss(Math.max(0, remaining || 0))}</b>
+          <span className="page-sub" style={{ fontSize: 12.5 }}>The test submits automatically when the timer reaches zero.</span>
+        </div>
+      )}
 
       {err && <div className="card" style={{ borderColor: 'var(--failed)', margin: '14px 0' }}>
         <b style={{ color: 'var(--failed)' }}>Could not submit.</b>
@@ -342,7 +402,7 @@ function QuizRunner({ course, onDone, onBack }) {
         : <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 4 }}>
             <button className="btn btn-cta" disabled={!complete || submitting}
               style={!complete || submitting ? { opacity: .45, cursor: 'not-allowed' } : undefined}
-              onClick={submit}>{submitting ? 'Submitting…' : 'Submit quiz'}</button>
+              onClick={() => doSubmit(false)}>{submitting ? 'Submitting…' : timeLimit ? 'Submit test' : 'Submit quiz'}</button>
             <span className="page-sub" style={{ fontSize: 12.5 }}>
               {answered} of {questions.length} answered
             </span>
@@ -351,10 +411,168 @@ function QuizRunner({ course, onDone, onBack }) {
   )
 }
 
+// Count characters typed that match the passage at the same position. Anything
+// typed past the end of the passage counts as an error. Mirrors the server so
+// the live accuracy the agent sees matches their graded score.
+function countMatches(typed, passage) {
+  const p = passage || ''
+  let m = 0
+  for (let i = 0; i < typed.length; i++) if (typed[i] === p[i]) m++
+  return m
+}
+
+// ============ TYPING SPEED TEST ============
+// A fixed-duration test: the agent types the passage; when the timer runs out
+// (or they submit) the server grades WPM + accuracy and records a quiz_attempts
+// row, so the attempt cap and certification grant behave exactly like a quiz.
+function TypingRunner({ course, onDone, onBack }) {
+  const durationSec = course.typing_duration_seconds || 60
+  const passage = course.typing_passage || ''
+  const minWpm = course.typing_min_wpm ?? 35
+  const minAcc = course.typing_min_accuracy ?? 95
+
+  const [typed, setTyped] = useState('')
+  const [started, setStarted] = useState(false)
+  const [remaining, setRemaining] = useState(durationSec)
+  const [submitting, setSubmitting] = useState(false)
+  const [err, setErr] = useState('')
+  const startAtRef = useRef(null)
+  const taRef = useRef(null)
+  const submittedRef = useRef(false)
+
+  const elapsed = started ? Math.min(durationSec, durationSec - remaining) : 0
+  const chars = typed.length
+  const liveWpm = elapsed > 0 ? Math.round((chars / 5) / (elapsed / 60)) : 0
+  const liveAcc = chars > 0 ? Math.round(countMatches(typed, passage) * 100 / chars) : 100
+
+  useEffect(() => {
+    if (!started) return
+    if (remaining <= 0) { finish(); return }
+    const t = setTimeout(() => setRemaining(r => r - 1), 1000)
+    return () => clearTimeout(t)
+  }, [started, remaining])
+
+  function begin() {
+    setStarted(true)
+    startAtRef.current = Date.now()
+    setTimeout(() => taRef.current?.focus(), 30)
+  }
+
+  async function finish() {
+    if (submittedRef.current) return
+    submittedRef.current = true
+    setSubmitting(true); setErr('')
+    const elapsedSec = startAtRef.current
+      ? Math.min(durationSec, (Date.now() - startAtRef.current) / 1000)
+      : durationSec
+    try {
+      const { data, error } = await supabase.rpc('submit_typing_test', {
+        p_course_id: course.id,
+        p_typed: typed,
+        p_elapsed_seconds: elapsedSec,
+      })
+      if (error) throw error
+      onDone(data)
+    } catch (e) {
+      submittedRef.current = false
+      setErr(e.message.includes('Attempt limit')
+        ? 'You have used both attempts on this test. Ask an admin to reset it for you.'
+        : e.message.includes('already passed')
+          ? 'You have already passed this test.'
+          : e.message)
+      setSubmitting(false)
+    }
+  }
+
+  const low = started && remaining <= 10
+
+  return (
+    <div>
+      <button className="btn btn-ghost" onClick={onBack} style={{ marginBottom: 12 }} disabled={started}>← Back</button>
+      <h1 className="page-title" style={{ fontSize: 20 }}>{course.title} — typing test</h1>
+      <p className="page-sub">
+        Type the passage exactly. You need <b>{minWpm} WPM</b> and <b>{minAcc}% accuracy</b> to pass. You have {durationSec} seconds.
+      </p>
+
+      {err && <div className="card" style={{ borderColor: 'var(--failed)', margin: '14px 0' }}>
+        <b style={{ color: 'var(--failed)' }}>Could not submit.</b>
+        <p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
+
+      {/* Live stat bar */}
+      <div className="card" style={{ margin: '14px 0', display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap', borderColor: low ? 'var(--failed)' : undefined }}>
+        <div>
+          <div className="page-sub" style={{ fontSize: 11.5 }}>Time left</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: low ? 'var(--failed)' : 'var(--accent)' }}>{mmss(Math.max(0, remaining))}</div>
+        </div>
+        <div>
+          <div className="page-sub" style={{ fontSize: 11.5 }}>WPM</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: liveWpm >= minWpm ? 'var(--passed)' : 'var(--ink)' }}>{liveWpm}</div>
+        </div>
+        <div>
+          <div className="page-sub" style={{ fontSize: 11.5 }}>Accuracy</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: liveAcc >= minAcc ? 'var(--passed)' : 'var(--ink)' }}>{liveAcc}%</div>
+        </div>
+      </div>
+
+      {/* Passage to copy */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="page-sub" style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>Passage</div>
+        <PassageDisplay passage={passage} typed={typed} />
+      </div>
+
+      <textarea
+        ref={taRef}
+        value={typed}
+        disabled={!started || submitting}
+        onChange={e => setTyped(e.target.value)}
+        onPaste={e => e.preventDefault()}
+        onCopy={e => e.preventDefault()}
+        placeholder={started ? 'Start typing…' : 'Press Start to begin.'}
+        rows={5}
+        style={{ width: '100%', boxSizing: 'border-box', padding: '12px 14px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 15, lineHeight: 1.6, fontFamily: 'inherit', resize: 'vertical', background: started ? 'var(--surface)' : 'var(--canvas)' }}
+      />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12 }}>
+        {!started
+          ? <button className="btn btn-cta" onClick={begin}>Start typing test →</button>
+          : <button className="btn btn-cta" disabled={submitting} onClick={finish}
+              style={submitting ? { opacity: .5, cursor: 'not-allowed' } : undefined}>
+              {submitting ? 'Submitting…' : 'Submit now'}
+            </button>}
+        {started && <span className="page-sub" style={{ fontSize: 12.5 }}>Pasting is disabled — the test submits automatically at 0:00.</span>}
+      </div>
+    </div>
+  )
+}
+
+// Renders the passage with each character tinted green/red as the agent types,
+// so they can see where they've drifted from the text.
+function PassageDisplay({ passage, typed }) {
+  const p = passage || ''
+  return (
+    <div style={{ fontSize: 15.5, lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+      {p.split('').map((ch, i) => {
+        let color = 'var(--ink-soft)'
+        let bg = 'transparent'
+        if (i < typed.length) {
+          const ok = typed[i] === ch
+          color = ok ? 'var(--passed)' : '#fff'
+          bg = ok ? 'transparent' : 'var(--failed)'
+        }
+        const cur = i === typed.length
+        return (
+          <span key={i} style={{ color, background: bg, borderLeft: cur ? '2px solid var(--accent)' : 'none' }}>{ch}</span>
+        )
+      })}
+    </div>
+  )
+}
+
 function Results({ course, result, onExit }) {
   const passed = result?.passed
+  const isTyping = result?.wpm != null || course.course_type === 'typing_test'
   // Informational courses have no score/pass-mark to report.
-  const informational = result?.informational || course.quiz_required === false
+  const informational = result?.informational || (course.quiz_required === false && !isTyping)
   return (
     <div>
       <div className="card" style={{ textAlign: 'center', padding: '40px 30px', maxWidth: 480, margin: '30px auto' }}>
@@ -363,16 +581,21 @@ function Results({ course, result, onExit }) {
           {informational ? 'Course complete' : passed ? 'Passed' : 'Not passed'}
         </h2>
 
-        {informational
-          ? <p className="page-sub">You've finished this course.</p>
-          : <p className="page-sub">You scored {result?.score_pct}%. Pass mark is {course.pass_threshold}%.</p>}
+        {isTyping
+          ? <p className="page-sub">
+              You typed <b>{result?.wpm} WPM</b> at <b>{result?.accuracy_pct}% accuracy</b>.
+              {result?.min_wpm != null && <> Pass mark is {result.min_wpm} WPM and {result.min_accuracy}% accuracy.</>}
+            </p>
+          : informational
+            ? <p className="page-sub">You've finished this course.</p>
+            : <p className="page-sub">You scored {result?.score_pct}%. Pass mark is {course.pass_threshold}%.{result?.timed_out ? ' (Time ran out.)' : ''}</p>}
 
         <p className="page-sub" style={{ marginTop: 14 }}>
           {passed
             ? 'Your certification has been recorded.'
             : result?.attempts_left > 0
               ? `You have ${result.attempts_left} attempt remaining.`
-              : 'You have used both attempts. Ask an admin to reset your quiz.'}
+              : `You have used both attempts. Ask an admin to reset your ${isTyping ? 'typing test' : 'quiz'}.`}
         </p>
 
         <button className="btn btn-primary" style={{ marginTop: 22 }} onClick={onExit}>Back to my courses</button>
