@@ -177,7 +177,11 @@ export default function CourseBuilder() {
                 {c.certification_id
                   ? <>Grants: <b style={{ color: 'var(--ink)' }}>{certs.find(x => x.id === c.certification_id)?.name || 'Unknown certification'}</b></>
                   : 'Standalone course — grants no certification'}
-                {' · '}{c.quiz_required === false ? 'No quiz (informational)' : `Pass mark ${c.pass_threshold ?? 80}%`}
+                {' · '}{c.course_type === 'typing_test'
+                  ? `⌨ Typing test — ${c.typing_min_wpm ?? 35} WPM / ${c.typing_min_accuracy ?? 95}% in ${c.typing_duration_seconds ?? 60}s`
+                  : c.quiz_required === false ? 'No quiz (informational)'
+                    : `Pass mark ${c.pass_threshold ?? 80}%`}
+                {c.course_type === 'timed_quiz' && c.time_limit_seconds ? <> · ⏱ {Math.round(c.time_limit_seconds / 60)} min</> : null}
                 {c.sort_order ? <> · Order {c.sort_order}</> : <> · Unsequenced</>}
               </div>
               <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -206,14 +210,29 @@ function CourseModal({ course, certs, onClose, onSaved }) {
   const [title, setTitle] = useState(course?.title || '')
   const [description, setDescription] = useState(course?.description || '')
   const [certId, setCertId] = useState(course?.certification_id || '')
+  const [courseType, setCourseType] = useState(course?.course_type || 'standard')
   const [passThreshold, setPassThreshold] = useState(course?.pass_threshold ?? 80)
   const [quizRequired, setQuizRequired] = useState(course?.quiz_required ?? true)
   const [sortOrder, setSortOrder] = useState(course?.sort_order ?? 0)
+  // Timed test
+  const [timeLimitMin, setTimeLimitMin] = useState(
+    course?.time_limit_seconds ? String(Math.round(course.time_limit_seconds / 60)) : ''
+  )
+  // Typing test
+  const [typingPassage, setTypingPassage] = useState(course?.typing_passage || '')
+  const [typingDuration, setTypingDuration] = useState(course?.typing_duration_seconds ?? 60)
+  const [typingMinWpm, setTypingMinWpm] = useState(course?.typing_min_wpm ?? 35)
+  const [typingMinAcc, setTypingMinAcc] = useState(course?.typing_min_accuracy ?? 95)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
+  const isTimed = courseType === 'timed_quiz'
+  const isTyping = courseType === 'typing_test'
+
   async function save() {
     if (!title.trim()) { setErr('Give the course a title.'); return }
+    if (isTimed && (!timeLimitMin || Number(timeLimitMin) <= 0)) { setErr('Set a time limit (in minutes) for the timed test.'); return }
+    if (isTyping && !typingPassage.trim()) { setErr('Add the passage agents will type.'); return }
     setSaving(true); setErr('')
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -221,9 +240,20 @@ function CourseModal({ course, certs, onClose, onSaved }) {
         title: title.trim(),
         description: description.trim() || null,
         certification_id: certId || null,
+        course_type: courseType,
+        // Standard courses keep the quiz toggle; timed & typing are always gated.
+        quiz_required: courseType === 'standard' ? quizRequired : true,
         pass_threshold: passThreshold,
-        quiz_required: quizRequired,
         sort_order: Number(sortOrder) || 0,
+        // Timed test — countdown; cleared when not a timed test.
+        time_limit_seconds: isTimed ? Math.round(Number(timeLimitMin) * 60) : null,
+      }
+      // Typing config — only written for a typing test (left untouched otherwise).
+      if (isTyping) {
+        fields.typing_passage = typingPassage.trim()
+        fields.typing_duration_seconds = Number(typingDuration) || 60
+        fields.typing_min_wpm = Number(typingMinWpm) || 0
+        fields.typing_min_accuracy = Number(typingMinAcc) || 0
       }
       if (editing) {
         const { error } = await supabase.from('courses')
@@ -241,37 +271,100 @@ function CourseModal({ course, certs, onClose, onSaved }) {
     } catch (e) { setErr(e.message); setSaving(false) }
   }
 
+  const TypeBtn = ({ value, label, sub }) => (
+    <button type="button" onClick={() => setCourseType(value)}
+      style={{ flex: 1, minWidth: 150, textAlign: 'left', border: '1px solid ' + (courseType === value ? 'var(--accent)' : 'var(--line)'), background: courseType === value ? 'var(--accent-bg)' : 'var(--surface)', borderRadius: 10, padding: '10px 12px', cursor: 'pointer' }}>
+      <div style={{ fontSize: 13.5, fontWeight: 600, color: courseType === value ? 'var(--accent)' : 'var(--ink)' }}>{label}</div>
+      <div className="page-sub" style={{ fontSize: 11.5, marginTop: 2 }}>{sub}</div>
+    </button>
+  )
+
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal">
         <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>{editing ? 'Course settings' : 'New course'}</h3>
-        <p className="page-sub" style={{ marginBottom: 18 }}>Tie it to a certification so passing the quiz certifies the agent.</p>
+        <p className="page-sub" style={{ marginBottom: 18 }}>Tie it to a certification so passing certifies the agent.</p>
         {err && <div className="login-err" style={{ marginBottom: 14 }}>{err}</div>}
+
         <div className="field"><label>Course title</label>
           <input value={title} onChange={e => setTitle(e.target.value)} placeholder="GarageCo Appointment Setter Course" autoFocus /></div>
+
         <div className="field"><label>Description <span style={{ fontWeight: 400 }}>(optional)</span></label>
           <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} /></div>
+
         <div className="field"><label>Grants which certification?</label>
           <select value={certId} onChange={e => setCertId(e.target.value)}>
             <option value="">None (standalone course)</option>
             {certs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select></div>
+
         <div className="field">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' }}>
-            <input type="checkbox" checked={quizRequired} onChange={e => setQuizRequired(e.target.checked)} style={{ width: 16, height: 16 }} />
-            <span>Require a quiz to complete</span>
-          </label>
-          <div className="hint">Turn this off for informational courses — agents complete them by finishing the lessons, with no quiz to pass.</div>
+          <label>Course type</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <TypeBtn value="standard" label="Standard course" sub="Lessons + optional quiz" />
+            <TypeBtn value="timed_quiz" label="⏱ Timed test" sub="Quiz with a countdown" />
+            <TypeBtn value="typing_test" label="⌨ Typing speed test" sub="Measures WPM + accuracy" />
+          </div>
         </div>
-        {quizRequired && (
+
+        {/* Standard-only: whether a quiz is required at all */}
+        {courseType === 'standard' && (
+          <div className="field">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' }}>
+              <input type="checkbox" checked={quizRequired} onChange={e => setQuizRequired(e.target.checked)} style={{ width: 16, height: 16 }} />
+              <span>Require a quiz to complete</span>
+            </label>
+            <div className="hint">Turn this off for informational courses — agents complete them by finishing the lessons, with no quiz to pass.</div>
+          </div>
+        )}
+
+        {/* Timed test settings */}
+        {isTimed && (
+          <div className="field">
+            <label>Time limit (minutes)</label>
+            <input type="number" min="1" step="1" value={timeLimitMin} onChange={e => setTimeLimitMin(e.target.value)} style={{ width: 120 }} placeholder="e.g. 15" />
+            <div className="hint">The quiz shows a live countdown and submits automatically when it hits zero. Build the questions under the Quiz &amp; scoring tab, and set “Questions per attempt” there if you want a random subset.</div>
+          </div>
+        )}
+
+        {/* Typing test settings */}
+        {isTyping && (
+          <>
+            <div className="field">
+              <label>Passage to type</label>
+              <textarea value={typingPassage} onChange={e => setTypingPassage(e.target.value)} rows={4}
+                placeholder="Paste the passage the agent must type, exactly as it should appear." />
+              <div className="hint">Agents type this exactly. Accuracy is measured character-for-character against it.</div>
+            </div>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              <div className="field" style={{ flex: '1 1 120px' }}>
+                <label>Duration (seconds)</label>
+                <input type="number" min="10" value={typingDuration} onChange={e => setTypingDuration(e.target.value)} style={{ width: 100 }} />
+              </div>
+              <div className="field" style={{ flex: '1 1 120px' }}>
+                <label>Min WPM to pass</label>
+                <input type="number" min="0" value={typingMinWpm} onChange={e => setTypingMinWpm(e.target.value)} style={{ width: 100 }} />
+              </div>
+              <div className="field" style={{ flex: '1 1 120px' }}>
+                <label>Min accuracy (%)</label>
+                <input type="number" min="0" max="100" value={typingMinAcc} onChange={e => setTypingMinAcc(e.target.value)} style={{ width: 100 }} />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Pass mark — for standard (with quiz) and timed tests */}
+        {((courseType === 'standard' && quizRequired) || isTimed) && (
           <div className="field"><label>Pass mark (%)</label>
             <input type="number" min="0" max="100" value={passThreshold} onChange={e => setPassThreshold(+e.target.value)} style={{ width: 100 }} /></div>
         )}
+
         <div className="field">
           <label>Course order</label>
           <input type="number" min="0" value={sortOrder} onChange={e => setSortOrder(e.target.value)} style={{ width: 100 }} />
           <div className="hint">Agents work through courses in this order — a course stays locked until every lower-numbered course is passed. Use 0 for a standalone course with no prerequisites.</div>
         </div>
+
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={saving}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Create & build'}</button>
@@ -450,9 +543,24 @@ function LessonEditor({ courseId, onBack }) {
       {previewing && <CoursePreview course={course} lessons={lessons} onClose={() => setPreviewing(false)} />}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <button className={'btn ' + (tab === 'lessons' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('lessons')}>Lessons</button>
-        <button className={'btn ' + (tab === 'quiz' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('quiz')}>Quiz &amp; scoring</button>
+        <button className={'btn ' + (tab === 'lessons' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('lessons')}>
+          Lessons{course?.course_type === 'typing_test' ? ' (optional)' : ''}
+        </button>
+        {course?.course_type !== 'typing_test' && (
+          <button className={'btn ' + (tab === 'quiz' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('quiz')}>Quiz &amp; scoring</button>
+        )}
       </div>
+
+      {course?.course_type === 'typing_test' && (
+        <div className="card" style={{ marginBottom: 14, borderColor: 'var(--accent)' }}>
+          <b style={{ fontSize: 14 }}>⌨ Typing speed test</b>
+          <p className="page-sub" style={{ fontSize: 12.5, margin: '4px 0 0' }}>
+            The passage and pass marks ({course.typing_min_wpm ?? 35} WPM / {course.typing_min_accuracy ?? 95}% accuracy,
+            {' '}{course.typing_duration_seconds ?? 60}s) are set under <b>Settings</b> on the course card. Lessons here are
+            optional instructions shown before the test — a typing test needs no lessons and no quiz questions.
+          </p>
+        </div>
+      )}
 
       {tab === 'lessons' ? (
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '220px 1fr', gap: 16 }}>
