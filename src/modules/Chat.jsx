@@ -704,7 +704,21 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   const [schedOpen, setSchedOpen] = useState(false) // schedule picker open
   const [schedAt, setSchedAt] = useState('')        // datetime-local value
   const composerRef = useRef(null)
-  const htmlRef = useRef('')
+  // Composer draft persistence (per user + channel). Survives switching
+  // channels, navigating elsewhere in Command Center, and even a refresh or
+  // accidental tab close — so a half-typed message is never lost. Cleared on
+  // a successful send or schedule.
+  const draftKey = `cc:chatDraft:${me.id}:${channelId}`
+  const htmlRef = useRef((() => {
+    try { return localStorage.getItem(draftKey) || '' } catch { return '' }
+  })())
+  const saveDraft = (html) => {
+    try {
+      if (html && htmlToText(html).trim()) localStorage.setItem(draftKey, html)
+      else localStorage.removeItem(draftKey)
+    } catch {}
+  }
+  const clearDraft = () => { try { localStorage.removeItem(draftKey) } catch {} }
 
   // ---- scroll management ----
   const scrollerRef = useRef(null)
@@ -950,7 +964,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     const { error } = await supabase.from('scheduled_messages')
       .insert({ channel_id: channelId, sender_id: me.id, body, send_at: when.toISOString() })
     if (error) { setErr('Could not schedule: ' + error.message); return }
-    composerRef.current?.clear(); htmlRef.current = ''
+    composerRef.current?.clear(); htmlRef.current = ''; clearDraft()
     setSchedOpen(false); setSchedAt(''); setErr('')
     loadScheduled()
   }
@@ -1218,7 +1232,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     // Compute mentions once — used for both membership and notification routing.
     const mentionedIds = extractMentions(plain, profiles).filter(id => id !== me.id)
 
-    composerRef.current?.clear(); htmlRef.current = ''
+    composerRef.current?.clear(); htmlRef.current = ''; clearDraft()
     setRequireAck(false); setPending([])
     stopTyping()
     stickToBottom.current = true    // sending always scrolls you down
@@ -1664,9 +1678,10 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             <RichEditor
               variant="chat"
               editorRef={composerRef}
+              value={htmlRef.current}
               profiles={profiles}
               submitOnEnter
-              onChange={(html) => { htmlRef.current = html; notifyTyping() }}
+              onChange={(html) => { htmlRef.current = html; saveDraft(html); notifyTyping() }}
               onSubmit={send}
               onPasteFiles={(files) => addFiles(files)}
               placeholder={requireAck
