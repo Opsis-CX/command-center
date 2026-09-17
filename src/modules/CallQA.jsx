@@ -820,7 +820,7 @@ export default function CallQA({ portal = false } = {}) {
     if (error) { window.alert('Could not save adjustments: ' + error.message); setBusy(''); return }
     await load(); setBusy('')
   }
-  async function saveSetting(s) { setBusy('settings'); await supabase.from('ai_qa_settings').upsert(s, { onConflict: 'campaign' }); await load(); setBusy('') }
+  async function saveSetting(s) { setBusy('settings'); await supabase.from('ai_qa_settings').upsert(s, { onConflict: 'client_id,campaign' }); await load(); setBusy('') }
 
   async function exportCSV() {
     // `answers` is no longer in the bulk load, so pull it just for the rows being
@@ -2065,6 +2065,17 @@ function NotesCard({ callId, meName, userId, canDelete }) {
 function RubricTab({ campaigns }) {
   const list = (campaigns && campaigns.length ? Array.from(new Set(campaigns)) : ['garagedoor'])
   const [campaign, setCampaign] = useState(list[0])
+  // Multi-tenant: rubric + guidance are scoped to a client. Pick which client's
+  // rubric to edit; every read/write below filters by clientId so two customers
+  // on the same campaign never share a rubric.
+  const [clients, setClients] = useState([])
+  const [clientId, setClientId] = useState(null)
+  useEffect(() => {
+    supabase.from('clients').select('id, name').order('name').then(({ data }) => {
+      const cs = data || []; setClients(cs)
+      setClientId((cur) => cur || (cs[0] && cs[0].id) || null)
+    })
+  }, [])
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
@@ -2072,15 +2083,16 @@ function RubricTab({ campaigns }) {
   const [guidanceOrig, setGuidanceOrig] = useState('')
 
   const load = useCallback(async () => {
+    if (!clientId) return
     setErr(''); setRows(null)
     const [{ data, error }, { data: st }] = await Promise.all([
-      supabase.from('ai_qa_rubric').select('*').eq('campaign', campaign).order('sort_order'),
-      supabase.from('ai_qa_settings').select('scoring_guidance').eq('campaign', campaign).maybeSingle(),
+      supabase.from('ai_qa_rubric').select('*').eq('client_id', clientId).eq('campaign', campaign).order('sort_order'),
+      supabase.from('ai_qa_settings').select('scoring_guidance').eq('client_id', clientId).eq('campaign', campaign).maybeSingle(),
     ])
     if (error) setErr(error.message); else setRows(data || [])
     const g = st?.scoring_guidance || ''
     setGuidance(g); setGuidanceOrig(g)
-  }, [campaign])
+  }, [campaign, clientId])
   useEffect(() => { load() }, [load])
   function flash(m) { setMsg(m); setTimeout(() => setMsg(''), 1800) }
 
@@ -2088,7 +2100,7 @@ function RubricTab({ campaigns }) {
     setRows((rs) => rs.map((x) => (x.key === r.key ? { ...x, ...d } : x)))
     const { error } = await supabase.from('ai_qa_rubric')
       .update({ label: d.label, section: d.section || null, points: Number(d.points) || 0, allow_na: !!d.allow_na, misses: d.misses || [] })
-      .eq('campaign', campaign).eq('key', r.key)
+      .eq('client_id', clientId).eq('campaign', campaign).eq('key', r.key)
     if (error) { setErr(error.message); load() } else flash('Saved')
   }
   async function move(i, dir) {
@@ -2098,15 +2110,15 @@ function RubricTab({ campaigns }) {
     const na = { ...a, sort_order: b.sort_order }, nb = { ...b, sort_order: a.sort_order }
     setRows(rows.map((x) => (x.key === a.key ? na : x.key === b.key ? nb : x)).sort((p, q) => p.sort_order - q.sort_order))
     const res = await Promise.all([
-      supabase.from('ai_qa_rubric').update({ sort_order: na.sort_order }).eq('campaign', campaign).eq('key', a.key),
-      supabase.from('ai_qa_rubric').update({ sort_order: nb.sort_order }).eq('campaign', campaign).eq('key', b.key),
+      supabase.from('ai_qa_rubric').update({ sort_order: na.sort_order }).eq('client_id', clientId).eq('campaign', campaign).eq('key', a.key),
+      supabase.from('ai_qa_rubric').update({ sort_order: nb.sort_order }).eq('client_id', clientId).eq('campaign', campaign).eq('key', b.key),
     ])
     const bad = res.find((r) => r.error); if (bad) { setErr(bad.error.message); load() }
   }
   async function addRow() {
     const key = 'c_' + Math.random().toString(36).slice(2, 8)
     const sort_order = rows.length ? Math.max(...rows.map((r) => r.sort_order || 0)) + 1 : 1
-    const row = { campaign, key, label: 'New criterion', section: rows[rows.length - 1]?.section || 'general', points: 5, allow_na: true, sort_order, misses: [] }
+    const row = { client_id: clientId, campaign, key, label: 'New criterion', section: rows[rows.length - 1]?.section || 'general', points: 5, allow_na: true, sort_order, misses: [] }
     setRows((rs) => [...rs, row])
     const { error } = await supabase.from('ai_qa_rubric').insert(row)
     if (error) { setErr(error.message); load() }
@@ -2114,12 +2126,12 @@ function RubricTab({ campaigns }) {
   async function removeRow(r) {
     if (!window.confirm(`Delete criterion "${r.label}"? This changes how future calls are scored.`)) return
     setRows((rs) => rs.filter((x) => x.key !== r.key))
-    const { error } = await supabase.from('ai_qa_rubric').delete().eq('campaign', campaign).eq('key', r.key)
+    const { error } = await supabase.from('ai_qa_rubric').delete().eq('client_id', clientId).eq('campaign', campaign).eq('key', r.key)
     if (error) { setErr(error.message); load() }
   }
 
   async function saveGuidance() {
-    const { error } = await supabase.from('ai_qa_settings').upsert({ campaign, scoring_guidance: guidance }, { onConflict: 'campaign' })
+    const { error } = await supabase.from('ai_qa_settings').upsert({ client_id: clientId, campaign, scoring_guidance: guidance }, { onConflict: 'client_id,campaign' })
     if (error) setErr(error.message); else { setGuidanceOrig(guidance); flash('Guidance saved') }
   }
 
@@ -2134,6 +2146,11 @@ function RubricTab({ campaigns }) {
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {msg && <span style={{ color: '#1b5e20', fontSize: 13 }}>{msg}</span>}
+            <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Client{' '}
+              <select value={clientId || ''} onChange={(e) => setClientId(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}>
+                {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
             <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Campaign{' '}
               <select value={campaign} onChange={(e) => setCampaign(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}>
                 {list.map((c) => <option key={c} value={c}>{c}</option>)}
