@@ -92,6 +92,11 @@ export default function LsaTracker({ me }) {
     if (reason === null) return
     patch(id, { voided: true, void_reason: reason || null })
   }
+  async function setLink(id, current) {
+    const url = window.prompt('Paste the LSA chat link:', current || '')
+    if (url === null) return
+    patch(id, { lsa_link: url.trim() || null })
+  }
 
   const tabBtn = (on) => ({
     padding: '5px 14px', fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer',
@@ -138,7 +143,16 @@ export default function LsaTracker({ me }) {
               <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {r.lead_name || '(no name)'} <span style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>· {r.brand}</span>
               </div>
-              <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{r.phone || '—'} · {shortDate(r.lead_date)}</div>
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span>{r.phone || '—'} · {shortDate(r.lead_date)}</span>
+                {r.lsa_link
+                  ? <a href={r.lsa_link} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', fontWeight: 600 }}
+                      onClick={e => e.stopPropagation()}>↗ LSA chat</a>
+                  : <button onClick={() => setLink(r.id, r.lsa_link)}
+                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontFamily: 'inherit', fontSize: 12 }}>🔗 add link</button>}
+                {r.lsa_link && <button onClick={() => setLink(r.id, r.lsa_link)} title="Edit link"
+                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--ink-soft)', fontFamily: 'inherit', fontSize: 11 }}>edit</button>}
+              </div>
             </div>
             <select value={r.outcome} onChange={e => patch(r.id, { outcome: e.target.value })} style={ctl} title="Outcome">
               {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
@@ -161,6 +175,7 @@ function LogModal({ brands, onClose, onSaved }) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [outcome, setOutcome] = useState('LSA waiting on customer reply')
+  const [lsaLink, setLsaLink] = useState('')
   const [followUp, setFollowUp] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -173,6 +188,7 @@ function LogModal({ brands, onClose, onSaved }) {
       lead_name: name.trim() || null,
       phone: phone.trim() || null,
       outcome,
+      lsa_link: lsaLink.trim() || null,
       next_follow_up: followUp || null,
     })
     if (error) { setErr(error.message); setSaving(false); return }
@@ -195,6 +211,8 @@ function LogModal({ brands, onClose, onSaved }) {
           <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Nick Bunch" /></div>
         <div className="field"><label>Phone</label>
           <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="optional" /></div>
+        <div className="field"><label>LSA chat link</label>
+          <input value={lsaLink} onChange={e => setLsaLink(e.target.value)} placeholder="paste the link from the LSA email (optional)" /></div>
         <div className="field"><label>Outcome</label>
           <select value={outcome} onChange={e => setOutcome(e.target.value)}>
             {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
