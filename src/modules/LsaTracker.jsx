@@ -28,7 +28,7 @@ function todayNY() {
 }
 function shortDate(d) {
   if (!d) return '—'
-  const [y, m, day] = d.split('-').map(Number)
+  const [, m, day] = d.split('-').map(Number)
   const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1]
   return `${mon} ${day}`
 }
@@ -38,8 +38,8 @@ export default function LsaTracker({ me }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
-  const [showLog, setShowLog] = useState(false)
-  const [tab, setTab] = useState('followup') // 'followup' | 'today'
+  const [modalLead, setModalLead] = useState(undefined) // undefined = closed, null = new, obj = edit
+  const [tab, setTab] = useState('followup') // 'followup' | 'today' | 'all'
 
   const load = useCallback(async () => {
     setErr('')
@@ -87,16 +87,6 @@ export default function LsaTracker({ me }) {
     const { error } = await supabase.from('lsa_leads').update(fields).eq('id', id)
     if (error) setErr(error.message); else load()
   }
-  async function voidRow(id) {
-    const reason = window.prompt('Void this lead — reason (optional):')
-    if (reason === null) return
-    patch(id, { voided: true, void_reason: reason || null })
-  }
-  async function setLink(id, current) {
-    const url = window.prompt('Paste the LSA chat link:', current || '')
-    if (url === null) return
-    patch(id, { lsa_link: url.trim() || null })
-  }
 
   const tabBtn = (on) => ({
     padding: '5px 14px', fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer',
@@ -104,16 +94,17 @@ export default function LsaTracker({ me }) {
     fontFamily: 'inherit',
   })
 
-  const list = tab === 'followup' ? openRows : todays
+  const list = tab === 'followup' ? openRows : tab === 'today' ? todays : rows
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, minHeight: 0, background: 'var(--surface)' }}>
       {/* header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--line)', flex: 'none', flexWrap: 'wrap' }}>
-        <button className="btn btn-primary" onClick={() => setShowLog(true)}>＋ Log LSA lead</button>
+        <button className="btn btn-primary" onClick={() => setModalLead(null)}>＋ Log LSA lead</button>
         <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
           <button onClick={() => setTab('followup')} style={tabBtn(tab === 'followup')}>Needs follow-up ({openRows.length})</button>
           <button onClick={() => setTab('today')} style={{ ...tabBtn(tab === 'today'), borderLeft: '1px solid var(--line)' }}>Today ({todays.length})</button>
+          <button onClick={() => setTab('all')} style={{ ...tabBtn(tab === 'all'), borderLeft: '1px solid var(--line)' }}>All ({rows.length})</button>
         </div>
         {err && <span className="login-err" style={{ margin: 0 }}>{err}</span>}
       </div>
@@ -134,63 +125,96 @@ export default function LsaTracker({ me }) {
         {loading && <div className="page-sub">Loading…</div>}
         {!loading && list.length === 0 && (
           <div className="page-sub" style={{ padding: '20px 0', textAlign: 'center' }}>
-            {tab === 'followup' ? 'Nothing waiting on follow-up. 🎉' : 'No LSA leads logged today yet.'}
+            {tab === 'followup' ? 'Nothing waiting on follow-up. 🎉' : tab === 'today' ? 'No LSA leads logged today yet.' : 'No LSA leads yet.'}
           </div>
         )}
         {list.map(r => (
-          <div key={r.id} className="card" style={{ padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ minWidth: 0, flex: '1 1 170px' }}>
-              <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {r.lead_name || '(no name)'} <span style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>· {r.brand}</span>
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--ink-soft)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span>{r.phone || '—'} · {shortDate(r.lead_date)}</span>
-                {r.lsa_link
-                  ? <a href={r.lsa_link} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', fontWeight: 600 }}
-                      onClick={e => e.stopPropagation()}>↗ LSA chat</a>
-                  : <button onClick={() => setLink(r.id, r.lsa_link)}
-                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontFamily: 'inherit', fontSize: 12 }}>🔗 add link</button>}
-                {r.lsa_link && <button onClick={() => setLink(r.id, r.lsa_link)} title="Edit link"
-                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--ink-soft)', fontFamily: 'inherit', fontSize: 11 }}>edit</button>}
-              </div>
-            </div>
-            <select value={r.outcome} onChange={e => patch(r.id, { outcome: e.target.value })} style={ctl} title="Outcome">
-              {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
-            <input type="date" value={r.next_follow_up || ''} onChange={e => patch(r.id, { next_follow_up: e.target.value || null })} style={ctl} title="Next follow-up" />
-            <button className="btn btn-ghost" style={{ padding: '4px 9px' }} onClick={() => voidRow(r.id)} title="Void (wrong entry)">✕</button>
-          </div>
+          <LeadRow key={r.id} r={r}
+            onOutcome={(v) => patch(r.id, v === 'LSA Booked' && !r.booked_date ? { outcome: v, booked_date: r.lead_date } : { outcome: v })}
+            onEdit={() => setModalLead(r)}
+            onVoid={(reason) => patch(r.id, { voided: true, void_reason: reason || null })}
+          />
         ))}
       </div>
 
-      {showLog && (
-        <LogModal brands={brands} onClose={() => setShowLog(false)} onSaved={() => { setShowLog(false); load() }} />
+      {modalLead !== undefined && (
+        <LeadModal brands={brands} lead={modalLead}
+          onClose={() => setModalLead(undefined)}
+          onSaved={() => { setModalLead(undefined); load() }} />
       )}
     </div>
   )
 }
 
-function LogModal({ brands, onClose, onSaved }) {
-  const [brand, setBrand] = useState(brands[0] || '')
-  const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [outcome, setOutcome] = useState('LSA waiting on customer reply')
-  const [lsaLink, setLsaLink] = useState('')
-  const [followUp, setFollowUp] = useState('')
+function LeadRow({ r, onOutcome, onEdit, onVoid }) {
+  const [confirming, setConfirming] = useState(false)
+  const [reason, setReason] = useState('')
+  return (
+    <div className="card" style={{ padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ minWidth: 0, flex: '1 1 190px' }}>
+        <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {r.lead_name || '(no name)'} <span style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>· {r.brand}</span>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--ink-soft)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span>{r.phone || '—'}</span>
+          <span>in {shortDate(r.lead_date)}</span>
+          {r.booked_date && <span style={{ color: 'var(--accent)' }}>booked {shortDate(r.booked_date)}</span>}
+          {r.next_follow_up && <span>· f/u {shortDate(r.next_follow_up)}</span>}
+          {r.lsa_link
+            ? <a href={r.lsa_link} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', fontWeight: 600 }}>↗ LSA chat</a>
+            : <button onClick={onEdit} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontFamily: 'inherit', fontSize: 12 }}>🔗 add link</button>}
+        </div>
+      </div>
+      <select value={r.outcome} onChange={e => onOutcome(e.target.value)} style={ctl} title="Outcome">
+        {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+      <button className="btn btn-ghost" style={{ padding: '4px 10px' }} onClick={onEdit} title="Edit details / dates / link">Edit</button>
+      {!confirming
+        ? <button className="btn btn-ghost" style={{ padding: '4px 9px' }} onClick={() => setConfirming(true)} title="Void (wrong entry)">✕</button>
+        : (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input value={reason} onChange={e => setReason(e.target.value)} placeholder="reason (optional)" style={{ ...ctl, width: 130 }} />
+            <button className="btn btn-ghost" style={{ padding: '4px 8px' }} onClick={() => { setConfirming(false); setReason('') }}>Cancel</button>
+            <button className="btn btn-primary" style={{ padding: '4px 8px', background: 'var(--failed, #dc2626)' }} onClick={() => { onVoid(reason); setConfirming(false); setReason('') }}>Void</button>
+          </div>
+        )}
+    </div>
+  )
+}
+
+function LeadModal({ brands, lead, onClose, onSaved }) {
+  const isEdit = !!lead
+  const [brand, setBrand] = useState(lead?.brand || brands[0] || '')
+  const [name, setName] = useState(lead?.lead_name || '')
+  const [phone, setPhone] = useState(lead?.phone || '')
+  const [lsaLink, setLsaLink] = useState(lead?.lsa_link || '')
+  const [outcome, setOutcome] = useState(lead?.outcome || 'LSA waiting on customer reply')
+  const [leadDate, setLeadDate] = useState(lead?.lead_date || todayNY())
+  const [bookedDate, setBookedDate] = useState(lead?.booked_date || '')
+  const [followUp, setFollowUp] = useState(lead?.next_follow_up || '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
+  const booked = outcome === 'LSA Booked'
+
   async function save() {
     if (!brand) { setErr('Pick a brand'); return }
+    if (!leadDate) { setErr('Pick the date the lead came in'); return }
     setSaving(true); setErr('')
-    const { error } = await supabase.from('lsa_leads').insert({
+    const payload = {
       brand,
       lead_name: name.trim() || null,
       phone: phone.trim() || null,
-      outcome,
       lsa_link: lsaLink.trim() || null,
+      outcome,
+      lead_date: leadDate,
+      booked_date: booked ? (bookedDate || leadDate) : (bookedDate || null),
       next_follow_up: followUp || null,
-    })
+    }
+    const q = isEdit
+      ? supabase.from('lsa_leads').update(payload).eq('id', lead.id)
+      : supabase.from('lsa_leads').insert(payload)
+    const { error } = await q
     if (error) { setErr(error.message); setSaving(false); return }
     onSaved()
   }
@@ -198,7 +222,7 @@ function LogModal({ brands, onClose, onSaved }) {
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal">
-        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>Log LSA lead</h3>
+        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>{isEdit ? 'Edit LSA lead' : 'Log LSA lead'}</h3>
         <p className="page-sub" style={{ marginBottom: 16 }}>LSA chats only. Logging a booking auto-posts it to this channel.</p>
         {err && <div className="login-err" style={{ marginBottom: 14 }}>{err}</div>}
         <div className="field"><label>Brand</label>
@@ -218,11 +242,17 @@ function LogModal({ brands, onClose, onSaved }) {
             {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         </div>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div className="field" style={{ flex: '1 1 130px' }}><label>Date lead came in</label>
+            <input type="date" value={leadDate} onChange={e => setLeadDate(e.target.value)} /></div>
+          <div className="field" style={{ flex: '1 1 130px' }}><label>Booked date{booked ? '' : ' (if booked)'}</label>
+            <input type="date" value={bookedDate} onChange={e => setBookedDate(e.target.value)} placeholder={booked ? '' : 'n/a'} /></div>
+        </div>
         <div className="field"><label>Next follow-up (optional)</label>
           <input type="date" value={followUp} onChange={e => setFollowUp(e.target.value)} /></div>
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
-          <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Log lead'}</button>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={saving}>{saving ? 'Saving…' : (isEdit ? 'Save' : 'Log lead')}</button>
         </div>
       </div>
     </div>
