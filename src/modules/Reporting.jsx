@@ -157,6 +157,7 @@ const CATALOG = [
   ] },
   { label: 'Sales', items: [
     { key: 'sales', name: 'Sales Pipeline', q: 'How many deals are in each stage, and what needs action?' },
+    { key: 'sales_directory', name: 'Prospect Directory', q: 'Name, title, and contact info for every prospect in the pipeline.' },
   ] },
   { label: 'RSN Pipeline', items: [
     { key: 'rsn', name: 'RSN Pipeline', q: 'How many RSN deals are in each stage, and what needs action?' },
@@ -210,14 +211,14 @@ const reportAllowed = (role, key) => {
   const c = REPORT_META[key]?.category; return !c || catAllowed(role, c)
 }
 // Reports that don't use the shared date range.
-const NO_RANGE = new Set(['people', 'rawdata', 'scorecard', 'positions', 'kb', 'dispositions'])
+const NO_RANGE = new Set(['people', 'rawdata', 'scorecard', 'positions', 'kb', 'dispositions', 'sales_directory'])
 // Reports that expose the shared person/tag filter.
 // (Sales/RSN excluded: deals carry no staff owner_id, so a person/tag filter would wrongly zero them out.)
 const FILTERABLE = new Set(['person', 'client', 'compare', 'quality', 'qa_by_question', 'chat', 'tokens', 'certifications', 'cert_quiz', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'builder'])
 // Reports whose CSV export is the parent-owned shared button (older inline reports).
 const SHARED_EXPORT = new Set(['person', 'client', 'compare', 'quality', 'people'])
 // Reports rendered by their own standalone component.
-const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions', 'dispo_corrections', 'qa_by_question', 'ai_qa_by_question', 'ai_qa_spend', 'ai_qa_billing', 'payroll_week'])
+const STANDALONE = new Set(['schedule', 'support', 'projects', 'attendance', 'rawdata', 'chat', 'tokens', 'sales', 'sales_directory', 'rsn', 'hiring', 'certifications', 'cert_quiz', 'scorecard', 'clients', 'positions', 'sched_agent', 'tasks_person', 'offclock', 'kb', 'dispositions', 'dispo_corrections', 'qa_by_question', 'ai_qa_by_question', 'ai_qa_spend', 'ai_qa_billing', 'payroll_week'])
 
 // The calendar date a timestamp falls on IN EASTERN TIME. toLocaleDateString
 // with en-CA yields YYYY-MM-DD directly — deliberately NOT
@@ -869,6 +870,7 @@ export default function Reporting() {
         : view === 'chat' ? <ChatReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
         : view === 'tokens' ? <TokensReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
         : view === 'sales' ? <DealsReport range={range} pipeline="sales" allowedIds={allowedIds} />
+        : view === 'sales_directory' ? <SalesDirectoryReport />
         : view === 'rsn' ? <DealsReport range={range} pipeline="rsn" allowedIds={allowedIds} />
         : view === 'hiring' ? <HiringReport range={range} />
         : view === 'certifications' ? <CertificationsReport range={range} profiles={peopleFull} allowedIds={allowedIds} />
@@ -3094,6 +3096,70 @@ function PositionsReport() {
   )
 }
 
+// ================= Sales: Prospect Directory (contact info only, every prospect, no range) =================
+function SalesDirectoryReport() {
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true; setData(null); setErr('')
+    ;(async () => {
+      const { data: rows, error } = await fetchAllRows(() =>
+        supabase.from('deals')
+          .select('organization, contact_person, title, contact_email, contact_phone, company_phone, website, industry')
+          .order('organization')
+      )
+      if (!active) return
+      if (error) { setErr(error.message); return }
+      setData(rows || [])
+    })()
+    return () => { active = false }
+  }, [])
+
+  function exportCsv() {
+    const out = [['Organization', 'Contact Person', 'Title', 'Contact Email', 'Contact Phone', 'Company Phone', 'Website', 'Industry']]
+    ;(data || []).forEach(d => out.push([
+      d.organization || '', d.contact_person || '', d.title || '', d.contact_email || '',
+      d.contact_phone || '', d.company_phone || '', d.website || '', d.industry || '',
+    ]))
+    downloadCSV(`sales-pipeline-details-${isoDay(new Date())}.csv`, out)
+  }
+
+  if (err) return <div className="card" style={{ padding: 16, color: 'var(--failed)' }}>Error: {err}</div>
+  if (data == null) return <p className="page-sub">Loading…</p>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Tile label="Prospects" value={data.length} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" onClick={exportCsv}>Export CSV</button></div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden', overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr>
+            <Th>Organization</Th><Th>Contact Person</Th><Th>Title</Th><Th>Contact Email</Th>
+            <Th>Contact Phone</Th><Th>Company Phone</Th><Th>Website</Th><Th>Industry</Th>
+          </tr></thead>
+          <tbody>
+            {data.length === 0 && <tr><td style={cellL} colSpan={8}><span className="page-sub">No prospects found.</span></td></tr>}
+            {data.map((d, i) => (
+              <tr key={i}>
+                <td style={{ ...cellL, fontWeight: 600 }}>{d.organization || '—'}</td>
+                <td style={cellL}>{d.contact_person || '—'}</td>
+                <td style={cellL}>{d.title || '—'}</td>
+                <td style={cellL}>{d.contact_email || '—'}</td>
+                <td style={cellL}>{d.contact_phone || '—'}</td>
+                <td style={cellL}>{d.company_phone || '—'}</td>
+                <td style={cellL}>{d.website || '—'}</td>
+                <td style={cellL}>{d.industry || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12 }}>Every prospect in the pipeline, with contact information only — no stage, value, or process details. Snapshot — not date-bound.</p>
+    </div>
+  )
+}
+
 // ================= Schedule: per-agent summary (intervals, check-in, on-task, Five9) =================
 function schedMins(b) {
   if (!b) return 0
@@ -4154,3 +4220,4 @@ function AiQaBillingReport({ range }) {
     </div>
   )
 }
+
