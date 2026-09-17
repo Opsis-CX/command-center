@@ -36,11 +36,16 @@ export default function MyCourses() {
   const statusFor = (id) => status[id] || { attempts_used: 0, attempts_left: 2, has_passed: false }
   const progressFor = (id) => progress[id] || { last_lesson_idx: 0, completed_lessons: false }
 
-  // Courses run in sort_order: a course opens only once every course before it
-  // has been passed. Returns the course blocking this one, or null if it's open.
+  // Prerequisites are scoped WITHIN a certification: a course opens only once
+  // every earlier course in the SAME certification has been passed. Courses in
+  // other certifications never gate each other, and a standalone course (no
+  // certification_id) has no prerequisites and gates nothing. Returns the
+  // course blocking this one, or null if it's open.
   function blockedBy(course, index) {
+    if (!course.certification_id) return null
     for (let i = 0; i < index; i++) {
       const prev = courses[i]
+      if (prev.certification_id !== course.certification_id) continue
       if (!statusFor(prev.id).has_passed) return prev
     }
     return null
