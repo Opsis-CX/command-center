@@ -16,18 +16,19 @@ const OUTCOMES = [
   'LSA Not relevant',
 ]
 
-// Follow-up reminder presets (minutes). '' = leave to the auto cadence.
-const REMIND_PRESETS = [
-  { v: '', label: 'Auto cadence (15m → 168h)' },
-  { v: '15', label: 'in 15 minutes' },
-  { v: '30', label: 'in 30 minutes' },
-  { v: '180', label: 'in 3 hours' },
-  { v: '1440', label: 'in 24 hours' },
-  { v: '4320', label: 'in 72 hours' },
-  { v: '7200', label: 'in 120 hours' },
-  { v: '10080', label: 'in 168 hours' },
-  { v: 'custom', label: 'Custom time…' },
-]
+// Quick follow-up presets (label, minutes-from-now) — they fill the time field.
+const PRESET_MINS = [['+15m', 15], ['+30m', 30], ['+3h', 180], ['+24h', 1440], ['+72h', 4320], ['+120h', 7200], ['+168h', 10080]]
+const presetBtn = { padding: '4px 9px', fontSize: 12, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink-soft)', cursor: 'pointer', fontFamily: 'inherit' }
+
+// <input type="datetime-local"> value <-> Date, in the browser's local time.
+function isoToLocalInput(v) {
+  if (!v) return ''
+  const d = v instanceof Date ? v : new Date(v)
+  if (isNaN(d)) return ''
+  const p = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+function fromNow(min) { return isoToLocalInput(new Date(Date.now() + min * 60000)) }
 
 const ctl = {
   padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8,
@@ -214,8 +215,7 @@ function LeadModal({ brands, lead, onClose, onSaved }) {
   const [leadDate, setLeadDate] = useState(lead?.lead_date || todayNY())
   const [bookedDate, setBookedDate] = useState(lead?.booked_date || '')
   const [notes, setNotes] = useState(lead?.notes || '')
-  const [remind, setRemind] = useState('') // '' auto/keep, minutes, or 'custom'
-  const [customAt, setCustomAt] = useState('')
+  const [remindAt, setRemindAt] = useState(lead?.follow_up_at ? isoToLocalInput(lead.follow_up_at) : '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -235,13 +235,12 @@ function LeadModal({ brands, lead, onClose, onSaved }) {
       booked_date: booked ? (bookedDate || leadDate) : (bookedDate || null),
       notes: notes.trim() || null,
     }
-    // Follow-up reminder: only touch follow_up_at when the user picked something.
-    if (remind === 'custom' && customAt) {
-      payload.follow_up_at = new Date(customAt).toISOString()
-    } else if (remind && remind !== 'custom') {
-      payload.follow_up_at = new Date(Date.now() + Number(remind) * 60000).toISOString()
+    // Follow-up reminder time. Set = that exact time; blank on a new lead = start
+    // the auto cadence (trigger sets +15m); blank on edit = leave it unchanged.
+    if (remindAt) {
+      payload.follow_up_at = new Date(remindAt).toISOString()
     } else if (!isEdit) {
-      payload.follow_up_at = null // new + auto → trigger starts the 15m→168h cadence
+      payload.follow_up_at = null
     }
     const q = isEdit
       ? supabase.from('lsa_leads').update(payload).eq('id', lead.id)
@@ -284,15 +283,16 @@ function LeadModal({ brands, lead, onClose, onSaved }) {
           <textarea value={notes} rows={2} maxLength={200}
             onChange={e => setNotes(e.target.value.replace(/\n{2,}/g, '\n').split('\n').slice(0, 2).join('\n'))}
             placeholder="short note (2 lines max)" style={{ resize: 'none' }} /></div>
-        <div className="field"><label>Follow-up reminder</label>
-          <select value={remind} onChange={e => setRemind(e.target.value)}>
-            {REMIND_PRESETS.map(p => <option key={p.v} value={p.v}>{isEdit && p.v === '' ? 'Keep current' : p.label}</option>)}
-          </select>
+        <div className="field"><label>Follow-up reminder time</label>
+          <input type="datetime-local" value={remindAt} onChange={e => setRemindAt(e.target.value)} />
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+            {PRESET_MINS.map(([lbl, min]) => (
+              <button type="button" key={lbl} style={presetBtn} onClick={() => setRemindAt(fromNow(min))}>{lbl}</button>
+            ))}
+            <button type="button" style={presetBtn} onClick={() => setRemindAt('')}>Auto</button>
+          </div>
+          <div className="page-sub" style={{ fontSize: 11, marginTop: 4 }}>Blank = auto cadence (15m → 168h from came-in).</div>
         </div>
-        {remind === 'custom' && (
-          <div className="field"><label>Custom reminder time</label>
-            <input type="datetime-local" value={customAt} onChange={e => setCustomAt(e.target.value)} /></div>
-        )}
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={saving}>{saving ? 'Saving…' : (isEdit ? 'Save' : 'Log lead')}</button>
