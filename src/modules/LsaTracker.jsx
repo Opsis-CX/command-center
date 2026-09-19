@@ -14,6 +14,7 @@ const OUTCOMES = [
   'LSA Booked',
   'LSA Not Booked',
   'LSA Not relevant',
+  'LSA Transferred to brand',
 ]
 
 // Quick follow-up presets (label, minutes-from-now) — they fill the time field.
