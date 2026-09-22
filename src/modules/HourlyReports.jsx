@@ -486,14 +486,27 @@ function WebLeadsView() {
     ])
     const cols = ['', 'New Leads', 'Dials', 'Live', 'Booked', 'Contact %', 'Book %', 'Speed', 'Avg Dial']
     const row = (name, r) => [name, r.new_leads, r.dials, r.live_contacts, r.bookings, pctStr(r.contact_rate), pctStr(r.booking_rate), secStr(r.avg_speed_sec), r.avg_dial_booked ?? '—']
-    const vendorTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Vendor' : c), (data.vendors || []).map(r => row(r.vendor, r)))
     const brandTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Brand' : c), (data.brands || []).map(r => row(r.brand, r)))
+    // LSA Chats — same data shown on-screen, so the posted update matches what
+    // the dashboard shows rather than lagging behind it.
+    let lsaSection = ''
+    if (lsa) {
+      const lt = lsa.totals || {}
+      const lsaTakeaways = bullets([
+        `${lt.leads ?? 0} LSA chat leads logged today · ${lt.booked ?? 0} booked.`,
+        lt.open ? `${lt.open} still open, ${lt.no_reply_yet ?? 0} awaiting a customer reply.` : null,
+      ])
+      const lsaTbl = (lsa.brands || []).length
+        ? htmlTable(['Brand', 'Leads', 'Booked'], lsa.brands.map(r => [r.brand, r.leads, r.booked]))
+        : '<p>No LSA leads logged for this day.</p>'
+      lsaSection = `<p><strong>LSA Chats</strong> (logged in Command Center)</p>${lsaTakeaways}${lsaTbl}`
+    }
     return [
       `<h3>Web Leads — Hourly Report · ${esc(dayLabel)}${data.is_today ? ` · ${esc(hourLabel(data.current_hour))}` : ''}</h3>`,
       takeaways,
       overview.trim() ? `<p><strong>Notes:</strong> ${esc(overview.trim())}</p>` : '',
-      `<p><strong>Web Lead Calls</strong></p>`, vendorTbl,
-      `<p><strong>Brand Performance</strong></p>`, brandTbl,
+      `<p><strong>Brand Performance</strong> (Web Lead Calls)</p>`, brandTbl,
+      lsaSection,
     ].join('')
   }
 
@@ -505,6 +518,7 @@ function WebLeadsView() {
       `This hour: ${h.dials} dials · ${h.new_leads} new leads · ${h.live_contacts} contacted (${pctStr(h.contact_rate)}) · ${h.bookings} booked`,
       `Today: ${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}) · ${t.bookings} booked (${pctStr(t.booking_rate)} of contacted) · ${secStr(t.avg_speed_sec)} avg speed-to-dial`, ``,
     ]
+    if (lsa) lines.push(`LSA Chats: ${lsa.totals.leads} leads logged · ${lsa.totals.booked} booked · ${lsa.totals.open} still open`, ``)
     if (overview.trim()) lines.push(`Overview: ${overview.trim()}`, ``)
     lines.push(`@Corinne Kerper @Becky Jackson @Brittney Thompson`)
     return lines.join('\n')
@@ -648,6 +662,3 @@ function Commentary({ label, value, onChange, preview }) {
     </>
   )
 }
-
-
-
