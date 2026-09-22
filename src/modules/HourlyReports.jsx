@@ -32,8 +32,11 @@ const thL = { ...th, textAlign: 'left' }
 const td = { textAlign: 'right', padding: '6px 8px', fontSize: 13, borderBottom: '1px solid var(--line-soft)' }
 const tdL = { ...td, textAlign: 'left', fontWeight: 600 }
 
+const selStyle = { padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer' }
+
 export default function HourlyReports() {
   const [tab, setTab] = useState('affiliate')
+  const [mode, setMode] = useState('hourly') // 'hourly' | 'eod'
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, marginBottom: 18, flexWrap: 'wrap' }}>
@@ -42,12 +45,18 @@ export default function HourlyReports() {
           <p className="page-sub">Live call performance from Five9. Review the numbers, add your commentary, post to #GarageCo Reporting.</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className={'btn ' + (tab === 'affiliate' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('affiliate')}>Affiliate Hourly Report</button>
-          <button className={'btn ' + (tab === 'openinv' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('openinv')}>Open Invoices Report</button>
-          <button className={'btn ' + (tab === 'webleads' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('webleads')}>Web Leads Report</button>
+          <select value={tab} onChange={e => setTab(e.target.value)} style={selStyle}>
+            <option value="affiliate">Affiliate Hourly Report</option>
+            <option value="openinv">Open Invoices Report</option>
+            <option value="webleads">Web Leads Report</option>
+          </select>
+          <select value={mode} onChange={e => setMode(e.target.value)} style={selStyle}>
+            <option value="hourly">Hourly Reporting</option>
+            <option value="eod">EOD Summary</option>
+          </select>
         </div>
       </div>
-      {tab === 'openinv' ? <OpenInvoicesView /> : tab === 'webleads' ? <WebLeadsView /> : <AffiliateView />}
+      {tab === 'openinv' ? <OpenInvoicesView mode={mode} /> : tab === 'webleads' ? <WebLeadsView mode={mode} /> : <AffiliateView mode={mode} />}
     </div>
   )
 }
@@ -103,7 +112,7 @@ function ControlsBar({ day, setDay, data, syncing, onRefresh, onCopy, copied, on
 // ============================================================
 // OPEN INVOICES
 // ============================================================
-function OpenInvoicesView() {
+function OpenInvoicesView({ mode }) {
   const [day, setDay] = useState(() => isoDate(etNow()))
   const { data, loading, err, setErr, load } = useHourlyReport('get_hourly_report_openinv', day)
   const [syncing, setSyncing] = useState(false)
@@ -111,6 +120,8 @@ function OpenInvoicesView() {
   const [posting, setPosting] = useState(false)
   const [posted, setPosted] = useState(false)
   const [overview, setOverview] = useState('')
+  const [daySummary, setDaySummary] = useState('')
+  const [tomorrowFocus, setTomorrowFocus] = useState('')
 
   async function refresh() {
     setSyncing(true); setErr('')
@@ -121,6 +132,14 @@ function OpenInvoicesView() {
   async function postToReporting() {
     setPosting(true); setErr('')
     const { error } = await supabase.rpc('post_hourly_to_reporting', { p_type: 'open_invoices', p_hour: data?.current_hour ?? null, p_html: buildHtml(), p_snapshot: data, p_commentary: overview.trim() || null })
+    setPosting(false)
+    if (error) { setErr(error.message); return }
+    setPosted(true); setTimeout(() => setPosted(false), 3000)
+  }
+  async function postEodToReporting() {
+    setPosting(true); setErr('')
+    const commentary = [daySummary.trim() && `Day Summary: ${daySummary.trim()}`, tomorrowFocus.trim() && `Tomorrow's Focus: ${tomorrowFocus.trim()}`].filter(Boolean).join('\n') || null
+    const { error } = await supabase.rpc('post_hourly_to_reporting', { p_type: 'open_invoices_eod', p_hour: null, p_html: buildEodHtml(), p_snapshot: data, p_commentary: commentary })
     setPosting(false)
     if (error) { setErr(error.message); return }
     setPosted(true); setTimeout(() => setPosted(false), 3000)
@@ -159,6 +178,34 @@ function OpenInvoicesView() {
     ].join('')
   }
 
+  function buildEodHtml() {
+    if (!data) return ''
+    const t = data.totals
+    const bh = (data.by_hour || []).filter(r => r.calls > 0)
+    const peak = bh.reduce((a, r) => r.calls > (a?.calls || 0) ? r : a, null)
+    const best = bh.reduce((a, r) => (r.contact_rate ?? -1) > (a?.contact_rate ?? -1) ? r : a, null)
+    const disp = data.dispositions || []
+    const topTwo = disp.slice(0, 2)
+    const topShare = topTwo.reduce((s, d) => s + (d.pct || 0), 0)
+    const takeaways = bullets([
+      `${t.calls} outbound calls · ${t.live_contacts} live contacts (avg ${pctStr(t.contact_rate)}) · ${pctStr(t.success_rate)} success rate for the day.`,
+      peak && `Peak volume: <strong>${esc(hourLabel(peak.hour))}</strong> with ${peak.calls} calls.`,
+      best && `Best contact rate: <strong>${pctStr(best.contact_rate)}</strong> at ${esc(hourLabel(best.hour))}.`,
+      topTwo.length && `${Math.round(topShare)}% of calls ended in ${topTwo.map(d => esc(d.disposition)).join(' or ')}.`,
+    ])
+    const brandTbl = htmlTable(
+      ['Brand', 'Calls', 'Live', 'Contact %', 'Call Backs', 'Hot Transfers', 'Success %', 'Avg Attempts'],
+      (data.by_brand || []).map(b => [b.brand, b.calls, b.live_contacts, pctStr(b.contact_rate), b.callbacks, b.hot_transfers, pctStr(b.success_rate), b.avg_attempts ?? '—'])
+    )
+    return [
+      `<h3>Open Invoices — EOD Summary · ${esc(dayLabel)}</h3>`,
+      takeaways,
+      daySummary.trim() ? `<p><strong>Day Summary:</strong> ${esc(daySummary.trim())}</p>` : '',
+      tomorrowFocus.trim() ? `<p><strong>Tomorrow's Focus:</strong> ${esc(tomorrowFocus.trim())}</p>` : '',
+      `<p><strong>Brand Performance</strong></p>`, brandTbl,
+    ].join('')
+  }
+
   function buildUpdate() {
     if (!data) return ''
     const t = data.totals, h = data.this_hour
@@ -171,7 +218,19 @@ function OpenInvoicesView() {
     lines.push(`@Corinne Kerper @Becky Jackson @Brittney Thompson`)
     return lines.join('\n')
   }
-  async function copyUpdate() { try { await navigator.clipboard.writeText(buildUpdate()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { setErr('Could not copy — select and copy manually.') } }
+  function buildEodUpdate() {
+    if (!data) return ''
+    const t = data.totals
+    const lines = [
+      `Open Invoices — EOD Summary · ${dayLabel}`, ``,
+      `${t.calls} calls · ${t.live_contacts} live contacts (${pctStr(t.contact_rate)}) · ${t.callbacks} callbacks · ${t.hot_transfers} hot transfers · ${pctStr(t.success_rate)} success · ${t.avg_attempts ?? '—'} avg attempts`, ``,
+    ]
+    if (daySummary.trim()) lines.push(`Day Summary: ${daySummary.trim()}`, ``)
+    if (tomorrowFocus.trim()) lines.push(`Tomorrow's Focus: ${tomorrowFocus.trim()}`, ``)
+    lines.push(`@Corinne Kerper @Becky Jackson @Brittney Thompson`)
+    return lines.join('\n')
+  }
+  async function copyUpdate() { try { await navigator.clipboard.writeText(mode === 'eod' ? buildEodUpdate() : buildUpdate()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { setErr('Could not copy — select and copy manually.') } }
 
   if (loading) return <p className="page-sub">Loading Open Invoices report…</p>
   if (err && !data) return <div className="card" style={{ borderColor: 'var(--failed)' }}><b style={{ color: 'var(--failed)' }}>Couldn't load report.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>
@@ -180,6 +239,53 @@ function OpenInvoicesView() {
   const t = data.totals, h = data.this_hour, lh = data.last_hour
   const byHour = data.by_hour || [], byBrand = data.by_brand || [], disp = data.dispositions || []
   const maxHourCalls = Math.max(1, ...byHour.map(r => r.calls))
+
+  if (mode === 'eod') {
+    return (
+      <div>
+        <ControlsBar day={day} setDay={setDay} data={data} syncing={syncing} onRefresh={refresh} onCopy={copyUpdate} copied={copied} onPost={postEodToReporting} posting={posting} posted={posted} />
+        {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
+
+        <div style={SECTION}>Day Totals</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 18 }}>
+          <StatCard label="Total Calls" big={String(t.calls)} sub="dials today" />
+          <StatCard label="Live Contacts" big={String(t.live_contacts)} sub="reached a person" />
+          <StatCard label="Call Backs" big={String(t.callbacks)} sub="scheduled" />
+          <StatCard label="Hot Transfers" big={String(t.hot_transfers)} sub="+ 3rd party" />
+          <StatCard label="Contact Rate" big={pctStr(t.contact_rate)} bigColor={t.contact_rate >= 10 ? good : t.contact_rate >= 5 ? warn : bad} sub="contacts ÷ calls" />
+          <StatCard label="Success Rate" big={pctStr(t.success_rate)} bigColor={t.success_rate >= 3 ? good : t.success_rate > 0 ? warn : bad} sub="booked/transfer/callback" />
+          <StatCard label="Avg Attempts" big={t.avg_attempts ?? '—'} sub="dials to contact" />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 18 }}>
+          <div className="card">
+            <div style={SECTION}>Brand Performance</div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr><th style={thL}>Brand</th><th style={th}>Calls</th><th style={th}>Live</th><th style={th}>Ctc%</th><th style={th}>CB</th><th style={th}>HT</th><th style={th}>Succ%</th><th style={th}>Att</th></tr></thead>
+                <tbody>
+                  {byBrand.map((b, i) => (<tr key={i}><td style={tdL}>{b.brand}</td><td style={td}>{b.calls}</td><td style={td}>{b.live_contacts}</td><td style={td}>{pctStr(b.contact_rate)}</td><td style={td}>{b.callbacks}</td><td style={td}>{b.hot_transfers}</td><td style={td}>{pctStr(b.success_rate)}</td><td style={td}>{b.avg_attempts ?? '—'}</td></tr>))}
+                  {byBrand.length === 0 && <tr><td style={td} colSpan={8}>No calls today.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="card">
+            <div style={SECTION}>Disposition Breakdown</div>
+            {disp.length === 0 ? <p className="page-sub" style={{ fontSize: 13, margin: 0 }}>No calls today.</p> : disp.map((d, i) => (
+              <div key={i} style={{ padding: '5px 0', borderTop: i ? '1px solid var(--line-soft)' : 'none' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}><span>{d.disposition}</span><span style={{ fontWeight: 600 }}>{d.n} <span style={{ color: 'var(--ink-soft)', fontWeight: 400, fontSize: 12 }}>({pctStr(d.pct)})</span></span></div>
+                <div style={{ height: 5, background: 'var(--line-soft)', borderRadius: 3, marginTop: 3 }}><div style={{ width: (d.pct || 0) + '%', height: '100%', background: 'var(--accent)', borderRadius: 3 }} /></div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <EodCommentary daySummary={daySummary} onDaySummary={setDaySummary} tomorrowFocus={tomorrowFocus} onTomorrowFocus={setTomorrowFocus} preview={buildEodUpdate()} />
+        <p className="page-sub" style={{ fontSize: 11.5 }}>End-of-day rundown for Open Invoices. Same source as the hourly report, just the full day at a glance.</p>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -259,7 +365,7 @@ function OpenInvoicesView() {
 // ============================================================
 // AFFILIATE
 // ============================================================
-function AffiliateView() {
+function AffiliateView({ mode }) {
   const [day, setDay] = useState(() => isoDate(etNow()))
   const { data, loading, err, setErr, load } = useHourlyReport('get_hourly_report_affiliate', day)
   const [syncing, setSyncing] = useState(false)
@@ -267,6 +373,8 @@ function AffiliateView() {
   const [posting, setPosting] = useState(false)
   const [posted, setPosted] = useState(false)
   const [overview, setOverview] = useState('')
+  const [daySummary, setDaySummary] = useState('')
+  const [tomorrowFocus, setTomorrowFocus] = useState('')
 
   async function refresh() {
     setSyncing(true); setErr('')
@@ -277,6 +385,14 @@ function AffiliateView() {
   async function postToReporting() {
     setPosting(true); setErr('')
     const { error } = await supabase.rpc('post_hourly_to_reporting', { p_type: 'affiliate', p_hour: data?.current_hour ?? null, p_html: buildHtml(), p_snapshot: data, p_commentary: overview.trim() || null })
+    setPosting(false)
+    if (error) { setErr(error.message); return }
+    setPosted(true); setTimeout(() => setPosted(false), 3000)
+  }
+  async function postEodToReporting() {
+    setPosting(true); setErr('')
+    const commentary = [daySummary.trim() && `Day Summary: ${daySummary.trim()}`, tomorrowFocus.trim() && `Tomorrow's Focus: ${tomorrowFocus.trim()}`].filter(Boolean).join('\n') || null
+    const { error } = await supabase.rpc('post_hourly_to_reporting', { p_type: 'affiliate_eod', p_hour: null, p_html: buildEodHtml(), p_snapshot: data, p_commentary: commentary })
     setPosting(false)
     if (error) { setErr(error.message); return }
     setPosted(true); setTimeout(() => setPosted(false), 3000)
@@ -305,6 +421,29 @@ function AffiliateView() {
     ].join('')
   }
 
+  // EOD Summary — same underlying daily totals as the hourly view (this_hour/
+  // last_hour just aren't relevant here), framed as an end-of-day rundown.
+  function buildEodHtml() {
+    if (!data) return ''
+    const t = data.totals, spd = data.speed || {}, eff = data.booking_efficiency || {}
+    const takeaways = bullets([
+      `${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}) for the day.`,
+      `${t.bookings} booked — ${pctStr(t.booking_rate)} booking rate (of contacted).`,
+      spd.first_dials ? `Speed to first dial: ${spd.within_15 ?? 0} within 15s / ${spd.over_15 ?? 0} over (avg ${secStr(spd.avg_sec)}).` : null,
+      eff.total_booked ? `Booking efficiency (via dialing): ${eff.first_dial ?? 0} on 1st dial · ${eff.second_dial ?? 0} on 2nd · ${eff.three_plus ?? 0} on 3+ (avg ${eff.avg_dial ?? '—'} dials).` : null,
+    ])
+    const cols = ['', 'New Leads', 'Dials', 'Live', 'Booked', 'Contact %', 'Book %', 'Speed', 'Avg Dial']
+    const row = (name, r) => [name, r.new_leads, r.dials, r.live_contacts, r.bookings, pctStr(r.contact_rate), pctStr(r.booking_rate), secStr(r.avg_speed_sec), r.avg_dial_booked ?? '—']
+    const brandTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Brand' : c), (data.brands || []).map(r => row(r.brand, r)))
+    return [
+      `<h3>Affiliate Leads — EOD Summary · ${esc(dayLabel)}</h3>`,
+      takeaways,
+      daySummary.trim() ? `<p><strong>Day Summary:</strong> ${esc(daySummary.trim())}</p>` : '',
+      tomorrowFocus.trim() ? `<p><strong>Tomorrow's Focus:</strong> ${esc(tomorrowFocus.trim())}</p>` : '',
+      `<p><strong>Brand Performance</strong></p>`, brandTbl,
+    ].join('')
+  }
+
   function buildUpdate() {
     if (!data) return ''
     const t = data.totals, h = data.this_hour
@@ -317,7 +456,19 @@ function AffiliateView() {
     lines.push(`@Corinne Kerper @Becky Jackson @Brittney Thompson`)
     return lines.join('\n')
   }
-  async function copyUpdate() { try { await navigator.clipboard.writeText(buildUpdate()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { setErr('Could not copy — select and copy manually.') } }
+  function buildEodUpdate() {
+    if (!data) return ''
+    const t = data.totals
+    const lines = [
+      `Affiliate Leads — EOD Summary · ${dayLabel}`, ``,
+      `${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}) · ${t.bookings} booked (${pctStr(t.booking_rate)} of contacted) · ${secStr(t.avg_speed_sec)} avg speed-to-dial`, ``,
+    ]
+    if (daySummary.trim()) lines.push(`Day Summary: ${daySummary.trim()}`, ``)
+    if (tomorrowFocus.trim()) lines.push(`Tomorrow's Focus: ${tomorrowFocus.trim()}`, ``)
+    lines.push(`@Corinne Kerper @Becky Jackson @Brittney Thompson`)
+    return lines.join('\n')
+  }
+  async function copyUpdate() { try { await navigator.clipboard.writeText(mode === 'eod' ? buildEodUpdate() : buildUpdate()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { setErr('Could not copy — select and copy manually.') } }
 
   if (loading) return <p className="page-sub">Loading Affiliate report…</p>
   if (err && !data) return <div className="card" style={{ borderColor: 'var(--failed)' }}><b style={{ color: 'var(--failed)' }}>Couldn't load report.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>
@@ -326,6 +477,77 @@ function AffiliateView() {
   const t = data.totals, h = data.this_hour, lh = data.last_hour
   const spd = data.speed || {}, eff = data.booking_efficiency || {}
   const vendors = data.vendors || [], brands = data.brands || [], disp = data.dispositions || []
+
+  if (mode === 'eod') {
+    return (
+      <div>
+        <ControlsBar day={day} setDay={setDay} data={data} syncing={syncing} onRefresh={refresh} onCopy={copyUpdate} copied={copied} onPost={postEodToReporting} posting={posting} posted={posted} />
+        {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
+
+        <div style={SECTION}>Day Totals</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 18 }}>
+          <StatCard label="New Leads" big={String(t.new_leads)} sub="loaded today" />
+          <StatCard label="Dials" big={String(t.dials)} sub={`${t.redials} redials`} />
+          <StatCard label="Contacted" big={String(t.live_contacts)} sub="reached a person" />
+          <StatCard label="Bookings" big={String(t.bookings)} bigColor={t.bookings > 0 ? good : 'inherit'} sub="appointments" />
+          <StatCard label="Contact Rate" big={pctStr(t.contact_rate)} bigColor={t.contact_rate >= 10 ? good : t.contact_rate >= 5 ? warn : bad} sub="contacted ÷ dials" />
+          <StatCard label="Booking Rate" big={pctStr(t.booking_rate)} bigColor={t.booking_rate >= 15 ? good : t.booking_rate > 0 ? warn : bad} sub="booked ÷ contacted" />
+          <StatCard label="Avg Speed" big={secStr(t.avg_speed_sec)} sub="to first dial" />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginBottom: 18 }}>
+          <div className="card">
+            <div style={SECTION}>Speed to First Dial</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ flex: 1, textAlign: 'center', padding: '10px 6px', background: 'var(--canvas)', borderRadius: 8 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: good }}>{spd.within_15 ?? 0}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>within 15 sec</div>
+              </div>
+              <div style={{ flex: 1, textAlign: 'center', padding: '10px 6px', background: 'var(--canvas)', borderRadius: 8 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: warn }}>{spd.over_15 ?? 0}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>over 15 sec</div>
+              </div>
+            </div>
+            <p className="page-sub" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>Avg {secStr(spd.avg_sec)} across {spd.first_dials ?? 0} first dials.</p>
+          </div>
+          <div className="card">
+            <div style={SECTION}>Booking Efficiency</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[['1st dial', eff.first_dial], ['2nd dial', eff.second_dial], ['3+ dials', eff.three_plus]].map(([lab, v], i) => (
+                <div key={i} style={{ flex: 1, textAlign: 'center', padding: '10px 4px', background: 'var(--canvas)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 20, fontWeight: 800 }}>{v ?? 0}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>{lab}</div>
+                </div>
+              ))}
+            </div>
+            <p className="page-sub" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>{eff.total_booked ?? 0} booked via dialing · avg {eff.avg_dial ?? '—'} dials to book.</p>
+          </div>
+          <div className="card">
+            <div style={SECTION}>Disposition Summary</div>
+            {disp.length === 0 ? <p className="page-sub" style={{ fontSize: 13, margin: 0 }}>No dials today.</p> : disp.slice(0, 8).map((d, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '3px 0' }}><span>{d.disposition}</span><span style={{ fontWeight: 600 }}>{d.n} <span style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>({pctStr(d.pct)})</span></span></div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 18 }}>
+          <div style={SECTION}>Brand Performance</div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr><th style={thL}>Brand</th><th style={th}>New Leads</th><th style={th}>Dials</th><th style={th}>Live</th><th style={th}>Booked</th><th style={th}>Ctc%</th><th style={th}>Book%</th><th style={th}>Speed</th><th style={th}>Avg Dial</th></tr></thead>
+              <tbody>
+                {brands.map((r, i) => (<tr key={i}><td style={tdL}>{r.brand}</td><td style={td}>{r.new_leads}</td><td style={td}>{r.dials}</td><td style={td}>{r.live_contacts}</td><td style={td}>{r.bookings}</td><td style={td}>{pctStr(r.contact_rate)}</td><td style={td}>{pctStr(r.booking_rate)}</td><td style={td}>{secStr(r.avg_speed_sec)}</td><td style={td}>{r.avg_dial_booked ?? '—'}</td></tr>))}
+                {brands.length === 0 && <tr><td style={td} colSpan={9}>No dials today.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <EodCommentary daySummary={daySummary} onDaySummary={setDaySummary} tomorrowFocus={tomorrowFocus} onTomorrowFocus={setTomorrowFocus} preview={buildEodUpdate()} />
+        <p className="page-sub" style={{ fontSize: 11.5 }}>End-of-day rundown for Affiliate (Lavin / Kashurba). Same source as the hourly report, just the full day at a glance.</p>
+      </div>
+    )
+  }
 
   const perfCols = (r) => (<>
     <td style={td}>{r.new_leads}</td><td style={td}>{r.dials}</td><td style={td}>{r.live_contacts}</td><td style={td}>{r.bookings}</td>
@@ -438,7 +660,7 @@ function AffiliateView() {
 // campaign is picked up automatically via the prefix match). Structurally
 // identical to AffiliateView -- only the RPC, report type, and copy differ.
 // ============================================================
-function WebLeadsView() {
+function WebLeadsView({ mode }) {
   const [day, setDay] = useState(() => isoDate(etNow()))
   const { data, loading, err, setErr, load } = useHourlyReport('get_hourly_report_webleads', day)
   const [syncing, setSyncing] = useState(false)
@@ -446,6 +668,8 @@ function WebLeadsView() {
   const [posting, setPosting] = useState(false)
   const [posted, setPosted] = useState(false)
   const [overview, setOverview] = useState('')
+  const [daySummary, setDaySummary] = useState('')
+  const [tomorrowFocus, setTomorrowFocus] = useState('')
   // LSA Chats — the second half of "Web Lead Type", alongside the BigQuery/Five9
   // call data above. Separate source (Command Center's own lsa_leads table,
   // logged by hand), separate load, so one failing never blocks the other.
@@ -473,6 +697,14 @@ function WebLeadsView() {
     if (error) { setErr(error.message); return }
     setPosted(true); setTimeout(() => setPosted(false), 3000)
   }
+  async function postEodToReporting() {
+    setPosting(true); setErr('')
+    const commentary = [daySummary.trim() && `Day Summary: ${daySummary.trim()}`, tomorrowFocus.trim() && `Tomorrow's Focus: ${tomorrowFocus.trim()}`].filter(Boolean).join('\n') || null
+    const { error } = await supabase.rpc('post_hourly_to_reporting', { p_type: 'web_leads_eod', p_hour: null, p_html: buildEodHtml(), p_snapshot: { ...data, lsa }, p_commentary: commentary })
+    setPosting(false)
+    if (error) { setErr(error.message); return }
+    setPosted(true); setTimeout(() => setPosted(false), 3000)
+  }
   const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 
   function buildHtml() {
@@ -487,8 +719,6 @@ function WebLeadsView() {
     const cols = ['', 'New Leads', 'Dials', 'Live', 'Booked', 'Contact %', 'Book %', 'Speed', 'Avg Dial']
     const row = (name, r) => [name, r.new_leads, r.dials, r.live_contacts, r.bookings, pctStr(r.contact_rate), pctStr(r.booking_rate), secStr(r.avg_speed_sec), r.avg_dial_booked ?? '—']
     const brandTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Brand' : c), (data.brands || []).map(r => row(r.brand, r)))
-    // LSA Chats — same data shown on-screen, so the posted update matches what
-    // the dashboard shows rather than lagging behind it.
     let lsaSection = ''
     if (lsa) {
       const lt = lsa.totals || {}
@@ -510,6 +740,40 @@ function WebLeadsView() {
     ].join('')
   }
 
+  function buildEodHtml() {
+    if (!data) return ''
+    const t = data.totals, spd = data.speed || {}, eff = data.booking_efficiency || {}
+    const takeaways = bullets([
+      `${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}) for the day.`,
+      `${t.bookings} booked — ${pctStr(t.booking_rate)} booking rate (of contacted).`,
+      spd.first_dials ? `Speed to first dial: ${spd.within_15 ?? 0} within 15s / ${spd.over_15 ?? 0} over (avg ${secStr(spd.avg_sec)}).` : null,
+      eff.total_booked ? `Booking efficiency (via dialing): ${eff.first_dial ?? 0} on 1st dial · ${eff.second_dial ?? 0} on 2nd · ${eff.three_plus ?? 0} on 3+ (avg ${eff.avg_dial ?? '—'} dials).` : null,
+    ])
+    const cols = ['', 'New Leads', 'Dials', 'Live', 'Booked', 'Contact %', 'Book %', 'Speed', 'Avg Dial']
+    const row = (name, r) => [name, r.new_leads, r.dials, r.live_contacts, r.bookings, pctStr(r.contact_rate), pctStr(r.booking_rate), secStr(r.avg_speed_sec), r.avg_dial_booked ?? '—']
+    const brandTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Brand' : c), (data.brands || []).map(r => row(r.brand, r)))
+    let lsaSection = ''
+    if (lsa) {
+      const lt = lsa.totals || {}
+      const lsaTakeaways = bullets([
+        `${lt.leads ?? 0} LSA chat leads logged today · ${lt.booked ?? 0} booked.`,
+        lt.open ? `${lt.open} still open, ${lt.no_reply_yet ?? 0} awaiting a customer reply.` : null,
+      ])
+      const lsaTbl = (lsa.brands || []).length
+        ? htmlTable(['Brand', 'Leads', 'Booked'], lsa.brands.map(r => [r.brand, r.leads, r.booked]))
+        : '<p>No LSA leads logged for this day.</p>'
+      lsaSection = `<p><strong>LSA Chats</strong> (logged in Command Center)</p>${lsaTakeaways}${lsaTbl}`
+    }
+    return [
+      `<h3>Web Leads — EOD Summary · ${esc(dayLabel)}</h3>`,
+      takeaways,
+      daySummary.trim() ? `<p><strong>Day Summary:</strong> ${esc(daySummary.trim())}</p>` : '',
+      tomorrowFocus.trim() ? `<p><strong>Tomorrow's Focus:</strong> ${esc(tomorrowFocus.trim())}</p>` : '',
+      `<p><strong>Brand Performance</strong> (Web Lead Calls)</p>`, brandTbl,
+      lsaSection,
+    ].join('')
+  }
+
   function buildUpdate() {
     if (!data) return ''
     const t = data.totals, h = data.this_hour
@@ -523,7 +787,20 @@ function WebLeadsView() {
     lines.push(`@Corinne Kerper @Becky Jackson @Brittney Thompson`)
     return lines.join('\n')
   }
-  async function copyUpdate() { try { await navigator.clipboard.writeText(buildUpdate()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { setErr('Could not copy — select and copy manually.') } }
+  function buildEodUpdate() {
+    if (!data) return ''
+    const t = data.totals
+    const lines = [
+      `Web Leads — EOD Summary · ${dayLabel}`, ``,
+      `${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}) · ${t.bookings} booked (${pctStr(t.booking_rate)} of contacted) · ${secStr(t.avg_speed_sec)} avg speed-to-dial`, ``,
+    ]
+    if (lsa) lines.push(`LSA Chats: ${lsa.totals.leads} leads logged · ${lsa.totals.booked} booked · ${lsa.totals.open} still open`, ``)
+    if (daySummary.trim()) lines.push(`Day Summary: ${daySummary.trim()}`, ``)
+    if (tomorrowFocus.trim()) lines.push(`Tomorrow's Focus: ${tomorrowFocus.trim()}`, ``)
+    lines.push(`@Corinne Kerper @Becky Jackson @Brittney Thompson`)
+    return lines.join('\n')
+  }
+  async function copyUpdate() { try { await navigator.clipboard.writeText(mode === 'eod' ? buildEodUpdate() : buildUpdate()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { setErr('Could not copy — select and copy manually.') } }
 
   if (loading) return <p className="page-sub">Loading Web Leads report…</p>
   if (err && !data) return <div className="card" style={{ borderColor: 'var(--failed)' }}><b style={{ color: 'var(--failed)' }}>Couldn't load report.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>
@@ -532,6 +809,100 @@ function WebLeadsView() {
   const t = data.totals, h = data.this_hour, lh = data.last_hour
   const spd = data.speed || {}, eff = data.booking_efficiency || {}
   const vendors = data.vendors || [], brands = data.brands || [], disp = data.dispositions || []
+
+  if (mode === 'eod') {
+    return (
+      <div>
+        <ControlsBar day={day} setDay={setDay} data={data} syncing={syncing} onRefresh={refresh} onCopy={copyUpdate} copied={copied} onPost={postEodToReporting} posting={posting} posted={posted} />
+        {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
+
+        <div style={SECTION}>Day Totals</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 18 }}>
+          <StatCard label="New Leads" big={String(t.new_leads)} sub="loaded today" />
+          <StatCard label="Dials" big={String(t.dials)} sub={`${t.redials} redials`} />
+          <StatCard label="Contacted" big={String(t.live_contacts)} sub="reached a person" />
+          <StatCard label="Bookings" big={String(t.bookings)} bigColor={t.bookings > 0 ? good : 'inherit'} sub="appointments" />
+          <StatCard label="Contact Rate" big={pctStr(t.contact_rate)} bigColor={t.contact_rate >= 10 ? good : t.contact_rate >= 5 ? warn : bad} sub="contacted ÷ dials" />
+          <StatCard label="Booking Rate" big={pctStr(t.booking_rate)} bigColor={t.booking_rate >= 15 ? good : t.booking_rate > 0 ? warn : bad} sub="booked ÷ contacted" />
+          <StatCard label="Avg Speed" big={secStr(t.avg_speed_sec)} sub="to first dial" />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginBottom: 18 }}>
+          <div className="card">
+            <div style={SECTION}>Speed to First Dial</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ flex: 1, textAlign: 'center', padding: '10px 6px', background: 'var(--canvas)', borderRadius: 8 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: good }}>{spd.within_15 ?? 0}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>within 15 sec</div>
+              </div>
+              <div style={{ flex: 1, textAlign: 'center', padding: '10px 6px', background: 'var(--canvas)', borderRadius: 8 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: warn }}>{spd.over_15 ?? 0}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>over 15 sec</div>
+              </div>
+            </div>
+            <p className="page-sub" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>Avg {secStr(spd.avg_sec)} across {spd.first_dials ?? 0} first dials.</p>
+          </div>
+          <div className="card">
+            <div style={SECTION}>Booking Efficiency</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[['1st dial', eff.first_dial], ['2nd dial', eff.second_dial], ['3+ dials', eff.three_plus]].map(([lab, v], i) => (
+                <div key={i} style={{ flex: 1, textAlign: 'center', padding: '10px 4px', background: 'var(--canvas)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 20, fontWeight: 800 }}>{v ?? 0}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>{lab}</div>
+                </div>
+              ))}
+            </div>
+            <p className="page-sub" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>{eff.total_booked ?? 0} booked via dialing · avg {eff.avg_dial ?? '—'} dials to book.</p>
+          </div>
+          <div className="card">
+            <div style={SECTION}>Disposition Summary</div>
+            {disp.length === 0 ? <p className="page-sub" style={{ fontSize: 13, margin: 0 }}>No dials today.</p> : disp.slice(0, 8).map((d, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '3px 0' }}><span>{d.disposition}</span><span style={{ fontWeight: 600 }}>{d.n} <span style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>({pctStr(d.pct)})</span></span></div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 18 }}>
+          <div style={SECTION}>Brand Performance <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-soft)', fontSize: 11.5 }}>· Web Lead Calls</span></div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr><th style={thL}>Brand</th><th style={th}>New Leads</th><th style={th}>Dials</th><th style={th}>Live</th><th style={th}>Booked</th><th style={th}>Ctc%</th><th style={th}>Book%</th><th style={th}>Speed</th><th style={th}>Avg Dial</th></tr></thead>
+              <tbody>
+                {brands.map((r, i) => (<tr key={i}><td style={tdL}>{r.brand}</td><td style={td}>{r.new_leads}</td><td style={td}>{r.dials}</td><td style={td}>{r.live_contacts}</td><td style={td}>{r.bookings}</td><td style={td}>{pctStr(r.contact_rate)}</td><td style={td}>{pctStr(r.booking_rate)}</td><td style={td}>{secStr(r.avg_speed_sec)}</td><td style={td}>{r.avg_dial_booked ?? '—'}</td></tr>))}
+                {brands.length === 0 && <tr><td style={td} colSpan={9}>No dials today.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 18 }}>
+          <div style={SECTION}>LSA Chats <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-soft)', fontSize: 11.5 }}>· logged in Command Center</span></div>
+          {lsaErr ? <p className="page-sub" style={{ fontSize: 12.5, color: 'var(--failed)' }}>Couldn't load: {lsaErr}</p> : !lsa ? <p className="page-sub" style={{ fontSize: 13 }}>Loading…</p> : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 12 }}>
+                <StatCard label="Leads" big={String(lsa.totals.leads)} sub="logged today" />
+                <StatCard label="Booked" big={String(lsa.totals.booked)} bigColor={lsa.totals.booked > 0 ? good : 'inherit'} sub="LSA Booked" />
+                <StatCard label="Still Open" big={String(lsa.totals.open)} sub="not resolved yet" />
+                <StatCard label="Awaiting Reply" big={String(lsa.totals.no_reply_yet)} sub="waiting on customer" />
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr><th style={thL}>Brand</th><th style={th}>Leads</th><th style={th}>Booked</th></tr></thead>
+                  <tbody>
+                    {(lsa.brands || []).map((r, i) => (<tr key={i}><td style={tdL}>{r.brand}</td><td style={td}>{r.leads}</td><td style={td}>{r.booked}</td></tr>))}
+                    {(!lsa.brands || lsa.brands.length === 0) && <tr><td style={td} colSpan={3}>No LSA leads logged for this day.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+
+        <EodCommentary daySummary={daySummary} onDaySummary={setDaySummary} tomorrowFocus={tomorrowFocus} onTomorrowFocus={setTomorrowFocus} preview={buildEodUpdate()} />
+        <p className="page-sub" style={{ fontSize: 11.5 }}>End-of-day rundown for Web Leads (Cheney / Genson / Cunningham calls, plus LSA chats). Same source as the hourly report, just the full day at a glance.</p>
+      </div>
+    )
+  }
 
   const perfCols = (r) => (<>
     <td style={td}>{r.new_leads}</td><td style={td}>{r.dials}</td><td style={td}>{r.live_contacts}</td><td style={td}>{r.bookings}</td>
@@ -662,3 +1033,26 @@ function Commentary({ label, value, onChange, preview }) {
     </>
   )
 }
+
+// EOD Summary's commentary is two structured fields instead of one free-text
+// box: a wrap-up of the day, and what to focus on tomorrow. Shared across all
+// three deals' EOD views.
+function EodCommentary({ daySummary, onDaySummary, tomorrowFocus, onTomorrowFocus, preview }) {
+  return (
+    <>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={SECTION}>Day Summary</div>
+        <textarea value={daySummary} onChange={e => onDaySummary(e.target.value)} rows={3} placeholder="A short wrap-up of how the day went overall…" style={taStyle} />
+      </div>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={SECTION}>Tomorrow's Focus</div>
+        <textarea value={tomorrowFocus} onChange={e => onTomorrowFocus(e.target.value)} rows={3} placeholder="What the team should prioritize or watch tomorrow…" style={taStyle} />
+      </div>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={SECTION}>Post Preview</div>
+        <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12.5, background: 'var(--canvas)', border: '1px solid var(--line-soft)', borderRadius: 8, padding: 12, margin: 0 }}>{preview}</pre>
+      </div>
+    </>
+  )
+}
+
