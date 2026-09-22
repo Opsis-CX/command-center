@@ -60,6 +60,7 @@ import LiveStatus from './modules/LiveStatus'
 import { usePresenceHeartbeat, MyStatusButton, TeamStatus } from './components/Presence'
 import MeetingReminder from './components/MeetingReminder'
 import LsaReminderPopup from './components/LsaReminderPopup'
+import TaskAssignedPopup from './components/TaskAssignedPopup'
 import { UnreadProvider } from './lib/unread'
 // --- hiring pipeline ---
 import ApplicationForm from './modules/ApplicationForm'
@@ -311,6 +312,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
           it sits inside AuthedApp, which the client portal never reaches. */}
       <MeetingReminder />
       <LsaReminderPopup />
+      <TaskAssignedPopup />
       <div className="app">
         <Sidebar open={navOpen} onNavigate={() => setNavOpen(false)} />
         {/* tap-to-close backdrop, only visible on mobile when the nav is open */}
