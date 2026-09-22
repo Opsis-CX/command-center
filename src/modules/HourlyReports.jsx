@@ -44,9 +44,10 @@ export default function HourlyReports() {
         <div style={{ display: 'flex', gap: 8 }}>
           <button className={'btn ' + (tab === 'affiliate' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('affiliate')}>Affiliate Hourly Report</button>
           <button className={'btn ' + (tab === 'openinv' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('openinv')}>Open Invoices Report</button>
+          <button className={'btn ' + (tab === 'webleads' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('webleads')}>Web Leads Report</button>
         </div>
       </div>
-      {tab === 'openinv' ? <OpenInvoicesView /> : <AffiliateView />}
+      {tab === 'openinv' ? <OpenInvoicesView /> : tab === 'webleads' ? <WebLeadsView /> : <AffiliateView />}
     </div>
   )
 }
@@ -429,6 +430,185 @@ function AffiliateView() {
   )
 }
 
+// ============================================================
+// WEB LEADS
+// Split cleanly out of Affiliate's own totals (2026-09-22), same pattern as
+// the Kashurba split on 2026-08-24: campaign like 'Web Leads%' (currently
+// Web Leads - Cheney / Genson / Cunningham; any future "Web Leads - <brand>"
+// campaign is picked up automatically via the prefix match). Structurally
+// identical to AffiliateView -- only the RPC, report type, and copy differ.
+// ============================================================
+function WebLeadsView() {
+  const [day, setDay] = useState(() => isoDate(etNow()))
+  const { data, loading, err, setErr, load } = useHourlyReport('get_hourly_report_webleads', day)
+  const [syncing, setSyncing] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [posting, setPosting] = useState(false)
+  const [posted, setPosted] = useState(false)
+  const [overview, setOverview] = useState('')
+
+  async function refresh() {
+    setSyncing(true); setErr('')
+    try { const { error } = await supabase.rpc('refresh_hourly_calls'); if (error) throw error; await new Promise(r => setTimeout(r, 7000)); await load() }
+    catch (e) { setErr(e.message || String(e)) }
+    setSyncing(false)
+  }
+  async function postToReporting() {
+    setPosting(true); setErr('')
+    const { error } = await supabase.rpc('post_hourly_to_reporting', { p_type: 'web_leads', p_hour: data?.current_hour ?? null, p_html: buildHtml(), p_snapshot: data, p_commentary: overview.trim() || null })
+    setPosting(false)
+    if (error) { setErr(error.message); return }
+    setPosted(true); setTimeout(() => setPosted(false), 3000)
+  }
+  const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+
+  function buildHtml() {
+    if (!data) return ''
+    const t = data.totals, spd = data.speed || {}, eff = data.booking_efficiency || {}
+    const takeaways = bullets([
+      `${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}).`,
+      `${t.bookings} booked — ${pctStr(t.booking_rate)} booking rate (of contacted).`,
+      spd.first_dials ? `Speed to first dial: ${spd.within_15 ?? 0} within 15s / ${spd.over_15 ?? 0} over (avg ${secStr(spd.avg_sec)}).` : null,
+      eff.total_booked ? `Booking efficiency (via dialing): ${eff.first_dial ?? 0} on 1st dial · ${eff.second_dial ?? 0} on 2nd · ${eff.three_plus ?? 0} on 3+ (avg ${eff.avg_dial ?? '—'} dials).` : null,
+    ])
+    const cols = ['', 'New Leads', 'Dials', 'Live', 'Booked', 'Contact %', 'Book %', 'Speed', 'Avg Dial']
+    const row = (name, r) => [name, r.new_leads, r.dials, r.live_contacts, r.bookings, pctStr(r.contact_rate), pctStr(r.booking_rate), secStr(r.avg_speed_sec), r.avg_dial_booked ?? '—']
+    const vendorTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Vendor' : c), (data.vendors || []).map(r => row(r.vendor, r)))
+    const brandTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Brand' : c), (data.brands || []).map(r => row(r.brand, r)))
+    return [
+      `<h3>Web Leads — Hourly Report · ${esc(dayLabel)}${data.is_today ? ` · ${esc(hourLabel(data.current_hour))}` : ''}</h3>`,
+      takeaways,
+      overview.trim() ? `<p><strong>Notes:</strong> ${esc(overview.trim())}</p>` : '',
+      `<p><strong>Vendor Performance</strong></p>`, vendorTbl,
+      `<p><strong>Brand Performance</strong></p>`, brandTbl,
+    ].join('')
+  }
+
+  function buildUpdate() {
+    if (!data) return ''
+    const t = data.totals, h = data.this_hour
+    const lines = [
+      `Web Leads — Hourly Update · ${dayLabel}${data.is_today ? ` · ${hourLabel(data.current_hour)}` : ''}`, ``,
+      `This hour: ${h.dials} dials · ${h.new_leads} new leads · ${h.live_contacts} contacted (${pctStr(h.contact_rate)}) · ${h.bookings} booked`,
+      `Today: ${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}) · ${t.bookings} booked (${pctStr(t.booking_rate)} of contacted) · ${secStr(t.avg_speed_sec)} avg speed-to-dial`, ``,
+    ]
+    if (overview.trim()) lines.push(`Overview: ${overview.trim()}`, ``)
+    lines.push(`@Corinne Kerper @Becky Jackson @Brittney Thompson`)
+    return lines.join('\n')
+  }
+  async function copyUpdate() { try { await navigator.clipboard.writeText(buildUpdate()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { setErr('Could not copy — select and copy manually.') } }
+
+  if (loading) return <p className="page-sub">Loading Web Leads report…</p>
+  if (err && !data) return <div className="card" style={{ borderColor: 'var(--failed)' }}><b style={{ color: 'var(--failed)' }}>Couldn't load report.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>
+  if (!data) return null
+
+  const t = data.totals, h = data.this_hour, lh = data.last_hour
+  const spd = data.speed || {}, eff = data.booking_efficiency || {}
+  const vendors = data.vendors || [], brands = data.brands || [], disp = data.dispositions || []
+
+  const perfCols = (r) => (<>
+    <td style={td}>{r.new_leads}</td><td style={td}>{r.dials}</td><td style={td}>{r.live_contacts}</td><td style={td}>{r.bookings}</td>
+    <td style={td}>{pctStr(r.contact_rate)}</td><td style={td}>{pctStr(r.booking_rate)}</td>
+    <td style={td}>{secStr(r.avg_speed_sec)}</td><td style={td}>{r.avg_dial_booked ?? '—'}</td>
+  </>)
+  const perfHead = (first) => (<tr><th style={thL}>{first}</th><th style={th}>New Leads</th><th style={th}>Dials</th><th style={th}>Live</th><th style={th}>Booked</th><th style={th}>Ctc%</th><th style={th}>Book%</th><th style={th}>Speed</th><th style={th}>Avg Dial</th></tr>)
+
+  return (
+    <div>
+      <ControlsBar day={day} setDay={setDay} data={data} syncing={syncing} onRefresh={refresh} onCopy={copyUpdate} copied={copied} onPost={postToReporting} posting={posting} posted={posted} />
+      {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
+
+      <div style={SECTION}>Previous Hour · {hourLabel(data.current_hour)}{data.is_today ? '' : ' (latest)'}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 18 }}>
+        <StatCard label="New Leads" big={String(h.new_leads)} delta={<Delta cur={h.new_leads} prev={lh.new_leads} />} />
+        <StatCard label="Dials" big={String(h.dials)} delta={<Delta cur={h.dials} prev={lh.dials} />} />
+        <StatCard label="Contacted" big={String(h.live_contacts)} delta={<Delta cur={h.live_contacts} prev={lh.live_contacts} />} />
+        <StatCard label="Bookings" big={String(h.bookings)} delta={<Delta cur={h.bookings} prev={lh.bookings} />} />
+        <StatCard label="Contact Rate" big={pctStr(h.contact_rate)} delta={<Delta cur={h.contact_rate} prev={lh.contact_rate} unit=" pts" />} />
+        <StatCard label="Booking Rate" big={pctStr(h.booking_rate)} delta={<Delta cur={h.booking_rate} prev={lh.booking_rate} unit=" pts" />} />
+      </div>
+
+      <div style={SECTION}>Running Totals — Today</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 18 }}>
+        <StatCard label="New Leads" big={String(t.new_leads)} sub="loaded today" />
+        <StatCard label="Dials" big={String(t.dials)} sub={`${t.redials} redials`} />
+        <StatCard label="Contacted" big={String(t.live_contacts)} sub="reached a person" />
+        <StatCard label="Bookings" big={String(t.bookings)} bigColor={t.bookings > 0 ? good : 'inherit'} sub="appointments" />
+        <StatCard label="Contact Rate" big={pctStr(t.contact_rate)} bigColor={t.contact_rate >= 10 ? good : t.contact_rate >= 5 ? warn : bad} sub="contacted ÷ dials" />
+        <StatCard label="Booking Rate" big={pctStr(t.booking_rate)} bigColor={t.booking_rate >= 15 ? good : t.booking_rate > 0 ? warn : bad} sub="booked ÷ contacted" />
+        <StatCard label="Avg Speed" big={secStr(t.avg_speed_sec)} sub="to first dial" />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginBottom: 18 }}>
+        <div className="card">
+          <div style={SECTION}>Speed to First Dial</div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ flex: 1, textAlign: 'center', padding: '10px 6px', background: 'var(--canvas)', borderRadius: 8 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: good }}>{spd.within_15 ?? 0}</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>within 15 sec</div>
+            </div>
+            <div style={{ flex: 1, textAlign: 'center', padding: '10px 6px', background: 'var(--canvas)', borderRadius: 8 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: warn }}>{spd.over_15 ?? 0}</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>over 15 sec</div>
+            </div>
+          </div>
+          <p className="page-sub" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>Avg {secStr(spd.avg_sec)} across {spd.first_dials ?? 0} first dials.</p>
+        </div>
+        <div className="card">
+          <div style={SECTION}>Booking Efficiency</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[['1st dial', eff.first_dial], ['2nd dial', eff.second_dial], ['3+ dials', eff.three_plus]].map(([lab, v], i) => (
+              <div key={i} style={{ flex: 1, textAlign: 'center', padding: '10px 4px', background: 'var(--canvas)', borderRadius: 8 }}>
+                <div style={{ fontSize: 20, fontWeight: 800 }}>{v ?? 0}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>{lab}</div>
+              </div>
+            ))}
+          </div>
+          <p className="page-sub" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>{eff.total_booked ?? 0} booked via dialing · avg {eff.avg_dial ?? '—'} dials to book. <span style={{ opacity: .8 }}>(Inbound bookings aren’t dial-attributed.)</span></p>
+        </div>
+        <div className="card">
+          <div style={SECTION}>Disposition Summary</div>
+          {disp.length === 0 ? <p className="page-sub" style={{ fontSize: 13, margin: 0 }}>No dials yet.</p> : disp.slice(0, 8).map((d, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '3px 0' }}><span>{d.disposition}</span><span style={{ fontWeight: 600 }}>{d.n} <span style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>({pctStr(d.pct)})</span></span></div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 18 }}>
+        <div style={SECTION}>Vendor Performance</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>{perfHead('Vendor')}</thead>
+            <tbody>
+              {vendors.map((r, i) => (<tr key={i}><td style={tdL}>{r.vendor}</td>{perfCols(r)}</tr>))}
+              {vendors.length === 0 && <tr><td style={td} colSpan={10}>No dials yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 18 }}>
+        <div style={SECTION}>Brand Performance</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>{perfHead('Brand')}</thead>
+            <tbody>
+              {brands.map((r, i) => (<tr key={i}><td style={tdL}>{r.brand}</td>{perfCols(r)}</tr>))}
+              {brands.length === 0 && <tr><td style={td} colSpan={10}>No dials yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <Commentary label="Comms Overview — your commentary" value={overview} onChange={setOverview} preview={buildUpdate()} />
+      <p className="page-sub" style={{ fontSize: 11.5 }}>
+        Live from Five9 → BigQuery (Web Leads campaigns: Cheney, Genson, Cunningham, and any future "Web Leads - &lt;brand&gt;" campaign). “Contacted” = a real conversation, excluding voicemails and no-answers. Speed-to-first-dial uses Five9 preview time; dial number counts a lead’s attempts across the last 3 days.
+        <br />Split out from the Affiliate report on 2026-09-22 so each report's totals are clean and non-overlapping — the same way Kashurba was split from Lavin earlier.
+      </p>
+    </div>
+  )
+}
+
 function Commentary({ label, value, onChange, preview }) {
   return (
     <>
@@ -443,3 +623,4 @@ function Commentary({ label, value, onChange, preview }) {
     </>
   )
 }
+
