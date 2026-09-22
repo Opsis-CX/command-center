@@ -446,6 +446,19 @@ function WebLeadsView() {
   const [posting, setPosting] = useState(false)
   const [posted, setPosted] = useState(false)
   const [overview, setOverview] = useState('')
+  // LSA Chats — the second half of "Web Lead Type", alongside the BigQuery/Five9
+  // call data above. Separate source (Command Center's own lsa_leads table,
+  // logged by hand), separate load, so one failing never blocks the other.
+  const [lsa, setLsa] = useState(null)
+  const [lsaErr, setLsaErr] = useState('')
+  useEffect(() => {
+    let active = true
+    supabase.rpc('get_webleads_lsa_chats', { p_day: day }).then(({ data, error }) => {
+      if (!active) return
+      if (error) setLsaErr(error.message); else { setLsa(data); setLsaErr('') }
+    })
+    return () => { active = false }
+  }, [day])
 
   async function refresh() {
     setSyncing(true); setErr('')
@@ -479,7 +492,7 @@ function WebLeadsView() {
       `<h3>Web Leads — Hourly Report · ${esc(dayLabel)}${data.is_today ? ` · ${esc(hourLabel(data.current_hour))}` : ''}</h3>`,
       takeaways,
       overview.trim() ? `<p><strong>Notes:</strong> ${esc(overview.trim())}</p>` : '',
-      `<p><strong>Vendor Performance</strong></p>`, vendorTbl,
+      `<p><strong>Web Lead Calls</strong></p>`, vendorTbl,
       `<p><strong>Brand Performance</strong></p>`, brandTbl,
     ].join('')
   }
@@ -574,8 +587,9 @@ function WebLeadsView() {
         </div>
       </div>
 
+      <div style={{ ...SECTION, marginTop: 4 }}>Web Lead Type</div>
       <div className="card" style={{ marginBottom: 18 }}>
-        <div style={SECTION}>Vendor Performance</div>
+        <div style={SECTION}>Web Lead Calls <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-soft)', fontSize: 11.5 }}>· Five9 / BigQuery</span></div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>{perfHead('Vendor')}</thead>
@@ -588,7 +602,30 @@ function WebLeadsView() {
       </div>
 
       <div className="card" style={{ marginBottom: 18 }}>
-        <div style={SECTION}>Brand Performance</div>
+        <div style={SECTION}>LSA Chats <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-soft)', fontSize: 11.5 }}>· logged in Command Center</span></div>
+        {lsaErr ? <p className="page-sub" style={{ fontSize: 12.5, color: 'var(--failed)' }}>Couldn't load: {lsaErr}</p> : !lsa ? <p className="page-sub" style={{ fontSize: 13 }}>Loading…</p> : (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 12 }}>
+              <StatCard label="Leads" big={String(lsa.totals.leads)} sub="logged today" />
+              <StatCard label="Booked" big={String(lsa.totals.booked)} bigColor={lsa.totals.booked > 0 ? good : 'inherit'} sub="LSA Booked" />
+              <StatCard label="Still Open" big={String(lsa.totals.open)} sub="not resolved yet" />
+              <StatCard label="Awaiting Reply" big={String(lsa.totals.no_reply_yet)} sub="waiting on customer" />
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr><th style={thL}>Brand</th><th style={th}>Leads</th><th style={th}>Booked</th></tr></thead>
+                <tbody>
+                  {(lsa.brands || []).map((r, i) => (<tr key={i}><td style={tdL}>{r.brand}</td><td style={td}>{r.leads}</td><td style={td}>{r.booked}</td></tr>))}
+                  {(!lsa.brands || lsa.brands.length === 0) && <tr><td style={td} colSpan={3}>No LSA leads logged for this day.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="card" style={{ marginBottom: 18 }}>
+        <div style={SECTION}>Brand Performance <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-soft)', fontSize: 11.5 }}>· Web Lead Calls</span></div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>{perfHead('Brand')}</thead>
@@ -599,6 +636,7 @@ function WebLeadsView() {
           </table>
         </div>
       </div>
+
 
       <Commentary label="Comms Overview — your commentary" value={overview} onChange={setOverview} preview={buildUpdate()} />
       <p className="page-sub" style={{ fontSize: 11.5 }}>
@@ -623,4 +661,5 @@ function Commentary({ label, value, onChange, preview }) {
     </>
   )
 }
+
 
