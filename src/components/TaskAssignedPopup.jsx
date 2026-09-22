@@ -24,6 +24,23 @@ import { supabase } from '../lib/supabase'
 // ============================================================
 
 const POLL_MS = 20_000
+// Only ever consider notifications from roughly the last day — otherwise the
+// very first time this loads for anyone, it surfaces every historical
+// unread task_assigned row (some from long before this popup even existed)
+// as if they all just happened. "New tasks only" means recent ones only.
+const MAX_AGE_MS = 24 * 60 * 60 * 1000
+// How many recent unread candidates to pull per check. We look at a small
+// batch rather than just one, because some of them may turn out to belong
+// to a task that's since been completed — those get silently marked read
+// and skipped rather than shown, so we need a few in reserve to fall
+// through to.
+const BATCH_SIZE = 15
+
+function taskIdFromLink(link) {
+  if (!link) return null
+  const m = /[?&]task=([^&]+)/.exec(link)
+  return m ? decodeURIComponent(m[1]) : null
+}
 
 export default function TaskAssignedPopup() {
   const [due, setDue] = useState(null) // a notifications row
@@ -35,16 +52,48 @@ export default function TaskAssignedPopup() {
     if (due) return // don't stack a new toast on top of one still on screen
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+    const cutoff = new Date(Date.now() - MAX_AGE_MS).toISOString()
     const { data, error } = await supabase.from('notifications')
       .select('id, title, body, link, actor_name, created_at')
       .eq('recipient_id', user.id)
       .eq('type', 'task_assigned')
       .is('read_at', null)
       .is('dismissed_at', null)
+      .gte('created_at', cutoff)
       .order('created_at', { ascending: true })
-      .limit(1)
+      .limit(BATCH_SIZE)
     if (error || !Array.isArray(data) || data.length === 0) return
-    setDue(data[0])
+
+    // Look up the current status of every task in this batch in one call,
+    // so we can skip anything that's already been completed since the
+    // notification was created — no point popping up a toast for a task
+    // that's already done.
+    const taskIds = [...new Set(data.map(n => taskIdFromLink(n.link)).filter(Boolean))]
+    let statusById = {}
+    if (taskIds.length) {
+      const { data: tasksData } = await supabase.from('tasks')
+        .select('id, status, deleted_at').in('id', taskIds)
+      statusById = Object.fromEntries((tasksData || []).map(t => [t.id, t]))
+    }
+
+    const staleIds = []
+    let next = null
+    for (const n of data) {
+      const taskId = taskIdFromLink(n.link)
+      const task = taskId ? statusById[taskId] : null
+      const isStale = taskId && (!task || task.status === 'done' || task.deleted_at)
+      if (isStale) { staleIds.push(n.id); continue }
+      next = n
+      break
+    }
+    // Clear out anything stale so it never gets re-checked (and stops
+    // showing an unread badge for a task that's already finished).
+    if (staleIds.length) {
+      supabase.from('notifications').update({ read_at: new Date().toISOString() }).in('id', staleIds)
+        .then(() => {})
+    }
+    if (!next) return
+    setDue(next)
     // tiny delay so the mount animates in rather than just appearing
     requestAnimationFrame(() => setVisible(true))
   }, [due])
@@ -143,3 +192,4 @@ export default function TaskAssignedPopup() {
     </div>
   )
 }
+
