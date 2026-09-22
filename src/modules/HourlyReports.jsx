@@ -589,19 +589,6 @@ function WebLeadsView() {
 
       <div style={{ ...SECTION, marginTop: 4 }}>Web Lead Type</div>
       <div className="card" style={{ marginBottom: 18 }}>
-        <div style={SECTION}>Web Lead Calls <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-soft)', fontSize: 11.5 }}>· Five9 / BigQuery</span></div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>{perfHead('Vendor')}</thead>
-            <tbody>
-              {vendors.map((r, i) => (<tr key={i}><td style={tdL}>{r.vendor}</td>{perfCols(r)}</tr>))}
-              {vendors.length === 0 && <tr><td style={td} colSpan={10}>No dials yet.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 18 }}>
         <div style={SECTION}>LSA Chats <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-soft)', fontSize: 11.5 }}>· logged in Command Center</span></div>
         {lsaErr ? <p className="page-sub" style={{ fontSize: 12.5, color: 'var(--failed)' }}>Couldn't load: {lsaErr}</p> : !lsa ? <p className="page-sub" style={{ fontSize: 13 }}>Loading…</p> : (
           <>
@@ -661,5 +648,6 @@ function Commentary({ label, value, onChange, preview }) {
     </>
   )
 }
+
 
 
