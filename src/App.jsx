@@ -380,7 +380,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
                   and grant it to the right roles, exactly like 'hiring'. To open it to
                   everyone temporarily, replace this line with:
                   <Route path="/sales" element={<SalesDashboard />} /> */}
-              <Route path="/sales" element={canAny(appRole, 'sales') ? <SalesDashboard /> : <NoAccess />} />
+              <Route path="/sales/*" element={canAny(appRole, 'sales') ? <SalesDashboard /> : <NoAccess />} />
               {/* Website chat inbox. Same audience as Sales - a website visitor is a
                   prospect. The database gate is can_see_sales_pipeline(), so keep the
                   'web_chat' page-key in step with it or the page loads empty. */}
@@ -409,5 +409,11 @@ function titleFor(path) {
     '/web-chat': 'Web Chat',
     '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
   }
+  // Sales is now a tabbed shell with nested routes (/sales/dashboard,
+  // /sales/scorecard, etc.) -- Pipeline itself stays at the bare /sales so
+  // existing bookmarks keep working, but every nested tab should still read
+  // "Sales" in the header rather than falling through to "Command Center".
+  if (path.startsWith('/sales/')) return 'Sales'
   return map[path] || 'Command Center'
 }
+
