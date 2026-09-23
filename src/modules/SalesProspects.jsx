@@ -222,6 +222,9 @@ function ProspectRecord({ deal, me, verticals, onClose, onChanged }) {
   const [log, setLog] = useState({ outcome: CALL_OUTCOMES[0], body: '', next: deal.next_activity || '' })
   const [booking, setBooking] = useState(false)
   const [meetAt, setMeetAt] = useState('')
+  const [meetWith, setMeetWith] = useState('')
+  const [slots, setSlots] = useState(null) // null = not loaded, [] = loaded/empty
+  const [slotsErr, setSlotsErr] = useState('')
   // Suggests the Call Outcome from Kerri's actual, already-dispositioned Five9
   // call, so she isn't re-picking the same outcome twice -- Five9 already
   // counts the real disposition toward the scorecard; this is purely to save
@@ -301,8 +304,18 @@ function ProspectRecord({ deal, me, verticals, onClose, onChanged }) {
     loadHistory()
   }
 
+  // Real open slots, checked against Corinne's and Becky's actual synced
+  // calendars (Corinne first) -- loaded fresh each time the booking panel
+  // opens, so a slot someone just took elsewhere never gets shown stale.
+  async function loadSlots() {
+    setSlots(null); setSlotsErr('')
+    const { data, error } = await supabase.rpc('sales_available_meeting_slots', { p_days: 10 })
+    if (error) { setSlotsErr(error.message); setSlots([]); return }
+    setSlots(data || [])
+  }
+
   async function bookMeeting() {
-    if (!meetAt) { setErr('Pick the meeting date and time.'); return }
+    if (!meetAt) { setErr('Pick an available time.'); return }
     const patch = {
       meeting_at: new Date(meetAt).toISOString(),
       meeting_outcome: deal.meeting_outcome && deal.meeting_outcome !== 'scheduled' ? deal.meeting_outcome : 'scheduled',
@@ -310,12 +323,16 @@ function ProspectRecord({ deal, me, verticals, onClose, onChanged }) {
     if (!deal.booked_by_id) { patch.booked_by_id = me?.id || null; patch.booked_by_name = me?.full_name || null }
     const moving = !BOOKED_OR_LATER.includes(deal.status)
     if (moving) patch.status = 'discovery_call'
-    const ok = await update(patch, 'Meeting booked.')
+    const ok = await update(patch, `Meeting booked with ${meetWith || 'the team'}.`)
     if (!ok) return
     if (moving) {
       await supabase.from('deal_stage_events').insert({ deal_id: deal.id, from_status: deal.status, to_status: 'discovery_call', actor_id: me?.id || null, note: 'Booked from Prospects' })
     }
-    await supabase.from('deal_activities').insert({ deal_id: deal.id, kind: 'meeting', subject: 'Discovery meeting booked', body: new Date(meetAt).toLocaleString(), actor_id: me?.id || null, actor_name: me?.full_name || null })
+    await supabase.from('deal_activities').insert({
+      deal_id: deal.id, kind: 'meeting', subject: 'Discovery meeting booked',
+      body: `${new Date(meetAt).toLocaleString()}${meetWith ? ` with ${meetWith}` : ''}`,
+      actor_id: me?.id || null, actor_name: me?.full_name || null,
+    })
     setBooking(false); loadHistory()
   }
 
@@ -351,18 +368,37 @@ function ProspectRecord({ deal, me, verticals, onClose, onChanged }) {
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {!deal.owner_id && me && <button style={S.btn} disabled={busy} onClick={() => update({ owner_id: me.id, owner_name: me.full_name }, 'Assigned to you.')}>Assign to me</button>}
         {!deal.researched_at && <button style={S.btn} disabled={busy} onClick={markResearched}>Mark researched</button>}
-        <button style={S.btnPri} disabled={busy} onClick={() => { setBooking(b => !b); setErr('') }}>Book meeting</button>
+        <button style={S.btnPri} disabled={busy} onClick={() => { const opening = !booking; setBooking(opening); setErr(''); if (opening && !slots) loadSlots() }}>Book meeting</button>
       </div>
       {booking && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 10, padding: 10 }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={S.label}>Discovery meeting</span>
-            <input id="pros-meet-at" type="datetime-local" value={meetAt} onChange={e => setMeetAt(e.target.value)} style={S.input} />
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 260 }}>
+            <span style={S.label}>Discovery meeting — real open slot</span>
+            {slotsErr ? <span style={{ fontSize: 12.5, color: 'var(--failed, #c0392b)' }}>Couldn't load calendars: {slotsErr}</span> : !slots ? (
+              <span style={{ fontSize: 13, color: 'var(--ink-soft)' }}>Checking Corinne's and Becky's calendars…</span>
+            ) : slots.length === 0 ? (
+              <span style={{ fontSize: 13, color: 'var(--ink-soft)' }}>No open 30-min slots in the next two weeks.</span>
+            ) : (
+              <select id="pros-meet-at" value={meetAt} style={S.input}
+                onChange={e => {
+                  const s = slots[Number(e.target.value)]
+                  if (!s) { setMeetAt(''); setMeetWith(''); return }
+                  setMeetAt(etToIso(s.slot_date, s.slot_start.slice(0, 5))); setMeetWith(s.with_name)
+                }}>
+                <option value="">Pick a time…</option>
+                {slots.map((s, i) => (
+                  <option key={i} value={i}>
+                    {fmtDate(s.slot_date, { weekday: 'short', month: 'short', day: 'numeric' })} · {fmtTime(s.slot_start)} — {s.with_name}
+                  </option>
+                ))}
+              </select>
+            )}
           </label>
-          <button style={S.btnPri} disabled={busy} onClick={bookMeeting}>Confirm booking</button>
+          <button style={S.btnPri} disabled={busy || !meetAt} onClick={bookMeeting}>Confirm booking</button>
           <span style={{ fontSize: 12, color: 'var(--ink-soft)', flexBasis: '100%' }}>
             {BOOKED_OR_LATER.includes(deal.status) ? 'Updates the meeting time.' : 'Moves this prospect to Discovery Call Scheduled.'}
             {deal.booked_by_name ? ` Booked by ${deal.booked_by_name}.` : ' You will be recorded as the booker.'}
+            {' '}Corinne is checked first; Becky is offered only where Corinne's calendar already has something.
           </span>
         </div>
       )}
@@ -518,4 +554,34 @@ function normalizeUrl(v) {
   if (!v) return null
   const s = String(v).trim()
   return /^https?:\/\//i.test(s) ? s : 'https://' + s
+}
+
+// Converts a wall-clock date+time that's meant as America/New_York local time
+// into the correct UTC ISO instant, regardless of what timezone the browser
+// viewing this page is actually set to (the slots themselves are computed
+// server-side in ET; this just has to land on the same real moment in time).
+function etToIso(dateStr, timeStr) {
+  const [y, mo, da] = dateStr.split('-').map(Number)
+  const [h, mi] = timeStr.split(':').map(Number)
+  let guess = new Date(Date.UTC(y, mo - 1, da, h, mi))
+  for (let i = 0; i < 2; i++) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York', hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    }).formatToParts(guess)
+    const get = t => Number(parts.find(p => p.type === t).value)
+    const seenUTC = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour') === 24 ? 0 : get('hour'), get('minute'))
+    guess = new Date(guess.getTime() + (Date.UTC(y, mo - 1, da, h, mi) - seenUTC))
+  }
+  return guess.toISOString()
+}
+
+// Formats a plain "HH:MM:SS" time-of-day string (as returned by the slots
+// RPC) as "9:00 AM" -- these are already wall-clock ET, so this is pure
+// string formatting, no timezone conversion involved.
+function fmtTime(hms) {
+  const [h, m] = hms.split(':').map(Number)
+  const ap = h < 12 ? 'AM' : 'PM'
+  const h12 = h % 12 || 12
+  return `${h12}:${String(m).padStart(2, '0')} ${ap}`
 }
