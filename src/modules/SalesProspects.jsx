@@ -52,6 +52,36 @@ const COMPANY_FIELDS = [
 const CALL_OUTCOMES = ['Left voicemail', 'No answer', 'Decision maker unavailable', 'Callback requested', 'Spoke — interested',
   'Spoke — not interested', 'Info requested', 'Follow-up required', 'Working with competitor', 'Bad number']
 
+// Maps a raw Five9 disposition (from f9_calls_archive, Turritopsis Consulting
+// campaign) to the closest matching entry in CALL_OUTCOMES above, for
+// auto-suggesting the outcome dropdown. A few of these are judgment calls,
+// not exact equivalents (Five9 has no "spoke, interested" concept, for
+// example) -- that's exactly why the raw disposition is still shown
+// alongside the suggestion rather than silently swapped in. Anything not
+// listed here (the excluded/administrative dispositions, or a genuinely new
+// one Five9 starts using) returns null and leaves the dropdown at its
+// ordinary default instead of guessing.
+const FIVE9_TO_OUTCOME = {
+  'no answer': 'No answer',
+  'busy': 'No answer',
+  'left voicemail': 'Left voicemail',
+  'voicemail - no message left': 'Left voicemail',
+  'bad number': 'Bad number',
+  'call back': 'Callback requested',
+  'decision maker unavailable': 'Decision maker unavailable',
+  'not interested': 'Spoke — not interested',
+  'not viable': 'Spoke — not interested',
+  'working with competitor': 'Working with competitor',
+  'info requested': 'Info requested',
+  'information requested': 'Info requested',
+  'follow-up required': 'Follow-up required',
+  'follow up required': 'Follow-up required',
+  'booked': 'Spoke — interested',
+}
+function mapFive9Disposition(raw) {
+  return FIVE9_TO_OUTCOME[String(raw || '').trim().toLowerCase()] || null
+}
+
 const quiet = v => !v || /^not publicly verified/i.test(String(v).trim())
 
 export default function SalesProspects() {
@@ -192,6 +222,24 @@ function ProspectRecord({ deal, me, verticals, onClose, onChanged }) {
   const [log, setLog] = useState({ outcome: CALL_OUTCOMES[0], body: '', next: deal.next_activity || '' })
   const [booking, setBooking] = useState(false)
   const [meetAt, setMeetAt] = useState('')
+  // Suggests the Call Outcome from Kerri's actual, already-dispositioned Five9
+  // call, so she isn't re-picking the same outcome twice -- Five9 already
+  // counts the real disposition toward the scorecard; this is purely to save
+  // her a redundant click here. She can always change it; nothing is hidden,
+  // the raw Five9 disposition is shown right under the dropdown.
+  const [suggested, setSuggested] = useState(null) // { disposition, work_date } | null
+  useEffect(() => {
+    let active = true
+    if (!deal.contact_phone) return
+    supabase.rpc('sales_last_call_outcome', { p_phone: deal.contact_phone }).then(({ data, error }) => {
+      if (!active || error || !data || !data.length) return
+      const row = data[0]
+      const mapped = mapFive9Disposition(row.disposition)
+      setSuggested({ disposition: row.disposition, work_date: row.work_date })
+      if (mapped) setLog(x => ({ ...x, outcome: mapped }))
+    })
+    return () => { active = false }
+  }, [deal.id, deal.contact_phone])
 
   const loadHistory = useCallback(async () => {
     const [a, e, n] = await Promise.all([
@@ -385,7 +433,12 @@ function ProspectRecord({ deal, me, verticals, onClose, onChanged }) {
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><span style={S.label}>Call outcome</span>
               <select id="pros-outcome" value={log.outcome} onChange={e => setLog(x => ({ ...x, outcome: e.target.value }))} style={S.input}>
                 {CALL_OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
-              </select></label>
+              </select>
+              {suggested && (
+                <span style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>
+                  Suggested from her last Five9 call ({fmtDate(suggested.work_date)}): <b>{suggested.disposition}</b>
+                </span>
+              )}</label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><span style={S.label}>Next follow-up</span>
               <input id="pros-next" type="date" value={log.next || ''} onChange={e => setLog(x => ({ ...x, next: e.target.value }))} style={S.input} /></label>
           </div>
@@ -397,7 +450,7 @@ function ProspectRecord({ deal, me, verticals, onClose, onChanged }) {
             <button style={S.btnPri} disabled={busy} onClick={() => logCall('call')}>Log call</button>
           </div>
           <p style={{ fontSize: 12, color: 'var(--ink-soft)', margin: 0 }}>
-            Five9 already counts your dials and dispositions for the scorecard — logging here keeps the story of this prospect in one place.
+            Five9 already counts your dials and dispositions for the scorecard, and now suggests the outcome above too — logging here keeps the story of this prospect in one place.
           </p>
           <div>
             <h3 style={{ ...S.label, margin: '4px 0 8px' }}>History</h3>
