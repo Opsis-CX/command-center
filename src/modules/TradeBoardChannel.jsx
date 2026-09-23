@@ -21,8 +21,22 @@ const INTERVAL_COMMITMENT = "By accepting this interval, you are committing to s
 // and the interval-trade RPCs enforce capacity / overlap / 40h / cert.
 // ============================================================
 
-// Only intervals for this role belong on this board.
-const ROLE = 'GarageCo: Appointment Setter'
+// Intervals for any of these three GarageCo setter-family roles belong on
+// this board (2026-09-23, Becky: widened from Appointment-Setter-only so the
+// +LSA and pure LSA Chat seats are tradeable/claimable here too — each is
+// labeled per-card via ROLE_META so setters can tell the types apart).
+// Audience + cert gating below is per-schedule already, so widening this list
+// doesn't change who can see/claim a given seat — only whether it appears at all.
+const ROLES = ['GarageCo: Appointment Setter', 'GarageCo: Appointment Setter + LSA', 'GarageCo: LSA Chat']
+const ROLE_META = {
+  'GarageCo: Appointment Setter': { label: 'Appointment Setter', bg: 'var(--canvas)', color: 'var(--ink-soft)' },
+  'GarageCo: Appointment Setter + LSA': { label: 'Setter + LSA', bg: 'var(--needed-bg)', color: 'var(--needed)' },
+  'GarageCo: LSA Chat': { label: 'LSA Chat', bg: 'var(--passed-bg)', color: 'var(--passed)' },
+}
+function RoleBadge({ role }) {
+  const meta = ROLE_META[role] || { label: role || 'Unknown', bg: 'var(--canvas)', color: 'var(--ink-soft)' }
+  return <span className="badge" style={{ background: meta.bg, color: meta.color, marginBottom: 6 }}>{meta.label}</span>
+}
 const POLL_MS = 20000
 const SEAT_CAP = 60   // cap open-seat cards rendered at once (agents see far fewer via the release window)
 
@@ -71,7 +85,7 @@ export default function TradeBoardChannel({ me: meProp, isMobile, onBack }) {
       const [meRes, profRes, blkRes, clmRes, trdRes, schRes, audRes, recRes, certRes, tierRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         supabase.from('profiles').select('id, full_name').order('full_name'),
-        supabase.from('shift_blocks').select('*').eq('role', ROLE).order('block_date').order('start_time'),
+        supabase.from('shift_blocks').select('*').in('role', ROLES).order('block_date').order('start_time'),
         fetchAllRows(() => supabase.from('shift_claims').select('*').order('id')),
         supabase.from('interval_trades').select('*').eq('status', 'open'),
         supabase.from('schedules').select('*'),
@@ -223,6 +237,7 @@ export default function TradeBoardChannel({ me: meProp, isMobile, onBack }) {
                 <div style={grid}>
                   {mineRows.map(({ tr, block }) => (
                     <div key={tr.id} className="iv mine" style={cardStyle}>
+                      <RoleBadge role={block.role} />
                       <div style={{ fontWeight: 700, fontSize: 14 }}>{dayLabel(block)}</div>
                       <div style={{ fontSize: 15 }}>{blockTimeInViewer(block.block_date, block.start_time, viewerTZ)} – {blockTimeInViewer(block.block_date, block.end_time, viewerTZ)}</div>
                       <div style={{ fontSize: 11, color: 'var(--cta)', fontWeight: 700, margin: '6px 0 8px' }}>🔁 On the board — you still hold it</div>
@@ -242,6 +257,7 @@ export default function TradeBoardChannel({ me: meProp, isMobile, onBack }) {
                     const eligible = certOkForBlock(block)
                     return (
                       <div key={tr.id} className="iv" style={cardStyle}>
+                        <RoleBadge role={block.role} />
                         <div style={{ fontWeight: 700, fontSize: 14 }}>{dayLabel(block)}</div>
                         <div style={{ fontSize: 15 }}>{blockTimeInViewer(block.block_date, block.start_time, viewerTZ)} – {blockTimeInViewer(block.block_date, block.end_time, viewerTZ)}</div>
                         <div style={{ fontSize: 12, color: 'var(--ink-soft)', margin: '4px 0 8px' }}>Offered by {nameOf(tr.offered_by)}</div>
@@ -260,6 +276,7 @@ export default function TradeBoardChannel({ me: meProp, isMobile, onBack }) {
               : <div style={grid}>
                   {seatRows.slice(0, SEAT_CAP).map(({ block, left }) => (
                     <div key={block.id} className="iv open" style={cardStyle}>
+                      <RoleBadge role={block.role} />
                       <div style={{ fontWeight: 700, fontSize: 14 }}>{dayLabel(block)}</div>
                       <div style={{ fontSize: 15 }}>{blockTimeInViewer(block.block_date, block.start_time, viewerTZ)} – {blockTimeInViewer(block.block_date, block.end_time, viewerTZ)}</div>
                       <div style={{ fontSize: 11, color: 'var(--ink-soft)', margin: '4px 0 8px' }}>{left} seat{left === 1 ? '' : 's'} open</div>
