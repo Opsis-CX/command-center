@@ -41,6 +41,14 @@ function todayNY() {
     timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date())
 }
+// Shifts a 'YYYY-MM-DD' string by whole calendar days (UTC-anchored, so this
+// never gets reinterpreted into a different day by the browser's own zone).
+function shiftDate(dateStr, days) {
+  const d = new Date(dateStr + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + days)
+  const p = n => String(n).padStart(2, '0')
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`
+}
 function shortDate(d) {
   if (!d) return '—'
   const [, m, day] = d.split('-').map(Number)
@@ -62,7 +70,7 @@ export default function LsaTracker({ me }) {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [modalLead, setModalLead] = useState(undefined) // undefined = closed, null = new, obj = edit
-  const [tab, setTab] = useState('followup') // 'followup' | 'today' | 'all'
+  const [tab, setTab] = useState('followup') // 'followup' | 'today' | 'yesterday' | 'all'
 
   const load = useCallback(async () => {
     setErr('')
@@ -89,7 +97,9 @@ export default function LsaTracker({ me }) {
   }, [load])
 
   const today = todayNY()
+  const yesterday = shiftDate(today, -1)
   const todays = useMemo(() => rows.filter(r => r.lead_date === today), [rows, today])
+  const yesterdays = useMemo(() => rows.filter(r => r.lead_date === yesterday), [rows, yesterday])
   const openRows = useMemo(() => rows.filter(r => r.is_open).sort((a, b) =>
     (a.follow_up_at || '9999').localeCompare(b.follow_up_at || '9999') ||
     a.created_at.localeCompare(b.created_at)
@@ -116,7 +126,7 @@ export default function LsaTracker({ me }) {
     fontFamily: 'inherit',
   })
 
-  const list = tab === 'followup' ? openRows : tab === 'today' ? todays : rows
+  const list = tab === 'followup' ? openRows : tab === 'today' ? todays : tab === 'yesterday' ? yesterdays : rows
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, minHeight: 0, background: 'var(--surface)' }}>
@@ -125,6 +135,7 @@ export default function LsaTracker({ me }) {
         <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
           <button onClick={() => setTab('followup')} style={tabBtn(tab === 'followup')}>Needs follow-up ({openRows.length})</button>
           <button onClick={() => setTab('today')} style={{ ...tabBtn(tab === 'today'), borderLeft: '1px solid var(--line)' }}>Today ({todays.length})</button>
+          <button onClick={() => setTab('yesterday')} style={{ ...tabBtn(tab === 'yesterday'), borderLeft: '1px solid var(--line)' }}>Yesterday ({yesterdays.length})</button>
           <button onClick={() => setTab('all')} style={{ ...tabBtn(tab === 'all'), borderLeft: '1px solid var(--line)' }}>All ({rows.length})</button>
         </div>
         {err && <span className="login-err" style={{ margin: 0 }}>{err}</span>}
@@ -144,7 +155,7 @@ export default function LsaTracker({ me }) {
         {loading && <div className="page-sub">Loading…</div>}
         {!loading && list.length === 0 && (
           <div className="page-sub" style={{ padding: '20px 0', textAlign: 'center' }}>
-            {tab === 'followup' ? 'Nothing waiting on follow-up. 🎉' : tab === 'today' ? 'No LSA leads logged today yet.' : 'No LSA leads yet.'}
+            {tab === 'followup' ? 'Nothing waiting on follow-up. 🎉' : tab === 'today' ? 'No LSA leads logged today yet.' : tab === 'yesterday' ? 'No LSA leads logged yesterday.' : 'No LSA leads yet.'}
           </div>
         )}
         {list.map(r => (
