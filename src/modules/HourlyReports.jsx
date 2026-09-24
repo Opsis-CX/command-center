@@ -884,6 +884,7 @@ function WebLeadsView({ mode }) {
                 <StatCard label="Booked" big={String(lsa.totals.booked)} bigColor={lsa.totals.booked > 0 ? good : 'inherit'} sub="LSA Booked" />
                 <StatCard label="Still Open" big={String(lsa.totals.open)} sub="not resolved yet" />
                 <StatCard label="Awaiting Reply" big={String(lsa.totals.no_reply_yet)} sub="waiting on customer" />
+                <StatCard label="Still Needs Follow-up" big={String(lsa.still_needs_followup.total)} bigColor={lsa.still_needs_followup.total > 0 ? warn : 'inherit'} sub={`${lsa.still_needs_followup.waiting_on_customer} on customer · ${lsa.still_needs_followup.waiting_on_team} on us`} />
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -982,6 +983,7 @@ function WebLeadsView({ mode }) {
               <StatCard label="Booked" big={String(lsa.totals.booked)} bigColor={lsa.totals.booked > 0 ? good : 'inherit'} sub="LSA Booked" />
               <StatCard label="Still Open" big={String(lsa.totals.open)} sub="not resolved yet" />
               <StatCard label="Awaiting Reply" big={String(lsa.totals.no_reply_yet)} sub="waiting on customer" />
+              <StatCard label="Still Needs Follow-up" big={String(lsa.still_needs_followup.total)} bigColor={lsa.still_needs_followup.total > 0 ? warn : 'inherit'} sub={`${lsa.still_needs_followup.waiting_on_customer} on customer · ${lsa.still_needs_followup.waiting_on_team} on us`} />
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -1055,4 +1057,5 @@ function EodCommentary({ daySummary, onDaySummary, tomorrowFocus, onTomorrowFocu
     </>
   )
 }
+
 
