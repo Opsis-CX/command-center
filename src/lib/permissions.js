@@ -17,7 +17,7 @@ export const ROLES = [
 // change the other. (Clients never appear in ROLES at all - the portal is
 // gated separately - so STAFF is simply every role except 'agent'.)
 const STAFF = ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin']
-
+ 
 // For each permission, the set of roles that have it.
 const MATRIX = {
   'dashboard': ['asc', 'support', 'certification', 'quality', 'marketing', 'admin'],
@@ -79,14 +79,14 @@ const MATRIX = {
   'certifications.view_content_and_scores_only_of_agents': ['asc', 'quality', 'marketing', 'admin'],
   'schedule.all': ['admin'],
   'schedule.create_schedules': ['admin'],
-  'schedule.view_only_projects_assigned_to': ['asc', 'quality', 'admin'],
+  'schedule.view_only_projects_assigned_to': ['asc', 'certification', 'quality', 'admin'],
   // Insights limited to schedules the person is assigned to (audience membership).
-  'schedule.view_insights_assigned': ['asc', 'admin'],
+  'schedule.view_insights_assigned': ['asc', 'certification', 'admin'],
   // No release times or rolling-window lock: schedules/intervals on their
   // assigned schedules are ALWAYS fully available. Only agents are locked
   // to the 14-day rolling release window (and cert-gated).
   'schedule.no_release_times': ['asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
-  'schedule.ability_to_assign_intervals_to_agents': ['asc', 'admin'],
+  'schedule.ability_to_assign_intervals_to_agents': ['asc', 'certification', 'admin'],
   'schedule.accept_and_release_intervals_on_an_assigned_schedule': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
   'schedule.ability_to_assign_agents_to_schedules': ['certification', 'admin'],
   'schedule.view_my_schedule': ['agent', 'asc', 'support', 'certification', 'quality', 'marketing', 'sales', 'admin'],
@@ -137,3 +137,4 @@ export function canAny(role, pagePrefix) {
   return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + ".")) && MATRIX[k].includes(r))
 }
 export const ALL_PERMS = Object.keys(MATRIX)
+ 
