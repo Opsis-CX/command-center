@@ -753,13 +753,13 @@ function WebLeadsView({ mode }) {
       const lsaTbl = (lsa.brands || []).length
         ? htmlTable(['Brand', 'Leads', 'Booked'], lsa.brands.map(r => [r.brand, r.leads, r.booked]))
         : '<p>No LSA leads logged for this day.</p>'
-      lsaSection = `<p><strong>LSA Chats</strong> (logged in Command Center)</p>${lsaTakeaways}${lsaTbl}`
+      lsaSection = `<p>&nbsp;</p><p><strong>LSA Chats</strong></p>${lsaTakeaways}${lsaTbl}`
     }
     return [
       `<h3>Web Leads — Hourly Report · ${esc(dayLabel)}${data.is_today ? ` · ${esc(hourLabel(data.current_hour))}` : ''}</h3>`,
       takeaways,
       overview.trim() ? `<p><strong>Notes:</strong> ${esc(overview.trim())}</p>` : '',
-      `<p><strong>Brand Performance</strong> (Web Lead Calls)</p>`, brandTbl, quietNote,
+      `<p>&nbsp;</p><p><strong>Call Performance by Brand</strong></p>`, brandTbl, quietNote,
       lsaSection,
     ].join('')
   }
@@ -789,14 +789,14 @@ function WebLeadsView({ mode }) {
       const lsaTbl = (lsa.brands || []).length
         ? htmlTable(['Brand', 'Leads', 'Booked'], lsa.brands.map(r => [r.brand, r.leads, r.booked]))
         : '<p>No LSA leads logged for this day.</p>'
-      lsaSection = `<p><strong>LSA Chats</strong> (logged in Command Center)</p>${lsaTakeaways}${lsaTbl}`
+      lsaSection = `<p>&nbsp;</p><p><strong>LSA Chats</strong></p>${lsaTakeaways}${lsaTbl}`
     }
     return [
       `<h3>Web Leads — EOD Summary · ${esc(dayLabel)}</h3>`,
       takeaways,
       daySummary.trim() ? `<p><strong>Day Summary:</strong> ${esc(daySummary.trim())}</p>` : '',
       tomorrowFocus.trim() ? `<p><strong>Tomorrow's Focus:</strong> ${esc(tomorrowFocus.trim())}</p>` : '',
-      `<p><strong>Brand Performance</strong> (Web Lead Calls)</p>`, brandTbl,
+      `<p>&nbsp;</p><p><strong>Call Performance by Brand</strong></p>`, brandTbl,
       lsaSection,
     ].join('')
   }
@@ -1092,6 +1092,8 @@ function EodCommentary({ daySummary, onDaySummary, tomorrowFocus, onTomorrowFocu
     </>
   )
 }
+
+
 
 
 
