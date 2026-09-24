@@ -758,7 +758,7 @@ function WebLeadsView({ mode }) {
     return [
       `<h3>Web Leads — Hourly Report · ${esc(dayLabel)}${data.is_today ? ` · ${esc(hourLabel(data.current_hour))}` : ''}</h3>`,
       takeaways,
-      overview.trim() ? `<p><strong>Notes:</strong> ${esc(overview.trim())}</p>` : '',
+      overview.trim() ? `<p>&nbsp;</p><p><strong>ASC Notes</strong></p><p>${esc(overview.trim())}</p>` : '',
       `<p>&nbsp;</p><p><strong>Call Performance by Brand</strong></p>`, brandTbl, quietNote,
       lsaSection,
     ].join('')
@@ -1092,6 +1092,12 @@ function EodCommentary({ daySummary, onDaySummary, tomorrowFocus, onTomorrowFocu
     </>
   )
 }
+
+
+
+
+
+
 
 
 
