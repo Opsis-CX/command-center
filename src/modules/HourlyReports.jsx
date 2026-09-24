@@ -25,6 +25,21 @@ function htmlTable(headers, rows) {
 }
 const bullets = (items) => '<ul>' + items.filter(Boolean).map(i => `<li>${i}</li>`).join('') + '</ul>'
 
+// Flags when one brand is clearly driving the day, rather than reporting
+// flat numbers with no story. Deliberately conservative: needs real volume
+// (15+ combined dials) and a clear majority (70%+) before saying anything,
+// so a slow/quiet day with one active brand doesn't get over-called.
+function dominantBrandNote(brands) {
+  const list = (brands || []).filter(b => b.dials > 0)
+  if (list.length < 2) return null
+  const total = list.reduce((s, b) => s + b.dials, 0)
+  if (total < 15) return null
+  const top = list.reduce((a, b) => (b.dials > a.dials ? b : a))
+  const share = top.dials / total
+  if (share < 0.7) return null
+  return `<strong>${esc(top.brand)}</strong> is driving nearly all of the volume — ${top.dials} of ${total} dials (${Math.round(share * 100)}%).`
+}
+
 const SECTION = { fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--accent)', marginBottom: 10 }
 const taStyle = { display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--canvas)', resize: 'vertical', boxSizing: 'border-box' }
 const th = { textAlign: 'right', padding: '6px 8px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', color: 'var(--ink-soft)', borderBottom: '1px solid var(--line)' }
@@ -715,16 +730,25 @@ function WebLeadsView({ mode }) {
       `${t.bookings} booked — ${pctStr(t.booking_rate)} booking rate (of contacted).`,
       spd.first_dials ? `Speed to first dial: ${spd.within_15 ?? 0} within 15s / ${spd.over_15 ?? 0} over (avg ${secStr(spd.avg_sec)}).` : null,
       eff.total_booked ? `Booking efficiency (via dialing): ${eff.first_dial ?? 0} on 1st dial · ${eff.second_dial ?? 0} on 2nd · ${eff.three_plus ?? 0} on 3+ (avg ${eff.avg_dial ?? '—'} dials).` : null,
+      dominantBrandNote(data.brands),
     ])
     const cols = ['', 'New Leads', 'Dials', 'Live', 'Booked', 'Contact %', 'Book %', 'Speed', 'Avg Dial']
     const row = (name, r) => [name, r.new_leads, r.dials, r.live_contacts, r.bookings, pctStr(r.contact_rate), pctStr(r.booking_rate), secStr(r.avg_speed_sec), r.avg_dial_booked ?? '—']
-    const brandTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Brand' : c), (data.brands || []).map(r => row(r.brand, r)))
+    // Hourly cadence: a brand with zero dials this hour is normal, not news —
+    // showing it as a full zero-row, hour after hour, is mostly noise. Fold
+    // it into a short mention instead of losing the information entirely.
+    const activeBrands = (data.brands || []).filter(b => b.dials > 0)
+    const quietBrands = (data.brands || []).filter(b => b.dials === 0)
+    const brandTbl = htmlTable(cols.map((c, i) => i === 0 ? 'Brand' : c), activeBrands.map(r => row(r.brand, r)))
+    const quietNote = quietBrands.length ? `<p style="font-size:12px;color:#7a6a45">No dials this hour: ${esc(quietBrands.map(b => b.brand).join(', '))}.</p>` : ''
     let lsaSection = ''
     if (lsa) {
       const lt = lsa.totals || {}
+      const bl = lsa.still_needs_followup || {}
       const lsaTakeaways = bullets([
         `${lt.leads ?? 0} LSA chat leads logged today · ${lt.booked ?? 0} booked.`,
         lt.open ? `${lt.open} still open, ${lt.no_reply_yet ?? 0} awaiting a customer reply.` : null,
+        bl.total ? `${bl.total} leads still need follow-up overall (${bl.waiting_on_customer ?? 0} waiting on the customer, ${bl.waiting_on_team ?? 0} waiting on us).` : null,
       ])
       const lsaTbl = (lsa.brands || []).length
         ? htmlTable(['Brand', 'Leads', 'Booked'], lsa.brands.map(r => [r.brand, r.leads, r.booked]))
@@ -735,7 +759,7 @@ function WebLeadsView({ mode }) {
       `<h3>Web Leads — Hourly Report · ${esc(dayLabel)}${data.is_today ? ` · ${esc(hourLabel(data.current_hour))}` : ''}</h3>`,
       takeaways,
       overview.trim() ? `<p><strong>Notes:</strong> ${esc(overview.trim())}</p>` : '',
-      `<p><strong>Brand Performance</strong> (Web Lead Calls)</p>`, brandTbl,
+      `<p><strong>Brand Performance</strong> (Web Lead Calls)</p>`, brandTbl, quietNote,
       lsaSection,
     ].join('')
   }
@@ -748,6 +772,7 @@ function WebLeadsView({ mode }) {
       `${t.bookings} booked — ${pctStr(t.booking_rate)} booking rate (of contacted).`,
       spd.first_dials ? `Speed to first dial: ${spd.within_15 ?? 0} within 15s / ${spd.over_15 ?? 0} over (avg ${secStr(spd.avg_sec)}).` : null,
       eff.total_booked ? `Booking efficiency (via dialing): ${eff.first_dial ?? 0} on 1st dial · ${eff.second_dial ?? 0} on 2nd · ${eff.three_plus ?? 0} on 3+ (avg ${eff.avg_dial ?? '—'} dials).` : null,
+      dominantBrandNote(data.brands),
     ])
     const cols = ['', 'New Leads', 'Dials', 'Live', 'Booked', 'Contact %', 'Book %', 'Speed', 'Avg Dial']
     const row = (name, r) => [name, r.new_leads, r.dials, r.live_contacts, r.bookings, pctStr(r.contact_rate), pctStr(r.booking_rate), secStr(r.avg_speed_sec), r.avg_dial_booked ?? '—']
@@ -755,9 +780,11 @@ function WebLeadsView({ mode }) {
     let lsaSection = ''
     if (lsa) {
       const lt = lsa.totals || {}
+      const bl = lsa.still_needs_followup || {}
       const lsaTakeaways = bullets([
         `${lt.leads ?? 0} LSA chat leads logged today · ${lt.booked ?? 0} booked.`,
         lt.open ? `${lt.open} still open, ${lt.no_reply_yet ?? 0} awaiting a customer reply.` : null,
+        bl.total ? `${bl.total} leads still need follow-up overall (${bl.waiting_on_customer ?? 0} waiting on the customer, ${bl.waiting_on_team ?? 0} waiting on us).` : null,
       ])
       const lsaTbl = (lsa.brands || []).length
         ? htmlTable(['Brand', 'Leads', 'Booked'], lsa.brands.map(r => [r.brand, r.leads, r.booked]))
@@ -782,7 +809,11 @@ function WebLeadsView({ mode }) {
       `This hour: ${h.dials} dials · ${h.new_leads} new leads · ${h.live_contacts} contacted (${pctStr(h.contact_rate)}) · ${h.bookings} booked`,
       `Today: ${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}) · ${t.bookings} booked (${pctStr(t.booking_rate)} of contacted) · ${secStr(t.avg_speed_sec)} avg speed-to-dial`, ``,
     ]
-    if (lsa) lines.push(`LSA Chats: ${lsa.totals.leads} leads logged · ${lsa.totals.booked} booked · ${lsa.totals.open} still open`, ``)
+    if (lsa) {
+      lines.push(`LSA Chats: ${lsa.totals.leads} leads logged · ${lsa.totals.booked} booked · ${lsa.totals.open} still open`)
+      if (lsa.still_needs_followup?.total) lines.push(`Still needs follow-up overall: ${lsa.still_needs_followup.total} (${lsa.still_needs_followup.waiting_on_customer} on customer, ${lsa.still_needs_followup.waiting_on_team} on us)`)
+      lines.push(``)
+    }
     if (overview.trim()) lines.push(`Overview: ${overview.trim()}`, ``)
     lines.push(`@Corinne Kerper @Becky Jackson @Brittney Thompson`)
     return lines.join('\n')
@@ -794,7 +825,11 @@ function WebLeadsView({ mode }) {
       `Web Leads — EOD Summary · ${dayLabel}`, ``,
       `${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}) · ${t.bookings} booked (${pctStr(t.booking_rate)} of contacted) · ${secStr(t.avg_speed_sec)} avg speed-to-dial`, ``,
     ]
-    if (lsa) lines.push(`LSA Chats: ${lsa.totals.leads} leads logged · ${lsa.totals.booked} booked · ${lsa.totals.open} still open`, ``)
+    if (lsa) {
+      lines.push(`LSA Chats: ${lsa.totals.leads} leads logged · ${lsa.totals.booked} booked · ${lsa.totals.open} still open`)
+      if (lsa.still_needs_followup?.total) lines.push(`Still needs follow-up overall: ${lsa.still_needs_followup.total} (${lsa.still_needs_followup.waiting_on_customer} on customer, ${lsa.still_needs_followup.waiting_on_team} on us)`)
+      lines.push(``)
+    }
     if (daySummary.trim()) lines.push(`Day Summary: ${daySummary.trim()}`, ``)
     if (tomorrowFocus.trim()) lines.push(`Tomorrow's Focus: ${tomorrowFocus.trim()}`, ``)
     lines.push(`@Corinne Kerper @Becky Jackson @Brittney Thompson`)
@@ -1057,5 +1092,8 @@ function EodCommentary({ daySummary, onDaySummary, tomorrowFocus, onTomorrowFocu
     </>
   )
 }
+
+
+
 
 
