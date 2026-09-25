@@ -76,7 +76,7 @@ const selStyle = { padding: '8px 12px', border: '1px solid var(--line)', borderR
 
 export default function HourlyReports() {
   const [tab, setTab] = useState('affiliate')
-  const [mode, setMode] = useState('hourly') // 'hourly' | 'eod'
+  const [mode, setMode] = useState('hourly') // 'hourly' | 'eod' | 'alltime'
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, marginBottom: 18, flexWrap: 'wrap' }}>
@@ -93,6 +93,7 @@ export default function HourlyReports() {
           <select value={mode} onChange={e => setMode(e.target.value)} style={selStyle}>
             <option value="hourly">Hourly Reporting</option>
             <option value="eod">EOD Summary</option>
+            <option value="alltime">All Time</option>
           </select>
         </div>
       </div>
@@ -119,6 +120,115 @@ function StatCard({ label, big, sub, bigColor, delta }) {
   )
 }
 
+function RangeNote({ data }) {
+  if (!data) return null
+  const since = data.since_date ? new Date(data.since_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+  const through = data.through_date ? new Date(data.through_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+  return <p className="page-sub" style={{ fontSize: 12.5, marginBottom: 14 }}>{since} – {through}{data.days_covered ? ` · ${data.days_covered} days of activity` : ''} · read-only, start-to-date totals</p>
+}
+
+// All Time view for the two report types built on f9_affil_metric (dials/leads/
+// bookings/etc): Affiliate and Web Leads. `groupLabel`/`groupKey` name the
+// breakdown column ("Vendor" for Affiliate, "Brand" for Web Leads); `lsa` is
+// optional (Web Leads only) and renders the LSA Chats all-time section below.
+function AllTimeAffiliateShape({ data, groupLabel, groupKey, lsa }) {
+  if (!data) return null
+  const t = data.totals, rows = data[groupKey] || []
+  return (
+    <div>
+      <RangeNote data={data} />
+      <div style={SECTION}>All-Time Totals</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 18 }}>
+        <StatCard label="Dials" big={String(t.dials)} sub="all-time" />
+        <StatCard label="Unique Leads" big={String(t.leads)} sub="distinct contacts" />
+        <StatCard label="Live Contacts" big={String(t.live_contacts)} sub="reached a person" />
+        <StatCard label="Bookings" big={String(t.bookings)} sub="all-time" />
+        <StatCard label="Contact Rate" big={pctStr(t.contact_rate)} sub="contacted ÷ dials" />
+        <StatCard label="Booking Rate" big={pctStr(t.booking_rate)} sub="booked ÷ contacted" />
+        <StatCard label="Avg Speed" big={secStr(t.avg_speed_sec)} sub="to first dial" />
+      </div>
+      <div className="card" style={{ marginBottom: 18 }}>
+        <div style={SECTION}>{groupLabel} Performance</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th style={thL}>{groupLabel}</th><th style={th}>Dials</th><th style={th}>Leads</th><th style={th}>Live</th><th style={th}>Booked</th><th style={th}>Contact %</th><th style={th}>Book %</th><th style={th}>Speed</th></tr></thead>
+            <tbody>
+              {rows.map((r, i) => (<tr key={i}><td style={tdL}>{r.brand || r.vendor}</td><td style={td}>{r.dials}</td><td style={td}>{r.leads}</td><td style={td}>{r.live_contacts}</td><td style={td}>{r.bookings}</td><td style={td}>{pctStr(r.contact_rate)}</td><td style={td}>{pctStr(r.booking_rate)}</td><td style={td}>{secStr(r.avg_speed_sec)}</td></tr>))}
+              {rows.length === 0 && <tr><td style={td} colSpan={8}>No data.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="card" style={{ marginBottom: 18 }}>
+        <div style={SECTION}>Disposition Breakdown</div>
+        {(data.dispositions || []).map((d, i) => (
+          <div key={i} style={{ padding: '5px 0', borderTop: i ? '1px solid var(--line-soft)' : 'none' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}><span>{d.disposition}</span><span style={{ fontWeight: 600 }}>{d.n} <span style={{ color: 'var(--ink-soft)', fontWeight: 400, fontSize: 12 }}>({pctStr(d.pct)})</span></span></div>
+            <div style={{ height: 5, background: 'var(--line-soft)', borderRadius: 3, marginTop: 3 }}><div style={{ width: (d.pct || 0) + '%', height: '100%', background: 'var(--accent)', borderRadius: 3 }} /></div>
+          </div>
+        ))}
+      </div>
+      {lsa && (
+        <div className="card" style={{ marginBottom: 18 }}>
+          <div style={SECTION}>LSA Chats — All Time</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 14 }}>
+            <StatCard label="Leads" big={String(lsa.totals.leads)} sub="all-time" />
+            <StatCard label="Booked" big={String(lsa.totals.booked)} bigColor={lsa.totals.booked > 0 ? good : 'inherit'} sub="LSA Booked" />
+            <StatCard label="Still Open" big={String(lsa.totals.open)} sub="not resolved yet" />
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th style={thL}>Brand</th><th style={th}>Leads</th><th style={th}>Booked</th></tr></thead>
+            <tbody>{(lsa.brands || []).map((b, i) => (<tr key={i}><td style={tdL}>{b.brand}</td><td style={td}>{b.leads}</td><td style={td}>{b.booked}</td></tr>))}</tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// All Time view for Open Invoices' own metric shape (calls/live_contacts/
+// callbacks/hot_transfers/successes rather than dials/leads/bookings).
+function AllTimeOpenInvShape({ data }) {
+  if (!data) return null
+  const t = data.totals, rows = data.by_brand || []
+  return (
+    <div>
+      <RangeNote data={data} />
+      <div style={SECTION}>All-Time Totals</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 18 }}>
+        <StatCard label="Total Calls" big={String(t.calls)} sub="all-time" />
+        <StatCard label="Live Contacts" big={String(t.live_contacts)} sub="reached a person" />
+        <StatCard label="Call Backs" big={String(t.callbacks)} sub="scheduled" />
+        <StatCard label="Hot Transfers" big={String(t.hot_transfers)} sub="+ 3rd party" />
+        <StatCard label="Contact Rate" big={pctStr(t.contact_rate)} sub="contacts ÷ calls" />
+        <StatCard label="Success Rate" big={pctStr(t.success_rate)} sub="booked/transfer/callback" />
+        <StatCard label="Avg Attempts" big={t.avg_attempts ?? '—'} sub="dials to contact" />
+      </div>
+      <div className="card" style={{ marginBottom: 18 }}>
+        <div style={SECTION}>Brand Performance</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th style={thL}>Brand</th><th style={th}>Calls</th><th style={th}>Live</th><th style={th}>Ctc%</th><th style={th}>CB</th><th style={th}>HT</th><th style={th}>Succ%</th><th style={th}>Att</th></tr></thead>
+            <tbody>
+              {rows.map((b, i) => (<tr key={i}><td style={tdL}>{b.brand}</td><td style={td}>{b.calls}</td><td style={td}>{b.live_contacts}</td><td style={td}>{pctStr(b.contact_rate)}</td><td style={td}>{b.callbacks}</td><td style={td}>{b.hot_transfers}</td><td style={td}>{pctStr(b.success_rate)}</td><td style={td}>{b.avg_attempts ?? '—'}</td></tr>))}
+              {rows.length === 0 && <tr><td style={td} colSpan={8}>No data.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="card" style={{ marginBottom: 18 }}>
+        <div style={SECTION}>Disposition Breakdown</div>
+        {(data.dispositions || []).map((d, i) => (
+          <div key={i} style={{ padding: '5px 0', borderTop: i ? '1px solid var(--line-soft)' : 'none' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}><span>{d.disposition}</span><span style={{ fontWeight: 600 }}>{d.n} <span style={{ color: 'var(--ink-soft)', fontWeight: 400, fontSize: 12 }}>({pctStr(d.pct)})</span></span></div>
+            <div style={{ height: 5, background: 'var(--line-soft)', borderRadius: 3, marginTop: 3 }}><div style={{ width: (d.pct || 0) + '%', height: '100%', background: 'var(--accent)', borderRadius: 3 }} /></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // Shared controls bar + data hook for both dashboards.
 function useHourlyReport(rpc, day) {
   const [data, setData] = useState(null)
@@ -130,6 +240,22 @@ function useHourlyReport(rpc, day) {
     if (error) { setErr(error.message); setData(null) } else { setData(data) }
     setLoading(false)
   }, [rpc, day])
+  useEffect(() => { load() }, [load])
+  return { data, loading, err, setErr, load }
+}
+
+// Same shape as useHourlyReport, but for the All Time RPCs, which take no
+// arguments at all (they cover full history, not a single day).
+function useAllTimeReport(rpc) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState('')
+  const load = useCallback(async () => {
+    setLoading(true); setErr('')
+    const { data, error } = await supabase.rpc(rpc)
+    if (error) { setErr(error.message); setData(null) } else { setData(data) }
+    setLoading(false)
+  }, [rpc])
   useEffect(() => { load() }, [load])
   return { data, loading, err, setErr, load }
 }
@@ -162,6 +288,7 @@ function OpenInvoicesView({ mode }) {
   const [overview, setOverview] = useState('')
   const [daySummary, setDaySummary] = useState('')
   const [tomorrowFocus, setTomorrowFocus] = useState('')
+  const allTime = useAllTimeReport('get_alltime_report_openinv')
 
   async function refresh() {
     setSyncing(true); setErr('')
@@ -272,6 +399,17 @@ function OpenInvoicesView({ mode }) {
   }
   async function copyUpdate() { try { await navigator.clipboard.writeText(mode === 'eod' ? buildEodUpdate() : buildUpdate()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { setErr('Could not copy — select and copy manually.') } }
 
+  if (mode === 'alltime') {
+    return (
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 6 }}>
+          <h2 style={{ margin: 0, fontSize: 18 }}>Open Invoices — All Time</h2>
+        </div>
+        {allTime.err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{allTime.err}</p></div>}
+        {allTime.loading ? <p className="page-sub">Loading all-time totals…</p> : <AllTimeOpenInvShape data={allTime.data} />}
+      </div>
+    )
+  }
   if (loading) return <p className="page-sub">Loading Open Invoices report…</p>
   if (err && !data) return <div className="card" style={{ borderColor: 'var(--failed)' }}><b style={{ color: 'var(--failed)' }}>Couldn't load report.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>
   if (!data) return null
@@ -415,6 +553,7 @@ function AffiliateView({ mode }) {
   const [overview, setOverview] = useState('')
   const [daySummary, setDaySummary] = useState('')
   const [tomorrowFocus, setTomorrowFocus] = useState('')
+  const allTime = useAllTimeReport('get_alltime_report_affiliate')
 
   async function refresh() {
     setSyncing(true); setErr('')
@@ -510,6 +649,17 @@ function AffiliateView({ mode }) {
   }
   async function copyUpdate() { try { await navigator.clipboard.writeText(mode === 'eod' ? buildEodUpdate() : buildUpdate()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { setErr('Could not copy — select and copy manually.') } }
 
+  if (mode === 'alltime') {
+    return (
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 6 }}>
+          <h2 style={{ margin: 0, fontSize: 18 }}>Affiliate Leads — All Time</h2>
+        </div>
+        {allTime.err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{allTime.err}</p></div>}
+        {allTime.loading ? <p className="page-sub">Loading all-time totals…</p> : <AllTimeAffiliateShape data={allTime.data} groupLabel="Vendor" groupKey="vendors" />}
+      </div>
+    )
+  }
   if (loading) return <p className="page-sub">Loading Affiliate report…</p>
   if (err && !data) return <div className="card" style={{ borderColor: 'var(--failed)' }}><b style={{ color: 'var(--failed)' }}>Couldn't load report.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>
   if (!data) return null
@@ -710,6 +860,8 @@ function WebLeadsView({ mode }) {
   const [overview, setOverview] = useState('')
   const [daySummary, setDaySummary] = useState('')
   const [tomorrowFocus, setTomorrowFocus] = useState('')
+  const allTime = useAllTimeReport('get_alltime_report_webleads')
+  const allTimeLsa = useAllTimeReport('get_alltime_webleads_lsa')
   // LSA Chats — the second half of "Web Lead Type", alongside the BigQuery/Five9
   // call data above. Separate source (Command Center's own lsa_leads table,
   // logged by hand), separate load, so one failing never blocks the other.
@@ -892,6 +1044,17 @@ function WebLeadsView({ mode }) {
   }
   async function copyUpdate() { try { await navigator.clipboard.writeText(mode === 'eod' ? buildEodUpdate() : buildUpdate()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { setErr('Could not copy — select and copy manually.') } }
 
+  if (mode === 'alltime') {
+    return (
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 6 }}>
+          <h2 style={{ margin: 0, fontSize: 18 }}>Web Leads — All Time</h2>
+        </div>
+        {allTime.err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 14 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{allTime.err}</p></div>}
+        {allTime.loading ? <p className="page-sub">Loading all-time totals…</p> : <AllTimeAffiliateShape data={allTime.data} groupLabel="Brand" groupKey="brands" lsa={allTimeLsa.data} />}
+      </div>
+    )
+  }
   if (loading) return <p className="page-sub">Loading Web Leads report…</p>
   if (err && !data) return <div className="card" style={{ borderColor: 'var(--failed)' }}><b style={{ color: 'var(--failed)' }}>Couldn't load report.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>
   if (!data) return null
@@ -1157,28 +1320,3 @@ function EodCommentary({ daySummary, onDaySummary, tomorrowFocus, onTomorrowFocu
     </>
   )
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
