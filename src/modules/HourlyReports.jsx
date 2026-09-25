@@ -127,6 +127,41 @@ function RangeNote({ data }) {
   return <p className="page-sub" style={{ fontSize: 12.5, marginBottom: 14 }}>{since} – {through}{data.days_covered ? ` · ${data.days_covered} days of activity` : ''} · read-only, start-to-date totals</p>
 }
 
+// EOD Summary hourly-breakdown table, on-screen only -- never fed into
+// buildEodHtml/buildEodUpdate, so what actually gets posted is unchanged.
+// Two variants for the two existing metric shapes (dials/leads/bookings vs
+// Open Invoices' own calls/live_contacts/callbacks/hot_transfers/successes).
+function EodHourlyBreakdownAffiliateShape({ rows }) {
+  const bh = (rows || []).filter(r => r.dials > 0)
+  if (!bh.length) return null
+  return (
+    <div className="card" style={{ marginBottom: 18 }}>
+      <div style={SECTION}>Hourly Breakdown</div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><th style={thL}>Hour</th><th style={th}>Dials</th><th style={th}>Leads</th><th style={th}>Live</th><th style={th}>Booked</th><th style={th}>Contact %</th><th style={th}>Book %</th><th style={th}>Speed</th></tr></thead>
+          <tbody>{bh.map((r, i) => (<tr key={i}><td style={tdL}>{hourLabel(r.hour)}</td><td style={td}>{r.dials}</td><td style={td}>{r.leads}</td><td style={td}>{r.live_contacts}</td><td style={td}>{r.bookings}</td><td style={td}>{pctStr(r.contact_rate)}</td><td style={td}>{pctStr(r.booking_rate)}</td><td style={td}>{secStr(r.avg_speed_sec)}</td></tr>))}</tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+function EodHourlyBreakdownOpenInvShape({ rows }) {
+  const bh = (rows || []).filter(r => r.calls > 0)
+  if (!bh.length) return null
+  return (
+    <div className="card" style={{ marginBottom: 18 }}>
+      <div style={SECTION}>Hourly Breakdown</div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><th style={thL}>Hour</th><th style={th}>Calls</th><th style={th}>Live</th><th style={th}>Ctc%</th><th style={th}>CB</th><th style={th}>HT</th><th style={th}>Succ%</th><th style={th}>Att</th></tr></thead>
+          <tbody>{bh.map((r, i) => (<tr key={i}><td style={tdL}>{hourLabel(r.hour)}</td><td style={td}>{r.calls}</td><td style={td}>{r.live_contacts}</td><td style={td}>{pctStr(r.contact_rate)}</td><td style={td}>{r.callbacks}</td><td style={td}>{r.hot_transfers}</td><td style={td}>{pctStr(r.success_rate)}</td><td style={td}>{r.avg_attempts ?? '—'}</td></tr>))}</tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 // All Time view for the two report types built on f9_affil_metric (dials/leads/
 // bookings/etc): Affiliate and Web Leads. `groupLabel`/`groupKey` name the
 // breakdown column ("Vendor" for Affiliate, "Brand" for Web Leads); `lsa` is
@@ -459,6 +494,7 @@ function OpenInvoicesView({ mode }) {
           </div>
         </div>
 
+        <EodHourlyBreakdownOpenInvShape rows={data.by_hour} />
         <EodCommentary daySummary={daySummary} onDaySummary={setDaySummary} tomorrowFocus={tomorrowFocus} onTomorrowFocus={setTomorrowFocus} preview={buildEodUpdate()} />
         <p className="page-sub" style={{ fontSize: 11.5 }}>End-of-day rundown for Open Invoices. Same source as the hourly report, just the full day at a glance.</p>
       </div>
@@ -733,6 +769,7 @@ function AffiliateView({ mode }) {
           </div>
         </div>
 
+        <EodHourlyBreakdownAffiliateShape rows={data.by_hour} />
         <EodCommentary daySummary={daySummary} onDaySummary={setDaySummary} tomorrowFocus={tomorrowFocus} onTomorrowFocus={setTomorrowFocus} preview={buildEodUpdate()} />
         <p className="page-sub" style={{ fontSize: 11.5 }}>End-of-day rundown for Affiliate (Lavin / Kashurba). Same source as the hourly report, just the full day at a glance.</p>
       </div>
@@ -1152,6 +1189,7 @@ function WebLeadsView({ mode }) {
           )}
         </div>
 
+        <EodHourlyBreakdownAffiliateShape rows={data.by_hour} />
         <EodCommentary daySummary={daySummary} onDaySummary={setDaySummary} tomorrowFocus={tomorrowFocus} onTomorrowFocus={setTomorrowFocus} preview={buildEodUpdate()} rich profiles={profiles} />
         <p className="page-sub" style={{ fontSize: 11.5 }}>End-of-day rundown for Web Leads (Cheney / Genson / Cunningham calls, plus LSA chats). Same source as the hourly report, just the full day at a glance.</p>
       </div>
