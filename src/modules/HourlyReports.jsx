@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { RichEditor, sanitizeHtml, htmlToText, isEmptyHtml } from '../lib/RichEditor'
+import { notifyChatMessage } from '../lib/notify'
 
 // Hourly production dashboards, rebuilt natively from Five9 call_log (BigQuery).
 // Reporting → Hourly. Two tabs: Affiliate Hourly Report + Open Invoices Report.
@@ -13,6 +15,19 @@ const hourLabel = (h) => { if (h == null) return '—'; const ap = h < 12 ? 'AM'
 const good = '#1b5e20', warn = '#8d6e00', bad = '#b71c1c'
 const pctStr = (v) => v == null ? '—' : v + '%'
 const secStr = (v) => v == null ? '—' : v + 's'
+
+// Mirrors Chat.jsx's own extractMentions — mentions are inserted as plain
+// "@Full Name" text (see mentionSuggestion.jsx), so resolving them back to a
+// profile id is just a name match against the plain-text version of the note.
+function extractMentions(body, profiles) {
+  const found = []
+  for (const p of profiles || []) {
+    if (!p.full_name) continue
+    const re = new RegExp('@' + p.full_name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=\\s|$|[^\\w])', 'i')
+    if (re.test(body)) found.push(p.id)
+  }
+  return found
+}
 
 // ---- HTML report builders (posted natively into the GarageCo Reporting chat) ----
 // Constrained to what lib/sanitize.js allows: h3/p/ul/li/strong/table + background-color on th.
@@ -700,6 +715,20 @@ function WebLeadsView({ mode }) {
   // logged by hand), separate load, so one failing never blocks the other.
   const [lsa, setLsa] = useState(null)
   const [lsaErr, setLsaErr] = useState('')
+  // Needed only for the Day Summary / Tomorrow's Focus rich editors (bold,
+  // bullets, @mentions) — everything else in this view is untouched by this.
+  const [profiles, setProfiles] = useState([])
+  const [me, setMe] = useState(null)
+  useEffect(() => {
+    let active = true
+    supabase.from('profiles').select('id, full_name').eq('is_active', true).then(({ data }) => { if (active) setProfiles(data || []) })
+    supabase.auth.getUser().then(({ data }) => {
+      const uid = data?.user?.id
+      if (!uid) return
+      supabase.from('profiles').select('id, full_name').eq('id', uid).maybeSingle().then(({ data: p }) => { if (active && p) setMe(p) })
+    })
+    return () => { active = false }
+  }, [])
   useEffect(() => {
     let active = true
     supabase.rpc('get_webleads_lsa_chats', { p_day: day }).then(({ data, error }) => {
@@ -724,11 +753,27 @@ function WebLeadsView({ mode }) {
   }
   async function postEodToReporting() {
     setPosting(true); setErr('')
-    const commentary = [daySummary.trim() && `Day Summary: ${daySummary.trim()}`, tomorrowFocus.trim() && `Tomorrow's Focus: ${tomorrowFocus.trim()}`].filter(Boolean).join('\n') || null
-    const { error } = await supabase.rpc('post_hourly_to_reporting', { p_type: 'web_leads_eod', p_hour: null, p_html: buildEodHtml(), p_snapshot: { ...data, lsa }, p_commentary: commentary })
+    const daySummaryText = htmlToText(daySummary), tomorrowFocusText = htmlToText(tomorrowFocus)
+    const commentary = [daySummaryText && `Day Summary: ${daySummaryText}`, tomorrowFocusText && `Tomorrow's Focus: ${tomorrowFocusText}`].filter(Boolean).join('\n') || null
+    const { data: msgId, error } = await supabase.rpc('post_hourly_to_reporting', { p_type: 'web_leads_eod', p_hour: null, p_html: buildEodHtml(), p_snapshot: { ...data, lsa }, p_commentary: commentary })
     setPosting(false)
     if (error) { setErr(error.message); return }
     setPosted(true); setTimeout(() => setPosted(false), 3000)
+    // Fire @mention notifications for anyone tagged in the Day Summary / Tomorrow's
+    // Focus notes -- posting goes through a raw RPC insert, not Chat.jsx's send path,
+    // so nothing else does this automatically.
+    if (me) {
+      const mentionedIds = extractMentions(`${daySummaryText} ${tomorrowFocusText}`, profiles).filter(id => id !== me.id)
+      if (mentionedIds.length) {
+        try {
+          await notifyChatMessage({
+            channelId: '62d067df-f051-4eb9-a342-9c9dfaf58d63', channelName: 'GarageCo Reporting', isDm: false,
+            actorId: me.id, actorName: me.full_name, isHere: false, requiresAck: false,
+            body: `${daySummaryText} ${tomorrowFocusText}`, mentionedIds, messageId: msgId || null,
+          })
+        } catch (e) { console.error('mention notification failed', e) }
+      }
+    }
   }
   const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 
@@ -804,8 +849,8 @@ function WebLeadsView({ mode }) {
     return [
       `<h3>Web Leads — EOD Summary · ${esc(dayLabel)}</h3>`,
       takeaways,
-      `<p>&nbsp;</p>` + multiPara(daySummary, 'Day Summary'),
-      `<p>&nbsp;</p>` + multiPara(tomorrowFocus, "Tomorrow's Focus"),
+      !isEmptyHtml(daySummary) ? `<p>&nbsp;</p><p><strong>Day Summary:</strong></p>${sanitizeHtml(daySummary)}` : '',
+      !isEmptyHtml(tomorrowFocus) ? `<p>&nbsp;</p><p><strong>Tomorrow's Focus:</strong></p>${sanitizeHtml(tomorrowFocus)}` : '',
       `<p>&nbsp;</p><p><strong>Call Performance by Brand</strong></p>`, brandTbl,
       lsaSection,
     ].join('')
@@ -840,8 +885,8 @@ function WebLeadsView({ mode }) {
       if (lsa.still_needs_followup?.total) lines.push(`Still needs follow-up overall: ${lsa.still_needs_followup.total} (${lsa.still_needs_followup.waiting_on_customer} on customer, ${lsa.still_needs_followup.waiting_on_team} on us)`)
       lines.push(``)
     }
-    if (daySummary.trim()) lines.push(`Day Summary: ${daySummary.trim()}`, ``)
-    if (tomorrowFocus.trim()) lines.push(`Tomorrow's Focus: ${tomorrowFocus.trim()}`, ``)
+    if (!isEmptyHtml(daySummary)) lines.push(`Day Summary: ${htmlToText(daySummary)}`, ``)
+    if (!isEmptyHtml(tomorrowFocus)) lines.push(`Tomorrow's Focus: ${htmlToText(tomorrowFocus)}`, ``)
     lines.push(`@Corinne Kerper @Becky Jackson @Brittney Thompson`)
     return lines.join('\n')
   }
@@ -944,7 +989,7 @@ function WebLeadsView({ mode }) {
           )}
         </div>
 
-        <EodCommentary daySummary={daySummary} onDaySummary={setDaySummary} tomorrowFocus={tomorrowFocus} onTomorrowFocus={setTomorrowFocus} preview={buildEodUpdate()} />
+        <EodCommentary daySummary={daySummary} onDaySummary={setDaySummary} tomorrowFocus={tomorrowFocus} onTomorrowFocus={setTomorrowFocus} preview={buildEodUpdate()} rich profiles={profiles} />
         <p className="page-sub" style={{ fontSize: 11.5 }}>End-of-day rundown for Web Leads (Cheney / Genson / Cunningham calls, plus LSA chats). Same source as the hourly report, just the full day at a glance.</p>
       </div>
     )
@@ -1084,16 +1129,26 @@ function Commentary({ label, value, onChange, preview }) {
 // EOD Summary's commentary is two structured fields instead of one free-text
 // box: a wrap-up of the day, and what to focus on tomorrow. Shared across all
 // three deals' EOD views.
-function EodCommentary({ daySummary, onDaySummary, tomorrowFocus, onTomorrowFocus, preview }) {
+function EodCommentary({ daySummary, onDaySummary, tomorrowFocus, onTomorrowFocus, preview, rich, profiles }) {
   return (
     <>
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={SECTION}>Day Summary</div>
-        <textarea value={daySummary} onChange={e => onDaySummary(e.target.value)} rows={3} placeholder="A short wrap-up of how the day went overall…" style={taStyle} />
+        {rich ? (
+          <RichEditor variant="chat" value={daySummary} onChange={html => onDaySummary(html)}
+            profiles={profiles} placeholder="A short wrap-up of how the day went overall…" />
+        ) : (
+          <textarea value={daySummary} onChange={e => onDaySummary(e.target.value)} rows={3} placeholder="A short wrap-up of how the day went overall…" style={taStyle} />
+        )}
       </div>
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={SECTION}>Tomorrow's Focus</div>
-        <textarea value={tomorrowFocus} onChange={e => onTomorrowFocus(e.target.value)} rows={3} placeholder="What the team should prioritize or watch tomorrow…" style={taStyle} />
+        {rich ? (
+          <RichEditor variant="chat" value={tomorrowFocus} onChange={html => onTomorrowFocus(html)}
+            profiles={profiles} placeholder="What the team should prioritize or watch tomorrow…" />
+        ) : (
+          <textarea value={tomorrowFocus} onChange={e => onTomorrowFocus(e.target.value)} rows={3} placeholder="What the team should prioritize or watch tomorrow…" style={taStyle} />
+        )}
       </div>
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={SECTION}>Post Preview</div>
@@ -1102,6 +1157,12 @@ function EodCommentary({ daySummary, onDaySummary, tomorrowFocus, onTomorrowFocu
     </>
   )
 }
+
+
+
+
+
+
 
 
 
