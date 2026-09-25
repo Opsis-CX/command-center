@@ -25,6 +25,16 @@ function htmlTable(headers, rows) {
 }
 const bullets = (items) => '<ul>' + items.filter(Boolean).map(i => `<li>${i}</li>`).join('') + '</ul>'
 
+// Free-text notes are typed as separate lines in a textarea, but a plain HTML
+// <p> collapses literal newlines -- so multi-line commentary was rendering as
+// one run-on paragraph. Splits on newlines and gives each non-empty line its
+// own <p>, preserving the line breaks the person actually typed.
+const multiPara = (text, label) => {
+  const lines = String(text || '').split('\n').map(l => l.trim()).filter(Boolean)
+  if (!lines.length) return ''
+  return `<p><strong>${label}:</strong> ${esc(lines[0])}</p>` + lines.slice(1).map(l => `<p>${esc(l)}</p>`).join('')
+}
+
 // Flags when one brand is clearly driving the day, rather than reporting
 // flat numbers with no story. Deliberately conservative: needs real volume
 // (15+ combined dials) and a clear majority (70%+) before saying anything,
@@ -794,8 +804,8 @@ function WebLeadsView({ mode }) {
     return [
       `<h3>Web Leads — EOD Summary · ${esc(dayLabel)}</h3>`,
       takeaways,
-      daySummary.trim() ? `<p><strong>Day Summary:</strong> ${esc(daySummary.trim())}</p>` : '',
-      tomorrowFocus.trim() ? `<p><strong>Tomorrow's Focus:</strong> ${esc(tomorrowFocus.trim())}</p>` : '',
+      `<p>&nbsp;</p>` + multiPara(daySummary, 'Day Summary'),
+      `<p>&nbsp;</p>` + multiPara(tomorrowFocus, "Tomorrow's Focus"),
       `<p>&nbsp;</p><p><strong>Call Performance by Brand</strong></p>`, brandTbl,
       lsaSection,
     ].join('')
@@ -1092,6 +1102,12 @@ function EodCommentary({ daySummary, onDaySummary, tomorrowFocus, onTomorrowFocu
     </>
   )
 }
+
+
+
+
+
+
 
 
 
