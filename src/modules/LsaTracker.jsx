@@ -71,6 +71,7 @@ export default function LsaTracker({ me }) {
   const [err, setErr] = useState('')
   const [modalLead, setModalLead] = useState(undefined) // undefined = closed, null = new, obj = edit
   const [tab, setTab] = useState('followup') // 'followup' | 'today' | 'yesterday' | 'all'
+  const [search, setSearch] = useState('')
 
   const load = useCallback(async () => {
     setErr('')
@@ -126,7 +127,21 @@ export default function LsaTracker({ me }) {
     fontFamily: 'inherit',
   })
 
-  const list = tab === 'followup' ? openRows : tab === 'today' ? todays : tab === 'yesterday' ? yesterdays : rows
+  const baseList = tab === 'followup' ? openRows : tab === 'today' ? todays : tab === 'yesterday' ? yesterdays : rows
+
+  const q = search.trim().toLowerCase()
+  const list = useMemo(() => {
+    if (!q) return baseList
+    return baseList.filter(r => (
+      (r.lead_name || '').toLowerCase().includes(q) ||
+      (r.brand || '').toLowerCase().includes(q) ||
+      (r.phone || '').toLowerCase().includes(q) ||
+      (r.notes || '').toLowerCase().includes(q) ||
+      (r.outcome || '').toLowerCase().includes(q) ||
+      (r.lsa_link || '').toLowerCase().includes(q)
+    ))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseList, q])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, minHeight: 0, background: 'var(--surface)' }}>
@@ -137,6 +152,21 @@ export default function LsaTracker({ me }) {
           <button onClick={() => setTab('today')} style={{ ...tabBtn(tab === 'today'), borderLeft: '1px solid var(--line)' }}>Today ({todays.length})</button>
           <button onClick={() => setTab('yesterday')} style={{ ...tabBtn(tab === 'yesterday'), borderLeft: '1px solid var(--line)' }}>Yesterday ({yesterdays.length})</button>
           <button onClick={() => setTab('all')} style={{ ...tabBtn(tab === 'all'), borderLeft: '1px solid var(--line)' }}>All ({rows.length})</button>
+        </div>
+        <div style={{ position: 'relative', marginLeft: 'auto', flex: '1 1 200px', maxWidth: 260 }}>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search chats… (name, brand, phone, notes)"
+            style={{ ...ctl, width: '100%', paddingRight: search ? 26 : 8 }}
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              title="Clear search"
+              style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, padding: 2, lineHeight: 1 }}
+            >✕</button>
+          )}
         </div>
         {err && <span className="login-err" style={{ margin: 0 }}>{err}</span>}
       </div>
@@ -155,7 +185,9 @@ export default function LsaTracker({ me }) {
         {loading && <div className="page-sub">Loading…</div>}
         {!loading && list.length === 0 && (
           <div className="page-sub" style={{ padding: '20px 0', textAlign: 'center' }}>
-            {tab === 'followup' ? 'Nothing waiting on follow-up. 🎉' : tab === 'today' ? 'No LSA leads logged today yet.' : tab === 'yesterday' ? 'No LSA leads logged yesterday.' : 'No LSA leads yet.'}
+            {q
+              ? `No chats match "${search.trim()}".`
+              : (tab === 'followup' ? 'Nothing waiting on follow-up. 🎉' : tab === 'today' ? 'No LSA leads logged today yet.' : tab === 'yesterday' ? 'No LSA leads logged yesterday.' : 'No LSA leads yet.')}
           </div>
         )}
         {list.map(r => (
