@@ -1,0 +1,553 @@
+// src/modules/CsrScorecard.jsx
+// GarageCo CSR coaching scorecard (2026-09-27).
+//
+// One module, three audiences — the DATABASE decides what each can see:
+//   mode="csr"      CSR login: their own scorecard only (csr_scorecard() with no id).
+//   mode="manager"  Client login (portal): picker of CSRs they may view (csr_roster()),
+//                   read-only. Enterprise logins see every brand, location managers
+//                   only their brand. Enforced in csr_viewer_can_see().
+//   mode="staff"    Opsis QA staff inside Command Center: picker + coach editing
+//                   (weekly focus, notes, activities, first-1:1 date).
+// Data only exists from the Monday of the CSR's first-1:1 week onward (server-side).
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
+
+const TZ = 'America/New_York'
+
+// ---------- formatting helpers ----------
+function fmtDur(sec) {
+  if (sec == null || isNaN(sec)) return '—'
+  const s = Math.max(0, Math.round(Number(sec)))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+function parseDay(d) {
+  // 'YYYY-MM-DD' as a calendar date (no timezone drift)
+  const [y, m, dd] = String(d).slice(0, 10).split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, dd, 12))
+}
+function fmtDay(d, opts = { month: 'short', day: 'numeric' }) {
+  if (!d) return ''
+  return parseDay(d).toLocaleDateString('en-US', { ...opts, timeZone: 'UTC' })
+}
+function weekRange(weekStart) {
+  if (!weekStart) return ''
+  const s = parseDay(weekStart)
+  const e = new Date(s.getTime() + 6 * 86400000)
+  const f = (x) => x.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  return `${f(s)} – ${f(e)}`
+}
+function fmtCallTime(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleString('en-US', { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+function stepName(label) {
+  // "Step 9 Capture Payment: get payment on file…" -> "Capture Payment"
+  const head = String(label || '').split(':')[0]
+  return head.replace(/^Step\s*\d+\s*/i, '').trim() || head
+}
+function stepNum(label) {
+  const m = String(label || '').match(/^Step\s*(\d+)/i)
+  return m ? m[1] : ''
+}
+function todayET() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: TZ })
+}
+
+// ---------- small presentational pieces (module scope) ----------
+function Delta({ cur, prev, unit = '', lowerIsBetter = false, decimals = 1 }) {
+  if (cur == null || prev == null) return null
+  const d = Number(cur) - Number(prev)
+  if (Math.abs(d) < 0.05) return <span className="csr-delta flat">no change vs last week</span>
+  const good = lowerIsBetter ? d < 0 : d > 0
+  const txt = unit === 'time' ? fmtDur(Math.abs(d)) : `${Math.abs(d).toFixed(decimals)}${unit}`
+  return <span className={`csr-delta ${good ? 'up' : 'down'}`}>{d > 0 ? '▲' : '▼'} {txt} vs last week</span>
+}
+
+function Tile({ label, value, sub, children }) {
+  return (
+    <div className="csr-card csr-tile">
+      <div className="csr-lbl">{label}</div>
+      <div className="csr-val">{value}</div>
+      {children}
+      {sub ? <div className="csr-sub">{sub}</div> : null}
+    </div>
+  )
+}
+
+function StepRow({ step }) {
+  const pct = step.pct
+  const tone = pct == null ? '' : pct < 60 ? 'low' : pct < 80 ? 'mid' : ''
+  return (
+    <div className="csr-step">
+      <span className="csr-stepn">{stepNum(step.label)}</span>
+      <span className="csr-stepname">{stepName(step.label)} <span className="csr-pts">· {step.points} pts</span></span>
+      {step.applicable > 0 ? (
+        <>
+          <div className={`csr-bar ${tone}`}><i style={{ width: `${pct}%` }} /></div>
+          <span className="csr-steppct">{pct}%<small>{step.done} of {step.applicable}</small></span>
+        </>
+      ) : (
+        <span className="csr-na">No calls where this applied</span>
+      )}
+    </div>
+  )
+}
+
+function Welcome({ name, brand }) {
+  return (
+    <div className="csr-card csr-welcome">
+      <h2>Welcome{name ? `, ${name.split(' ')[0]}` : ''}!</h2>
+      <p>Your coaching scorecard starts after your first 1:1 coaching session{brand ? ` with the ${brand} coaching team` : ''}.</p>
+      <p className="csr-sub">Once we've met, you'll see your weekly call quality, your coaching focus, notes from our sessions, and activities here.</p>
+    </div>
+  )
+}
+
+// ---------- coach (staff) editors ----------
+function FocusEditor({ supabase, csrId, week, focus, steps, onSaved }) {
+  const [title, setTitle] = useState(focus?.title || '')
+  const [body, setBody] = useState(focus?.body || '')
+  const [goal, setGoal] = useState(focus?.goal || '')
+  const [stepKey, setStepKey] = useState(focus?.step_key || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  useEffect(() => { setTitle(focus?.title || ''); setBody(focus?.body || ''); setGoal(focus?.goal || ''); setStepKey(focus?.step_key || '') }, [focus, week])
+  const save = async () => {
+    setBusy(true); setErr('')
+    const { error } = await supabase.rpc('csr_set_focus', { p_csr: csrId, p_week: week, p_title: title, p_body: body || null, p_goal: goal || null, p_step_key: stepKey || null })
+    setBusy(false)
+    if (error) setErr(error.message); else onSaved()
+  }
+  return (
+    <div className="csr-edit">
+      <div className="csr-edit-h">Set this week's focus (week of {weekRange(week)})</div>
+      <select value={stepKey} onChange={(e) => { setStepKey(e.target.value); if (!title) { const s = steps.find((x) => x.key === e.target.value); if (s) setTitle(stepName(s.label)) } }}>
+        <option value="">Rubric step (optional)</option>
+        {steps.map((s) => <option key={s.key} value={s.key}>Step {stepNum(s.label)} · {stepName(s.label)}</option>)}
+      </select>
+      <input placeholder="Focus headline, e.g. Capture payment once the appointment is booked" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <textarea rows={3} placeholder="What to do differently (example wording helps)" value={body} onChange={(e) => setBody(e.target.value)} />
+      <input placeholder="Goal for the week" value={goal} onChange={(e) => setGoal(e.target.value)} />
+      <div className="csr-row">
+        <button className="csr-btn" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save focus'}</button>
+        {focus ? <button className="csr-btn ghost" disabled={busy} onClick={async () => { setTitle(''); setBusy(true); const { error } = await supabase.rpc('csr_set_focus', { p_csr: csrId, p_week: week, p_title: '' }); setBusy(false); if (error) setErr(error.message); else onSaved() }}>Clear</button> : null}
+        {err ? <span className="csr-err">{err}</span> : null}
+      </div>
+    </div>
+  )
+}
+
+function NoteEditor({ supabase, csrId, onSaved }) {
+  const [date, setDate] = useState(todayET())
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const save = async () => {
+    if (!body.trim()) { setErr('Write the note first'); return }
+    setBusy(true); setErr('')
+    const { error } = await supabase.rpc('csr_add_note', { p_csr: csrId, p_session_date: date, p_body: body, p_title: title || null })
+    setBusy(false)
+    if (error) setErr(error.message); else { setTitle(''); setBody(''); onSaved() }
+  }
+  return (
+    <div className="csr-edit">
+      <div className="csr-edit-h">Add a coaching note (the CSR and their managers will see it)</div>
+      <div className="csr-row"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ maxWidth: 170 }} /><input placeholder="Session title, e.g. Week 1 intro" value={title} onChange={(e) => setTitle(e.target.value)} /></div>
+      <textarea rows={3} placeholder="What you covered, wins, what to work on" value={body} onChange={(e) => setBody(e.target.value)} />
+      <div className="csr-row"><button className="csr-btn" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Add note'}</button>{err ? <span className="csr-err">{err}</span> : null}</div>
+    </div>
+  )
+}
+
+function ActivityEditor({ supabase, csrId, brand, onSaved }) {
+  const [title, setTitle] = useState('')
+  const [url, setUrl] = useState('')
+  const [kind, setKind] = useState('ahaslides')
+  const [due, setDue] = useState('')
+  const [scope, setScope] = useState('csr')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const save = async () => {
+    if (!title.trim()) { setErr('Give it a title'); return }
+    if (url && !/^https?:\/\//i.test(url)) { setErr('Link must start with http:// or https://'); return }
+    setBusy(true); setErr('')
+    const { error } = await supabase.rpc('csr_add_activity', {
+      p_title: title, p_url: url || null, p_kind: kind,
+      p_csr: scope === 'csr' ? csrId : null, p_brand: scope === 'brand' ? brand : null, p_due: due || null,
+    })
+    setBusy(false)
+    if (error) setErr(error.message); else { setTitle(''); setUrl(''); setDue(''); onSaved() }
+  }
+  return (
+    <div className="csr-edit">
+      <div className="csr-edit-h">Add an activity</div>
+      <input placeholder="Title, e.g. Objection handling quiz" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <input placeholder="Link (AhaSlides, word search PDF, video…)" value={url} onChange={(e) => setUrl(e.target.value)} />
+      <div className="csr-row">
+        <select value={kind} onChange={(e) => setKind(e.target.value)}>
+          <option value="ahaslides">AhaSlides</option><option value="word_search">Word search</option>
+          <option value="video">Video</option><option value="pdf">PDF</option><option value="link">Link</option>
+        </select>
+        <input type="date" value={due} onChange={(e) => setDue(e.target.value)} title="Due date (optional)" style={{ maxWidth: 170 }} />
+        <select value={scope} onChange={(e) => setScope(e.target.value)}>
+          <option value="csr">Just this CSR</option>
+          <option value="brand">Every CSR at {brand}</option>
+          <option value="all">Every CSR (all brands)</option>
+        </select>
+      </div>
+      <div className="csr-row"><button className="csr-btn" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Add activity'}</button>{err ? <span className="csr-err">{err}</span> : null}</div>
+    </div>
+  )
+}
+
+function StartDateEditor({ supabase, csrId, value, onSaved }) {
+  const [d, setD] = useState(value || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  useEffect(() => setD(value || ''), [value])
+  const save = async () => {
+    setBusy(true); setErr('')
+    const { error } = await supabase.rpc('csr_set_start_date', { p_csr: csrId, p_date: d || null })
+    setBusy(false)
+    if (error) setErr(error.message); else onSaved()
+  }
+  return (
+    <div className="csr-row csr-start">
+      <span className="csr-sub">First 1:1 date</span>
+      <input type="date" value={d} onChange={(e) => setD(e.target.value)} style={{ maxWidth: 170 }} />
+      <button className="csr-btn ghost" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+      {err ? <span className="csr-err">{err}</span> : null}
+    </div>
+  )
+}
+
+const KIND_STYLE = {
+  ahaslides: ['AS', '#7c3aed', 'AhaSlides'], word_search: ['WS', '#0284c7', 'Word search'],
+  video: ['▶', '#dc2626', 'Video'], pdf: ['PDF', '#b45309', 'PDF'], link: ['↗', '#0f766e', 'Link'],
+}
+
+function ActivityRow({ a, canMark, canArchive, onMark, onArchive }) {
+  const [ab, color, kindLabel] = KIND_STYLE[a.kind] || KIND_STYLE.link
+  const done = !!a.done_at
+  return (
+    <div className={`csr-act ${done ? 'done' : ''}`}>
+      <div className="csr-ic" style={{ background: done ? '#64748b' : color }}>{done ? '✓' : ab}</div>
+      <div className="csr-act-body">
+        <div className="csr-act-t">{a.title}</div>
+        <div className="csr-sub">{kindLabel}{a.due_date ? ` · Due ${fmtDay(a.due_date)}` : ''}{done ? ` · Done ${new Date(a.done_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: TZ })}` : ''}</div>
+        {a.description ? <div className="csr-sub">{a.description}</div> : null}
+      </div>
+      <div className="csr-act-actions">
+        {a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer">Open ↗</a> : null}
+        {canMark ? <button className="csr-link" onClick={() => onMark(a, !done)}>{done ? 'Undo' : 'Mark done'}</button> : null}
+        {canArchive ? <button className="csr-link muted" onClick={() => onArchive(a)}>Remove</button> : null}
+      </div>
+    </div>
+  )
+}
+
+function CallsList({ calls, loading }) {
+  const [open, setOpen] = useState(null)
+  if (loading) return <div className="csr-sub">Loading calls…</div>
+  if (!calls?.length) return <div className="csr-sub">No scored calls this week yet.</div>
+  return (
+    <div className="csr-calls">
+      {calls.map((c) => (
+        <div key={c.id} className="csr-call">
+          <button className="csr-call-h" onClick={() => setOpen(open === c.id ? null : c.id)}>
+            <span>{fmtCallTime(c.started_at)}</span>
+            <span className="csr-sub">{c.direction || ''} · {fmtDur(c.duration_sec)}{c.hold_count > 0 ? ` · ${c.hold_count} hold` : ''}</span>
+            <span className="csr-sub">{c.outcome || ''}</span>
+            <b className={c.score < 60 ? 'csr-lowtxt' : ''}>{c.score != null ? `${Math.round(c.score)}%` : '—'}</b>
+          </button>
+          {open === c.id ? (
+            <div className="csr-call-b">
+              {c.coaching_note ? <p><b>Coaching tip:</b> {c.coaching_note}</p> : null}
+              {c.missed?.length ? <p><b>Steps missed:</b> {c.missed.map(stepName).join(', ')}</p> : <p>No steps missed.</p>}
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ---------- one CSR's scorecard ----------
+function Scorecard({ supabase, csrId, isCsr, onBack }) {
+  const [week, setWeek] = useState(null)
+  const [data, setData] = useState(null)
+  const [calls, setCalls] = useState([])
+  const [callsLoading, setCallsLoading] = useState(false)
+  const [err, setErr] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr('')
+    const { data: d, error } = await supabase.rpc('csr_scorecard', { p_csr: csrId || null, p_week: week || null })
+    setLoading(false)
+    if (error) { setErr(error.message); return }
+    setData(d)
+    if (d?.status === 'active') {
+      setCallsLoading(true)
+      const { data: c, error: ce } = await supabase.rpc('csr_calls', { p_csr: csrId || null, p_week: d.week })
+      setCallsLoading(false)
+      setCalls(ce ? [] : (c || []))
+    } else {
+      setCalls([])
+    }
+  }, [supabase, csrId, week])
+
+  useEffect(() => { load() }, [load])
+
+  const onMark = async (a, done) => {
+    const { error } = await supabase.rpc('csr_mark_activity', { p_activity: a.id, p_done: done })
+    if (error) setErr(error.message); else load()
+  }
+  const onArchive = async (a) => {
+    if (!window.confirm(`Remove "${a.title}"${a.for_everyone ? ' for everyone it was assigned to' : ''}?`)) return
+    const { error } = await supabase.rpc('csr_archive_activity', { p_activity: a.id })
+    if (error) setErr(error.message); else load()
+  }
+  const onDeleteNote = async (n) => {
+    if (!window.confirm('Delete this coaching note?')) return
+    const { error } = await supabase.rpc('csr_delete_note', { p_note: n.id })
+    if (error) setErr(error.message); else load()
+  }
+
+  if (loading && !data) return <div className="csr-card">Loading scorecard…</div>
+  if (err && !data) return <div className="csr-card csr-err">Couldn't load this scorecard: {err}</div>
+  if (!data) return null
+
+  const canEdit = !!data.can_edit && !isCsr
+  const csr = data.csr || {}
+
+  const header = (
+    <div className="csr-hello">
+      <div>
+        {onBack ? <button className="csr-link" onClick={onBack}>← All CSRs</button> : null}
+        <h1>{isCsr ? `Hi ${String(csr.full_name || '').split(' ')[0]}` : csr.full_name}</h1>
+        <div className="csr-sub">{csr.brand}{data.status === 'active' ? ` · Coaching week ${data.week_number}: ${weekRange(data.week)}` : ''}</div>
+      </div>
+      {data.status === 'active' ? (
+        <div className="csr-row">
+          <span className="csr-pill">Week {data.week_number}{data.week === data.current_week ? ' · in progress' : ''}</span>
+          {data.weeks?.length > 1 ? (
+            <select value={data.week} onChange={(e) => setWeek(e.target.value)}>
+              {data.weeks.map((w) => <option key={w.week_start} value={w.week_start}>Week {w.week_number} · {weekRange(w.week_start)}</option>)}
+            </select>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+
+  if (data.status === 'not_started') {
+    return (
+      <>
+        {header}
+        {canEdit ? <div className="csr-card"><StartDateEditor supabase={supabase} csrId={csr.id} value={null} onSaved={load} /></div> : null}
+        <Welcome name={isCsr ? csr.full_name : ''} brand={csr.brand} />
+      </>
+    )
+  }
+
+  const m = data.metrics || {}
+  const p = data.prev_metrics
+  const steps = m.steps || []
+  const focus = data.focus
+
+  return (
+    <>
+      {header}
+      {err ? <div className="csr-banner csr-err">{err}</div> : null}
+      {!csr.has_lines ? <div className="csr-banner">This CSR isn't linked to a phone line yet, so call numbers will stay empty until they are.</div> : null}
+      {data.week === data.current_week ? <div className="csr-banner info">This week is still in progress. Numbers update as calls are scored.</div> : null}
+      {canEdit ? <div className="csr-card"><StartDateEditor supabase={supabase} csrId={csr.id} value={csr.coaching_start_date} onSaved={load} /></div> : null}
+
+      <div className="csr-grid csr-g5">
+        <Tile label="Call Quality" value={m.qa_avg != null ? `${Number(m.qa_avg).toFixed(1)}%` : '—'}
+          sub={p ? null : (data.week_number === 1 ? 'Baseline week · change vs last week starts week 2' : null)}>
+          <Delta cur={m.qa_avg} prev={p?.qa_avg} unit=" pts" />
+          <div className="csr-sub">{m.scored_calls || 0} scored calls</div>
+        </Tile>
+        <Tile label="Calls Answered" value={m.calls_answered ?? 0}>
+          <Delta cur={m.calls_answered} prev={p?.calls_answered} decimals={0} />
+        </Tile>
+        <Tile label="Avg Talk Time" value={fmtDur(m.avg_talk_sec)} sub="Total talk time ÷ calls answered">
+          <Delta cur={m.avg_talk_sec} prev={p?.avg_talk_sec} unit="time" lowerIsBetter={false} />
+        </Tile>
+        <Tile label="Calls Put on Hold" value={m.hold_tracked ? (m.calls_on_hold ?? 0) : '—'}
+          sub={m.hold_tracked ? (m.scored_calls ? `${Math.round(100 * (m.calls_on_hold || 0) / m.scored_calls)}% of scored calls` : null) : 'Hold tracking starts week of Sep 28'}>
+          {m.hold_tracked && p?.hold_tracked ? <Delta cur={m.calls_on_hold} prev={p.calls_on_hold} decimals={0} lowerIsBetter /> : null}
+        </Tile>
+        <Tile label="Avg Hold Time" value={m.hold_tracked ? fmtDur(m.avg_hold_sec) : '—'}
+          sub={m.hold_tracked ? 'Total hold time ÷ calls put on hold' : 'Hold tracking starts week of Sep 28'}>
+          {m.hold_tracked && p?.hold_tracked ? <Delta cur={m.avg_hold_sec} prev={p.avg_hold_sec} unit="time" lowerIsBetter /> : null}
+        </Tile>
+      </div>
+
+      <div className="csr-grid csr-g2">
+        <div>
+          <div className="csr-card csr-focus">
+            <div className="csr-focus-l">THIS WEEK'S FOCUS{focus?.step_key ? ` · STEP ${stepNum((steps.find((s) => s.key === focus.step_key) || {}).label)}` : ''}</div>
+            {focus ? (
+              <>
+                <div className="csr-focus-t">{focus.title}</div>
+                {focus.body ? <div className="csr-pre">{focus.body}</div> : null}
+                {focus.goal ? <div className="csr-goal"><b>Goal:</b> {focus.goal}</div> : null}
+              </>
+            ) : <div className="csr-sub">Your coach will set your focus for this week at your next session.</div>}
+            {canEdit ? <FocusEditor supabase={supabase} csrId={csr.id} week={data.week} focus={focus} steps={steps} onSaved={load} /> : null}
+          </div>
+
+          <div className="csr-card">
+            <h2>Your Call Flow ({data.week === data.current_week ? 'this week so far' : `week ${data.week_number}`})</h2>
+            <div className="csr-sub" style={{ marginBottom: 8 }}>% of calls where each step was done. Calls where a step didn't apply aren't counted.</div>
+            {steps.map((s) => <StepRow key={s.key} step={s} />)}
+            {m.hold_tracked && m.hold_events > 0 ? (
+              <div className="csr-holdpol">Hold policy: asked permission on {m.hold_asked_permission} of {m.hold_events} holds, thanked the caller on {m.hold_thanked} of {m.hold_events}.</div>
+            ) : null}
+          </div>
+
+          <div className="csr-card">
+            <h2>Coaching notes</h2>
+            {canEdit ? <NoteEditor supabase={supabase} csrId={csr.id} onSaved={load} /> : null}
+            {data.notes?.length ? data.notes.map((n) => (
+              <div key={n.id} className="csr-note">
+                <div className="csr-sub">{fmtDay(n.session_date, { month: 'short', day: 'numeric', year: 'numeric' })}{n.coach ? ` · Coach: ${n.coach}` : ''}
+                  {canEdit ? <button className="csr-link muted" onClick={() => onDeleteNote(n)}>Delete</button> : null}</div>
+                {n.title ? <div className="csr-note-t">{n.title}</div> : null}
+                <div className="csr-pre">{n.body}</div>
+              </div>
+            )) : <div className="csr-sub">Notes from your coaching sessions will show here.</div>}
+          </div>
+        </div>
+
+        <div>
+          <div className="csr-card">
+            <h2>Activities</h2>
+            {data.activities?.length ? data.activities.map((a) => (
+              <ActivityRow key={a.id} a={a} canMark={isCsr} canArchive={canEdit} onMark={onMark} onArchive={onArchive} />
+            )) : <div className="csr-sub">Activities from your coach will show here.</div>}
+            {canEdit ? <ActivityEditor supabase={supabase} csrId={csr.id} brand={csr.brand} onSaved={load} /> : null}
+          </div>
+
+          <div className="csr-card">
+            <h2>{isCsr ? 'My calls' : 'Calls'} · {weekRange(data.week)}</h2>
+            <CallsList calls={calls} loading={callsLoading} />
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ---------- roster (managers / staff) ----------
+function Roster({ supabase, onPick }) {
+  const [rows, setRows] = useState(null)
+  const [err, setErr] = useState('')
+  const [q, setQ] = useState('')
+  useEffect(() => {
+    let alive = true
+    supabase.rpc('csr_roster').then(({ data, error }) => { if (!alive) return; if (error) setErr(error.message); else setRows(data || []) })
+    return () => { alive = false }
+  }, [supabase])
+  const groups = useMemo(() => {
+    const g = {}
+    for (const r of rows || []) {
+      if (q && !`${r.full_name} ${r.brand}`.toLowerCase().includes(q.toLowerCase())) continue
+      ;(g[r.brand || 'Other'] ||= []).push(r)
+    }
+    return g
+  }, [rows, q])
+  if (err) return <div className="csr-card csr-err">{err}</div>
+  if (!rows) return <div className="csr-card">Loading CSRs…</div>
+  if (!rows.length) return <div className="csr-card">No CSR scorecards available for your account.</div>
+  return (
+    <>
+      <div className="csr-hello"><div><h1>CSR Scorecards</h1><div className="csr-sub">{rows.length} CSRs</div></div>
+        <input className="csr-search" placeholder="Search name or brand" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      {Object.entries(groups).map(([brand, list]) => (
+        <div key={brand} className="csr-card">
+          <h2>{brand}</h2>
+          {list.map((r) => (
+            <button key={r.id} className="csr-rrow" onClick={() => onPick(r.id)}>
+              <span className="csr-rname">{r.full_name}</span>
+              <span className="csr-sub">{r.week_number ? `Coaching week ${r.week_number}` : 'Not started'}{!r.has_lines ? ' · no phone line linked' : ''}</span>
+              <span className="csr-link">Open →</span>
+            </button>
+          ))}
+        </div>
+      ))}
+    </>
+  )
+}
+
+// ---------- entry point ----------
+export default function CsrScorecard({ supabase, mode = 'csr', accent = '#0f766e' }) {
+  const [picked, setPicked] = useState(null)
+  const isCsr = mode === 'csr'
+  return (
+    <div className="csr-root" style={{ '--csr-accent': accent }}>
+      <style>{CSS}</style>
+      {isCsr ? (
+        <Scorecard supabase={supabase} csrId={null} isCsr />
+      ) : picked ? (
+        <Scorecard supabase={supabase} csrId={picked} isCsr={false} onBack={() => setPicked(null)} />
+      ) : (
+        <Roster supabase={supabase} onPick={setPicked} />
+      )}
+    </div>
+  )
+}
+
+const CSS = `
+.csr-root{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--card:#fff;--bg:#f8fafc;color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:1100px;margin:0 auto;padding:16px}
+.csr-root *{box-sizing:border-box}
+.csr-root h1{margin:4px 0 2px;font-size:22px}.csr-root h2{font-size:15px;margin:0 0 8px}
+.csr-sub{color:var(--mut);font-size:12px}
+.csr-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px}
+.csr-hello{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+.csr-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.csr-pill{background:color-mix(in srgb,var(--csr-accent) 14%,white);color:var(--csr-accent);font-weight:600;font-size:12px;padding:3px 10px;border-radius:99px}
+.csr-grid{display:grid;gap:12px}.csr-g5{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:12px}
+.csr-g2{grid-template-columns:1.25fr 1fr}@media(max-width:820px){.csr-g2{grid-template-columns:1fr}}
+.csr-tile{margin-bottom:0}.csr-lbl{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.csr-val{font-size:26px;font-weight:700;margin:4px 0 2px}
+.csr-delta{display:block;font-size:12px;font-weight:600}.csr-delta.up{color:#15803d}.csr-delta.down{color:#b91c1c}.csr-delta.flat{color:var(--mut);font-weight:500}
+.csr-focus{border-left:4px solid var(--csr-accent);background:color-mix(in srgb,var(--csr-accent) 6%,white)}
+.csr-focus-l{color:var(--csr-accent);font-weight:700;font-size:12px}.csr-focus-t{font-size:18px;font-weight:700;margin:2px 0 6px}
+.csr-goal{margin-top:6px}.csr-pre{white-space:pre-wrap}
+.csr-step{display:grid;grid-template-columns:22px 1fr 110px 70px;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
+.csr-step:first-of-type{border-top:0}.csr-stepn{color:var(--mut);font-weight:700}.csr-pts{font-size:11px;color:var(--mut)}
+.csr-bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden}.csr-bar i{display:block;height:100%;background:var(--csr-accent)}
+.csr-bar.mid i{background:#d97706}.csr-bar.low i{background:#dc2626}
+.csr-steppct{text-align:right;font-weight:700}.csr-steppct small{display:block;font-weight:400;color:var(--mut);font-size:11px}
+.csr-na{grid-column:3/5;text-align:right;color:var(--mut);font-style:italic;font-size:12px}
+@media(max-width:520px){.csr-step{grid-template-columns:22px 1fr 60px}.csr-step .csr-bar{display:none}}
+.csr-holdpol{margin-top:10px;font-size:13px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 10px}
+.csr-note{border-top:1px solid var(--line);padding:10px 0}.csr-note:first-of-type{border-top:0}.csr-note-t{font-weight:600}
+.csr-act{display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.csr-act.done{opacity:.6}.csr-ic{width:36px;height:36px;border-radius:8px;display:grid;place-items:center;font-weight:700;color:#fff;flex:none;font-size:12px}
+.csr-act-body{flex:1;min-width:0}.csr-act-t{font-weight:600}
+.csr-act-actions{display:flex;flex-direction:column;align-items:flex-end;gap:4px}.csr-act-actions a{color:var(--csr-accent);font-weight:600;text-decoration:none;white-space:nowrap}
+.csr-link{background:none;border:0;color:var(--csr-accent);font-weight:600;cursor:pointer;padding:0;font:inherit}.csr-link.muted{color:var(--mut);font-weight:500;margin-left:8px}
+.csr-btn{background:var(--csr-accent);color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer}
+.csr-btn.ghost{background:#fff;color:var(--csr-accent);border:1px solid var(--csr-accent)}.csr-btn:disabled{opacity:.6;cursor:default}
+.csr-edit{margin-top:12px;padding:12px;border:1px dashed #cbd5e1;border-radius:10px;background:#f8fafc;display:flex;flex-direction:column;gap:8px}
+.csr-edit-h{font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
+.csr-root input,.csr-root select,.csr-root textarea{border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font:inherit;background:#fff;flex:1;min-width:0}
+.csr-root select{flex:0 1 auto}
+.csr-banner{background:#fef3c7;border:1px solid #fcd34d;color:#78350f;border-radius:10px;padding:9px 13px;margin-bottom:12px;font-size:13px}
+.csr-banner.info{background:#eff6ff;border-color:#bfdbfe;color:#1e3a8a}
+.csr-err{color:#b91c1c;font-size:13px}.csr-lowtxt{color:#b91c1c}
+.csr-welcome h2{font-size:20px}
+.csr-calls{display:flex;flex-direction:column;gap:6px;max-height:520px;overflow:auto}
+.csr-call{border:1px solid var(--line);border-radius:8px}
+.csr-call-h{width:100%;display:grid;grid-template-columns:1.3fr 1fr 1fr 50px;gap:8px;align-items:center;background:none;border:0;padding:8px 10px;text-align:left;cursor:pointer;font:inherit;color:inherit}
+.csr-call-b{padding:0 10px 10px;font-size:13px}.csr-call-b p{margin:4px 0}
+.csr-rrow{width:100%;display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center;background:none;border:0;border-top:1px solid var(--line);padding:10px 2px;text-align:left;cursor:pointer;font:inherit;color:inherit}
+.csr-rrow:first-of-type{border-top:0}.csr-rname{font-weight:600}.csr-search{max-width:260px}
+.csr-start{justify-content:flex-start}
+`
