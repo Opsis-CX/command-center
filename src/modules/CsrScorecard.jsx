@@ -37,8 +37,12 @@ function weekRange(weekStart) {
   return `${f(s)} – ${f(e)}`
 }
 function fmtCallTime(iso) {
+  // Compact so a call row fits on one line: "Sat 9/26 · 11:36 AM"
   if (!iso) return ''
-  return new Date(iso).toLocaleString('en-US', { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const d = new Date(iso)
+  const day = d.toLocaleDateString('en-US', { timeZone: TZ, weekday: 'short', month: 'numeric', day: 'numeric' }).replace(',', '')
+  const time = d.toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' })
+  return `${day} · ${time}`
 }
 function stepName(label) {
   // "Step 9 Capture Payment: get payment on file…" -> "Capture Payment"
@@ -48,6 +52,11 @@ function stepName(label) {
 function stepNum(label) {
   const m = String(label || '').match(/^Step\s*(\d+)/i)
   return m ? m[1] : ''
+}
+function addDays(d, n) {
+  if (!d) return d
+  const x = parseDay(d); x.setUTCDate(x.getUTCDate() + n)
+  return x.toISOString().slice(0, 10)
 }
 function todayET() {
   return new Date().toLocaleDateString('en-CA', { timeZone: TZ })
@@ -74,21 +83,83 @@ function Tile({ label, value, sub, children }) {
   )
 }
 
-function StepRow({ step }) {
+// Plays one call's recording on demand. The recording function enforces who may
+// hear which call (a CSR only their own calls, a manager only their brand).
+function RecordingPlayer({ supabase, callId }) {
+  const [src, setSrc] = useState(null)
+  const [state, setState] = useState('idle') // idle | loading | error
+  const load = async (e) => {
+    e?.stopPropagation?.()
+    setState('loading')
+    try {
+      const { data, error } = await supabase.functions.invoke('callqa-recording', { body: { call_id: callId } })
+      if (error) throw error
+      let url = null
+      if (data && typeof data === 'object' && data.url) url = data.url
+      else if (data instanceof Blob) url = URL.createObjectURL(data)
+      if (!url) throw new Error('No recording')
+      setSrc(url); setState('idle')
+    } catch {
+      setState('error')
+    }
+  }
+  if (src) return <audio className="csr-audio" src={src} controls autoPlay onClick={(e) => e.stopPropagation()} />
+  return (
+    <button className="csr-play" onClick={load} disabled={state === 'loading'}>
+      {state === 'loading' ? 'Loading…' : state === 'error' ? 'Recording unavailable' : '▶ Play recording'}
+    </button>
+  )
+}
+
+function ExampleCard({ supabase, ex, kind }) {
+  return (
+    <div className={`csr-ex ${kind}`}>
+      <div className="csr-ex-h">
+        <span>{fmtCallTime(ex.started_at)}</span>
+        <span className="csr-sub">{ex.direction || ''} · {fmtDur(ex.duration_sec)}{ex.outcome ? ` · ${ex.outcome}` : ''}</span>
+        <b className={ex.score < 60 ? 'csr-lowtxt' : ''}>{ex.score != null ? `${Math.round(ex.score)}%` : ''}</b>
+      </div>
+      {ex.evidence ? <div className="csr-quote">"{ex.evidence}"</div> : null}
+      {ex.why ? <div className="csr-why">{ex.why}</div> : null}
+      <RecordingPlayer supabase={supabase} callId={ex.call_id} />
+    </div>
+  )
+}
+
+function StepRow({ step, examples, supabase, open, onToggle }) {
   const pct = step.pct
   const tone = pct == null ? '' : pct < 60 ? 'low' : pct < 80 ? 'mid' : ''
+  const ex = examples || { right: [], missed: [] }
+  const hasEx = (ex.right?.length || 0) + (ex.missed?.length || 0) > 0
   return (
-    <div className="csr-step">
-      <span className="csr-stepn">{stepNum(step.label)}</span>
-      <span className="csr-stepname">{stepName(step.label)} <span className="csr-pts">· {step.points} pts</span></span>
-      {step.applicable > 0 ? (
-        <>
-          <div className={`csr-bar ${tone}`}><i style={{ width: `${pct}%` }} /></div>
-          <span className="csr-steppct">{pct}%<small>{step.done} of {step.applicable}</small></span>
-        </>
-      ) : (
-        <span className="csr-na">No calls where this applied</span>
-      )}
+    <div className={`csr-stepwrap ${open ? 'open' : ''}`}>
+      <button className="csr-step" onClick={hasEx ? onToggle : undefined} style={{ cursor: hasEx ? 'pointer' : 'default' }}>
+        <span className="csr-stepn">{stepNum(step.label)}</span>
+        <span className="csr-stepname">{stepName(step.label)} <span className="csr-pts">· {step.points} pts</span>
+          {hasEx ? <span className="csr-exlink">{open ? 'Hide examples' : 'See examples'}</span> : null}</span>
+        {step.applicable > 0 ? (
+          <>
+            <div className={`csr-bar ${tone}`}><i style={{ width: `${pct}%` }} /></div>
+            <span className="csr-steppct">{pct}%<small>{step.done} of {step.applicable}</small></span>
+          </>
+        ) : (
+          <span className="csr-na">No calls where this applied</span>
+        )}
+      </button>
+      {open ? (
+        <div className="csr-exgrid">
+          <div>
+            <div className="csr-exhead good">✓ Done well</div>
+            {ex.right?.length ? ex.right.map((e) => <ExampleCard key={e.call_id} supabase={supabase} ex={e} kind="good" />)
+              : <div className="csr-sub">No examples this week.</div>}
+          </div>
+          <div>
+            <div className="csr-exhead bad">✗ Missed</div>
+            {ex.missed?.length ? ex.missed.map((e) => <ExampleCard key={e.call_id} supabase={supabase} ex={e} kind="bad" />)
+              : <div className="csr-sub">Nothing missed this week.</div>}
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -104,7 +175,7 @@ function Welcome({ name, brand }) {
 }
 
 // ---------- coach (staff) editors ----------
-function FocusEditor({ supabase, csrId, week, focus, steps, onSaved }) {
+function FocusEditor({ supabase, csrId, week, fromWeek, focus, steps, onSaved }) {
   const [title, setTitle] = useState(focus?.title || '')
   const [body, setBody] = useState(focus?.body || '')
   const [goal, setGoal] = useState(focus?.goal || '')
@@ -118,9 +189,22 @@ function FocusEditor({ supabase, csrId, week, focus, steps, onSaved }) {
     setBusy(false)
     if (error) setErr(error.message); else onSaved()
   }
+  const generate = async () => {
+    if (focus && !window.confirm('Replace this focus with one built from the audits?')) return
+    setBusy(true); setErr('')
+    const { data, error } = await supabase.rpc('csr_generate_focus', { p_csr: csrId, p_from_week: fromWeek, p_for_week: week })
+    setBusy(false)
+    if (error) setErr(error.message)
+    else if (data?.skipped) setErr('Not enough scored calls in that week to pick a focus.')
+    else onSaved()
+  }
   return (
     <div className="csr-edit">
-      <div className="csr-edit-h">Set this week's focus (week of {weekRange(week)})</div>
+      <div className="csr-edit-h">Focus for the week of {weekRange(week)}</div>
+      <div className="csr-row">
+        <button className="csr-btn ghost" disabled={busy} onClick={generate}>Build from week of {weekRange(fromWeek)} audits</button>
+        <span className="csr-sub">Picks the step that cost the most points and writes a script line. Edit anything below.</span>
+      </div>
       <select value={stepKey} onChange={(e) => { setStepKey(e.target.value); if (!title) { const s = steps.find((x) => x.key === e.target.value); if (s) setTitle(stepName(s.label)) } }}>
         <option value="">Rubric step (optional)</option>
         {steps.map((s) => <option key={s.key} value={s.key}>Step {stepNum(s.label)} · {stepName(s.label)}</option>)}
@@ -247,7 +331,7 @@ function ActivityRow({ a, canMark, canArchive, onMark, onArchive }) {
   )
 }
 
-function CallsList({ calls, loading }) {
+function CallsList({ calls, loading, supabase }) {
   const [open, setOpen] = useState(null)
   if (loading) return <div className="csr-sub">Loading calls…</div>
   if (!calls?.length) return <div className="csr-sub">No scored calls this week yet.</div>
@@ -265,6 +349,7 @@ function CallsList({ calls, loading }) {
             <div className="csr-call-b">
               {c.coaching_note ? <p><b>Coaching tip:</b> {c.coaching_note}</p> : null}
               {c.missed?.length ? <p><b>Steps missed:</b> {c.missed.map(stepName).join(', ')}</p> : <p>No steps missed.</p>}
+              <RecordingPlayer supabase={supabase} callId={c.id} />
             </div>
           ) : null}
         </div>
@@ -281,6 +366,8 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
   const [callsLoading, setCallsLoading] = useState(false)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
+  const [examples, setExamples] = useState({})
+  const [openStep, setOpenStep] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -290,11 +377,15 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
     setData(d)
     if (d?.status === 'active') {
       setCallsLoading(true)
-      const { data: c, error: ce } = await supabase.rpc('csr_calls', { p_csr: csrId || null, p_week: d.week })
+      const [{ data: c, error: ce }, { data: ex, error: ee }] = await Promise.all([
+        supabase.rpc('csr_calls', { p_csr: csrId || null, p_week: d.week }),
+        supabase.rpc('csr_step_examples', { p_csr: csrId || null, p_week: d.week }),
+      ])
       setCallsLoading(false)
       setCalls(ce ? [] : (c || []))
+      setExamples(ee ? {} : (ex || {}))
     } else {
-      setCalls([])
+      setCalls([]); setExamples({})
     }
   }, [supabase, csrId, week])
 
@@ -377,20 +468,20 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
         <Tile label="Avg Talk Time" value={fmtDur(m.avg_talk_sec)} sub="Total talk time ÷ calls answered">
           <Delta cur={m.avg_talk_sec} prev={p?.avg_talk_sec} unit="time" lowerIsBetter={false} />
         </Tile>
-        <Tile label="Calls Put on Hold" value={m.hold_tracked ? (m.calls_on_hold ?? 0) : '—'}
-          sub={m.hold_tracked ? (m.scored_calls ? `${Math.round(100 * (m.calls_on_hold || 0) / m.scored_calls)}% of scored calls` : null) : 'Hold tracking starts week of Sep 28'}>
-          {m.hold_tracked && p?.hold_tracked ? <Delta cur={m.calls_on_hold} prev={p.calls_on_hold} decimals={0} lowerIsBetter /> : null}
+        <Tile label="Calls Put on Hold" value={m.hold_count_known ? (m.calls_on_hold ?? 0) : '—'}
+          sub={m.hold_count_known ? (m.scored_calls ? `${Math.round(100 * (m.calls_on_hold || 0) / m.scored_calls)}% of scored calls` : null) : 'Not enough scored calls yet'}>
+          {m.hold_count_known && p?.hold_count_known ? <Delta cur={m.calls_on_hold} prev={p.calls_on_hold} decimals={0} lowerIsBetter /> : null}
         </Tile>
-        <Tile label="Avg Hold Time" value={m.hold_tracked ? fmtDur(m.avg_hold_sec) : '—'}
-          sub={m.hold_tracked ? 'Total hold time ÷ calls put on hold' : 'Hold tracking starts week of Sep 28'}>
-          {m.hold_tracked && p?.hold_tracked ? <Delta cur={m.avg_hold_sec} prev={p.avg_hold_sec} unit="time" lowerIsBetter /> : null}
+        <Tile label="Avg Hold Time" value={m.hold_time_known ? fmtDur(m.avg_hold_sec) : '—'}
+          sub={m.hold_time_known ? 'Total hold time ÷ calls put on hold' : 'Hold times are tracked from the week of Sep 28'}>
+          {m.hold_time_known && p?.hold_time_known ? <Delta cur={m.avg_hold_sec} prev={p.avg_hold_sec} unit="time" lowerIsBetter /> : null}
         </Tile>
       </div>
 
       <div className="csr-grid csr-g2">
         <div>
           <div className="csr-card csr-focus">
-            <div className="csr-focus-l">THIS WEEK'S FOCUS{focus?.step_key ? ` · STEP ${stepNum((steps.find((s) => s.key === focus.step_key) || {}).label)}` : ''}</div>
+            <div className="csr-focus-l">THIS WEEK'S FOCUS{focus?.week_start ? ` · WEEK OF ${fmtDay(focus.week_start).toUpperCase()}` : ''}{focus?.step_key ? ` · STEP ${stepNum((steps.find((s) => s.key === focus.step_key) || {}).label)}` : ''}</div>
             {focus ? (
               <>
                 <div className="csr-focus-t">{focus.title}</div>
@@ -398,15 +489,21 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
                 {focus.goal ? <div className="csr-goal"><b>Goal:</b> {focus.goal}</div> : null}
               </>
             ) : <div className="csr-sub">Your coach will set your focus for this week at your next session.</div>}
-            {canEdit ? <FocusEditor supabase={supabase} csrId={csr.id} week={data.week} focus={focus} steps={steps} onSaved={load} /> : null}
+            {canEdit ? <FocusEditor supabase={supabase} csrId={csr.id} week={focus?.week_start || addDays(data.current_week, 7)}
+              fromWeek={data.week} focus={focus} steps={steps} onSaved={load} /> : null}
           </div>
 
           <div className="csr-card">
             <h2>Your Call Flow ({data.week === data.current_week ? 'this week so far' : `week ${data.week_number}`})</h2>
-            <div className="csr-sub" style={{ marginBottom: 8 }}>% of calls where each step was done. Calls where a step didn't apply aren't counted.</div>
-            {steps.map((s) => <StepRow key={s.key} step={s} />)}
-            {m.hold_tracked && m.hold_events > 0 ? (
+            <div className="csr-sub" style={{ marginBottom: 8 }}>% of calls where each step was done. Calls where a step didn't apply aren't counted. Click a step to see call examples.</div>
+            {steps.map((s) => (
+              <StepRow key={s.key} step={s} examples={examples[s.key]} supabase={supabase}
+                open={openStep === s.key} onToggle={() => setOpenStep(openStep === s.key ? null : s.key)} />
+            ))}
+            {m.hold_time_known && m.hold_events > 0 ? (
               <div className="csr-holdpol">Hold policy: asked permission on {m.hold_asked_permission} of {m.hold_events} holds, thanked the caller on {m.hold_thanked} of {m.hold_events}.</div>
+            ) : m.legacy_hold_calls > 0 ? (
+              <div className="csr-holdpol">Hold policy: followed on {m.legacy_hold_policy_ok} of {m.legacy_hold_calls} calls with a hold or transfer (ask permission first, thank them after).</div>
             ) : null}
           </div>
 
@@ -435,7 +532,7 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
 
           <div className="csr-card">
             <h2>{isCsr ? 'My calls' : 'Calls'} · {weekRange(data.week)}</h2>
-            <CallsList calls={calls} loading={callsLoading} />
+            <CallsList calls={calls} loading={callsLoading} supabase={supabase} />
           </div>
         </div>
       </div>
@@ -503,7 +600,7 @@ export default function CsrScorecard({ supabase, mode = 'csr', accent = '#0f766e
 }
 
 const CSS = `
-.csr-root{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--card:#fff;--bg:#f8fafc;color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:1100px;margin:0 auto;padding:16px}
+.csr-root{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--card:#fff;--bg:#f8fafc;color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:1280px;margin:0 auto;padding:16px}
 .csr-root *{box-sizing:border-box}
 .csr-root h1{margin:4px 0 2px;font-size:22px}.csr-root h2{font-size:15px;margin:0 0 8px}
 .csr-sub{color:var(--mut);font-size:12px}
@@ -512,15 +609,15 @@ const CSS = `
 .csr-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .csr-pill{background:color-mix(in srgb,var(--csr-accent) 14%,white);color:var(--csr-accent);font-weight:600;font-size:12px;padding:3px 10px;border-radius:99px}
 .csr-grid{display:grid;gap:12px}.csr-g5{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:12px}
-.csr-g2{grid-template-columns:1.25fr 1fr}@media(max-width:820px){.csr-g2{grid-template-columns:1fr}}
+.csr-g2{grid-template-columns:1fr 1fr}@media(max-width:900px){.csr-g2{grid-template-columns:1fr}}
 .csr-tile{margin-bottom:0}.csr-lbl{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
 .csr-val{font-size:26px;font-weight:700;margin:4px 0 2px}
 .csr-delta{display:block;font-size:12px;font-weight:600}.csr-delta.up{color:#15803d}.csr-delta.down{color:#b91c1c}.csr-delta.flat{color:var(--mut);font-weight:500}
 .csr-focus{border-left:4px solid var(--csr-accent);background:color-mix(in srgb,var(--csr-accent) 6%,white)}
 .csr-focus-l{color:var(--csr-accent);font-weight:700;font-size:12px}.csr-focus-t{font-size:18px;font-weight:700;margin:2px 0 6px}
 .csr-goal{margin-top:6px}.csr-pre{white-space:pre-wrap}
-.csr-step{display:grid;grid-template-columns:22px 1fr 110px 70px;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
-.csr-step:first-of-type{border-top:0}.csr-stepn{color:var(--mut);font-weight:700}.csr-pts{font-size:11px;color:var(--mut)}
+.csr-stepwrap{border-top:1px solid var(--line)}.csr-stepwrap:first-of-type{border-top:0}.csr-stepwrap.open{background:#f8fafc;border-radius:8px}
+.csr-step{width:100%;display:grid;grid-template-columns:22px 1fr 110px 70px;gap:8px;align-items:center;padding:7px 4px;font:inherit;font-size:13px;color:inherit;background:none;border:0;text-align:left}.csr-stepn{color:var(--mut);font-weight:700}.csr-pts{font-size:11px;color:var(--mut)}
 .csr-bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden}.csr-bar i{display:block;height:100%;background:var(--csr-accent)}
 .csr-bar.mid i{background:#d97706}.csr-bar.low i{background:#dc2626}
 .csr-steppct{text-align:right;font-weight:700}.csr-steppct small{display:block;font-weight:400;color:var(--mut);font-size:11px}
@@ -545,9 +642,20 @@ const CSS = `
 .csr-welcome h2{font-size:20px}
 .csr-calls{display:flex;flex-direction:column;gap:6px;max-height:520px;overflow:auto}
 .csr-call{border:1px solid var(--line);border-radius:8px}
-.csr-call-h{width:100%;display:grid;grid-template-columns:1.3fr 1fr 1fr 50px;gap:8px;align-items:center;background:none;border:0;padding:8px 10px;text-align:left;cursor:pointer;font:inherit;color:inherit}
+.csr-call-h{width:100%;display:grid;grid-template-columns:auto 1fr auto 44px;gap:12px;align-items:center;background:none;border:0;padding:8px 10px;text-align:left;cursor:pointer;font:inherit;color:inherit;white-space:nowrap}
+.csr-call-h>*{overflow:hidden;text-overflow:ellipsis}.csr-call-h b{text-align:right}
 .csr-call-b{padding:0 10px 10px;font-size:13px}.csr-call-b p{margin:4px 0}
 .csr-rrow{width:100%;display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center;background:none;border:0;border-top:1px solid var(--line);padding:10px 2px;text-align:left;cursor:pointer;font:inherit;color:inherit}
 .csr-rrow:first-of-type{border-top:0}.csr-rname{font-weight:600}.csr-search{max-width:260px}
 .csr-start{justify-content:flex-start}
+.csr-exlink{margin-left:8px;font-size:11px;color:var(--csr-accent);font-weight:600}
+.csr-exgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:4px 6px 12px}@media(max-width:620px){.csr-exgrid{grid-template-columns:1fr}}
+.csr-exhead{font-size:12px;font-weight:700;margin:4px 0 6px}.csr-exhead.good{color:#15803d}.csr-exhead.bad{color:#b91c1c}
+.csr-ex{background:#fff;border:1px solid var(--line);border-left:3px solid #16a34a;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12.5px}
+.csr-ex.bad{border-left-color:#dc2626}
+.csr-ex-h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;white-space:nowrap}.csr-ex-h b{margin-left:auto}
+.csr-quote{margin-top:4px;font-style:italic;color:#334155}.csr-why{margin-top:4px;color:var(--mut)}
+.csr-play{margin-top:6px;background:none;border:1px solid var(--csr-accent);color:var(--csr-accent);border-radius:6px;padding:3px 9px;font-size:12px;font-weight:600;cursor:pointer}
+.csr-play:disabled{opacity:.6;cursor:default}
+.csr-audio{margin-top:6px;width:100%;height:32px}
 `
