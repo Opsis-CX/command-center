@@ -13,7 +13,7 @@ import MyCertifications from './modules/MyCertifications'
 import MyCourses from './modules/MyCourses'
 import Dashboard from './modules/Dashboard'
 import { Placeholder } from './modules/Placeholders'
-
+ 
 // Shown instead of a page when the signed-in role isn't allowed to see it.
 // Previously these routes simply weren't registered, so a denied user fell
 // through to "*" and landed on the Dashboard with no explanation — which reads
