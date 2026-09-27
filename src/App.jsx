@@ -55,6 +55,9 @@ import TeamFavorites from './modules/TeamFavorites'
 import Meetings from './modules/Meetings'
 import TimeAdmin from './modules/TimeAdmin'
 import NewHireSurvey from './modules/NewHireSurvey'
+// GarageCo CSR coaching scorecards (2026-09-27). One module, three views:
+// CSR (own only), client manager (their brand / all brands), Opsis QA staff (edit).
+import CsrScorecard from './modules/CsrScorecard'
 // --- Who's On: live check-ins (LiveStatus) + Slack-style team presence board ---
 import LiveStatus from './modules/LiveStatus'
 import { usePresenceHeartbeat, MyStatusButton, TeamStatus } from './components/Presence'
@@ -140,8 +143,14 @@ export default function App() {
     )
   }
   if (!session) return <Login />
+  // External CSR login (a brand's front-desk employee in the GarageCo coaching
+  // program): a branded shell that shows ONLY their own coaching scorecard.
+  // Must come before every other gate. The database enforces this too — CSR
+  // logins are blocked from every table/RPC except their scorecard.
+  if (appRole === 'csr') return <CsrPortal session={session} />
   // External client-portal login: a branded, single-purpose shell that shows ONLY
-  // Call QA (their own data, RLS-enforced — CallRail/LightSpeed only, never Five9).
+  // Call QA (their own data, RLS-enforced — CallRail/LightSpeed only, never Five9)
+  // plus the CSR Scorecards for the CSRs they manage.
   // No sidebar, no other modules.
   if (appRole === 'client') return <ClientPortal session={session} clientId={clientId} />
   // New hires in the pipeline are locked to a Certification-only view until an
@@ -149,13 +158,62 @@ export default function App() {
   if (inTraining) return <TraineePortal session={session} />
   return <AuthedApp session={session} isAdmin={isAdmin} appRole={appRole} navOpen={navOpen} setNavOpen={setNavOpen} location={location} />
 }
+// CSR portal — branded, single-page shell with the CSR's own coaching scorecard.
+function CsrPortal({ session }) {
+  const { signOut } = useAuth()
+  const [brand, setBrand] = useState(null)          // { portal_name, portal_accent, portal_logo_url }
+  const [mustChange, setMustChange] = useState(null) // null = still checking
+
+  useEffect(() => {
+    let active = true
+    supabase.from('profiles').select('must_change_password').eq('id', session.user.id).single()
+      .then(({ data }) => { if (active) setMustChange(!!data?.must_change_password) })
+      .catch(() => { if (active) setMustChange(false) })
+    return () => { active = false }
+  }, [session.user.id])
+
+  useEffect(() => {
+    let active = true
+    // CSRs can't read the clients table directly; branding comes from an RPC.
+    supabase.rpc('csr_portal_branding')
+      .then(({ data }) => { if (active) setBrand(data || {}) })
+      .catch(() => { if (active) setBrand({}) })
+    return () => { active = false }
+  }, [session.user.id])
+
+  if (mustChange === null || brand === null) return <div className="loading-screen">Loading…</div>
+  if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
+
+  const accent = brand.portal_accent || '#0f766e'
+  const name = brand.portal_name || 'GarageCo'
+  return (
+    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+      <header style={{ background: accent, color: '#fff', padding: '0 20px', minHeight: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {brand.portal_logo_url
+            ? <img src={brand.portal_logo_url} alt={name} style={{ height: 32, width: 'auto', borderRadius: 4, background: '#fff', padding: 2 }} />
+            : <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: 0.3 }}>{name}</div>}
+          <span style={{ fontSize: 13, opacity: 0.85 }}>My Coaching Scorecard</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <span style={{ fontSize: 13, opacity: 0.9 }}>{session.user.email}</span>
+          <button onClick={() => signOut()} style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Sign out</button>
+        </div>
+      </header>
+      <CsrScorecard supabase={supabase} mode="csr" accent={accent} />
+      <footer style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: '24px 0 32px' }}>Powered by Opsis CX</footer>
+    </div>
+  )
+}
 // External client portal — a branded, single-page shell that renders ONLY the
-// Call QA module in portal mode. Clients see their own calls (RLS-enforced),
-// can export and add notes, but never manager controls or any other module.
+// Call QA module in portal mode, plus CSR Scorecards. Clients see their own calls
+// (RLS-enforced), can export and add notes, but never manager controls or any other module.
 function ClientPortal({ session, clientId }) {
   const { signOut, user } = useAuth()   // user is needed by PushEnrollmentBanner below
   const [brand, setBrand] = useState(null)          // { portal_name, portal_accent, portal_logo_url, name }
   const [mustChange, setMustChange] = useState(null) // null = still checking
+  const [tab, setTab] = useState('qa')                // 'qa' | 'csr'
+  const [hasCsrs, setHasCsrs] = useState(false)       // only show the tab when this login manages CSRs
 
   useEffect(() => {
     let active = true
@@ -174,11 +232,22 @@ function ClientPortal({ session, clientId }) {
     return () => { active = false }
   }, [clientId])
 
+  useEffect(() => {
+    let active = true
+    supabase.rpc('csr_roster')
+      .then(({ data }) => { if (active) setHasCsrs(Array.isArray(data) && data.length > 0) })
+      .catch(() => {})
+    return () => { active = false }
+  }, [session.user.id])
+
   if (mustChange === null || brand === null) return <div className="loading-screen">Loading…</div>
   if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
 
   const accent = brand.portal_accent || '#0f766e'
   const name = brand.portal_name || brand.name || 'Call QA'
+  const tabBtn = (k, label) => (
+    <button onClick={() => setTab(k)} style={{ background: tab === k ? '#fff' : 'rgba(255,255,255,0.12)', color: tab === k ? accent : '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>{label}</button>
+  )
   return (
     <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
       <header style={{ background: accent, color: '#fff', padding: '0 20px', height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -186,14 +255,16 @@ function ClientPortal({ session, clientId }) {
           {brand.portal_logo_url
             ? <img src={brand.portal_logo_url} alt={name} style={{ height: 32, width: 'auto', borderRadius: 4, background: '#fff', padding: 2 }} />
             : <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: 0.3 }}>{name}</div>}
-          <span style={{ fontSize: 13, opacity: 0.85 }}>Call Quality &amp; Conversion</span>
+          {hasCsrs
+            ? <div style={{ display: 'flex', gap: 6 }}>{tabBtn('qa', 'Call Quality & Conversion')}{tabBtn('csr', 'CSR Scorecards')}</div>
+            : <span style={{ fontSize: 13, opacity: 0.85 }}>Call Quality &amp; Conversion</span>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <span style={{ fontSize: 13, opacity: 0.9 }}>{session.user.email}</span>
           <button onClick={() => signOut()} style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Sign out</button>
         </div>
       </header>
-      <CallQA portal />
+      {tab === 'csr' && hasCsrs ? <CsrScorecard supabase={supabase} mode="manager" accent={accent} /> : <CallQA portal />}
       <footer style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: '24px 0 32px' }}>Powered by Opsis CX</footer>
     </div>
   )
@@ -346,6 +417,9 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/quality" element={(canAny(appRole, 'quality_audit.view_own') || canAny(appRole, 'quality_audit.call_reviews')) ? <QualityAudit /> : <NoAccess />} />
               {/* Internal Call QA (AI) — full manager view incl. Rubric, all campaigns (GarageCo / Lavin / Open Invoices). */}
               <Route path="/call-qa" element={canAny(appRole, 'quality_audit.call_reviews') ? <CallQA /> : <NoAccess />} />
+              {/* GarageCo CSR coaching scorecards — coaches set focus, notes, activities and
+                  first-1:1 dates here. Editing is also enforced server-side (can_manage_qa()). */}
+              <Route path="/csr-scorecards" element={canAny(appRole, 'quality_audit.call_reviews') ? <CsrScorecard supabase={supabase} mode="staff" /> : <NoAccess />} />
               <Route path="/my-call-reviews" element={canAny(appRole, 'call_reviews.mine') ? <MyCallReviews /> : <NoAccess />} />
               <Route path="/schedule" element={<Schedule />} />
               <Route path="/chat" element={canAny(appRole, 'chat') ? <Chat /> : <NoAccess />} />
@@ -407,7 +481,7 @@ function titleFor(path) {
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions',
     '/web-chat': 'Web Chat',
-    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
+    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/csr-scorecards': 'CSR Scorecards', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
   }
   // Sales is now a tabbed shell with nested routes (/sales/dashboard,
   // /sales/scorecard, etc.) -- Pipeline itself stays at the bare /sales so
@@ -416,4 +490,3 @@ function titleFor(path) {
   if (path.startsWith('/sales/')) return 'Sales'
   return map[path] || 'Command Center'
 }
-
