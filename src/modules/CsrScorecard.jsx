@@ -92,7 +92,12 @@ function RecordingPlayer({ supabase, callId }) {
     e?.stopPropagation?.()
     setState('loading')
     try {
-      const { data, error } = await supabase.functions.invoke('callqa-recording', { body: { call_id: callId } })
+      // One quiet retry: a login token refreshing at the same moment can fail the first try.
+      let { data, error } = await supabase.functions.invoke('callqa-recording', { body: { call_id: callId } })
+      if (error) {
+        await new Promise(r => setTimeout(r, 600))
+        ;({ data, error } = await supabase.functions.invoke('callqa-recording', { body: { call_id: callId } }))
+      }
       if (error) throw error
       let url = null
       if (data && typeof data === 'object' && data.url) url = data.url
@@ -106,12 +111,144 @@ function RecordingPlayer({ supabase, callId }) {
   if (src) return <audio className="csr-audio" src={src} controls autoPlay onClick={(e) => e.stopPropagation()} />
   return (
     <button className="csr-play" onClick={load} disabled={state === 'loading'}>
-      {state === 'loading' ? 'Loading…' : state === 'error' ? 'Recording unavailable' : '▶ Play recording'}
+      {state === 'loading' ? 'Loading…' : state === 'error' ? "Couldn't load. Tap to retry" : '▶ Play recording'}
     </button>
   )
 }
 
-function ExampleCard({ supabase, ex, kind }) {
+// ---------- "This doesn't look right" (CSR / manager flags a grade; Opsis QA reviews) ----------
+const FLAG_REASONS = [
+  ['step_wrong', 'This step was graded wrong'],
+  ['not_customer', "This wasn't a customer call (tech, coworker, vendor, extension)"],
+  ['transcript_wrong', "The transcript doesn't match what was said"],
+  ['other', 'Something else'],
+]
+const FLAG_STATUS = {
+  open: ['Sent for review', 'We’ll check this call before your next session.', 'open'],
+  fixed: ['Fixed', 'Thanks for flagging it. Your score has been updated.', 'fixed'],
+  removed: ['Removed from your score', 'This call no longer counts toward your scorecard.', 'fixed'],
+  kept: ['Reviewed: grade stands', '', 'kept'],
+}
+function flagKey(callId, stepKey) { return `${callId}|${stepKey || ''}` }
+
+function FlagStatus({ flag }) {
+  const [t, sub, tone] = FLAG_STATUS[flag.status] || FLAG_STATUS.open
+  return (
+    <div className={`csr-flagst ${tone}`}>
+      <b>{t}</b>{sub ? <span> · {sub}</span> : null}
+      {flag.resolution_note ? <div className="csr-flagnote">Coach: {flag.resolution_note}</div> : null}
+    </div>
+  )
+}
+
+function FlagButton({ supabase, callId, stepKey, steps, flags, onFlagged }) {
+  const existing = flags?.[flagKey(callId, stepKey)]
+  const [open, setOpen] = useState(false)
+  const [step, setStep] = useState(stepKey || '')
+  const [reason, setReason] = useState(stepKey ? 'step_wrong' : '')
+  const [context, setContext] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  if (existing && !open) return <FlagStatus flag={existing} />
+  const tooShort = context.trim().length < 10
+  const submit = async (e) => {
+    e?.stopPropagation?.()
+    if (!reason) { setErr('Pick what looks wrong.'); return }
+    if (tooShort) { setErr('Please add a sentence or two so we know what to check.'); return }
+    setBusy(true); setErr('')
+    const { error } = await supabase.rpc('csr_flag_call', { p_call: callId, p_step_key: step || null, p_reason: reason, p_context: context.trim() })
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    setOpen(false); setContext('')
+    onFlagged && onFlagged()
+  }
+  if (!open) return <button className="csr-flagbtn" onClick={(e) => { e.stopPropagation(); setOpen(true) }}>This doesn’t look right</button>
+  return (
+    <div className="csr-flagform" onClick={(e) => e.stopPropagation()}>
+      <div className="csr-edit-h">What doesn’t look right?</div>
+      {!stepKey && steps?.length ? (
+        <label className="csr-flagrow">Which step?
+          <select value={step} onChange={(e) => setStep(e.target.value)}>
+            <option value="">The whole call</option>
+            {steps.map((s) => <option key={s.key} value={s.key}>Step {stepNum(s.label)} · {stepName(s.label)}</option>)}
+          </select>
+        </label>
+      ) : null}
+      <div className="csr-flagreasons">
+        {FLAG_REASONS.map(([k, label]) => (
+          <label key={k}><input type="radio" name={`r-${callId}-${stepKey || 'all'}`} checked={reason === k} onChange={() => setReason(k)} /> {label}</label>
+        ))}
+      </div>
+      <textarea rows={3} value={context} maxLength={2000} onChange={(e) => setContext(e.target.value)}
+        placeholder="Tell us what happened on this call. Example: “This was Mike, one of our techs, calling from the field.” or “I did give my name, it’s at the very start of the recording.”" />
+      <div className="csr-sub">{tooShort ? 'A sentence or two is required so your coach knows what to check.' : 'Your coach will listen to the call and let you know.'}</div>
+      {err ? <div className="csr-err">{err}</div> : null}
+      <div className="csr-row">
+        <button className="csr-btn" disabled={busy || tooShort || !reason} onClick={submit}>{busy ? 'Sending…' : 'Send for review'}</button>
+        <button className="csr-btn ghost" disabled={busy} onClick={(e) => { e.stopPropagation(); setOpen(false); setErr('') }}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+// Opsis QA staff: open flags, with the call and the AI's reasoning, and the three decisions.
+function FlagQueue({ supabase, csrId, onChanged, title = 'Flagged calls to review' }) {
+  const [rows, setRows] = useState(null)
+  const [err, setErr] = useState('')
+  const [hidden, setHidden] = useState(false)
+  const [notes, setNotes] = useState({})
+  const [busy, setBusy] = useState(null)
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.rpc('csr_flags', { p_csr: csrId || null, p_open_only: !csrId })
+    if (error) { if (!csrId) setHidden(true); else setErr(error.message); return }
+    setRows(data || [])
+  }, [supabase, csrId])
+  useEffect(() => { load() }, [load])
+  if (hidden) return null
+  if (err) return <div className="csr-card csr-err">{err}</div>
+  if (!rows) return null
+  const open = rows.filter((r) => r.status === 'open')
+  if (!csrId && !open.length) return null
+  const decide = async (f, decision) => {
+    setBusy(f.id)
+    const { error } = await supabase.rpc('csr_resolve_flag', { p_flag: f.id, p_decision: decision, p_note: notes[f.id] || null })
+    setBusy(null)
+    if (error) { setErr(error.message); return }
+    await load(); onChanged && onChanged()
+  }
+  return (
+    <div className="csr-card csr-flagq">
+      <h2>{title} {open.length ? <span className="csr-pill">{open.length} open</span> : null}</h2>
+      {!rows.length ? <div className="csr-sub">No calls have been flagged.</div> : null}
+      {rows.map((f) => (
+        <div key={f.id} className={`csr-flagitem ${f.status}`}>
+          <div className="csr-ex-h">
+            {!csrId ? <span className="csr-rname">{f.csr_name}</span> : null}
+            <span>{fmtCallTime(f.call_started_at)}</span>
+            <span className="csr-sub">{f.direction || ''} · {fmtDur(f.duration_sec)} · {f.step_label ? `Step ${stepNum(f.step_label)} ${stepName(f.step_label)}` : 'Whole call'}{f.step_answer ? ` (graded ${f.step_answer})` : ''}</span>
+            <b>{f.score != null ? `${Math.round(f.score)}%` : ''}</b>
+          </div>
+          <div className="csr-flagctx"><b>{(FLAG_REASONS.find(([k]) => k === f.reason) || [])[1] || f.reason}</b> · {f.flagged_by || 'CSR'}: “{f.context}”</div>
+          {f.ai_why ? <div className="csr-why">AI said: {f.ai_why}</div> : null}
+          {f.transcript_start ? <details className="csr-sub"><summary>Transcript (start)</summary><div className="csr-pre">{f.transcript_start}</div></details> : null}
+          <RecordingPlayer supabase={supabase} callId={f.call_id} />
+          {f.status === 'open' ? (
+            <div className="csr-flagact">
+              <input placeholder="Note to the CSR (optional, they'll see this)" value={notes[f.id] || ''} onChange={(e) => setNotes({ ...notes, [f.id]: e.target.value })} />
+              <div className="csr-row">
+                <button className="csr-btn" disabled={busy === f.id} onClick={() => decide(f, 'remove_call')}>Remove call from score</button>
+                {f.step_key ? <button className="csr-btn" disabled={busy === f.id} onClick={() => decide(f, 'fix_step')}>Fix step (give credit)</button> : null}
+                <button className="csr-btn ghost" disabled={busy === f.id} onClick={() => decide(f, 'keep')}>Keep grade</button>
+              </div>
+            </div>
+          ) : <FlagStatus flag={f} />}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ExampleCard({ supabase, ex, kind, stepKey, flags, onFlagged, canFlag }) {
   return (
     <div className={`csr-ex ${kind}`}>
       <div className="csr-ex-h">
@@ -122,11 +259,12 @@ function ExampleCard({ supabase, ex, kind }) {
       {ex.evidence ? <div className="csr-quote">"{ex.evidence}"</div> : null}
       {ex.why ? <div className="csr-why">{ex.why}</div> : null}
       <RecordingPlayer supabase={supabase} callId={ex.call_id} />
+      {canFlag && kind === 'bad' ? <FlagButton supabase={supabase} callId={ex.call_id} stepKey={stepKey} flags={flags} onFlagged={onFlagged} /> : null}
     </div>
   )
 }
 
-function StepRow({ step, examples, supabase, open, onToggle }) {
+function StepRow({ step, examples, supabase, open, onToggle, flags, onFlagged, canFlag }) {
   const pct = step.pct
   const tone = pct == null ? '' : pct < 60 ? 'low' : pct < 80 ? 'mid' : ''
   const ex = examples || { right: [], missed: [] }
@@ -150,12 +288,12 @@ function StepRow({ step, examples, supabase, open, onToggle }) {
         <div className="csr-exgrid">
           <div>
             <div className="csr-exhead good">✓ Done well</div>
-            {ex.right?.length ? ex.right.map((e) => <ExampleCard key={e.call_id} supabase={supabase} ex={e} kind="good" />)
+            {ex.right?.length ? ex.right.map((e) => <ExampleCard key={e.call_id} supabase={supabase} ex={e} kind="good" stepKey={step.key} />)
               : <div className="csr-sub">No examples this week.</div>}
           </div>
           <div>
             <div className="csr-exhead bad">✗ Missed</div>
-            {ex.missed?.length ? ex.missed.map((e) => <ExampleCard key={e.call_id} supabase={supabase} ex={e} kind="bad" />)
+            {ex.missed?.length ? ex.missed.map((e) => <ExampleCard key={e.call_id} supabase={supabase} ex={e} kind="bad" stepKey={step.key} flags={flags} onFlagged={onFlagged} canFlag={canFlag} />)
               : <div className="csr-sub">Nothing missed this week.</div>}
           </div>
         </div>
@@ -331,7 +469,7 @@ function ActivityRow({ a, canMark, canArchive, onMark, onArchive }) {
   )
 }
 
-function CallsList({ calls, loading, supabase }) {
+function CallsList({ calls, loading, supabase, steps, flags, onFlagged, canFlag }) {
   const [open, setOpen] = useState(null)
   if (loading) return <div className="csr-sub">Loading calls…</div>
   if (!calls?.length) return <div className="csr-sub">No scored calls this week yet.</div>
@@ -343,13 +481,17 @@ function CallsList({ calls, loading, supabase }) {
             <span>{fmtCallTime(c.started_at)}</span>
             <span className="csr-sub">{c.direction || ''} · {fmtDur(c.duration_sec)}{c.hold_count > 0 ? ` · ${c.hold_count} hold` : ''}</span>
             <span className="csr-sub">{c.outcome || ''}</span>
-            <b className={c.score < 60 ? 'csr-lowtxt' : ''}>{c.score != null ? `${Math.round(c.score)}%` : '—'}</b>
+            <b className={c.score < 60 ? 'csr-lowtxt' : ''}>{Object.values(flags || {}).some((f) => f.call_id === c.id && f.status === 'open') ? <span className="csr-flagdot" title="Flagged for review">⚑ </span> : null}{c.score != null ? `${Math.round(c.score)}%` : '—'}</b>
           </button>
           {open === c.id ? (
             <div className="csr-call-b">
               {c.coaching_note ? <p><b>Coaching tip:</b> {c.coaching_note}</p> : null}
               {c.missed?.length ? <p><b>Steps missed:</b> {c.missed.map(stepName).join(', ')}</p> : <p>No steps missed.</p>}
               <RecordingPlayer supabase={supabase} callId={c.id} />
+              {canFlag ? <FlagButton supabase={supabase} callId={c.id} stepKey={null} steps={steps} flags={flags} onFlagged={onFlagged} /> : null}
+              {canFlag ? Object.values(flags || {}).filter((f) => f.call_id === c.id && f.step_key).map((f) => (
+                <div key={f.id} className="csr-sub">Step {stepNum(f.step_label)} {stepName(f.step_label)}: <FlagStatus flag={f} /></div>
+              )) : null}
             </div>
           ) : null}
         </div>
@@ -368,6 +510,14 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
   const [loading, setLoading] = useState(true)
   const [examples, setExamples] = useState({})
   const [openStep, setOpenStep] = useState(null)
+  const [flags, setFlags] = useState({})
+  const loadFlags = useCallback(async (cid) => {
+    const { data: f, error } = await supabase.rpc('csr_flags', { p_csr: cid || csrId || null })
+    if (error) { setFlags({}); return }
+    const map = {}
+    for (const x of f || []) { const k = flagKey(x.call_id, x.step_key); if (!map[k] || x.status === 'open') map[k] = x }
+    setFlags(map)
+  }, [supabase, csrId])
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -384,6 +534,7 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
       setCallsLoading(false)
       setCalls(ce ? [] : (c || []))
       setExamples(ee ? {} : (ex || {}))
+      loadFlags(d?.csr?.id)
     } else {
       setCalls([]); setExamples({})
     }
@@ -455,6 +606,7 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
       {!csr.has_lines ? <div className="csr-banner">This CSR isn't linked to a phone line yet, so call numbers will stay empty until they are.</div> : null}
       {data.week === data.current_week ? <div className="csr-banner info">This week is still in progress. Numbers update as calls are scored.</div> : null}
       {canEdit ? <div className="csr-card"><StartDateEditor supabase={supabase} csrId={csr.id} value={csr.coaching_start_date} onSaved={load} /></div> : null}
+      {canEdit ? <FlagQueue supabase={supabase} csrId={csr.id} title={`Calls ${String(csr.full_name || '').split(' ')[0]} flagged`} onChanged={load} /> : null}
 
       <div className="csr-grid csr-g5">
         <Tile label="Call Quality" value={m.qa_avg != null ? `${Number(m.qa_avg).toFixed(1)}%` : '—'}
@@ -498,7 +650,8 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
             <div className="csr-sub" style={{ marginBottom: 8 }}>% of calls where each step was done. Calls where a step didn't apply aren't counted. Click a step to see call examples.</div>
             {steps.map((s) => (
               <StepRow key={s.key} step={s} examples={examples[s.key]} supabase={supabase}
-                open={openStep === s.key} onToggle={() => setOpenStep(openStep === s.key ? null : s.key)} />
+                open={openStep === s.key} onToggle={() => setOpenStep(openStep === s.key ? null : s.key)}
+                flags={flags} onFlagged={() => loadFlags(csr.id)} canFlag />
             ))}
             {m.hold_time_known && m.hold_events > 0 ? (
               <div className="csr-holdpol">Hold policy: asked permission on {m.hold_asked_permission} of {m.hold_events} holds, thanked the caller on {m.hold_thanked} of {m.hold_events}.</div>
@@ -532,7 +685,8 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
 
           <div className="csr-card">
             <h2>{isCsr ? 'My calls' : 'Calls'} · {weekRange(data.week)}</h2>
-            <CallsList calls={calls} loading={callsLoading} supabase={supabase} />
+            <div className="csr-sub" style={{ marginBottom: 8 }}>Something graded wrong? Open the call and tap “This doesn’t look right.”</div>
+            <CallsList calls={calls} loading={callsLoading} supabase={supabase} steps={steps} flags={flags} onFlagged={() => loadFlags(csr.id)} canFlag />
           </div>
         </div>
       </div>
@@ -541,7 +695,7 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
 }
 
 // ---------- roster (managers / staff) ----------
-function Roster({ supabase, onPick }) {
+function Roster({ supabase, onPick, isStaff }) {
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
@@ -565,6 +719,7 @@ function Roster({ supabase, onPick }) {
     <>
       <div className="csr-hello"><div><h1>CSR Scorecards</h1><div className="csr-sub">{rows.length} CSRs</div></div>
         <input className="csr-search" placeholder="Search name or brand" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      {isStaff ? <FlagQueue supabase={supabase} /> : null}
       {Object.entries(groups).map(([brand, list]) => (
         <div key={brand} className="csr-card">
           <h2>{brand}</h2>
@@ -593,7 +748,7 @@ export default function CsrScorecard({ supabase, mode = 'csr', accent = '#0f766e
       ) : picked ? (
         <Scorecard supabase={supabase} csrId={picked} isCsr={false} onBack={() => setPicked(null)} />
       ) : (
-        <Roster supabase={supabase} onPick={setPicked} />
+        <Roster supabase={supabase} onPick={setPicked} isStaff={mode === 'staff'} />
       )}
     </div>
   )
@@ -642,7 +797,7 @@ const CSS = `
 .csr-welcome h2{font-size:20px}
 .csr-calls{display:flex;flex-direction:column;gap:6px;max-height:520px;overflow:auto}
 .csr-call{border:1px solid var(--line);border-radius:8px}
-.csr-call-h{width:100%;display:grid;grid-template-columns:auto 1fr auto 44px;gap:12px;align-items:center;background:none;border:0;padding:8px 10px;text-align:left;cursor:pointer;font:inherit;color:inherit;white-space:nowrap}
+.csr-call-h{width:100%;display:grid;grid-template-columns:auto 1fr auto 60px;gap:12px;align-items:center;background:none;border:0;padding:8px 10px;text-align:left;cursor:pointer;font:inherit;color:inherit;white-space:nowrap}
 .csr-call-h>*{overflow:hidden;text-overflow:ellipsis}.csr-call-h b{text-align:right}
 .csr-call-b{padding:0 10px 10px;font-size:13px}.csr-call-b p{margin:4px 0}
 .csr-rrow{width:100%;display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center;background:none;border:0;border-top:1px solid var(--line);padding:10px 2px;text-align:left;cursor:pointer;font:inherit;color:inherit}
@@ -658,4 +813,18 @@ const CSS = `
 .csr-play{margin-top:6px;background:none;border:1px solid var(--csr-accent);color:var(--csr-accent);border-radius:6px;padding:3px 9px;font-size:12px;font-weight:600;cursor:pointer}
 .csr-play:disabled{opacity:.6;cursor:default}
 .csr-audio{margin-top:6px;width:100%;height:32px}
+.csr-flagbtn{display:block;margin-top:6px;background:none;border:0;padding:0;color:var(--mut);font:inherit;font-size:12px;text-decoration:underline;cursor:pointer}
+.csr-flagbtn:hover{color:var(--csr-accent)}
+.csr-flagform{margin-top:8px;padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;display:flex;flex-direction:column;gap:8px;font-size:12.5px}
+.csr-flagform textarea{width:100%;resize:vertical}
+.csr-flagreasons{display:flex;flex-direction:column;gap:4px}.csr-flagreasons label{display:flex;gap:6px;align-items:flex-start;cursor:pointer}
+.csr-flagreasons input{flex:none;margin-top:2px}
+.csr-flagrow{display:flex;gap:8px;align-items:center}
+.csr-flagst{margin-top:6px;font-size:12px;border-radius:6px;padding:5px 8px;background:#eff6ff;color:#1e3a8a;display:inline-block}
+.csr-flagst.fixed{background:#f0fdf4;color:#166534}.csr-flagst.kept{background:#f1f5f9;color:#334155}
+.csr-flagnote{margin-top:2px;font-style:italic}
+.csr-flagdot{color:#d97706}
+.csr-flagq{border-left:4px solid #d97706}
+.csr-flagitem{border-top:1px solid var(--line);padding:10px 0;font-size:13px}.csr-flagitem:first-of-type{border-top:0}
+.csr-flagctx{margin-top:4px}.csr-flagact{margin-top:8px;display:flex;flex-direction:column;gap:6px}
 `
