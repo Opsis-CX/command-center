@@ -35,6 +35,7 @@ const AUDIT_TYPES = [
   ['voicemail', 'Voicemail'],
   ['no_answer', 'No Answer / Missed'],
   ['disposition', 'Disposition Correction'],
+  ['chat', 'Chat'],
 ]
 const typeLabel = (t) => (AUDIT_TYPES.find(x => x[0] === t)?.[1] || t)
 
