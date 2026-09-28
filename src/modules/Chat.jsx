@@ -364,6 +364,162 @@ function MentionTextarea({ value, onChange, onEnter, profiles, placeholder, rows
   )
 }
 
+// ---- Global message search ----
+// Slack-style: plain text plus `from:` / `in:` filters. Searches every
+// channel/DM the user belongs to (the messages_select RLS policy already
+// scopes this to is_channel_member, so no extra filtering is needed for
+// that) and surfaces thread replies right alongside top-level messages —
+// a reply is just a row in `messages` with parent_id set, so nothing
+// special has to be done to include it.
+function parseSearchQuery(raw) {
+  const from = []; const chan = []
+  const text = raw.replace(/\b(from|in):("([^"]+)"|(\S+))/gi, (_m, key, _all, quoted, bare) => {
+    const val = (quoted ?? bare ?? '').trim()
+    if (val) (key.toLowerCase() === 'from' ? from : chan).push(val)
+    return ' '
+  }).replace(/\s+/g, ' ').trim()
+  return { from, chan, text }
+}
+
+// Bolds the first case-insensitive occurrence of `term` inside `text`.
+function boldMatch(text, term) {
+  if (!term) return text
+  const i = text.toLowerCase().indexOf(term.toLowerCase())
+  if (i === -1) return text
+  return <>{text.slice(0, i)}<b>{text.slice(i, i + term.length)}</b>{text.slice(i + term.length)}</>
+}
+
+// Centers the snippet on the match so a hit deep in a long message is visible.
+function snippetAround(text, term) {
+  if (!term) return text.slice(0, 140)
+  const i = text.toLowerCase().indexOf(term.toLowerCase())
+  if (i === -1) return text.slice(0, 140)
+  const start = Math.max(0, i - 50)
+  const end = Math.min(text.length, i + term.length + 70)
+  return (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : '')
+}
+
+function ChatSearchBar({ channels, profiles, dmNames, onJump }) {
+  const [raw, setRaw] = useState('')
+  const [open, setOpen] = useState(false)
+  const [results, setResults] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [hint, setHint] = useState('')
+  const boxRef = useRef(null)
+  const debounceRef = useRef(null)
+  const reqId = useRef(0)
+
+  useEffect(() => {
+    function onDocClick(e) { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [])
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current)
+    if (!raw.trim()) { setResults([]); setHint(''); setLoading(false); return }
+    debounceRef.current = setTimeout(() => runSearch(raw), 300)
+    return () => clearTimeout(debounceRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [raw, channels, profiles])
+
+  async function runSearch(q) {
+    const myReq = ++reqId.current
+    const { from, chan, text } = parseSearchQuery(q)
+    let hintMsg = ''
+
+    let senderIds = null
+    if (from.length) {
+      const ids = new Set(); const unmatched = []
+      for (const tok of from) {
+        const t = tok.toLowerCase()
+        const matches = profiles.filter(p => (p.full_name || '').toLowerCase().includes(t))
+        if (matches.length) matches.forEach(p => ids.add(p.id)); else unmatched.push(tok)
+      }
+      senderIds = [...ids]
+      if (unmatched.length) hintMsg = `No one matches "from:${unmatched[0]}"`
+      if (!senderIds.length) { setHint(hintMsg); setResults([]); return }
+    }
+
+    let channelIds = null
+    if (chan.length) {
+      const ids = new Set(); const unmatched = []
+      for (const tok of chan) {
+        const t = tok.toLowerCase()
+        const matches = channels.filter(c => {
+          const lbl = c.is_dm ? (dmNames[c.id] || c.name || '') : (c.name || '')
+          return lbl.toLowerCase().includes(t)
+        })
+        if (matches.length) matches.forEach(c => ids.add(c.id)); else unmatched.push(tok)
+      }
+      channelIds = [...ids]
+      if (unmatched.length) hintMsg = hintMsg || `No channel matches "in:${unmatched[0]}"`
+      if (!channelIds.length) { setHint(hintMsg); setResults([]); return }
+    }
+
+    if (!text && !senderIds && !channelIds) { setHint(''); setResults([]); return }
+
+    setLoading(true)
+    let query = supabase.from('messages').select('id, channel_id, sender_id, body, created_at, parent_id')
+      .is('deleted_at', null).order('created_at', { ascending: false }).limit(40)
+    if (senderIds) query = query.in('sender_id', senderIds)
+    if (channelIds) query = query.in('channel_id', channelIds)
+    if (text) query = query.ilike('body', `%${text}%`)
+    const { data, error } = await query
+    if (myReq !== reqId.current) return  // a newer keystroke already superseded this one
+    setLoading(false)
+    if (error) { setHint(error.message); setResults([]); return }
+    setHint(hintMsg)
+    setResults((data || []).map(m => ({ ...m, _term: text })))
+  }
+
+  function channelLabel(channelId) {
+    const c = channels.find(c => c.id === channelId)
+    if (!c) return '—'
+    return c.is_dm ? (dmNames[c.id] || c.name || 'DM') : `# ${c.name}`
+  }
+
+  return (
+    <div ref={boxRef} style={{ position: 'relative', padding: '10px 12px', borderBottom: '1px solid var(--line)', flex: 'none' }}>
+      <input
+        value={raw}
+        onChange={e => setRaw(e.target.value)}
+        onFocus={() => setOpen(true)}
+        placeholder="🔍 Search messages… (try from: or in:)"
+        style={{ width: '100%', boxSizing: 'border-box', padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 13 }}
+      />
+      {open && raw.trim() && (
+        <div style={{ position: 'absolute', left: 12, right: 12, top: '100%', marginTop: 4, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.18)', zIndex: 50, maxHeight: 420, overflowY: 'auto' }}>
+          {loading && <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>Searching…</div>}
+          {!loading && hint && <div className="page-sub" style={{ padding: '10px 12px', fontSize: 12 }}>{hint}</div>}
+          {!loading && !hint && results.length === 0 && (
+            <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No messages match.</div>
+          )}
+          {!loading && results.map(m => {
+            const sender = profiles.find(p => p.id === m.sender_id)
+            const text = htmlToText(m.body || '')
+            return (
+              <button key={m.id} onClick={() => { onJump(m); setOpen(false) }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, borderBottom: '1px solid var(--line)', background: 'transparent', cursor: 'pointer', padding: '9px 12px', fontFamily: 'inherit' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: 'var(--ink-soft)', marginBottom: 2 }}>
+                  <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{sender?.full_name || 'Someone'}</span>
+                  <span style={{ flex: 'none' }}>{timeLabel(m.created_at)}</span>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 2 }}>
+                  {channelLabel(m.channel_id)}{m.parent_id ? ' · ↩ reply in thread' : ''}
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {boldMatch(snippetAround(text, m._term), m._term)}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Chat() {
   const { isAdmin, level, appRole } = useAuth()
   const isOwner = (level || 0) >= 100
@@ -554,6 +710,16 @@ export default function Chat() {
 
   const openChannel = (id) => { setActiveId(id); setMobileView('convo'); markRead(id) }
 
+  // A search hit jumps to its channel and reuses the same deep-link mechanism
+  // notifications already use (targetMessageId) — ChannelPane scrolls to the
+  // message and, if it's a thread reply, opens the thread panel for it.
+  const jumpToSearchResult = (m) => {
+    setActiveId(m.channel_id)
+    setMobileView('convo')
+    markRead(m.channel_id)
+    setTargetMessageId(m.id)
+  }
+
   // On mobile, show either the list or the conversation. On desktop, both.
   const showList = !isMobile || mobileView === 'list'
   const showConvo = !isMobile || mobileView === 'convo'
@@ -573,6 +739,7 @@ export default function Chat() {
     <div ref={shellRef} style={{ display: isMobile ? 'block' : 'grid', gridTemplateColumns: '240px 1fr', gap: 0, height: chatH || 'calc(100dvh - 150px)', maxHeight: chatH || 'calc(100dvh - 150px)', minHeight: 380, border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
       {showList && (
         <div style={{ borderRight: isMobile ? 'none' : '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--canvas)', minHeight: 0, height: isMobile ? '100%' : 'auto' }}>
+          <ChatSearchBar channels={channels} profiles={profiles} dmNames={dmNames} onJump={jumpToSearchResult} />
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 'none' }}>
             <b style={{ fontSize: 14 }}>Channels</b>
             {canCreateChannels && <button className="btn btn-ghost" style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => setShowCreate(true)}>+ New</button>}
@@ -654,6 +821,10 @@ export default function Chat() {
 function SetterChannelView(props) {
   const { isMobile, onBack, me } = props
   const [view, setView] = useState('board') // 'board' | 'chat'
+  // A search result (or a notification deep-link) landing on a message in this
+  // channel needs the Chat sub-view showing, or ChannelPane never mounts to
+  // receive it.
+  useEffect(() => { if (props.targetMessageId) setView('chat') }, [props.targetMessageId])
   const tab = (on) => ({ padding: '5px 14px', fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', background: on ? 'var(--accent, #0d9488)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink-soft)', fontFamily: 'inherit' })
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, minHeight: 0, background: 'var(--surface)' }}>
@@ -682,6 +853,8 @@ function SetterChannelView(props) {
 function LsaChannelView(props) {
   const { isMobile, onBack, me } = props
   const [view, setView] = useState('board') // 'board' (tracker) | 'chat'
+  // Same reasoning as SetterChannelView above.
+  useEffect(() => { if (props.targetMessageId) setView('chat') }, [props.targetMessageId])
   const tab = (on) => ({ padding: '5px 14px', fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', background: on ? 'var(--accent, #0d9488)' : 'var(--surface)', color: on ? '#fff' : 'var(--ink-soft)', fontFamily: 'inherit' })
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, minHeight: 0, background: 'var(--surface)' }}>

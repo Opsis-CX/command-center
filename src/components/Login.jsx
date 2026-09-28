@@ -1,6 +1,24 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
+// Branded login per subdomain (2026-09-27). garageco.opsiscx.com shows GarageCo's logo;
+// every other host (app.opsiscx.com, previews) keeps the Opsis Command Center logo.
+const GARAGECO_LOGO = 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/garageco/logo.png'
+function loginBrand() {
+  const host = (typeof window !== 'undefined' ? window.location.hostname : '').toLowerCase()
+  if (host.startsWith('garageco.')) {
+    return { src: GARAGECO_LOGO, alt: 'GarageCo', poweredBy: true }
+  }
+  return { src: '/opsis-command-center.png', alt: 'Opsis Command Center', poweredBy: false }
+}
+
+// Supabase's raw "User is banned" reads as alarming. Accounts are locked on purpose
+// until they're activated (e.g. CSR logins before go-live), so say that instead.
+function friendlyError(message) {
+  if (/banned/i.test(message || '')) return "Your account isn't active yet. You'll be told when it's ready to use."
+  return message
+}
+
 export default function Login() {
   const [mode, setMode] = useState('signin') // 'signin' | 'forgot'
   const [email, setEmail] = useState('')
@@ -8,12 +26,13 @@ export default function Login() {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState(false)
+  const brand = loginBrand()
 
   async function submit(e) {
     e.preventDefault()
     setErr(''); setBusy(true)
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) setErr(error.message)
+    if (error) setErr(friendlyError(error.message))
     setBusy(false)
   }
 
@@ -41,7 +60,7 @@ export default function Login() {
     <div className="login-wrap">
       <div className="login-card">
         <div className="login-brand" style={{ justifyContent: 'center', marginBottom: 8 }}>
-          <img src="/opsis-command-center.png" alt="Opsis Command Center" style={{ maxWidth: 280, width: '100%', height: 'auto', objectFit: 'contain' }} />
+          <img src={brand.src} alt={brand.alt} style={{ maxWidth: 280, width: '100%', height: 'auto', objectFit: 'contain' }} />
         </div>
 
         {err && <div className="login-err">{err}</div>}
@@ -104,6 +123,10 @@ export default function Login() {
               Back to sign in
             </button>
           </div>
+        )}
+
+        {brand.poweredBy && (
+          <div style={{ textAlign: 'center', marginTop: 18, fontSize: 12, color: 'var(--muted, #94a3b8)' }}>Powered by Opsis CX</div>
         )}
       </div>
     </div>
