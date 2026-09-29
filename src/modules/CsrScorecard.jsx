@@ -8,7 +8,8 @@
 //                   only their brand. Enforced in csr_viewer_can_see().
 //   mode="staff"    Opsis QA staff inside Command Center: picker + coach editing
 //                   (weekly focus, notes, activities, first-1:1 date).
-// Data only exists from the Monday of the CSR's first-1:1 week onward (server-side).
+// Scoring starts the MONDAY AFTER the CSR's first 1:1 (csr_program_start, server-side). The week of
+// the 1:1 is rubric review: the CSR sees their start date, notes and activities, but no numbers.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -438,6 +439,7 @@ function StartDateEditor({ supabase, csrId, value, onSaved }) {
     <div className="csr-row csr-start">
       <span className="csr-sub">First 1:1 date</span>
       <input type="date" value={d} onChange={(e) => setD(e.target.value)} style={{ maxWidth: 170 }} />
+      {d ? <span className="csr-sub">Scoring starts Monday, {fmtDay(addDays(d, 7 - ((parseDay(d).getUTCDay() + 6) % 7)), { month: 'short', day: 'numeric' })}</span> : null}
       <button className="csr-btn ghost" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
       {err ? <span className="csr-err">{err}</span> : null}
     </div>
@@ -594,6 +596,48 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
     )
   }
 
+  if (data.status === 'pre_start') {
+    return (
+      <>
+        {header}
+        {canEdit ? <div className="csr-card"><StartDateEditor supabase={supabase} csrId={csr.id} value={csr.coaching_start_date} onSaved={load} /></div> : null}
+        <div className="csr-card csr-welcome">
+          <h2>{isCsr ? `Welcome, ${String(csr.full_name || '').split(' ')[0]}!` : `${csr.full_name}'s scoring hasn't started yet`}</h2>
+          <p>{isCsr ? 'Your' : 'Their'} scoring starts <b>Monday, {fmtDay(data.program_start, { month: 'long', day: 'numeric' })}</b>. Calls from that day on will show up here each week.</p>
+          <p className="csr-sub">{isCsr ? 'Until then, look over the Call Flow Guide tab to see the 11 steps every call is scored on.' : 'The week of their first 1:1 is for reviewing the rubric, so it is never scored.'}</p>
+        </div>
+        {data.focus ? (
+          <div className="csr-card csr-focus">
+            <div className="csr-focus-l">THIS WEEK'S FOCUS</div>
+            <div className="csr-focus-t">{data.focus.title}</div>
+            {data.focus.body ? <div className="csr-pre">{data.focus.body}</div> : null}
+          </div>
+        ) : null}
+        <div className="csr-grid csr-g2">
+          <div className="csr-card">
+            <h2>Coaching notes</h2>
+            {canEdit ? <NoteEditor supabase={supabase} csrId={csr.id} onSaved={load} /> : null}
+            {data.notes?.length ? data.notes.map((n) => (
+              <div key={n.id} className="csr-note">
+                <div className="csr-sub">{fmtDay(n.session_date, { month: 'short', day: 'numeric', year: 'numeric' })}{n.coach ? ` · Coach: ${n.coach}` : ''}
+                  {canEdit ? <button className="csr-link muted" onClick={() => onDeleteNote(n)}>Delete</button> : null}</div>
+                {n.title ? <div className="csr-note-t">{n.title}</div> : null}
+                <div className="csr-pre">{n.body}</div>
+              </div>
+            )) : <div className="csr-sub">Notes from your coaching sessions will show here.</div>}
+          </div>
+          <div className="csr-card">
+            <h2>Activities</h2>
+            {data.activities?.length ? data.activities.map((a) => (
+              <ActivityRow key={a.id} a={a} canMark={isCsr} canArchive={canEdit} onMark={onMark} onArchive={onArchive} />
+            )) : <div className="csr-sub">Activities from your coach will show here.</div>}
+            {canEdit ? <ActivityEditor supabase={supabase} csrId={csr.id} brand={csr.brand} onSaved={load} /> : null}
+          </div>
+        </div>
+      </>
+    )
+  }
+
   const m = data.metrics || {}
   const p = data.prev_metrics
   const steps = m.steps || []
@@ -726,7 +770,7 @@ function Roster({ supabase, onPick, isStaff }) {
           {list.map((r) => (
             <button key={r.id} className="csr-rrow" onClick={() => onPick(r.id)}>
               <span className="csr-rname">{r.full_name}</span>
-              <span className="csr-sub">{r.week_number ? `Coaching week ${r.week_number}` : 'Not started'}{!r.has_lines ? ' · no phone line linked' : ''}</span>
+              <span className="csr-sub">{r.week_number ? `Coaching week ${r.week_number}` : r.program_start ? `Scoring starts ${fmtDay(r.program_start)}` : 'Not started'}{!r.has_lines ? ' · no phone line linked' : ''}</span>
               <span className="csr-link">Open →</span>
             </button>
           ))}
@@ -776,7 +820,7 @@ function HowToUse({ audience }) {
   const csr = (
     <div className="csr-card csr-howto">
       <h2>{audience === 'csr' ? 'How to use your scorecard' : 'How CSRs use their scorecard'}</h2>
-      <p>Your scorecard shows how your calls went each week, starting the week of your first coaching session. Only you, your manager and your coach can see it.</p>
+      <p>Your scorecard shows how your calls went each week, starting the Monday after your first coaching session. Only you, your manager and your coach can see it.</p>
       <h3>What you'll see</h3>
       <ul>
         <li><b>Top tiles:</b> Call Quality, Calls Answered, Avg Talk Time, Calls Put on Hold and Avg Hold Time. Week 1 is your starting point. From week 2 on, each tile shows whether you went up or down from the week before.</li>
@@ -805,7 +849,7 @@ function HowToUse({ audience }) {
           <p>Click <b>Open</b> on any CSR to see their scorecard exactly as they see it, plus your coach tools. No need to log in as the CSR.</p>
           <h3>Before a CSR's first session</h3>
           <ul>
-            <li>Set <b>First 1:1 date</b>. Their program starts the Monday of that week. Nothing from before that date is ever shown.</li>
+            <li>Set <b>First 1:1 date</b>. Scoring starts the Monday after it. The week of the 1:1 is for reviewing the rubric and is never scored.</li>
             <li>Hand over their login at the session. Nothing is emailed to CSRs.</li>
           </ul>
           <h3>Each week</h3>
