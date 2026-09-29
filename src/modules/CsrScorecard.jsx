@@ -736,14 +736,133 @@ function Roster({ supabase, onPick, isStaff }) {
   )
 }
 
+// ---------- reference tabs: Call Flow Guide + How to Use ----------
+function CallFlowGuide({ supabase }) {
+  const [rows, setRows] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let alive = true
+    supabase.rpc('csr_rubric').then(({ data, error }) => { if (!alive) return; if (error) setErr(error.message); else setRows(data || []) })
+    return () => { alive = false }
+  }, [supabase])
+  if (err) return <div className="csr-card csr-err">Couldn't load the call flow guide: {err}</div>
+  if (!rows) return <div className="csr-card">Loading…</div>
+  const total = rows.reduce((a, r) => a + (Number(r.points) || 0), 0)
+  return (
+    <div className="csr-card">
+      <h2>Universal CSR Call Flow · the 11 steps every call is scored on</h2>
+      <div className="csr-sub" style={{ marginBottom: 10 }}>
+        Every call is worth {total} points. If a step doesn't apply to a call, you still get its points. Outbound calls use the same steps in a different order:
+        Opener → Empathy → Discovery → Verify → Expectations + Fee → Offer → Ask for the Booking → Payment → Confirm → Thank.
+      </div>
+      <div className="csr-guide">
+        {rows.map((r) => (
+          <div key={r.key} className="csr-guide-row">
+            <div className="csr-guide-n">{r.step}</div>
+            <div className="csr-guide-b">
+              <div className="csr-guide-t">{r.beat} <span className="csr-pts">· {r.points} pts</span></div>
+              <div>{r.goal}</div>
+              {r.sounds_like ? <div className="csr-guide-say"><b>Sounds like:</b> {r.sounds_like}</div> : null}
+              {r.na_when ? <div className="csr-sub"><b>Doesn't count against you:</b> {r.na_when}</div> : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function HowToUse({ audience }) {
+  const csr = (
+    <div className="csr-card csr-howto">
+      <h2>{audience === 'csr' ? 'How to use your scorecard' : 'How CSRs use their scorecard'}</h2>
+      <p>Your scorecard shows how your calls went each week, starting the week of your first coaching session. Only you, your manager and your coach can see it.</p>
+      <h3>What you'll see</h3>
+      <ul>
+        <li><b>Top tiles:</b> Call Quality, Calls Answered, Avg Talk Time, Calls Put on Hold and Avg Hold Time. Week 1 is your starting point. From week 2 on, each tile shows whether you went up or down from the week before.</li>
+        <li><b>This week's focus:</b> the one skill to work on this week, and your goal for it.</li>
+        <li><b>Your Call Flow:</b> the 11 steps of a great call, and how often you did each one. Click a step to see 3 calls where you nailed it and 3 where you missed it, each with the recording. Calls where a step didn't apply don't count against you. Calls with techs, coworkers or vendors aren't graded at all.</li>
+        <li><b>My calls:</b> every graded call this week. Tap a call for a coaching tip, the steps you missed and the recording.</li>
+        <li><b>Activities:</b> practice your coach assigns, like AhaSlides or word searches. Open it, then tap <b>Mark done</b>.</li>
+        <li><b>Coaching notes:</b> a recap of each coaching session.</li>
+        <li><b>Call Flow Guide</b> (tab above): what each of the 11 steps means and what it sounds like.</li>
+      </ul>
+      <h3>Think a call was graded wrong?</h3>
+      <ol>
+        <li>Open the call in <b>My calls</b>, or a missed example under a step.</li>
+        <li>Tap <b>This doesn't look right</b>.</li>
+        <li>Pick what's wrong, then write a sentence or two about what happened. Example: <i>"This was Mike, one of our techs."</i></li>
+        <li>Tap <b>Send for review</b>. It will show "Sent for review" until your coach checks it. If the grade is changed, your score updates on its own.</li>
+      </ol>
+    </div>
+  )
+  if (audience === 'csr') return csr
+  return (
+    <>
+      {audience === 'staff' ? (
+        <div className="csr-card csr-howto">
+          <h2>For the Opsis team</h2>
+          <p>Click <b>Open</b> on any CSR to see their scorecard exactly as they see it, plus your coach tools. No need to log in as the CSR.</p>
+          <h3>Before a CSR's first session</h3>
+          <ul>
+            <li>Set <b>First 1:1 date</b>. Their program starts the Monday of that week. Nothing from before that date is ever shown.</li>
+            <li>Hand over their login at the session. Nothing is emailed to CSRs.</li>
+          </ul>
+          <h3>Each week</h3>
+          <ol>
+            <li><b>Focus:</b> click <b>Build from audits</b> to draft it from their weakest step, then edit it and save. You can also write your own.</li>
+            <li><b>Coaching notes:</b> add a note after each session. The CSR sees it.</li>
+            <li><b>Activities:</b> add a link (AhaSlides, word search, etc.) for one CSR or their whole brand. You'll see when they mark it done.</li>
+          </ol>
+          <h3>Flagged calls</h3>
+          <p>Flagged calls show under <b>Flagged calls to review</b>, on the CSR list and inside that CSR's scorecard. Listen to the recording, read their note and the AI's reasoning, then pick one:</p>
+          <ul>
+            <li><b>Remove call from score:</b> it wasn't a customer call, or it shouldn't count.</li>
+            <li><b>Fix step (give credit):</b> the AI graded that step wrong. Their score recalculates right away.</li>
+            <li><b>Keep grade:</b> the grade was right.</li>
+          </ul>
+          <p>Add a short note when you can. The CSR sees your decision and your note.</p>
+          <h3>Good to know</h3>
+          <ul>
+            <li>Every call is out of 100. A step that didn't apply earns full points.</li>
+            <li>Internal calls aren't graded: extension-to-extension calls, and techs, coworkers or vendors calling about a job.</li>
+            <li>GarageCo managers see their location's CSRs in the <b>CSR Scorecards</b> tab at garageco.opsiscx.com. Enterprise logins see every brand.</li>
+          </ul>
+        </div>
+      ) : (
+        <div className="csr-card csr-howto">
+          <h2>For managers</h2>
+          <p>Click <b>Open</b> on any of your CSRs to see their scorecard exactly as they see it. It's read-only: their coach sets the weekly focus, notes and activities. If one of your CSR's calls looks graded wrong, you can tap <b>This doesn't look right</b> on it too.</p>
+        </div>
+      )}
+      {csr}
+    </>
+  )
+}
+
+function Tabs({ tabs, value, onChange }) {
+  return (
+    <div className="csr-tabs" role="tablist">
+      {tabs.map(([k, label]) => (
+        <button key={k} role="tab" aria-selected={value === k} className={`csr-tab ${value === k ? 'on' : ''}`} onClick={() => onChange(k)}>{label}</button>
+      ))}
+    </div>
+  )
+}
+
 // ---------- entry point ----------
 export default function CsrScorecard({ supabase, mode = 'csr', accent = '#0f766e' }) {
   const [picked, setPicked] = useState(null)
+  const [tab, setTab] = useState('card')
   const isCsr = mode === 'csr'
+  const tabs = [['card', isCsr ? 'My scorecard' : 'Scorecards'], ['guide', 'Call Flow Guide'], ['howto', 'How to use']]
   return (
     <div className="csr-root" style={{ '--csr-accent': accent }}>
       <style>{CSS}</style>
-      {isCsr ? (
+      <Tabs tabs={tabs} value={tab} onChange={setTab} />
+      {tab === 'guide' ? <CallFlowGuide supabase={supabase} />
+      : tab === 'howto' ? <HowToUse audience={mode} />
+      : isCsr ? (
         <Scorecard supabase={supabase} csrId={null} isCsr />
       ) : picked ? (
         <Scorecard supabase={supabase} csrId={picked} isCsr={false} onBack={() => setPicked(null)} />
@@ -813,6 +932,14 @@ const CSS = `
 .csr-play{margin-top:6px;background:none;border:1px solid var(--csr-accent);color:var(--csr-accent);border-radius:6px;padding:3px 9px;font-size:12px;font-weight:600;cursor:pointer}
 .csr-play:disabled{opacity:.6;cursor:default}
 .csr-audio{margin-top:6px;width:100%;height:32px}
+.csr-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:14px;overflow-x:auto}
+.csr-tab{background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;font:inherit;font-weight:600;color:var(--mut);cursor:pointer;white-space:nowrap;margin-bottom:-1px}
+.csr-tab.on{color:var(--csr-accent);border-bottom-color:var(--csr-accent)}
+@media(max-width:420px){.csr-tab{padding:8px 7px;font-size:13px}}
+.csr-guide-row{display:grid;grid-template-columns:32px 1fr;gap:10px;padding:10px 0;border-top:1px solid var(--line)}.csr-guide-row:first-child{border-top:0}
+.csr-guide-n{width:28px;height:28px;border-radius:99px;background:color-mix(in srgb,var(--csr-accent) 14%,white);color:var(--csr-accent);font-weight:700;display:grid;place-items:center}
+.csr-guide-t{font-weight:700}.csr-guide-say{margin-top:4px;font-style:italic;color:#334155}.csr-guide-say b{font-style:normal}
+.csr-howto h3{font-size:14px;margin:14px 0 4px}.csr-howto p{margin:4px 0}.csr-howto ul,.csr-howto ol{margin:4px 0;padding-left:20px}.csr-howto li{margin:3px 0}
 .csr-flagbtn{display:block;margin-top:6px;background:none;border:0;padding:0;color:var(--mut);font:inherit;font-size:12px;text-decoration:underline;cursor:pointer}
 .csr-flagbtn:hover{color:var(--csr-accent)}
 .csr-flagform{margin-top:8px;padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;display:flex;flex-direction:column;gap:8px;font-size:12.5px}
