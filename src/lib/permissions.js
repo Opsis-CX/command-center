@@ -93,7 +93,7 @@ const MATRIX = {
   // Not on the roles sheet — left as-is.
   'schedule.view_all_schedules': ['certification', 'admin'],
   'reporting': ['asc', 'certification', 'quality', 'marketing', 'admin'],
-  'people_and_tags.view_only': ['asc', 'quality', 'admin'],
+  'people_and_tags.view_only': ['asc', 'quality', 'certification', 'admin'],
   'people_and_tags.edit': ['certification', 'admin'],
   // Deleting a tag is destructive (it can affect certification assignments), so
   // it's kept strictly at the admin level.
@@ -137,4 +137,3 @@ export function canAny(role, pagePrefix) {
   return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + ".")) && MATRIX[k].includes(r))
 }
 export const ALL_PERMS = Object.keys(MATRIX)
- 

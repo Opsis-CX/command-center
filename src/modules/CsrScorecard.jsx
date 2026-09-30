@@ -8,8 +8,7 @@
 //                   only their brand. Enforced in csr_viewer_can_see().
 //   mode="staff"    Opsis QA staff inside Command Center: picker + coach editing
 //                   (weekly focus, notes, activities, first-1:1 date).
-// Scoring starts the MONDAY AFTER the CSR's first 1:1 (csr_program_start, server-side). The week of
-// the 1:1 is rubric review: the CSR sees their start date, notes and activities, but no numbers.
+// Data only exists from the Monday of the CSR's first-1:1 week onward (server-side).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -93,12 +92,7 @@ function RecordingPlayer({ supabase, callId }) {
     e?.stopPropagation?.()
     setState('loading')
     try {
-      // One quiet retry: a login token refreshing at the same moment can fail the first try.
-      let { data, error } = await supabase.functions.invoke('callqa-recording', { body: { call_id: callId } })
-      if (error) {
-        await new Promise(r => setTimeout(r, 600))
-        ;({ data, error } = await supabase.functions.invoke('callqa-recording', { body: { call_id: callId } }))
-      }
+      const { data, error } = await supabase.functions.invoke('callqa-recording', { body: { call_id: callId } })
       if (error) throw error
       let url = null
       if (data && typeof data === 'object' && data.url) url = data.url
@@ -112,144 +106,12 @@ function RecordingPlayer({ supabase, callId }) {
   if (src) return <audio className="csr-audio" src={src} controls autoPlay onClick={(e) => e.stopPropagation()} />
   return (
     <button className="csr-play" onClick={load} disabled={state === 'loading'}>
-      {state === 'loading' ? 'Loading…' : state === 'error' ? "Couldn't load. Tap to retry" : '▶ Play recording'}
+      {state === 'loading' ? 'Loading…' : state === 'error' ? 'Recording unavailable' : '▶ Play recording'}
     </button>
   )
 }
 
-// ---------- "This doesn't look right" (CSR / manager flags a grade; Opsis QA reviews) ----------
-const FLAG_REASONS = [
-  ['step_wrong', 'This step was graded wrong'],
-  ['not_customer', "This wasn't a customer call (tech, coworker, vendor, extension)"],
-  ['transcript_wrong', "The transcript doesn't match what was said"],
-  ['other', 'Something else'],
-]
-const FLAG_STATUS = {
-  open: ['Sent for review', 'We’ll check this call before your next session.', 'open'],
-  fixed: ['Fixed', 'Thanks for flagging it. Your score has been updated.', 'fixed'],
-  removed: ['Removed from your score', 'This call no longer counts toward your scorecard.', 'fixed'],
-  kept: ['Reviewed: grade stands', '', 'kept'],
-}
-function flagKey(callId, stepKey) { return `${callId}|${stepKey || ''}` }
-
-function FlagStatus({ flag }) {
-  const [t, sub, tone] = FLAG_STATUS[flag.status] || FLAG_STATUS.open
-  return (
-    <div className={`csr-flagst ${tone}`}>
-      <b>{t}</b>{sub ? <span> · {sub}</span> : null}
-      {flag.resolution_note ? <div className="csr-flagnote">Coach: {flag.resolution_note}</div> : null}
-    </div>
-  )
-}
-
-function FlagButton({ supabase, callId, stepKey, steps, flags, onFlagged }) {
-  const existing = flags?.[flagKey(callId, stepKey)]
-  const [open, setOpen] = useState(false)
-  const [step, setStep] = useState(stepKey || '')
-  const [reason, setReason] = useState(stepKey ? 'step_wrong' : '')
-  const [context, setContext] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  if (existing && !open) return <FlagStatus flag={existing} />
-  const tooShort = context.trim().length < 10
-  const submit = async (e) => {
-    e?.stopPropagation?.()
-    if (!reason) { setErr('Pick what looks wrong.'); return }
-    if (tooShort) { setErr('Please add a sentence or two so we know what to check.'); return }
-    setBusy(true); setErr('')
-    const { error } = await supabase.rpc('csr_flag_call', { p_call: callId, p_step_key: step || null, p_reason: reason, p_context: context.trim() })
-    setBusy(false)
-    if (error) { setErr(error.message); return }
-    setOpen(false); setContext('')
-    onFlagged && onFlagged()
-  }
-  if (!open) return <button className="csr-flagbtn" onClick={(e) => { e.stopPropagation(); setOpen(true) }}>This doesn’t look right</button>
-  return (
-    <div className="csr-flagform" onClick={(e) => e.stopPropagation()}>
-      <div className="csr-edit-h">What doesn’t look right?</div>
-      {!stepKey && steps?.length ? (
-        <label className="csr-flagrow">Which step?
-          <select value={step} onChange={(e) => setStep(e.target.value)}>
-            <option value="">The whole call</option>
-            {steps.map((s) => <option key={s.key} value={s.key}>Step {stepNum(s.label)} · {stepName(s.label)}</option>)}
-          </select>
-        </label>
-      ) : null}
-      <div className="csr-flagreasons">
-        {FLAG_REASONS.map(([k, label]) => (
-          <label key={k}><input type="radio" name={`r-${callId}-${stepKey || 'all'}`} checked={reason === k} onChange={() => setReason(k)} /> {label}</label>
-        ))}
-      </div>
-      <textarea rows={3} value={context} maxLength={2000} onChange={(e) => setContext(e.target.value)}
-        placeholder="Tell us what happened on this call. Example: “This was Mike, one of our techs, calling from the field.” or “I did give my name, it’s at the very start of the recording.”" />
-      <div className="csr-sub">{tooShort ? 'A sentence or two is required so your coach knows what to check.' : 'Your coach will listen to the call and let you know.'}</div>
-      {err ? <div className="csr-err">{err}</div> : null}
-      <div className="csr-row">
-        <button className="csr-btn" disabled={busy || tooShort || !reason} onClick={submit}>{busy ? 'Sending…' : 'Send for review'}</button>
-        <button className="csr-btn ghost" disabled={busy} onClick={(e) => { e.stopPropagation(); setOpen(false); setErr('') }}>Cancel</button>
-      </div>
-    </div>
-  )
-}
-
-// Opsis QA staff: open flags, with the call and the AI's reasoning, and the three decisions.
-function FlagQueue({ supabase, csrId, onChanged, title = 'Flagged calls to review' }) {
-  const [rows, setRows] = useState(null)
-  const [err, setErr] = useState('')
-  const [hidden, setHidden] = useState(false)
-  const [notes, setNotes] = useState({})
-  const [busy, setBusy] = useState(null)
-  const load = useCallback(async () => {
-    const { data, error } = await supabase.rpc('csr_flags', { p_csr: csrId || null, p_open_only: !csrId })
-    if (error) { if (!csrId) setHidden(true); else setErr(error.message); return }
-    setRows(data || [])
-  }, [supabase, csrId])
-  useEffect(() => { load() }, [load])
-  if (hidden) return null
-  if (err) return <div className="csr-card csr-err">{err}</div>
-  if (!rows) return null
-  const open = rows.filter((r) => r.status === 'open')
-  if (!csrId && !open.length) return null
-  const decide = async (f, decision) => {
-    setBusy(f.id)
-    const { error } = await supabase.rpc('csr_resolve_flag', { p_flag: f.id, p_decision: decision, p_note: notes[f.id] || null })
-    setBusy(null)
-    if (error) { setErr(error.message); return }
-    await load(); onChanged && onChanged()
-  }
-  return (
-    <div className="csr-card csr-flagq">
-      <h2>{title} {open.length ? <span className="csr-pill">{open.length} open</span> : null}</h2>
-      {!rows.length ? <div className="csr-sub">No calls have been flagged.</div> : null}
-      {rows.map((f) => (
-        <div key={f.id} className={`csr-flagitem ${f.status}`}>
-          <div className="csr-ex-h">
-            {!csrId ? <span className="csr-rname">{f.csr_name}</span> : null}
-            <span>{fmtCallTime(f.call_started_at)}</span>
-            <span className="csr-sub">{f.direction || ''} · {fmtDur(f.duration_sec)} · {f.step_label ? `Step ${stepNum(f.step_label)} ${stepName(f.step_label)}` : 'Whole call'}{f.step_answer ? ` (graded ${f.step_answer})` : ''}</span>
-            <b>{f.score != null ? `${Math.round(f.score)}%` : ''}</b>
-          </div>
-          <div className="csr-flagctx"><b>{(FLAG_REASONS.find(([k]) => k === f.reason) || [])[1] || f.reason}</b> · {f.flagged_by || 'CSR'}: “{f.context}”</div>
-          {f.ai_why ? <div className="csr-why">AI said: {f.ai_why}</div> : null}
-          {f.transcript_start ? <details className="csr-sub"><summary>Transcript (start)</summary><div className="csr-pre">{f.transcript_start}</div></details> : null}
-          <RecordingPlayer supabase={supabase} callId={f.call_id} />
-          {f.status === 'open' ? (
-            <div className="csr-flagact">
-              <input placeholder="Note to the CSR (optional, they'll see this)" value={notes[f.id] || ''} onChange={(e) => setNotes({ ...notes, [f.id]: e.target.value })} />
-              <div className="csr-row">
-                <button className="csr-btn" disabled={busy === f.id} onClick={() => decide(f, 'remove_call')}>Remove call from score</button>
-                {f.step_key ? <button className="csr-btn" disabled={busy === f.id} onClick={() => decide(f, 'fix_step')}>Fix step (give credit)</button> : null}
-                <button className="csr-btn ghost" disabled={busy === f.id} onClick={() => decide(f, 'keep')}>Keep grade</button>
-              </div>
-            </div>
-          ) : <FlagStatus flag={f} />}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function ExampleCard({ supabase, ex, kind, stepKey, flags, onFlagged, canFlag }) {
+function ExampleCard({ supabase, ex, kind }) {
   return (
     <div className={`csr-ex ${kind}`}>
       <div className="csr-ex-h">
@@ -260,12 +122,11 @@ function ExampleCard({ supabase, ex, kind, stepKey, flags, onFlagged, canFlag })
       {ex.evidence ? <div className="csr-quote">"{ex.evidence}"</div> : null}
       {ex.why ? <div className="csr-why">{ex.why}</div> : null}
       <RecordingPlayer supabase={supabase} callId={ex.call_id} />
-      {canFlag && kind === 'bad' ? <FlagButton supabase={supabase} callId={ex.call_id} stepKey={stepKey} flags={flags} onFlagged={onFlagged} /> : null}
     </div>
   )
 }
 
-function StepRow({ step, examples, supabase, open, onToggle, flags, onFlagged, canFlag }) {
+function StepRow({ step, examples, supabase, open, onToggle }) {
   const pct = step.pct
   const tone = pct == null ? '' : pct < 60 ? 'low' : pct < 80 ? 'mid' : ''
   const ex = examples || { right: [], missed: [] }
@@ -289,12 +150,12 @@ function StepRow({ step, examples, supabase, open, onToggle, flags, onFlagged, c
         <div className="csr-exgrid">
           <div>
             <div className="csr-exhead good">✓ Done well</div>
-            {ex.right?.length ? ex.right.map((e) => <ExampleCard key={e.call_id} supabase={supabase} ex={e} kind="good" stepKey={step.key} />)
+            {ex.right?.length ? ex.right.map((e) => <ExampleCard key={e.call_id} supabase={supabase} ex={e} kind="good" />)
               : <div className="csr-sub">No examples this week.</div>}
           </div>
           <div>
             <div className="csr-exhead bad">✗ Missed</div>
-            {ex.missed?.length ? ex.missed.map((e) => <ExampleCard key={e.call_id} supabase={supabase} ex={e} kind="bad" stepKey={step.key} flags={flags} onFlagged={onFlagged} canFlag={canFlag} />)
+            {ex.missed?.length ? ex.missed.map((e) => <ExampleCard key={e.call_id} supabase={supabase} ex={e} kind="bad" />)
               : <div className="csr-sub">Nothing missed this week.</div>}
           </div>
         </div>
@@ -439,7 +300,6 @@ function StartDateEditor({ supabase, csrId, value, onSaved }) {
     <div className="csr-row csr-start">
       <span className="csr-sub">First 1:1 date</span>
       <input type="date" value={d} onChange={(e) => setD(e.target.value)} style={{ maxWidth: 170 }} />
-      {d ? <span className="csr-sub">Scoring starts Monday, {fmtDay(addDays(d, 7 - ((parseDay(d).getUTCDay() + 6) % 7)), { month: 'short', day: 'numeric' })}</span> : null}
       <button className="csr-btn ghost" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
       {err ? <span className="csr-err">{err}</span> : null}
     </div>
@@ -471,7 +331,7 @@ function ActivityRow({ a, canMark, canArchive, onMark, onArchive }) {
   )
 }
 
-function CallsList({ calls, loading, supabase, steps, flags, onFlagged, canFlag }) {
+function CallsList({ calls, loading, supabase }) {
   const [open, setOpen] = useState(null)
   if (loading) return <div className="csr-sub">Loading calls…</div>
   if (!calls?.length) return <div className="csr-sub">No scored calls this week yet.</div>
@@ -483,17 +343,13 @@ function CallsList({ calls, loading, supabase, steps, flags, onFlagged, canFlag 
             <span>{fmtCallTime(c.started_at)}</span>
             <span className="csr-sub">{c.direction || ''} · {fmtDur(c.duration_sec)}{c.hold_count > 0 ? ` · ${c.hold_count} hold` : ''}</span>
             <span className="csr-sub">{c.outcome || ''}</span>
-            <b className={c.score < 60 ? 'csr-lowtxt' : ''}>{Object.values(flags || {}).some((f) => f.call_id === c.id && f.status === 'open') ? <span className="csr-flagdot" title="Flagged for review">⚑ </span> : null}{c.score != null ? `${Math.round(c.score)}%` : '—'}</b>
+            <b className={c.score < 60 ? 'csr-lowtxt' : ''}>{c.score != null ? `${Math.round(c.score)}%` : '—'}</b>
           </button>
           {open === c.id ? (
             <div className="csr-call-b">
               {c.coaching_note ? <p><b>Coaching tip:</b> {c.coaching_note}</p> : null}
               {c.missed?.length ? <p><b>Steps missed:</b> {c.missed.map(stepName).join(', ')}</p> : <p>No steps missed.</p>}
               <RecordingPlayer supabase={supabase} callId={c.id} />
-              {canFlag ? <FlagButton supabase={supabase} callId={c.id} stepKey={null} steps={steps} flags={flags} onFlagged={onFlagged} /> : null}
-              {canFlag ? Object.values(flags || {}).filter((f) => f.call_id === c.id && f.step_key).map((f) => (
-                <div key={f.id} className="csr-sub">Step {stepNum(f.step_label)} {stepName(f.step_label)}: <FlagStatus flag={f} /></div>
-              )) : null}
             </div>
           ) : null}
         </div>
@@ -512,14 +368,6 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
   const [loading, setLoading] = useState(true)
   const [examples, setExamples] = useState({})
   const [openStep, setOpenStep] = useState(null)
-  const [flags, setFlags] = useState({})
-  const loadFlags = useCallback(async (cid) => {
-    const { data: f, error } = await supabase.rpc('csr_flags', { p_csr: cid || csrId || null })
-    if (error) { setFlags({}); return }
-    const map = {}
-    for (const x of f || []) { const k = flagKey(x.call_id, x.step_key); if (!map[k] || x.status === 'open') map[k] = x }
-    setFlags(map)
-  }, [supabase, csrId])
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -536,7 +384,6 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
       setCallsLoading(false)
       setCalls(ce ? [] : (c || []))
       setExamples(ee ? {} : (ex || {}))
-      loadFlags(d?.csr?.id)
     } else {
       setCalls([]); setExamples({})
     }
@@ -596,48 +443,6 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
     )
   }
 
-  if (data.status === 'pre_start') {
-    return (
-      <>
-        {header}
-        {canEdit ? <div className="csr-card"><StartDateEditor supabase={supabase} csrId={csr.id} value={csr.coaching_start_date} onSaved={load} /></div> : null}
-        <div className="csr-card csr-welcome">
-          <h2>{isCsr ? `Welcome, ${String(csr.full_name || '').split(' ')[0]}!` : `${csr.full_name}'s scoring hasn't started yet`}</h2>
-          <p>{isCsr ? 'Your' : 'Their'} scoring starts <b>Monday, {fmtDay(data.program_start, { month: 'long', day: 'numeric' })}</b>. Calls from that day on will show up here each week.</p>
-          <p className="csr-sub">{isCsr ? 'Until then, look over the Call Flow Guide tab to see the 11 steps every call is scored on.' : 'The week of their first 1:1 is for reviewing the rubric, so it is never scored.'}</p>
-        </div>
-        {data.focus ? (
-          <div className="csr-card csr-focus">
-            <div className="csr-focus-l">THIS WEEK'S FOCUS</div>
-            <div className="csr-focus-t">{data.focus.title}</div>
-            {data.focus.body ? <div className="csr-pre">{data.focus.body}</div> : null}
-          </div>
-        ) : null}
-        <div className="csr-grid csr-g2">
-          <div className="csr-card">
-            <h2>Coaching notes</h2>
-            {canEdit ? <NoteEditor supabase={supabase} csrId={csr.id} onSaved={load} /> : null}
-            {data.notes?.length ? data.notes.map((n) => (
-              <div key={n.id} className="csr-note">
-                <div className="csr-sub">{fmtDay(n.session_date, { month: 'short', day: 'numeric', year: 'numeric' })}{n.coach ? ` · Coach: ${n.coach}` : ''}
-                  {canEdit ? <button className="csr-link muted" onClick={() => onDeleteNote(n)}>Delete</button> : null}</div>
-                {n.title ? <div className="csr-note-t">{n.title}</div> : null}
-                <div className="csr-pre">{n.body}</div>
-              </div>
-            )) : <div className="csr-sub">Notes from your coaching sessions will show here.</div>}
-          </div>
-          <div className="csr-card">
-            <h2>Activities</h2>
-            {data.activities?.length ? data.activities.map((a) => (
-              <ActivityRow key={a.id} a={a} canMark={isCsr} canArchive={canEdit} onMark={onMark} onArchive={onArchive} />
-            )) : <div className="csr-sub">Activities from your coach will show here.</div>}
-            {canEdit ? <ActivityEditor supabase={supabase} csrId={csr.id} brand={csr.brand} onSaved={load} /> : null}
-          </div>
-        </div>
-      </>
-    )
-  }
-
   const m = data.metrics || {}
   const p = data.prev_metrics
   const steps = m.steps || []
@@ -650,7 +455,6 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
       {!csr.has_lines ? <div className="csr-banner">This CSR isn't linked to a phone line yet, so call numbers will stay empty until they are.</div> : null}
       {data.week === data.current_week ? <div className="csr-banner info">This week is still in progress. Numbers update as calls are scored.</div> : null}
       {canEdit ? <div className="csr-card"><StartDateEditor supabase={supabase} csrId={csr.id} value={csr.coaching_start_date} onSaved={load} /></div> : null}
-      {canEdit ? <FlagQueue supabase={supabase} csrId={csr.id} title={`Calls ${String(csr.full_name || '').split(' ')[0]} flagged`} onChanged={load} /> : null}
 
       <div className="csr-grid csr-g5">
         <Tile label="Call Quality" value={m.qa_avg != null ? `${Number(m.qa_avg).toFixed(1)}%` : '—'}
@@ -694,8 +498,7 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
             <div className="csr-sub" style={{ marginBottom: 8 }}>% of calls where each step was done. Calls where a step didn't apply aren't counted. Click a step to see call examples.</div>
             {steps.map((s) => (
               <StepRow key={s.key} step={s} examples={examples[s.key]} supabase={supabase}
-                open={openStep === s.key} onToggle={() => setOpenStep(openStep === s.key ? null : s.key)}
-                flags={flags} onFlagged={() => loadFlags(csr.id)} canFlag />
+                open={openStep === s.key} onToggle={() => setOpenStep(openStep === s.key ? null : s.key)} />
             ))}
             {m.hold_time_known && m.hold_events > 0 ? (
               <div className="csr-holdpol">Hold policy: asked permission on {m.hold_asked_permission} of {m.hold_events} holds, thanked the caller on {m.hold_thanked} of {m.hold_events}.</div>
@@ -729,8 +532,7 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
 
           <div className="csr-card">
             <h2>{isCsr ? 'My calls' : 'Calls'} · {weekRange(data.week)}</h2>
-            <div className="csr-sub" style={{ marginBottom: 8 }}>Something graded wrong? Open the call and tap “This doesn’t look right.”</div>
-            <CallsList calls={calls} loading={callsLoading} supabase={supabase} steps={steps} flags={flags} onFlagged={() => loadFlags(csr.id)} canFlag />
+            <CallsList calls={calls} loading={callsLoading} supabase={supabase} />
           </div>
         </div>
       </div>
@@ -739,7 +541,7 @@ function Scorecard({ supabase, csrId, isCsr, onBack }) {
 }
 
 // ---------- roster (managers / staff) ----------
-function Roster({ supabase, onPick, isStaff }) {
+function Roster({ supabase, onPick }) {
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
@@ -763,14 +565,13 @@ function Roster({ supabase, onPick, isStaff }) {
     <>
       <div className="csr-hello"><div><h1>CSR Scorecards</h1><div className="csr-sub">{rows.length} CSRs</div></div>
         <input className="csr-search" placeholder="Search name or brand" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-      {isStaff ? <FlagQueue supabase={supabase} /> : null}
       {Object.entries(groups).map(([brand, list]) => (
         <div key={brand} className="csr-card">
           <h2>{brand}</h2>
           {list.map((r) => (
             <button key={r.id} className="csr-rrow" onClick={() => onPick(r.id)}>
               <span className="csr-rname">{r.full_name}</span>
-              <span className="csr-sub">{r.week_number ? `Coaching week ${r.week_number}` : r.program_start ? `Scoring starts ${fmtDay(r.program_start)}` : 'Not started'}{!r.has_lines ? ' · no phone line linked' : ''}</span>
+              <span className="csr-sub">{r.week_number ? `Coaching week ${r.week_number}` : 'Not started'}{!r.has_lines ? ' · no phone line linked' : ''}</span>
               <span className="csr-link">Open →</span>
             </button>
           ))}
@@ -780,138 +581,19 @@ function Roster({ supabase, onPick, isStaff }) {
   )
 }
 
-// ---------- reference tabs: Call Flow Guide + How to Use ----------
-function CallFlowGuide({ supabase }) {
-  const [rows, setRows] = useState(null)
-  const [err, setErr] = useState('')
-  useEffect(() => {
-    let alive = true
-    supabase.rpc('csr_rubric').then(({ data, error }) => { if (!alive) return; if (error) setErr(error.message); else setRows(data || []) })
-    return () => { alive = false }
-  }, [supabase])
-  if (err) return <div className="csr-card csr-err">Couldn't load the call flow guide: {err}</div>
-  if (!rows) return <div className="csr-card">Loading…</div>
-  const total = rows.reduce((a, r) => a + (Number(r.points) || 0), 0)
-  return (
-    <div className="csr-card">
-      <h2>Universal CSR Call Flow · the 11 steps every call is scored on</h2>
-      <div className="csr-sub" style={{ marginBottom: 10 }}>
-        Every call is worth {total} points. If a step doesn't apply to a call, you still get its points. Outbound calls use the same steps in a different order:
-        Opener → Empathy → Discovery → Verify → Expectations + Fee → Offer → Ask for the Booking → Payment → Confirm → Thank.
-      </div>
-      <div className="csr-guide">
-        {rows.map((r) => (
-          <div key={r.key} className="csr-guide-row">
-            <div className="csr-guide-n">{r.step}</div>
-            <div className="csr-guide-b">
-              <div className="csr-guide-t">{r.beat} <span className="csr-pts">· {r.points} pts</span></div>
-              <div>{r.goal}</div>
-              {r.sounds_like ? <div className="csr-guide-say"><b>Sounds like:</b> {r.sounds_like}</div> : null}
-              {r.na_when ? <div className="csr-sub"><b>Doesn't count against you:</b> {r.na_when}</div> : null}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function HowToUse({ audience }) {
-  const csr = (
-    <div className="csr-card csr-howto">
-      <h2>{audience === 'csr' ? 'How to use your scorecard' : 'How CSRs use their scorecard'}</h2>
-      <p>Your scorecard shows how your calls went each week, starting the Monday after your first coaching session. Only you, your manager and your coach can see it.</p>
-      <h3>What you'll see</h3>
-      <ul>
-        <li><b>Top tiles:</b> Call Quality, Calls Answered, Avg Talk Time, Calls Put on Hold and Avg Hold Time. Week 1 is your starting point. From week 2 on, each tile shows whether you went up or down from the week before.</li>
-        <li><b>This week's focus:</b> the one skill to work on this week, and your goal for it.</li>
-        <li><b>Your Call Flow:</b> the 11 steps of a great call, and how often you did each one. Click a step to see 3 calls where you nailed it and 3 where you missed it, each with the recording. Calls where a step didn't apply don't count against you. Calls with techs, coworkers or vendors aren't graded at all.</li>
-        <li><b>My calls:</b> every graded call this week. Tap a call for a coaching tip, the steps you missed and the recording.</li>
-        <li><b>Activities:</b> practice your coach assigns, like AhaSlides or word searches. Open it, then tap <b>Mark done</b>.</li>
-        <li><b>Coaching notes:</b> a recap of each coaching session.</li>
-        <li><b>Call Flow Guide</b> (tab above): what each of the 11 steps means and what it sounds like.</li>
-      </ul>
-      <h3>Think a call was graded wrong?</h3>
-      <ol>
-        <li>Open the call in <b>My calls</b>, or a missed example under a step.</li>
-        <li>Tap <b>This doesn't look right</b>.</li>
-        <li>Pick what's wrong, then write a sentence or two about what happened. Example: <i>"This was Mike, one of our techs."</i></li>
-        <li>Tap <b>Send for review</b>. It will show "Sent for review" until your coach checks it. If the grade is changed, your score updates on its own.</li>
-      </ol>
-    </div>
-  )
-  if (audience === 'csr') return csr
-  return (
-    <>
-      {audience === 'staff' ? (
-        <div className="csr-card csr-howto">
-          <h2>For the Opsis team</h2>
-          <p>Click <b>Open</b> on any CSR to see their scorecard exactly as they see it, plus your coach tools. No need to log in as the CSR.</p>
-          <h3>Before a CSR's first session</h3>
-          <ul>
-            <li>Set <b>First 1:1 date</b>. Scoring starts the Monday after it. The week of the 1:1 is for reviewing the rubric and is never scored.</li>
-            <li>Hand over their login at the session. Nothing is emailed to CSRs.</li>
-          </ul>
-          <h3>Each week</h3>
-          <ol>
-            <li><b>Focus:</b> click <b>Build from audits</b> to draft it from their weakest step, then edit it and save. You can also write your own.</li>
-            <li><b>Coaching notes:</b> add a note after each session. The CSR sees it.</li>
-            <li><b>Activities:</b> add a link (AhaSlides, word search, etc.) for one CSR or their whole brand. You'll see when they mark it done.</li>
-          </ol>
-          <h3>Flagged calls</h3>
-          <p>Flagged calls show under <b>Flagged calls to review</b>, on the CSR list and inside that CSR's scorecard. Listen to the recording, read their note and the AI's reasoning, then pick one:</p>
-          <ul>
-            <li><b>Remove call from score:</b> it wasn't a customer call, or it shouldn't count.</li>
-            <li><b>Fix step (give credit):</b> the AI graded that step wrong. Their score recalculates right away.</li>
-            <li><b>Keep grade:</b> the grade was right.</li>
-          </ul>
-          <p>Add a short note when you can. The CSR sees your decision and your note.</p>
-          <h3>Good to know</h3>
-          <ul>
-            <li>Every call is out of 100. A step that didn't apply earns full points.</li>
-            <li>Internal calls aren't graded: extension-to-extension calls, and techs, coworkers or vendors calling about a job.</li>
-            <li>GarageCo managers see their location's CSRs in the <b>CSR Scorecards</b> tab at garageco.opsiscx.com. Enterprise logins see every brand.</li>
-          </ul>
-        </div>
-      ) : (
-        <div className="csr-card csr-howto">
-          <h2>For managers</h2>
-          <p>Click <b>Open</b> on any of your CSRs to see their scorecard exactly as they see it. It's read-only: their coach sets the weekly focus, notes and activities. If one of your CSR's calls looks graded wrong, you can tap <b>This doesn't look right</b> on it too.</p>
-        </div>
-      )}
-      {csr}
-    </>
-  )
-}
-
-function Tabs({ tabs, value, onChange }) {
-  return (
-    <div className="csr-tabs" role="tablist">
-      {tabs.map(([k, label]) => (
-        <button key={k} role="tab" aria-selected={value === k} className={`csr-tab ${value === k ? 'on' : ''}`} onClick={() => onChange(k)}>{label}</button>
-      ))}
-    </div>
-  )
-}
-
 // ---------- entry point ----------
 export default function CsrScorecard({ supabase, mode = 'csr', accent = '#0f766e' }) {
   const [picked, setPicked] = useState(null)
-  const [tab, setTab] = useState('card')
   const isCsr = mode === 'csr'
-  const tabs = [['card', isCsr ? 'My scorecard' : 'Scorecards'], ['guide', 'Call Flow Guide'], ['howto', 'How to use']]
   return (
     <div className="csr-root" style={{ '--csr-accent': accent }}>
       <style>{CSS}</style>
-      <Tabs tabs={tabs} value={tab} onChange={setTab} />
-      {tab === 'guide' ? <CallFlowGuide supabase={supabase} />
-      : tab === 'howto' ? <HowToUse audience={mode} />
-      : isCsr ? (
+      {isCsr ? (
         <Scorecard supabase={supabase} csrId={null} isCsr />
       ) : picked ? (
         <Scorecard supabase={supabase} csrId={picked} isCsr={false} onBack={() => setPicked(null)} />
       ) : (
-        <Roster supabase={supabase} onPick={setPicked} isStaff={mode === 'staff'} />
+        <Roster supabase={supabase} onPick={setPicked} />
       )}
     </div>
   )
@@ -960,7 +642,7 @@ const CSS = `
 .csr-welcome h2{font-size:20px}
 .csr-calls{display:flex;flex-direction:column;gap:6px;max-height:520px;overflow:auto}
 .csr-call{border:1px solid var(--line);border-radius:8px}
-.csr-call-h{width:100%;display:grid;grid-template-columns:auto 1fr auto 60px;gap:12px;align-items:center;background:none;border:0;padding:8px 10px;text-align:left;cursor:pointer;font:inherit;color:inherit;white-space:nowrap}
+.csr-call-h{width:100%;display:grid;grid-template-columns:auto 1fr auto 44px;gap:12px;align-items:center;background:none;border:0;padding:8px 10px;text-align:left;cursor:pointer;font:inherit;color:inherit;white-space:nowrap}
 .csr-call-h>*{overflow:hidden;text-overflow:ellipsis}.csr-call-h b{text-align:right}
 .csr-call-b{padding:0 10px 10px;font-size:13px}.csr-call-b p{margin:4px 0}
 .csr-rrow{width:100%;display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center;background:none;border:0;border-top:1px solid var(--line);padding:10px 2px;text-align:left;cursor:pointer;font:inherit;color:inherit}
@@ -976,26 +658,4 @@ const CSS = `
 .csr-play{margin-top:6px;background:none;border:1px solid var(--csr-accent);color:var(--csr-accent);border-radius:6px;padding:3px 9px;font-size:12px;font-weight:600;cursor:pointer}
 .csr-play:disabled{opacity:.6;cursor:default}
 .csr-audio{margin-top:6px;width:100%;height:32px}
-.csr-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:14px;overflow-x:auto}
-.csr-tab{background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;font:inherit;font-weight:600;color:var(--mut);cursor:pointer;white-space:nowrap;margin-bottom:-1px}
-.csr-tab.on{color:var(--csr-accent);border-bottom-color:var(--csr-accent)}
-@media(max-width:420px){.csr-tab{padding:8px 7px;font-size:13px}}
-.csr-guide-row{display:grid;grid-template-columns:32px 1fr;gap:10px;padding:10px 0;border-top:1px solid var(--line)}.csr-guide-row:first-child{border-top:0}
-.csr-guide-n{width:28px;height:28px;border-radius:99px;background:color-mix(in srgb,var(--csr-accent) 14%,white);color:var(--csr-accent);font-weight:700;display:grid;place-items:center}
-.csr-guide-t{font-weight:700}.csr-guide-say{margin-top:4px;font-style:italic;color:#334155}.csr-guide-say b{font-style:normal}
-.csr-howto h3{font-size:14px;margin:14px 0 4px}.csr-howto p{margin:4px 0}.csr-howto ul,.csr-howto ol{margin:4px 0;padding-left:20px}.csr-howto li{margin:3px 0}
-.csr-flagbtn{display:block;margin-top:6px;background:none;border:0;padding:0;color:var(--mut);font:inherit;font-size:12px;text-decoration:underline;cursor:pointer}
-.csr-flagbtn:hover{color:var(--csr-accent)}
-.csr-flagform{margin-top:8px;padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;display:flex;flex-direction:column;gap:8px;font-size:12.5px}
-.csr-flagform textarea{width:100%;resize:vertical}
-.csr-flagreasons{display:flex;flex-direction:column;gap:4px}.csr-flagreasons label{display:flex;gap:6px;align-items:flex-start;cursor:pointer}
-.csr-flagreasons input{flex:none;margin-top:2px}
-.csr-flagrow{display:flex;gap:8px;align-items:center}
-.csr-flagst{margin-top:6px;font-size:12px;border-radius:6px;padding:5px 8px;background:#eff6ff;color:#1e3a8a;display:inline-block}
-.csr-flagst.fixed{background:#f0fdf4;color:#166534}.csr-flagst.kept{background:#f1f5f9;color:#334155}
-.csr-flagnote{margin-top:2px;font-style:italic}
-.csr-flagdot{color:#d97706}
-.csr-flagq{border-left:4px solid #d97706}
-.csr-flagitem{border-top:1px solid var(--line);padding:10px 0;font-size:13px}.csr-flagitem:first-of-type{border-top:0}
-.csr-flagctx{margin-top:4px}.csr-flagact{margin-top:8px;display:flex;flex-direction:column;gap:6px}
 `

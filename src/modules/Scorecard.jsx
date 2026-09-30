@@ -109,6 +109,8 @@ export default function Scorecard() {
       <h1 className="page-title">Service Performance Scorecard</h1>
       <p className="page-sub">Team performance. Tiers are assigned by rank — #1 is Top Performer. Rank comes from a weighted score of Conversion 35% · Quality 30% · Adherence 25% · ACW% 10%. Conversion and Quality are adjusted for sample size, so a couple of lucky calls can&rsquo;t outrank a long track record. Agents need 30+ handled calls in 30 days to be ranked; below that they show as Unrated with their numbers still visible. ACW% is measured against login time — higher is worse. NR% is shown for context and is not scored.</p>
 
+      <PastScheduleLookup />
+
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginTop: 20 }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, minWidth: 860 }}>
@@ -144,6 +146,75 @@ export default function Scorecard() {
           </table>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Self-contained "who was scheduled on this past date" lookup for managers.
+// Independent of the sc_scorecard rows above -- reads shift_blocks/shift_claims
+// directly for whatever date is picked. Kept simple (Role / Time / Agent) rather
+// than reusing Schedule Insights' richer StaffingView, since that component
+// depends on a lot of state (tiers, client names, activity log) not loaded here.
+function PastScheduleLookup() {
+  const [open, setOpen] = useState(false)
+  const [date, setDate] = useState('')
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+  const today = new Date().toISOString().slice(0, 10)
+
+  const load = async (d) => {
+    setLoading(true); setErr('')
+    const { data: blocks, error: e1 } = await supabase.from('shift_blocks').select('id, start_time, end_time, role').eq('block_date', d).order('start_time')
+    if (e1) { setErr(e1.message); setLoading(false); return }
+    const ids = (blocks || []).map(b => b.id)
+    let claimsByBlock = {}
+    if (ids.length) {
+      const { data: claims, error: e2 } = await supabase.from('shift_claims').select('shift_block_id, profile_id, status').in('shift_block_id', ids).eq('status', 'claimed')
+      if (e2) { setErr(e2.message); setLoading(false); return }
+      const profileIds = [...new Set((claims || []).map(c => c.profile_id))]
+      let namesById = {}
+      if (profileIds.length) {
+        const { data: profs } = await supabase.from('profiles').select('id, full_name').in('id', profileIds)
+        namesById = Object.fromEntries((profs || []).map(p => [p.id, p.full_name]))
+      }
+      for (const c of (claims || [])) claimsByBlock[c.shift_block_id] = namesById[c.profile_id] || 'Unknown'
+    }
+    setRows((blocks || []).map(b => ({ ...b, agent: claimsByBlock[b.id] || null })))
+    setLoading(false)
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>
+        <div style={{ fontWeight: 700 }}>View past schedule</div>
+        <span className="page-sub" style={{ margin: 0 }}>{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <label className="page-sub" style={{ margin: 0 }}>Pick a date:</label>
+            <input type="date" value={date} max={today} onChange={e => { setDate(e.target.value); if (e.target.value) load(e.target.value) }} />
+          </div>
+          {err && <p className="page-sub" style={{ color: 'var(--failed)' }}>{err}</p>}
+          {loading && <p className="page-sub">Loading…</p>}
+          {!loading && date && rows.length === 0 && !err && <p className="page-sub">No published shifts found for that date.</p>}
+          {!loading && rows.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead><tr style={{ textAlign: 'left' }}><Th>Role</Th><Th>Time</Th><Th>Agent</Th></tr></thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.id} style={{ borderTop: '1px solid var(--line-soft)' }}>
+                    <Td>{r.role || '—'}</Td>
+                    <Td>{r.start_time?.slice(0, 5)}–{r.end_time?.slice(0, 5)}</Td>
+                    <Td>{r.agent || <span style={{ color: 'var(--ink-soft)' }}>Unassigned</span>}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
     </div>
   )
 }

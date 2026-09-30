@@ -52,7 +52,8 @@ export default function ScheduleInsights() {
   const [activity, setActivity] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
-  const [tab, setTab] = useState('today') // today | tomorrow | all | unassigned | activity
+  const [tab, setTab] = useState('today') // today | tomorrow | past | all | unassigned | activity
+  const [pastDate, setPastDate] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -140,13 +141,24 @@ export default function ScheduleInsights() {
       {err && <div className="card" style={{ borderColor: 'var(--failed)', marginBottom: 16 }}><b style={{ color: 'var(--failed)' }}>Error.</b><p className="page-sub" style={{ marginTop: 6 }}>{err}</p></div>}
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
-        {[['today', 'Today'], ['tomorrow', 'Tomorrow'], ['all', 'All'], ['unassigned', 'Unassigned'], ['activity', 'Activity']].map(([k, label]) => (
+        {[['today', 'Today'], ['tomorrow', 'Tomorrow'], ['past', 'Past'], ['all', 'All'], ['unassigned', 'Unassigned'], ['activity', 'Activity']].map(([k, label]) => (
           <button key={k} className={'btn ' + (tab === k ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
 
       {tab === 'today' && <StaffingView dateFilter={today} label={dateLabel(today)} {...{ publishedBlocks, clientNameForBlock, positionForBlock, claimsFor, profiles, tierOf, tierBreakdown, tiers }} />}
       {tab === 'tomorrow' && <StaffingView dateFilter={tomorrow} label={dateLabel(tomorrow)} {...{ publishedBlocks, clientNameForBlock, positionForBlock, claimsFor, profiles, tierOf, tierBreakdown, tiers }} />}
+      {tab === 'past' && (
+        <div>
+          <div className="card" style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <label className="page-sub" style={{ margin: 0 }}>Pick a date:</label>
+            <input type="date" value={pastDate} max={today} onChange={e => setPastDate(e.target.value)} />
+          </div>
+          {pastDate
+            ? <StaffingView dateFilter={pastDate} label={dateLabel(pastDate)} {...{ publishedBlocks, clientNameForBlock, positionForBlock, claimsFor, profiles, tierOf, tierBreakdown, tiers }} />
+            : <p className="page-sub">Pick a date above to see who was scheduled that day.</p>}
+        </div>
+      )}
       {tab === 'all' && <StaffingView dateFilter={null} label="All published intervals" {...{ publishedBlocks, clientNameForBlock, positionForBlock, claimsFor, profiles, tierOf, tierBreakdown, tiers }} />}
       {tab === 'unassigned' && <UnassignedView {...{ publishedBlocks, clientNameForBlock, positionForBlock, claimsFor, tierBreakdown, tiers }} />}
       {tab === 'activity' && <ActivityView activity={visibleActivity} profiles={profiles} />}
