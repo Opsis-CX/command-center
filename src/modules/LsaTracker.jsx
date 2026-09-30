@@ -14,6 +14,7 @@ const OUTCOMES = [
   'LSA Booked',
   'LSA Not Booked',
   'LSA Not relevant',
+  'LSA Out of Service Area',
   'LSA Transferred to brand',
 ]
 
