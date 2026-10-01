@@ -822,51 +822,98 @@ export default function CallQA({ portal = false } = {}) {
   }
   async function saveSetting(s) { setBusy('settings'); await supabase.from('ai_qa_settings').upsert(s, { onConflict: 'client_id,campaign' }); await load(); setBusy('') }
 
+  // Export scope: 'all' = every scored call, 'opps' = revenue-opportunity calls,
+  // 'notbooked' = revenue-opportunity calls that did NOT book (the list a client
+  // reconciles against their CRM / Acumatica — includes customer name + phone).
+  const [exportScope, setExportScope] = useState('notbooked')
+  const [exportCount, setExportCount] = useState(0)
+
   async function exportCSV() {
-    // `answers` is no longer in the bulk load, so pull it just for the rows being
-    // exported (batched to stay under URL limits), then merge for the per-item columns.
-    setExporting(true)
+    // Pulled straight from the database (RLS-scoped, so the client portal only ever
+    // gets its own calls) instead of the on-screen rows — the landing tabs never
+    // download rows, which made the old export come out empty from Briefing/Overview.
+    // Honors the top-bar Range / Brand / Agent / Source / Call type filters.
+    setExporting(true); setExportCount(0)
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    let pStart = null, pEnd = null
+    if (startDate || endDate) { pStart = startDate || null; pEnd = endDate || null }
+    else if (days < 3650) { const d = new Date(); d.setDate(d.getDate() - days); pStart = fmt(d) }
+    const sel = 'id, campaign, score_pct, earned_points, max_points, section_scores, strengths, improvements, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, reviewed, reviewed_marked_at, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, winnable, revenue_tip, asked_for_cc, collected_cc, created_at, call:ai_qa_calls!inner(id, agent_name, brand, source, direction, disposition, call_date, call_started_at, duration_seconds, recording_url, customer_name, customer_number, customer_state)'
+    let got = []
+    try {
+      const page = 1000
+      for (let from = 0; ; from += page) {
+        let q = supabase.from('ai_qa_reviews').select(sel)
+        if (canManage && program !== 'all') q = q.eq('campaign', program)
+        if (exportScope !== 'all') q = q.eq('opportunity', true)
+        if (exportScope === 'notbooked') q = q.not('outcome', 'is', null).neq('outcome', 'Booked')
+        if (pStart) q = q.gte('call.call_date', pStart)
+        if (pEnd) q = q.lte('call.call_date', pEnd)
+        if (brand !== 'all') q = q.eq('call.brand', brand)
+        if (source !== 'all') q = q.eq('call.source', source)
+        const { data, error } = await q.order('created_at', { ascending: false }).range(from, from + page - 1)
+        if (error) throw error
+        got = got.concat(data || []); setExportCount(got.length)
+        if (!data || data.length < page) break
+      }
+    } catch (e) { window.alert('Export failed: ' + (e.message || e)); setExporting(false); return }
+    const out = got.filter((r) => {
+      if (agent !== 'all' && agentOf(r) !== agent) return false
+      if (topic !== 'all' && !(r.topics || []).includes(topic)) return false
+      if (callType === 'conversation' ? !(r.call_class == null || r.call_class === 'conversation') : (callType !== 'all' && r.call_class !== callType)) return false
+      return true
+    }).sort((a, b) => String((b.call || {}).call_started_at || (b.call || {}).call_date || '').localeCompare(String((a.call || {}).call_started_at || (a.call || {}).call_date || '')))
+    if (!out.length) { window.alert('No calls match the current filters.'); setExporting(false); return }
+    // `answers` is not in the bulk select — pull it for the exported rows (batched
+    // to stay under URL limits) for the per-rubric-item columns.
     const ansById = {}
     try {
-      const ids = filtered.map((r) => r.id)
+      const ids = out.map((r) => r.id)
       for (let i = 0; i < ids.length; i += 400) {
-        const chunk = ids.slice(i, i + 400)
-        const { data } = await supabase.from('ai_qa_reviews').select('id, answers').in('id', chunk)
+        const { data } = await supabase.from('ai_qa_reviews').select('id, answers').in('id', ids.slice(i, i + 400))
         ;(data || []).forEach((r) => { ansById[r.id] = r.answers || {} })
       }
-    } catch { /* fall through — per-item columns just come out blank */ }
-    const cols = ['call_date', 'brand', 'agent', 'source', 'direction', 'duration_sec', 'disposition',
-      'call_class', 'scoreable', 'excluded', 'manager_adjusted', 'reviewed', 'reviewed_at', 'topics',
-      'score_pct', 'earned', 'max', 'opportunity', 'outcome', 'not_booked_reason', 'opportunity_context',
-      'objections', 'asked_for_booking', 'info_before_pricing', 'set_fee_expectations', 'winnable', 'revenue_tip',
+    } catch { /* per-item columns just come out blank */ }
+    const phone10 = (v) => { const d = String(v || '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) : d }
+    const cols = ['call_date', 'call_time', 'brand', 'agent', 'customer_name', 'customer_phone', 'customer_phone_10', 'customer_state',
+      'source', 'direction', 'duration_sec', 'disposition', 'opportunity', 'outcome', 'not_booked_reason', 'winnable',
+      'opportunity_context', 'objections', 'revenue_tip', 'asked_for_booking', 'info_before_pricing', 'set_fee_expectations',
+      'asked_for_cc', 'collected_cc', 'topics', 'score_pct', 'earned', 'max',
       'sec_greeting_compliance', 'sec_discovery_needs', 'sec_solution_pitch', 'sec_close_next_steps',
       ...RUBRIC_ORDER, ...RUBRIC_ORDER.map((k) => k + '_missed'),
-      'strengths', 'improvements', 'coaching_note', 'risk_flags', 'summary', 'recording_url', 'status', 'review_id', 'call_id']
+      'summary', 'coaching_note', 'strengths', 'improvements', 'risk_flags', 'call_class', 'excluded', 'manager_adjusted',
+      'reviewed', 'reviewed_at', 'recording_url', 'review_id', 'call_id']
     const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
     const lines = [cols.join(',')]
-    filtered.forEach((r) => {
-      const c = r.call || {}, a = ansById[r.id] || r.answers || {}, ss = r.section_scores || {}
+    out.forEach((r) => {
+      const c = r.call || {}, a = ansById[r.id] || {}, ss = r.section_scores || {}
+      const t = c.call_started_at ? new Date(c.call_started_at) : null
       const row = {
-        call_date: c.call_date, brand: c.brand, agent: agentOf(r), source: c.source, direction: c.direction,
-        duration_sec: c.duration_seconds, disposition: c.disposition,
-        call_class: r.call_class, scoreable: r.scoreable, excluded: r.excluded, manager_adjusted: r.manager_adjusted,
-        reviewed: r.reviewed ? 'yes' : 'no', reviewed_at: r.reviewed_marked_at || '', topics: (r.topics || []).join(' | '),
+        call_date: c.call_date, call_time: t ? t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '',
+        brand: c.brand, agent: agentOf(r), customer_name: c.customer_name, customer_phone: c.customer_number,
+        customer_phone_10: phone10(c.customer_number), customer_state: c.customer_state,
+        source: c.source, direction: c.direction, duration_sec: c.duration_seconds, disposition: c.disposition,
+        opportunity: r.opportunity, outcome: r.outcome, not_booked_reason: r.not_booked_reason, winnable: r.winnable,
+        opportunity_context: r.opportunity_context, objections: (r.objections || []).join(' | '), revenue_tip: r.revenue_tip,
+        asked_for_booking: r.asked_for_booking, info_before_pricing: r.info_before_pricing, set_fee_expectations: r.set_fee_expectations,
+        asked_for_cc: r.asked_for_cc, collected_cc: r.collected_cc, topics: (r.topics || []).join(' | '),
         score_pct: r.score_pct, earned: r.earned_points, max: r.max_points,
-        opportunity: r.opportunity, outcome: r.outcome, not_booked_reason: r.not_booked_reason, opportunity_context: r.opportunity_context,
-        objections: (r.objections || []).join(' | '), asked_for_booking: r.asked_for_booking, info_before_pricing: r.info_before_pricing,
-        set_fee_expectations: r.set_fee_expectations, winnable: r.winnable, revenue_tip: r.revenue_tip,
         sec_greeting_compliance: ss.greeting_compliance?.pct, sec_discovery_needs: ss.discovery_needs?.pct,
         sec_solution_pitch: ss.solution_pitch?.pct, sec_close_next_steps: ss.close_next_steps?.pct,
-        strengths: (r.strengths || []).join(' | '), improvements: (r.improvements || []).join(' | '),
-        coaching_note: r.coaching_note, risk_flags: (r.risk_flags || []).join(' | '), summary: r.summary,
-        recording_url: c.recording_url, status: r.status, review_id: r.id, call_id: c.id,
+        summary: r.summary, coaching_note: r.coaching_note, strengths: (r.strengths || []).join(' | '),
+        improvements: (r.improvements || []).join(' | '), risk_flags: (r.risk_flags || []).join(' | '),
+        call_class: r.call_class, excluded: r.excluded, manager_adjusted: r.manager_adjusted,
+        reviewed: r.reviewed ? 'yes' : 'no', reviewed_at: r.reviewed_marked_at || '',
+        recording_url: c.recording_url, review_id: r.id, call_id: c.id,
       }
       RUBRIC_ORDER.forEach((k) => { row[k] = a[k]?.answer || ''; row[k + '_missed'] = (a[k]?.misses || []).join('; ') })
       lines.push(cols.map((k) => esc(row[k])).join(','))
     })
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const tag = exportScope === 'notbooked' ? 'not-booked-opportunities' : exportScope === 'opps' ? 'revenue-opportunities' : 'all-calls'
+    const brandTag = brand === 'all' ? '' : '-' + String(brand).toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob); const link = document.createElement('a')
-    link.href = url; link.download = `call-qa-export-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url)
+    link.href = url; link.download = `call-qa-${tag}${brandTag}-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url)
     setExporting(false)
   }
 
@@ -927,7 +974,12 @@ export default function CallQA({ portal = false } = {}) {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {inFlight > 0 && <Pill bg="#fff8e1" fg="#8d6e00">⏳ {inFlight} in queue</Pill>}
-          <button onClick={exportCSV} disabled={exporting} style={{ ...btn('ghost'), opacity: exporting ? 0.6 : 1 }}>{exporting ? 'Preparing…' : '⬇ Export CSV'}</button>
+          <select value={exportScope} onChange={(e) => setExportScope(e.target.value)} disabled={exporting} title="What to export (uses the Range / Brand / Agent / Source / Call type filters below)" style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 13, background: '#fff', color: INK }}>
+            <option value="notbooked">Revenue opps — not booked</option>
+            <option value="opps">All revenue opportunities</option>
+            <option value="all">All scored calls</option>
+          </select>
+          <button onClick={exportCSV} disabled={exporting} style={{ ...btn('ghost'), opacity: exporting ? 0.6 : 1 }}>{exporting ? `Preparing… ${exportCount.toLocaleString()}` : '⬇ Export CSV'}</button>
           <button onClick={load} style={btn('ghost')}>↻ Refresh</button>
         </div>
       </div>
