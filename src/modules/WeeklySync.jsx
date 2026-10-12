@@ -7,7 +7,8 @@ import { RichEditor, RichContent, htmlToText, isEmptyHtml } from '../lib/RichEdi
 // WEEKLY SYNC — each person submits a weekly update (7 sections);
 // everything auto-assembles into one team "presentation" view.
 // Team doc: everyone can read all; you edit your own.
-// Open for edits until the weekly sync meeting: Tuesday 1:00pm ET of that week.
+// Open for edits until the weekly sync meeting that reviews it: the Tuesday
+// right after the week ends (Mon–Sun), 1:00pm ET.
 // ============================================================
 
 const SECTIONS = [
@@ -25,13 +26,14 @@ function currentMonday() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }))
   const day = (now.getDay() + 6) % 7 // 0 = Monday
   now.setDate(now.getDate() - day)
-  return now.toISOString().slice(0, 10)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 // Default view: THIS week's sync while it is still open (Mon / Tue before the
 // 1pm meeting), otherwise NEXT week's, which people fill out during the week.
 function defaultWeek() {
-  const thisWeek = currentMonday()
-  return isWeekLocked(thisWeek) ? addWeeks(thisWeek, 1) : thisWeek
+  const lastWeek = addWeeks(currentMonday(), -1)
+  return isWeekLocked(lastWeek) ? currentMonday() : lastWeek
 }
 function addWeeks(iso, n) {
   const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n * 7)
@@ -44,8 +46,8 @@ function weekLabel(iso) {
   return `Week of ${f(mon)} – ${f(sun)}`
 }
 
-// The instant this week locks: the weekly sync meeting, Tuesday 1:00pm
-// America/New_York of that week. Returns a Date (a true instant). Updates can be
+// The instant this week locks: the weekly sync meeting that reviews it — the
+// Tuesday right after the week ends, 1:00pm America/New_York. Returns a Date (a true instant). Updates can be
 // entered or edited any time up to this moment; after it, the week is read-only.
 //
 // Converting "1pm New York" to a UTC instant must respect DST. We use
@@ -66,7 +68,7 @@ function zonedTimeToUtc(y, m, d, hour, minute, timeZone) {
   }
   return new Date(ts)
 }
-const MEETING_DAY_OFFSET = 1   // days after Monday (1 = Tuesday)
+const MEETING_DAY_OFFSET = 8   // days after the week's Monday (8 = the following Tuesday)
 const MEETING_HOUR = 13        // 1:00pm
 const MEETING_MINUTE = 0
 function lockInstant(weekMondayIso) {
@@ -126,7 +128,7 @@ export default function WeeklySync() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
         <div>
           <h1 className="page-title">Weekly Sync</h1>
-          <p className="page-sub">Enter or edit your update any time up to the weekly sync meeting (Tuesday 1:00pm ET). At meeting time the week locks — no further edits. It all rolls into one team review below.</p>
+          <p className="page-sub">Enter or edit your update any time up to the weekly sync meeting that reviews it (the following Tuesday, 1:00pm ET). At meeting time the week locks — no further edits. It all rolls into one team review below.</p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="btn btn-ghost" onClick={() => setWeek(w => addWeeks(w, -1))}>‹ Prev</button>
