@@ -21,7 +21,7 @@ const STAFF = ['asc', 'support', 'certification', 'quality', 'marketing', 'sales
 // For each permission, the set of roles that have it.
 const MATRIX = {
   'dashboard': ['asc', 'support', 'certification', 'quality', 'marketing', 'admin'],
-  'weekly_sync': ['asc', 'certification', 'quality', 'marketing', 'admin'],
+  'weekly_sync': ['asc', 'support', 'certification', 'quality', 'marketing', 'admin'],
   'service_performance_scorecard': ['agent'],
   // Quality Audit isn't on the roles sheet — left as-is. Confirm whether the new
   // "quality" role should be added here (and to is_qa_auditor() in Supabase).
