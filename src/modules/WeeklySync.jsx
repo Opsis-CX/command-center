@@ -7,7 +7,7 @@ import { RichEditor, RichContent, htmlToText, isEmptyHtml } from '../lib/RichEdi
 // WEEKLY SYNC — each person submits a weekly update (7 sections);
 // everything auto-assembles into one team "presentation" view.
 // Team doc: everyone can read all; you edit your own.
-// Due Monday 12pm EST (auto-nudge cron added separately).
+// Open for edits until the weekly sync meeting: Tuesday 1:00pm ET of that week.
 // ============================================================
 
 const SECTIONS = [
@@ -27,10 +27,11 @@ function currentMonday() {
   now.setDate(now.getDate() - day)
   return now.toISOString().slice(0, 10)
 }
-// The week people should be planning: NEXT week (you fill out next week's sync
-// during the current week). Defaults the view here.
+// Default view: THIS week's sync while it is still open (Mon / Tue before the
+// 1pm meeting), otherwise NEXT week's, which people fill out during the week.
 function defaultWeek() {
-  return addWeeks(currentMonday(), 1)
+  const thisWeek = currentMonday()
+  return isWeekLocked(thisWeek) ? addWeeks(thisWeek, 1) : thisWeek
 }
 function addWeeks(iso, n) {
   const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n * 7)
@@ -43,10 +44,11 @@ function weekLabel(iso) {
   return `Week of ${f(mon)} – ${f(sun)}`
 }
 
-// The instant this week locks: the Sunday that ends the week, 8:00pm America/New_York.
-// Returns a Date (a true instant). After this moment, the week is read-only.
+// The instant this week locks: the weekly sync meeting, Tuesday 1:00pm
+// America/New_York of that week. Returns a Date (a true instant). Updates can be
+// entered or edited any time up to this moment; after it, the week is read-only.
 //
-// Converting "8pm New York" to a UTC instant must respect DST. We use
+// Converting "1pm New York" to a UTC instant must respect DST. We use
 // Intl.DateTimeFormat (which browsers implement consistently) to read what a
 // candidate instant looks like in New York, then correct toward the target.
 function zonedTimeToUtc(y, m, d, hour, minute, timeZone) {
@@ -64,19 +66,13 @@ function zonedTimeToUtc(y, m, d, hour, minute, timeZone) {
   }
   return new Date(ts)
 }
+const MEETING_DAY_OFFSET = 1   // days after Monday (1 = Tuesday)
+const MEETING_HOUR = 13        // 1:00pm
+const MEETING_MINUTE = 0
 function lockInstant(weekMondayIso) {
-  // Lock at the Sunday 8pm ET immediately BEFORE this week starts.
-  // That Sunday is the day before the week's Monday.
-  const mon = new Date(weekMondayIso + 'T00:00:00')
-  const sunBefore = new Date(mon); sunBefore.setDate(sunBefore.getDate() - 1)
-  return zonedTimeToUtc(sunBefore.getFullYear(), sunBefore.getMonth(), sunBefore.getDate(), 20, 0, 'America/New_York')
-}
-// The soft "due" reminder: end of the Friday before the week starts (Friday of
-// the current week = Monday minus 3 days). Used for messaging only, not a lock.
-function dueLabel(weekMondayIso) {
-  const mon = new Date(weekMondayIso + 'T00:00:00')
-  const fri = new Date(mon); fri.setDate(fri.getDate() - 3)
-  return fri.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+  const [y, m, d] = weekMondayIso.split('-').map(Number)
+  const meet = new Date(Date.UTC(y, m - 1, d + MEETING_DAY_OFFSET))
+  return zonedTimeToUtc(meet.getUTCFullYear(), meet.getUTCMonth(), meet.getUTCDate(), MEETING_HOUR, MEETING_MINUTE, 'America/New_York')
 }
 function isWeekLocked(weekMondayIso) {
   return Date.now() >= lockInstant(weekMondayIso).getTime()
@@ -130,7 +126,7 @@ export default function WeeklySync() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
         <div>
           <h1 className="page-title">Weekly Sync</h1>
-          <p className="page-sub">Everyone submits their update by Sunday at 8:00pm ET. After that the week locks — no further edits. It all rolls into one team review below.</p>
+          <p className="page-sub">Enter or edit your update any time up to the weekly sync meeting (Tuesday 1:00pm ET). At meeting time the week locks — no further edits. It all rolls into one team review below.</p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="btn btn-ghost" onClick={() => setWeek(w => addWeeks(w, -1))}>‹ Prev</button>
@@ -148,7 +144,7 @@ export default function WeeklySync() {
 
       {loading ? <p className="page-sub">Loading…</p> :
         tab === 'mine'
-          ? <MyUpdate week={week} userId={userId} existing={mine} locked={locked} lockLabelText={lockLabel(week)} dueLabelText={dueLabel(week)} myHygiene={hygieneOf(userId)} onSaved={(msg) => { load(); flash(msg) }} />
+          ? <MyUpdate week={week} userId={userId} existing={mine} locked={locked} lockLabelText={lockLabel(week)} myHygiene={hygieneOf(userId)} onSaved={(msg) => { load(); flash(msg) }} />
           : <Presentation week={week} updates={updates} profiles={profiles} nameOf={nameOf} hygiene={hygiene} chat={chat} />
       }
     </div>
@@ -293,7 +289,7 @@ function HygieneTable({ hygiene, profiles }) {
   )
 }
 
-function MyUpdate({ week, userId, existing, locked, lockLabelText, dueLabelText, myHygiene, onSaved }) {
+function MyUpdate({ week, userId, existing, locked, lockLabelText, myHygiene, onSaved }) {
   const [busy, setBusy] = useState(false)
   // One HTML value per section; htmlRefs holds the latest for each.
   const htmlRefs = useRef({})
@@ -345,7 +341,7 @@ function MyUpdate({ week, userId, existing, locked, lockLabelText, dueLabelText,
       )}
       {!locked && !submitted && (
         <div className="card" style={{ padding: '10px 14px', marginBottom: 16, background: 'var(--accent-bg)', border: '1px solid var(--line)', color: 'var(--ink-soft)', fontSize: 13, fontWeight: 500 }}>
-          🗓 Due by end of day {dueLabelText}. Final cutoff is {lockLabelText}, when this week locks.
+          🗓 Open until the weekly sync meeting, {lockLabelText}. Add your update any time before then.
         </div>
       )}
       {submitted && !locked && (
