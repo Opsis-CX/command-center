@@ -990,7 +990,7 @@ function WebLeadsView({ mode }) {
       const lt = lsa.totals || {}
       const bl = lsa.still_needs_followup || {}
       const lsaTakeaways = bullets([
-        `${lt.leads ?? 0} LSA chat leads logged today · ${lt.booked ?? 0} booked.`,
+        `${lt.leads ?? 0} LSA chat leads logged today · ${lt.booked ?? 0} booked ${data.is_today ? 'today' : 'that day'}.`,
         lt.open ? `${lt.open} still open, ${lt.no_reply_yet ?? 0} awaiting a customer reply.` : null,
         bl.total ? `${bl.total} leads still need follow-up overall (${bl.waiting_on_customer ?? 0} waiting on the customer, ${bl.waiting_on_team ?? 0} waiting on us).` : null,
       ])
@@ -1026,7 +1026,7 @@ function WebLeadsView({ mode }) {
       const lt = lsa.totals || {}
       const bl = lsa.still_needs_followup || {}
       const lsaTakeaways = bullets([
-        `${lt.leads ?? 0} LSA chat leads logged today · ${lt.booked ?? 0} booked.`,
+        `${lt.leads ?? 0} LSA chat leads logged today · ${lt.booked ?? 0} booked ${data.is_today ? 'today' : 'that day'}.`,
         lt.open ? `${lt.open} still open, ${lt.no_reply_yet ?? 0} awaiting a customer reply.` : null,
         bl.total ? `${bl.total} leads still need follow-up overall (${bl.waiting_on_customer ?? 0} waiting on the customer, ${bl.waiting_on_team ?? 0} waiting on us).` : null,
       ])
@@ -1054,7 +1054,7 @@ function WebLeadsView({ mode }) {
       `Today: ${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}) · ${t.bookings} booked (${pctStr(t.booking_rate)} of contacted) · ${secStr(t.avg_speed_sec)} avg speed-to-dial`, ``,
     ]
     if (lsa) {
-      lines.push(`LSA Chats: ${lsa.totals.leads} leads logged · ${lsa.totals.booked} booked · ${lsa.totals.open} still open`)
+      lines.push(`LSA Chats: ${lsa.totals.leads} leads logged · ${lsa.totals.booked} booked${data.is_today ? ' today' : ''} · ${lsa.totals.open} still open`)
       if (lsa.still_needs_followup?.total) lines.push(`Still needs follow-up overall: ${lsa.still_needs_followup.total} (${lsa.still_needs_followup.waiting_on_customer} on customer, ${lsa.still_needs_followup.waiting_on_team} on us)`)
       lines.push(``)
     }
@@ -1070,7 +1070,7 @@ function WebLeadsView({ mode }) {
       `${t.dials} dials · ${t.new_leads} new leads · ${t.live_contacts} contacted (${pctStr(t.contact_rate)}) · ${t.bookings} booked (${pctStr(t.booking_rate)} of contacted) · ${secStr(t.avg_speed_sec)} avg speed-to-dial`, ``,
     ]
     if (lsa) {
-      lines.push(`LSA Chats: ${lsa.totals.leads} leads logged · ${lsa.totals.booked} booked · ${lsa.totals.open} still open`)
+      lines.push(`LSA Chats: ${lsa.totals.leads} leads logged · ${lsa.totals.booked} booked${data.is_today ? ' today' : ''} · ${lsa.totals.open} still open`)
       if (lsa.still_needs_followup?.total) lines.push(`Still needs follow-up overall: ${lsa.still_needs_followup.total} (${lsa.still_needs_followup.waiting_on_customer} on customer, ${lsa.still_needs_followup.waiting_on_team} on us)`)
       lines.push(``)
     }
@@ -1171,7 +1171,7 @@ function WebLeadsView({ mode }) {
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 12 }}>
                 <StatCard label="Leads" big={String(lsa.totals.leads)} sub="logged today" />
-                <StatCard label="Booked" big={String(lsa.totals.booked)} bigColor={lsa.totals.booked > 0 ? good : 'inherit'} sub="LSA Booked" />
+                <StatCard label="Booked" big={String(lsa.totals.booked)} bigColor={lsa.totals.booked > 0 ? good : 'inherit'} sub="booked today (any lead date)" />
                 <StatCard label="Still Open" big={String(lsa.totals.open)} sub="not resolved yet" />
                 <StatCard label="Awaiting Reply" big={String(lsa.totals.no_reply_yet)} sub="waiting on customer" />
                 <StatCard label="Still Needs Follow-up" big={String(lsa.still_needs_followup.total)} bigColor={lsa.still_needs_followup.total > 0 ? warn : 'inherit'} sub={`${lsa.still_needs_followup.waiting_on_customer} on customer · ${lsa.still_needs_followup.waiting_on_team} on us`} />
@@ -1271,7 +1271,7 @@ function WebLeadsView({ mode }) {
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 12 }}>
               <StatCard label="Leads" big={String(lsa.totals.leads)} sub="logged today" />
-              <StatCard label="Booked" big={String(lsa.totals.booked)} bigColor={lsa.totals.booked > 0 ? good : 'inherit'} sub="LSA Booked" />
+              <StatCard label="Booked" big={String(lsa.totals.booked)} bigColor={lsa.totals.booked > 0 ? good : 'inherit'} sub="booked today (any lead date)" />
               <StatCard label="Still Open" big={String(lsa.totals.open)} sub="not resolved yet" />
               <StatCard label="Awaiting Reply" big={String(lsa.totals.no_reply_yet)} sub="waiting on customer" />
               <StatCard label="Still Needs Follow-up" big={String(lsa.still_needs_followup.total)} bigColor={lsa.still_needs_followup.total > 0 ? warn : 'inherit'} sub={`${lsa.still_needs_followup.waiting_on_customer} on customer · ${lsa.still_needs_followup.waiting_on_team} on us`} />
