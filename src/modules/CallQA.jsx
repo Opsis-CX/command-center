@@ -41,6 +41,7 @@ const formatTranscript = (t) => {
 const OUTCOME_STYLE = {
   'Booked': { bg: '#e8f5e9', fg: '#1b5e20' }, 'Not Booked': { bg: '#fdecea', fg: '#b71c1c' },
   'Transferred': { bg: '#e3f2fd', fg: '#0d47a1' }, 'No Opportunity': { bg: '#f1f5f9', fg: '#64748b' }, 'Other': { bg: '#f1f5f9', fg: '#64748b' },
+  'Voicemail': { bg: '#f1f5f9', fg: '#64748b' }, 'Internal': { bg: '#f1f5f9', fg: '#64748b' }, 'No Conversation': { bg: '#f1f5f9', fg: '#64748b' },
 }
 const agentOf = (r) => r.call?.agent_name || r.extracted_agent_name || 'Unknown'
 // Seconds → m:ss for transcript timestamps.
@@ -85,9 +86,13 @@ const TIER_META = {
   2: { label: 'Medium', bg: '#e0f2fe', fg: '#075985' },
   1: { label: 'Small', bg: '#f1f5f9', fg: '#64748b' },
 }
-// A missed opportunity = a real sales/booking chance that didn't get booked.
-// Matches how the Opportunities tab counts "Missed" (anything not Booked).
-const isMissedOpp = (r) => Boolean(r.opportunity) && r.outcome && r.outcome !== 'Booked'
+// A DECIDED opportunity = a real sales/booking chance that ended Booked or Not
+// Booked on this call. Transferred / Other / hand-offs are NOT decided here, so
+// they stay out of the booking-rate denominator. Booking rate = Booked ÷ Decided.
+const isDecided = (r) => Boolean(r.opportunity) && (r.outcome === 'Booked' || r.outcome === 'Not Booked') && !r.excluded
+// A missed booking = a decided opportunity that did NOT book.
+const isMissedOpp = (r) => Boolean(r.opportunity) && r.outcome === 'Not Booked' && !r.excluded
+const isBookedOpp = (r) => isDecided(r) && r.outcome === 'Booked'
 // Best single "why this call was bad / what to fix" line for a row.
 const topIssue = (r) => (r.risk_flags || [])[0] || (r.improvements || [])[0] || r.not_booked_reason || (r.coaching_note ? r.coaching_note.slice(0, 90) : '') || '—'
 // Recompute a review's totals from (possibly manager-edited) answers.
@@ -298,7 +303,11 @@ export default function CallQA({ portal = false } = {}) {
   const [days, setDays] = useState(7)
   const [startDate, setStartDate] = useState('') // YYYY-MM-DD; when set (with endDate) overrides the Range preset
   const [endDate, setEndDate] = useState('')
-  const [brand, setBrand] = useState('all')
+  // Brand filter is multi-select: [] = all brands, otherwise the ticked brands.
+  const [brands, setBrands] = useState([])
+  const brandOk = useCallback((b) => brands.length === 0 || brands.includes(b), [brands])
+  // Server RPCs take p_brand as a '|' separated list (null = all brands).
+  const brandParam = brands.length ? brands.join('|') : null
   const [agent, setAgent] = useState('all')
   const [topic, setTopic] = useState('all')
   const [source, setSource] = useState('all')       // CallRail / Lightspeed / (internal Five9 for managers only)
@@ -340,7 +349,7 @@ export default function CallQA({ portal = false } = {}) {
     // The heavy per-question `answers` blob and the `transcript` are fetched lazily
     // (in the detail drawer, and on demand at CSV-export time) to keep this initial
     // payload light — it makes the first load noticeably faster at scale.
-    const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, strengths, improvements, strength_tags, improvement_tags, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, reviewed, reviewed_marked_at, reviewed_marked_by, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, winnable, revenue_tip, asked_for_cc, cc_quote, collected_cc, cc_collected_quote, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, customer_name, customer_number)'
+    const sel = 'id, campaign, score_pct, earned_points, max_points, auto_fail, section_scores, strengths, improvements, strength_tags, improvement_tags, coaching_note, risk_flags, summary, status, opportunity, outcome, transfer_outcome, not_booked_reason, other_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, adjustment_note, reviewed, reviewed_marked_at, reviewed_marked_by, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, revenue_tip, asked_for_cc, cc_quote, collected_cc, cc_collected_quote, created_at, call:ai_qa_calls(id, agent_name, profile_id, brand, source, direction, disposition, call_date, duration_seconds, recording_url, customer_name, customer_number)'
     // Managers fetch only the selected program server-side (client-side `scoped`
     // still applies); everyone else is RLS-scoped. The settings / secret-presence /
     // pipeline-count queries run concurrently. Reviews are paged SEQUENTIALLY: an
@@ -497,10 +506,10 @@ export default function CallQA({ portal = false } = {}) {
     supabase.rpc('callqa_overview', {
       p_campaign: canManage && program !== 'all' ? program : null,
       p_start: pStart, p_end: pEnd, p_prev_start: prevStart, p_prev_end: prevEnd,
-      p_brand: brand === 'all' ? null : brand, p_agent: agent === 'all' ? null : agent, p_topic: topic === 'all' ? null : topic,
+      p_brand: brandParam, p_agent: agent === 'all' ? null : agent, p_topic: topic === 'all' ? null : topic,
     }).then(({ data, error }) => { if (!active) return; if (error) setOvErr(error.message); else setOvData(data) })
     return () => { active = false }
-  }, [canManage, program, days, startDate, endDate, brand, agent, topic])
+  }, [canManage, program, days, startDate, endDate, brandParam, agent, topic])
   // Current user's display name, used when they add a note.
   useEffect(() => {
     let active = true
@@ -541,14 +550,14 @@ export default function CallQA({ portal = false } = {}) {
         if (start && d < start) return false
         if (end && d > end) return false
       } else if (d < cutoff) return false
-      if (brand !== 'all' && c.brand !== brand) return false
+      if (!brandOk(c.brand)) return false
       if (agent !== 'all' && agentOf(r) !== agent) return false
       if (topic !== 'all' && !(r.topics || []).includes(topic)) return false
       if (source !== 'all' && (c.source || null) !== source) return false
       if (callType === 'conversation' ? !(r.call_class == null || r.call_class === 'conversation') : (callType !== 'all' && r.call_class !== callType)) return false
       return true
     })
-  }, [scoped, days, startDate, endDate, customRange, brand, agent, topic, source, callType])
+  }, [scoped, days, startDate, endDate, customRange, brandOk, agent, topic, source, callType])
 
   // Date-range-only view (ignores the brand/agent/topic pickers) — the Scorecards
   // hub has its own brand/agent selectors, so it works off this wider set.
@@ -576,24 +585,24 @@ export default function CallQA({ portal = false } = {}) {
   // downloaded rows (row tabs) with the server aggregate's agents so the list is
   // populated on the Briefing/Dashboard landing too, where rows aren't downloaded.
   const agents = useMemo(() => {
-    const pool = dateFiltered.filter((r) => brand === 'all' || (r.call || {}).brand === brand)
+    const pool = dateFiltered.filter((r) => brandOk((r.call || {}).brand))
     const s = new Set(pool.map(agentOf).filter(Boolean))
     ;((dashAgg && dashAgg.agents) || []).forEach((a) => { if (a.name) s.add(a.name) })
     return Array.from(s).sort()
-  }, [dateFiltered, brand, dashAgg])
+  }, [dateFiltered, brandOk, dashAgg])
   // Full brand list for the Brand switcher. On the Briefing/Dashboard landing the
   // heavy rows aren't loaded, so the dropdown was empty — derive brands from the
-  // dashboard aggregate instead. Capture the list while UNFILTERED (brand === 'all')
+  // dashboard aggregate instead. Capture the list while UNFILTERED (no brands ticked)
   // and keep it stable when a brand is selected; otherwise the aggregate returns only
   // the chosen brand and the dropdown would collapse to a single option.
   const [brandOpts, setBrandOpts] = useState([])
   useEffect(() => {
-    if (brand === 'all' && dashAgg && Array.isArray(dashAgg.brands)) {
+    if (brands.length === 0 && dashAgg && Array.isArray(dashAgg.brands)) {
       const list = dashAgg.brands.map((b) => b.brand).filter((x) => x && x !== '—')
       if (list.length) setBrandOpts(list)
     }
-  }, [brand, dashAgg])
-  const brands = useMemo(() => {
+  }, [brands.length, dashAgg])
+  const brandList = useMemo(() => {
     const s = new Set(brandOpts)
     scoped.forEach((r) => { const b = r.call?.brand; if (b) s.add(b) })
     return Array.from(s).sort()
@@ -610,12 +619,12 @@ export default function CallQA({ portal = false } = {}) {
   // Params passed to the server-side dashboard aggregate + its drill-down fetcher.
   const dashParams = useMemo(() => ({
     p_start: dashBounds.start, p_end: dashBounds.end,
-    p_brand: brand === 'all' ? null : brand,
+    p_brand: brandParam,
     p_campaign: canManage && program !== 'all' ? program : null,
     p_source: source === 'all' ? null : source,
     p_call_type: callType,
     p_agent: agent === 'all' ? null : agent,
-  }), [dashBounds, brand, canManage, program, source, callType, agent])
+  }), [dashBounds, brandParam, canManage, program, source, callType, agent])
   useEffect(() => {
     if (tab !== 'dashboard' && tab !== 'briefing') return
     let active = true
@@ -660,14 +669,16 @@ export default function CallQA({ portal = false } = {}) {
     const n = scored.length
     const avg = n ? scored.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / n : null
     const opps = filtered.filter((r) => r.opportunity)
-    const booked = opps.filter((r) => r.outcome === 'Booked')
-    const conv = opps.length ? (booked.length / opps.length) * 100 : null
+    const decided = filtered.filter(isDecided)
+    const booked = decided.filter((r) => r.outcome === 'Booked')
+    const missed = decided.filter((r) => r.outcome === 'Not Booked')
+    const conv = decided.length ? (booked.length / decided.length) * 100 : null
     const sec = {}
     for (const s of SECTIONS) { const v = scored.map((r) => r.section_scores?.[s.key]?.pct).filter((x) => x != null); sec[s.key] = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null }
     const outcomes = {}; filtered.forEach((r) => { if (r.outcome) outcomes[r.outcome] = (outcomes[r.outcome] || 0) + 1 })
     const reasons = {}; opps.filter((r) => r.outcome === 'Not Booked').forEach((r) => { const k = r.not_booked_reason || 'Unspecified'; reasons[k] = (reasons[k] || 0) + 1 })
     const topics = {}; filtered.forEach((r) => (r.topics || []).forEach((t) => { topics[t] = (topics[t] || 0) + 1 }))
-    return { n, avg, total: filtered.length, excluded: filtered.length - n, opps: opps.length, booked: booked.length, conv, sec, outcomes, reasons, topics, flags: filtered.filter((r) => (r.risk_flags || []).length).length }
+    return { n, avg, total: filtered.length, excluded: filtered.length - n, opps: opps.length, decided: decided.length, booked: booked.length, missed: missed.length, conv, sec, outcomes, reasons, topics, flags: filtered.filter((r) => (r.risk_flags || []).length).length }
   }, [filtered])
 
   const trend = useMemo(() => {
@@ -697,7 +708,7 @@ export default function CallQA({ portal = false } = {}) {
       const c = r.call || {}
       const d = c.call_date ? new Date(c.call_date + 'T00:00:00') : new Date(r.created_at)
       if (d < start || d > end) return false
-      if (brand !== 'all' && c.brand !== brand) return false
+      if (!brandOk(c.brand)) return false
       if (agent !== 'all' && agentOf(r) !== agent) return false
       if (topic !== 'all' && !(r.topics || []).includes(topic)) return false
       return true
@@ -705,10 +716,11 @@ export default function CallQA({ portal = false } = {}) {
     const scoredP = inWin.filter(isScored)
     const nP = scoredP.length
     const oppsP = inWin.filter((r) => r.opportunity)
-    const bookedP = oppsP.filter((r) => r.outcome === 'Booked')
+    const decidedP = inWin.filter(isDecided)
+    const bookedP = decidedP.filter((r) => r.outcome === 'Booked')
     if (!inWin.length) return null
-    return { n: nP, avg: nP ? scoredP.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / nP : null, opps: oppsP.length, booked: bookedP.length, conv: oppsP.length ? (bookedP.length / oppsP.length) * 100 : null, winnable: inWin.filter((r) => isMissedOpp(r) && r.winnable).length }
-  }, [scoped, days, startDate, endDate, customRange, brand, agent, topic])
+    return { n: nP, avg: nP ? scoredP.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / nP : null, opps: oppsP.length, decided: decidedP.length, booked: bookedP.length, conv: decidedP.length ? (bookedP.length / decidedP.length) * 100 : null, missed: inWin.filter(isMissedOpp).length }
+  }, [scoped, days, startDate, endDate, customRange, brandOk, agent, topic])
 
   // Prior-period rows for the DATE-ONLY slice (matches `dateFiltered`, which the
   // Scorecards hub uses). Empty when there's no comparable prior window.
@@ -735,15 +747,16 @@ export default function CallQA({ portal = false } = {}) {
   const byAgent = useMemo(() => {
     const m = new Map()
     filtered.forEach((r) => {
-      const a = agentOf(r); if (!m.has(a)) m.set(a, { name: a, scores: [], improvements: {}, strengths: {}, calls: 0, opps: 0, booked: 0 })
+      const a = agentOf(r); if (!m.has(a)) m.set(a, { name: a, scores: [], improvements: {}, strengths: {}, calls: 0, opps: 0, decided: 0, booked: 0 })
       const o = m.get(a); o.calls++
       if (isScored(r)) o.scores.push(Number(r.score_pct) || 0)
-      if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') o.booked++ }
+      if (r.opportunity) o.opps++
+      if (isDecided(r)) { o.decided++; if (r.outcome === 'Booked') o.booked++ }
       if (isScored(r)) { (r.improvements || []).forEach((i) => o.improvements[i] = (o.improvements[i] || 0) + 1); (r.strengths || []).forEach((i) => o.strengths[i] = (o.strengths[i] || 0) + 1) }
     })
     return Array.from(m.values()).map((o) => ({
       ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
-      conv: o.opps ? (o.booked / o.opps) * 100 : null,
+      conv: o.decided ? (o.booked / o.decided) * 100 : null,
       topWeak: Object.entries(o.improvements).sort((a, b) => b[1] - a[1]).slice(0, 3),
       topStrong: Object.entries(o.strengths).sort((a, b) => b[1] - a[1]).slice(0, 3),
     })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
@@ -787,18 +800,6 @@ export default function CallQA({ portal = false } = {}) {
     if (error) { window.alert('Could not update scoring status: ' + error.message) }
     await load(); setBusy('')
   }
-  // Manager override of the AI's winnable call after human review. Mirrors
-  // setExcluded (direct update, RLS = can_manage_qa). Patches local state right
-  // away, then load() so the row tabs + counts catch up.
-  async function setWinnable(reviewId, val, callId) {
-    setBusy(reviewId)
-    const id = await liveReviewId(reviewId, callId)
-    const { error } = await supabase.from('ai_qa_reviews').update({ winnable: val, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', id)
-    if (error) { window.alert('Could not update winnable: ' + error.message) }
-    setRows((prev) => prev.map((r) => (r.id === reviewId || r.id === id ? { ...r, winnable: val } : r)))
-    setSelected((sel) => (sel && (sel.id === reviewId || sel.id === id) ? { ...sel, winnable: val } : sel))
-    await load(); setBusy('')
-  }
   // 2026-09-03: CallRail / LightSpeed dealer calls carry no agent name, so they
   // show as "Unknown". Managers can assign (or revert) the agent per call via
   // qa_set_call_agent (can_manage_qa gate, audit-stamped, original kept).
@@ -838,7 +839,7 @@ export default function CallQA({ portal = false } = {}) {
     let pStart = null, pEnd = null
     if (startDate || endDate) { pStart = startDate || null; pEnd = endDate || null }
     else if (days < 3650) { const d = new Date(); d.setDate(d.getDate() - days); pStart = fmt(d) }
-    const sel = 'id, campaign, score_pct, earned_points, max_points, section_scores, strengths, improvements, coaching_note, risk_flags, summary, status, opportunity, outcome, not_booked_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, reviewed, reviewed_marked_at, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, winnable, revenue_tip, asked_for_cc, collected_cc, created_at, call:ai_qa_calls!inner(id, agent_name, brand, source, direction, disposition, call_date, call_started_at, duration_seconds, recording_url, customer_name, customer_number, customer_state)'
+    const sel = 'id, campaign, score_pct, earned_points, max_points, section_scores, strengths, improvements, coaching_note, risk_flags, summary, status, opportunity, outcome, transfer_outcome, not_booked_reason, other_reason, opportunity_context, extracted_agent_name, call_class, scoreable, excluded, manager_adjusted, reviewed, reviewed_marked_at, topics, objections, asked_for_booking, info_before_pricing, set_fee_expectations, revenue_tip, asked_for_cc, collected_cc, created_at, call:ai_qa_calls!inner(id, agent_name, brand, source, direction, disposition, call_date, call_started_at, duration_seconds, recording_url, customer_name, customer_number, customer_state)'
     let got = []
     try {
       const page = 1000
@@ -846,10 +847,10 @@ export default function CallQA({ portal = false } = {}) {
         let q = supabase.from('ai_qa_reviews').select(sel)
         if (canManage && program !== 'all') q = q.eq('campaign', program)
         if (exportScope !== 'all') q = q.eq('opportunity', true)
-        if (exportScope === 'notbooked') q = q.not('outcome', 'is', null).neq('outcome', 'Booked')
+        if (exportScope === 'notbooked') q = q.eq('outcome', 'Not Booked').not('excluded', 'is', true)
         if (pStart) q = q.gte('call.call_date', pStart)
         if (pEnd) q = q.lte('call.call_date', pEnd)
-        if (brand !== 'all') q = q.eq('call.brand', brand)
+        if (brands.length) q = q.in('call.brand', brands)
         if (source !== 'all') q = q.eq('call.source', source)
         const { data, error } = await q.order('created_at', { ascending: false }).range(from, from + page - 1)
         if (error) throw error
@@ -876,7 +877,7 @@ export default function CallQA({ portal = false } = {}) {
     } catch { /* per-item columns just come out blank */ }
     const phone10 = (v) => { const d = String(v || '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) : d }
     const cols = ['call_date', 'call_time', 'brand', 'agent', 'customer_name', 'customer_phone', 'customer_phone_10', 'customer_state',
-      'source', 'direction', 'duration_sec', 'disposition', 'opportunity', 'outcome', 'not_booked_reason', 'winnable',
+      'source', 'direction', 'duration_sec', 'disposition', 'opportunity', 'outcome', 'transfer_outcome', 'not_booked_reason', 'other_reason',
       'opportunity_context', 'objections', 'revenue_tip', 'asked_for_booking', 'info_before_pricing', 'set_fee_expectations',
       'asked_for_cc', 'collected_cc', 'topics', 'score_pct', 'earned', 'max',
       'sec_greeting_compliance', 'sec_discovery_needs', 'sec_solution_pitch', 'sec_close_next_steps',
@@ -893,7 +894,7 @@ export default function CallQA({ portal = false } = {}) {
         brand: c.brand, agent: agentOf(r), customer_name: c.customer_name, customer_phone: c.customer_number,
         customer_phone_10: phone10(c.customer_number), customer_state: c.customer_state,
         source: c.source, direction: c.direction, duration_sec: c.duration_seconds, disposition: c.disposition,
-        opportunity: r.opportunity, outcome: r.outcome, not_booked_reason: r.not_booked_reason, winnable: r.winnable,
+        opportunity: r.opportunity, outcome: r.outcome, transfer_outcome: r.transfer_outcome, not_booked_reason: r.not_booked_reason, other_reason: r.other_reason,
         opportunity_context: r.opportunity_context, objections: (r.objections || []).join(' | '), revenue_tip: r.revenue_tip,
         asked_for_booking: r.asked_for_booking, info_before_pricing: r.info_before_pricing, set_fee_expectations: r.set_fee_expectations,
         asked_for_cc: r.asked_for_cc, collected_cc: r.collected_cc, topics: (r.topics || []).join(' | '),
@@ -910,7 +911,7 @@ export default function CallQA({ portal = false } = {}) {
       lines.push(cols.map((k) => esc(row[k])).join(','))
     })
     const tag = exportScope === 'notbooked' ? 'not-booked-opportunities' : exportScope === 'opps' ? 'revenue-opportunities' : 'all-calls'
-    const brandTag = brand === 'all' ? '' : '-' + String(brand).toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    const brandTag = brands.length === 0 ? '' : brands.length === 1 ? '-' + String(brands[0]).toLowerCase().replace(/[^a-z0-9]+/g, '-') : '-multi-brand'
     const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob); const link = document.createElement('a')
     link.href = url; link.download = `call-qa-${tag}${brandTag}-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url)
@@ -952,7 +953,7 @@ export default function CallQA({ portal = false } = {}) {
     ...(canManage ? [['Program', PROGRAM_LABELS[program] || program]] : []),
     ['Range', rangeLabel],
     ...(dateOnlyTab ? [] : [
-      ['Brand', brand === 'all' ? 'All brands' : brand],
+      ['Brand', brands.length === 0 ? 'All brands' : brands.length === 1 ? brands[0] : brands.join(', ')],
       ...(topic !== 'all' ? [['Topic', topic]] : []),
       ...(viewAll ? [['Agent', agent === 'all' ? 'All agents' : agent]] : []),
     ]),
@@ -985,14 +986,14 @@ export default function CallQA({ portal = false } = {}) {
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', margin: '16px 0' }}>
-        {canManage && <Select label="Program" value={program} onChange={(v) => { setProgram(v); setBrand('all'); setAgent('all') }} opts={programOpts} />}
+        {canManage && <Select label="Program" value={program} onChange={(v) => { setProgram(v); setBrands([]); setAgent('all') }} opts={programOpts} />}
         <Select label="Range" value={rangeValue} onChange={onRangeChange}
           opts={[['today', 'Today'], ['yesterday', 'Yesterday'], [7, 'Last 7 days'], [30, 'Last 30 days'], [90, 'Last 90 days'], [3650, 'All time'], ...(rangeValue === 'custom' ? [['custom', 'Custom dates']] : [])]}
           title={rangeValue === 'custom' ? 'Using the custom date range below — pick a preset to clear it' : undefined} />
         <DateField label="Start date" value={startDate} max={endDate || todayStr} onChange={setStartDate} />
         <DateField label="End date" value={endDate} min={startDate || undefined} max={todayStr} onChange={setEndDate} />
         {customRange && <button onClick={() => { setStartDate(''); setEndDate('') }} style={{ ...btn('ghost'), padding: '7px 10px' }}>✕ Clear dates</button>}
-        {brands.length > 1 && <Select label="Brand" value={brand} onChange={(v) => { setBrand(v); setAgent('all') }} opts={[['all', 'All brands'], ...brands.map((c) => [c, c])]} />}
+        {brandList.length > 1 && <BrandMultiSelect options={brandList} value={brands} onChange={(v) => { setBrands(v); setAgent('all') }} />}
         <Select label="Topic" value={topic} onChange={setTopic} opts={[['all', 'All topics'], ...topicList.map((t) => [t, t])]} />
         {viewAll && <Select label="Agent" value={agent} onChange={setAgent} opts={[['all', 'All agents'], ...agents.map((a) => [a, a])]} />}
         <Select label="Call type" value={callType} onChange={setCallType} opts={CALLTYPE_OPTS} title="Real conversations excludes voicemail, IVR, wrong-number and spam" />
@@ -1021,7 +1022,7 @@ export default function CallQA({ portal = false } = {}) {
       ) : tab === 'dashboard' ? (
         <ManagerDashboard agg={dashAgg} loading={dashLoading} err={dashErr} loadBucket={loadBucket} onOpen={setSelected} onGotoTab={setTab} onPickAgent={(a) => setAgent(a)} />
       ) : tab === 'briefing' ? (
-        <CoachingBriefing agg={dashAgg} prevAgg={prevDashAgg} loading={dashLoading} err={dashErr} loadBucket={loadBucket} brand={brand} agent={agent} onOpen={setSelected} onPickBrand={(b) => { setBrand(b); setAgent('all') }} onPickAgent={(a) => setAgent(a)} />
+        <CoachingBriefing agg={dashAgg} prevAgg={prevDashAgg} loading={dashLoading} err={dashErr} loadBucket={loadBucket} brands={brands} agent={agent} onOpen={setSelected} onPickBrand={(b) => { setBrands(b ? [b] : []); setAgent('all') }} onPickAgent={(a) => setAgent(a)} />
       ) : tab === 'import' ? (
         // Import needs NOTHING from the review-row download — gating it behind
         // `loading` left it stuck on "Loading…" forever whenever you jumped
@@ -1029,19 +1030,19 @@ export default function CallQA({ portal = false } = {}) {
         canManage ? <ImportPanel /> : null
       ) : loading ? <div style={{ color: '#64748b' }}>Loading…</div> : err ? <Card style={{ color: '#b71c1c' }}>Error: {err}</Card> : (
         <>
-          {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} brand={brand} setBrand={setBrand} />}
+          {tab === 'scorecards' && <Scorecards rows={dateFiltered} prevRows={prevDateRows} viewAll={viewAll} onOpen={setSelected} brands={brands} setBrands={setBrands} />}
           {tab === 'humanai' && <HumanVsAI rows={dateFiltered} filterText={filterText} />}
           {tab === 'opportunities' && <Opportunities rows={filtered} agg={agg} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'missed' && <MissedOpps rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'conversion' && <Conversion rows={filtered} prevAgg={prevAgg} onOpen={setSelected} viewAll={viewAll} />}
-          {tab === 'bookings' && <BookingsCard rows={filtered} onOpen={setSelected} viewAll={viewAll} bounds={dashBounds} brand={brand} />}
+          {tab === 'bookings' && <BookingsCard rows={filtered} onOpen={setSelected} viewAll={viewAll} bounds={dashBounds} brands={brands} />}
           {tab === 'calls' && <Calls rows={filtered} onOpen={setSelected} viewAll={viewAll} canManage={canManage} onSetReviewed={setReviewed} busy={busy} />}
           {tab === 'fails' && <EpicFails rows={filtered} onOpen={setSelected} viewAll={viewAll} />}
           {tab === 'rubric' && canManage && <RubricTab campaigns={settings.map((s) => s.campaign)} />}
         {tab === 'settings' && canManage && <SettingsTab settings={settings} secretKeys={secretKeys} pipeline={pipeline} base={base} onSave={saveSetting} busy={busy} />}
         </>
       )}
-      {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onExclude={setExcluded} onSetReviewed={setReviewed} onAdjust={saveAdjustment} onSetWinnable={setWinnable} onSetAgent={setCallAgent} agentOptions={agents} busy={busy} canManage={canManage} meName={meName} userId={user?.id} />}
+      {selected && <Detail row={selected} onClose={() => setSelected(null)} onRescore={rescore} onExclude={setExcluded} onSetReviewed={setReviewed} onAdjust={saveAdjustment} onSetAgent={setCallAgent} agentOptions={agents} busy={busy} canManage={canManage} meName={meName} userId={user?.id} />}
     </div>
   )
 }
@@ -1140,12 +1141,12 @@ function Opportunities({ rows, agg, onOpen, viewAll }) {
   const opps = rows.filter((r) => r.opportunity)
   const byBrand = useMemo(() => {
     const m = new Map()
-    opps.forEach((r) => { const b = r.call?.brand || '—'; if (!m.has(b)) m.set(b, { brand: b, opps: 0, booked: 0 }); const o = m.get(b); o.opps++; if (r.outcome === 'Booked') o.booked++ })
-    return Array.from(m.values()).map((o) => ({ ...o, conv: o.opps ? (o.booked / o.opps) * 100 : 0 })).sort((a, b) => b.opps - a.opps)
+    opps.forEach((r) => { const b = r.call?.brand || '—'; if (!m.has(b)) m.set(b, { brand: b, opps: 0, decided: 0, booked: 0 }); const o = m.get(b); o.opps++; if (isDecided(r)) { o.decided++; if (r.outcome === 'Booked') o.booked++ } })
+    return Array.from(m.values()).map((o) => ({ ...o, conv: o.decided ? (o.booked / o.decided) * 100 : 0 })).sort((a, b) => b.opps - a.opps)
   }, [rows])
   const [brandSort, brandOnSort] = useSort()
   const [oppSort, oppOnSort] = useSort()
-  const brandAcc = { Brand: (b) => b.brand, Opportunities: (b) => b.opps, Booked: (b) => b.booked, Conversion: (b) => b.conv }
+  const brandAcc = { Brand: (b) => b.brand, Opportunities: (b) => b.opps, Decided: (b) => b.decided, Booked: (b) => b.booked, Conversion: (b) => b.conv }
   const oppAcc = { Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'What they wanted': (r) => r.opportunity_context, Outcome: (r) => r.outcome, Reason: (r) => r.not_booked_reason, Score: (r) => Number(r.score_pct) }
   const oppView = useTableView(sortRows(opps, oppSort, oppAcc), { searchText: (r) => `${fmtDate(r.call?.call_date)} ${agentOf(r)} ${r.call?.brand || ''} ${r.opportunity_context || ''} ${r.outcome || ''} ${r.not_booked_reason || ''}` })
   if (!opps.length) return <Card style={{ color: '#64748b' }}>No opportunity calls scored in this range yet.</Card>
@@ -1154,16 +1155,16 @@ function Opportunities({ rows, agg, onOpen, viewAll }) {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Tile label="Opportunities" value={agg.opps} />
         <Tile label="Booked / Sold" value={agg.booked} color="#1b5e20" />
-        <Tile label="Missed" value={agg.opps - agg.booked} color="#b71c1c" />
-        <Tile label="Conversion" value={agg.conv == null ? '—' : pct(agg.conv)} color={TEAL} />
+        <Tile label="Missed bookings" value={agg.missed} color="#b71c1c" sub="opps not booked" />
+        <Tile label="Conversion" value={agg.conv == null ? '—' : pct(agg.conv)} color={TEAL} sub={`${agg.booked} of ${agg.decided} decided`} />
       </div>
       <Card style={{ padding: 0 }}>
         <div style={{ fontWeight: 700, padding: 14 }}>Conversion by brand</div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <SortHead cols={['Brand', 'Opportunities', 'Booked', 'Conversion']} sort={brandSort} onSort={brandOnSort} />
+          <SortHead cols={['Brand', 'Opportunities', 'Decided', 'Booked', 'Conversion']} sort={brandSort} onSort={brandOnSort} />
           <tbody>{sortRows(byBrand, brandSort, brandAcc).map((b) => (
             <tr key={b.brand} style={{ borderTop: '1px solid #eef2f7' }}>
-              <td style={{ padding: '8px 12px', fontWeight: 600 }}>{b.brand}</td><td style={{ padding: '8px 12px' }}>{b.opps}</td><td style={{ padding: '8px 12px' }}>{b.booked}</td>
+              <td style={{ padding: '8px 12px', fontWeight: 600 }}>{b.brand}</td><td style={{ padding: '8px 12px' }}>{b.opps}</td><td style={{ padding: '8px 12px' }}>{b.decided}</td><td style={{ padding: '8px 12px' }}>{b.booked}</td>
               <td style={{ padding: '8px 12px' }}><span style={{ color: b.conv >= 50 ? '#1b5e20' : b.conv >= 30 ? '#8d6e00' : '#b71c1c', fontWeight: 700 }}>{pct(b.conv)}</span></td>
             </tr>
           ))}</tbody>
@@ -1207,13 +1208,11 @@ function MissedOpps({ rows, onOpen, viewAll }) {
   )
   const large = allMissed.filter((x) => x.tier === 3).length
   const medium = allMissed.filter((x) => x.tier === 2).length
-  const winnable = allMissed.filter((x) => x.r.winnable).length
   const shown = useMemo(() => {
     return allMissed
       .filter((x) => (highOnly ? x.tier === 3 : true))
-      // Biggest first, then recoverable ones, then most recent.
+      // Biggest first, then most recent.
       .sort((a, b) => (b.tier - a.tier)
-        || (Number(Boolean(b.r.winnable)) - Number(Boolean(a.r.winnable)))
         || String(b.r.call?.call_date || b.r.created_at).localeCompare(String(a.r.call?.call_date || a.r.created_at)))
   }, [allMissed, highOnly])
   const [missSort, missOnSort] = useSort()
@@ -1226,8 +1225,7 @@ function MissedOpps({ rows, onOpen, viewAll }) {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Tile label="Large missed" value={large} color="#92400e" sub="new-door / commercial" />
         <Tile label="Medium missed" value={medium} color="#075985" sub="repairs / service" />
-        <Tile label="Total missed" value={allMissed.length} color="#b71c1c" sub="opps not booked" />
-        <Tile label="Winnable" value={winnable} color={TEAL} sub="recoverable with better handling" />
+        <Tile label="Missed bookings" value={allMissed.length} color="#b71c1c" sub="opps not booked" />
       </div>
       <Card style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
@@ -1342,15 +1340,15 @@ function EpicFails({ rows, onOpen, viewAll }) {
 // ---- Conversion: revenue intelligence (win/loss drivers + leaks) ----
 function Conversion({ rows, onOpen, viewAll, prevAgg }) {
   const opps = rows.filter((r) => r.opportunity)
-  const booked = opps.filter((r) => r.outcome === 'Booked')
-  const lost = opps.filter((r) => r.outcome !== 'Booked')
-  const conv = opps.length ? (booked.length / opps.length) * 100 : 0
+  const decided = rows.filter(isDecided)
+  const booked = decided.filter((r) => r.outcome === 'Booked')
+  const lost = rows.filter(isMissedOpp)   // missed bookings
+  const conv = decided.length ? (booked.length / decided.length) * 100 : 0
   const pctOf = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : 0)
 
   const noAsk = opps.filter((r) => r.asked_for_booking === false).length
   const priceBeforeInfo = rows.filter((r) => r.info_before_pricing === 'no').length
   const noFee = rows.filter((r) => r.set_fee_expectations === 'no').length
-  const winnableLost = lost.filter((r) => r.winnable).length
   const priceDiscussed = rows.filter((r) => r.info_before_pricing === 'yes' || r.info_before_pricing === 'no').length
   const feeApplicable = rows.filter((r) => r.set_fee_expectations === 'yes' || r.set_fee_expectations === 'no').length
   const scoredCount = rows.filter(isScored).length
@@ -1363,14 +1361,14 @@ function Conversion({ rows, onOpen, viewAll, prevAgg }) {
   const maxTag = Math.max(1, ...topTags.map((t) => t[1]))
 
   const am = new Map()
-  opps.forEach((r) => { const a = agentOf(r); if (!am.has(a)) am.set(a, { name: a, opps: 0, booked: 0, asked: 0 }); const o = am.get(a); o.opps++; if (r.outcome === 'Booked') o.booked++; if (r.asked_for_booking) o.asked++ })
-  const agents = Array.from(am.values()).map((o) => ({ ...o, conv: pctOf(o.booked, o.opps), askRate: pctOf(o.asked, o.opps) })).sort((a, b) => b.opps - a.opps)
+  opps.forEach((r) => { const a = agentOf(r); if (!am.has(a)) am.set(a, { name: a, opps: 0, decided: 0, booked: 0, asked: 0 }); const o = am.get(a); o.opps++; if (isDecided(r)) { o.decided++; if (r.outcome === 'Booked') o.booked++ } if (r.asked_for_booking) o.asked++ })
+  const agents = Array.from(am.values()).map((o) => ({ ...o, conv: pctOf(o.booked, o.decided), askRate: pctOf(o.asked, o.opps) })).sort((a, b) => b.opps - a.opps)
 
-  const winList = lost.filter((r) => r.winnable)
+  const winList = lost
   const [agSort, agOnSort] = useSort()
   const [winSort, winOnSort] = useSort()
-  const agAcc = { Agent: (a) => a.name, Opportunities: (a) => a.opps, Booked: (a) => a.booked, Conversion: (a) => a.conv, 'Asked for booking': (a) => a.askRate }
-  const winAcc = { Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'What they wanted': (r) => r.opportunity_context, 'What would have won it': (r) => r.revenue_tip }
+  const agAcc = { Agent: (a) => a.name, Opportunities: (a) => a.opps, Decided: (a) => a.decided, Booked: (a) => a.booked, Conversion: (a) => a.conv, 'Asked for booking': (a) => a.askRate }
+  const winAcc = { Date: (r) => dnum(r.call?.call_date), Agent: (r) => agentOf(r), Brand: (r) => r.call?.brand, 'What they wanted': (r) => r.opportunity_context, Reason: (r) => r.not_booked_reason, 'What would have won it': (r) => r.revenue_tip }
   const agView = useTableView(sortRows(agents, agSort, agAcc), { pageSize: 15, searchText: (a) => a.name })
   const Leak = ({ label, n, sub, of }) => (
     <Card style={{ flex: 1, minWidth: 180 }}>
@@ -1388,8 +1386,8 @@ function Conversion({ rows, onOpen, viewAll, prevAgg }) {
         <div style={{ color: '#94a3b8', fontSize: 20 }}>→</div>
         <Tile label="Booked / Sold" value={booked.length} color="#1b5e20" delta={<Delta now={booked.length} prev={prevAgg?.booked} digits={0} suffix="" />} />
         <div style={{ color: '#94a3b8', fontSize: 20 }}>→</div>
-        <Tile label="Conversion" value={`${conv.toFixed(1)}%`} color={TEAL} sub={`${booked.length} of ${opps.length} opps`} delta={<Delta now={conv} prev={prevAgg?.conv} suffix="pp" />} />
-        <Tile label="Winnable lost" value={winnableLost} color="#b71c1c" sub={`${pctOf(winnableLost, lost.length)}% of lost · recoverable`} delta={<Delta now={winnableLost} prev={prevAgg?.winnable} digits={0} suffix="" good="down" />} />
+        <Tile label="Conversion" value={`${conv.toFixed(1)}%`} color={TEAL} sub={`${booked.length} of ${decided.length} decided`} delta={<Delta now={conv} prev={prevAgg?.conv} suffix="pp" />} />
+        <Tile label="Missed bookings" value={lost.length} color="#b71c1c" sub={`${pctOf(lost.length, decided.length)}% of decided opps`} delta={<Delta now={lost.length} prev={prevAgg?.missed} digits={0} suffix="" good="down" />} />
       </div>
 
       <Card style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
@@ -1399,7 +1397,7 @@ function Conversion({ rows, onOpen, viewAll, prevAgg }) {
           <Leak label="Didn't ask for the booking" n={noAsk} of={opps.length} sub="opportunities" />
           <Leak label="Quoted price before collecting info" n={priceBeforeInfo} of={priceDiscussed} sub="calls where price came up" />
           <Leak label="Fee expectations not set" n={noFee} of={feeApplicable} sub="calls where a fee applied" />
-          <Leak label="Winnable calls lost" n={winnableLost} of={lost.length} sub="lost opps" />
+          <Leak label="Missed bookings" n={lost.length} of={decided.length} sub="decided opps" />
         </div>
       </Card>
 
@@ -1424,11 +1422,12 @@ function Conversion({ rows, onOpen, viewAll, prevAgg }) {
           <TableToolbar view={agView} placeholder="Search agents…" />
           <div style={{ overflowX: 'auto', maxHeight: 620 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <SortHead cols={['Agent', 'Opportunities', 'Booked', 'Conversion', 'Asked for booking']} sort={agSort} onSort={agOnSort} />
+            <SortHead cols={['Agent', 'Opportunities', 'Decided', 'Booked', 'Conversion', 'Asked for booking']} sort={agSort} onSort={agOnSort} />
             <tbody>{agView.pageRows.map((a) => (
               <tr key={a.name} style={{ borderTop: '1px solid #eef2f7' }}>
                 <td style={{ padding: '8px 12px', fontWeight: 600 }}>{a.name}</td>
                 <td style={{ padding: '8px 12px' }}>{a.opps}</td>
+                <td style={{ padding: '8px 12px' }}>{a.decided}</td>
                 <td style={{ padding: '8px 12px' }}>{a.booked}</td>
                 <td style={{ padding: '8px 12px' }}><b style={{ color: a.conv >= 50 ? '#1b5e20' : a.conv >= 30 ? '#8d6e00' : '#b71c1c' }}>{a.conv.toFixed(0)}%</b></td>
                 <td style={{ padding: '8px 12px', color: a.askRate < 50 ? '#b71c1c' : '#334155' }}>{a.askRate.toFixed(0)}%</td>
@@ -1440,10 +1439,11 @@ function Conversion({ rows, onOpen, viewAll, prevAgg }) {
       )}
 
       <Card style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ fontWeight: 700, padding: 14 }}>Winnable calls you lost <span style={{ color: '#94a3b8', fontWeight: 400 }}>— recoverable with better handling</span></div>
-        {winList.length === 0 ? <div style={{ padding: 14, color: '#64748b' }}>None flagged in range.</div> : (
+        <div style={{ fontWeight: 700, padding: 14 }}>Opportunities that didn't book — and what would have won them <span style={{ color: '#94a3b8', fontWeight: 400 }}>({winList.length})</span></div>
+        {winList.length === 0 ? <div style={{ padding: 14, color: '#64748b' }}>No missed bookings in range.</div> : (
+          <div style={{ overflowX: 'auto', maxHeight: 620 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <SortHead cols={['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'What would have won it']} sort={winSort} onSort={winOnSort} />
+            <SortHead cols={['Date', ...(viewAll ? ['Agent'] : []), 'Brand', 'What they wanted', 'Reason', 'What would have won it']} sort={winSort} onSort={winOnSort} />
             <tbody>{sortRows(winList, winSort, winAcc).map((r) => {
               const c = r.call || {}
               return (
@@ -1452,11 +1452,13 @@ function Conversion({ rows, onOpen, viewAll, prevAgg }) {
                   {viewAll && <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{agentOf(r)}</td>}
                   <td style={{ padding: '8px 12px' }}>{c.brand}</td>
                   <td style={{ padding: '8px 12px', maxWidth: 180, color: '#475569' }}>{r.opportunity_context || '—'}</td>
+                  <td style={{ padding: '8px 12px', maxWidth: 160, color: '#64748b' }}>{r.not_booked_reason || '—'}</td>
                   <td style={{ padding: '8px 12px', maxWidth: 320, color: TEAL }}>{r.revenue_tip || '—'}</td>
                 </tr>
               )
             })}</tbody>
           </table>
+          </div>
         )}
       </Card>
     </div>
@@ -1540,7 +1542,7 @@ function Calls({ rows, onOpen, viewAll, canManage, onSetReviewed, busy }) {
 
 // ---- Bookings & Card: every booked call, with TWO layers — did the CSR ASK for a card
 // to secure the appointment (agent metric), and given they asked, did we COLLECT it (corporate metric) ----
-function BookingsCard({ rows, onOpen, viewAll, bounds, brand }) {
+function BookingsCard({ rows, onOpen, viewAll, bounds, brands = [] }) {
   const [filter, setFilter] = useState('all') // all | asked | collected | failed
   // ---------------------------------------------------------------------
   // THE HEADLINE NUMBERS COME FROM `callqa_cc_capture_report()` — the SAME
@@ -1554,6 +1556,7 @@ function BookingsCard({ rows, onOpen, viewAll, bounds, brand }) {
   const [rep, setRep] = useState(null)
   const [repErr, setRepErr] = useState('')
   const [repBusy, setRepBusy] = useState(true)
+  const brandsKey = brands.join('|')
   const startP = bounds?.start || '2020-01-01'
   const endP = bounds?.end || null
   useEffect(() => {
@@ -1561,7 +1564,7 @@ function BookingsCard({ rows, onOpen, viewAll, bounds, brand }) {
     setRepBusy(true); setRepErr('')
     supabase.rpc('callqa_cc_capture_report', {
       p_start: startP, p_end: endP,
-      p_brands: brand && brand !== 'all' ? [brand] : null,
+      p_brands: brands.length ? brands : null,
       p_service_only: serviceOnly, p_by_agent: true,
     }).then(({ data, error }) => {
       if (dead) return
@@ -1569,7 +1572,7 @@ function BookingsCard({ rows, onOpen, viewAll, bounds, brand }) {
       setRepBusy(false)
     })
     return () => { dead = true }
-  }, [startP, endP, brand, serviceOnly])
+  }, [startP, endP, brandsKey, serviceOnly])
 
   const ov = rep?.overall || null
   const booked = useMemo(() => rows.filter((r) => r.outcome === 'Booked'), [rows])
@@ -1612,7 +1615,7 @@ function BookingsCard({ rows, onOpen, viewAll, bounds, brand }) {
             <div style={{ fontSize: 12.5, color: '#64748b' }}>
               These figures come from the same report that is emailed to the client, so they match it exactly.
               {bounds?.start ? ` ${bounds.start} → ${bounds.end || 'today'}.` : ' All time.'}
-              {brand && brand !== 'all' ? ` ${brand}.` : ' All brands.'}
+              {brands.length ? ` ${brands.join(', ')}.` : ' All brands.'}
             </div>
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -1781,7 +1784,7 @@ function Coaching({ byAgent }) {
   )
 }
 
-function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, onSetWinnable, onSetAgent, agentOptions = [], busy, canManage, meName, userId }) {
+function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, onSetAgent, agentOptions = [], busy, canManage, meName, userId }) {
   const c = row.call || {}
   // --- manual agent assignment (managers) ------------------------------------
   const [agentEdit, setAgentEdit] = useState(false)
@@ -1918,6 +1921,8 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
               <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>OPPORTUNITY</div><div style={{ fontWeight: 700 }}>{row.opportunity ? 'Yes' : 'No'}</div></div>
               <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>OUTCOME</div><div style={{ fontWeight: 700, color: os.fg }}>{row.outcome || '—'}</div></div>
               {row.outcome === 'Not Booked' && <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>REASON</div><div style={{ fontWeight: 700 }}>{row.not_booked_reason || '—'}</div></div>}
+              {row.outcome === 'Transferred' && <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>AFTER TRANSFER <span style={{ color: '#94a3b8', fontWeight: 500 }}>· result of the receiving call</span></div><div style={{ fontWeight: 700, color: (OUTCOME_STYLE[row.transfer_outcome] || {}).fg || INK }}>{row.transfer_outcome || '—'}</div></div>}
+              {row.outcome === 'Other' && row.other_reason && <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>OTHER — WHY</div><div style={{ fontWeight: 700 }}>{row.other_reason}</div></div>}
               {row.opportunity_context && <div style={{ flex: 1, minWidth: 180 }}><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CALLER WANTED</div><div>{row.opportunity_context}</div></div>}
             </div>
             {(row.topics || []).length > 0 && <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{row.topics.map((t, i) => <Pill key={i} bg="#e0f2fe" fg="#075985">🏷 {t}</Pill>)}</div>}
@@ -1930,21 +1935,6 @@ function Detail({ row, onClose, onRescore, onExclude, onSetReviewed, onAdjust, o
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>ASKED FOR BOOKING</div><b style={{ color: row.asked_for_booking ? '#1b5e20' : '#b71c1c' }}>{row.asked_for_booking == null ? '—' : (row.asked_for_booking ? 'Yes' : 'No')}</b></div>
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>INFO BEFORE PRICING</div><b>{ynLabel(row.info_before_pricing)}</b></div>
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>FEE EXPECTATIONS SET</div><b>{ynLabel(row.set_fee_expectations)}</b></div>
-                <div>
-                  <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>WINNABLE {canManage && <span style={{ color: '#94a3b8', fontWeight: 500 }}>· set</span>}</div>
-                  {canManage ? (
-                    <div style={{ display: 'flex', gap: 4, marginTop: 3 }}>
-                      {[['Yes', true], ['No', false]].map(([lbl, val]) => (
-                        <button key={lbl} disabled={busy === row.id} title={row.winnable === val ? 'Current value' : `Mark this call ${lbl === 'Yes' ? 'winnable' : 'not winnable'}`}
-                          onClick={() => { if (row.winnable !== val) onSetWinnable(row.id, val, c.id) }}
-                          style={{ fontSize: 12, fontWeight: 700, padding: '2px 10px', borderRadius: 999, cursor: busy === row.id ? 'default' : 'pointer',
-                            border: `1px solid ${row.winnable === val ? (val ? '#1b5e20' : '#b71c1c') : '#cbd5e1'}`,
-                            background: row.winnable === val ? (val ? '#e8f5e9' : '#fdecea') : '#fff',
-                            color: row.winnable === val ? (val ? '#1b5e20' : '#b71c1c') : '#64748b' }}>{lbl}</button>
-                      ))}
-                    </div>
-                  ) : <b>{row.winnable == null ? '—' : (row.winnable ? 'Yes' : 'No')}</b>}
-                </div>
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CARD ASKED</div><b style={{ color: row.asked_for_cc == null ? '#64748b' : (row.asked_for_cc ? '#1b5e20' : '#b71c1c') }}>{row.asked_for_cc == null ? '—' : (row.asked_for_cc ? 'Yes' : 'No')}</b></div>
                 <div><div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>CARD COLLECTED</div><b style={{ color: row.asked_for_cc !== true ? '#94a3b8' : (row.collected_cc == null ? '#8d6e00' : (row.collected_cc ? '#0f766e' : '#b71c1c')) }}>{row.asked_for_cc !== true ? 'N/A' : (row.collected_cc == null ? 'Pending' : (row.collected_cc ? 'Yes' : 'No'))}</b></div>
               </div>
@@ -2320,6 +2310,44 @@ function Select({ label, value, onChange, opts, disabled = false, title }) {
     </label>
   )
 }
+// Multi-select brand filter: a button that opens a small tick-box panel.
+// `value` = [] means all brands. Closes on an outside click.
+function BrandMultiSelect({ options, value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  const sel = value || []
+  const toggle = (b) => onChange(sel.includes(b) ? sel.filter((x) => x !== b) : [...sel, b])
+  const label = sel.length === 0 ? 'All brands' : sel.length === 1 ? sel[0] : `${sel.length} brands`
+  return (
+    <div ref={ref} style={{ fontSize: 12, color: '#64748b', position: 'relative' }}>
+      <div style={{ marginBottom: 3, fontWeight: 600 }}>Brand</div>
+      <button type="button" onClick={() => setOpen((o) => !o)} title={sel.length > 1 ? sel.join(', ') : undefined}
+        style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', fontSize: 13, cursor: 'pointer', color: INK, minWidth: 140, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, maxWidth: 240 }}>
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        <span style={{ color: '#94a3b8', fontSize: 10 }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 50, background: '#fff', color: INK, border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,23,42,.12)', padding: 6, minWidth: 220, maxHeight: 320, overflowY: 'auto' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 700, borderBottom: '1px solid #f1f5f9' }}>
+            <input type="checkbox" checked={sel.length === 0} onChange={() => onChange([])} style={{ accentColor: TEAL }} /> All brands
+          </label>
+          {options.map((b) => (
+            <label key={b} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
+              <input type="checkbox" checked={sel.includes(b)} onChange={() => toggle(b)} style={{ accentColor: TEAL }} /> {b}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 function DateField({ label, value, onChange, min, max }) {
   return (
     <label style={{ fontSize: 12, color: '#64748b' }}>
@@ -2426,38 +2454,40 @@ function buildScorecardData(rows) {
     scored: scored.length,
     avg: scored.length ? scored.reduce((s, r) => s + (Number(r.score_pct) || 0), 0) / scored.length : null,
     opps: rows.filter((r) => r.opportunity).length,
-    booked: rows.filter((r) => r.opportunity && r.outcome === 'Booked').length,
+    decided: rows.filter(isDecided).length,
+    booked: rows.filter(isBookedOpp).length,
     missed: rows.filter(isMissedOpp).length,
-    winnable: rows.filter((r) => isMissedOpp(r) && r.winnable).length,
     large: rows.filter((r) => isMissedOpp(r) && valueTier(r) === 3).length,
   }
   const bm = new Map()
   rows.forEach((r) => {
     const b = r.call?.brand || '—'
-    if (!bm.has(b)) bm.set(b, { brand: b, scores: [], opps: 0, booked: 0, ccYes: 0, collYes: 0, missed: 0, winnable: 0, large: 0, agents: new Set() })
+    if (!bm.has(b)) bm.set(b, { brand: b, scores: [], opps: 0, decided: 0, booked: 0, ccYes: 0, collYes: 0, missed: 0, large: 0, agents: new Set() })
     const o = bm.get(b); if (isScored(r)) o.scores.push(Number(r.score_pct) || 0)
-    if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') { o.booked++; if (r.asked_for_cc === true) o.ccYes++; if (r.collected_cc === true) o.collYes++ } }
-    if (isMissedOpp(r)) { o.missed++; if (r.winnable) o.winnable++; if (valueTier(r) === 3) o.large++ }
+    if (r.opportunity) o.opps++
+    if (isDecided(r)) { o.decided++; if (r.outcome === 'Booked') { o.booked++; if (r.asked_for_cc === true) o.ccYes++; if (r.collected_cc === true) o.collYes++ } }
+    if (isMissedOpp(r)) { o.missed++; if (valueTier(r) === 3) o.large++ }
     const an = agentOf(r); if (an) o.agents.add(an)
   })
   const brands = Array.from(bm.values()).map((o) => ({
     ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
-    conv: P(o.booked, o.opps), cardRate: P(o.ccYes, o.booked), collectRate: P(o.collYes, o.ccYes), calls: o.scores.length, nAgents: o.agents.size,
+    conv: P(o.booked, o.decided), cardRate: P(o.ccYes, o.booked), collectRate: P(o.collYes, o.ccYes), calls: o.scores.length, nAgents: o.agents.size,
   })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
 
   const am = new Map()
   rows.forEach((r) => {
     const an = agentOf(r); const b = r.call?.brand || '—'; const k = an + '|||' + b
-    if (!am.has(k)) am.set(k, { name: an, brand: b, scores: [], opps: 0, booked: 0, ccYes: 0, collYes: 0, asked: 0, focus: {}, win: {} })
+    if (!am.has(k)) am.set(k, { name: an, brand: b, scores: [], opps: 0, decided: 0, booked: 0, ccYes: 0, collYes: 0, asked: 0, focus: {}, win: {} })
     const o = am.get(k); if (isScored(r)) o.scores.push(Number(r.score_pct) || 0)
-    if (r.opportunity) { o.opps++; if (r.outcome === 'Booked') { o.booked++; if (r.asked_for_cc === true) o.ccYes++; if (r.collected_cc === true) o.collYes++ } if (r.asked_for_booking) o.asked++ }
+    if (r.opportunity) { o.opps++; if (r.asked_for_booking) o.asked++ }
+    if (isDecided(r)) { o.decided++; if (r.outcome === 'Booked') { o.booked++; if (r.asked_for_cc === true) o.ccYes++; if (r.collected_cc === true) o.collYes++ } }
     ;(r.improvement_tags || []).forEach((t) => o.focus[t] = (o.focus[t] || 0) + 1)
     ;(r.strength_tags || []).forEach((t) => o.win[t] = (o.win[t] || 0) + 1)
   })
   const top = (m) => Object.entries(m).sort((a, b) => b[1] - a[1]).map((x) => x[0])
   const agents = Array.from(am.values()).filter((o) => o.scores.length >= 1 && o.name && o.name !== 'Unknown').map((o) => ({
     ...o, avg: o.scores.length ? o.scores.reduce((a, b) => a + b, 0) / o.scores.length : null,
-    calls: o.scores.length, conv: P(o.booked, o.opps), askRate: P(o.asked, o.opps), cardRate: P(o.ccYes, o.booked), collectRate: P(o.collYes, o.ccYes),
+    calls: o.scores.length, conv: P(o.booked, o.decided), askRate: P(o.asked, o.opps), cardRate: P(o.ccYes, o.booked), collectRate: P(o.collYes, o.ccYes),
     topFocus: top(o.focus), topWin: top(o.win), ai: isAiCsr(o.name),
   })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
 
@@ -2514,13 +2544,15 @@ function deriveDashAgg(agg) {
       // separately so handoffs stay visible instead of silently vanishing.
       decided: o.decided || 0, handedOff: o.handed_off || 0,
       bookingRate: o.decided ? (100 * o.booked) / o.decided : null,
-      winnable: o.winnable || 0, lost: o.lost || 0,
-      winPct: o.lost ? Math.round((100 * o.winnable) / o.lost) : null,
+      // Missed bookings = decided opportunities that did NOT book (decided − booked).
+      // The RPC may still carry a legacy `winnable` key — deliberately ignored.
+      missed: Math.max(0, (o.decided || 0) - (o.booked || 0)),
+      missedPct: o.decided ? Math.round((100 * Math.max(0, o.decided - (o.booked || 0))) / o.decided) : null,
       noAsk: o.no_ask || 0, priceBefore: o.price_before || 0, noContact: o.no_contact || 0, feeObj: o.fee_obj || 0,
       humanAvg: num(o.human_avg), aiAvg: num(o.ai_avg), aiN: o.ai_n || 0,
     },
-    brands: ((agg && agg.brands) || []).map((b) => ({ ...b, avg: num(b.avg), booking: b.decided ? (100 * b.booked) / b.decided : null })),
-    agents: ((agg && agg.agents) || []).map((a) => ({ ...a, avg: num(a.avg), booking: a.decided ? (100 * a.booked) / a.decided : null })),
+    brands: ((agg && agg.brands) || []).map((b) => ({ ...b, avg: num(b.avg), booking: b.decided ? (100 * b.booked) / b.decided : null, missed: Math.max(0, (b.decided || 0) - (b.booked || 0)) })),
+    agents: ((agg && agg.agents) || []).map((a) => ({ ...a, avg: num(a.avg), booking: a.decided ? (100 * a.booked) / a.decided : null, missed: Math.max(0, (a.decided || 0) - (a.booked || 0)) })),
     priorities: ((agg && agg.priorities) || []).map((p) => ({ label: friendlyTag(p.tag), n: p.n, tag: p.tag })),
     queue: (agg && agg.queue) || [],
   }
@@ -2530,10 +2562,10 @@ function deriveDashAgg(agg) {
 // ScoreDotPlot — one dot per agent (or brand) at their PERIOD AVERAGE, plotted
 // against a chosen metric. Agents/brands are alphabetical along the x-axis; the
 // dot's height is the score, its size is call volume, its color is the band.
-// The metric toggle (QA / Booking rate / Winnable-loss rate) swaps the y-axis.
+// The metric toggle (QA / Booking rate / Missed-booking rate) swaps the y-axis.
 // Click a dot to scope the page to that agent/brand. Replaces the old paginated
-// leaderboard table. Winnable is shown as a RATE (winnable ÷ calls) so volume
-// doesn't push the biggest brand/agent to the top.
+// leaderboard table. Missed bookings are shown as a RATE (missed ÷ scored calls)
+// so volume doesn't push the biggest brand/agent to the top.
 // ===========================================================================
 function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
   const [metric, setMetric] = useState('qa')
@@ -2542,7 +2574,7 @@ function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
       name: r[nameKey],
       qa: r.avg == null ? null : Number(r.avg),
       booking: r.booking == null ? null : Number(r.booking),
-      winnable: r.scored ? (100 * (r.winnable || 0)) / r.scored : 0,
+      missed: r.scored ? (100 * (r.missed || 0)) / r.scored : 0,
       scored: r.scored || 0,
       brand: nameKey === 'name' ? (r.brand || null) : null,
     }))
@@ -2552,7 +2584,7 @@ function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
   const METRICS = {
     qa: { label: 'QA score', ymax: 100, target: 70, unit: '%', get: (d) => d.qa, col: (v) => scoreColor(v) },
     booking: { label: 'Booking rate', ymax: 100, target: 50, unit: '%', get: (d) => d.booking, col: (v) => (v == null ? '#94a3b8' : v >= 50 ? '#1b5e20' : v >= 35 ? '#8d6e00' : '#b71c1c') },
-    winnable: { label: 'Winnable-loss rate', ymax: null, target: null, unit: '%', get: (d) => d.winnable, col: (v) => (v == null ? '#94a3b8' : v >= 35 ? '#b71c1c' : v >= 25 ? '#8d6e00' : '#1b5e20') },
+    missed: { label: 'Missed-booking rate', ymax: null, target: null, unit: '%', get: (d) => d.missed, col: (v) => (v == null ? '#94a3b8' : v >= 35 ? '#b71c1c' : v >= 25 ? '#8d6e00' : '#1b5e20') },
   }
   const M = METRICS[metric]
   const n = items.length
@@ -2609,7 +2641,7 @@ function ScoreDotPlot({ rows, nameKey = 'name', onPick }) {
         <span><b style={{ color: '#1b5e20' }}>●</b> good</span>
         <span><b style={{ color: '#8d6e00' }}>●</b> watch</span>
         <span><b style={{ color: '#b71c1c' }}>●</b> below</span>
-        {metric === 'winnable' && <span>· winnable ÷ calls — lower is better</span>}
+        {metric === 'missed' && <span>· missed bookings ÷ scored calls — lower is better</span>}
       </div>
     </div>
   )
@@ -2619,7 +2651,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
   const [focus, setFocus] = useState(null) // { title, calls }
   const [busy, setBusy] = useState(false)
   const { k, agents: agentRows, priorities } = deriveDashAgg(agg)
-  const coachAgents = agentRows.filter((a) => a.winnable > 0).sort((a, b) => b.winnable - a.winnable).slice(0, 8)
+  const coachAgents = agentRows.filter((a) => a.missed > 0).sort((a, b) => b.missed - a.missed).slice(0, 8)
   const openBucket = async (title, bucket, tag, agentName) => {
     setBusy(true); const calls = await loadBucket(bucket, tag, agentName); setBusy(false)
     setFocus({ title, calls: calls || [] }); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -2681,7 +2713,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
           <KpiCard label="Average QA Score" value={pct(k.avg)} color={scoreColor(k.avg)} sub={k.scored.toLocaleString() + ' scored'} onClick={() => onGotoTab('scorecards')} />
           <KpiCard label="Booking Rate" value={pct(k.bookingRate)} color={TEAL} sub={k.booked + ' of ' + k.decided + ' decided' + (k.handedOff ? ` · ${k.handedOff} handed off` : '')} onClick={() => openBucket('Booked opportunities', 'booked')} />
           <KpiCard label="Calls Reviewed" value={k.scored.toLocaleString()} sub="real conversations" onClick={() => openBucket('All scored calls', 'scored')} />
-          <KpiCard label="Winnable Losses" value={k.winnable.toLocaleString()} color="#b71c1c" sub={pct(k.winPct) + ' of lost'} onClick={() => openBucket('Winnable losses', 'winnable')} />
+          <KpiCard label="Missed Bookings" value={k.missed.toLocaleString()} color="#b71c1c" sub={k.missed + ' of ' + k.decided + ' decided'} onClick={() => openBucket('Missed bookings', 'missed')} />
           <KpiCard label="Booking Not Asked For" value={k.noAsk.toLocaleString()} color="#b71c1c" sub="opportunities, no ask" onClick={() => openBucket('No booking attempt', 'noask')} />
           <KpiCard label="Pricing Before Discovery" value={k.priceBefore.toLocaleString()} color="#8d6e00" sub="quoted before qualifying" onClick={() => openBucket('Pricing before discovery', 'price')} />
           <KpiCard label="Fee / Pricing Objections" value={k.feeObj.toLocaleString()} color="#8d6e00" sub="price / fee pushback" onClick={() => openBucket('Fee / pricing objections', 'feeobj')} />
@@ -2697,7 +2729,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9 }}>
           {[
-            ['Needs Coaching', 'winnable', k.winnable], ['Winnable Losses', 'winnable', k.winnable],
+            ['Needs Coaching', 'missed', k.missed], ['Missed Bookings', 'missed', k.missed],
             ['Lowest Scoring Calls', 'lowest', null], ['Great Calls', 'great', null],
             ['No Booking Attempt', 'noask', k.noAsk], ['Pricing Objections', 'feeobj', k.feeObj],
             ['Customer Info Not Captured', 'nocontact', k.noContact], ['High Performing Calls', 'great', null],
@@ -2730,13 +2762,13 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
         </Card>
         <Card>
           <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Coaching Queue <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12.5 }}>— by agent</span></div>
-          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Agents with the most winnable losses. Click to see their coaching calls.</div>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Agents with the most missed bookings. Click to see their coaching calls.</div>
           {coachAgents.length ? coachAgents.map((a) => (
-            <div key={a.name} onClick={() => { onPickAgent(a.name); openBucket(a.name + ' — winnable losses to coach', 'winnable', null, a.name) }} style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 13, marginBottom: 10, cursor: 'pointer' }}
+            <div key={a.name} onClick={() => { onPickAgent(a.name); openBucket(a.name + ' — missed bookings to coach', 'missed', null, a.name) }} style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 13, marginBottom: 10, cursor: 'pointer' }}
               onMouseEnter={(e) => e.currentTarget.style.borderColor = TEAL} onMouseLeave={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <b style={{ fontSize: 15 }}>{a.name}</b>
-                <span style={{ marginLeft: 'auto', background: '#fdecea', color: '#b71c1c', fontWeight: 800, padding: '2px 8px', borderRadius: 8, fontSize: 12.5 }}>{a.winnable} winnable</span>
+                <span style={{ marginLeft: 'auto', background: '#fdecea', color: '#b71c1c', fontWeight: 800, padding: '2px 8px', borderRadius: 8, fontSize: 12.5 }}>{a.missed} missed</span>
               </div>
               <div style={{ display: 'flex', gap: 14, marginTop: 7, fontSize: 12.5, color: '#475569', flexWrap: 'wrap' }}>
                 <span>QA <b style={{ color: scoreColor(a.avg) }}>{pct(a.avg)}</b></span>
@@ -2745,7 +2777,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
                 <span style={{ marginLeft: 'auto', color: TEAL, fontWeight: 700 }}>review calls ›</span>
               </div>
             </div>
-          )) : <div style={{ color: '#64748b' }}>No winnable losses in this range.</div>}
+          )) : <div style={{ color: '#64748b' }}>No missed bookings in this range.</div>}
         </Card>
       </div>
     </div>
@@ -2759,7 +2791,7 @@ function ManagerDashboard({ agg, loading, err, loadBucket, onOpen, onGotoTab, on
 // the view spans >1 brand), coaching priorities, queue and agent cards. Poppins
 // (already loaded in index.html). Additive tab — nothing else changes.
 // ===========================================================================
-function CoachingBriefing({ agg, prevAgg, loading, err, loadBucket, brand, agent, onOpen, onPickBrand, onPickAgent }) {
+function CoachingBriefing({ agg, prevAgg, loading, err, loadBucket, brands = [], agent, onOpen, onPickBrand, onPickAgent }) {
   const F = 'Poppins,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif'
   const C = { paper: '#f7f5f0', card: '#fff', ink: '#1a2430', ink2: '#556372', ink3: '#8a97a5', line: '#e7e2d8', line2: '#eef0ee', teal: TEAL, tan: '#a97c3f', tanbg: '#f3ead9', good: '#1b7a3d', goodbg: '#e6f4ea', warn: '#9a7400', warnbg: '#fbf1cf', bad: '#c0342b', badbg: '#fbe7e4' }
   const [focus, setFocus] = useState(null)
@@ -2767,7 +2799,7 @@ function CoachingBriefing({ agg, prevAgg, loading, err, loadBucket, brand, agent
   const [sort, setSort] = useState('qa')
   const { k, brands: brandRows, agents: agentRows, priorities } = deriveDashAgg(agg)
   const multiBrand = brandRows.length > 1
-  const coachAgents = agentRows.filter((a) => a.winnable > 0).sort((a, b) => b.winnable - a.winnable).slice(0, 8)
+  const coachAgents = agentRows.filter((a) => a.missed > 0).sort((a, b) => b.missed - a.missed).slice(0, 8)
 
   // Agent spotlight = STANDOUTS (top QA) + MOST IMPROVED (biggest QA gain vs the
   // prior window). A volume floor keeps small-sample flukes out; if too few CSRs
@@ -2798,10 +2830,11 @@ function CoachingBriefing({ agg, prevAgg, loading, err, loadBucket, brand, agent
     setBusy(true); const calls = await loadBucket(bucket, tag, agentName); setBusy(false)
     setFocus({ title, calls: calls || [] }); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
   }
-  const SORTS = { qa: ['QA score', (a, b) => (b.avg ?? -1) - (a.avg ?? -1)], booking: ['Booking rate', (a, b) => (b.booking ?? -1) - (a.booking ?? -1)], winnable: ['Winnable losses', (a, b) => b.winnable - a.winnable], calls: ['Call volume', (a, b) => b.scored - a.scored] }
+  const SORTS = { qa: ['QA score', (a, b) => (b.avg ?? -1) - (a.avg ?? -1)], booking: ['Booking rate', (a, b) => (b.booking ?? -1) - (a.booking ?? -1)], missed: ['Missed bookings', (a, b) => b.missed - a.missed], calls: ['Call volume', (a, b) => b.scored - a.scored] }
   const sortedBrands = brandRows.slice().sort(SORTS[sort][1])
   const scopedAgent = agent && agent !== 'all'
-  const title = scopedAgent ? agent : (brand && brand !== 'all' ? brand : 'Portfolio — all brands')
+  const brandLabel = brands.length === 0 ? '' : brands.length === 1 ? brands[0] : `${brands.length} brands`
+  const title = scopedAgent ? agent : (brandLabel || 'Portfolio — all brands')
 
   const box = { background: C.card, border: `1px solid ${C.line}`, borderRadius: 16 }
   const kicker = { fontSize: 12, letterSpacing: '.12em', textTransform: 'uppercase', color: C.tan, fontWeight: 700 }
@@ -2846,7 +2879,7 @@ function CoachingBriefing({ agg, prevAgg, loading, err, loadBucket, brand, agent
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, borderBottom: `2px solid ${C.ink}`, paddingBottom: 14 }}>
         <div><div style={kicker}>{scopedAgent ? 'Call QA · CSR Briefing' : 'Call QA · Coaching Briefing'}</div>
           <h1 style={{ fontFamily: F, fontSize: 30, margin: '6px 0 0', fontWeight: 600 }}>{title}</h1>
-          {scopedAgent && <div style={{ color: C.ink2, fontSize: 13, marginTop: 2 }}>CSR{brand && brand !== 'all' ? ` · ${brand}` : ''} · <span onClick={() => onPickAgent('all')} style={{ color: C.teal, fontWeight: 700, cursor: 'pointer' }}>← back to portfolio</span></div>}</div>
+          {scopedAgent && <div style={{ color: C.ink2, fontSize: 13, marginTop: 2 }}>CSR{brandLabel ? ` · ${brandLabel}` : ''} · <span onClick={() => onPickAgent('all')} style={{ color: C.teal, fontWeight: 700, cursor: 'pointer' }}>← back to portfolio</span></div>}</div>
         <div style={{ textAlign: 'right', color: C.ink2, fontSize: 13 }}>{k.scored.toLocaleString()} calls reviewed{multiBrand ? ` · ${brandRows.length} brands` : ''}</div>
       </div>
 
@@ -2855,16 +2888,16 @@ function CoachingBriefing({ agg, prevAgg, loading, err, loadBucket, brand, agent
         <div>
           <div style={kicker}>What to fix this period</div>
           <h2 style={{ fontFamily: F, fontSize: 24, lineHeight: 1.3, margin: '10px 0 12px', fontWeight: 600 }}>
-            <span style={{ color: C.teal, borderBottom: `3px solid ${C.tanbg}` }}>{k.winPct == null ? '—' : k.winPct + '%'} of every lost opportunity was winnable</span> — and the ask for the appointment was missing on {k.noAsk.toLocaleString()} calls.
+            <span style={{ color: C.teal, borderBottom: `3px solid ${C.tanbg}` }}>{k.missed.toLocaleString()} of {k.decided.toLocaleString()} decided opportunities didn't book{k.missedPct == null ? '' : ` (${k.missedPct}%)`}</span> — and the ask for the appointment was missing on {k.noAsk.toLocaleString()} calls.
           </h2>
           <p style={{ color: C.ink2, lineHeight: 1.6, margin: 0 }}>QA is {P(k.avg)} and booking is {P(k.bookingRate)}. The same three coachable behaviors — asking for the appointment, capturing contact information, and framing the service fee — explain most of the gap{multiBrand ? ' across the portfolio' : ''}.</p>
           <div style={{ marginTop: 16, display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-            <button onClick={() => openBucket('Coaching queue — winnable losses', 'winnable')} style={{ background: C.teal, color: '#fff', border: 'none', borderRadius: 10, padding: '9px 15px', fontWeight: 700, cursor: 'pointer', fontFamily: F }}>Open the coaching queue →</button>
+            <button onClick={() => openBucket('Coaching queue — missed bookings', 'missed')} style={{ background: C.teal, color: '#fff', border: 'none', borderRadius: 10, padding: '9px 15px', fontWeight: 700, cursor: 'pointer', fontFamily: F }}>Open the coaching queue →</button>
           </div>
         </div>
         <div style={{ borderLeft: `1px solid ${C.line}`, paddingLeft: 24, display: 'flex', flexDirection: 'column', gap: 16, justifyContent: 'center' }}>
-          <div><div style={{ fontSize: 12, color: C.ink3, fontWeight: 600, textTransform: 'uppercase' }}>Winnable losses</div><div className="num" style={{ fontSize: 30, fontWeight: 700, color: C.bad }}>{k.winnable.toLocaleString()}</div></div>
-          <div><div style={{ fontSize: 12, color: C.ink3, fontWeight: 600, textTransform: 'uppercase' }}>Booking rate</div><div className="num" style={{ fontSize: 30, fontWeight: 700, color: C.teal }}>{P(k.bookingRate)}</div></div>
+          <div><div style={{ fontSize: 12, color: C.ink3, fontWeight: 600, textTransform: 'uppercase' }}>Missed bookings</div><div className="num" style={{ fontSize: 30, fontWeight: 700, color: C.bad }}>{k.missed.toLocaleString()}</div></div>
+          <div><div style={{ fontSize: 12, color: C.ink3, fontWeight: 600, textTransform: 'uppercase' }}>Booking rate</div><div className="num" style={{ fontSize: 30, fontWeight: 700, color: C.teal }}>{P(k.bookingRate)}</div><div style={{ fontSize: 12, color: C.ink2 }}>{k.booked} of {k.decided} decided</div></div>
           {k.aiN > 0 && <div><div style={{ fontSize: 12, color: C.ink3, fontWeight: 600, textTransform: 'uppercase' }}>Human vs AI QA</div><div className="num" style={{ fontSize: 30, fontWeight: 700 }}>{P(k.humanAvg)} / {P(k.aiAvg)}</div></div>}
         </div>
       </div>
@@ -2881,7 +2914,7 @@ function CoachingBriefing({ agg, prevAgg, loading, err, loadBucket, brand, agent
       </div>
 
       {/* brand ranking — only when >1 brand. Dot plot: one dot per brand at its
-          period average; the metric toggle swaps QA / Booking / Winnable-loss. */}
+          period average; the metric toggle swaps QA / Booking / Missed-booking rate. */}
       {multiBrand && (
         <>
           <div style={stitle}>Brand performance <span style={{ color: C.ink3, fontSize: 12.5, fontWeight: 400 }}>· one dot per brand · pick a metric · click a brand to drill in</span></div>
@@ -2916,7 +2949,7 @@ function CoachingBriefing({ agg, prevAgg, loading, err, loadBucket, brand, agent
             <div style={{ display: 'flex', gap: 16, marginTop: 14 }}>
               <div><div style={{ fontSize: 11, color: C.ink3, textTransform: 'uppercase', fontWeight: 600 }}>QA</div><div className="num" style={{ fontSize: 19, fontWeight: 700, color: qCol(a.avg) }}>{P(a.avg)}</div></div>
               <div><div style={{ fontSize: 11, color: C.ink3, textTransform: 'uppercase', fontWeight: 600 }}>Booking</div><div className="num" style={{ fontSize: 19, fontWeight: 700, color: bCol(a.booking) }}>{P(a.booking)}</div></div>
-              <div><div style={{ fontSize: 11, color: C.ink3, textTransform: 'uppercase', fontWeight: 600 }}>Winnable</div><div className="num" style={{ fontSize: 19, fontWeight: 700 }}>{a.winnable}</div></div>
+              <div><div style={{ fontSize: 11, color: C.ink3, textTransform: 'uppercase', fontWeight: 600 }}>Missed</div><div className="num" style={{ fontSize: 19, fontWeight: 700 }}>{a.missed}</div></div>
             </div>
             <div style={{ marginTop: 12, paddingTop: 11, borderTop: `1px solid ${C.line2}`, fontSize: 12.5, color: C.teal, fontWeight: 700 }}>open scorecard ›</div>
           </div>
@@ -2938,17 +2971,17 @@ function CoachingBriefing({ agg, prevAgg, loading, err, loadBucket, brand, agent
         </div>
         <div style={{ ...box, padding: 20 }}>
           <div style={{ ...stitle, margin: '0 0 4px' }}>Coaching queue <span style={{ color: C.ink3, fontSize: 12.5, fontWeight: 400 }}>· by agent</span></div>
-          <div style={{ color: C.ink2, fontSize: 13, marginBottom: 6 }}>Agents with the most winnable losses. Click to see their coaching calls.</div>
+          <div style={{ color: C.ink2, fontSize: 13, marginBottom: 6 }}>Agents with the most missed bookings. Click to see their coaching calls.</div>
           {coachAgents.length ? coachAgents.map((a, i) => (
-            <div key={a.name} onClick={() => { onPickAgent(a.name); openBucket(a.name + ' — winnable losses to coach', 'winnable', null, a.name) }} style={{ display: 'flex', gap: 13, padding: '13px 0', borderTop: i ? `1px solid ${C.line2}` : 'none', alignItems: 'center', cursor: 'pointer' }}>
+            <div key={a.name} onClick={() => { onPickAgent(a.name); openBucket(a.name + ' — missed bookings to coach', 'missed', null, a.name) }} style={{ display: 'flex', gap: 13, padding: '13px 0', borderTop: i ? `1px solid ${C.line2}` : 'none', alignItems: 'center', cursor: 'pointer' }}>
               <div style={{ width: 40, height: 40, borderRadius: '50%', background: C.teal, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16, flexShrink: 0 }}>{a.name[0]}</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700 }}>{a.name} <span style={{ color: C.bad, fontWeight: 700, fontSize: 12.5 }}>· {a.winnable} winnable</span></div>
+                <div style={{ fontWeight: 700 }}>{a.name} <span style={{ color: C.bad, fontWeight: 700, fontSize: 12.5 }}>· {a.missed} missed</span></div>
                 <div style={{ color: C.ink2, fontSize: 12.5, marginTop: 2 }}>QA {P(a.avg)} · Booking {P(a.booking)} · {a.scored.toLocaleString()} calls</div>
               </div>
               <span style={{ color: C.teal, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>review calls ›</span>
             </div>
-          )) : <div style={{ color: C.ink2 }}>No winnable losses in this view.</div>}
+          )) : <div style={{ color: C.ink2 }}>No missed bookings in this view.</div>}
         </div>
       </div>
     </div>
@@ -2976,8 +3009,9 @@ function HaiBar({ color, textColor, label, value, max }) {
 // opportunities are flagged as low-confidence (shown muted with a ° marker).
 const HAI_LOW_N = 30
 function HumanVsAI({ rows, filterText }) {
-  // Which lens: 'qa' = avg QA score (audit quality), 'close' = conversion
-  // (booked ÷ opportunities on scored calls).
+  // Which lens: 'qa' = avg QA score (audit quality), 'close' = booking rate
+  // (booked ÷ DECIDED opportunities — Transferred / Other stay out). The *Opps
+  // fields below hold decided-opportunity counts.
   const [metric, setMetric] = useState('qa')
   const data = useMemo(() => buildScorecardData(rows), [rows])
   const byBrand = useMemo(() => {
@@ -2985,8 +3019,8 @@ function HumanVsAI({ rows, filterText }) {
     data.agents.forEach((a) => {
       if (!m.has(a.brand)) m.set(a.brand, { brand: a.brand, hCalls: 0, hSum: 0, aCalls: 0, aSum: 0, hOpps: 0, hBooked: 0, aOpps: 0, aBooked: 0 })
       const o = m.get(a.brand)
-      if (a.ai) { o.aCalls += a.calls; o.aSum += (a.avg || 0) * a.calls; o.aOpps += a.opps || 0; o.aBooked += a.booked || 0 }
-      else { o.hCalls += a.calls; o.hSum += (a.avg || 0) * a.calls; o.hOpps += a.opps || 0; o.hBooked += a.booked || 0 }
+      if (a.ai) { o.aCalls += a.calls; o.aSum += (a.avg || 0) * a.calls; o.aOpps += a.decided || 0; o.aBooked += a.booked || 0 }
+      else { o.hCalls += a.calls; o.hSum += (a.avg || 0) * a.calls; o.hOpps += a.decided || 0; o.hBooked += a.booked || 0 }
     })
     return Array.from(m.values()).map((o) => ({
       ...o,
@@ -3020,7 +3054,7 @@ function HumanVsAI({ rows, filterText }) {
   const hN = (b) => (isQa ? b.hCalls : b.hOpps)
   const aN = (b) => (isQa ? b.aCalls : b.aOpps)
   const lowN = (b) => (!isQa && aN(b) > 0 && aN(b) < HAI_LOW_N)   // thin AI close-rate sample
-  const nWord = isQa ? 'calls' : 'opps'
+  const nWord = isQa ? 'calls' : 'decided opps'
   const totH = isQa ? tot.hAvg : tot.hClose
   const totA = isQa ? tot.aAvg : tot.aClose
   const totLift = isQa ? tot.qaLift : tot.closeLift
@@ -3040,14 +3074,14 @@ function HumanVsAI({ rows, filterText }) {
   const un = useMemo(() => {
     const calls = Math.max(0, (ov.scored || 0) - tot.hCalls - tot.aCalls)
     const qaSum = (ov.avg || 0) * (ov.scored || 0) - tot.hSum - tot.aSum
-    const opps = Math.max(0, (ov.opps || 0) - tot.hOpps - tot.aOpps)
+    const opps = Math.max(0, (ov.decided || 0) - tot.hOpps - tot.aOpps)
     const booked = Math.max(0, (ov.booked || 0) - tot.hBooked - tot.aBooked)
     return { calls, opps, avg: calls ? qaSum / calls : null, close: opps ? (booked / opps) * 100 : null }
   }, [ov, tot])
   const unVal = isQa ? un.avg : un.close
   const unN = isQa ? un.calls : un.opps
   const attrN = isQa ? tot.hCalls + tot.aCalls : tot.hOpps + tot.aOpps
-  const portN = isQa ? (ov.scored || 0) : (ov.opps || 0)
+  const portN = isQa ? (ov.scored || 0) : (ov.decided || 0)
   const covPct = portN ? Math.round((100 * attrN) / portN) : 100
 
   const [sort, onSort] = useSort('N', 'desc')
@@ -3059,19 +3093,19 @@ function HumanVsAI({ rows, filterText }) {
       ['Avg QA %', r1(tot.hAvg), r1(tot.aAvg), tot.qaLift == null ? '' : r1(tot.qaLift)],
       ['Scored calls', tot.hCalls, tot.aCalls, ''],
       ['Close rate %', r1(tot.hClose), r1(tot.aClose), tot.closeLift == null ? '' : r1(tot.closeLift)],
-      ['Opportunities', tot.hOpps, tot.aOpps, ''],
+      ['Decided opportunities', tot.hOpps, tot.aOpps, ''],
       ['Booked', tot.hBooked, tot.aBooked, ''],
       ['Brands with AI coverage', tot.aiBrands, '', ''],
     ] },
     { title: 'By brand — Avg QA', sheet: 'QA by brand', cols: ['Brand', 'Human calls', 'Human avg QA %', 'AI calls', 'AI avg QA %', 'AI lift (pp)'],
       rows: byBrand.map((b) => [b.brand, b.hCalls, r1(b.hAvg), b.aCalls, r1(b.aAvg), b.qaLift == null ? '' : r1(b.qaLift)]) },
-    { title: 'By brand — Close rate', sheet: 'Close by brand', cols: ['Brand', 'Human opps', 'Human booked', 'Human close %', 'AI opps', 'AI booked', 'AI close %', 'AI diff (pp)', 'AI sample'],
+    { title: 'By brand — Close rate', sheet: 'Close by brand', cols: ['Brand', 'Human decided', 'Human booked', 'Human close %', 'AI decided', 'AI booked', 'AI close %', 'AI diff (pp)', 'AI sample'],
       rows: byBrand.map((b) => [b.brand, b.hOpps, b.hBooked, r1(b.hClose), b.aOpps, b.aBooked, r1(b.aClose), b.closeLift == null ? '' : r1(b.closeLift), lowN(b) ? 'low (<' + HAI_LOW_N + ')' : (b.aOpps ? 'ok' : '')]) },
-    { title: 'Coverage / reconciliation', sheet: 'Coverage', cols: ['Bucket', 'Scored calls', 'Avg QA %', 'Opportunities', 'Booked', 'Close rate %'], rows: [
+    { title: 'Coverage / reconciliation', sheet: 'Coverage', cols: ['Bucket', 'Scored calls', 'Avg QA %', 'Decided opps', 'Booked', 'Close rate %'], rows: [
       ['Human', tot.hCalls, r1(tot.hAvg), tot.hOpps, tot.hBooked, r1(tot.hClose)],
       ['AI', tot.aCalls, r1(tot.aAvg), tot.aOpps, tot.aBooked, r1(tot.aClose)],
       ['Unattributed', un.calls, r1(un.avg), un.opps, Math.max(0, (ov.booked || 0) - tot.hBooked - tot.aBooked), r1(un.close)],
-      ['Portfolio (all)', ov.scored || 0, r1(ov.avg), ov.opps || 0, ov.booked || 0, r1(ov.opps ? (ov.booked / ov.opps) * 100 : null)],
+      ['Portfolio (all)', ov.scored || 0, r1(ov.avg), ov.decided || 0, ov.booked || 0, r1(ov.decided ? (ov.booked / ov.decided) * 100 : null)],
     ] },
   ])
 
@@ -3090,7 +3124,7 @@ function HumanVsAI({ rows, filterText }) {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         {seg('qa', 'QA score')}{seg('close', 'Close rate')}
         <span style={{ color: '#94a3b8', fontSize: 12.5, marginLeft: 4 }}>
-          {isQa ? 'Audit quality on the 10-point rubric.' : 'Conversion = booked ÷ opportunities on scored calls.'}
+          {isQa ? 'Audit quality on the 10-point rubric.' : 'Booking rate = booked ÷ decided opportunities (Booked + Not Booked) on scored calls.'}
         </span>
       </div>
 
@@ -3163,7 +3197,7 @@ function HumanVsAI({ rows, filterText }) {
   )
 }
 
-function Scorecards({ rows, prevRows, viewAll, onOpen, brand: topBrand, setBrand: setTopBrand }) {
+function Scorecards({ rows, prevRows, viewAll, onOpen, brands: topBrands = [], setBrands: setTopBrands }) {
   const [tier, setTier] = useState('exec')
   const [agentKey, setAgentKey] = useState('')
   const data = useMemo(() => buildScorecardData(rows), [rows])
@@ -3179,9 +3213,12 @@ function Scorecards({ rows, prevRows, viewAll, onOpen, brand: topBrand, setBrand
   // Single source of truth for brand = the top filter bar. When it's on "All
   // brands" the Manager tier falls back to the top-ranked brand; picking a brand
   // up top (or clicking a brand row in Executive) drives this view.
-  const brand = (topBrand && topBrand !== 'all' && data.brands.some((x) => x.brand === topBrand)) ? topBrand : (data.brands[0]?.brand || '')
+  // With several brands ticked up top, the Manager tier shows the first ticked one
+  // that has data in range.
+  const topBrand = topBrands.find((tb) => data.brands.some((x) => x.brand === tb))
+  const brand = topBrand || (data.brands[0]?.brand || '')
   const aKey = (agentKey && data.agents.some((x) => (x.name + '|||' + x.brand) === agentKey)) ? agentKey : (data.agents[0] ? data.agents[0].name + '|||' + data.agents[0].brand : '')
-  const goBrand = (b) => { if (setTopBrand) setTopBrand(b); setTier('mgr') }
+  const goBrand = (b) => { if (setTopBrands) setTopBrands([b]); setTier('mgr') }
   const goAgent = (name, br) => { setAgentKey(name + '|||' + br); setTier('agent') }
 
   return (
@@ -3198,8 +3235,8 @@ function Scorecards({ rows, prevRows, viewAll, onOpen, brand: topBrand, setBrand
 }
 
 function ScExec({ data, prevOverall, onBrand }) {
-  const o = data.overall; const cv = P100(o.booked, o.opps)
-  const prevCv = prevOverall ? P100(prevOverall.booked, prevOverall.opps) : null
+  const o = data.overall; const cv = P100(o.booked, o.decided)
+  const prevCv = prevOverall ? P100(prevOverall.booked, prevOverall.decided) : null
   const gaps = data.gaps(null).slice(0, 8)
   const gmax = Math.max(1, ...gaps.map((g) => g[1]))
   const [exSort, exOnSort] = useSort()
@@ -3207,8 +3244,8 @@ function ScExec({ data, prevOverall, onBrand }) {
   const exView = useTableView(sortRows(data.brands, exSort, exAcc), { pageSize: 15, searchText: (b) => b.brand })
   const build = () => ([
     { title: 'Portfolio summary', sheet: 'Summary', cols: ['Metric', 'Value'], rows: [
-      ['Calls scored', o.scored], ['Avg QA %', r1(o.avg)], ['Opportunities', o.opps], ['Booked', o.booked],
-      ['Conversion %', r1(cv)], ['Missed opportunities', o.missed], ['Winnable lost', o.winnable], ['Large missed opps', o.large],
+      ['Calls scored', o.scored], ['Avg QA %', r1(o.avg)], ['Opportunities', o.opps], ['Decided opportunities', o.decided], ['Booked', o.booked],
+      ['Booking rate % (booked ÷ decided)', r1(cv)], ['Missed bookings', o.missed], ['Large missed opps', o.large],
     ] },
     { title: 'Brand ranking', sheet: 'Brands', cols: ['Brand', 'Calls', 'Avg QA %', 'Conversion %', 'Card asked %', 'Card collected %', 'Missed', 'Large missed', 'Agents'], rows: data.brands.map((b) => [b.brand, b.calls, r1(b.avg), r1(b.conv), r1(b.cardRate), r1(b.collectRate), b.missed, b.large, b.nAgents]) },
     { title: 'Systemic coaching gaps', sheet: 'Gaps', cols: ['Coaching gap', 'Agents affected'], rows: data.gaps(null).map((g) => [g[0], g[1]]) },
@@ -3222,8 +3259,8 @@ function ScExec({ data, prevOverall, onBrand }) {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Tile label="Calls scored" value={o.scored} sub="all brands" delta={<Delta now={o.scored} prev={prevOverall?.scored} digits={0} suffix="" />} />
         <Tile label="Avg QA score" value={pct(o.avg)} color={scoreColor(o.avg)} delta={<Delta now={o.avg} prev={prevOverall?.avg} suffix="pp" />} />
-        <Tile label="Conversion" value={pct(cv)} color={TEAL} sub={o.booked + ' of ' + o.opps + ' opps'} delta={<Delta now={cv} prev={prevCv} suffix="pp" />} />
-        <Tile label="Winnable lost" value={o.winnable} color="#b71c1c" delta={<Delta now={o.winnable} prev={prevOverall?.winnable} digits={0} suffix="" good="down" />} />
+        <Tile label="Conversion" value={pct(cv)} color={TEAL} sub={o.booked + ' of ' + o.decided + ' decided'} delta={<Delta now={cv} prev={prevCv} suffix="pp" />} />
+        <Tile label="Missed bookings" value={o.missed} color="#b71c1c" sub="opps not booked" delta={<Delta now={o.missed} prev={prevOverall?.missed} digits={0} suffix="" good="down" />} />
         <Tile label="Large missed opps" value={o.large} color="#92400e" sub="install / commercial" delta={<Delta now={o.large} prev={prevOverall?.large} digits={0} suffix="" good="down" />} />
       </div>
       {(() => {
@@ -3301,7 +3338,7 @@ function ScMgr({ data, prevBrand, prevAgent, brand, onAgent, onOpen }) {
   const build = () => ([
     { title: (b.brand + ' — team summary'), sheet: 'Summary', cols: ['Metric', 'Value'], rows: [
       ['Brand', b.brand], ['Calls scored', b.calls], ['Avg QA %', r1(b.avg)], ['Conversion %', r1(b.conv)], ['Card asked on bookings %', r1(b.cardRate)],
-      ['Missed opportunities', b.missed], ['Large missed opps', b.large], ['Agents', b.nAgents],
+      ['Missed bookings', b.missed], ['Large missed opps', b.large], ['Agents', b.nAgents],
     ] },
     { title: 'Agent leaderboard', sheet: 'Agents', cols: ['#', 'Agent', 'Calls', 'Avg QA %', 'Conversion %', 'Asked for booking %', 'Card asked %', 'Coaching focus'], rows: roster.map((a, i) => [i + 1, a.name, a.calls, r1(a.avg), r1(a.conv), r1(a.askRate), r1(a.cardRate), a.topFocus[0] || '']) },
     { title: 'Team coaching gaps', sheet: 'Gaps', cols: ['Coaching gap', 'Agents affected'], rows: data.gaps(b?.brand).map((g) => [g[0], g[1]]) },
@@ -3315,9 +3352,9 @@ function ScMgr({ data, prevBrand, prevAgent, brand, onAgent, onOpen }) {
       </div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Tile label="Team avg QA" value={pct(b.avg)} color={scoreColor(b.avg)} sub={b.calls + ' calls'} delta={<Delta now={b.avg} prev={prevB?.avg} suffix="pp" />} />
-        <Tile label="Conversion" value={pct(b.conv)} color={TEAL} sub={b.booked + ' of ' + b.opps} delta={<Delta now={b.conv} prev={prevB?.conv} suffix="pp" />} />
+        <Tile label="Conversion" value={pct(b.conv)} color={TEAL} sub={b.booked + ' of ' + b.decided + ' decided'} delta={<Delta now={b.conv} prev={prevB?.conv} suffix="pp" />} />
         <Tile label="Card asked" value={pct(b.cardRate)} color={TEAL} sub={b.cardRate == null ? 'no bookings' : (b.ccYes + ' of ' + b.booked + ' bookings')} delta={<Delta now={b.cardRate} prev={prevB?.cardRate} suffix="pp" />} />
-        <Tile label="Winnable lost" value={b.winnable} color="#b71c1c" sub="recoverable" delta={<Delta now={b.winnable} prev={prevB?.winnable} digits={0} suffix="" good="down" />} />
+        <Tile label="Missed bookings" value={b.missed} color="#b71c1c" sub="opps not booked" delta={<Delta now={b.missed} prev={prevB?.missed} digits={0} suffix="" good="down" />} />
         <Tile label="Large missed" value={b.large} color="#92400e" sub="install / commercial" delta={<Delta now={b.large} prev={prevB?.large} digits={0} suffix="" good="down" />} />
       </div>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -3411,7 +3448,7 @@ function ScAgent({ data, prevAgent, rows, aKey, setKey, onOpen }) {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Tile label="Calls scored" value={a.calls} delta={<Delta now={a.calls} prev={prevA?.calls} digits={0} suffix="" />} />
         <Tile label="Avg QA" value={pct(a.avg)} color={scoreColor(a.avg)} delta={<Delta now={a.avg} prev={prevA?.avg} suffix="pp" />} />
-        <Tile label="Conversion" value={pct(a.conv)} color={TEAL} sub={a.booked + ' booked'} delta={<Delta now={a.conv} prev={prevA?.conv} suffix="pp" />} />
+        <Tile label="Conversion" value={pct(a.conv)} color={TEAL} sub={a.booked + ' of ' + a.decided + ' decided'} delta={<Delta now={a.conv} prev={prevA?.conv} suffix="pp" />} />
         <Tile label="Asked for booking" value={pct(a.askRate)} color={a.askRate < 50 ? '#b71c1c' : '#1b5e20'} sub="on opportunities" delta={<Delta now={a.askRate} prev={prevA?.askRate} suffix="pp" />} />
         <Tile label="AHT" value="—" color="#94a3b8" sub="Lightspeed · pending" />
         <Tile label="ACW" value="—" color="#94a3b8" sub="Lightspeed · pending" />
@@ -3493,7 +3530,6 @@ function buildCallReportHtml(row, c, answers, transcript, notes, includeTranscri
     ${chip('Asked for booking', row.asked_for_booking == null ? '—' : (row.asked_for_booking ? 'Yes' : 'No'))}
     ${chip('Info before pricing', ynLabel(row.info_before_pricing))}
     ${chip('Fee expectations', ynLabel(row.set_fee_expectations))}
-    ${chip('Winnable', row.winnable == null ? '—' : (row.winnable ? 'Yes' : 'No'))}
   </div>${(row.objections || []).length ? `<div class="tags">${row.objections.map((o) => `<span class="tag red">⛔ ${esc(o)}</span>`).join('')}</div>` : ''}${row.revenue_tip ? `<div class="ln lever"><b>Biggest revenue lever:</b> ${esc(row.revenue_tip)}</div>` : ''}</div>` : ''
 
   const risks = (row.risk_flags || []).length ? `<div class="card red"><span class="rh">⚠ Risk flags:</span> ${row.risk_flags.map((f) => esc(f)).join(' &nbsp;•&nbsp; ')}</div>` : ''
