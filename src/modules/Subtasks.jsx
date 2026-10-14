@@ -38,6 +38,42 @@ export function SubtaskProgress({ taskId, small }) {
   )
 }
 
+// The subtasks box on the NEW task form. The task doesn't exist yet, so these are just names held in
+// the form; they are created together with the task when it is saved (see TaskModal.jsx).
+export function SubtaskDrafts({ items, setItems, text, setText }) {
+  function add() {
+    const n = text.trim()
+    if (!n) return
+    setItems([...items, n])
+    setText('')
+  }
+  return (
+    <div>
+      {items.map((n, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', borderTop: i ? '1px solid var(--line)' : 'none' }}>
+          <span aria-hidden="true" style={{ width: 14, height: 14, border: '1.5px solid var(--line)', borderRadius: 3, flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 0, fontSize: 13, wordBreak: 'break-word' }}>{n}</span>
+          <button type="button" style={iconBtn} onClick={() => setItems(items.filter((_, j) => j !== i))} aria-label={`Remove "${n}"`} title="Remove">✕</button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 8, marginTop: items.length ? 8 : 0 }}>
+        <input
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+          placeholder="Add a subtask…"
+          style={{ ...fieldStyle, flex: 1, minWidth: 0 }}
+          aria-label="Add a subtask"
+        />
+        <button type="button" className="btn btn-ghost" style={{ fontSize: 12 }} onClick={add} disabled={!text.trim()}>Add</button>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>
+        Press Enter to add each one. You can give a subtask an assignee or due date after you save the task.
+      </div>
+    </div>
+  )
+}
+
 export default function Subtasks({ taskId }) {
   const { subtasks, setSubtasks, profiles, taskAssignees, userId } = useProjectsData()
 
@@ -220,3 +256,4 @@ export default function Subtasks({ taskId }) {
     </div>
   )
 }
+

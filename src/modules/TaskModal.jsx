@@ -5,6 +5,7 @@ import { Avatar } from './projectBits'
 import { statusLabel, STATUSES, PRIORITIES } from './projectHelpers'
 import { notifyTaskAssigned, notifyTaskAdded } from '../lib/notify'
 import RichTextEditor from './RichTextEditor'
+import { SubtaskDrafts } from './Subtasks'
 
 // ============================================================
 // TASK MODAL — create a new task or edit an existing one.
@@ -37,6 +38,9 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
   const [nameError, setNameError] = useState(false)
   const [fieldErrors, setFieldErrors] = useState({})
   const [formError, setFormError] = useState('')
+  // Subtasks typed into a NEW task's form (created together with the task on save)
+  const [subDrafts, setSubDrafts] = useState([])
+  const [subText, setSubText] = useState('')
 
   // Recurring options (offered only when creating a new task)
   const [recurring, setRecurring] = useState(false)
@@ -166,6 +170,18 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
     await supabase.from('task_assignees').delete().eq('task_id', id)
     if (assignees.length) {
       await supabase.from('task_assignees').insert(assignees.map(pid => ({ task_id: id, profile_id: pid })))
+    }
+
+    // NEW task: create the subtasks typed into the form. A subtask still sitting in the box (typed but
+    // not yet added with Enter) is included too, so nothing typed is lost. If these fail, the task itself
+    // is already saved, so say so instead of failing the whole save.
+    if (!taskId) {
+      const names = [...subDrafts, ...(subText.trim() ? [subText.trim()] : [])]
+      if (names.length) {
+        const { error: subErr } = await supabase.from('task_subtasks')
+          .insert(names.map((n, i) => ({ task_id: id, name: n, sort_order: i, created_by: userId })))
+        if (subErr) window.alert('Task saved, but the subtasks could not be added: ' + subErr.message)
+      }
     }
 
     // activity logging
@@ -367,6 +383,14 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
               <RichTextEditor ref={notesRef} profiles={profiles} minHeight={90}
                 placeholder="Add notes, context, links… use @ to mention someone" />
             </Grp>
+
+            {!taskId && (
+              <Grp label="Subtasks (optional)">
+                {recurring
+                  ? <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>Subtasks can't be added to a recurring task yet.</div>
+                  : <SubtaskDrafts items={subDrafts} setItems={setSubDrafts} text={subText} setText={setSubText} />}
+              </Grp>
+            )}
           </div>
 
           <div style={{ padding: '14px 24px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
