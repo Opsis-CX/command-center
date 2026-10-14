@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useProjectsData } from './projectsData'
 import { StatusSelect, PriorityBadge, DueLabel, AvatarStack } from './projectBits'
+import { SubtaskProgress } from './Subtasks'
 import { esc, stripHtml, statusLabel, STATUSES } from './projectHelpers'
 import { exportTasks } from './projectCsv'
 
@@ -181,7 +182,7 @@ function TaskRow({ t, projects, clients, profiles, taskAssignees, onOpenTask, on
   return (
     <tr onClick={() => onOpenTask && onOpenTask(t.id)} style={{ cursor: 'pointer' }} className="pm-task-row">
       <td style={tdStyle}>
-        <div style={{ fontWeight: 500 }}>{t.name}</div>
+        <div style={{ fontWeight: 500 }}>{t.name}<span style={{ marginLeft: 8 }}><SubtaskProgress taskId={t.id} small /></span></div>
         {t.notes && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260 }}>{stripHtml(t.notes)}</div>}
       </td>
       {showProject && <td style={tdStyle}>{proj ? <span style={{ fontSize: 12, fontWeight: 500, color: proj.color }}>● {proj.name}</span> : <span style={{ color: 'var(--ink-soft)', fontSize: 12 }}>—</span>}</td>}

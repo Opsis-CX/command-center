@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useProjectsData } from './projectsData'
 import { PriorityBadge, DueLabel, AvatarStack, SearchBox } from './projectBits'
+import { SubtaskProgress } from './Subtasks'
 import { dueCls } from './projectHelpers'
 
 // ============================================================
@@ -108,6 +109,7 @@ export default function ProjectKanban({ activeProject, setActiveProject, onOpenT
                         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                           <PriorityBadge priority={t.priority} small />
                           {t.due_date && <DueLabel task={t} small />}
+                          <SubtaskProgress taskId={t.id} small />
                         </div>
                         <AvatarStack ids={aIds} profiles={profiles} size={22} />
                       </div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useProjectsData } from './projectsData'
 import { StatusBadge, PriorityBadge, DueLabel, SearchBox } from './projectBits'
+import { SubtaskProgress } from './Subtasks'
 import { dueCls } from './projectHelpers'
 import { exportMyDay } from './projectCsv'
 
@@ -89,6 +90,7 @@ export default function ProjectMyDay({ onOpenTask }) {
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: 'var(--ink-soft)' }}>
                       {proj && <span style={{ color: proj.color }}>● {proj.name}</span>}
                       {t.due_date && <DueLabel task={t} />}
+                      <SubtaskProgress taskId={t.id} />
                     </div>
                   </div>
                   <PriorityBadge priority={t.priority} small />

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 
 // ============================================================
@@ -48,6 +48,7 @@ export function ProjectsDataProvider({ children }) {
   const [activity, setActivity] = useState([])
   const [attachments, setAttachments] = useState([])
   const [timeEntries, setTimeEntries] = useState([])
+  const [subtasks, setSubtasks] = useState([])
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -58,7 +59,7 @@ export function ProjectsDataProvider({ children }) {
       if (!user) { setLoading(false); return }
       setUserId(user.id)
 
-      const [profRes, profilesRes, projRes, cliRes, recRes, pmRes, taskRes, taRes, comRes, actRes, attRes, timeRes] = await Promise.all([
+      const [profRes, profilesRes, projRes, cliRes, recRes, pmRes, taskRes, taRes, comRes, actRes, attRes, timeRes, subRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         // Project Management assigns work inside Command Center, which agents and
         // clients cannot open — so they must never appear in an owner, member or
@@ -74,6 +75,7 @@ export function ProjectsDataProvider({ children }) {
         supabase.from('activity_log').select('*').order('created_at', { ascending: false }).limit(100),
         fetchAllRows(() => supabase.from('task_attachments').select('*').order('created_at', { ascending: false }).order('id')),
         fetchAllRows(() => supabase.from('time_entries').select('*').order('created_at', { ascending: false }).order('id')),
+        fetchAllRows(() => supabase.from('task_subtasks').select('*').order('task_id').order('sort_order').order('id')),
       ])
 
       setMe(profRes.data)
@@ -89,6 +91,7 @@ export function ProjectsDataProvider({ children }) {
       setActivity(actRes.data || [])
       setAttachments(attRes || [])
       setTimeEntries(timeRes || [])
+      setSubtasks(subRes || [])
       setError(null)
     } catch (e) {
       setError(e.message || 'Failed to load project data')
@@ -144,6 +147,17 @@ export function ProjectsDataProvider({ children }) {
     )
   }, [projects, projectMembers, userId, isAdmin, myTaskProjectIds])
 
+  // { [taskId]: { total, done } } for the "☑ 3/5" progress badges on task cards
+  const subtaskCounts = useMemo(() => {
+    const m = {}
+    for (const s of subtasks) {
+      const c = m[s.task_id] || (m[s.task_id] = { total: 0, done: 0 })
+      c.total += 1
+      if (s.done) c.done += 1
+    }
+    return m
+  }, [subtasks])
+
   // activity log helper (fire-and-forget; won't block the calling action)
   const logActivity = useCallback(async (action, taskId, taskName, projectId, projectName, detail) => {
     try {
@@ -159,13 +173,13 @@ export function ProjectsDataProvider({ children }) {
   const value = {
     me, isAdmin, userId,
     profiles, projects, clients, recurring, projectMembers,
-    tasks, taskAssignees, comments, activity, attachments, timeEntries,
+    tasks, taskAssignees, comments, activity, attachments, timeEntries, subtasks, subtaskCounts,
     loading, error,
     refresh: fetchAll,
     myVisibleTasks, myVisibleProjects,
     logActivity,
     // setters exposed for optimistic in-memory updates where useful
-    setTasks, setTaskAssignees, setComments, setAttachments, setTimeEntries,
+    setTasks, setTaskAssignees, setComments, setAttachments, setTimeEntries, setSubtasks,
   }
 
   return <ProjectsDataContext.Provider value={value}>{children}</ProjectsDataContext.Provider>

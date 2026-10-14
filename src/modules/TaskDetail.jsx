@@ -6,6 +6,7 @@ import { esc, stripHtml, statusLabel, initials, formatCommentTime, AVATAR_COLORS
 import { notifyTaskAssigned, notifyTaskMention } from '../lib/notify'
 import TimeTracking from './TimeTracking'
 import Attachments from './Attachments'
+import Subtasks from './Subtasks'
 import RichTextEditor from './RichTextEditor'
 
 // ============================================================
@@ -242,6 +243,9 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
               </div>
             )}
           </Section>
+
+          {/* subtasks */}
+          <Subtasks taskId={taskId} />
 
           {/* time tracking */}
           <TimeTracking taskId={taskId} />
