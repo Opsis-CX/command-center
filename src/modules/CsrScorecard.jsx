@@ -390,9 +390,30 @@ function ActivityEditor({ supabase, csrId, brand, onSaved }) {
   const [due, setDue] = useState('')
   const [scope, setScope] = useState('csr')
   const [busy, setBusy] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [fileName, setFileName] = useState('')
   const [err, setErr] = useState('')
+  // Upload an image or PDF to the public csr-activity-files bucket (QA staff only
+  // can write; storage RLS enforces it) and use its public URL as the activity link.
+  const upload = async (file) => {
+    if (!file) return
+    const isImg = /^image\/(png|jpe?g|gif|webp)$/i.test(file.type)
+    const isPdf = file.type === 'application/pdf'
+    if (!isImg && !isPdf) { setErr('Upload a PNG, JPG, GIF, WebP or PDF'); return }
+    if (file.size > 25 * 1024 * 1024) { setErr('File must be under 25 MB'); return }
+    setUploading(true); setErr('')
+    const safe = file.name.replace(/[^a-z0-9._-]+/gi, '_').slice(-80)
+    const path = `${csrId || 'shared'}/${Date.now()}-${safe}`
+    const { error } = await supabase.storage.from('csr-activity-files').upload(path, file, { contentType: file.type, upsert: false })
+    setUploading(false)
+    if (error) { setErr('Upload failed: ' + error.message); return }
+    const { data } = supabase.storage.from('csr-activity-files').getPublicUrl(path)
+    setUrl(data.publicUrl); setFileName(file.name); setKind(isImg ? 'image' : 'pdf')
+    if (!title.trim()) setTitle(file.name.replace(/\.[^.]+$/, ''))
+  }
   const save = async () => {
     if (!title.trim()) { setErr('Give it a title'); return }
+    if (uploading) { setErr('Wait for the upload to finish'); return }
     if (url && !/^https?:\/\//i.test(url)) { setErr('Link must start with http:// or https://'); return }
     setBusy(true); setErr('')
     const { error } = await supabase.rpc('csr_add_activity', {
@@ -400,17 +421,26 @@ function ActivityEditor({ supabase, csrId, brand, onSaved }) {
       p_csr: scope === 'csr' ? csrId : null, p_brand: scope === 'brand' ? brand : null, p_due: due || null,
     })
     setBusy(false)
-    if (error) setErr(error.message); else { setTitle(''); setUrl(''); setDue(''); onSaved() }
+    if (error) setErr(error.message); else { setTitle(''); setUrl(''); setDue(''); setFileName(''); onSaved() }
   }
   return (
     <div className="csr-edit">
       <div className="csr-edit-h">Add an activity</div>
       <input placeholder="Title, e.g. Objection handling quiz" value={title} onChange={(e) => setTitle(e.target.value)} />
-      <input placeholder="Link (AhaSlides, word search PDF, video…)" value={url} onChange={(e) => setUrl(e.target.value)} />
+      <input placeholder="Link (AhaSlides, word search PDF, video…)" value={url} onChange={(e) => { setUrl(e.target.value); setFileName('') }} />
+      <div className="csr-row">
+        <label className="csr-btn ghost" style={{ cursor: uploading ? 'default' : 'pointer', opacity: uploading ? 0.6 : 1 }}>
+          {uploading ? 'Uploading…' : '⬆ Upload image or PDF'}
+          <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" style={{ display: 'none' }} disabled={uploading}
+            onChange={(e) => { upload(e.target.files?.[0]); e.target.value = '' }} />
+        </label>
+        <span className="csr-sub">{fileName ? `Attached: ${fileName}` : 'or paste a link above'}</span>
+      </div>
+      {kind === 'image' && url ? <img src={url} alt="" className="csr-act-img" /> : null}
       <div className="csr-row">
         <select value={kind} onChange={(e) => setKind(e.target.value)}>
           <option value="ahaslides">AhaSlides</option><option value="word_search">Word search</option>
-          <option value="video">Video</option><option value="pdf">PDF</option><option value="link">Link</option>
+          <option value="video">Video</option><option value="pdf">PDF</option><option value="image">Image</option><option value="link">Link</option>
         </select>
         <input type="date" value={due} onChange={(e) => setDue(e.target.value)} title="Due date (optional)" style={{ maxWidth: 170 }} />
         <select value={scope} onChange={(e) => setScope(e.target.value)}>
@@ -448,7 +478,7 @@ function StartDateEditor({ supabase, csrId, value, onSaved }) {
 
 const KIND_STYLE = {
   ahaslides: ['AS', '#7c3aed', 'AhaSlides'], word_search: ['WS', '#0284c7', 'Word search'],
-  video: ['▶', '#dc2626', 'Video'], pdf: ['PDF', '#b45309', 'PDF'], link: ['↗', '#0f766e', 'Link'],
+  video: ['▶', '#dc2626', 'Video'], pdf: ['PDF', '#b45309', 'PDF'], image: ['IMG', '#4f46e5', 'Image'], link: ['↗', '#0f766e', 'Link'],
 }
 
 function ActivityRow({ a, canMark, canArchive, onMark, onArchive }) {
@@ -461,6 +491,7 @@ function ActivityRow({ a, canMark, canArchive, onMark, onArchive }) {
         <div className="csr-act-t">{a.title}</div>
         <div className="csr-sub">{kindLabel}{a.due_date ? ` · Due ${fmtDay(a.due_date)}` : ''}{done ? ` · Done ${new Date(a.done_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: TZ })}` : ''}</div>
         {a.description ? <div className="csr-sub">{a.description}</div> : null}
+        {a.kind === 'image' && a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer"><img src={a.url} alt={a.title} className="csr-act-img" /></a> : null}
       </div>
       <div className="csr-act-actions">
         {a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer">Open ↗</a> : null}
@@ -945,7 +976,7 @@ const CSS = `
 .csr-note{border-top:1px solid var(--line);padding:10px 0}.csr-note:first-of-type{border-top:0}.csr-note-t{font-weight:600}
 .csr-act{display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
 .csr-act.done{opacity:.6}.csr-ic{width:36px;height:36px;border-radius:8px;display:grid;place-items:center;font-weight:700;color:#fff;flex:none;font-size:12px}
-.csr-act-body{flex:1;min-width:0}.csr-act-t{font-weight:600}
+.csr-act-body{flex:1;min-width:0}.csr-act-img{display:block;max-width:100%;max-height:220px;margin-top:6px;border-radius:8px;border:1px solid var(--line)}.csr-act-t{font-weight:600}
 .csr-act-actions{display:flex;flex-direction:column;align-items:flex-end;gap:4px}.csr-act-actions a{color:var(--csr-accent);font-weight:600;text-decoration:none;white-space:nowrap}
 .csr-link{background:none;border:0;color:var(--csr-accent);font-weight:600;cursor:pointer;padding:0;font:inherit}.csr-link.muted{color:var(--mut);font-weight:500;margin-left:8px}
 .csr-btn{background:var(--csr-accent);color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer}
