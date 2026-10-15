@@ -99,13 +99,20 @@ import SmsConsentBanner from './components/SmsConsentBanner'
 import { VoiceProvider } from './lib/voice'
 import Softphone from './components/Softphone'
 import Phone from './modules/Phone'
+// --- Dialer (Opsis Voice phase 1, 2026-10-15) ---
+// Dialer = agent workspace (Ready → next contact → call → disposition).
+// Campaigns = managers build campaigns, assign agents, load the queue, HubSpot webhook.
+// Agents can only dial contacts the server hands them on campaigns they're assigned to;
+// the calling token itself is gated by can_use_softphone() in the database.
+import Dialer from './modules/Dialer'
+import Campaigns from './modules/Campaigns'
 const NO_CALL_ROLES = ['agent', 'client', 'csr']
 const canPlaceCalls = appRole => !NO_CALL_ROLES.includes(appRole)
-// Wraps the app in the calling provider only for people allowed to call, so
-// nothing Twilio-related loads for everyone else (and CallButtons render nothing).
-function MaybeVoice({ enabled, canDialNumbers, children }) {
+// Wraps the signed-in app in the calling provider. The Twilio library only loads on a
+// first call. canCallPeople = team click-to-call (not agents); canDialNumbers = admins.
+function MaybeVoice({ enabled, canCallPeople, canDialNumbers, children }) {
   return enabled
-    ? <VoiceProvider canDialNumbers={canDialNumbers}>{children}<Softphone /></VoiceProvider>
+    ? <VoiceProvider canCallPeople={canCallPeople} canDialNumbers={canDialNumbers}>{children}<Softphone /></VoiceProvider>
     : children
 }
 // A tiny wrapper so the assessment route can read :appId from the URL and
@@ -409,7 +416,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
   if (mustChange === null) return <div className="loading-screen">Loading…</div>
   if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
   return (
-    <MaybeVoice enabled={canPlaceCalls(appRole)} canDialNumbers={!!isAdmin}>
+    <MaybeVoice enabled canCallPeople={canPlaceCalls(appRole)} canDialNumbers={!!isAdmin}>
     <UnreadProvider>
       {/* Full-screen meeting alert at T-10 and T-2. Internal staff only —
           it sits inside AuthedApp, which the client portal never reaches. */}
@@ -451,6 +458,10 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {/* Phone — click-to-call directory + call history. Everyone except agents/clients/CSRs
                   (matches can_place_calls() on the server). */}
               <Route path="/phone" element={canPlaceCalls(appRole) ? <Phone /> : <NoAccess />} />
+              {/* Dialer — anyone; the page shows only campaigns they're assigned to (dialer_my_campaigns). */}
+              <Route path="/dialer" element={<Dialer />} />
+              {/* Campaigns — managers (same rule as Phone; RLS can_manage_dialer() enforces it). */}
+              <Route path="/campaigns" element={canPlaceCalls(appRole) ? <Campaigns /> : <NoAccess />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/knowledge" element={<KnowledgeBase />} />
               <Route path="/scorecard" element={canAny(appRole, 'service_performance_scorecard') ? <Scorecard /> : <NoAccess />} />
@@ -522,7 +533,7 @@ function titleFor(path) {
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions',
-    '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/phone': 'Phone',
+    '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/phone': 'Phone', '/dialer': 'Dialer', '/campaigns': 'Campaigns',
     '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/csr-scorecards': 'CSR Scorecards', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
   }
   // Sales is now a tabbed shell with nested routes (/sales/dashboard,
