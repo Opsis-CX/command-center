@@ -88,6 +88,18 @@ import { useRsnAccess } from './lib/rsnAccess'
 import SmsConsentForm from './modules/SmsConsentForm'
 import SmsConsentReport from './modules/SmsConsentReport'
 import SmsConsentBanner from './components/SmsConsentBanner'
+// --- Browser calling (2026-10-15) ---
+// Twilio Voice JS SDK. Admins only for now (also enforced by the voice-token and
+// voice-twiml edge functions). VoiceProvider holds the call state, Softphone is the
+// floating ☎ button + dial pad, Phone is the /phone directory + call history.
+import { VoiceProvider } from './lib/voice'
+import Softphone from './components/Softphone'
+import Phone from './modules/Phone'
+// Wraps the app in the calling provider only for people allowed to call, so
+// nothing Twilio-related loads for everyone else.
+function MaybeVoice({ enabled, children }) {
+  return enabled ? <VoiceProvider>{children}<Softphone /></VoiceProvider> : children
+}
 // A tiny wrapper so the assessment route can read :appId from the URL and
 // pass it into the form as a prop.
 import { useParams } from 'react-router-dom'
@@ -389,6 +401,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
   if (mustChange === null) return <div className="loading-screen">Loading…</div>
   if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
   return (
+    <MaybeVoice enabled={isAdmin}>
     <UnreadProvider>
       {/* Full-screen meeting alert at T-10 and T-2. Internal staff only —
           it sits inside AuthedApp, which the client portal never reaches. */}
@@ -427,6 +440,8 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {/* SMS Consent report — admin only. Also enforced server-side:
                   sms_consents / sms_consent_status are readable only by is_app_admin(). */}
               <Route path="/sms-consents" element={isAdmin ? <SmsConsentReport /> : <NoAccess />} />
+              {/* Phone — browser calling directory + call history. Admin only (matches voice-token). */}
+              <Route path="/phone" element={isAdmin ? <Phone /> : <NoAccess />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/knowledge" element={<KnowledgeBase />} />
               <Route path="/scorecard" element={canAny(appRole, 'service_performance_scorecard') ? <Scorecard /> : <NoAccess />} />
@@ -488,6 +503,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
         </main>
       </div>
     </UnreadProvider>
+    </MaybeVoice>
   )
 }
 function titleFor(path) {
@@ -497,7 +513,7 @@ function titleFor(path) {
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions',
-    '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent',
+    '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/phone': 'Phone',
     '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/csr-scorecards': 'CSR Scorecards', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
   }
   // Sales is now a tabbed shell with nested routes (/sales/dashboard,
