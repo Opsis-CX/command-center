@@ -13,6 +13,7 @@
 // ============================================================
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { CallButton } from '../lib/voice'
 
 const EXTERNAL_ROLES = ['client', 'csr']   // portal logins — not agents, hidden by default
 
@@ -210,6 +211,7 @@ export default function SmsConsentReport() {
                       <td style={S.td}>{fmtDate(r.latest_at)}</td>
                       <td style={S.td}>{SOURCE_LABEL[r.latest_source] || ''}</td>
                       <td style={{ ...S.td, whiteSpace: 'nowrap', textAlign: 'right' }}>
+                        <CallButton profileId={r.profile_id} name={r.full_name} hasPhone={!!(r.consent_phone || r.phone)} />
                         {hist.length > 0 && <button style={S.linkBtn} onClick={() => setExpanded(open ? null : r.profile_id)}>{open ? 'Hide' : `History (${hist.length})`}</button>}
                         {r.status === 'Opted in' && <button style={{ ...S.linkBtn, color: '#b91c1c' }} disabled={busyId === r.profile_id} onClick={() => optOut(r)}>Opt out</button>}
                       </td>
