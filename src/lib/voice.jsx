@@ -1,16 +1,18 @@
 // ============================================================
 //  Browser calling (Twilio Voice JS SDK) — shared state for the whole app.
 //
-//  <VoiceProvider> wraps the signed-in app (admins only, see App.jsx).
-//  Anywhere inside it:   const { call } = useVoice();  call('+15551234567', 'Jane Doe')
+//  <VoiceProvider> wraps the signed-in app for anyone allowed to call
+//  (everyone except agents, clients, CSRs and trainees — see App.jsx).
 //
-//  The SDK is loaded on first use from jsDelivr (pinned version), so nothing
-//  needs to be added to package.json. Audio goes through the computer's
-//  microphone + speakers/headset; the browser asks for mic permission once.
+//  Click-to-call a person (their number is NEVER sent to the browser):
+//      const voice = useVoice()
+//      voice?.callPerson(profileId, 'Jane Doe')
+//  or just drop in   <CallButton profileId={id} name="Jane Doe" />
 //
-//  Server pieces (Supabase edge functions):
-//    voice-token  — gives this browser a 1-hour Twilio token (admins only)
-//    voice-twiml  — Twilio webhook: checks the caller, dials the number, logs to voice_calls
+//  Typed numbers (dial pad) are admin-only:   voice.callNumber('+15551234567')
+//
+//  The SDK loads on first use from jsDelivr (pinned version) — nothing in package.json.
+//  Server side: voice-token (who may call) + voice-twiml (looks up the number, dials, logs).
 // ============================================================
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
@@ -25,7 +27,7 @@ function loadSdk() {
       const s = document.createElement('script')
       s.src = SDK_URL
       s.async = true
-      s.onload = () => (window.Twilio?.Device ? resolve(window.Twilio) : reject(new Error('Twilio SDK failed to load')))
+      s.onload = () => (window.Twilio?.Device ? resolve(window.Twilio) : reject(new Error('Calling library failed to load')))
       s.onerror = () => { sdkPromise = null; reject(new Error('Could not load the calling library. Check your connection.')) }
       document.head.appendChild(s)
     })
@@ -36,7 +38,6 @@ function loadSdk() {
 async function fetchToken() {
   const { data, error } = await supabase.functions.invoke('voice-token', { body: {} })
   if (error) {
-    // supabase-js wraps non-2xx; try to surface the function's own message
     let msg = error.message
     try { const j = await error.context?.json?.(); if (j?.error) msg = j.error } catch { /* ignore */ }
     throw new Error(msg || 'Could not start calling.')
@@ -58,15 +59,17 @@ export function toE164(p) {
 
 const VoiceContext = createContext(null)
 
-export function VoiceProvider({ children }) {
+export function VoiceProvider({ children, canDialNumbers = false }) {
   const deviceRef = useRef(null)
   const callRef = useRef(null)
   const timerRef = useRef(null)
   // status: idle | connecting | ringing | in-call | ended | error
-  const [state, setState] = useState({ status: 'idle', number: '', name: '', muted: false, seconds: 0, error: '' })
-  const [open, setOpen] = useState(false)          // softphone panel visible
+  // label: what the panel shows — the person's name, or the typed number (admin dial pad only)
+  const [state, setState] = useState({ status: 'idle', label: '', muted: false, seconds: 0, error: '' })
+  const [open, setOpen] = useState(false)
 
   const patch = useCallback(p => setState(s => ({ ...s, ...p })), [])
+  const stopTimer = () => { clearInterval(timerRef.current); timerRef.current = null }
 
   const getDevice = useCallback(async () => {
     if (deviceRef.current) return deviceRef.current
@@ -81,17 +84,14 @@ export function VoiceProvider({ children }) {
     return device
   }, [patch])
 
-  const stopTimer = () => { clearInterval(timerRef.current); timerRef.current = null }
-
-  const call = useCallback(async (number, name = '') => {
-    const to = toE164(number)
+  // Shared dialer: params go to Twilio -> voice-twiml (ProfileId or To).
+  const start = useCallback(async (params, label) => {
     setOpen(true)
-    if (!to) { patch({ status: 'error', error: 'Enter a 10-digit U.S. number.', number, name }); return }
     if (callRef.current) { patch({ error: 'Hang up the current call first.' }); return }
-    patch({ status: 'connecting', number: to, name, muted: false, seconds: 0, error: '' })
+    patch({ status: 'connecting', label, muted: false, seconds: 0, error: '' })
     try {
       const device = await getDevice()
-      const c = await device.connect({ params: { To: to } })
+      const c = await device.connect({ params })
       callRef.current = c
       c.on('ringing', () => patch({ status: 'ringing' }))
       c.on('accept', () => {
@@ -114,6 +114,21 @@ export function VoiceProvider({ children }) {
     }
   }, [getDevice, patch])
 
+  // Click-to-call a person. Only their id leaves the browser.
+  const callPerson = useCallback((profileId, name) => {
+    if (!profileId) return
+    start({ ProfileId: profileId }, name || 'Team member')
+  }, [start])
+
+  // Typed number from the dial pad (admins only; the server enforces this too).
+  const callNumber = useCallback((number) => {
+    const to = toE164(number)
+    setOpen(true)
+    if (!canDialNumbers) { patch({ status: 'error', error: 'Only admins can dial a number directly.' }); return }
+    if (!to) { patch({ status: 'error', error: 'Enter a 10-digit U.S. number.' }); return }
+    start({ To: to }, formatPhone(to))
+  }, [canDialNumbers, start, patch])
+
   const hangUp = useCallback(() => {
     if (callRef.current) callRef.current.disconnect()
     else deviceRef.current?.disconnectAll?.()
@@ -129,19 +144,49 @@ export function VoiceProvider({ children }) {
 
   const sendDigit = useCallback(d => { callRef.current?.sendDigits?.(d) }, [])
 
-  // Back to the empty dial pad after a call ends.
   const reset = useCallback(() => {
-    if (!callRef.current) patch({ status: 'idle', number: '', name: '', muted: false, seconds: 0, error: '' })
+    if (!callRef.current) patch({ status: 'idle', label: '', muted: false, seconds: 0, error: '' })
   }, [patch])
 
-  // Tear down on sign-out / unmount.
   useEffect(() => () => { stopTimer(); try { deviceRef.current?.destroy() } catch { /* ignore */ } }, [])
 
-  const value = { ...state, open, setOpen, call, hangUp, toggleMute, sendDigit, reset, busy: ['connecting', 'ringing', 'in-call'].includes(state.status) }
+  const value = {
+    ...state, open, setOpen, canDialNumbers,
+    callPerson, callNumber, hangUp, toggleMute, sendDigit, reset,
+    busy: ['connecting', 'ringing', 'in-call'].includes(state.status),
+  }
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>
 }
 
-// Safe outside the provider too (non-admins): returns null, so callers can hide their call buttons.
+// Returns null outside the provider (agents, clients, CSRs) so call buttons hide themselves.
 export function useVoice() {
   return useContext(VoiceContext)
+}
+
+// Drop-in click-to-call button. Renders nothing for people who can't place calls.
+//   <CallButton profileId={p.id} name={p.full_name} />            compact phone icon
+//   <CallButton profileId={p.id} name={p.full_name} label="Call" /> icon + text
+//   hasPhone={false} shows it disabled with a "no phone on file" tooltip.
+export function CallButton({ profileId, name, label, hasPhone = true, style }) {
+  const voice = useVoice()
+  if (!voice || !profileId) return null
+  const disabled = !hasPhone || voice.busy
+  return (
+    <button
+      type="button"
+      onClick={e => { e.stopPropagation(); voice.callPerson(profileId, name) }}
+      disabled={disabled}
+      title={!hasPhone ? 'No phone number on file' : `Call ${name || ''}`.trim()}
+      aria-label={`Call ${name || ''}`.trim()}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: label ? '5px 12px' : '5px 8px', borderRadius: 8, border: 'none',
+        background: disabled ? 'rgba(100,116,139,0.25)' : '#16a34a', color: '#fff',
+        fontWeight: 700, fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer', lineHeight: 1,
+        ...style,
+      }}
+    >
+      <span aria-hidden="true">📞</span>{label ? <span>{label}</span> : null}
+    </button>
+  )
 }
