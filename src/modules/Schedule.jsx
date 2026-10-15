@@ -4,6 +4,10 @@ import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
 import { notifyIntervalReleased, notifyNoShow, notifyIntervalAssigned } from '../lib/notify'
 import { COMPANY_TZ, wallTimeToViewer } from '../lib/tz'
+// Click-to-call (2026-10-15): a 📞 next to each person in the interval popover's
+// Claimants list (e.g. call a no-show). useVoice() is null for agents, so
+// nothing renders for them. Numbers never reach the browser.
+import { useVoice, CallButton } from '../lib/voice'
 
 // Shown before an agent accepts an interval (Schedule + Trade Board). Keep in
 // step with TradeBoardChannel.jsx.
@@ -172,6 +176,19 @@ export default function Schedule() {
   const [err, setErr] = useState('')
   const [tab, setTab] = useState('claim') // claim | myshifts | trade
   const [weekStart, setWeekStart] = useState(mondayOf(etNow()))
+
+  // Click-to-call: { [profileId]: hasPhone } from call_directory() (no numbers).
+  // Only loaded for people who can place calls.
+  const voice = useVoice()
+  const [callable, setCallable] = useState({})
+  useEffect(() => {
+    if (!voice) return
+    let active = true
+    supabase.rpc('call_directory').then(({ data }) => {
+      if (active) setCallable(Object.fromEntries((data || []).map(r => [r.profile_id, !!r.has_phone])))
+    })
+    return () => { active = false }
+  }, [!!voice])
 
   // Once the data loads, jump to the first week that actually has intervals the
   // person can claim, so nobody opens to an empty grid. Only fires once — after
@@ -624,6 +641,7 @@ export default function Schedule() {
           onClaim={claimBlock} onUnclaim={unclaimBlock} onCheckIn={checkIn} onCheckOut={checkOut} onNoShow={markNoShow}
           canAssign={canAssign} audience={audience} onAssign={assignBlock} onUnassign={unassignBlock}
           trades={trades} onOfferTrade={offerTrade} onAcceptTrade={acceptTrade} onCancelTrade={cancelTrade} certOkForBlock={certOkForBlock} myOpenTradeFor={myOpenTradeFor}
+          callable={callable}
         />
       ) : tab === 'trade' ? (
         <TradeBoardView me={me} trades={trades} blocks={blocks} profiles={profiles}
@@ -671,7 +689,7 @@ function ClaimView(props) {
   const { isAdmin, adminView, setAdminView, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
     claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow,
     canAssign, audience, onAssign, onUnassign,
-    trades, onOfferTrade, onAcceptTrade, onCancelTrade, certOkForBlock, myOpenTradeFor } = props
+    trades, onOfferTrade, onAcceptTrade, onCancelTrade, certOkForBlock, myOpenTradeFor, callable } = props
   const [popBlock, setPopBlock] = useState(null)
 
   // Admins in 'team' view see the team grid; everyone else (agents, and
@@ -724,6 +742,7 @@ function ClaimView(props) {
         canAssign={canAssign} audience={audience}
         hasIntervalStarted={hasIntervalStarted}
         trades={trades}
+        callable={callable}
         onOfferTrade={(b) => { onOfferTrade(b); setPopBlock(null) }}
         onAcceptTrade={(tr) => { onAcceptTrade(tr); setPopBlock(null) }}
         onCancelTrade={(tr) => { onCancelTrade(tr); setPopBlock(null) }}
@@ -944,7 +963,7 @@ function Iv({ block, cls, spots, time, role, onPop }) {
 }
 
 // ---------- INTERVAL POPOVER ----------
-function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, canAssign, audience, hasIntervalStarted, trades, onOfferTrade, onAcceptTrade, onCancelTrade, onClose, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow, onAssign, onUnassign }) {
+function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, canAssign, audience, hasIntervalStarted, trades, callable, onOfferTrade, onAcceptTrade, onCancelTrade, onClose, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow, onAssign, onUnassign }) {
   const [assignTo, setAssignTo] = React.useState('')
   const cl = claims.filter(c => c.shift_block_id === block.id)
   const mine = cl.find(c => c.profile_id === me.id)
@@ -979,6 +998,8 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, canAs
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12.5 }}>
                 <span style={{ flex: 1 }}>{p?.full_name || 'Unknown'}</span>
                 <span style={{ color: c.status === 'no_show' ? 'var(--failed)' : c.checked_in_at ? 'var(--passed)' : 'var(--ink-soft)' }}>{status}</span>
+                {callable && c.profile_id in callable && c.profile_id !== me.id &&
+                  <CallButton profileId={c.profile_id} name={p?.full_name} hasPhone={callable[c.profile_id]} style={{ padding: '3px 7px', fontSize: 11 }} />}
                 {started && c.status !== 'no_show' && !c.checked_in_at &&
                   <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 8px', color: 'var(--failed)' }} onClick={() => onNoShow(c, block)}>No-show</button>}
                 {canAssign && !started && !c.checked_in_at &&
