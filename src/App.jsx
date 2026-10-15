@@ -89,16 +89,24 @@ import SmsConsentForm from './modules/SmsConsentForm'
 import SmsConsentReport from './modules/SmsConsentReport'
 import SmsConsentBanner from './components/SmsConsentBanner'
 // --- Browser calling (2026-10-15) ---
-// Twilio Voice JS SDK. Admins only for now (also enforced by the voice-token and
-// voice-twiml edge functions). VoiceProvider holds the call state, Softphone is the
-// floating ☎ button + dial pad, Phone is the /phone directory + call history.
+// Twilio Voice JS SDK, click-to-call. Everyone EXCEPT agents, clients and CSRs can
+// call (trainees never reach AuthedApp). Phone numbers are never sent to the
+// browser — buttons pass a profile id and the server looks the number up.
+// Typing a raw number on the dial pad is admin-only. All of this is also enforced
+// server-side (can_place_calls() + the voice-token / voice-twiml edge functions).
+// Add a call button anywhere:  import { CallButton } from './lib/voice'
+//                              <CallButton profileId={p.id} name={p.full_name} />
 import { VoiceProvider } from './lib/voice'
 import Softphone from './components/Softphone'
 import Phone from './modules/Phone'
+const NO_CALL_ROLES = ['agent', 'client', 'csr']
+const canPlaceCalls = appRole => !NO_CALL_ROLES.includes(appRole)
 // Wraps the app in the calling provider only for people allowed to call, so
-// nothing Twilio-related loads for everyone else.
-function MaybeVoice({ enabled, children }) {
-  return enabled ? <VoiceProvider>{children}<Softphone /></VoiceProvider> : children
+// nothing Twilio-related loads for everyone else (and CallButtons render nothing).
+function MaybeVoice({ enabled, canDialNumbers, children }) {
+  return enabled
+    ? <VoiceProvider canDialNumbers={canDialNumbers}>{children}<Softphone /></VoiceProvider>
+    : children
 }
 // A tiny wrapper so the assessment route can read :appId from the URL and
 // pass it into the form as a prop.
@@ -401,7 +409,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
   if (mustChange === null) return <div className="loading-screen">Loading…</div>
   if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
   return (
-    <MaybeVoice enabled={isAdmin}>
+    <MaybeVoice enabled={canPlaceCalls(appRole)} canDialNumbers={!!isAdmin}>
     <UnreadProvider>
       {/* Full-screen meeting alert at T-10 and T-2. Internal staff only —
           it sits inside AuthedApp, which the client portal never reaches. */}
@@ -440,8 +448,9 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {/* SMS Consent report — admin only. Also enforced server-side:
                   sms_consents / sms_consent_status are readable only by is_app_admin(). */}
               <Route path="/sms-consents" element={isAdmin ? <SmsConsentReport /> : <NoAccess />} />
-              {/* Phone — browser calling directory + call history. Admin only (matches voice-token). */}
-              <Route path="/phone" element={isAdmin ? <Phone /> : <NoAccess />} />
+              {/* Phone — click-to-call directory + call history. Everyone except agents/clients/CSRs
+                  (matches can_place_calls() on the server). */}
+              <Route path="/phone" element={canPlaceCalls(appRole) ? <Phone /> : <NoAccess />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/knowledge" element={<KnowledgeBase />} />
               <Route path="/scorecard" element={canAny(appRole, 'service_performance_scorecard') ? <Scorecard /> : <NoAccess />} />
