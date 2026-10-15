@@ -21,6 +21,9 @@ export default function Softphone() {
   if (!v) return null
 
   const active = v.busy || v.status === 'ended'
+  // Agents (no team click-to-call) only see the phone while a dialer call is happening;
+  // their calls start from the Dialer page.
+  if (!v.canCallPeople && !active && v.status !== 'error') return null
   const pressKey = k => (v.busy ? v.sendDigit(k) : setDial(d => (d + k).slice(0, 14)))
 
   return (
@@ -49,10 +52,14 @@ export default function Softphone() {
               <input value={dial} onChange={e => setDial(e.target.value)} placeholder="(555) 555-5555"
                 inputMode="tel" style={S.input} autoFocus />
             </form>
-          ) : (
+          ) : v.canCallPeople ? (
             <div style={{ fontSize: 13.5, lineHeight: 1.5, padding: '4px 0' }}>
               Click the <strong>📞</strong> next to anyone's name to call them, or pick someone on the{' '}
               <Link to="/phone" onClick={() => v.setOpen(false)} style={{ color: '#0891b2', fontWeight: 600 }}>Phone page</Link>.
+            </div>
+          ) : (
+            <div style={{ fontSize: 13.5, lineHeight: 1.5, padding: '4px 0' }}>
+              Calls start from the <Link to="/dialer" onClick={() => v.setOpen(false)} style={{ color: '#0891b2', fontWeight: 600 }}>Dialer</Link>.
             </div>
           )}
 
