@@ -18,11 +18,14 @@ import ChangePassword from './ChangePassword'
 //       → a clickable header that expands/collapses its children.
 //
 // `perm` is a page-key; a person only sees an item if their role has any
-// capability under that key (perm: null = visible to everyone). Two perm keys
-// are special-cased in permOk() below: '__rsn' (DB-gated RSN access) and
-// '__admin' (admins/owners only). A section is hidden when none of its children
-// are visible, and a GROUP is hidden automatically when none of its items are
-// visible — so you never see an empty header. Order in this array = order shown.
+// capability under that key (perm: null = visible to everyone). Three perm keys
+// are special-cased in permOk() below: '__rsn' (DB-gated RSN access),
+// '__admin' (admins/owners only) and '__caller' (anyone allowed to place calls —
+// everyone except agents, clients and CSRs; matches canPlaceCalls in App.jsx and
+// can_place_calls() in the database). A section is hidden when none of its
+// children are visible, and a GROUP is hidden automatically when none of its
+// items are visible — so you never see an empty header. Order in this array =
+// order shown.
 //
 // ONE shared ordering for everyone (Becky's Aug 2026 sidebar map). Everybody
 // sees the same sequence; the perm gates hide whatever a given role can't access
@@ -55,6 +58,9 @@ const NAV_MAIN = [
       // Web Chat sits top-level: it is a live queue with someone waiting on the
       // other end, so it should be one tap.
       { type: 'link', to: '/web-chat', label: 'Web Chat', ic: '🌐', perm: 'web_chat' },
+      // Phone — click-to-call directory + call history (2026-10-15). Everyone
+      // except agents, clients and CSRs. Numbers are never shown.
+      { type: 'link', to: '/phone', label: 'Phone', ic: '📞', perm: '__caller' },
       { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },
       { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
       { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
@@ -94,6 +100,7 @@ const NAV_MAIN = [
           { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
           { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
           { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
+          { to: '/sms-consents', label: 'SMS Consent', perm: '__admin' },   // agent text opt-in report (admins only)
           { to: '/roles', label: 'Roles & permissions', perm: '__admin' }, // admins/owners only
           { to: '/survey', label: 'New Hire Survey', perm: '__admin' },   // results view; agents reach the form from their notification
         ],
@@ -103,6 +110,9 @@ const NAV_MAIN = [
 ]
 const NAV_DEFAULT = NAV_MAIN
 const NAV_ADMIN = NAV_MAIN
+// Roles that can NOT place calls. Keep in step with NO_CALL_ROLES in App.jsx and
+// public.can_place_calls() in the database.
+const NO_CALL_ROLES = ['agent', 'client', 'csr']
 // Turn a stored role string ("asc,marketing") into a readable label
 // ("ASC & Marketing"). A single role passes through unchanged; unknown keys are
 // Title-Cased as a safe fallback.
@@ -127,11 +137,13 @@ export default function Sidebar({ open, onNavigate }) {
   const rsnOk = useRsnAccess()
   const isOwner = level >= 100 || (roles || []).includes('owner')
   // One place that answers "can this person see an item with this perm key?"
-  //   '__rsn'   → DB-gated RSN access
-  //   '__admin' → admins/owners only (e.g. Roles & permissions)
+  //   '__rsn'    → DB-gated RSN access
+  //   '__admin'  → admins/owners only (e.g. Roles & permissions)
+  //   '__caller' → anyone allowed to place calls (not agents/clients/CSRs)
   const permOk = (p) =>
     p === '__rsn' ? rsnOk === true
     : p === '__admin' ? (isAdmin || isOwner)
+    : p === '__caller' ? !NO_CALL_ROLES.includes(appRole)
     : (!p || canAny(appRole, p))
   // One shared ordering now; both names resolve to the same array.
   const NAV = (isAdmin || level >= 100 || (roles || []).includes('owner')) ? NAV_ADMIN : NAV_DEFAULT
