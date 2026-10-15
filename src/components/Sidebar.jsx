@@ -58,9 +58,17 @@ const NAV_MAIN = [
       // Web Chat sits top-level: it is a live queue with someone waiting on the
       // other end, so it should be one tap.
       { type: 'link', to: '/web-chat', label: 'Web Chat', ic: '🌐', perm: 'web_chat' },
-      // Phone — click-to-call directory + call history (2026-10-15). Everyone
-      // except agents, clients and CSRs. Numbers are never shown.
-      { type: 'link', to: '/phone', label: 'Phone', ic: '📞', perm: '__caller' },
+      // Calling (2026-10-15). Phone = click-to-call team directory (not agents).
+      // Dialer = agent calling workspace (callers, plus agents assigned to a campaign).
+      // Campaigns = build/run outbound campaigns (not agents). Numbers are never shown.
+      {
+        type: 'section', key: 'calling', label: 'Calling', ic: '📞',
+        children: [
+          { to: '/dialer', label: 'Dialer', perm: '__dialer' },
+          { to: '/phone', label: 'Phone', perm: '__caller' },
+          { to: '/campaigns', label: 'Campaigns', perm: '__caller' },
+        ],
+      },
       { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },
       { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
       { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
@@ -140,10 +148,21 @@ export default function Sidebar({ open, onNavigate }) {
   //   '__rsn'    → DB-gated RSN access
   //   '__admin'  → admins/owners only (e.g. Roles & permissions)
   //   '__caller' → anyone allowed to place calls (not agents/clients/CSRs)
+  //   '__dialer' → callers, plus agents assigned to at least one dialer campaign
+  // Agents see the Dialer only once a manager puts them on a campaign.
+  const [onCampaign, setOnCampaign] = useState(false)
+  useEffect(() => {
+    if (!user?.id) return
+    let active = true
+    supabase.from('dial_campaign_agents').select('campaign_id').eq('profile_id', user.id).limit(1)
+      .then(({ data }) => { if (active) setOnCampaign(!!(data && data.length)) })
+    return () => { active = false }
+  }, [user?.id])
   const permOk = (p) =>
     p === '__rsn' ? rsnOk === true
     : p === '__admin' ? (isAdmin || isOwner)
     : p === '__caller' ? !NO_CALL_ROLES.includes(appRole)
+    : p === '__dialer' ? (!NO_CALL_ROLES.includes(appRole) || onCampaign)
     : (!p || canAny(appRole, p))
   // One shared ordering now; both names resolve to the same array.
   const NAV = (isAdmin || level >= 100 || (roles || []).includes('owner')) ? NAV_ADMIN : NAV_DEFAULT
