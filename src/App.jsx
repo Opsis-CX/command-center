@@ -13,7 +13,7 @@ import MyCertifications from './modules/MyCertifications'
 import MyCourses from './modules/MyCourses'
 import Dashboard from './modules/Dashboard'
 import { Placeholder } from './modules/Placeholders'
- 
+
 // Shown instead of a page when the signed-in role isn't allowed to see it.
 // Previously these routes simply weren't registered, so a denied user fell
 // through to "*" and landed on the Dashboard with no explanation — which reads
@@ -80,6 +80,14 @@ import WebChat from './modules/WebChat'
 // --- RSN pipeline (tag/role-gated variant of Sales with LinkedIn stages) ---
 import RsnPipeline from './modules/RsnPipeline'
 import { useRsnAccess } from './lib/rsnAccess'
+// --- SMS consent (2026-10-15) ---
+// Public opt-in form at /sms-consent (Twilio A2P 10DLC reviewers must be able to
+// reach it without a login), admin report at /sms-consents, and a dismissible
+// banner nudging signed-in staff who haven't answered yet. Records live in the
+// append-only sms_consents table; profiles.sms_enabled follows the latest answer.
+import SmsConsentForm from './modules/SmsConsentForm'
+import SmsConsentReport from './modules/SmsConsentReport'
+import SmsConsentBanner from './components/SmsConsentBanner'
 // A tiny wrapper so the assessment route can read :appId from the URL and
 // pass it into the form as a prop.
 import { useParams } from 'react-router-dom'
@@ -124,7 +132,9 @@ export default function App() {
   // ---- PUBLIC routes (no login required) ----
   // These must be checked BEFORE the login gate so job applicants who aren't
   // signed in can reach the application and assessment forms.
-  const publicPaths = ['/apply', '/assessment']
+  // /sms-consent is the agent SMS opt-in page — public on purpose (carrier/Twilio
+  // review). Note it's an exact match: the admin report at /sms-consents is NOT public.
+  const publicPaths = ['/apply', '/assessment', '/sms-consent']
   const isPublic = publicPaths.some(p => location.pathname === p || location.pathname.startsWith(p + '/'))
   // /mock-call is public ONLY for someone with no session at all (the legacy
   // emailed link). Anyone signed in — client portal, trainee, staff — must fall
@@ -137,6 +147,7 @@ export default function App() {
         <Route path="/apply" element={<ApplicationForm />} />
         <Route path="/assessment/:appId" element={<AssessmentRoute />} />
         <Route path="/assessment" element={<AssessmentForm />} />
+        <Route path="/sms-consent" element={<SmsConsentForm />} />
         <Route path="/mock-call/:appId" element={<MockCallRoute />} />
         <Route path="/mock-call" element={<Login />} />
       </Routes>
@@ -401,6 +412,9 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             </div>
           </div>
           <div className="content">
+            {/* Nudge for anyone who hasn't answered the SMS opt-in yet. Never opts
+                anyone in by itself — it links to the real consent form. */}
+            <SmsConsentBanner userId={session.user.id} />
             <Routes>
               <Route path="/" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <OpsisWeekly />} />
               <Route path="/calendar" element={<Calendar />} />
@@ -410,6 +424,9 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/mock-call/:appId" element={<MockCallRoute />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/roles" element={isAdmin ? <RolesPermissions /> : <NoAccess />} />
+              {/* SMS Consent report — admin only. Also enforced server-side:
+                  sms_consents / sms_consent_status are readable only by is_app_admin(). */}
+              <Route path="/sms-consents" element={isAdmin ? <SmsConsentReport /> : <NoAccess />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/knowledge" element={<KnowledgeBase />} />
               <Route path="/scorecard" element={canAny(appRole, 'service_performance_scorecard') ? <Scorecard /> : <NoAccess />} />
@@ -480,7 +497,7 @@ function titleFor(path) {
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions',
-    '/web-chat': 'Web Chat',
+    '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent',
     '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/csr-scorecards': 'CSR Scorecards', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
   }
   // Sales is now a tabbed shell with nested routes (/sales/dashboard,
