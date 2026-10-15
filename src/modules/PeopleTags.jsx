@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can, ROLES } from '../lib/permissions'
+// Click-to-call (2026-10-15). useVoice() is null for people who can't place calls
+// (agents/clients/CSRs), so the 📞 buttons simply don't render for them.
+import { useVoice, CallButton } from '../lib/voice'
 
 // Candidates book their mock call inside Command Center — the same place they do
 // their certification. The email just points at the app; the onboarding shell
@@ -48,6 +51,19 @@ export default function PeopleTags() {
   const [pwShow, setPwShow] = useState(false)
   const [pwBusy, setPwBusy] = useState(false)
   const [pwMsg, setPwMsg] = useState('')       // { ok, text } or ''
+  // Click-to-call: who can be called and whether they have a phone on file.
+  // Comes from call_directory(), which never returns the number itself.
+  // { [profileId]: hasPhone } — people missing here (clients, CSRs, inactive) get no button.
+  const voice = useVoice()
+  const [callable, setCallable] = useState({})
+  useEffect(() => {
+    if (!voice) return
+    let active = true
+    supabase.rpc('call_directory').then(({ data }) => {
+      if (active) setCallable(Object.fromEntries((data || []).map(r => [r.profile_id, !!r.has_phone])))
+    })
+    return () => { active = false }
+  }, [!!voice])
   useEffect(() => { load() }, [])
   async function load() {
     setLoading(true); setErr('')
@@ -360,7 +376,7 @@ export default function PeopleTags() {
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
               <div>
                 <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600 }}>People</h3>
-                <p className="page-sub" style={{ margin: 0 }}>Click a tag under each person to add or remove it.</p>
+                <p className="page-sub" style={{ margin: 0 }}>Click a tag under each person to add or remove it.{voice ? ' Click 📞 to call someone.' : ''}</p>
               </div>
               {people.some(x => !x.is_active) && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink-soft)', cursor: 'pointer', flex: 'none' }}>
@@ -384,6 +400,9 @@ export default function PeopleTags() {
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{p.email}</div>
                   </div>
+                  {p.id in callable && p.id !== user?.id && (
+                    <CallButton profileId={p.id} name={p.full_name} hasPhone={callable[p.id]} style={{ flex: 'none' }} />
+                  )}
                   <button type="button" className="btn btn-ghost" style={{ fontSize: 12.5 }}
                     onClick={() => five9Open === p.id ? setFive9Open(null) : openFive9(p)}>
                     {p.five9_sent_at ? 'Five9 ✓' : 'Five9 setup'}
