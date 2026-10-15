@@ -10,6 +10,7 @@
 //  or just drop in   <CallButton profileId={id} name="Jane Doe" />
 //
 //  Typed numbers (dial pad) are admin-only:   voice.callNumber('+15551234567')
+//  Dialer (agents + managers on a campaign):  voice.callQueue(queueId, 'Customer name')
 //
 //  The SDK loads on first use from jsDelivr (pinned version) — nothing in package.json.
 //  Server side: voice-token (who may call) + voice-twiml (looks up the number, dials, logs).
@@ -59,7 +60,10 @@ export function toE164(p) {
 
 const VoiceContext = createContext(null)
 
-export function VoiceProvider({ children, canDialNumbers = false }) {
+// canCallPeople: click-to-call team members (everyone except agents).
+// canDialNumbers: type any number on the dial pad (admins).
+// Everyone inside the provider can work dialer campaigns they're assigned to (callQueue).
+export function VoiceProvider({ children, canDialNumbers = false, canCallPeople = true }) {
   const deviceRef = useRef(null)
   const callRef = useRef(null)
   const timerRef = useRef(null)
@@ -120,6 +124,12 @@ export function VoiceProvider({ children, canDialNumbers = false }) {
     start({ ProfileId: profileId }, name || 'Team member')
   }, [start])
 
+  // Dialer: call the queue contact currently locked to this agent. Only the queue id leaves the browser.
+  const callQueue = useCallback((queueId, name) => {
+    if (!queueId) return
+    start({ QueueId: queueId }, name || 'Customer')
+  }, [start])
+
   // Typed number from the dial pad (admins only; the server enforces this too).
   const callNumber = useCallback((number) => {
     const to = toE164(number)
@@ -151,14 +161,15 @@ export function VoiceProvider({ children, canDialNumbers = false }) {
   useEffect(() => () => { stopTimer(); try { deviceRef.current?.destroy() } catch { /* ignore */ } }, [])
 
   const value = {
-    ...state, open, setOpen, canDialNumbers,
-    callPerson, callNumber, hangUp, toggleMute, sendDigit, reset,
+    ...state, open, setOpen, canDialNumbers, canCallPeople,
+    callPerson, callQueue, callNumber, hangUp, toggleMute, sendDigit, reset,
     busy: ['connecting', 'ringing', 'in-call'].includes(state.status),
   }
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>
 }
 
-// Returns null outside the provider (agents, clients, CSRs) so call buttons hide themselves.
+// Returns null outside the provider. Inside it, check voice.canCallPeople before
+// offering team click-to-call (agents only get dialer calls).
 export function useVoice() {
   return useContext(VoiceContext)
 }
@@ -169,7 +180,7 @@ export function useVoice() {
 //   hasPhone={false} shows it disabled with a "no phone on file" tooltip.
 export function CallButton({ profileId, name, label, hasPhone = true, style }) {
   const voice = useVoice()
-  if (!voice || !profileId) return null
+  if (!voice || !voice.canCallPeople || !profileId) return null
   const disabled = !hasPhone || voice.busy
   return (
     <button
