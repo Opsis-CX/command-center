@@ -48,6 +48,8 @@ const BLANK = {
   name: '', brand: '', client_id: '', status: 'draft', mode: 'preview', caller_id_number: '', timezone: 'America/New_York',
   hours: { 1: ['09:00', '20:00'], 2: ['09:00', '20:00'], 3: ['09:00', '20:00'], 4: ['09:00', '20:00'], 5: ['09:00', '20:00'], 6: ['10:00', '17:00'] },
   max_attempts: 6, retry_minutes: [5, 60, 240, 1440, 2880], progressive_delay_sec: 3, record_calls: true, script: '',
+  scheduling_mode: 'smart',
+  scheduling: { quick_retry_minutes: 10, second_gap_minutes: 120, max_per_day_first: 3, max_per_day: 2, vary_after_no_contacts: 2, interested_next_day_same_hour: true },
   dispositions: null,
 }
 
@@ -107,7 +109,7 @@ export default function Campaigns() {
                 <button key={c.id} onClick={() => { setSelId(c.id); setTab('settings') }} style={S.rowBtn}>
                   <div style={{ minWidth: 0, textAlign: 'left' }}>
                     <div style={{ fontWeight: 700 }}>{c.name} {c.brand && <span style={S.small}>· {c.brand}</span>}</div>
-                    <div style={S.small}>{c.mode === 'progressive' ? 'Progressive' : 'Preview'} · {(clients.find(x => x.id === c.client_id) || {}).name || 'No client'}</div>
+                    <div style={S.small}>{c.mode === 'progressive' ? (Number(c.progressive_delay_sec) === 0 ? 'Auto-dial' : 'Progressive') : 'Preview'} · {(clients.find(x => x.id === c.client_id) || {}).name || 'No client'}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <Stat n={st.ready_now} l="ready now" />
@@ -176,7 +178,16 @@ function SettingsTab({ campaign, clients, onSaved }) {
       name: f.name.trim(), brand: f.brand.trim() || null, client_id: f.client_id || null, status: f.status, mode: f.mode,
       caller_id_number: f.caller_id_number.trim() || null, timezone: f.timezone, hours: f.hours,
       max_attempts: Number(f.max_attempts) || 6, retry_minutes: retry.length ? retry : [60],
-      progressive_delay_sec: Number(f.progressive_delay_sec) || 3, record_calls: !!f.record_calls, script: f.script || null,
+      progressive_delay_sec: f.progressive_delay_sec === '' || f.progressive_delay_sec == null ? 3 : Math.max(0, Math.min(30, Number(f.progressive_delay_sec) || 0)), record_calls: !!f.record_calls, script: f.script || null,
+      scheduling_mode: f.scheduling_mode || 'smart',
+      scheduling: {
+        quick_retry_minutes: Number(f.scheduling?.quick_retry_minutes) || 10,
+        second_gap_minutes: Number(f.scheduling?.second_gap_minutes) || 120,
+        max_per_day_first: Number(f.scheduling?.max_per_day_first) || 3,
+        max_per_day: Number(f.scheduling?.max_per_day) || 2,
+        vary_after_no_contacts: Number(f.scheduling?.vary_after_no_contacts) || 2,
+        interested_next_day_same_hour: f.scheduling?.interested_next_day_same_hour !== false,
+      },
       updated_at: new Date().toISOString(),
     }
     if (dispos) row.dispositions = dispos
@@ -217,12 +228,21 @@ function SettingsTab({ campaign, clients, onSaved }) {
             <option value="preview">Preview</option><option value="progressive">Progressive</option>
           </select>
         </Field>
-        {f.mode === 'progressive' && <Field label="Countdown (seconds)"><input type="number" min="0" max="30" value={f.progressive_delay_sec} onChange={e => set('progressive_delay_sec', e.target.value)} style={S.input} /></Field>}
+        {f.mode === 'progressive' && <Field label="Countdown (seconds) — 0 = auto-dial instantly, no Call/Skip for the agent"><input type="number" min="0" max="30" value={f.progressive_delay_sec} onChange={e => set('progressive_delay_sec', e.target.value)} style={S.input} /></Field>}
         <Field label="Caller ID (brand's Twilio number)" hint="Blank = the main Opsis CX number. Must be a number on the Twilio account."><input value={f.caller_id_number} onChange={e => set('caller_id_number', e.target.value)} style={S.input} placeholder="(512) 555-0100" /></Field>
         <Field label="Default time zone" hint="Used when a contact has no time zone or state."><select value={f.timezone} onChange={e => set('timezone', e.target.value)} style={S.input}>{TZS.map(z => <option key={z}>{z}</option>)}</select></Field>
         <Field label="Max attempts per contact"><input type="number" min="1" max="30" value={f.max_attempts} onChange={e => set('max_attempts', e.target.value)} style={S.input} /></Field>
-        <Field label="Retry waits (minutes)" hint="Wait after attempt 1, 2, 3… The last value repeats."><input value={f.retry_text} onChange={e => set('retry_text', e.target.value)} style={S.input} placeholder="5, 60, 240, 1440" /></Field>
+        <Field label="When to call back" hint="Smart: Command Center picks the next attempt from answer-rate history. Fixed: a set list of waits.">
+          <select value={f.scheduling_mode} onChange={e => set('scheduling_mode', e.target.value)} style={S.input}>
+            <option value="smart">Smart (recommended)</option><option value="fixed">Fixed waits</option>
+          </select>
+        </Field>
+        {f.scheduling_mode === 'fixed' && (
+          <Field label="Retry waits (minutes)" hint="Wait after attempt 1, 2, 3… The last value repeats."><input value={f.retry_text} onChange={e => set('retry_text', e.target.value)} style={S.input} placeholder="5, 60, 240, 1440" /></Field>
+        )}
       </Grid>
+
+      {f.scheduling_mode === 'smart' && <SmartRules value={f.scheduling || {}} onChange={v => set('scheduling', v)} campaignId={campaign?.id} />}
 
       <div>
         <div style={S.label}>Calling hours — in the <b>customer's</b> local time</div>
@@ -259,6 +279,55 @@ function SettingsTab({ campaign, clients, onSaved }) {
         <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : campaign ? 'Save changes' : 'Create campaign'}</button>
         {msg && <span style={{ fontSize: 13 }}>{msg}</span>}
       </div>
+    </div>
+  )
+}
+
+// Smart scheduling rules + a peek at which hours the engine currently favors.
+function SmartRules({ value, onChange, campaignId }) {
+  const [hours, setHours] = useState(null)
+  useEffect(() => {
+    if (!campaignId) return
+    supabase.rpc('dialer_hour_scores', { p_campaign: campaignId }).then(({ data }) => setHours(data || []))
+  }, [campaignId])
+  const v = { quick_retry_minutes: 10, second_gap_minutes: 120, max_per_day_first: 3, max_per_day: 2, vary_after_no_contacts: 2, interested_next_day_same_hour: true, ...value }
+  const upd = (k, val) => onChange({ ...v, [k]: val })
+  const hr = h => (h % 12 || 12) + (h < 12 ? 'am' : 'pm')
+  const shown = (hours || []).filter(h => h.hour >= 8 && h.hour <= 20)
+  const max = Math.max(0.0001, ...shown.map(h => Number(h.score)))
+  const totalAttempts = (hours || []).reduce((s, h) => s + h.attempts, 0)
+  return (
+    <div style={{ border: '1px solid rgba(100,116,139,0.25)', borderRadius: 12, padding: 12, display: 'grid', gap: 10 }}>
+      <div style={{ fontWeight: 700 }}>Smart scheduling</div>
+      <div style={S.small}>
+        New leads are called right away. After that, Command Center picks each next attempt: a quick second try, then the best-answering hours
+        (in the customer's time zone), a different time of day after repeated no-answers, and the same hour next day when someone was interested
+        but didn't set a time. HubSpot can still force a time by sending <code>call_after</code>.
+      </div>
+      <Grid>
+        <Field label="Quick 2nd try (minutes after 1st)"><input type="number" min="1" value={v.quick_retry_minutes} onChange={e => upd('quick_retry_minutes', e.target.value)} style={S.input} /></Field>
+        <Field label="Gap before 3rd try (minutes)"><input type="number" min="10" value={v.second_gap_minutes} onChange={e => upd('second_gap_minutes', e.target.value)} style={S.input} /></Field>
+        <Field label="Max calls on day 1"><input type="number" min="1" max="10" value={v.max_per_day_first} onChange={e => upd('max_per_day_first', e.target.value)} style={S.input} /></Field>
+        <Field label="Max calls per day after"><input type="number" min="1" max="10" value={v.max_per_day} onChange={e => upd('max_per_day', e.target.value)} style={S.input} /></Field>
+        <Field label="Change time of day after N no-answers"><input type="number" min="1" max="10" value={v.vary_after_no_contacts} onChange={e => upd('vary_after_no_contacts', e.target.value)} style={S.input} /></Field>
+      </Grid>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5 }}>
+        <input type="checkbox" checked={v.interested_next_day_same_hour} onChange={e => upd('interested_next_day_same_hour', e.target.checked)} />
+        "Interested — no time set" → call back next day at the same hour
+      </label>
+      {campaignId && shown.length > 0 && (
+        <div>
+          <div style={S.label}>Best hours right now <span style={{ ...S.small, fontWeight: 400 }}>({totalAttempts ? `${totalAttempts} past calls + industry baseline` : 'industry baseline until calls build up'})</span></div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 60 }}>
+            {shown.map(h => (
+              <div key={h.hour} title={`${hr(h.hour)}: ${h.connects}/${h.attempts} connected`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <div style={{ width: '100%', height: Math.max(4, 44 * Number(h.score) / max), background: '#0891b2', borderRadius: 3, opacity: 0.35 + 0.65 * Number(h.score) / max }} />
+                <div style={{ fontSize: 10, opacity: 0.6 }}>{hr(h.hour)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
