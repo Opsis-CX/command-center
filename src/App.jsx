@@ -80,10 +80,6 @@ import WebChat from './modules/WebChat'
 // --- RSN pipeline (tag/role-gated variant of Sales with LinkedIn stages) ---
 import RsnPipeline from './modules/RsnPipeline'
 import { useRsnAccess } from './lib/rsnAccess'
-// --- Finance (Admins/Owners) and the staff purchase form; both gated by the database ---
-import Finance from './modules/Finance'
-import SubmitPurchase from './modules/SubmitPurchase'
-import { useFinanceAccess } from './lib/financeAccess'
 // --- SMS consent (2026-10-15) ---
 // Public opt-in form at /sms-consent (Twilio A2P 10DLC reviewers must be able to
 // reach it without a login), admin report at /sms-consents, and a dismissible
@@ -110,6 +106,8 @@ import Phone from './modules/Phone'
 // the calling token itself is gated by can_use_softphone() in the database.
 import Dialer from './modules/Dialer'
 import Campaigns from './modules/Campaigns'
+// Inbound = business line routing + AI receptionist (page itself checks line membership / manager).
+import Inbound from './modules/Inbound'
 const NO_CALL_ROLES = ['agent', 'client', 'csr']
 const canPlaceCalls = appRole => !NO_CALL_ROLES.includes(appRole)
 // Wraps the signed-in app in the calling provider. The Twilio library only loads on a
@@ -404,7 +402,6 @@ function TraineePortal({ session }) {
 function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location }) {
   // RSN pipeline visibility — DB-gated (admins, marketing role, or 'access/rsn' tag).
   const rsnOk = useRsnAccess()
-  const fin = useFinanceAccess()   // null while checking, then { manager, submitter }
   // Presence heartbeat — quietly marks this user online while the app is open
   // (feeds the Who's On page and presence dots).
   usePresenceHeartbeat()
@@ -467,6 +464,8 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/dialer" element={<Dialer />} />
               {/* Campaigns — managers (same rule as Phone; RLS can_manage_dialer() enforces it). */}
               <Route path="/campaigns" element={canPlaceCalls(appRole) ? <Campaigns /> : <NoAccess />} />
+              {/* Inbound — line members + managers (page + RPCs enforce it). */}
+              <Route path="/inbound" element={<Inbound />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/knowledge" element={<KnowledgeBase />} />
               <Route path="/scorecard" element={canAny(appRole, 'service_performance_scorecard') ? <Scorecard /> : <NoAccess />} />
@@ -518,8 +517,6 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/web-chat" element={canAny(appRole, 'web_chat') ? <WebChat /> : <NoAccess />} />
               {/* RSN pipeline — gated by can_access_rsn_pipeline() (RsnPipeline re-checks on direct hits). */}
               <Route path="/rsn" element={rsnOk ? <RsnPipeline /> : <NoAccess />} />
-              <Route path="/finance" element={fin === null ? <p className="page-sub">Loading…</p> : fin.manager ? <Finance /> : <NoAccess />} />
-              <Route path="/submit-purchase" element={fin === null ? <p className="page-sub">Loading…</p> : fin.submitter ? <SubmitPurchase /> : <NoAccess />} />
               <Route path="/weekly-sync" element={canAny(appRole, 'weekly_sync') ? <WeeklySync /> : <NoAccess />} />
               <Route path="/schedule-builder" element={canAny(appRole, 'schedule.create_schedules') ? <ScheduleBuilder /> : <NoAccess />} />
               <Route path="/positions" element={canAny(appRole, 'positions.view_only') ? <Positions /> : <NoAccess />} />
@@ -540,8 +537,8 @@ function titleFor(path) {
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions',
-    '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/phone': 'Phone', '/dialer': 'Dialer', '/campaigns': 'Campaigns',
-    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/csr-scorecards': 'CSR Scorecards', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/finance': 'Finance', '/submit-purchase': 'Submit a purchase', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
+    '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/phone': 'Phone', '/dialer': 'Dialer', '/campaigns': 'Campaigns', '/inbound': 'Inbound',
+    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/csr-scorecards': 'CSR Scorecards', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
   }
   // Sales is now a tabbed shell with nested routes (/sales/dashboard,
   // /sales/scorecard, etc.) -- Pipeline itself stays at the bare /sales so
