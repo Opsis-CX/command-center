@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { panel } from './financeBits'
 
@@ -256,31 +256,46 @@ function PayVisibility({ lookups, reload, flash }) {
   )
 }
 
-// ---------- Which client Five9 time is counted for ----------
+// ---------- Which client, and which invoice, Five9 time is counted for ----------
 function Five9Client({ lookups, reload, flash }) {
-  const saved = lookups.settings.five9_client_id || ''
-  const [val, setVal] = useState(null)
+  const savedClient = lookups.settings.five9_client_id || ''
+  const savedInvoice = lookups.settings.five9_invoice_type_id || ''
+  const [client, setClient] = useState(null)
+  const [invoice, setInvoice] = useState(null)
+  const [types, setTypes] = useState([])
+  const [entities, setEntities] = useState([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const value = val ?? saved
+  useEffect(() => {
+    supabase.from('finance_invoice_types').select('id,name,entity_id,active').order('sort').order('name').then(({ data }) => setTypes(data || []))
+    supabase.from('finance_billing_entities').select('id,name').then(({ data }) => setEntities(data || []))
+  }, [])
+  const c = client ?? savedClient
+  const i = invoice ?? savedInvoice
+  const label = (t) => { const e = entities.find(x => x.id === t.entity_id); return e ? `${e.name} › ${t.name}` : t.name }
   async function save() {
     setBusy(true); setErr('')
-    const { error } = await supabase.from('finance_settings').upsert({ key: 'five9_client_id', value: value || null, description: 'The client that Five9 Ready time is counted for. Right now all Five9 time is for GarageCo.' }, { onConflict: 'key' })
+    const { error } = await supabase.from('finance_settings').upsert([
+      { key: 'five9_client_id', value: c || null, description: 'The client that Five9 Ready time is counted for. Right now all Five9 time is for GarageCo.' },
+      { key: 'five9_invoice_type_id', value: i || null, description: 'The client invoice that Five9 Ready time goes with by default. Right now: GarageCo, Call center (a retainer).' },
+    ], { onConflict: 'key' })
     setBusy(false)
     if (error) return setErr(error.message)
-    setVal(null); reload(); flash('Saved. Five9 hours are now counted for ' + (lookups.clients.find(c => c.id === value)?.name || 'no client') + '.')
+    setClient(null); setInvoice(null); reload()
+    flash('Saved. Five9 hours are counted for ' + (lookups.clients.find(x => x.id === c)?.name || 'no client') + ' and invoiced on ' + (types.find(x => x.id === i) ? label(types.find(x => x.id === i)) : 'no invoice yet') + '.')
   }
   return (
     <div style={section}>
       <h2 style={h2}>Five9 time belongs to</h2>
-      <p className="page-sub" style={{ margin: '0 0 10px', maxWidth: 640 }}>Five9 Ready time has no client of its own, so it is counted for the client you choose here. Right now all Five9 time is for GarageCo. Changing this moves the Five9 hours to the new client everywhere on the Hours tab.</p>
+      <p className="page-sub" style={{ margin: '0 0 10px', maxWidth: 680 }}>Five9 Ready time has no client or invoice of its own, so it uses the ones you choose here. Right now all Five9 time is for GarageCo and goes with its Call center invoice, which is a retainer: the client is billed for hours open × agents, so Five9 time shows as covered by the retainer and is never billed by the hour. This is only the starting answer: you can still change any hours by hand on the Hours tab. Pay does not use these settings.</p>
       {err && <div className="login-err" role="alert">{err}</div>}
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div className="field" style={{ margin: 0, minWidth: 240 }}><label htmlFor="f9-client">Client</label>
-          <select id="f9-client" value={value} onChange={e => setVal(e.target.value)}><option value="">No client</option>{lookups.clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-        <button className="btn btn-primary" onClick={save} disabled={busy || val == null || val === saved}>{busy ? 'Saving…' : 'Save'}</button>
+          <select id="f9-client" value={c} onChange={e => setClient(e.target.value)}><option value="">No client</option>{lookups.clients.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></div>
+        <div className="field" style={{ margin: 0, minWidth: 260 }}><label htmlFor="f9-invoice">Invoiced on</label>
+          <select id="f9-invoice" value={i} onChange={e => setInvoice(e.target.value)}><option value="">No invoice yet (leave Five9 time "not decided")</option>{types.filter(x => x.active).map(x => <option key={x.id} value={x.id}>{label(x)}</option>)}</select></div>
+        <button className="btn btn-primary" onClick={save} disabled={busy || (client == null && invoice == null) || (c === savedClient && i === savedInvoice)}>{busy ? 'Saving…' : 'Save'}</button>
       </div>
     </div>
   )
 }
-
