@@ -1,8 +1,7 @@
 // ============================================================
 //  Browser calling (Twilio Voice JS SDK) — shared state for the whole app.
 //
-//  <VoiceProvider> wraps the signed-in app for anyone allowed to call
-//  (everyone except agents, clients, CSRs and trainees — see App.jsx).
+//  <VoiceProvider> wraps the signed-in app (see App.jsx).
 //
 //  Click-to-call a person (their number is NEVER sent to the browser):
 //      const voice = useVoice()
@@ -12,8 +11,13 @@
 //  Typed numbers (dial pad) are admin-only:   voice.callNumber('+15551234567')
 //  Dialer (agents + managers on a campaign):  voice.callQueue(queueId, 'Customer name')
 //
+//  INBOUND: people on an inbound line (inbound_queue_members) get a
+//  "Ready for inbound calls" switch (voice.inbound.setReady). While it's on, this
+//  browser is registered with Twilio and rings when voice-inbound routes a caller
+//  here. The ringing panel shows the caller's name + menu choice, never the number.
+//
 //  The SDK loads on first use from jsDelivr (pinned version) — nothing in package.json.
-//  Server side: voice-token (who may call) + voice-twiml (looks up the number, dials, logs).
+//  Server side: voice-token (who may call) + voice-twiml (outbound) + voice-inbound (inbound).
 // ============================================================
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
@@ -66,57 +70,91 @@ const VoiceContext = createContext(null)
 export function VoiceProvider({ children, canDialNumbers = false, canCallPeople = true }) {
   const deviceRef = useRef(null)
   const callRef = useRef(null)
+  const incomingRef = useRef(null)
   const timerRef = useRef(null)
-  // status: idle | connecting | ringing | in-call | ended | error
-  // label: what the panel shows — the person's name, or the typed number (admin dial pad only)
-  const [state, setState] = useState({ status: 'idle', label: '', muted: false, seconds: 0, error: '' })
+  // status: idle | incoming | connecting | ringing | in-call | ended | error
+  // label: the person's name (or the typed number on the admin dial pad); sub: e.g. "Inbound · New business"
+  const [state, setState] = useState({ status: 'idle', label: '', sub: '', muted: false, seconds: 0, error: '' })
   const [open, setOpen] = useState(false)
+  const [inbound, setInbound] = useState({ member: false, ready: false, registered: false, queues: [], manager: false, busy: false })
 
   const patch = useCallback(p => setState(s => ({ ...s, ...p })), [])
+  const patchIn = useCallback(p => setInbound(s => ({ ...s, ...p })), [])
   const stopTimer = () => { clearInterval(timerRef.current); timerRef.current = null }
+
+  // Wire up events for an outgoing OR accepted incoming call.
+  const wire = useCallback((c) => {
+    callRef.current = c
+    c.on('ringing', () => patch({ status: 'ringing' }))
+    c.on('accept', () => {
+      patch({ status: 'in-call', seconds: 0 })
+      stopTimer()
+      timerRef.current = setInterval(() => setState(s => ({ ...s, seconds: s.seconds + 1 })), 1000)
+    })
+    const finish = (msg) => {
+      stopTimer(); callRef.current = null
+      patch({ status: msg ? 'error' : 'ended', error: msg || '', muted: false })
+    }
+    c.on('disconnect', () => finish())
+    c.on('cancel', () => finish())
+    c.on('reject', () => finish('Call was rejected.'))
+    c.on('error', e => finish(e?.message || 'Call failed.'))
+  }, [patch])
+
+  const handleIncoming = useCallback((call) => {
+    // Already on a call (or already ringing): decline this one so it rolls to the next person / the AI.
+    if (callRef.current || incomingRef.current) { try { call.reject() } catch { /* ignore */ } return }
+    const p = call.customParameters || new Map()
+    incomingRef.current = call
+    patch({
+      status: 'incoming', error: '', muted: false, seconds: 0,
+      label: p.get('callerName') || 'Caller',
+      sub: ['Inbound', p.get('queueLabel')].filter(Boolean).join(' · '),
+    })
+    setOpen(true)
+    const clear = () => {
+      if (incomingRef.current !== call) return
+      incomingRef.current = null
+      setState(s => (s.status === 'incoming' ? { ...s, status: 'idle', label: '', sub: '' } : s))
+    }
+    call.on('cancel', clear)   // caller hung up, or a teammate answered first
+    call.on('reject', clear)
+    call.on('disconnect', clear)
+  }, [patch])
 
   const getDevice = useCallback(async () => {
     if (deviceRef.current) return deviceRef.current
     const Twilio = await loadSdk()
     const token = await fetchToken()
-    const device = new Twilio.Device(token, { codecPreferences: ['opus', 'pcmu'], closeProtection: true, logLevel: 'error' })
+    const device = new Twilio.Device(token, {
+      codecPreferences: ['opus', 'pcmu'], closeProtection: true, logLevel: 'error', allowIncomingWhileBusy: false,
+    })
     device.on('tokenWillExpire', async () => {
       try { device.updateToken(await fetchToken()) } catch (e) { console.warn('voice token refresh failed', e) }
     })
     device.on('error', err => patch({ status: 'error', error: err?.message || 'Calling error' }))
+    device.on('registered', () => patchIn({ registered: true }))
+    device.on('unregistered', () => patchIn({ registered: false }))
+    device.on('incoming', handleIncoming)
     deviceRef.current = device
     return device
-  }, [patch])
+  }, [patch, patchIn, handleIncoming])
 
-  // Shared dialer: params go to Twilio -> voice-twiml (ProfileId or To).
+  // Shared dialer: params go to Twilio -> voice-twiml (ProfileId / QueueId / To).
   const start = useCallback(async (params, label) => {
     setOpen(true)
-    if (callRef.current) { patch({ error: 'Hang up the current call first.' }); return }
-    patch({ status: 'connecting', label, muted: false, seconds: 0, error: '' })
+    if (callRef.current || incomingRef.current) { patch({ error: 'Hang up the current call first.' }); return }
+    patch({ status: 'connecting', label, sub: '', muted: false, seconds: 0, error: '' })
     try {
       const device = await getDevice()
       const c = await device.connect({ params })
-      callRef.current = c
-      c.on('ringing', () => patch({ status: 'ringing' }))
-      c.on('accept', () => {
-        patch({ status: 'in-call', seconds: 0 })
-        stopTimer()
-        timerRef.current = setInterval(() => setState(s => ({ ...s, seconds: s.seconds + 1 })), 1000)
-      })
-      const finish = (msg) => {
-        stopTimer(); callRef.current = null
-        patch({ status: msg ? 'error' : 'ended', error: msg || '', muted: false })
-      }
-      c.on('disconnect', () => finish())
-      c.on('cancel', () => finish())
-      c.on('reject', () => finish('Call was rejected.'))
-      c.on('error', e => finish(e?.message || 'Call failed.'))
+      wire(c)
     } catch (e) {
       callRef.current = null
       const msg = /Permission|NotAllowed/i.test(e?.message || '') ? 'Microphone access is blocked. Allow the mic for this site and try again.' : (e?.message || 'Call failed.')
       patch({ status: 'error', error: msg })
     }
-  }, [getDevice, patch])
+  }, [getDevice, patch, wire])
 
   // Click-to-call a person. Only their id leaves the browser.
   const callPerson = useCallback((profileId, name) => {
@@ -139,6 +177,63 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
     start({ To: to }, formatPhone(to))
   }, [canDialNumbers, start, patch])
 
+  // ---- inbound ----
+  const acceptIncoming = useCallback(async () => {
+    const c = incomingRef.current
+    if (!c) return
+    incomingRef.current = null
+    try {
+      wire(c)
+      patch({ status: 'connecting' })
+      c.accept()
+    } catch (e) {
+      callRef.current = null
+      const msg = /Permission|NotAllowed/i.test(e?.message || '') ? 'Microphone access is blocked. Allow the mic for this site and try again.' : (e?.message || 'Could not answer.')
+      patch({ status: 'error', error: msg })
+    }
+  }, [patch, wire])
+
+  const declineIncoming = useCallback(() => {
+    const c = incomingRef.current
+    incomingRef.current = null
+    try { c?.reject() } catch { /* ignore */ }
+    patch({ status: 'idle', label: '', sub: '' })
+  }, [patch])
+
+  const setReady = useCallback(async (ready) => {
+    patchIn({ busy: true })
+    try {
+      if (ready) {
+        const device = await getDevice()
+        if (device.state !== 'registered') await device.register()
+      } else if (deviceRef.current?.state === 'registered') {
+        await deviceRef.current.unregister()
+      }
+      const { error } = await supabase.rpc('inbound_set_ready', { p_ready: !!ready })
+      if (error) throw error
+      patchIn({ ready: !!ready })
+    } catch (e) {
+      setOpen(true)
+      patch({ status: 'error', error: e?.message || 'Could not change inbound status.' })
+    } finally {
+      patchIn({ busy: false })
+    }
+  }, [getDevice, patch, patchIn])
+
+  // On load: am I on an inbound line? If I left "ready" on, re-register this browser.
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const { data } = await supabase.rpc('inbound_my_status')
+      if (!alive || !data) return
+      patchIn({ member: !!data.member, ready: !!data.ready, queues: data.queues || [], manager: !!data.manager })
+      if (data.member && data.ready) {
+        try { const d = await getDevice(); if (d.state !== 'registered') await d.register() } catch (e) { console.warn('inbound re-register failed', e) }
+      }
+    })()
+    return () => { alive = false }
+  }, [getDevice, patchIn])
+
   const hangUp = useCallback(() => {
     if (callRef.current) callRef.current.disconnect()
     else deviceRef.current?.disconnectAll?.()
@@ -155,7 +250,7 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
   const sendDigit = useCallback(d => { callRef.current?.sendDigits?.(d) }, [])
 
   const reset = useCallback(() => {
-    if (!callRef.current) patch({ status: 'idle', label: '', muted: false, seconds: 0, error: '' })
+    if (!callRef.current && !incomingRef.current) patch({ status: 'idle', label: '', sub: '', muted: false, seconds: 0, error: '' })
   }, [patch])
 
   useEffect(() => () => { stopTimer(); try { deviceRef.current?.destroy() } catch { /* ignore */ } }, [])
@@ -163,7 +258,10 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
   const value = {
     ...state, open, setOpen, canDialNumbers, canCallPeople,
     callPerson, callQueue, callNumber, hangUp, toggleMute, sendDigit, reset,
+    acceptIncoming, declineIncoming,
+    inbound: { ...inbound, setReady },
     busy: ['connecting', 'ringing', 'in-call'].includes(state.status),
+    incoming: state.status === 'incoming',
   }
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>
 }
@@ -181,7 +279,7 @@ export function useVoice() {
 export function CallButton({ profileId, name, label, hasPhone = true, style }) {
   const voice = useVoice()
   if (!voice || !voice.canCallPeople || !profileId) return null
-  const disabled = !hasPhone || voice.busy
+  const disabled = !hasPhone || voice.busy || voice.incoming
   return (
     <button
       type="button"
