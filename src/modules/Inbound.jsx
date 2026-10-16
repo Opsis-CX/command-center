@@ -22,6 +22,14 @@ const STATUS = {
   answered: ['On call', '#16a34a'], completed: ['Answered', '#16a34a'], ai: ['AI assistant', '#7c3aed'],
   missed: ['Missed', '#dc2626'], abandoned: ['Hung up', '#dc2626'],
 }
+// Amazon Polly neural voices Twilio can speak with (US English, adult).
+const VOICES = [
+  ['Polly.Joanna-Neural', 'Joanna — female, warm (default)'], ['Polly.Ruth-Neural', 'Ruth — female, conversational'],
+  ['Polly.Danielle-Neural', 'Danielle — female, friendly'], ['Polly.Kendra-Neural', 'Kendra — female, crisp'],
+  ['Polly.Salli-Neural', 'Salli — female, bright'], ['Polly.Kimberly-Neural', 'Kimberly — female, upbeat'],
+  ['Polly.Matthew-Neural', 'Matthew — male, warm'], ['Polly.Stephen-Neural', 'Stephen — male, conversational'],
+  ['Polly.Gregory-Neural', 'Gregory — male, calm'], ['Polly.Joey-Neural', 'Joey — male, casual'],
+]
 const CALLER_TYPE = { team: 'Team', applicant: 'Applicant', campaign_contact: 'Campaign contact', unknown: '' }
 const CB_STATUS = { pending: 'Callback waiting', in_progress: 'Calling back', done: 'Called back', removed: 'Removed', dnc: 'Do not call', max_attempts: 'No answer (max tries)', expired: 'Expired' }
 
@@ -180,7 +188,7 @@ function Settings() {
     const { error } = await supabase.from('inbound_lines').update({
       name: line.name, active: line.active, greeting: line.greeting, hours: line.hours, timezone: line.timezone,
       ring_seconds: Number(line.ring_seconds) || 25, record_calls: line.record_calls, ai_enabled: line.ai_enabled,
-      ai_instructions: line.ai_instructions, menu: line.menu, updated_at: new Date().toISOString(),
+      ai_instructions: line.ai_instructions, ai_voice: line.ai_voice, menu: line.menu, updated_at: new Date().toISOString(),
     }).eq('id', line.id)
     setSaving(false)
     setMsg(error ? error.message : 'Saved — applies to the next call.')
@@ -230,6 +238,11 @@ function Settings() {
 
       <div style={S.card}>
         <label style={S.check}><input type="checkbox" checked={!!line.ai_enabled} onChange={e => set({ ai_enabled: e.target.checked })} /> AI assistant answers when nobody can (off = voicemail)</label>
+        <label style={S.lbl}>Voice (used for the greeting, menu and AI assistant)
+          <select style={S.input} value={line.ai_voice || 'Polly.Joanna-Neural'} onChange={e => set({ ai_voice: e.target.value })}>
+            {VOICES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </label>
         <label style={S.lbl}>What the AI should know / how it should behave
           <textarea style={{ ...S.input, minHeight: 160, fontFamily: 'inherit' }} value={line.ai_instructions || ''} onChange={e => set({ ai_instructions: e.target.value })} />
         </label>
