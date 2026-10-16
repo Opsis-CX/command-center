@@ -4,7 +4,7 @@ import { todayET, fmtDate, panel } from './financeBits'
 
 // ============================================================
 // PEOPLE AND PAY (Admins and Owners)
-// How each person is paid.
+// How each person is paid, and their job title (set here by an Admin or Owner; it also shows on their profile page).
 //   Team:  Deal team = paid per deal (a person can be on several deals, with a rate for each).
 //          Internal team = one rate that applies across every deal (it is not tied to a deal).
 //   Pay:   Hourly, or Salary (a fixed amount per week, every other week, twice a month, month or year).
@@ -54,7 +54,7 @@ export default function FinancePay({ flash }) {
 
   const load = useCallback(async () => {
     const [pe, pp, pr, de, en, ct] = await Promise.all([
-      supabase.from('profiles').select('id,full_name,role,is_active,client_id').order('full_name'),
+      supabase.from('profiles').select('id,full_name,role,job_title,is_active,client_id').order('full_name'),
       supabase.from('finance_pay_profiles').select('*'),
       supabase.from('finance_pay_rates').select('*').order('effective_from', { ascending: false }),
       supabase.from('finance_deals').select('id,name,status,entity_id').order('name'),
@@ -77,7 +77,7 @@ export default function FinancePay({ flash }) {
   const currentRates = (id) => rates.filter(r => r.profile_id === id && isCurrent(r))
 
   const shown = useMemo(() => people.filter(p => {
-    if (q && !String(p.full_name || '').toLowerCase().includes(q.toLowerCase())) return false
+    if (q && !`${p.full_name || ''} ${p.job_title || ''}`.toLowerCase().includes(q.toLowerCase())) return false
     if (filter === 'unset' && profileOf(p.id)) return false
     if (filter === 'agent' && !/\bagent\b/i.test(p.role || '')) return false
     if (filter === 'internal' && profileOf(p.id)?.team_type !== 'internal_team') return false
@@ -87,7 +87,7 @@ export default function FinancePay({ flash }) {
   if (loading) return <p className="page-sub">Loading…</p>
   const open = people.find(p => p.id === openId)
   if (open) return <PersonDetail person={open} profile={profileOf(open.id)} rates={rates.filter(r => r.profile_id === open.id)} deals={deals} roles={roles}
-    dealLabel={dealLabel} flash={flash} reload={load} onBack={() => setOpenId(null)} />
+    titles={[...new Set(people.map(x => x.job_title).filter(Boolean))].sort()} dealLabel={dealLabel} flash={flash} reload={load} onBack={() => setOpenId(null)} />
 
   const togglePick = (id) => setPicked(picked.includes(id) ? picked.filter(x => x !== id) : [...picked, id])
   const allShownPicked = shown.length > 0 && shown.every(p => picked.includes(p.id))
@@ -103,7 +103,7 @@ export default function FinancePay({ flash }) {
         <button className="btn btn-primary" onClick={() => setBulk(true)} disabled={picked.length === 0}>Set pay for {picked.length || 'selected'} {picked.length === 1 ? 'person' : 'people'}</button>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 14 }}>
-        <div className="field" style={{ margin: 0, minWidth: 200 }}><label htmlFor="pp-q">Search</label><input id="pp-q" value={q} onChange={e => setQ(e.target.value)} placeholder="Name" /></div>
+        <div className="field" style={{ margin: 0, minWidth: 200 }}><label htmlFor="pp-q">Search</label><input id="pp-q" value={q} onChange={e => setQ(e.target.value)} placeholder="Name or job title" /></div>
         <button style={chip(filter === 'all')} onClick={() => setFilter('all')}>Everyone ({people.length})</button>
         <button style={chip(filter === 'unset')} onClick={() => setFilter('unset')}>Not set up yet ({people.filter(p => !profileOf(p.id)).length})</button>
         <button style={chip(filter === 'agent')} onClick={() => setFilter('agent')}>Agents</button>
@@ -115,16 +115,17 @@ export default function FinancePay({ flash }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
           <thead><tr>
             <th style={th}><input type="checkbox" aria-label="Select everyone shown" checked={allShownPicked} onChange={() => setPicked(allShownPicked ? picked.filter(id => !shown.some(p => p.id === id)) : [...new Set([...picked, ...shown.map(p => p.id)])])} /></th>
-            <th style={th}>Person</th><th style={th}>Role</th><th style={th}>Pay</th><th style={th}>Rippling number</th><th style={th}>Current pay</th><th style={th}></th>
+            <th style={th}>Person</th><th style={th}>Job title</th><th style={th}>Access role</th><th style={th}>Pay</th><th style={th}>Rippling number</th><th style={th}>Current pay</th><th style={th}></th>
           </tr></thead>
           <tbody>
-            {shown.length === 0 && <tr><td style={td} colSpan={7}>Nobody matches.</td></tr>}
+            {shown.length === 0 && <tr><td style={td} colSpan={8}>Nobody matches.</td></tr>}
             {shown.map(p => {
               const pf = profileOf(p.id); const cur = currentRates(p.id)
               return (
                 <tr key={p.id}>
                   <td style={td}><input type="checkbox" aria-label={`Select ${p.full_name}`} checked={picked.includes(p.id)} onChange={() => togglePick(p.id)} /></td>
                   <td style={{ ...td, fontWeight: 600 }}>{p.full_name}</td>
+                  <td style={td}>{p.job_title || <span style={{ color: 'var(--ink-soft)' }}>Not set</span>}</td>
                   <td style={td}>{p.role}</td>
                   <td style={td}>{!pf ? <span className="badge failed">Not set up</span> : <>
                     <div>{PAY_TYPES.find(t => t[0] === pf.pay_type)?.[1]}</div>
@@ -146,7 +147,7 @@ export default function FinancePay({ flash }) {
 }
 
 // ---------- one person ----------
-function PersonDetail({ person, profile, rates, deals, roles, dealLabel, flash, reload, onBack }) {
+function PersonDetail({ person, profile, rates, deals, roles, titles, dealLabel, flash, reload, onBack }) {
   const [f, setF] = useState({
     team_type: profile?.team_type || 'deal_team', pay_type: profile?.pay_type || 'hourly_contractor',
     rippling_emp_no: profile?.rippling_emp_no || '', default_deal_id: profile?.default_deal_id || '',
@@ -178,7 +179,8 @@ function PersonDetail({ person, profile, rates, deals, roles, dealLabel, flash, 
     <div>
       <button className="btn btn-ghost" style={{ fontSize: 12.5, marginBottom: 12 }} onClick={onBack}>← Everyone</button>
       <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 2px' }}>{person.full_name}</h2>
-      <p className="page-sub" style={{ margin: '0 0 14px' }}>{person.role}{profile ? '' : ' · no pay profile yet'}</p>
+      <p className="page-sub" style={{ margin: '0 0 14px' }}>{person.job_title || 'No job title yet'} · access role: {person.role}{profile ? '' : ' · no pay profile yet'}</p>
+      <JobTitle person={person} titles={titles} flash={flash} reload={reload} />
 
       <div style={{ ...panel, marginBottom: 18 }}>
         {err && <div className="login-err" role="alert">{err}</div>}
@@ -426,5 +428,34 @@ function BulkModal({ people, profiles, deals, roles, dealLabel, onClose, onDone 
         <button className="btn btn-ghost" onClick={finish} disabled={busy}>{skipped.length ? 'Close' : 'Cancel'}</button>
       </div>
     </Modal>
+  )
+}
+
+// ---------- job title (set by an Admin or Owner; not pay information) ----------
+function JobTitle({ person, titles, flash, reload }) {
+  const [title, setTitle] = useState(person.job_title || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const changed = title.trim() !== (person.job_title || '')
+  async function save() {
+    setBusy(true); setErr('')
+    const { error } = await supabase.from('profiles').update({ job_title: title.trim() || null }).eq('id', person.id)
+    setBusy(false)
+    if (error) return setErr(error.message)
+    flash(title.trim() ? 'Job title saved.' : 'Job title cleared.'); reload()
+  }
+  return (
+    <div style={{ ...panel, marginBottom: 18 }}>
+      {err && <div className="login-err" role="alert">{err}</div>}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div className="field" style={{ margin: 0, flex: 1, minWidth: 240 }}>
+          <label htmlFor="pd-title">Job title</label>
+          <input id="pd-title" list="pd-titles" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Quality Lead" />
+          <datalist id="pd-titles">{(titles || []).map(t => <option key={t} value={t} />)}</datalist>
+          <div className="hint">Shown on their profile page. This is a title, not an access level, and only Admins and Owners can change it.</div>
+        </div>
+        <button className="btn btn-primary" onClick={save} disabled={busy || !changed}>{busy ? 'Saving…' : 'Save job title'}</button>
+      </div>
+    </div>
   )
 }
