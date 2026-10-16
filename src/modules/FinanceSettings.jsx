@@ -30,6 +30,7 @@ export default function FinanceSettings({ lookups, reload, flash }) {
     <div>
       <Companies lookups={lookups} reload={reload} flash={flash} />
       <Categories lookups={lookups} reload={reload} flash={flash} />
+      <Five9Client lookups={lookups} reload={reload} flash={flash} />
       <PaymentMethods lookups={lookups} reload={reload} flash={flash} />
       <SubmitRoles lookups={lookups} reload={reload} flash={flash} />
       <PayVisibility lookups={lookups} reload={reload} flash={flash} />
@@ -254,3 +255,32 @@ function PayVisibility({ lookups, reload, flash }) {
     </div>
   )
 }
+
+// ---------- Which client Five9 time is counted for ----------
+function Five9Client({ lookups, reload, flash }) {
+  const saved = lookups.settings.five9_client_id || ''
+  const [val, setVal] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const value = val ?? saved
+  async function save() {
+    setBusy(true); setErr('')
+    const { error } = await supabase.from('finance_settings').upsert({ key: 'five9_client_id', value: value || null, description: 'The client that Five9 Ready time is counted for. Right now all Five9 time is for GarageCo.' }, { onConflict: 'key' })
+    setBusy(false)
+    if (error) return setErr(error.message)
+    setVal(null); reload(); flash('Saved. Five9 hours are now counted for ' + (lookups.clients.find(c => c.id === value)?.name || 'no client') + '.')
+  }
+  return (
+    <div style={section}>
+      <h2 style={h2}>Five9 time belongs to</h2>
+      <p className="page-sub" style={{ margin: '0 0 10px', maxWidth: 640 }}>Five9 Ready time has no client of its own, so it is counted for the client you choose here. Right now all Five9 time is for GarageCo. Changing this moves the Five9 hours to the new client everywhere on the Hours tab.</p>
+      {err && <div className="login-err" role="alert">{err}</div>}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div className="field" style={{ margin: 0, minWidth: 240 }}><label htmlFor="f9-client">Client</label>
+          <select id="f9-client" value={value} onChange={e => setVal(e.target.value)}><option value="">No client</option>{lookups.clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+        <button className="btn btn-primary" onClick={save} disabled={busy || val == null || val === saved}>{busy ? 'Saving…' : 'Save'}</button>
+      </div>
+    </div>
+  )
+}
+
