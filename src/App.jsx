@@ -83,6 +83,7 @@ import { useRsnAccess } from './lib/rsnAccess'
 // --- Finance (Admins/Owners) and the staff purchase form; both gated by the database ---
 import Finance from './modules/Finance'
 import SubmitPurchase from './modules/SubmitPurchase'
+import Profile from './modules/Profile'
 import { useFinanceAccess } from './lib/financeAccess'
 // --- SMS consent (2026-10-15) ---
 // Public opt-in form at /sms-consent (Twilio A2P 10DLC reviewers must be able to
@@ -128,6 +129,11 @@ function MaybeVoice({ enabled, canCallPeople, canDialNumbers, children }) {
 // A tiny wrapper so the assessment route can read :appId from the URL and
 // pass it into the form as a prop.
 import { useParams } from 'react-router-dom'
+// /profile = your own page; /profile/:id = anyone's page (Admins and Owners only; the database enforces it)
+function ProfileRoute() {
+  const { id } = useParams()
+  return <Profile key={id || 'me'} profileId={id} />
+}
 function AssessmentRoute() {
   const { appId } = useParams()
   return <AssessmentForm applicationId={appId} />
@@ -462,6 +468,8 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/mock-call" element={<MockCallScheduler embedded />} />
               <Route path="/mock-call/:appId" element={<MockCallRoute />} />
               <Route path="/settings" element={<Settings />} />
+                            <Route path="/profile" element={<Profile />} />
+              <Route path="/profile/:id" element={<ProfileRoute />} />
               <Route path="/roles" element={isAdmin ? <RolesPermissions /> : <NoAccess />} />
               {/* SMS Consent report — admin only. Also enforced server-side:
                   sms_consents / sms_consent_status are readable only by is_app_admin(). */}
@@ -553,7 +561,7 @@ function titleFor(path) {
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions',
     '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/phone': 'Phone', '/dialer': 'Agent workspace', '/campaigns': 'Campaigns', '/inbound': 'Inbound', '/scripts': 'Scripts', '/reporting/calls': 'Call Reports',
-    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/csr-scorecards': 'CSR Scorecards', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/finance': 'Finance', '/submit-purchase': 'Submit a purchase', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
+    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/csr-scorecards': 'CSR Scorecards', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/finance': 'Finance', '/profile': 'My profile', '/submit-purchase': 'Submit a purchase', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
   }
   // Sales is now a tabbed shell with nested routes (/sales/dashboard,
   // /sales/scorecard, etc.) -- Pipeline itself stays at the bare /sales so
