@@ -7,10 +7,13 @@ import { todayET, fmtDate, downloadCsv, panel } from './financeBits'
 // Three views of the same hours:
 //   Review   - scheduled vs worked by person, the categories to go through (Five9, each project, meetings) with check-offs, and the KPIs
 //   By day   - each person's scheduled shift next to what they actually worked, day by day, with the time over or short
-//   Entries  - the individual hours, which you can tag billable or not billable by hand
+//   Entries  - the individual hours, each with two answers you can set by hand: Client invoice (yes / no / not decided) and Internal pay (paid / not paid)
 // Counting rule: agents = Five9 Ready time (login minus not-ready); everyone else = task timers. Exact to the second.
 // Totals are always added up from seconds, never from the rounded hours.
 // Scheduled time comes from the shifts people claimed. Five9 time is counted for the client set in Settings.
+// Defaults (a hand choice always wins): Five9 time = covered by the Five9 invoice from Settings (a retainer, so it is NOT billed by the hour); timers on client work = not decided; timers with no client = not invoiced.
+// Retainer invoices (GarageCo's call center) bill for coverage, hours open x agents x rate, so Five9 time never sets that bill: it pays the agents.
+//   Pay: hourly people are paid for all counted time; salaried people and people with no pay profile are not paid from hours.
 // ============================================================
 
 const pad = (n) => String(n).padStart(2, '0')
@@ -31,6 +34,7 @@ const NOTE_TITLES = {
   running_timer: 'Timers still running',
   ready_negative: 'Days where not-ready time was more than login time',
   agent_timer_ignored: 'Agent timers that are ignored',
+  no_pay_profile: 'People with hours but no pay profile',
 }
 
 function Modal({ title, onClose, children, width = 520 }) {
@@ -56,13 +60,16 @@ export default function FinanceHours({ flash }) {
   const [types, setTypes] = useState([])
   const [entities, setEntities] = useState([])
   const [rates, setRates] = useState([])
+  const [settings, setSettings] = useState({})
+  const [retainer, setRetainer] = useState(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [view, setView] = useState('review')
   const [client, setClient] = useState('')
   const [person, setPerson] = useState('')
   const [category, setCategory] = useState('')
-  const [status, setStatus] = useState('')
+  const [invFilter, setInvFilter] = useState('')
+  const [payFilter, setPayFilter] = useState('')
   const [picked, setPicked] = useState({})
   const [shownCount, setShownCount] = useState(PAGE)
   const [showNotes, setShowNotes] = useState(false)
@@ -71,27 +78,34 @@ export default function FinanceHours({ flash }) {
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
-    const [h, sc, n, rv, cl, ty, en, ra] = await Promise.all([
+    const [h, sc, n, rv, cl, ty, en, ra, se] = await Promise.all([
       supabase.rpc('finance_hours', { p_from: from, p_to: to }),
       supabase.rpc('finance_scheduled_hours', { p_from: from, p_to: to }),
       supabase.rpc('finance_hours_notes', { p_from: from, p_to: to }),
       supabase.from('finance_hour_reviews').select('*').eq('from_date', from).eq('to_date', to),
       supabase.from('clients').select('id,name').order('name'),
-      supabase.from('finance_invoice_types').select('id,name,entity_id,active').order('sort').order('name'),
+      supabase.from('finance_invoice_types').select('id,name,entity_id,active,billing_method').order('sort').order('name'),
       supabase.from('finance_billing_entities').select('id,name'),
       supabase.from('finance_rate_lines').select('invoice_type_id,product_name,active'),
+      supabase.from('finance_settings').select('key,value'),
     ])
     const bad = h.error || sc.error
     if (bad) { setErr(bad.message); setRows([]); setSched([]); setLoading(false); return }
     setRows(h.data || []); setSched(sc.data || []); setNotes(n.data || []); setReviews(rv.data || [])
     setClients(cl.data || []); setTypes(ty.data || []); setEntities(en.data || []); setRates(ra.data || [])
+    const st = Object.fromEntries((se.data || []).map(r => [r.key, r.value])); setSettings(st)
+    const f9type = (ty.data || []).find(t => t.id === st.five9_invoice_type_id)
+    if (f9type && f9type.billing_method === 'coverage') {
+      const cs = await supabase.rpc('finance_coverage_summary', { p_invoice_type: f9type.id, p_from: from, p_to: to })
+      setRetainer({ typeId: f9type.id, rows: cs.data || [], error: cs.error?.message || '' })
+    } else setRetainer(null)
     setPicked({}); setShownCount(PAGE); setLoading(false)
   }, [from, to])
   useEffect(() => { load() }, [load])
 
   const clientName = (id) => clients.find(c => c.id === id)?.name || ''
   const typeLabel = (id) => { const t = types.find(x => x.id === id); if (!t) return ''; const e = entities.find(x => x.id === t.entity_id); return e ? `${e.name} › ${t.name}` : t.name }
-  const tagLabel = (r) => r.billable == null ? null : r.billable ? `Billable · ${typeLabel(r.invoice_type_id) || 'invoice'}${r.product_name ? ` · ${r.product_name}` : ''}` : 'Not billable'
+  const invoiceLine = (r) => (r.invoice_state === 'yes' || r.invoice_state === 'retainer') ? `${typeLabel(r.invoice_type_effective) || 'Invoice'}${r.product_name ? ` · ${r.product_name}` : ''}` : ''
   const inClient = (cid) => client === '' ? true : client === NO_CLIENT ? !cid : cid === client
 
   // everything below follows the date range, client and person filters
@@ -141,8 +155,8 @@ export default function FinanceHours({ flash }) {
   const cats = useMemo(() => {
     const m = new Map()
     rowsCP.forEach(r => {
-      const c = m.get(r.category_key) || { key: r.category_key, label: r.category_label, secs: 0, n: 0, people: new Set() }
-      c.secs += r.seconds; c.n += 1; c.people.add(r.profile_id); m.set(r.category_key, c)
+      const c = m.get(r.category_key) || { key: r.category_key, label: r.category_label, secs: 0, n: 0, undec: 0, people: new Set() }
+      c.secs += r.seconds; c.n += 1; c.people.add(r.profile_id); if (r.invoice_state === 'undecided') c.undec += r.seconds; m.set(r.category_key, c)
     })
     const rank = (c) => c.key === 'five9' ? 0 : c.key === 'meetings' ? 2 : c.key === 'none' ? 3 : 1
     return [...m.values()].sort((a, b) => rank(a) - rank(b) || b.secs - a.secs || a.label.localeCompare(b.label))
@@ -165,12 +179,15 @@ export default function FinanceHours({ flash }) {
   // entries
   const entries = useMemo(() => rowsCP.filter(r => {
     if (category && r.category_key !== category) return false
-    if (status === 'untagged' && r.billable != null) return false
-    if (status === 'billable' && r.billable !== true) return false
-    if (status === 'not' && r.billable !== false) return false
+    if (invFilter && r.invoice_state !== invFilter) return false
+    if (payFilter && r.pay_state !== payFilter) return false
     return true
-  }), [rowsCP, category, status])
+  }), [rowsCP, category, invFilter, payFilter])
   const sum = (list) => list.reduce((s, r) => s + r.seconds, 0)
+  const money = useMemo(() => {
+    const by = (f) => rowsCP.filter(f).reduce((t, r) => t + r.seconds, 0)
+    return { invoiced: by(r => r.invoice_state === 'yes'), retainer: by(r => r.invoice_state === 'retainer'), paid: by(r => r.pay_state === 'yes'), paidNotInvoiced: by(r => r.pay_state === 'yes' && r.invoice_state === 'no'), invoicedNotPaid: by(r => (r.invoice_state === 'yes' || r.invoice_state === 'retainer') && r.pay_state === 'no'), undecided: by(r => r.invoice_state === 'undecided'), ready: by(r => r.source === 'five9') }
+  }, [rowsCP])
   const pickedRows = entries.filter(r => picked[keyOf(r)])
   const togglePick = (r) => setPicked(p => { const n = { ...p }; if (n[keyOf(r)]) delete n[keyOf(r)]; else n[keyOf(r)] = true; return n })
   const visible = entries.slice(0, shownCount)
@@ -185,14 +202,20 @@ export default function FinanceHours({ flash }) {
         calc.days.map(d => [d.date, d.name, d.shifts, d.scheduled, hms(d.scheduled), d.served, hms(d.served), d.scheduled > 0 ? d.served - d.scheduled : '', d.scheduled > 0 ? hms(d.served - d.scheduled) : '']))
     } else {
       await supabase.rpc('finance_log_event', { p_action: 'export', p_table: 'finance_hours', p_note: `CSV export, ${entries.length} rows, ${from} to ${to}` })
-      downloadCsv(`hours-${from}-to-${to}.csv`, ['Date', 'Person', 'Job title', 'Category', 'Client', 'What', 'Kind', 'Seconds', 'Hours', 'H:MM:SS', 'Tag', 'Invoice', 'Product'],
+      downloadCsv(`hours-${from}-to-${to}.csv`, ['Date', 'Person', 'Job title', 'Category', 'Client', 'What', 'Kind', 'Seconds', 'Hours', 'H:MM:SS', 'Client invoice', 'Invoice', 'Product', 'Invoice answer', 'Internal pay', 'Pay answer'],
         entries.map(r => [r.work_date, r.full_name, r.job_title, r.category_label, r.client_name, r.what, r.entry_kind, r.seconds, (r.seconds / 3600).toFixed(4), hms(r.seconds),
-          r.billable == null ? 'Untagged' : r.billable ? 'Billable' : 'Not billable', r.billable ? typeLabel(r.invoice_type_id) : '', r.product_name || '']))
+          r.invoice_state === 'yes' ? 'Yes, by the hour' : r.invoice_state === 'retainer' ? 'Retainer' : r.invoice_state === 'no' ? 'No' : 'Not decided', (r.invoice_state === 'yes' || r.invoice_state === 'retainer') ? typeLabel(r.invoice_type_effective) : '', (r.invoice_state === 'yes' || r.invoice_state === 'retainer') ? (r.product_name || '') : '', r.invoice_source === 'tagged' ? 'Set by hand' : 'Default',
+          r.pay_state === 'yes' ? 'Paid' : 'Not paid', r.pay_source === 'tagged' ? 'Set by hand' : 'Default']))
     }
     flash('Exported. The export is recorded in the audit log.')
   }
 
   const hasAny = rows.length > 0 || sched.length > 0
+  const retainerCents = retainer ? retainer.rows.reduce((t, x) => t + Math.round(Number(x.amount) * 100), 0) : 0
+  const retainerAgentHours = retainer ? retainer.rows.reduce((t, x) => t + Number(x.agent_hours), 0) : 0
+  const retainerNoTerms = retainer ? retainer.rows.find(x => !x.term_id) : null
+  const showRetainer = !!retainer && !person && (client === '' || client === settings.five9_client_id)
+  const retainerName = retainer ? typeLabel(retainer.typeId) : ''
   const withShifts = calc.people.filter(p => p.scheduled > 0)
   const noShifts = calc.people.filter(p => p.scheduled === 0 && p.served > 0)
   const pct = calc.scheduled > 0 ? Math.round((calc.serviced / calc.scheduled) * 1000) / 10 : null
@@ -235,6 +258,32 @@ export default function FinanceHours({ flash }) {
           <p className="page-sub" style={{ margin: '0 0 14px', fontSize: 12.5 }}>
             Scheduled vs worked covers the {calc.people.filter(p => p.scheduled > 0).length} people with a scheduled shift in this range{calc.unscheduled > 0 ? `. ${calc.unscheduled} ${calc.unscheduled === 1 ? 'person has' : 'people have'} no scheduled shifts and ${calc.unscheduled === 1 ? 'is' : 'are'} left out of these figures` : ''}.
           </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 6 }}>
+            {[['Hours invoiced by the hour', money.invoiced], ['Covered by a retainer', money.retainer], ['Hours paid', money.paid], ['Paid, not invoiced', money.paidNotInvoiced], ['Invoiced, not paid', money.invoicedNotPaid], ['Invoice not decided', money.undecided]].map(([label, s2]) => (
+              <div key={label} style={{ ...panel, padding: '10px 14px' }} data-kpi={label}>
+                <div style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600 }}>{label}</div>
+                <div style={{ fontSize: 20, fontWeight: 700 }}>{hrs(s2)} h</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{hms(s2)}</div>
+              </div>))}
+          </div>
+          <p className="page-sub" style={{ margin: '0 0 14px', fontSize: 12.5 }}>
+            Invoicing and pay follow the defaults unless you set them by hand: Five9 time is covered by the Five9 invoice from Settings, timers on client work stay "not decided" until you choose, and hourly people are paid for all counted time.
+          </p>
+          {showRetainer && (
+            <>
+              <div style={{ fontWeight: 700, fontSize: 14, margin: '4px 0 6px' }} data-retainer-heading>Retainer: {retainerName}. The client is billed for coverage, not for hours worked.</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 6 }}>
+                <div style={{ ...panel, padding: '10px 14px' }} data-kpi="Retainer billed (agent-hours)"><div style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600 }}>Retainer billed (agent-hours)</div><div style={{ fontSize: 20, fontWeight: 700 }}>{retainerAgentHours.toFixed(2)} h</div><div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>hours open × agents billed</div></div>
+                <div style={{ ...panel, padding: '10px 14px' }} data-kpi="Retainer billed ($)"><div style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600 }}>Retainer billed ($)</div><div style={{ fontSize: 20, fontWeight: 700 }}>${(retainerCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div><div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>for this date range</div></div>
+                <div style={{ ...panel, padding: '10px 14px' }} data-kpi="Five9 Ready time worked"><div style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600 }}>Five9 Ready time worked</div><div style={{ fontSize: 20, fontWeight: 700 }}>{hrs(money.ready)} h</div><div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{hms(money.ready)} · pays the agents</div></div>
+                <div style={{ ...panel, padding: '10px 14px' }} data-kpi="Worked vs billed coverage"><div style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600 }}>Worked vs billed coverage</div><div style={{ fontSize: 20, fontWeight: 700 }}>{retainerAgentHours > 0 ? `${Math.round((money.ready / 3600 / retainerAgentHours) * 1000) / 10}%` : '–'}</div><div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>Ready hours ÷ agent-hours billed</div></div>
+              </div>
+              {retainerNoTerms && <p className="login-err" role="note" style={{ margin: '0 0 6px' }}>{retainerNoTerms.days} day{retainerNoTerms.days === 1 ? ' has' : 's have'} no retainer terms yet, so nothing is billed for {retainerNoTerms.days === 1 ? 'it' : 'them'}. Set the terms on Clients and billing, under the invoice.</p>}
+              {retainer.error && <p className="login-err" role="alert">{retainer.error}</p>}
+              <div style={{ marginBottom: 8 }} />
+            </>
+          )}
 
           <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }} role="tablist">
             {[['review', 'Review'], ['day', 'By day'], ['entries', 'Entries']].map(([k, l]) => <button key={k} role="tab" aria-selected={view === k} style={chip(view === k)} onClick={() => setView(k)}>{l}</button>)}
@@ -297,8 +346,8 @@ export default function FinanceHours({ flash }) {
                 </p>
                 {cats.length === 0 ? <p className="page-sub" style={{ margin: 0 }}>No hours to review for these filters.</p> : (
                   <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
-                      <thead><tr><th style={th}>Reviewed</th><th style={th}>Category</th><th style={{ ...th, textAlign: 'right' }}>People</th><th style={{ ...th, textAlign: 'right' }}>Entries</th><th style={{ ...th, textAlign: 'right' }}>Hours</th><th style={th}>Status</th></tr></thead>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 780 }}>
+                      <thead><tr><th style={th}>Reviewed</th><th style={th}>Category</th><th style={{ ...th, textAlign: 'right' }}>People</th><th style={{ ...th, textAlign: 'right' }}>Entries</th><th style={{ ...th, textAlign: 'right' }}>Hours</th><th style={{ ...th, textAlign: 'right' }}>Invoice not decided</th><th style={th}>Status</th></tr></thead>
                       <tbody>
                         {cats.map(c => {
                           const rv = reviewFor(c.key)
@@ -310,6 +359,7 @@ export default function FinanceHours({ flash }) {
                               <td style={{ ...td, ...right }}>{c.people.size}</td>
                               <td style={{ ...td, ...right }}>{c.n}</td>
                               <td style={{ ...td, ...right, fontWeight: 600 }}>{show(c.secs)}</td>
+                              <td style={{ ...td, ...right }}>{c.undec ? show(c.undec) : ''}</td>
                               <td style={td}>
                                 {!rv ? <span style={{ color: 'var(--ink-soft)' }}>Not reviewed</span>
                                   : <><span className="badge passed">Reviewed</span> <span style={{ color: 'var(--ink-soft)', fontSize: 12.5 }}>{fmtDate(rv.reviewed_at.slice(0, 10))}</span>
@@ -369,11 +419,13 @@ export default function FinanceHours({ flash }) {
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
                 <div className="field" style={{ margin: 0 }}><label htmlFor="hr-cat">Category</label>
                   <select id="hr-cat" value={category} onChange={e => { setCategory(e.target.value); setShownCount(PAGE) }}><option value="">All categories</option>{cats.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}</select></div>
-                <div className="field" style={{ margin: 0 }}><label htmlFor="hr-status">Billing tag</label>
-                  <select id="hr-status" value={status} onChange={e => setStatus(e.target.value)}><option value="">All</option><option value="untagged">Not tagged yet</option><option value="billable">Billable</option><option value="not">Not billable</option></select></div>
+                <div className="field" style={{ margin: 0 }}><label htmlFor="hr-inv">Client invoice</label>
+                  <select id="hr-inv" value={invFilter} onChange={e => setInvFilter(e.target.value)}><option value="">All</option><option value="yes">Yes, by the hour</option><option value="retainer">Covered by a retainer</option><option value="no">No</option><option value="undecided">Not decided</option></select></div>
+                <div className="field" style={{ margin: 0 }}><label htmlFor="hr-pay">Internal pay</label>
+                  <select id="hr-pay" value={payFilter} onChange={e => setPayFilter(e.target.value)}><option value="">All</option><option value="yes">Paid</option><option value="no">Not paid</option></select></div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
-                {[['Shown', sum(entries)], ['Not tagged yet', sum(entries.filter(r => r.billable == null))], ['Billable', sum(entries.filter(r => r.billable === true))], ['Not billable', sum(entries.filter(r => r.billable === false))]].map(([label, s]) => (
+                {[['Shown', sum(entries)], ['Invoiced by the hour', sum(entries.filter(r => r.invoice_state === 'yes'))], ['Covered by a retainer', sum(entries.filter(r => r.invoice_state === 'retainer'))], ['Not invoiced', sum(entries.filter(r => r.invoice_state === 'no'))], ['Invoice not decided', sum(entries.filter(r => r.invoice_state === 'undecided'))], ['Paid', sum(entries.filter(r => r.pay_state === 'yes'))], ['Not paid', sum(entries.filter(r => r.pay_state === 'no'))]].map(([label, s]) => (
                   <div key={label} style={{ ...panel, padding: '10px 14px' }} data-card={label}>
                     <div style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600 }}>{label}</div>
                     <div style={{ fontSize: 18, fontWeight: 700 }}>{hrs(s)} h</div>
@@ -382,25 +434,23 @@ export default function FinanceHours({ flash }) {
               </div>
 
               {pickedRows.length > 0 && (
-                <div className="card" style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }} role="toolbar" aria-label="Tag the selected hours">
+                <div className="card" style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }} role="toolbar" aria-label="Set invoice and pay for the selected hours">
                   <b>{pickedRows.length} row{pickedRows.length === 1 ? '' : 's'} selected ({hrs(sum(pickedRows))} hours)</b>
-                  <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={() => setModal({ mode: 'billable' })}>Mark billable</button>
-                  <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setModal({ mode: 'not' })}>Mark not billable</button>
-                  <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setModal({ mode: 'clear' })}>Clear tags</button>
+                  <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={() => setModal({ preset: 'edit' })}>Set invoice and pay</button>
+                  <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setModal({ preset: 'clear' })}>Clear my choices</button>
                   <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setPicked({})}>Unselect all</button>
                 </div>
               )}
 
               <div style={{ ...panel, padding: 0, overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 940 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1020 }}>
                   <thead><tr>
                     <th style={th}><input type="checkbox" aria-label="Select every row shown" checked={allPicked} onChange={() => setPicked(allPicked ? {} : Object.fromEntries(entries.map(r => [keyOf(r), true])))} /></th>
-                    <th style={th}>Date</th><th style={th}>Person</th><th style={th}>What</th><th style={th}>Category</th><th style={th}>Client</th><th style={{ ...th, textAlign: 'right' }}>Hours</th><th style={th}>Billing tag</th>
+                    <th style={th}>Date</th><th style={th}>Person</th><th style={th}>What</th><th style={th}>Category</th><th style={th}>Client</th><th style={{ ...th, textAlign: 'right' }}>Hours</th><th style={th}>Client invoice</th><th style={th}>Internal pay</th>
                   </tr></thead>
                   <tbody>
-                    {visible.length === 0 && <tr><td style={td} colSpan={8}>Nothing matches these filters.</td></tr>}
+                    {visible.length === 0 && <tr><td style={td} colSpan={9}>Nothing matches these filters.</td></tr>}
                     {visible.map(r => {
-                      const tag = tagLabel(r)
                       return (
                         <tr key={keyOf(r)}>
                           <td style={td}><input type="checkbox" aria-label={`Select ${r.full_name} ${r.work_date} ${r.what}`} checked={!!picked[keyOf(r)]} onChange={() => togglePick(r)} /></td>
@@ -410,7 +460,12 @@ export default function FinanceHours({ flash }) {
                           <td style={td}>{r.category_label}</td>
                           <td style={td}>{r.client_name || <span style={{ color: 'var(--ink-soft)' }}>None</span>}</td>
                           <td style={{ ...td, ...right }}>{show(r.seconds)}</td>
-                          <td style={td}>{tag || <span style={{ color: 'var(--ink-soft)' }}>Not tagged</span>}</td>
+                          <td style={td} data-col="invoice">
+                            {r.invoice_state === 'undecided' ? <span className="badge needed">Not decided</span> : <b>{r.invoice_state === 'yes' ? 'Yes' : r.invoice_state === 'retainer' ? 'Retainer' : 'No'}</b>}
+                            {(r.invoice_state === 'yes' || r.invoice_state === 'retainer') && <div style={{ fontSize: 12.5 }}>{invoiceLine(r)}</div>}
+                            {r.invoice_state !== 'undecided' && <div style={{ color: 'var(--ink-soft)', fontSize: 12 }}>{r.invoice_source === 'default' ? 'default' : 'your choice'}</div>}
+                          </td>
+                          <td style={td} data-col="pay"><b>{r.pay_state === 'yes' ? 'Paid' : 'Not paid'}</b><div style={{ color: 'var(--ink-soft)', fontSize: 12 }}>{r.pay_source === 'default' ? 'default' : 'your choice'}</div></td>
                         </tr>)
                     })}
                   </tbody>
@@ -421,12 +476,15 @@ export default function FinanceHours({ flash }) {
           )}
         </>
       )}
-      {modal && <TagModal modal={modal} rows={pickedRows} types={types} rates={rates} typeLabel={typeLabel} onClose={() => setModal(null)} onDone={(m) => { setModal(null); flash(m); load() }} />}
+      {modal && <DecisionModal modal={modal} rows={pickedRows} types={types} rates={rates} typeLabel={typeLabel} onClose={() => setModal(null)} onDone={(m) => { setModal(null); flash(m); load() }} />}
     </div>
   )
 }
 
-function TagModal({ modal, rows, types, rates, typeLabel, onClose, onDone }) {
+function DecisionModal({ modal, rows, types, rates, typeLabel, onClose, onDone }) {
+  const clear = modal.preset === 'clear'
+  const [inv, setInv] = useState(clear ? 'clear' : 'keep')
+  const [pay, setPay] = useState(clear ? 'clear' : 'keep')
   const [invoice, setInvoice] = useState('')
   const [product, setProduct] = useState('')
   const [note, setNote] = useState('')
@@ -434,38 +492,60 @@ function TagModal({ modal, rows, types, rates, typeLabel, onClose, onDone }) {
   const [err, setErr] = useState('')
   const active = types.filter(t => t.active)
   const products = [...new Set(rates.filter(r => r.invoice_type_id === invoice && r.active !== false).map(r => r.product_name))].sort()
-  const { mode } = modal
-  const title = { billable: 'Mark as billable', not: 'Mark as not billable', clear: 'Clear the tags' }[mode]
+  const word = { yes: 'yes', no: 'no', clear: 'back to the default' }
 
   async function save() {
     setErr('')
-    if (mode === 'billable' && !invoice) return setErr('Choose which invoice this billable time belongs to.')
+    if (inv === 'keep' && pay === 'keep') return setErr('Choose something to change.')
+    if (inv === 'yes' && !invoice) return setErr('Choose which invoice this time belongs to.')
     if (rows.length > 3000) return setErr('Choose 3000 rows or fewer at a time.')
     setBusy(true)
     const payload = rows.map(r => ({ profile_id: r.profile_id, work_date: r.work_date, source: r.source, source_ref: r.source_ref }))
-    const { data, error } = await supabase.rpc('finance_set_hour_tags', {
-      p_rows: payload, p_billable: mode === 'billable' ? true : mode === 'not' ? false : null,
-      p_invoice_type: mode === 'billable' ? invoice : null, p_product: mode === 'billable' ? (product || null) : null, p_note: note.trim() || null,
+    const { data, error } = await supabase.rpc('finance_set_hour_decisions', {
+      p_rows: payload, p_invoice: inv, p_invoice_type: inv === 'yes' ? invoice : null, p_product: inv === 'yes' ? (product || null) : null, p_pay: pay, p_note: note.trim() || null,
     })
     setBusy(false)
     if (error) return setErr(error.message)
-    onDone(mode === 'clear' ? `Cleared ${data ?? rows.length} tag${(data ?? rows.length) === 1 ? '' : 's'}.` : `Tagged ${data ?? rows.length} row${(data ?? rows.length) === 1 ? '' : 's'} ${mode === 'billable' ? 'billable' : 'not billable'}.`)
+    const n = data ?? rows.length
+    const parts = []
+    if (inv !== 'keep') parts.push(`client invoice ${word[inv]}`)
+    if (pay !== 'keep') parts.push(`internal pay ${pay === 'yes' ? 'paid' : pay === 'no' ? 'not paid' : word[pay]}`)
+    onDone(`Saved for ${n} row${n === 1 ? '' : 's'}: ${parts.join(', ')}.`)
   }
+  const radios = (name, value, setValue, options) => options.map(([v, l]) => (
+    <label key={v} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '3px 0', fontSize: 14 }}>
+      <input type="radio" name={name} value={v} checked={value === v} onChange={() => setValue(v)} /> {l}
+    </label>))
   return (
-    <Modal title={`${title}: ${rows.length} row${rows.length === 1 ? '' : 's'}`} onClose={onClose}>
+    <Modal title={`${clear ? 'Clear my choices' : 'Set invoice and pay'}: ${rows.length} row${rows.length === 1 ? '' : 's'}`} onClose={onClose} width={560}>
       {err && <div className="login-err" role="alert">{err}</div>}
-      <p className="page-sub" style={{ marginTop: 0 }}>{(rows.reduce((s, r) => s + r.seconds, 0) / 3600).toFixed(2)} hours in total.</p>
-      {mode === 'billable' && <>
-        <div className="field"><label htmlFor="tg-inv">Which invoice? *</label>
-          <select id="tg-inv" value={invoice} onChange={e => { setInvoice(e.target.value); setProduct('') }}><option value="">Choose…</option>{active.map(t => <option key={t.id} value={t.id}>{typeLabel(t.id)}</option>)}</select></div>
-        <div className="field"><label htmlFor="tg-prod">Which product or service?</label>
-          <select id="tg-prod" value={product} onChange={e => setProduct(e.target.value)} disabled={!invoice}><option value="">No particular product</option>{products.map(p => <option key={p} value={p}>{p}</option>)}</select>
-          <div className="hint">The products come from that invoice's rate card.</div></div>
-      </>}
-      {mode === 'clear' && <p>This removes the billing tag from the selected rows. The hours themselves are not changed.</p>}
-      {mode !== 'clear' && <div className="field"><label htmlFor="tg-note">Note (optional)</label><input id="tg-note" value={note} onChange={e => setNote(e.target.value)} /></div>}
+      <p className="page-sub" style={{ marginTop: 0 }}>{(rows.reduce((s, r) => s + r.seconds, 0) / 3600).toFixed(2)} hours in total. Each question is separate, so you can answer one and leave the other.</p>
+
+      <fieldset style={{ border: 'none', padding: 0, margin: '0 0 14px' }}>
+        <legend style={{ fontWeight: 700, fontSize: 14, padding: 0 }}>Client invoice</legend>
+        <div className="hint" style={{ marginBottom: 4 }}>Is this time invoiced to a client? Five9 time is invoiced by default; timers on client work stay "not decided" until you choose.</div>
+        {radios('dec-inv', inv, setInv, [['keep', 'Leave as it is'], ['yes', 'Yes, invoice it to a client'], ['no', 'No, do not invoice it'], ['clear', 'Go back to the default']])}
+        {inv === 'yes' && (
+          <div style={{ marginLeft: 24, marginTop: 6 }}>
+            <div className="field"><label htmlFor="dc-inv">Which invoice? *</label>
+              <select id="dc-inv" value={invoice} onChange={e => { setInvoice(e.target.value); setProduct('') }}><option value="">Choose…</option>{active.map(t => <option key={t.id} value={t.id}>{typeLabel(t.id)}</option>)}</select></div>
+            {types.find(t => t.id === invoice)?.billing_method === 'coverage' && <div className="hint" role="note" style={{ marginBottom: 8 }}>This invoice is a retainer, so these hours will show as covered by it. They are not billed by the hour.</div>}
+            <div className="field"><label htmlFor="dc-prod">Which product or service?</label>
+              <select id="dc-prod" value={product} onChange={e => setProduct(e.target.value)} disabled={!invoice}><option value="">No particular product</option>{products.map(p => <option key={p} value={p}>{p}</option>)}</select>
+              <div className="hint">The products come from that invoice's rate card.</div></div>
+          </div>
+        )}
+      </fieldset>
+
+      <fieldset style={{ border: 'none', padding: 0, margin: '0 0 14px' }}>
+        <legend style={{ fontWeight: 700, fontSize: 14, padding: 0 }}>Internal pay</legend>
+        <div className="hint" style={{ marginBottom: 4 }}>Is the person paid for this time? Hourly people are paid by default; salaried people are not paid from hours.</div>
+        {radios('dec-pay', pay, setPay, [['keep', 'Leave as it is'], ['yes', 'Paid for this time'], ['no', 'Not paid for this time'], ['clear', 'Go back to the default']])}
+      </fieldset>
+
+      {!(inv === 'keep' && pay === 'keep') && <div className="field"><label htmlFor="dc-note">Note (optional)</label><input id="dc-note" value={note} onChange={e => setNote(e.target.value)} /></div>}
       <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : mode === 'clear' ? 'Clear tags' : 'Save'}</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
         <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
       </div>
     </Modal>
