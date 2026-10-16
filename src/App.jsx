@@ -112,6 +112,8 @@ import Dialer from './modules/Dialer'
 import Campaigns from './modules/Campaigns'
 // Inbound = business line routing + AI receptionist (page itself checks line membership / manager).
 import Inbound from './modules/Inbound'
+// Scripts = the guided call screens agents see (inbound + outbound); managers build them here.
+import Scripts from './modules/Scripts'
 const NO_CALL_ROLES = ['agent', 'client', 'csr']
 const canPlaceCalls = appRole => !NO_CALL_ROLES.includes(appRole)
 // Wraps the signed-in app in the calling provider. The Twilio library only loads on a
@@ -471,6 +473,8 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/campaigns" element={canPlaceCalls(appRole) ? <Campaigns /> : <NoAccess />} />
               {/* Inbound — line members + managers (page + RPCs enforce it). */}
               <Route path="/inbound" element={<Inbound />} />
+              {/* Scripts — managers (RLS can_manage_dialer() on call_scripts enforces it). */}
+              <Route path="/scripts" element={canPlaceCalls(appRole) ? <Scripts /> : <NoAccess />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/knowledge" element={<KnowledgeBase />} />
               <Route path="/scorecard" element={canAny(appRole, 'service_performance_scorecard') ? <Scorecard /> : <NoAccess />} />
@@ -544,7 +548,7 @@ function titleFor(path) {
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions',
-    '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/phone': 'Phone', '/dialer': 'Dialer', '/campaigns': 'Campaigns', '/inbound': 'Inbound',
+    '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/phone': 'Phone', '/dialer': 'Agent workspace', '/campaigns': 'Campaigns', '/inbound': 'Inbound', '/scripts': 'Scripts',
     '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/csr-scorecards': 'CSR Scorecards', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/finance': 'Finance', '/submit-purchase': 'Submit a purchase', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
   }
   // Sales is now a tabbed shell with nested routes (/sales/dashboard,
