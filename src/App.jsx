@@ -486,7 +486,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/inbound" element={<Inbound />} />
               {/* Scripts — managers (RLS can_manage_dialer() on call_scripts enforces it). */}
               <Route path="/scripts" element={canPlaceCalls(appRole) ? <Scripts /> : <NoAccess />} />
-              {/* Test a web lead — any signed-in team member can submit themselves as a Cedar Park test lead. */}
+              {/* Test a web lead — any signed-in team member can submit themselves as an Opsis Overhead Doors (made-up brand) test lead. */}
               <Route path="/test-lead" element={<TestLead />} />
               {/* Call Reports — managers (report_data RPC checks can_manage_dialer()). */}
               <Route path="/reporting/calls" element={canPlaceCalls(appRole) ? <CallReports /> : <NoAccess />} />
