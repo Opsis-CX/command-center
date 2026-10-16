@@ -23,6 +23,9 @@ import AgentStatus from '../components/AgentStatus'
 
 const LS_KEY = 'dialer_campaign'
 const POLL_MS = 15000
+const AUTO_POLL_MS = 4000   // auto-dial (speed-to-lead) campaigns look for new leads every 4s
+// Auto-dial = progressive with a 0-second countdown: calls go out as soon as a lead is handed over.
+const isAutoDial = c => !!c && c.mode === 'progressive' && Number(c.progressive_delay_sec) === 0
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 function lsGet() { try { return localStorage.getItem(LS_KEY) || 'all' } catch { return 'all' } }
 function lsSet(v) { try { localStorage.setItem(LS_KEY, v) } catch { /* ignore */ } }
@@ -252,7 +255,9 @@ function OutboundWork({ me }) {
         const row = Array.isArray(data) ? data[0] : data
         if (row) {
           setContact({ ...row, campaign_id: c.id }); setInfo(null); callStarted.current = false
-          if (c.mode === 'progressive') { setPhase('countdown'); setCountdown(c.progressive_delay_sec ?? 3) } else setPhase('preview')
+          // Progressive with a 0-second countdown = auto-dial: the call goes out the moment the
+          // lead is handed over — no Call, Pause or Skip for the agent.
+          if (c.mode === 'progressive') { setPhase('countdown'); setCountdown(Number(c.progressive_delay_sec ?? 3)) } else setPhase('preview')
           return
         }
       }
@@ -265,9 +270,10 @@ function OutboundWork({ me }) {
   useEffect(() => {
     if (!ready || contact || phase !== 'idle' || !free || !campaigns?.length) return
     fetchNext()
-    const t = setInterval(fetchNext, POLL_MS)
+    const auto = campaigns.some(c => isAutoDial(c) && (sel === 'all' || c.id === sel))
+    const t = setInterval(fetchNext, auto ? AUTO_POLL_MS : POLL_MS)
     return () => clearInterval(t)
-  }, [ready, contact, phase, free, campaigns, fetchNext])
+  }, [ready, contact, phase, free, campaigns, fetchNext, sel])
 
   // Not ready (or an inbound call came in) while previewing → hand the contact back / pause.
   useEffect(() => {
@@ -275,8 +281,8 @@ function OutboundWork({ me }) {
     if (!ready && ['preview', 'countdown'].includes(phase) && voice.agent.state !== 'on_call') {
       supabase.rpc('dialer_skip', { p_queue: contact.queue_id }); setContact(null); setPhase('idle')
     }
-    if (voice.incoming && phase === 'countdown') setPhase('preview')
-  }, [ready, voice.incoming, phase, contact, voice.agent.state])
+    if (voice.incoming && phase === 'countdown' && !isAutoDial(campaign)) setPhase('preview')
+  }, [ready, voice.incoming, phase, contact, voice.agent.state]) // eslint-disable-line
 
   // Progressive countdown → auto-dial.
   useEffect(() => {
@@ -312,7 +318,12 @@ function OutboundWork({ me }) {
 
   function placeCall() {
     if (!contact) return
-    if (voice.incoming || voice.inboundCall) { setPhase('preview'); return }
+    // An inbound call is ringing / on screen: hold the auto-dial and retry in a moment
+    // instead of dropping the agent into a manual preview.
+    if (voice.incoming || voice.inboundCall) {
+      if (isAutoDial(campaign)) { setCountdown(2); return }
+      setPhase('preview'); return
+    }
     wasReady.current = wasReady.current || voice.agent.state === 'ready'
     callStarted.current = true
     setLastTalk(0)
@@ -408,7 +419,10 @@ function OutboundWork({ me }) {
           <button onClick={placeCall} disabled={voice.incoming} style={{ ...S.callBtn, flex: 2 }}>📞 Call</button>
           <button onClick={skip} style={{ ...S.btn, flex: 1 }}>Skip</button>
         </>}
-        {phase === 'countdown' && <>
+        {phase === 'countdown' && isAutoDial(campaign) && (
+          <div style={{ width: '100%', fontWeight: 700 }}>📞 Auto-dialing…</div>
+        )}
+        {phase === 'countdown' && !isAutoDial(campaign) && <>
           <button onClick={placeCall} style={{ ...S.callBtn, flex: 2 }}>📞 Dialing in {countdown}…</button>
           <button onClick={() => setPhase('preview')} style={S.btn}>Pause</button>
           <button onClick={skip} style={S.btn}>Skip</button>
