@@ -4,10 +4,13 @@
 //  Everyone on a line:  the single Ready / Not ready status + recent calls with the
 //                       AI assistant's summary and transcript. No caller numbers shown.
 //  Managers also get:   Settings (hours, greeting, menu, ring time, AI instructions),
+//                       Holidays & closures (closed days / special hours, a typed
+//                       message or uploaded recording, a note for the AI assistant),
 //                       Who answers (people per menu option), Setup (Twilio steps).
 //
 //  Server: voice-inbound edge function (routing + AI receptionist).
 //  Data:   inbound_lines, inbound_queue_members (RLS: can_manage_dialer),
+//          inbound_line_closures + storage bucket 'line-audio' (managers),
 //          rpc inbound_recent_calls / inbound_my_status / inbound_set_ready.
 // ============================================================
 import { useEffect, useMemo, useState } from 'react'
@@ -49,7 +52,7 @@ export default function Inbound() {
     return <div style={S.page}><h2 style={S.h2}>Inbound</h2><p>You're not on an inbound line yet. Ask the Opsis CX Support team to add you under Inbound → Who answers.</p></div>
   }
 
-  const tabs = me.manager ? [['calls', 'Calls'], ['settings', 'Settings'], ['people', 'Who answers'], ['setup', 'Setup']] : [['calls', 'Calls']]
+  const tabs = me.manager ? [['calls', 'Calls'], ['settings', 'Settings'], ['holidays', 'Holidays & closures'], ['people', 'Who answers'], ['setup', 'Setup']] : [['calls', 'Calls']]
 
   return (
     <div style={S.page}>
@@ -65,6 +68,7 @@ export default function Inbound() {
       </div>
       {tab === 'calls' && <Calls />}
       {tab === 'settings' && <Settings />}
+      {tab === 'holidays' && <Holidays />}
       {tab === 'people' && <People />}
       {tab === 'setup' && <Setup />}
     </div>
@@ -256,6 +260,223 @@ function Settings() {
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
         <button onClick={save} disabled={saving} style={{ ...S.btn, background: '#0891b2', color: '#fff', borderColor: '#0891b2' }}>{saving ? 'Saving…' : 'Save'}</button>
         {msg && <span style={{ fontSize: 13 }}>{msg}</span>}
+      </div>
+    </div>
+  )
+}
+
+// ---------------- Holidays & closures ----------------
+// A closure covers one day or a range. "Closed all day" or "special hours" (e.g. open
+// 9–12 on Christmas Eve). When a caller reaches us during a closure, the line plays the
+// uploaded recording (or reads the typed message), then the AI assistant helps them —
+// it knows the reopen time, answers hours/holiday questions, and holds the callback
+// until we reopen.
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const nthDow = (y, m, dow, n) => { const d = new Date(y, m, 1); d.setDate(1 + ((dow - d.getDay() + 7) % 7) + (n - 1) * 7); return d }
+const lastDow = (y, m, dow) => { const d = new Date(y, m + 1, 0); d.setDate(d.getDate() - ((d.getDay() - dow + 7) % 7)); return d }
+const observed = d => { const x = new Date(d); if (x.getDay() === 6) x.setDate(x.getDate() - 1); else if (x.getDay() === 0) x.setDate(x.getDate() + 1); return x }
+function usHolidays(y) {
+  return [
+    ["New Year's Day", observed(new Date(y, 0, 1)), true],
+    ['Martin Luther King Jr. Day', nthDow(y, 0, 1, 3), false],
+    ["Presidents' Day", nthDow(y, 1, 1, 3), false],
+    ['Memorial Day', lastDow(y, 4, 1), true],
+    ['Juneteenth', observed(new Date(y, 5, 19)), false],
+    ['Independence Day', observed(new Date(y, 6, 4)), true],
+    ['Labor Day', nthDow(y, 8, 1, 1), true],
+    ['Thanksgiving', nthDow(y, 10, 4, 4), true],
+    ['Day after Thanksgiving', new Date(nthDow(y, 10, 4, 4).getTime() + 86400000), true],
+    ['Christmas Eve', new Date(y, 11, 24), false],
+    ['Christmas Day', observed(new Date(y, 11, 25)), true],
+    ["New Year's Eve", new Date(y, 11, 31), false],
+  ].map(([name, d, on]) => ({ name, date: ymd(d), on }))
+}
+const niceDate = s => s ? new Date(s + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : ''
+const BLANK = { name: '', starts_on: '', ends_on: '', all_day: true, open_time: '09:00', close_time: '12:00', message: '', audio_url: '', ai_note: '' }
+
+function Holidays() {
+  const [line, setLine] = useState(null)
+  const [rows, setRows] = useState([])
+  const [edit, setEdit] = useState(null)       // closure being added/edited
+  const [preset, setPreset] = useState(null)   // US holiday picker
+  const [showPast, setShowPast] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const today = ymd(new Date())
+
+  const load = async () => {
+    const { data: l } = await supabase.from('inbound_lines').select('id, name, ai_voice').order('created_at').limit(1).maybeSingle()
+    setLine(l)
+    if (!l) return
+    const { data, error } = await supabase.from('inbound_line_closures').select('*').eq('line_id', l.id).order('starts_on')
+    if (error) setErr(error.message)
+    setRows(data || [])
+  }
+  useEffect(() => { load() }, [])
+  if (!line) return <div>Loading…</div>
+
+  const save = async () => {
+    const c = edit
+    if (!c.name.trim() || !c.starts_on) return setErr('Give it a name and a start date.')
+    const ends = c.ends_on && c.ends_on >= c.starts_on ? c.ends_on : c.starts_on
+    if (!c.all_day && (!c.open_time || !c.close_time || c.close_time <= c.open_time)) return setErr('Special hours need an open time before the close time.')
+    setBusy(true); setErr('')
+    const row = {
+      line_id: line.id, name: c.name.trim(), starts_on: c.starts_on, ends_on: ends, all_day: !!c.all_day,
+      open_time: c.all_day ? null : c.open_time, close_time: c.all_day ? null : c.close_time,
+      message: c.message?.trim() || null, audio_url: c.audio_url || null, ai_note: c.ai_note?.trim() || null,
+    }
+    const { error } = c.id
+      ? await supabase.from('inbound_line_closures').update(row).eq('id', c.id)
+      : await supabase.from('inbound_line_closures').insert(row)
+    setBusy(false)
+    if (error) return setErr(error.message)
+    setEdit(null); load()
+  }
+  const remove = async c => {
+    if (!window.confirm(`Remove "${c.name}"?`)) return
+    const { error } = await supabase.from('inbound_line_closures').delete().eq('id', c.id)
+    if (error) setErr(error.message); else load()
+  }
+  const upload = async file => {
+    if (!file) return
+    if (!/\.(mp3|wav)$/i.test(file.name)) return setErr('Use an MP3 or WAV file — those are what phones can play.')
+    if (file.size > 10 * 1024 * 1024) return setErr('Keep recordings under 10 MB (a minute or two is plenty).')
+    setBusy(true); setErr('')
+    const path = `${line.id}/${Date.now()}-${file.name.replace(/[^a-z0-9._-]+/gi, '_')}`
+    const { error } = await supabase.storage.from('line-audio').upload(path, file, { contentType: file.type || 'audio/mpeg', upsert: false })
+    setBusy(false)
+    if (error) return setErr(error.message)
+    const { data } = supabase.storage.from('line-audio').getPublicUrl(path)
+    setEdit(e => ({ ...e, audio_url: data.publicUrl }))
+  }
+
+  const openPreset = () => {
+    const y = new Date().getFullYear()
+    const have = new Set(rows.map(r => r.starts_on))
+    const list = [...usHolidays(y), ...usHolidays(y + 1)]
+      .filter(h => h.date >= today && !have.has(h.date))
+      .slice(0, 14)
+    setPreset(list)
+  }
+  const addPreset = async () => {
+    const pick = preset.filter(h => h.on)
+    if (!pick.length) return setPreset(null)
+    setBusy(true); setErr('')
+    const { error } = await supabase.from('inbound_line_closures').insert(pick.map(h => ({
+      line_id: line.id, name: h.name, starts_on: h.date, ends_on: h.date, all_day: true,
+      message: `Thank you for calling Opsis CX. Our office is closed today for ${h.name}.`,
+    })))
+    setBusy(false)
+    if (error) return setErr(error.message)
+    setPreset(null); load()
+  }
+
+  const shown = rows.filter(r => showPast || r.ends_on >= today)
+  const active = rows.find(r => r.starts_on <= today && today <= r.ends_on)
+
+  return (
+    <div style={{ maxWidth: 860 }}>
+      <p style={{ fontSize: 13.5, opacity: 0.8, marginTop: 0, lineHeight: 1.6 }}>
+        Add days the office is closed or has special hours. On those days callers hear your recording (or typed message) after the greeting,
+        then the AI assistant helps them: it tells them when we reopen, answers questions about hours and holidays, takes their details,
+        and holds the callback in <Link to="/campaigns" style={S.link}>Callbacks</Link> until we're open again.
+      </p>
+      {active && <div style={{ ...S.card, borderColor: '#f59e0b', background: 'rgba(245,158,11,0.08)' }}>
+        <strong>Today: {active.name}</strong> — {active.all_day ? 'closed all day' : `open ${active.open_time}–${active.close_time} only`}.
+      </div>}
+      {err && <div style={S.error}>{err}</div>}
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <button style={{ ...S.btn, background: '#0891b2', color: '#fff', borderColor: '#0891b2' }} onClick={() => { setErr(''); setPreset(null); setEdit({ ...BLANK }) }}>+ Add closure</button>
+        <button style={S.btn} onClick={() => { setErr(''); setEdit(null); openPreset() }}>Add US holidays…</button>
+        <label style={{ ...S.check, margin: '0 0 0 auto' }}><input type="checkbox" checked={showPast} onChange={e => setShowPast(e.target.checked)} /> Show past</label>
+      </div>
+
+      {preset && (
+        <div style={S.card}>
+          <div style={S.sectionTitle}>Pick the holidays the office closes</div>
+          {!preset.length && <div style={{ fontSize: 13, opacity: 0.7 }}>All the upcoming US holidays are already added.</div>}
+          {preset.map((h, i) => (
+            <label key={h.date + h.name} style={{ ...S.check, margin: '4px 0' }}>
+              <input type="checkbox" checked={h.on} onChange={e => setPreset(p => p.map((x, j) => (j === i ? { ...x, on: e.target.checked } : x)))} />
+              <span style={{ width: 210 }}>{h.name}</span><span style={{ opacity: 0.7 }}>{niceDate(h.date)}</span>
+            </label>
+          ))}
+          <div style={{ fontSize: 12.5, opacity: 0.7, margin: '8px 0' }}>Weekend holidays use the observed weekday. Each gets a simple closed message — edit any of them afterwards to change the wording, upload a recording, or add a note for the AI.</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={{ ...S.btn, background: '#0891b2', color: '#fff', borderColor: '#0891b2' }} disabled={busy} onClick={addPreset}>{busy ? 'Adding…' : `Add ${preset.filter(h => h.on).length}`}</button>
+            <button style={S.btn} onClick={() => setPreset(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {edit && (
+        <div style={S.card}>
+          <div style={S.sectionTitle}>{edit.id ? 'Edit closure' : 'New closure'}</div>
+          <label style={S.lbl}>Name<input style={S.input} value={edit.name} placeholder="e.g. Thanksgiving, Team offsite, Snow day" onChange={e => setEdit({ ...edit, name: e.target.value })} /></label>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <label style={{ ...S.lbl, flex: '1 1 180px' }}>First day<input type="date" style={S.input} value={edit.starts_on} onChange={e => setEdit({ ...edit, starts_on: e.target.value })} /></label>
+            <label style={{ ...S.lbl, flex: '1 1 180px' }}>Last day <span style={{ fontWeight: 400, opacity: 0.6 }}>(blank = one day)</span><input type="date" style={S.input} value={edit.ends_on || ''} min={edit.starts_on || undefined} onChange={e => setEdit({ ...edit, ends_on: e.target.value })} /></label>
+          </div>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+            <label style={S.check}><input type="radio" checked={!!edit.all_day} onChange={() => setEdit({ ...edit, all_day: true })} /> Closed all day</label>
+            <label style={S.check}><input type="radio" checked={!edit.all_day} onChange={() => setEdit({ ...edit, all_day: false })} /> Special hours</label>
+            {!edit.all_day && <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input type="time" style={{ ...S.input, width: 120, margin: 0 }} value={edit.open_time || ''} onChange={e => setEdit({ ...edit, open_time: e.target.value })} />
+              <span>to</span>
+              <input type="time" style={{ ...S.input, width: 120, margin: 0 }} value={edit.close_time || ''} onChange={e => setEdit({ ...edit, close_time: e.target.value })} />
+              <span style={{ fontSize: 12, opacity: 0.65 }}>Eastern</span>
+            </span>}
+          </div>
+
+          <div style={{ ...S.sectionTitle, marginTop: 10 }}>What callers hear</div>
+          <label style={S.lbl}>Recording <span style={{ fontWeight: 400, opacity: 0.6 }}>(MP3 or WAV — plays instead of the typed message)</span>
+            <input type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" style={{ ...S.input, padding: 6 }} disabled={busy} onChange={e => upload(e.target.files?.[0])} />
+          </label>
+          {edit.audio_url && <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0 8px', flexWrap: 'wrap' }}>
+            <audio controls src={edit.audio_url} style={{ height: 34 }} />
+            <button style={S.chip} onClick={() => setEdit({ ...edit, audio_url: '' })}>Remove recording</button>
+          </div>}
+          <label style={S.lbl}>Typed message <span style={{ fontWeight: 400, opacity: 0.6 }}>(read in the line's voice when there's no recording)</span>
+            <textarea style={{ ...S.input, minHeight: 70, fontFamily: 'inherit' }} value={edit.message || ''}
+              placeholder="Thank you for calling Opsis CX. Our office is closed today for Thanksgiving. We reopen Monday at 9 AM."
+              onChange={e => setEdit({ ...edit, message: e.target.value })} />
+          </label>
+          <div style={{ fontSize: 12.5, opacity: 0.7, marginTop: -4 }}>The AI assistant already says when we reopen, so the message doesn't have to.</div>
+
+          <label style={S.lbl}>Note for the AI assistant <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional — what to tell callers or watch for)</span>
+            <textarea style={{ ...S.input, minHeight: 60, fontFamily: 'inherit' }} value={edit.ai_note || ''}
+              placeholder="e.g. Team members calling out for an interval should still leave details — the Opsis CX Support team checks messages at noon."
+              onChange={e => setEdit({ ...edit, ai_note: e.target.value })} />
+          </label>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+            <button style={{ ...S.btn, background: '#0891b2', color: '#fff', borderColor: '#0891b2' }} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+            <button style={S.btn} onClick={() => { setEdit(null); setErr('') }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={S.table}>
+          <thead><tr><th style={S.th}>When</th><th style={S.th}>Name</th><th style={S.th}>Hours</th><th style={S.th}>Callers hear</th><th style={S.th}></th></tr></thead>
+          <tbody>
+            {!shown.length && <tr><td style={{ ...S.td, opacity: 0.6 }} colSpan={5}>No closures yet. Add one, or start with US holidays.</td></tr>}
+            {shown.map(r => (
+              <tr key={r.id} style={{ opacity: r.ends_on < today ? 0.5 : 1 }}>
+                <td style={{ ...S.td, whiteSpace: 'nowrap' }}>{niceDate(r.starts_on)}{r.ends_on !== r.starts_on && <> – {niceDate(r.ends_on)}</>}</td>
+                <td style={S.td}>{r.name}{r.ai_note && <span style={S.tag} title={r.ai_note}>AI note</span>}</td>
+                <td style={S.td}>{r.all_day ? 'Closed' : `${r.open_time}–${r.close_time}`}</td>
+                <td style={{ ...S.td, fontSize: 12.5 }}>{r.audio_url ? 'Recording' : r.message ? <span title={r.message}>{r.message.length > 60 ? r.message.slice(0, 60) + '…' : r.message}</span> : <span style={{ opacity: 0.6 }}>AI says we're closed</span>}</td>
+                <td style={{ ...S.td, whiteSpace: 'nowrap', textAlign: 'right' }}>
+                  <button style={S.chip} onClick={() => { setErr(''); setPreset(null); setEdit({ ...BLANK, ...r, open_time: r.open_time || '09:00', close_time: r.close_time || '12:00', message: r.message || '', audio_url: r.audio_url || '', ai_note: r.ai_note || '' }) }}>Edit</button>{' '}
+                  <button style={S.chip} onClick={() => remove(r)}>Remove</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )
