@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { ACCEPT, money, todayET, fmtDate, StatusBadge, receiptProblem, uploadReceipt, openReceipt, downloadCsv, Toast, panel } from './financeBits'
 import FinanceSettings from './FinanceSettings'
+import FinanceBilling from './FinanceBilling'
 
 // ============================================================
 // FINANCE (Admins and Owners only)
@@ -43,12 +44,13 @@ export default function Finance() {
         <p className="page-sub">Visible to Admins and Owners only. Purchases submitted by staff arrive here, and the books are kept here.</p>
       </div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }} role="tablist">
-        {[['submitted', 'Submitted'], ['purchases', 'Purchases'], ['settings', 'Settings']].map(([k, label]) => (
+        {[['submitted', 'Submitted'], ['purchases', 'Purchases'], ['billing', 'Clients and billing'], ['settings', 'Settings']].map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} style={chip(tab === k)} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
       {tab === 'submitted' && <SubmittedTab lookups={lookups} flash={flash} />}
       {tab === 'purchases' && <PurchasesTab lookups={lookups} flash={flash} />}
+      {tab === 'billing' && <FinanceBilling lookups={lookups} flash={flash} />}
       {tab === 'settings' && <FinanceSettings lookups={lookups} reload={loadLookups} flash={flash} />}
       <Toast text={toast} />
     </div>
