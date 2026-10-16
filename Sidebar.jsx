@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useUnread } from '../lib/unread'
 import { supabase } from '../lib/supabase'
@@ -140,6 +140,7 @@ function formatRole(raw) {
 }
 export default function Sidebar({ open, onNavigate }) {
   const { isAdmin, level, roles, user, signOut, appRole } = useAuth()
+    const navigate = useNavigate()
   const { total: unreadTotal } = useUnread()
   const location = useLocation()
   // RSN pipeline is gated by a DB check (not the role matrix); null = still loading → hidden.
@@ -279,7 +280,9 @@ export default function Sidebar({ open, onNavigate }) {
           )
         })}
       </div>
-      <div className="user-chip">
+      <div className="user-chip" role="link" tabIndex={0} title="My profile" style={{ cursor: 'pointer' }}
+        onClick={() => { navigate('/profile'); onNavigate && onNavigate() }}
+        onKeyDown={e => { if (e.key === 'Enter') { navigate('/profile'); onNavigate && onNavigate() } }}>
         <div className="user-av">{initial}</div>
         <div>
           <div className="user-name">{name}</div>
@@ -294,8 +297,18 @@ export default function Sidebar({ open, onNavigate }) {
           <span className="nav-caret" style={{ marginLeft: 'auto', transition: 'transform .15s ease', transform: settingsOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
         </button>
         {settingsOpen && (
+                  <NavLink to="/profile" onClick={() => onNavigate && onNavigate()}
+              className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
+              style={{ paddingLeft: 34 }}>
+              My profile
+            </NavLink>
           <div className="nav-section-body">
             <NavLink to="/settings" onClick={() => onNavigate && onNavigate()}
+                          <NavLink to="/profile" onClick={() => onNavigate && onNavigate()}
+              className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
+              style={{ paddingLeft: 34 }}>
+              My profile
+            </NavLink>
               className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
               style={{ paddingLeft: 34 }}>
               Timezone
