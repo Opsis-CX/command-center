@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { todayET, fmtDate, panel } from './financeBits'
+import FinanceCoverage from './FinanceCoverage'
 
 // ============================================================
 // CLIENTS AND BILLING (Admins and Owners)
@@ -9,6 +10,8 @@ import { todayET, fmtDate, panel } from './financeBits'
 // rate lines. Example: GarageCo has a Consulting invoice on the 1st and a Call center invoice on the 15th.
 // Every rate has dates, so changing a rate never rewrites an old invoice. Hours are never rounded; the decimals
 // setting only changes how many are shown.
+// An invoice is billed either BY THE HOUR (tagged hours x the rate card) or AS A RETAINER (hours open x agents per hour x
+// rate, with dated terms and closed days). GarageCo's Call center is a retainer, so it has terms instead of rate lines.
 // ============================================================
 
 const DAYS = [[1, 'Monday'], [2, 'Tuesday'], [3, 'Wednesday'], [4, 'Thursday'], [5, 'Friday'], [6, 'Saturday'], [7, 'Sunday']]
@@ -233,7 +236,7 @@ function Invoices({ entity, types, next, lookups, reload, flash }) {
       {types.map(t => (
         <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid var(--line)', opacity: t.active ? 1 : 0.55 }}>
           <div>
-            <div style={{ fontWeight: 600 }}>{t.name}{!t.active && <span className="badge failed" style={{ marginLeft: 8 }}>ended</span>}</div>
+            <div style={{ fontWeight: 600 }}>{t.name}{t.billing_method === 'coverage' && <span className="badge" style={{ marginLeft: 8 }}>Retainer</span>}{!t.active && <span className="badge failed" style={{ marginLeft: 8 }}>ended</span>}</div>
             <div className="page-sub" style={{ margin: '2px 0 0' }}>Billed by {lookups.companies.find(c => c.id === t.issuing_company_id)?.name || 'no company chosen yet'}</div>
             <div className="page-sub" style={{ margin: '2px 0 0' }}>{scheduleSummary(t)}{next[t.id] ? ` · next invoice ${fmtDate(next[t.id])}` : ''}</div>
             <div className="page-sub" style={{ margin: '2px 0 0' }}>Next number {numberPreview(t)}</div>
@@ -285,6 +288,7 @@ function InvoiceForm({ type, lookups, next, reload, flash, onBack }) {
     invoice_frequency: type.invoice_frequency, invoice_day: type.invoice_day ?? '', invoice_day2: type.invoice_day2 ?? '',
     invoice_anchor: type.invoice_anchor || '', terms_days: type.terms_days, number_prefix: type.number_prefix || '',
     number_include_year: type.number_include_year, next_number: type.next_number, group_by: type.group_by, quantity_decimals: type.quantity_decimals, active: type.active,
+    billing_method: type.billing_method || 'hours',
   })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -313,6 +317,7 @@ function InvoiceForm({ type, lookups, next, reload, flash, onBack }) {
       invoice_frequency: freq, invoice_day: Number(f.invoice_day), invoice_day2: freq === 'semimonthly' ? Number(f.invoice_day2) : null,
       invoice_anchor: freq === 'biweekly' ? f.invoice_anchor : null, terms_days: terms, number_prefix: f.number_prefix.trim(),
       number_include_year: f.number_include_year, next_number: nn, group_by: f.group_by, quantity_decimals: Number(f.quantity_decimals), active: f.active,
+      billing_method: f.billing_method,
     }).eq('id', type.id)
     setBusy(false)
     if (error) return setErr(error.code === '23505' ? 'This client already has an invoice with that name.' : error.message)
@@ -329,6 +334,14 @@ function InvoiceForm({ type, lookups, next, reload, flash, onBack }) {
           <div className="field"><label htmlFor="s-co">Billed by</label>
             <select id="s-co" value={f.issuing_company_id} onChange={e => set('issuing_company_id', e.target.value)}><option value="">Choose…</option>{lookups.companies.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
         </div>
+
+        <h3 style={{ margin: '8px 0 8px', fontSize: 15 }}>How this invoice is billed</h3>
+        <div className="field" style={{ maxWidth: 560 }}><label htmlFor="s-method">Billed</label>
+          <select id="s-method" value={f.billing_method} onChange={e => set('billing_method', e.target.value)}>
+            <option value="hours">By the hour: the hours you tag to it × the rate card</option>
+            <option value="coverage">As a retainer: hours open × agents per hour × a rate</option>
+          </select>
+          <div className="hint">{f.billing_method === 'coverage' ? 'A retainer bills for coverage, not for hours worked. Its terms are set below once the invoice is saved. Five9 time does not change this bill.' : 'Hours you mark "invoice it" on the Hours tab are billed at the rates on the Rate card.'}</div></div>
 
         <h3 style={{ margin: '8px 0 8px', fontSize: 15 }}>When to invoice</h3>
         <div style={grid2}>
@@ -376,6 +389,8 @@ function InvoiceForm({ type, lookups, next, reload, flash, onBack }) {
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0 14px', fontWeight: 500 }}><input type="checkbox" checked={f.active} onChange={e => set('active', e.target.checked)} /> In use (untick when you stop sending this invoice)</label>
         <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save invoice'}</button>
       </div>
+      {f.billing_method === 'coverage' && type.billing_method === 'coverage' && <FinanceCoverage type={type} flash={flash} />}
+      {f.billing_method === 'coverage' && type.billing_method !== 'coverage' && <p className="page-sub" style={{ marginTop: 12 }}>Save the invoice first, then you can set its retainer terms here.</p>}
     </div>
   )
 }
@@ -478,6 +493,7 @@ function RateCard({ entity, lines, deals, types, reload, flash }) {
   const dealName = (id) => deals.find(d => d.id === id)?.name
   const typeName = (id) => types.find(t => t.id === id)?.name
   const noInvoices = types.filter(t => t.active).length === 0
+  const retainers = types.filter(t => t.active && t.billing_method === 'coverage')
   return (
     <div style={panel}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -488,6 +504,7 @@ function RateCard({ entity, lines, deals, types, reload, flash }) {
         </div>
       </div>
       {noInvoices && <p className="page-sub" style={{ marginTop: 0 }}>Add an invoice first (on the Invoices tab), so each rate has an invoice to belong to.</p>}
+      {retainers.length > 0 && <p className="page-sub" data-retainer-note style={{ marginTop: 0, maxWidth: 680 }}>{retainers.map(t => t.name).join(' and ')} {retainers.length === 1 ? 'is' : 'are'} billed as a retainer, priced by its own terms on the Invoices tab. Rates added here are only for anything else billed on {retainers.length === 1 ? 'it' : 'them'}.</p>}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
           <thead><tr><th style={th}>Product or service</th><th style={th}>Invoice</th><th style={th}>Unit</th><th style={{ ...th, textAlign: 'right' }}>Rate</th><th style={th}>Applies to</th><th style={th}>From</th><th style={th}>To</th><th style={th}></th></tr></thead>
