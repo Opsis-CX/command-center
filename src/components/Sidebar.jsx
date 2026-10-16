@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase'
 import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
 import { canAny } from '../lib/permissions'
 import { useRsnAccess } from '../lib/rsnAccess'
+import { useFinanceAccess } from '../lib/financeAccess'
 import ChangePassword from './ChangePassword'
 // Sidebar navigation, organized into labelled GROUPS.
 //
@@ -102,6 +103,8 @@ const NAV_MAIN = [
       { type: 'link', to: '/rsn', label: 'RSN Pipeline', ic: '🔗', perm: '__rsn' },
       { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
       { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings' },
+      { type: 'link', to: '/finance', label: 'Finance', ic: '💰', perm: '__finance' },                    // Admins and Owners only (enforced by the database)
+      { type: 'link', to: '/submit-purchase', label: 'Submit a purchase', ic: '🧾', perm: '__finance_submit' }, // roles owners choose, plus Admins and Owners
       {
         type: 'section', key: 'backend', label: 'Backend', ic: '⚙',
         children: [
@@ -143,6 +146,8 @@ export default function Sidebar({ open, onNavigate }) {
   const location = useLocation()
   // RSN pipeline is gated by a DB check (not the role matrix); null = still loading → hidden.
   const rsnOk = useRsnAccess()
+  // Finance links are gated by the database too: '__finance' = Admins/Owners, '__finance_submit' = roles allowed to submit purchases.
+  const fin = useFinanceAccess()
   const isOwner = level >= 100 || (roles || []).includes('owner')
   // One place that answers "can this person see an item with this perm key?"
   //   '__rsn'    → DB-gated RSN access
@@ -160,6 +165,8 @@ export default function Sidebar({ open, onNavigate }) {
   }, [user?.id])
   const permOk = (p) =>
     p === '__rsn' ? rsnOk === true
+    : p === '__finance' ? fin?.manager === true
+    : p === '__finance_submit' ? fin?.submitter === true
     : p === '__admin' ? (isAdmin || isOwner)
     : p === '__caller' ? !NO_CALL_ROLES.includes(appRole)
     : p === '__dialer' ? (!NO_CALL_ROLES.includes(appRole) || onCampaign)
