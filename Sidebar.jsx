@@ -85,6 +85,7 @@ const NAV_MAIN = [
         children: [
           { to: '/reporting', label: 'Reporting hub', perm: 'reporting' },
           { to: '/reporting/hourly', label: 'Hourly', perm: 'reporting' },
+          { to: '/reporting/calls', label: 'Call reports', perm: '__caller' },
         ],
       },
       {
