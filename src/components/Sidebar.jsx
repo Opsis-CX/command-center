@@ -68,6 +68,7 @@ const NAV_MAIN = [
           { to: '/dialer', label: 'Dialer', perm: '__dialer' },
           { to: '/phone', label: 'Phone', perm: '__caller' },
           { to: '/campaigns', label: 'Campaigns', perm: '__caller' },
+          { to: '/inbound', label: 'Inbound', perm: '__caller' },
         ],
       },
       { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },
