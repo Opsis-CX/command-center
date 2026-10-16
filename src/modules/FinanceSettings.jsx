@@ -32,6 +32,7 @@ export default function FinanceSettings({ lookups, reload, flash }) {
       <Categories lookups={lookups} reload={reload} flash={flash} />
       <PaymentMethods lookups={lookups} reload={reload} flash={flash} />
       <SubmitRoles lookups={lookups} reload={reload} flash={flash} />
+      <PayVisibility lookups={lookups} reload={reload} flash={flash} />
     </div>
   )
 }
@@ -214,6 +215,42 @@ function SubmitRoles({ lookups, reload, flash }) {
         {SUBMIT_ROLES.map(([k, label]) => <button key={k} type="button" className={'tag-opt' + (chosen.includes(k) ? ' on' : '')} aria-pressed={chosen.includes(k)} onClick={() => toggle(k)}>{label}</button>)}
       </div>
       <button className="btn btn-primary" onClick={save} disabled={busy || sel == null}>{busy ? 'Saving…' : 'Save'}</button>
+    </div>
+  )
+}
+
+// ---------- Pay visibility (a master switch, off until an Owner or Admin turns it on) ----------
+function PayVisibility({ lookups, reload, flash }) {
+  const on = lookups.settings.pay_self_view === true
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  async function set(value) {
+    setBusy(true); setErr('')
+    const { error } = await supabase.from('finance_settings').upsert({ key: 'pay_self_view', value, description: 'When on, each person can see their own pay rates (and nobody else\'s). Off until an owner switches it on.' }, { onConflict: 'key' })
+    setBusy(false)
+    if (error) return setErr(error.message)
+    setConfirming(false); reload(); flash(value ? 'Pay visibility is on. Each person can see only their own pay.' : 'Pay visibility is off. Only Admins and Owners can see pay.')
+  }
+  return (
+    <div style={section}>
+      <h2 style={h2}>Pay visibility {on ? <span className="badge passed" style={{ marginLeft: 8 }}>On</span> : <span className="badge failed" style={{ marginLeft: 8 }}>Off</span>}</h2>
+      <p className="page-sub" style={{ margin: '0 0 10px', maxWidth: 640 }}>
+        {on ? 'Each person can see their own pay rates on their profile, and only their own. Nobody can see anyone else\'s except Admins and Owners.'
+            : 'Off: only Admins and Owners can see any pay. Nobody else can see anything, not even their own. Leave this off until you have checked that pay is entered correctly.'}
+      </p>
+      {err && <div className="login-err" role="alert">{err}</div>}
+      {on && <button className="btn btn-ghost" onClick={() => set(false)} disabled={busy}>{busy ? 'Saving…' : 'Turn pay visibility off'}</button>}
+      {!on && !confirming && <button className="btn btn-primary" onClick={() => setConfirming(true)}>Let people see their own pay</button>}
+      {!on && confirming && (
+        <div className="card" style={{ borderColor: 'var(--failed)' }}>
+          <p style={{ margin: '0 0 10px' }}><b>Turn this on?</b> Each person will be able to see their own hourly rates, and only their own. It is recorded in the audit log, and you can switch it off again at any time.</p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-primary" onClick={() => set(true)} disabled={busy}>{busy ? 'Saving…' : 'Yes, turn it on'}</button>
+            <button className="btn btn-ghost" onClick={() => setConfirming(false)} disabled={busy}>Keep it off</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
