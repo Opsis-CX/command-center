@@ -4,16 +4,17 @@ import { todayET, fmtDate, downloadCsv, panel } from './financeBits'
 
 // ============================================================
 // HOURS (Admins and Owners)
-// Everyone's hours for a period, counted by the rule you set:
-//   Agents       -> Five9 Ready time (login minus not-ready), counted once, no split by deal
-//   Everyone else -> task timers
-// Exact to the second. Totals are always added up from seconds, never from the rounded hours.
-// You can mark hours billable (to an invoice and product) or not billable, by hand. The database
-// reads each amount itself, so what is saved can never differ from what is counted.
+// Three views of the same hours:
+//   Review   - the categories to go through (Five9, each project, meetings) with check-offs, and the KPIs
+//   By day   - each person's scheduled shift next to what they actually served, with the time over or short
+//   Entries  - the individual hours, which you can tag billable or not billable by hand
+// Counting rule: agents = Five9 Ready time (login minus not-ready); everyone else = task timers. Exact to the second.
+// Totals are always added up from seconds, never from the rounded hours.
+// Scheduled time comes from the shifts people claimed. Five9 time is counted for the client set in Settings.
 // ============================================================
 
 const pad = (n) => String(n).padStart(2, '0')
-export const hms = (s) => `${Math.floor(s / 3600)}:${pad(Math.floor((s % 3600) / 60))}:${pad(Math.round(s % 60))}`
+export const hms = (s) => { const sign = s < 0 ? '-' : ''; const a = Math.abs(s); return `${sign}${Math.floor(a / 3600)}:${pad(Math.floor((a % 3600) / 60))}:${pad(Math.round(a % 60))}` }
 export const hrs = (s) => (s / 3600).toFixed(2)
 const show = (s) => `${hrs(s)} (${hms(s)})`
 const keyOf = (r) => `${r.profile_id}|${r.work_date}|${r.source}|${r.source_ref}`
@@ -21,7 +22,9 @@ const addDays = (d, n) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.get
 const chip = (on) => ({ fontSize: 12.5, fontWeight: 600, padding: '6px 12px', borderRadius: 999, border: '1px solid var(--line)', cursor: 'pointer', background: on ? 'var(--accent)' : 'var(--surface)', color: on ? 'var(--white, #fff)' : 'var(--ink-soft)' })
 const th = { textAlign: 'left', padding: '8px 10px', fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', borderBottom: '2px solid var(--line)', whiteSpace: 'nowrap' }
 const td = { padding: '8px 10px', fontSize: 13.5, borderBottom: '1px solid var(--line)', verticalAlign: 'top' }
+const right = { textAlign: 'right', whiteSpace: 'nowrap' }
 const PAGE = 200
+const NO_CLIENT = '__none'
 const NOTE_TITLES = {
   agent_no_five9: 'Paid agents with no Five9 time in this period',
   five9_not_agent: 'Five9 time that is not counted (not an agent)',
@@ -46,85 +49,160 @@ export default function FinanceHours({ flash }) {
   const [from, setFrom] = useState(addDays(today, -14))
   const [to, setTo] = useState(today)
   const [rows, setRows] = useState([])
+  const [sched, setSched] = useState([])
   const [notes, setNotes] = useState([])
+  const [reviews, setReviews] = useState([])
+  const [clients, setClients] = useState([])
   const [types, setTypes] = useState([])
   const [entities, setEntities] = useState([])
   const [rates, setRates] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
+  const [view, setView] = useState('review')
+  const [client, setClient] = useState('')
   const [person, setPerson] = useState('')
-  const [source, setSource] = useState('')
+  const [category, setCategory] = useState('')
   const [status, setStatus] = useState('')
   const [picked, setPicked] = useState({})
   const [shownCount, setShownCount] = useState(PAGE)
   const [showNotes, setShowNotes] = useState(false)
   const [modal, setModal] = useState(null)
+  const [busyCat, setBusyCat] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
-    const [h, n, ty, en, ra] = await Promise.all([
+    const [h, sc, n, rv, cl, ty, en, ra] = await Promise.all([
       supabase.rpc('finance_hours', { p_from: from, p_to: to }),
+      supabase.rpc('finance_scheduled_hours', { p_from: from, p_to: to }),
       supabase.rpc('finance_hours_notes', { p_from: from, p_to: to }),
+      supabase.from('finance_hour_reviews').select('*').eq('from_date', from).eq('to_date', to),
+      supabase.from('clients').select('id,name').order('name'),
       supabase.from('finance_invoice_types').select('id,name,entity_id,active').order('sort').order('name'),
       supabase.from('finance_billing_entities').select('id,name'),
       supabase.from('finance_rate_lines').select('invoice_type_id,product_name,active'),
     ])
-    if (h.error) { setErr(h.error.message); setRows([]); setLoading(false); return }
-    setRows(h.data || []); setNotes(n.data || []); setTypes(ty.data || []); setEntities(en.data || []); setRates(ra.data || [])
+    const bad = h.error || sc.error
+    if (bad) { setErr(bad.message); setRows([]); setSched([]); setLoading(false); return }
+    setRows(h.data || []); setSched(sc.data || []); setNotes(n.data || []); setReviews(rv.data || [])
+    setClients(cl.data || []); setTypes(ty.data || []); setEntities(en.data || []); setRates(ra.data || [])
     setPicked({}); setShownCount(PAGE); setLoading(false)
   }, [from, to])
   useEffect(() => { load() }, [load])
 
+  const clientName = (id) => clients.find(c => c.id === id)?.name || ''
   const typeLabel = (id) => { const t = types.find(x => x.id === id); if (!t) return ''; const e = entities.find(x => x.id === t.entity_id); return e ? `${e.name} › ${t.name}` : t.name }
   const tagLabel = (r) => r.billable == null ? null : r.billable ? `Billable · ${typeLabel(r.invoice_type_id) || 'invoice'}${r.product_name ? ` · ${r.product_name}` : ''}` : 'Not billable'
+  const inClient = (cid) => client === '' ? true : client === NO_CLIENT ? !cid : cid === client
 
+  // everything below follows the date range, client and person filters
+  const rowsCP = useMemo(() => rows.filter(r => (!person || r.profile_id === person) && inClient(r.client_id)), [rows, person, client])   // eslint-disable-line
+  const schedCP = useMemo(() => sched.filter(s => (!person || s.profile_id === person) && inClient(s.client_id)), [sched, person, client])   // eslint-disable-line
   const people = useMemo(() => {
     const m = new Map()
-    rows.forEach(r => { if (!m.has(r.profile_id)) m.set(r.profile_id, { id: r.profile_id, name: r.full_name, title: r.job_title, agent: r.is_agent }) })
+    rows.forEach(r => m.set(r.profile_id, { id: r.profile_id, name: r.full_name }))
+    sched.forEach(s => m.set(s.profile_id, { id: s.profile_id, name: s.full_name }))
     return [...m.values()].sort((a, b) => a.name.localeCompare(b.name))
-  }, [rows])
+  }, [rows, sched])
 
-  const filtered = useMemo(() => rows.filter(r => {
-    if (person && r.profile_id !== person) return false
-    if (source && r.source !== source) return false
+  // scheduled versus serviced, per person and day
+  const calc = useMemo(() => {
+    const S = new Map(), A = new Map(), shifts = new Map(), noShow = new Map(), who = new Map()
+    schedCP.forEach(s => {
+      const k = `${s.profile_id}|${s.work_date}`
+      S.set(k, (S.get(k) || 0) + s.scheduled_seconds)
+      shifts.set(k, [shifts.get(k), s.shifts].filter(Boolean).join('; '))
+      if (s.had_no_show) noShow.set(k, true)
+      who.set(k, { id: s.profile_id, name: s.full_name, date: s.work_date })
+    })
+    rowsCP.forEach(r => {
+      const k = `${r.profile_id}|${r.work_date}`
+      A.set(k, (A.get(k) || 0) + r.seconds)
+      if (!who.has(k)) who.set(k, { id: r.profile_id, name: r.full_name, date: r.work_date })
+    })
+    const scheduledPeople = new Set(schedCP.map(s => s.profile_id))
+    let scheduled = 0, serviced = 0, over = 0, short = 0, noShift = 0
+    S.forEach((s, k) => { if (s > 0) { const a = A.get(k) || 0; scheduled += s; over += Math.max(a - s, 0); short += Math.max(s - a, 0) } })
+    A.forEach((a, k) => { const pid = k.split('|')[0]; if (scheduledPeople.has(pid)) { serviced += a; if (!S.has(k)) noShift += a } })
+    const unscheduled = new Set(rowsCP.filter(r => !scheduledPeople.has(r.profile_id)).map(r => r.profile_id)).size
+    const days = [...who.entries()].map(([k, w]) => ({ key: k, ...w, scheduled: S.get(k) || 0, served: A.get(k) || 0, shifts: shifts.get(k) || '', noShow: !!noShow.get(k) }))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.date.localeCompare(b.date))
+    const byPerson = new Map()
+    days.forEach(d => {
+      const p = byPerson.get(d.id) || { id: d.id, name: d.name, scheduled: 0, served: 0, over: 0, short: 0, days: 0 }
+      p.scheduled += d.scheduled; p.served += d.served; p.days += d.served > 0 ? 1 : 0
+      if (d.scheduled > 0) { p.over += Math.max(d.served - d.scheduled, 0); p.short += Math.max(d.scheduled - d.served, 0) }
+      byPerson.set(d.id, p)
+    })
+    return { scheduled, serviced, over, short, noShift, unscheduled, days, people: [...byPerson.values()].sort((a, b) => a.name.localeCompare(b.name)) }
+  }, [schedCP, rowsCP])
+
+  // categories to review
+  const cats = useMemo(() => {
+    const m = new Map()
+    rowsCP.forEach(r => {
+      const c = m.get(r.category_key) || { key: r.category_key, label: r.category_label, secs: 0, n: 0, people: new Set() }
+      c.secs += r.seconds; c.n += 1; c.people.add(r.profile_id); m.set(r.category_key, c)
+    })
+    const rank = (c) => c.key === 'five9' ? 0 : c.key === 'meetings' ? 2 : c.key === 'none' ? 3 : 1
+    return [...m.values()].sort((a, b) => rank(a) - rank(b) || b.secs - a.secs || a.label.localeCompare(b.label))
+  }, [rowsCP])
+  const reviewFor = (key) => reviews.find(r => r.category_key === key && (client === '' ? !r.client_id : r.client_id === client))
+  const reviewedCount = cats.filter(c => reviewFor(c.key)).length
+  const canReview = client !== NO_CLIENT
+
+  async function toggleReview(c) {
+    setBusyCat(c.key)
+    const { error } = await supabase.rpc('finance_set_category_review', { p_from: from, p_to: to, p_category: c.key, p_client: client === '' ? null : client, p_reviewed: !reviewFor(c.key), p_note: null })
+    setBusyCat('')
+    if (error) return setErr(error.message)
+    const { data } = await supabase.from('finance_hour_reviews').select('*').eq('from_date', from).eq('to_date', to)
+    setReviews(data || [])
+    flash(reviewFor(c.key) ? `${c.label} marked as not reviewed.` : `${c.label} marked as reviewed.`)
+  }
+  const openCategory = (c) => { setCategory(c.key); setView('entries'); setShownCount(PAGE); setPicked({}) }
+
+  // entries
+  const entries = useMemo(() => rowsCP.filter(r => {
+    if (category && r.category_key !== category) return false
     if (status === 'untagged' && r.billable != null) return false
     if (status === 'billable' && r.billable !== true) return false
     if (status === 'not' && r.billable !== false) return false
     return true
-  }), [rows, person, source, status])
-
+  }), [rowsCP, category, status])
   const sum = (list) => list.reduce((s, r) => s + r.seconds, 0)
-  const byPerson = useMemo(() => {
-    const m = new Map()
-    filtered.forEach(r => {
-      const p = m.get(r.profile_id) || { id: r.profile_id, name: r.full_name, title: r.job_title, agent: r.is_agent, secs: 0, days: new Set(), untagged: 0, billable: 0, not: 0 }
-      p.secs += r.seconds; p.days.add(r.work_date)
-      if (r.billable == null) p.untagged += r.seconds; else if (r.billable) p.billable += r.seconds; else p.not += r.seconds
-      m.set(r.profile_id, p)
-    })
-    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name))
-  }, [filtered])
-
-  const pickedRows = filtered.filter(r => picked[keyOf(r)])
+  const pickedRows = entries.filter(r => picked[keyOf(r)])
   const togglePick = (r) => setPicked(p => { const n = { ...p }; if (n[keyOf(r)]) delete n[keyOf(r)]; else n[keyOf(r)] = true; return n })
-  const visible = filtered.slice(0, shownCount)
-  const allPicked = filtered.length > 0 && filtered.every(r => picked[keyOf(r)])
+  const visible = entries.slice(0, shownCount)
+  const allPicked = entries.length > 0 && entries.every(r => picked[keyOf(r)])
   const setRange = (f, t) => { setFrom(f); setTo(t) }
+  const catLabel = (k) => cats.find(c => c.key === k)?.label || rows.find(r => r.category_key === k)?.category_label || ''
 
   async function exportCsv() {
-    await supabase.rpc('finance_log_event', { p_action: 'export', p_table: 'finance_hours', p_note: `CSV export, ${filtered.length} rows, ${from} to ${to}` })
-    downloadCsv(`hours-${from}-to-${to}.csv`,
-      ['Date', 'Person', 'Job title', 'Counted from', 'What', 'Client', 'Kind', 'Seconds', 'Hours', 'H:MM:SS', 'Tag', 'Invoice', 'Product'],
-      filtered.map(r => [r.work_date, r.full_name, r.job_title, r.source === 'five9' ? 'Five9 Ready time' : 'Task timer', r.what, r.client_name, r.entry_kind, r.seconds, (r.seconds / 3600).toFixed(4), hms(r.seconds),
-        r.billable == null ? 'Untagged' : r.billable ? 'Billable' : 'Not billable', r.billable ? typeLabel(r.invoice_type_id) : '', r.product_name || '']))
+    if (view === 'day') {
+      await supabase.rpc('finance_log_event', { p_action: 'export', p_table: 'finance_hours', p_note: `CSV export (by day), ${calc.days.length} rows, ${from} to ${to}` })
+      downloadCsv(`hours-by-day-${from}-to-${to}.csv`, ['Date', 'Person', 'Scheduled shift', 'Scheduled seconds', 'Scheduled H:MM:SS', 'Served seconds', 'Served H:MM:SS', 'Over or short seconds', 'Over or short H:MM:SS'],
+        calc.days.map(d => [d.date, d.name, d.shifts, d.scheduled, hms(d.scheduled), d.served, hms(d.served), d.scheduled > 0 ? d.served - d.scheduled : '', d.scheduled > 0 ? hms(d.served - d.scheduled) : '']))
+    } else {
+      await supabase.rpc('finance_log_event', { p_action: 'export', p_table: 'finance_hours', p_note: `CSV export, ${entries.length} rows, ${from} to ${to}` })
+      downloadCsv(`hours-${from}-to-${to}.csv`, ['Date', 'Person', 'Job title', 'Category', 'Client', 'What', 'Kind', 'Seconds', 'Hours', 'H:MM:SS', 'Tag', 'Invoice', 'Product'],
+        entries.map(r => [r.work_date, r.full_name, r.job_title, r.category_label, r.client_name, r.what, r.entry_kind, r.seconds, (r.seconds / 3600).toFixed(4), hms(r.seconds),
+          r.billable == null ? 'Untagged' : r.billable ? 'Billable' : 'Not billable', r.billable ? typeLabel(r.invoice_type_id) : '', r.product_name || '']))
+    }
     flash('Exported. The export is recorded in the audit log.')
   }
 
-  const hasData = rows.length > 0
+  const hasAny = rows.length > 0 || sched.length > 0
+  const pct = calc.scheduled > 0 ? Math.round((calc.serviced / calc.scheduled) * 1000) / 10 : null
+  const kpis = [
+    ['Hours scheduled', calc.scheduled, null], ['Hours serviced', calc.serviced, null],
+    ['Serviced vs scheduled', null, pct == null ? '–' : `${pct}%`],
+    ['Over scheduled time', calc.over, null], ['Short of scheduled time', calc.short, null], ['Worked with no shift', calc.noShift, null],
+  ]
+
   return (
     <div>
       <div className="card" style={{ marginBottom: 14 }} role="note">
-        <b>How hours are counted.</b> Agents: Five9 Ready time (login minus not-ready), counted once. Everyone else: task timers. Exact to the second. Only Admins and Owners can see this page.
+        <b>How hours are counted.</b> Agents: Five9 Ready time (login minus not-ready), counted for the client set in Settings. Everyone else: task timers. Exact to the second. Only Admins and Owners can see this page.
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
@@ -132,99 +210,187 @@ export default function FinanceHours({ flash }) {
         <div className="field" style={{ margin: 0 }}><label htmlFor="hr-to">To</label><input id="hr-to" type="date" value={to} min={from} onChange={e => e.target.value && setTo(e.target.value)} /></div>
         <button style={chip(false)} onClick={() => setRange(addDays(today, -14), today)}>Last 14 days</button>
         <button style={chip(false)} onClick={() => setRange(today.slice(0, 8) + '01', today)}>This month</button>
-        <button style={chip(false)} onClick={() => { const f = new Date(today.slice(0, 8) + '01T00:00:00'); f.setMonth(f.getMonth() - 1); const first = f.toLocaleDateString('en-CA'); const last = addDays(today.slice(0, 8) + '01', -1); setRange(first, last) }}>Last month</button>
+        <button style={chip(false)} onClick={() => { const f = new Date(today.slice(0, 8) + '01T00:00:00'); f.setMonth(f.getMonth() - 1); setRange(f.toLocaleDateString('en-CA'), addDays(today.slice(0, 8) + '01', -1)) }}>Last month</button>
+        <div className="field" style={{ margin: 0 }}><label htmlFor="hr-client">Client</label>
+          <select id="hr-client" value={client} onChange={e => setClient(e.target.value)}><option value="">All clients</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}<option value={NO_CLIENT}>No client</option></select></div>
         <div className="field" style={{ margin: 0 }}><label htmlFor="hr-person">Person</label>
           <select id="hr-person" value={person} onChange={e => setPerson(e.target.value)}><option value="">Everyone</option>{people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-        <div className="field" style={{ margin: 0 }}><label htmlFor="hr-source">Counted from</label>
-          <select id="hr-source" value={source} onChange={e => setSource(e.target.value)}><option value="">Everything</option><option value="five9">Five9 Ready time</option><option value="timer">Task timers</option></select></div>
-        <div className="field" style={{ margin: 0 }}><label htmlFor="hr-status">Billing tag</label>
-          <select id="hr-status" value={status} onChange={e => setStatus(e.target.value)}><option value="">All</option><option value="untagged">Not tagged yet</option><option value="billable">Billable</option><option value="not">Not billable</option></select></div>
-        <button className="btn btn-ghost" onClick={exportCsv} disabled={!filtered.length}>Export CSV</button>
+        <button className="btn btn-ghost" onClick={exportCsv} disabled={view === 'review' || (view === 'day' ? !calc.days.length : !entries.length)}>Export CSV</button>
       </div>
 
       {err && <div className="login-err" role="alert">{err}</div>}
-      {loading ? <p className="page-sub">Loading…</p> : !hasData ? <p className="page-sub">No hours in this range.</p> : (
+      {loading ? <p className="page-sub">Loading…</p> : !hasAny ? <p className="page-sub">No hours in this range.</p> : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
-            {[['Total', sum(filtered)], ['Five9 Ready time', sum(filtered.filter(r => r.source === 'five9'))], ['Task timers', sum(filtered.filter(r => r.source === 'timer'))],
-              ['Not tagged yet', sum(filtered.filter(r => r.billable == null))], ['Billable', sum(filtered.filter(r => r.billable === true))], ['Not billable', sum(filtered.filter(r => r.billable === false))]].map(([label, s]) => (
-              <div key={label} style={{ ...panel, padding: '10px 14px' }} data-card={label}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 6 }}>
+            {kpis.map(([label, s, text]) => (
+              <div key={label} style={{ ...panel, padding: '10px 14px' }} data-kpi={label}>
                 <div style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600 }}>{label}</div>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>{hrs(s)} h</div>
-                <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{hms(s)}</div>
+                <div style={{ fontSize: 20, fontWeight: 700 }}>{text != null ? text : `${hrs(s)} h`}</div>
+                {text == null && <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{hms(s)}</div>}
               </div>))}
           </div>
+          <p className="page-sub" style={{ margin: '0 0 14px', fontSize: 12.5 }}>
+            Scheduled vs serviced covers the {calc.people.filter(p => p.scheduled > 0).length} people with a scheduled shift in this range{calc.unscheduled > 0 ? `. ${calc.unscheduled} ${calc.unscheduled === 1 ? 'person has' : 'people have'} no scheduled shifts and ${calc.unscheduled === 1 ? 'is' : 'are'} left out of these figures` : ''}.
+          </p>
 
-          {notes.length > 0 && (
-            <div className="card" style={{ marginBottom: 14 }}>
-              <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setShowNotes(!showNotes)} aria-expanded={showNotes}>
-                {showNotes ? 'Hide' : 'Show'} data checks ({notes.length})
-              </button>
-              <span className="page-sub" style={{ marginLeft: 10 }}>Things worth a look. They do not change the hours.</span>
-              {showNotes && Object.keys(NOTE_TITLES).filter(k => notes.some(n => n.kind === k)).map(k => (
-                <div key={k} style={{ marginTop: 12 }}>
-                  <div style={{ fontWeight: 600 }}>{NOTE_TITLES[k]}</div>
-                  <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 13 }}>{notes.filter(n => n.kind === k).map((n, i) => <li key={i}><b>{n.full_name}:</b> {n.detail}</li>)}</ul>
-                </div>))}
-            </div>
-          )}
-
-          <div style={{ ...panel, padding: 0, overflowX: 'auto', marginBottom: 18 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
-              <thead><tr><th style={th}>Person</th><th style={th}>Counted from</th><th style={{ ...th, textAlign: 'right' }}>Days</th><th style={{ ...th, textAlign: 'right' }}>Hours</th><th style={{ ...th, textAlign: 'right' }}>Not tagged</th><th style={{ ...th, textAlign: 'right' }}>Billable</th><th style={{ ...th, textAlign: 'right' }}>Not billable</th></tr></thead>
-              <tbody>
-                {byPerson.map(p => (
-                  <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => setPerson(person === p.id ? '' : p.id)} aria-label={`Hours for ${p.name}`}>
-                    <td style={td}><div style={{ fontWeight: 600 }}>{p.name}</div>{p.title && <div style={{ color: 'var(--ink-soft)', fontSize: 12.5 }}>{p.title}</div>}</td>
-                    <td style={td}>{p.agent ? 'Five9 Ready time' : 'Task timers'}</td>
-                    <td style={{ ...td, textAlign: 'right' }}>{p.days.size}</td>
-                    <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600 }}>{show(p.secs)}</td>
-                    <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{p.untagged ? hrs(p.untagged) : ''}</td>
-                    <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{p.billable ? hrs(p.billable) : ''}</td>
-                    <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{p.not ? hrs(p.not) : ''}</td>
-                  </tr>))}
-              </tbody>
-            </table>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }} role="tablist">
+            {[['review', 'Review'], ['day', 'By day'], ['entries', 'Entries']].map(([k, l]) => <button key={k} role="tab" aria-selected={view === k} style={chip(view === k)} onClick={() => setView(k)}>{l}</button>)}
           </div>
 
-          {pickedRows.length > 0 && (
-            <div className="card" style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }} role="toolbar" aria-label="Tag the selected hours">
-              <b>{pickedRows.length} row{pickedRows.length === 1 ? '' : 's'} selected ({hrs(sum(pickedRows))} hours)</b>
-              <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={() => setModal({ mode: 'billable' })}>Mark billable</button>
-              <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setModal({ mode: 'not' })}>Mark not billable</button>
-              <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setModal({ mode: 'clear' })}>Clear tags</button>
-              <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setPicked({})}>Unselect all</button>
-            </div>
+          {view === 'review' && (
+            <>
+              <div style={{ ...panel, marginBottom: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                  <h3 style={{ margin: 0, fontSize: 16 }}>Categories to review</h3>
+                  <span style={{ fontWeight: 600 }} data-progress>{reviewedCount} of {cats.length} reviewed</span>
+                </div>
+                <p className="page-sub" style={{ margin: '4px 0 10px' }}>
+                  Go through each category, then tick it off. Click a category's name to see its entries. {!canReview && 'Choose All clients or one client to tick categories off.'}
+                </p>
+                {cats.length === 0 ? <p className="page-sub" style={{ margin: 0 }}>No hours to review for these filters.</p> : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
+                      <thead><tr><th style={th}>Reviewed</th><th style={th}>Category</th><th style={{ ...th, textAlign: 'right' }}>People</th><th style={{ ...th, textAlign: 'right' }}>Entries</th><th style={{ ...th, textAlign: 'right' }}>Hours</th><th style={th}>Status</th></tr></thead>
+                      <tbody>
+                        {cats.map(c => {
+                          const rv = reviewFor(c.key)
+                          const changed = rv && (rv.seconds_at_review !== c.secs || rv.entries_at_review !== c.n)
+                          return (
+                            <tr key={c.key}>
+                              <td style={td}><input type="checkbox" aria-label={`Reviewed: ${c.label}`} checked={!!rv} disabled={!canReview || busyCat === c.key} onChange={() => toggleReview(c)} /></td>
+                              <td style={td}><button className="btn btn-ghost" style={{ fontSize: 13.5, padding: '2px 8px', fontWeight: 600 }} onClick={() => openCategory(c)}>{c.label}</button></td>
+                              <td style={{ ...td, ...right }}>{c.people.size}</td>
+                              <td style={{ ...td, ...right }}>{c.n}</td>
+                              <td style={{ ...td, ...right, fontWeight: 600 }}>{show(c.secs)}</td>
+                              <td style={td}>
+                                {!rv ? <span style={{ color: 'var(--ink-soft)' }}>Not reviewed</span>
+                                  : <><span className="badge passed">Reviewed</span> <span style={{ color: 'var(--ink-soft)', fontSize: 12.5 }}>{fmtDate(rv.reviewed_at.slice(0, 10))}</span>
+                                    {changed && <div><span className="badge failed">Changed since reviewed</span> <span style={{ fontSize: 12.5 }}>was {show(rv.seconds_at_review)}, now {show(c.secs)}. Tick it again after checking.</span></div>}</>}
+                              </td>
+                            </tr>)
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {notes.length > 0 && (
+                <div className="card" style={{ marginBottom: 14 }}>
+                  <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setShowNotes(!showNotes)} aria-expanded={showNotes}>{showNotes ? 'Hide' : 'Show'} data checks ({notes.length})</button>
+                  <span className="page-sub" style={{ marginLeft: 10 }}>Things worth a look. They do not change the hours.</span>
+                  {showNotes && Object.keys(NOTE_TITLES).filter(k => notes.some(n => n.kind === k)).map(k => (
+                    <div key={k} style={{ marginTop: 12 }}>
+                      <div style={{ fontWeight: 600 }}>{NOTE_TITLES[k]}</div>
+                      <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 13 }}>{notes.filter(n => n.kind === k).map((n, i) => <li key={i}><b>{n.full_name}:</b> {n.detail}</li>)}</ul>
+                    </div>))}
+                </div>
+              )}
+            </>
           )}
 
-          <div style={{ ...panel, padding: 0, overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
-              <thead><tr>
-                <th style={th}><input type="checkbox" aria-label="Select every row shown" checked={allPicked} onChange={() => setPicked(allPicked ? {} : Object.fromEntries(filtered.map(r => [keyOf(r), true])))} /></th>
-                <th style={th}>Date</th><th style={th}>Person</th><th style={th}>What</th><th style={th}>Client</th><th style={{ ...th, textAlign: 'right' }}>Hours</th><th style={th}>Billing tag</th>
-              </tr></thead>
-              <tbody>
-                {visible.length === 0 && <tr><td style={td} colSpan={7}>Nothing matches these filters.</td></tr>}
-                {visible.map(r => {
-                  const tag = tagLabel(r)
-                  return (
-                    <tr key={keyOf(r)}>
-                      <td style={td}><input type="checkbox" aria-label={`Select ${r.full_name} ${r.work_date} ${r.what}`} checked={!!picked[keyOf(r)]} onChange={() => togglePick(r)} /></td>
-                      <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtDate(r.work_date)}{!r.day_complete && <div><span className="badge needed">today, still changing</span></div>}</td>
-                      <td style={td}>{r.full_name}</td>
-                      <td style={td}><div>{r.what}</div><div style={{ color: 'var(--ink-soft)', fontSize: 12.5 }}>{r.entry_kind === 'typed by hand' ? 'Typed in by hand' : r.entry_kind === 'five9' ? '' : r.entry_kind}{r.flag ? ` · ${r.flag}` : ''}</div></td>
-                      <td style={td}>{r.client_name || ''}</td>
-                      <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{show(r.seconds)}</td>
-                      <td style={td}>{tag || <span style={{ color: 'var(--ink-soft)' }}>Not tagged</span>}</td>
-                    </tr>)
-                })}
-              </tbody>
-            </table>
-          </div>
-          {filtered.length > shownCount && <div style={{ marginTop: 10 }}><button className="btn btn-ghost" onClick={() => setShownCount(c => c + PAGE)}>Show {Math.min(PAGE, filtered.length - shownCount)} more ({filtered.length - shownCount} not shown)</button></div>}
+          {view === 'day' && (
+            <>
+              <div style={{ ...panel, padding: 0, overflowX: 'auto', marginBottom: 16 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+                  <thead><tr><th style={th}>Person</th><th style={{ ...th, textAlign: 'right' }}>Days worked</th><th style={{ ...th, textAlign: 'right' }}>Scheduled</th><th style={{ ...th, textAlign: 'right' }}>Served</th><th style={{ ...th, textAlign: 'right' }}>Over</th><th style={{ ...th, textAlign: 'right' }}>Short</th></tr></thead>
+                  <tbody>
+                    {calc.people.map(p => (
+                      <tr key={p.id} style={{ cursor: 'pointer' }} aria-label={`Summary for ${p.name}`} onClick={() => setPerson(person === p.id ? '' : p.id)}>
+                        <td style={{ ...td, fontWeight: 600 }}>{p.name}</td>
+                        <td style={{ ...td, ...right }}>{p.days}</td>
+                        <td style={{ ...td, ...right }}>{p.scheduled ? show(p.scheduled) : <span style={{ color: 'var(--ink-soft)' }}>No shifts</span>}</td>
+                        <td style={{ ...td, ...right, fontWeight: 600 }}>{show(p.served)}</td>
+                        <td style={{ ...td, ...right }}>{p.over ? hms(p.over) : ''}</td>
+                        <td style={{ ...td, ...right }}>{p.short ? hms(p.short) : ''}</td>
+                      </tr>))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ ...panel, padding: 0, overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
+                  <thead><tr><th style={th}>Date</th><th style={th}>Person</th><th style={th}>Scheduled shift</th><th style={{ ...th, textAlign: 'right' }}>Scheduled</th><th style={{ ...th, textAlign: 'right' }}>Served</th><th style={th}>Over or short</th></tr></thead>
+                  <tbody>
+                    {calc.days.slice(0, shownCount).map(d => {
+                      const diff = d.served - d.scheduled
+                      return (
+                        <tr key={d.key}>
+                          <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtDate(d.date)}</td>
+                          <td style={td}>{d.name}</td>
+                          <td style={td}>{d.shifts || <span style={{ color: 'var(--ink-soft)' }}>No shift</span>}{d.noShow && <div><span className="badge failed">No-show</span></div>}</td>
+                          <td style={{ ...td, ...right }}>{d.scheduled ? show(d.scheduled) : ''}</td>
+                          <td style={{ ...td, ...right }}>{d.served ? show(d.served) : <span style={{ color: 'var(--ink-soft)' }}>0</span>}</td>
+                          <td style={td}>{d.scheduled === 0 ? <span style={{ color: 'var(--ink-soft)' }}>Worked with no shift</span>
+                            : diff > 0 ? <span style={{ fontWeight: 600 }}>{hms(diff)} over</span> : diff < 0 ? <span>{hms(-diff)} short</span> : <span>On time</span>}</td>
+                        </tr>)
+                    })}
+                    {calc.days.length === 0 && <tr><td style={td} colSpan={6}>Nothing matches these filters.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+              {calc.days.length > shownCount && <div style={{ marginTop: 10 }}><button className="btn btn-ghost" onClick={() => setShownCount(c => c + PAGE)}>Show more ({calc.days.length - shownCount} not shown)</button></div>}
+            </>
+          )}
+
+          {view === 'entries' && (
+            <>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
+                <div className="field" style={{ margin: 0 }}><label htmlFor="hr-cat">Category</label>
+                  <select id="hr-cat" value={category} onChange={e => { setCategory(e.target.value); setShownCount(PAGE) }}><option value="">All categories</option>{cats.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}</select></div>
+                <div className="field" style={{ margin: 0 }}><label htmlFor="hr-status">Billing tag</label>
+                  <select id="hr-status" value={status} onChange={e => setStatus(e.target.value)}><option value="">All</option><option value="untagged">Not tagged yet</option><option value="billable">Billable</option><option value="not">Not billable</option></select></div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
+                {[['Shown', sum(entries)], ['Not tagged yet', sum(entries.filter(r => r.billable == null))], ['Billable', sum(entries.filter(r => r.billable === true))], ['Not billable', sum(entries.filter(r => r.billable === false))]].map(([label, s]) => (
+                  <div key={label} style={{ ...panel, padding: '10px 14px' }} data-card={label}>
+                    <div style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600 }}>{label}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700 }}>{hrs(s)} h</div>
+                    <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{hms(s)}</div>
+                  </div>))}
+              </div>
+
+              {pickedRows.length > 0 && (
+                <div className="card" style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }} role="toolbar" aria-label="Tag the selected hours">
+                  <b>{pickedRows.length} row{pickedRows.length === 1 ? '' : 's'} selected ({hrs(sum(pickedRows))} hours)</b>
+                  <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={() => setModal({ mode: 'billable' })}>Mark billable</button>
+                  <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setModal({ mode: 'not' })}>Mark not billable</button>
+                  <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setModal({ mode: 'clear' })}>Clear tags</button>
+                  <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setPicked({})}>Unselect all</button>
+                </div>
+              )}
+
+              <div style={{ ...panel, padding: 0, overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 940 }}>
+                  <thead><tr>
+                    <th style={th}><input type="checkbox" aria-label="Select every row shown" checked={allPicked} onChange={() => setPicked(allPicked ? {} : Object.fromEntries(entries.map(r => [keyOf(r), true])))} /></th>
+                    <th style={th}>Date</th><th style={th}>Person</th><th style={th}>What</th><th style={th}>Category</th><th style={th}>Client</th><th style={{ ...th, textAlign: 'right' }}>Hours</th><th style={th}>Billing tag</th>
+                  </tr></thead>
+                  <tbody>
+                    {visible.length === 0 && <tr><td style={td} colSpan={8}>Nothing matches these filters.</td></tr>}
+                    {visible.map(r => {
+                      const tag = tagLabel(r)
+                      return (
+                        <tr key={keyOf(r)}>
+                          <td style={td}><input type="checkbox" aria-label={`Select ${r.full_name} ${r.work_date} ${r.what}`} checked={!!picked[keyOf(r)]} onChange={() => togglePick(r)} /></td>
+                          <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtDate(r.work_date)}{!r.day_complete && <div><span className="badge needed">today, still changing</span></div>}</td>
+                          <td style={td}>{r.full_name}</td>
+                          <td style={td}><div>{r.what}</div><div style={{ color: 'var(--ink-soft)', fontSize: 12.5 }}>{r.entry_kind === 'typed by hand' ? 'Typed in by hand' : r.entry_kind === 'five9' ? '' : r.entry_kind}{r.flag ? ` · ${r.flag}` : ''}</div></td>
+                          <td style={td}>{r.category_label}</td>
+                          <td style={td}>{r.client_name || <span style={{ color: 'var(--ink-soft)' }}>None</span>}</td>
+                          <td style={{ ...td, ...right }}>{show(r.seconds)}</td>
+                          <td style={td}>{tag || <span style={{ color: 'var(--ink-soft)' }}>Not tagged</span>}</td>
+                        </tr>)
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {entries.length > shownCount && <div style={{ marginTop: 10 }}><button className="btn btn-ghost" onClick={() => setShownCount(c => c + PAGE)}>Show {Math.min(PAGE, entries.length - shownCount)} more ({entries.length - shownCount} not shown)</button></div>}
+            </>
+          )}
         </>
       )}
-      {modal && <TagModal modal={modal} rows={pickedRows} types={types} entities={entities} rates={rates} typeLabel={typeLabel} onClose={() => setModal(null)} onDone={(m) => { setModal(null); flash(m); load() }} />}
+      {modal && <TagModal modal={modal} rows={pickedRows} types={types} rates={rates} typeLabel={typeLabel} onClose={() => setModal(null)} onDone={(m) => { setModal(null); flash(m); load() }} />}
     </div>
   )
 }
