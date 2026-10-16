@@ -5,8 +5,8 @@ import { todayET, fmtDate, downloadCsv, panel } from './financeBits'
 // ============================================================
 // HOURS (Admins and Owners)
 // Three views of the same hours:
-//   Review   - the categories to go through (Five9, each project, meetings) with check-offs, and the KPIs
-//   By day   - each person's scheduled shift next to what they actually served, with the time over or short
+//   Review   - scheduled vs worked by person, the categories to go through (Five9, each project, meetings) with check-offs, and the KPIs
+//   By day   - each person's scheduled shift next to what they actually worked, day by day, with the time over or short
 //   Entries  - the individual hours, which you can tag billable or not billable by hand
 // Counting rule: agents = Five9 Ready time (login minus not-ready); everyone else = task timers. Exact to the second.
 // Totals are always added up from seconds, never from the rounded hours.
@@ -97,6 +97,7 @@ export default function FinanceHours({ flash }) {
   // everything below follows the date range, client and person filters
   const rowsCP = useMemo(() => rows.filter(r => (!person || r.profile_id === person) && inClient(r.client_id)), [rows, person, client])   // eslint-disable-line
   const schedCP = useMemo(() => sched.filter(s => (!person || s.profile_id === person) && inClient(s.client_id)), [sched, person, client])   // eslint-disable-line
+  const meta = useMemo(() => { const m = new Map(); rows.forEach(r => m.set(r.profile_id, { agent: r.is_agent, title: r.job_title })); return m }, [rows])
   const people = useMemo(() => {
     const m = new Map()
     rows.forEach(r => m.set(r.profile_id, { id: r.profile_id, name: r.full_name }))
@@ -128,9 +129,9 @@ export default function FinanceHours({ flash }) {
       .sort((a, b) => a.name.localeCompare(b.name) || a.date.localeCompare(b.date))
     const byPerson = new Map()
     days.forEach(d => {
-      const p = byPerson.get(d.id) || { id: d.id, name: d.name, scheduled: 0, served: 0, over: 0, short: 0, days: 0 }
+      const p = byPerson.get(d.id) || { id: d.id, name: d.name, scheduled: 0, served: 0, over: 0, short: 0, noShift: 0, days: 0 }
       p.scheduled += d.scheduled; p.served += d.served; p.days += d.served > 0 ? 1 : 0
-      if (d.scheduled > 0) { p.over += Math.max(d.served - d.scheduled, 0); p.short += Math.max(d.scheduled - d.served, 0) }
+      if (d.scheduled > 0) { p.over += Math.max(d.served - d.scheduled, 0); p.short += Math.max(d.scheduled - d.served, 0) } else p.noShift += d.served
       byPerson.set(d.id, p)
     })
     return { scheduled, serviced, over, short, noShift, unscheduled, days, people: [...byPerson.values()].sort((a, b) => a.name.localeCompare(b.name)) }
@@ -180,7 +181,7 @@ export default function FinanceHours({ flash }) {
   async function exportCsv() {
     if (view === 'day') {
       await supabase.rpc('finance_log_event', { p_action: 'export', p_table: 'finance_hours', p_note: `CSV export (by day), ${calc.days.length} rows, ${from} to ${to}` })
-      downloadCsv(`hours-by-day-${from}-to-${to}.csv`, ['Date', 'Person', 'Scheduled shift', 'Scheduled seconds', 'Scheduled H:MM:SS', 'Served seconds', 'Served H:MM:SS', 'Over or short seconds', 'Over or short H:MM:SS'],
+      downloadCsv(`hours-by-day-${from}-to-${to}.csv`, ['Date', 'Person', 'Scheduled shift', 'Scheduled seconds', 'Scheduled H:MM:SS', 'Worked seconds', 'Worked H:MM:SS', 'Over or short seconds', 'Over or short H:MM:SS'],
         calc.days.map(d => [d.date, d.name, d.shifts, d.scheduled, hms(d.scheduled), d.served, hms(d.served), d.scheduled > 0 ? d.served - d.scheduled : '', d.scheduled > 0 ? hms(d.served - d.scheduled) : '']))
     } else {
       await supabase.rpc('finance_log_event', { p_action: 'export', p_table: 'finance_hours', p_note: `CSV export, ${entries.length} rows, ${from} to ${to}` })
@@ -192,10 +193,12 @@ export default function FinanceHours({ flash }) {
   }
 
   const hasAny = rows.length > 0 || sched.length > 0
+  const withShifts = calc.people.filter(p => p.scheduled > 0)
+  const noShifts = calc.people.filter(p => p.scheduled === 0 && p.served > 0)
   const pct = calc.scheduled > 0 ? Math.round((calc.serviced / calc.scheduled) * 1000) / 10 : null
   const kpis = [
-    ['Hours scheduled', calc.scheduled, null], ['Hours serviced', calc.serviced, null],
-    ['Serviced vs scheduled', null, pct == null ? '–' : `${pct}%`],
+    ['Hours scheduled', calc.scheduled, null], ['Hours worked', calc.serviced, null],
+    ['Worked vs scheduled', null, pct == null ? '–' : `${pct}%`],
     ['Over scheduled time', calc.over, null], ['Short of scheduled time', calc.short, null], ['Worked with no shift', calc.noShift, null],
   ]
 
@@ -230,7 +233,7 @@ export default function FinanceHours({ flash }) {
               </div>))}
           </div>
           <p className="page-sub" style={{ margin: '0 0 14px', fontSize: 12.5 }}>
-            Scheduled vs serviced covers the {calc.people.filter(p => p.scheduled > 0).length} people with a scheduled shift in this range{calc.unscheduled > 0 ? `. ${calc.unscheduled} ${calc.unscheduled === 1 ? 'person has' : 'people have'} no scheduled shifts and ${calc.unscheduled === 1 ? 'is' : 'are'} left out of these figures` : ''}.
+            Scheduled vs worked covers the {calc.people.filter(p => p.scheduled > 0).length} people with a scheduled shift in this range{calc.unscheduled > 0 ? `. ${calc.unscheduled} ${calc.unscheduled === 1 ? 'person has' : 'people have'} no scheduled shifts and ${calc.unscheduled === 1 ? 'is' : 'are'} left out of these figures` : ''}.
           </p>
 
           <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }} role="tablist">
@@ -239,6 +242,51 @@ export default function FinanceHours({ flash }) {
 
           {view === 'review' && (
             <>
+              <div style={{ ...panel, padding: 0, overflowX: 'auto', marginBottom: 14 }}>
+                <div style={{ padding: '14px 16px 4px' }}>
+                  <h3 style={{ margin: 0, fontSize: 16 }}>Scheduled vs worked, by person</h3>
+                  <p className="page-sub" style={{ margin: '4px 0 0' }}>Over and short are measured day by day against each shift. Click a person to see only them.</p>
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
+                  <thead><tr>
+                    <th style={th}>Person</th><th style={th}>Counted from</th><th style={{ ...th, textAlign: 'right' }}>Scheduled</th><th style={{ ...th, textAlign: 'right' }}>Worked</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Worked vs scheduled</th><th style={{ ...th, textAlign: 'right' }}>Over</th><th style={{ ...th, textAlign: 'right' }}>Short</th><th style={{ ...th, textAlign: 'right' }}>Worked with no shift</th>
+                  </tr></thead>
+                  <tbody>
+                    {withShifts.map(p => (
+                      <tr key={p.id} style={{ cursor: 'pointer' }} aria-label={`Summary for ${p.name}`} onClick={() => setPerson(person === p.id ? '' : p.id)}>
+                        <td style={td}><div style={{ fontWeight: 600 }}>{p.name}</div>{meta.get(p.id)?.title && <div style={{ color: 'var(--ink-soft)', fontSize: 12.5 }}>{meta.get(p.id).title}</div>}</td>
+                        <td style={td}>{meta.has(p.id) ? (meta.get(p.id).agent ? 'Five9 Ready time' : 'Task timers') : ''}</td>
+                        <td style={{ ...td, ...right }}>{show(p.scheduled)}</td>
+                        <td style={{ ...td, ...right, fontWeight: 600 }}>{show(p.served)}</td>
+                        <td style={{ ...td, ...right }}>{Math.round((p.served / p.scheduled) * 1000) / 10}%</td>
+                        <td style={{ ...td, ...right }}>{p.over ? hms(p.over) : ''}</td>
+                        <td style={{ ...td, ...right }}>{p.short ? hms(p.short) : ''}</td>
+                        <td style={{ ...td, ...right }}>{p.noShift ? hms(p.noShift) : ''}</td>
+                      </tr>))}
+                    {withShifts.length > 0 && (
+                      <tr aria-label="Total for people with a scheduled shift" style={{ background: 'var(--surface-2, transparent)' }}>
+                        <td style={{ ...td, fontWeight: 700 }} colSpan={2}>Total, people with a scheduled shift</td>
+                        <td style={{ ...td, ...right, fontWeight: 700 }}>{show(calc.scheduled)}</td>
+                        <td style={{ ...td, ...right, fontWeight: 700 }}>{show(calc.serviced)}</td>
+                        <td style={{ ...td, ...right, fontWeight: 700 }}>{pct == null ? '' : `${pct}%`}</td>
+                        <td style={{ ...td, ...right, fontWeight: 700 }}>{hms(calc.over)}</td>
+                        <td style={{ ...td, ...right, fontWeight: 700 }}>{hms(calc.short)}</td>
+                        <td style={{ ...td, ...right, fontWeight: 700 }}>{hms(calc.noShift)}</td>
+                      </tr>)}
+                    {withShifts.length === 0 && <tr><td style={td} colSpan={8}>Nobody has a scheduled shift for these filters.</td></tr>}
+                    {noShifts.length > 0 && <tr><td style={{ ...td, color: 'var(--ink-soft)', fontWeight: 700, fontSize: 12 }} colSpan={8}>No shift scheduled in this range</td></tr>}
+                    {noShifts.map(p => (
+                      <tr key={p.id} style={{ cursor: 'pointer' }} aria-label={`Summary for ${p.name}`} onClick={() => setPerson(person === p.id ? '' : p.id)}>
+                        <td style={td}><div style={{ fontWeight: 600 }}>{p.name}</div>{meta.get(p.id)?.title && <div style={{ color: 'var(--ink-soft)', fontSize: 12.5 }}>{meta.get(p.id).title}</div>}</td>
+                        <td style={td}>{meta.has(p.id) ? (meta.get(p.id).agent ? 'Five9 Ready time' : 'Task timers') : ''}</td>
+                        <td style={{ ...td, ...right, color: 'var(--ink-soft)' }}>No shifts</td>
+                        <td style={{ ...td, ...right, fontWeight: 600 }}>{show(p.served)}</td>
+                        <td style={td} colSpan={4}></td>
+                      </tr>))}
+                  </tbody>
+                </table>
+              </div>
               <div style={{ ...panel, marginBottom: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'baseline' }}>
                   <h3 style={{ margin: 0, fontSize: 16 }}>Categories to review</h3>
@@ -291,26 +339,9 @@ export default function FinanceHours({ flash }) {
 
           {view === 'day' && (
             <>
-              <div style={{ ...panel, padding: 0, overflowX: 'auto', marginBottom: 16 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
-                  <thead><tr><th style={th}>Person</th><th style={{ ...th, textAlign: 'right' }}>Days worked</th><th style={{ ...th, textAlign: 'right' }}>Scheduled</th><th style={{ ...th, textAlign: 'right' }}>Served</th><th style={{ ...th, textAlign: 'right' }}>Over</th><th style={{ ...th, textAlign: 'right' }}>Short</th></tr></thead>
-                  <tbody>
-                    {calc.people.map(p => (
-                      <tr key={p.id} style={{ cursor: 'pointer' }} aria-label={`Summary for ${p.name}`} onClick={() => setPerson(person === p.id ? '' : p.id)}>
-                        <td style={{ ...td, fontWeight: 600 }}>{p.name}</td>
-                        <td style={{ ...td, ...right }}>{p.days}</td>
-                        <td style={{ ...td, ...right }}>{p.scheduled ? show(p.scheduled) : <span style={{ color: 'var(--ink-soft)' }}>No shifts</span>}</td>
-                        <td style={{ ...td, ...right, fontWeight: 600 }}>{show(p.served)}</td>
-                        <td style={{ ...td, ...right }}>{p.over ? hms(p.over) : ''}</td>
-                        <td style={{ ...td, ...right }}>{p.short ? hms(p.short) : ''}</td>
-                      </tr>))}
-                  </tbody>
-                </table>
-              </div>
-
               <div style={{ ...panel, padding: 0, overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
-                  <thead><tr><th style={th}>Date</th><th style={th}>Person</th><th style={th}>Scheduled shift</th><th style={{ ...th, textAlign: 'right' }}>Scheduled</th><th style={{ ...th, textAlign: 'right' }}>Served</th><th style={th}>Over or short</th></tr></thead>
+                  <thead><tr><th style={th}>Date</th><th style={th}>Person</th><th style={th}>Scheduled shift</th><th style={{ ...th, textAlign: 'right' }}>Scheduled</th><th style={{ ...th, textAlign: 'right' }}>Worked</th><th style={th}>Over or short</th></tr></thead>
                   <tbody>
                     {calc.days.slice(0, shownCount).map(d => {
                       const diff = d.served - d.scheduled
