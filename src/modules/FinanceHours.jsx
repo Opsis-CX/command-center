@@ -29,7 +29,7 @@ const right = { textAlign: 'right', whiteSpace: 'nowrap' }
 const PAGE = 200
 const NO_CLIENT = '__none'
 const NOTE_TITLES = {
-  agent_no_five9: 'Paid agents with no Five9 time in this period',
+  agent_no_five9: 'Agents with pay set up but no Five9 time in this period',
   five9_not_agent: 'Five9 time that is not counted (not an agent)',
   running_timer: 'Timers still running',
   ready_negative: 'Days where not-ready time was more than login time',
@@ -205,7 +205,7 @@ export default function FinanceHours({ flash }) {
       downloadCsv(`hours-${from}-to-${to}.csv`, ['Date', 'Person', 'Job title', 'Category', 'Client', 'What', 'Kind', 'Seconds', 'Hours', 'H:MM:SS', 'Client invoice', 'Invoice', 'Product', 'Invoice answer', 'Internal pay', 'Pay answer'],
         entries.map(r => [r.work_date, r.full_name, r.job_title, r.category_label, r.client_name, r.what, r.entry_kind, r.seconds, (r.seconds / 3600).toFixed(4), hms(r.seconds),
           r.invoice_state === 'yes' ? 'Yes, by the hour' : r.invoice_state === 'retainer' ? 'Retainer' : r.invoice_state === 'no' ? 'No' : 'Not decided', (r.invoice_state === 'yes' || r.invoice_state === 'retainer') ? typeLabel(r.invoice_type_effective) : '', (r.invoice_state === 'yes' || r.invoice_state === 'retainer') ? (r.product_name || '') : '', r.invoice_source === 'tagged' ? 'Set by hand' : 'Default',
-          r.pay_state === 'yes' ? 'Paid' : 'Not paid', r.pay_source === 'tagged' ? 'Set by hand' : 'Default']))
+          r.pay_state === 'yes' ? 'Yes' : 'No', r.pay_source === 'tagged' ? 'Set by hand' : 'Default']))
     }
     flash('Exported. The export is recorded in the audit log.')
   }
@@ -260,7 +260,7 @@ export default function FinanceHours({ flash }) {
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 6 }}>
-            {[['Hours invoiced by the hour', money.invoiced], ['Covered by a retainer', money.retainer], ['Hours paid', money.paid], ['Paid, not invoiced', money.paidNotInvoiced], ['Invoiced, not paid', money.invoicedNotPaid], ['Invoice not decided', money.undecided]].map(([label, s2]) => (
+            {[['Hours invoiced by the hour', money.invoiced], ['Covered by a retainer', money.retainer], ['Hours to pay', money.paid], ['To pay, not invoiced', money.paidNotInvoiced], ['Invoiced, not to pay', money.invoicedNotPaid], ['Invoice not decided', money.undecided]].map(([label, s2]) => (
               <div key={label} style={{ ...panel, padding: '10px 14px' }} data-kpi={label}>
                 <div style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600 }}>{label}</div>
                 <div style={{ fontSize: 20, fontWeight: 700 }}>{hrs(s2)} h</div>
@@ -268,7 +268,7 @@ export default function FinanceHours({ flash }) {
               </div>))}
           </div>
           <p className="page-sub" style={{ margin: '0 0 14px', fontSize: 12.5 }}>
-            Invoicing and pay follow the defaults unless you set them by hand: Five9 time is covered by the Five9 invoice from Settings, timers on client work stay "not decided" until you choose, and hourly people are paid for all counted time.
+            Invoicing and pay follow the defaults unless you set them by hand: Five9 time is covered by the Five9 invoice from Settings, timers on client work stay "not decided" until you choose, Internal pay is Yes by default for hourly people (all their counted time) and No for salaried people. Yes means the time is to be paid, not that it has already been paid.
           </p>
           {showRetainer && (
             <>
@@ -422,10 +422,10 @@ export default function FinanceHours({ flash }) {
                 <div className="field" style={{ margin: 0 }}><label htmlFor="hr-inv">Client invoice</label>
                   <select id="hr-inv" value={invFilter} onChange={e => setInvFilter(e.target.value)}><option value="">All</option><option value="yes">Yes, by the hour</option><option value="retainer">Covered by a retainer</option><option value="no">No</option><option value="undecided">Not decided</option></select></div>
                 <div className="field" style={{ margin: 0 }}><label htmlFor="hr-pay">Internal pay</label>
-                  <select id="hr-pay" value={payFilter} onChange={e => setPayFilter(e.target.value)}><option value="">All</option><option value="yes">Paid</option><option value="no">Not paid</option></select></div>
+                  <select id="hr-pay" value={payFilter} onChange={e => setPayFilter(e.target.value)}><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
-                {[['Shown', sum(entries)], ['Invoiced by the hour', sum(entries.filter(r => r.invoice_state === 'yes'))], ['Covered by a retainer', sum(entries.filter(r => r.invoice_state === 'retainer'))], ['Not invoiced', sum(entries.filter(r => r.invoice_state === 'no'))], ['Invoice not decided', sum(entries.filter(r => r.invoice_state === 'undecided'))], ['Paid', sum(entries.filter(r => r.pay_state === 'yes'))], ['Not paid', sum(entries.filter(r => r.pay_state === 'no'))]].map(([label, s]) => (
+                {[['Shown', sum(entries)], ['Invoiced by the hour', sum(entries.filter(r => r.invoice_state === 'yes'))], ['Covered by a retainer', sum(entries.filter(r => r.invoice_state === 'retainer'))], ['Not invoiced', sum(entries.filter(r => r.invoice_state === 'no'))], ['Invoice not decided', sum(entries.filter(r => r.invoice_state === 'undecided'))], ['Pay: Yes', sum(entries.filter(r => r.pay_state === 'yes'))], ['Pay: No', sum(entries.filter(r => r.pay_state === 'no'))]].map(([label, s]) => (
                   <div key={label} style={{ ...panel, padding: '10px 14px' }} data-card={label}>
                     <div style={{ fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600 }}>{label}</div>
                     <div style={{ fontSize: 18, fontWeight: 700 }}>{hrs(s)} h</div>
@@ -446,7 +446,7 @@ export default function FinanceHours({ flash }) {
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1020 }}>
                   <thead><tr>
                     <th style={th}><input type="checkbox" aria-label="Select every row shown" checked={allPicked} onChange={() => setPicked(allPicked ? {} : Object.fromEntries(entries.map(r => [keyOf(r), true])))} /></th>
-                    <th style={th}>Date</th><th style={th}>Person</th><th style={th}>What</th><th style={th}>Category</th><th style={th}>Client</th><th style={{ ...th, textAlign: 'right' }}>Hours</th><th style={th}>Client invoice</th><th style={th}>Internal pay</th>
+                    <th style={th}>Date</th><th style={th}>Person</th><th style={th}>What</th><th style={th}>Category</th><th style={th}>Client</th><th style={{ ...th, textAlign: 'right' }}>Hours</th><th style={th}>Client invoice</th><th style={th} title="Yes means this time is to be paid. It does not mean it has already been paid.">Internal pay</th>
                   </tr></thead>
                   <tbody>
                     {visible.length === 0 && <tr><td style={td} colSpan={9}>Nothing matches these filters.</td></tr>}
@@ -465,7 +465,7 @@ export default function FinanceHours({ flash }) {
                             {(r.invoice_state === 'yes' || r.invoice_state === 'retainer') && <div style={{ fontSize: 12.5 }}>{invoiceLine(r)}</div>}
                             {r.invoice_state !== 'undecided' && <div style={{ color: 'var(--ink-soft)', fontSize: 12 }}>{r.invoice_source === 'default' ? 'default' : 'your choice'}</div>}
                           </td>
-                          <td style={td} data-col="pay"><b>{r.pay_state === 'yes' ? 'Paid' : 'Not paid'}</b><div style={{ color: 'var(--ink-soft)', fontSize: 12 }}>{r.pay_source === 'default' ? 'default' : 'your choice'}</div></td>
+                          <td style={td} data-col="pay"><b>{r.pay_state === 'yes' ? 'Yes' : 'No'}</b><div style={{ color: 'var(--ink-soft)', fontSize: 12 }}>{r.pay_source === 'default' ? 'default' : 'your choice'}</div></td>
                         </tr>)
                     })}
                   </tbody>
@@ -509,7 +509,7 @@ function DecisionModal({ modal, rows, types, rates, typeLabel, onClose, onDone }
     const n = data ?? rows.length
     const parts = []
     if (inv !== 'keep') parts.push(`client invoice ${word[inv]}`)
-    if (pay !== 'keep') parts.push(`internal pay ${pay === 'yes' ? 'paid' : pay === 'no' ? 'not paid' : word[pay]}`)
+    if (pay !== 'keep') parts.push(`internal pay ${word[pay]}`)
     onDone(`Saved for ${n} row${n === 1 ? '' : 's'}: ${parts.join(', ')}.`)
   }
   const radios = (name, value, setValue, options) => options.map(([v, l]) => (
@@ -539,8 +539,8 @@ function DecisionModal({ modal, rows, types, rates, typeLabel, onClose, onDone }
 
       <fieldset style={{ border: 'none', padding: 0, margin: '0 0 14px' }}>
         <legend style={{ fontWeight: 700, fontSize: 14, padding: 0 }}>Internal pay</legend>
-        <div className="hint" style={{ marginBottom: 4 }}>Is the person paid for this time? Hourly people are paid by default; salaried people are not paid from hours.</div>
-        {radios('dec-pay', pay, setPay, [['keep', 'Leave as it is'], ['yes', 'Paid for this time'], ['no', 'Not paid for this time'], ['clear', 'Go back to the default']])}
+        <div className="hint" style={{ marginBottom: 4 }}>Should the person be paid for this time? It is Yes by default for hourly people, and No for salaried people because their pay does not come from hours. Yes means this time is to be paid. It does not mean it has already been paid.</div>
+        {radios('dec-pay', pay, setPay, [['keep', 'Leave as it is'], ['yes', 'Yes, pay for this time'], ['no', 'No, do not pay for this time'], ['clear', 'Go back to the default']])}
       </fieldset>
 
       {!(inv === 'keep' && pay === 'keep') && <div className="field"><label htmlFor="dc-note">Note (optional)</label><input id="dc-note" value={note} onChange={e => setNote(e.target.value)} /></div>}
