@@ -1,7 +1,8 @@
 // ============================================================
 //  Test a web lead (/test-lead) — team members submit themselves as a
-//  Cedar Park Overhead Doors web lead. The lead drops straight into the
-//  "TEST — Cedar Park S2L (team leads)" dial campaign, the agents get a
+//  web lead for "Opsis Overhead Doors" — a made-up garage door brand, so no
+//  real client name is used. The lead drops straight into the
+//  "TEST — Opsis Overhead Doors S2L (team leads)" dial campaign, the agents get a
 //  notification, and this page shows the speed-to-lead stopwatch:
 //  lead received → first dial → first conversation → disposition.
 //
@@ -97,15 +98,15 @@ export default function TestLead() {
     <div style={S.page}>
       <h2 style={S.h2}>Test a web lead</h2>
       <p style={S.intro}>
-        Pretend you're a homeowner who just filled out the Cedar Park Overhead Doors website form. Submit your own mobile number —
+        Pretend you're a homeowner who just filled out the website form for Opsis Overhead Doors, a made-up garage door company. Submit your own mobile number —
         the lead goes straight into our test speed-to-lead campaign and the clock starts. Answer when we call and play the customer.
-        This is internal testing only; nothing goes to GarageCo.
+        This is internal testing only — no real customer or client is involved.
       </p>
 
       <div className="tl-grid" style={S.grid}>
         <form onSubmit={submit} style={{ ...S.card, ...S.formCard }}>
           <div style={S.brandBar}>
-            <div style={{ fontWeight: 800, fontSize: 17 }}>Cedar Park Overhead Doors</div>
+            <div style={{ fontWeight: 800, fontSize: 17 }}>Opsis Overhead Doors</div>
             <div style={{ fontSize: 12.5, opacity: 0.85 }}>Request service or a free estimate</div>
           </div>
           <div style={{ padding: 16 }}>
@@ -157,7 +158,7 @@ export default function TestLead() {
                 <Stat label="Booked" value={stats.booked} />
               </div>
               <div style={{ fontSize: 12.5, opacity: 0.7, marginTop: 8 }}>
-                Work these from the <Link to="/dialer" style={S.link}>Agent workspace</Link> (campaign "TEST — Cedar Park S2L (team leads)"). Full detail in <Link to="/reporting/calls" style={S.link}>Call reports</Link>.
+                Work these from the <Link to="/dialer" style={S.link}>Agent workspace</Link> (campaign "TEST — Opsis Overhead Doors S2L (team leads)"). Full detail in <Link to="/reporting/calls" style={S.link}>Call reports</Link>.
               </div>
             </div>
           )}
