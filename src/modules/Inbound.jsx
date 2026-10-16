@@ -1,7 +1,7 @@
 // ============================================================
 //  Inbound (/inbound) — the Opsis CX business line (and later, client lines).
 //
-//  Everyone on a line:  "Ready for inbound calls" switch + recent calls with the
+//  Everyone on a line:  the single Ready / Not ready status + recent calls with the
 //                       AI assistant's summary and transcript. No caller numbers shown.
 //  Managers also get:   Settings (hours, greeting, menu, ring time, AI instructions),
 //                       Who answers (people per menu option), Setup (Twilio steps).
@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { useVoice } from '../lib/voice'
+import AgentStatus from '../components/AgentStatus'
 
 const FN_URL = 'https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/voice-inbound'
 const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']]
@@ -37,7 +37,6 @@ function fmt(ts) { return ts ? new Date(ts).toLocaleString('en-US', { month: 'sh
 function dur(s) { if (!s) return '—'; return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s` }
 
 export default function Inbound() {
-  const voice = useVoice()
   const [me, setMe] = useState(null)
   const [tab, setTab] = useState('calls')
 
@@ -47,22 +46,16 @@ export default function Inbound() {
 
   if (!me) return <div style={S.page}>Loading…</div>
   if (!me.member && !me.manager) {
-    return <div style={S.page}><h2 style={S.h2}>Inbound</h2><p>You're not on an inbound line yet. Ask an admin to add you under Inbound → Who answers.</p></div>
+    return <div style={S.page}><h2 style={S.h2}>Inbound</h2><p>You're not on an inbound line yet. Ask the Opsis CX Support team to add you under Inbound → Who answers.</p></div>
   }
 
   const tabs = me.manager ? [['calls', 'Calls'], ['settings', 'Settings'], ['people', 'Who answers'], ['setup', 'Setup']] : [['calls', 'Calls']]
-  const inb = voice?.inbound
 
   return (
     <div style={S.page}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <h2 style={S.h2}>Inbound</h2>
-        {inb?.member && (
-          <button onClick={() => inb.setReady(!inb.ready)} disabled={inb.busy}
-            style={{ ...S.btn, background: inb.ready ? '#16a34a' : 'transparent', color: inb.ready ? '#fff' : 'inherit', borderColor: inb.ready ? '#16a34a' : undefined }}>
-            {inb.ready ? (inb.registered ? '● Ready for inbound calls' : 'Connecting…') : '○ Not taking inbound calls — click to go ready'}
-          </button>
-        )}
+        <AgentStatus />
       </div>
       <p style={{ margin: '4px 0 14px', opacity: 0.75, fontSize: 13.5 }}>
         Callers pick an option (or say it), then ring everyone who's ready for that option. No one ready, no answer, or after hours → the AI assistant takes the details and drops a callback into the <Link to="/campaigns" style={S.link}>Callbacks campaign</Link>.
@@ -85,7 +78,7 @@ function Calls() {
   const [openId, setOpenId] = useState(null)
   const [filter, setFilter] = useState('all')
 
-  const load = () => supabase.rpc('inbound_recent_calls', { p_limit: 200 }).then(({ data, error }) => {
+  const load = () => supabase.rpc('inbound_recent_calls_v2', { p_limit: 200 }).then(({ data, error }) => {
     if (error) setErr(error.message); else setRows(data || [])
   })
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t) }, [])
@@ -137,6 +130,7 @@ function Calls() {
               </div>
               <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
                 <span style={{ ...S.badge, background: color }}>{label}</span>
+                {r.disposition_label && <span style={{ fontSize: 12, fontWeight: 700 }}>{r.disposition_label}</span>}
                 {r.callback_status && <span style={{ fontSize: 12, fontWeight: 600, color: r.callback_status === 'pending' ? '#d97706' : 'inherit' }}>{CB_STATUS[r.callback_status] || r.callback_status}</span>}
                 {r.has_recording && <span style={{ fontSize: 11.5, opacity: 0.6 }}>Recorded</span>}
               </div>
@@ -153,6 +147,10 @@ function Calls() {
                     {f.requested_person && <div>Asked for: {f.requested_person}</div>}
                   </div>
                 )}
+                {r.notes && <div style={{ marginTop: 8 }}><strong>Agent notes:</strong> {r.notes}</div>}
+                {r.wrap_fields && Object.keys(r.wrap_fields).length > 0 && (
+                  <div style={{ marginTop: 6, opacity: 0.85 }}>{Object.entries(r.wrap_fields).filter(([, v]) => v).map(([k, v]) => <div key={k}>{k.replace(/_/g, ' ')}: {String(v)}</div>)}</div>
+                )}
                 {r.callback_status === 'pending' && <div style={{ marginTop: 8 }}><Link to="/dialer" style={S.link}>Call back from the Dialer →</Link></div>}
               </div>
             )}
@@ -168,9 +166,11 @@ function Settings() {
   const [line, setLine] = useState(null)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
+  const [scripts, setScripts] = useState([])
 
   useEffect(() => {
     supabase.from('inbound_lines').select('*').order('created_at').limit(1).maybeSingle().then(({ data }) => setLine(data))
+    supabase.from('call_scripts').select('id, name, kind').eq('active', true).neq('kind', 'outbound').order('name').then(({ data }) => setScripts(data || []))
   }, [])
   if (!line) return <div>Loading…</div>
   const set = p => setLine(l => ({ ...l, ...p }))
@@ -225,13 +225,17 @@ function Settings() {
 
       <div style={S.card}>
         <div style={S.sectionTitle}>Menu</div>
-        <div style={{ fontSize: 12.5, opacity: 0.7, marginBottom: 8 }}>Callers press the key or say one of the words. Team members calling from their phone on file skip the menu.</div>
+        <div style={{ fontSize: 12.5, opacity: 0.7, marginBottom: 8 }}>Callers press the key or say one of the words. Team members calling from their phone on file skip the menu. The script is the call screen the agent sees when they answer (edit scripts on the <Link to="/scripts" style={S.link}>Scripts</Link> page).</div>
         {(line.menu || []).map((m, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '50px 1fr 2fr', gap: 8, marginBottom: 8 }}>
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '50px 1fr 1.4fr 1.4fr', gap: 8, marginBottom: 8 }}>
             <input style={{ ...S.input, margin: 0, textAlign: 'center' }} value={m.key} disabled />
             <input style={{ ...S.input, margin: 0 }} value={m.label} onChange={e => setMenu(i, { label: e.target.value })} />
             <input style={{ ...S.input, margin: 0 }} value={(m.words || []).join(', ')} placeholder="words callers might say"
               onChange={e => setMenu(i, { words: e.target.value.split(',').map(w => w.trim()).filter(Boolean) })} />
+            <select style={{ ...S.input, margin: 0 }} value={m.script_id || ''} onChange={e => setMenu(i, { script_id: e.target.value || null })}>
+              <option value="">No script (default dispositions)</option>
+              {scripts.map(sc => <option key={sc.id} value={sc.id}>{sc.name}</option>)}
+            </select>
           </div>
         ))}
       </div>
@@ -296,7 +300,7 @@ function People() {
   return (
     <div>
       <p style={{ fontSize: 13.5, opacity: 0.8, marginTop: 0 }}>
-        Tick who rings for each option. They also need to switch on <strong>Ready for inbound calls</strong> (phone button, bottom right) and keep a Command Center tab open.
+        Tick who rings for each option. They also need to set themselves <strong>Ready</strong> (phone button, bottom right, or the Dialer) and keep a Command Center tab open.
       </p>
       {err && <div style={S.error}>{err}</div>}
       <input style={{ ...S.input, maxWidth: 320 }} placeholder="Search people…" value={q} onChange={e => setQ(e.target.value)} />
@@ -353,9 +357,9 @@ function Setup() {
       <div style={S.card}>
         <div style={S.sectionTitle}>3 · Test</div>
         <ol style={{ fontSize: 13.5, lineHeight: 1.7, margin: 0, paddingLeft: 18 }}>
-          <li>Phone button (bottom right) → tick <strong>Ready for inbound calls</strong>.</li>
+          <li>Phone button (bottom right) → set your status to <strong>Ready</strong>.</li>
           <li>From a phone that is <em>not</em> on your profile, call the business line, press 1 → this browser rings → Answer.</li>
-          <li>Untick Ready and call again → the AI assistant answers; a callback lands in Callbacks and you get a notification.</li>
+          <li>Set yourself Not ready and call again → the AI assistant answers; a callback lands in Callbacks and you get a notification.</li>
           <li>Call from your own cell (on your profile) → it skips the menu and rings the team option.</li>
         </ol>
       </div>
