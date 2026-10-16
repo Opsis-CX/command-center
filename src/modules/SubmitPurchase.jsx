@@ -28,6 +28,7 @@ export default function SubmitPurchase() {
   const [err, setErr] = useState('')
   const [toast, setToast] = useState('')
   const fileRef = useRef(null)
+  const toastTimer = useRef(null)
 
   const loadMine = useCallback(async () => {
     const { data } = await supabase.from('finance_submissions').select('*').order('created_at', { ascending: false }).limit(100)
@@ -46,7 +47,7 @@ export default function SubmitPurchase() {
   }, [loadMine])
 
   const set = (k, v) => setF(prev => ({ ...prev, [k]: v }))
-  const flash = (t) => { setToast(t); setTimeout(() => setToast(''), 3500) }
+  const flash = (t) => { setToast(t); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(''), 3500) }
   const nameOf = (list, id) => (list || []).find(x => x.id === id)?.name || (list || []).find(x => x.id === id)?.label || ''
 
   function reset() {
