@@ -178,6 +178,7 @@ function PersonDetail({ person, profile, rates, deals, roles, titles, dealLabel,
   return (
     <div>
       <button className="btn btn-ghost" style={{ fontSize: 12.5, marginBottom: 12 }} onClick={onBack}>← Everyone</button>
+      <a href={`/profile/${person.id}`} style={{ fontSize: 12.5, marginLeft: 10 }}>View profile</a>
       <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 2px' }}>{person.full_name}</h2>
       <p className="page-sub" style={{ margin: '0 0 14px' }}>{person.job_title || 'No job title yet'} · access role: {person.role}{profile ? '' : ' · no pay profile yet'}</p>
       <JobTitle person={person} titles={titles} flash={flash} reload={reload} />
