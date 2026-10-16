@@ -105,6 +105,14 @@ export default function RolesPermissions() {
         {' '}Owner and Admin are always Full everywhere.
       </p>
 
+      {/* honest label: this screen does not enforce anything yet */}
+      <div role="note" style={{ maxWidth: 760, margin: '12px 0 4px', padding: '10px 14px', borderRadius: 8, fontSize: 13, lineHeight: 1.55,
+        background: 'rgba(240,180,41,.14)', border: '1px solid rgba(240,180,41,.55)', color: 'var(--ink)' }}>
+        <strong>Draft only.</strong> Changes saved on this screen do not control who can see what yet.
+        {' '}Page access currently comes from the app&apos;s built-in access list, and the database applies its own rules.
+        {' '}Financial information is protected separately and is limited to Admins and Owners.
+      </div>
+
       {/* save bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '14px 0 10px' }}>
         <button onClick={save} disabled={saving || !dirtyCount} className="btn btn-primary"
