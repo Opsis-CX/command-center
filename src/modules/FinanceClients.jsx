@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { todayET, fmtDate, panel } from './financeBits'
 
@@ -9,14 +9,23 @@ import { todayET, fmtDate, panel } from './financeBits'
 //   - Invoiced client: which bill (billing entity) its invoices go on, and what happens to the hours worked for it
 //   - Internal (Opsis's own work): never invoiced
 // Hours worked for the client then follow that choice, so there are no rules to keep. A choice on one hour still wins.
+// TWO CHECKBOXES per client: "Invoicing" (is it part of Finance; unticked = hidden here and its hours are not invoiced) and
+// "Task management" (is it offered in the task dropdowns). They are independent.
+// HOUR CAPS: a client can have several caps, weekly and monthly, each with dates and its own alert levels (see CapsSection).
 // ============================================================
 
 const KIND = { invoiced: 'Invoiced', internal: 'Internal', not_set: 'Needs setup' }
 const kindBadge = (k) => k === 'invoiced' ? 'badge passed' : k === 'internal' ? 'badge' : 'badge needed'
+const typeBadge = (p) => p.in_invoicing === false ? ['Not in invoicing', 'badge'] : [KIND[p.billing_kind === 'internal' ? 'not_set' : p.billing_kind], kindBadge(p.billing_kind === 'internal' ? 'not_set' : p.billing_kind)]
+function flagMessage(name, patch) {
+  if ('p_in_invoicing' in patch) return patch.p_in_invoicing ? `${name} is in invoicing.` : `${name} is out of invoicing. Hours worked for it are not invoiced.`
+  return patch.p_show_in_tasks ? `${name} is offered in task management.` : `${name} is hidden from the task dropdowns. Names on existing tasks stay.`
+}
 const ROLES = [['primary', 'Main contact'], ['billing', 'Billing contact'], ['other', 'Other']]
 const chip = (on) => ({ fontSize: 12.5, fontWeight: 600, padding: '6px 12px', borderRadius: 999, border: '1px solid var(--line)', cursor: 'pointer', background: on ? 'var(--accent)' : 'var(--surface)', color: on ? 'var(--white, #fff)' : 'var(--ink-soft)' })
 
 export function describeHoursSetting(profile, types, entities) {
+  if (profile.in_invoicing === false) return 'Not in invoicing: hours are not invoiced'
   if (profile.billing_kind === 'internal') return 'Never invoiced'
   if (profile.billing_kind === 'not_set') return 'Not set up yet'
   if (profile.hours_mode === 'no') return 'Hours are not invoiced'
@@ -27,46 +36,60 @@ export function describeHoursSetting(profile, types, entities) {
   return 'You decide each time'
 }
 
-export function ClientList({ clients, profiles, entities, links, types, retainers, terms, onOpen }) {
-  const [filter, setFilter] = useState('all')
+export function ClientList({ clients, profiles, entities, links, types, retainers, terms, caps = [], onOpen, reload, flash }) {
+  const [filter, setFilter] = useState('invoicing')
   const [q, setQ] = useState('')
   const today = todayET()
-  const profileOf = (id) => profiles.find(p => p.client_id === id) || { billing_kind: 'not_set', hours_mode: 'decide', status: 'active' }
-  const needs = clients.filter(c => profileOf(c.id).billing_kind === 'not_set' && profileOf(c.id).status !== 'ended').length
+  const profileOf = (id) => profiles.find(p => p.client_id === id) || { billing_kind: 'not_set', hours_mode: 'decide', status: 'active', in_invoicing: true }
+  const needs = clients.filter(c => profileOf(c.id).in_invoicing !== false && profileOf(c.id).billing_kind !== 'invoiced' && profileOf(c.id).status !== 'ended').length
   const shown = useMemo(() => clients.filter(c => {
-    const p = profileOf(c.id)
+    const p = profileOf(c.id); const inv = p.in_invoicing !== false
     if (q && !c.name.toLowerCase().includes(q.toLowerCase())) return false
-    if (filter === 'needs') return p.billing_kind === 'not_set' && p.status !== 'ended'
+    if (filter === 'out') return !inv
+    if (!inv) return false
+    if (filter === 'needs') return p.billing_kind !== 'invoiced' && p.status !== 'ended'
     if (filter === 'invoiced') return p.billing_kind === 'invoiced'
-    if (filter === 'internal') return p.billing_kind === 'internal'
     return true
   }), [clients, profiles, filter, q])   // eslint-disable-line
+  async function setFlag(c, patch) {
+    const { error } = await supabase.rpc('finance_client_set_flags', { p_client: c.id, p_in_invoicing: null, p_show_in_tasks: null, ...patch })
+    if (error) return flash(error.message)
+    flash(flagMessage(c.name, patch)); await reload()
+  }
   return (
     <div>
-      <p className="page-sub" style={{ margin: '0 0 12px', maxWidth: 720 }}>Every client in Command Center is listed here, including new ones. For each, say once whether it is invoiced or internal. Hours worked for the client then follow that choice, so you do not need rules.</p>
-      {needs > 0 && <div className="card" role="note" style={{ marginBottom: 12 }}><b data-needs>{needs} client{needs === 1 ? '' : 's'} need{needs === 1 ? 's' : ''} setup.</b> Until a client is set up, hours worked for it wait for your decision.</div>}
+      <p className="page-sub" style={{ margin: '0 0 12px', maxWidth: 760 }}>The clients you invoice. Tick <b>Invoicing</b> on a client to bring it here, and untick it to take it out (hours worked for it are then not invoiced). <b>Task management</b> is separate: a client stays in the task dropdowns unless you untick it. For each client here, say once how it is billed, and its hours follow that choice. You do not need rules.</p>
+      {needs > 0 && <div className="card" role="note" style={{ marginBottom: 12 }}><b data-needs>{needs} client{needs === 1 ? '' : 's'} need{needs === 1 ? 's' : ''} setup.</b> Until a client is set up, hours worked for it wait for your decision. If a client is not one you invoice, untick Invoicing on it.</div>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-        {[['all', 'All'], ['needs', 'Needs setup'], ['invoiced', 'Invoiced'], ['internal', 'Internal']].map(([k, l]) => <button key={k} style={chip(filter === k)} onClick={() => setFilter(k)} aria-pressed={filter === k}>{l}</button>)}
+        {[['invoicing', 'In invoicing'], ['needs', 'Needs setup'], ['invoiced', 'Invoiced'], ['out', 'Not in invoicing']].map(([k, l]) => <button key={k} style={chip(filter === k)} onClick={() => setFilter(k)} aria-pressed={filter === k}>{l}</button>)}
         <input aria-label="Search clients" placeholder="Search" value={q} onChange={e => setQ(e.target.value)} style={{ padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', minWidth: 180 }} />
       </div>
+      {filter === 'out' && <p className="page-sub" style={{ margin: '0 0 10px' }} data-out-note>These clients are not part of Finance, and hours worked for them are not invoiced. Tick Invoicing to bring one back.</p>}
       {shown.length === 0 && <p className="page-sub">No clients match.</p>}
       {shown.map(c => {
-        const p = profileOf(c.id)
+        const p = profileOf(c.id); const inv = p.in_invoicing !== false
         const link = links.find(l => l.client_id === c.id)
         const bill = link && entities.find(e => e.id === link.entity_id)
         const rs = bill ? retainers.filter(r => types.some(t => t.id === r.invoice_type_id && t.entity_id === bill.id)) : []
         const live = rs.filter(r => terms.some(t => t.retainer_id === r.id && t.effective_from <= today && (!t.effective_to || t.effective_to >= today)))
+        const myCaps = caps.filter(k => k.client_id === c.id && k.effective_from <= today && (!k.effective_to || k.effective_to >= today)).sort((a, b) => a.period.localeCompare(b.period) * -1)
+        const capText = myCaps.map(k => `${k.period === 'week' ? 'Weekly' : 'Monthly'} cap ${Number(k.cap_hours)} h`).join(' · ')
+        const [badgeText, badgeCls] = typeBadge(p)
         return (
-          <div key={c.id} data-client={c.name} role="button" tabIndex={0} onClick={() => onOpen(c.id)} onKeyDown={e => { if (e.key === 'Enter') onOpen(c.id) }}
-            style={{ ...panel, marginBottom: 8, cursor: 'pointer', opacity: p.status === 'ended' ? 0.6 : 1 }}>
+          <div key={c.id} data-client={c.name} onClick={() => onOpen(c.id)}
+            style={{ ...panel, marginBottom: 8, cursor: 'pointer', opacity: p.status === 'ended' ? 0.6 : inv ? 1 : 0.8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 15 }}>{c.name} <span className={kindBadge(p.billing_kind)} style={{ marginLeft: 6 }}>{KIND[p.billing_kind]}</span>{p.status !== 'active' && <span className="badge failed" style={{ marginLeft: 6 }}>{p.status}</span>}</div>
-                <div className="page-sub" style={{ margin: '2px 0 0' }}>{p.billing_kind === 'invoiced' ? (bill ? `Billed to ${bill.name}` : 'Not billed to anyone yet') : p.billing_kind === 'internal' ? 'Opsis\'s own work' : 'Choose whether this client is invoiced or internal'}</div>
+              <div role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') onOpen(c.id) }}>
+                <div style={{ fontWeight: 600, fontSize: 15 }}>{c.name} <span className={badgeCls} style={{ marginLeft: 6 }}>{badgeText}</span>{p.status !== 'active' && <span className="badge failed" style={{ marginLeft: 6 }}>{p.status}</span>}</div>
+                <div className="page-sub" style={{ margin: '2px 0 0' }}>{!inv ? 'Not part of Finance billing' : p.billing_kind === 'invoiced' ? (bill ? `Billed to ${bill.name}` : 'Not billed to anyone yet') : 'Choose how this client is billed'}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div className="page-sub" style={{ margin: '2px 0 0' }}>{describeHoursSetting(p, types, entities)}</div>
-                {(live.length > 0 || c.max_weekly_hours) && <div className="page-sub" style={{ margin: '2px 0 0' }}>{live.length > 0 ? `${live.length} retainer${live.length === 1 ? '' : 's'}` : ''}{live.length > 0 && c.max_weekly_hours ? ' · ' : ''}{c.max_weekly_hours ? `Weekly cap ${Number(c.max_weekly_hours)} h` : ''}</div>}
+                {(live.length > 0 || capText) && <div className="page-sub" style={{ margin: '2px 0 0' }}>{live.length > 0 ? `${live.length} retainer${live.length === 1 ? '' : 's'}` : ''}{live.length > 0 && capText ? ' · ' : ''}{capText}</div>}
+                <div onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} style={{ display: 'flex', gap: 14, justifyContent: 'flex-end', marginTop: 6, flexWrap: 'wrap' }} data-flags-row>
+                  <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12.5, cursor: 'pointer' }}><input type="checkbox" aria-label={`Include ${c.name} in invoicing`} checked={inv} onChange={e => setFlag(c, { p_in_invoicing: e.target.checked })} /> Invoicing</label>
+                  <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12.5, cursor: 'pointer' }}><input type="checkbox" aria-label={`Show ${c.name} in task management`} checked={c.show_in_tasks !== false} onChange={e => setFlag(c, { p_show_in_tasks: e.target.checked })} /> Task management</label>
+                </div>
               </div>
             </div>
           </div>)
@@ -75,10 +98,11 @@ export function ClientList({ clients, profiles, entities, links, types, retainer
   )
 }
 
-export function ClientPage({ client, profile, entities, links, types, contacts, retainers, terms, onBack, onOpenBill, reload, flash }) {
-  const p = profile || { billing_kind: 'not_set', hours_mode: 'decide', status: 'active' }
+export function ClientPage({ client, profile, entities, links, types, contacts, retainers, terms, caps = [], onBack, onOpenBill, reload, flash }) {
+  const p = profile || { billing_kind: 'not_set', hours_mode: 'decide', status: 'active', in_invoicing: true }
+  const inv = p.in_invoicing !== false
   const link = links.find(l => l.client_id === client.id)
-  const [kind, setKind] = useState(p.billing_kind)
+  const [kind, setKind] = useState(p.billing_kind === 'internal' ? 'not_set' : p.billing_kind)
   const [billId, setBillId] = useState(link ? link.entity_id : '')
   const [newName, setNewName] = useState(client.name)
   const [mode, setMode] = useState(p.hours_mode || 'decide')
@@ -94,8 +118,7 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
   const savedTypes = savedBill ? types.filter(t => t.entity_id === savedBill.id && t.active) : []
   const today = todayET()
 
-  const checklist = p.billing_kind === 'internal' ? [['Chosen that this client is internal', true]]
-    : [['Chosen whether this client is invoiced or internal', p.billing_kind !== 'not_set'],
+  const checklist = [['Chosen how this client is billed', p.billing_kind === 'invoiced'],
        ...(p.billing_kind === 'invoiced' ? [['Billed to someone', !!savedBill], ['That bill has at least one invoice', savedTypes.length > 0], ['At least one contact is on file', contacts.length > 0]] : [])]
   const left = checklist.filter(([, ok]) => !ok).length
 
@@ -114,8 +137,13 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
     })
     setBusy(false)
     if (error) return setErr(error.message)
-    flash(kind === 'internal' ? `${client.name} is internal. Its hours are never invoiced.` : kind === 'not_set' ? `${client.name} is back to needing setup.` : `Saved. ${client.name} is an invoiced client.`)
+    flash(kind === 'not_set' ? `${client.name} is back to needing setup.` : `Saved. ${client.name} is an invoiced client.`)
     await reload()
+  }
+  async function setFlag(patch) {
+    const { error } = await supabase.rpc('finance_client_set_flags', { p_client: client.id, p_in_invoicing: null, p_show_in_tasks: null, ...patch })
+    if (error) return flash(error.message)
+    flash(flagMessage(client.name, patch)); await reload()
   }
   async function saveDetails() {
     setDetErr('')
@@ -133,9 +161,23 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
   return (
     <div data-client-page={client.name}>
       <button className="btn btn-ghost" style={{ fontSize: 12.5, marginBottom: 10 }} onClick={onBack}>← All clients</button>
-      <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 2px' }}>{client.name} <span className={kindBadge(p.billing_kind)} style={{ marginLeft: 6, fontSize: 12 }}>{KIND[p.billing_kind]}</span></h2>
+      <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 2px' }}>{client.name} <span className={typeBadge(p)[1]} style={{ marginLeft: 6, fontSize: 12 }}>{typeBadge(p)[0]}</span></h2>
       <p className="page-sub" style={{ margin: '0 0 14px' }}>{describeHoursSetting(p, types, entities)}</p>
 
+      <div style={{ ...panel, marginBottom: 14 }} data-flags>
+        <h3 style={{ margin: '0 0 6px', fontSize: 16 }}>Where this client is used</h3>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '4px 0' }}>
+          <input type="checkbox" aria-label="Include in invoicing" checked={inv} onChange={e => setFlag({ p_in_invoicing: e.target.checked })} style={{ marginTop: 3 }} />
+          <span><b>Invoicing</b><span style={{ display: 'block', fontSize: 12.5, color: 'var(--ink-soft)' }}>Part of Finance billing. Unticked, this client is hidden from the Clients list here, and hours worked for it are not invoiced.</span></span>
+        </label>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '4px 0' }}>
+          <input type="checkbox" aria-label="Show in task management" checked={client.show_in_tasks !== false} onChange={e => setFlag({ p_show_in_tasks: e.target.checked })} style={{ marginTop: 3 }} />
+          <span><b>Task management</b><span style={{ display: 'block', fontSize: 12.5, color: 'var(--ink-soft)' }}>Offered in the client dropdowns for the timer, tasks and recurring tasks. Names already on tasks always stay.</span></span>
+        </label>
+      </div>
+
+      {!inv && <div className="card" style={{ marginBottom: 14 }} data-not-invoiced>This client is not in invoicing. It is hidden from the Clients list here, and hours worked for it are not invoiced. Tick <b>Invoicing</b> above to set up its billing.</div>}
+      {inv && (<>
       <div style={{ ...panel, marginBottom: 14 }} data-checklist>
         <b>{left === 0 ? 'This client is ready.' : `${left} thing${left === 1 ? '' : 's'} left to set up`}</b>
         <ul style={{ listStyle: 'none', padding: 0, margin: '6px 0 0' }}>
@@ -146,7 +188,7 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
       <div style={{ ...panel, marginBottom: 14 }}>
         <h3 style={{ margin: '0 0 8px', fontSize: 16 }}>How is this client billed?</h3>
         {err && <div className="login-err" role="alert">{err}</div>}
-        {[['invoiced', 'Invoiced client', 'We send invoices for this client.'], ['internal', 'Internal', "Opsis's own work. Hours worked for it are never invoiced."], ['not_set', 'Not set up yet', 'Hours worked for it wait for your decision.']].map(([k, l, h]) => (
+        {[['invoiced', 'Invoiced client', 'We send invoices for this client.'], ['not_set', 'Not set up yet', 'Hours worked for it wait for your decision.']].map(([k, l, h]) => (
           <label key={k} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '4px 0' }}>
             <input type="radio" name="cl-kind" value={k} checked={kind === k} onChange={() => setKind(k)} style={{ marginTop: 3 }} /> <span><b>{l}</b><span style={{ display: 'block', fontSize: 12.5, color: 'var(--ink-soft)' }}>{h}</span></span>
           </label>))}
@@ -185,11 +227,11 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
             {myRetainers.length === 0 ? <div className="page-sub" style={{ margin: 0 }}>None.</div> : myRetainers.map(r => { const t = currentTerm(r); return <div key={r.id} className="page-sub" style={{ margin: '2px 0' }}><b>{r.name}</b>: {t ? `${Number(t.agents_per_hour)} agent${Number(t.agents_per_hour) === 1 ? '' : 's'} per hour at $${Number(t.rate_per_agent_hour).toFixed(2)} since ${fmtDate(t.effective_from)}` : 'no terms in effect today'}</div> })}
           </div>
           <div style={{ marginTop: 8 }}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>Weekly hour cap</div>
-            <div className="page-sub" style={{ margin: 0 }}>{client.max_weekly_hours ? `${Number(client.max_weekly_hours)} hours a week (change it under Backend › Clients)` : 'No cap (set one under Backend › Clients)'}</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Hour caps</div>
+            <div className="page-sub" style={{ margin: 0 }}>{(() => { const a = caps.filter(k => k.effective_from <= today && (!k.effective_to || k.effective_to >= today)); return a.length ? a.map(k => `${k.period === 'week' ? 'Weekly' : 'Monthly'}: ${Number(k.cap_hours)} hours`).join(' · ') : 'No cap set (see Hour caps below)' })()}</div>
           </div>
         </div>)}
-      {p.billing_kind === 'internal' && <div className="card" style={{ marginBottom: 14 }}>Internal clients are never invoiced, so there is no bill, invoice or retainer to set up here.</div>}
+      </>)}
 
       <div style={{ ...panel, marginBottom: 14 }}>
         <h3 style={{ margin: '0 0 8px', fontSize: 16 }}>Details</h3>
@@ -204,6 +246,8 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
         <div className="field"><label htmlFor="cd-notes">Notes</label><textarea id="cd-notes" rows={3} value={det.notes} onChange={e => setDet({ ...det, notes: e.target.value })} style={{ width: '100%' }} /></div>
         <button className="btn btn-primary" onClick={saveDetails} disabled={detBusy}>{detBusy ? 'Saving…' : 'Save details'}</button>
       </div>
+
+      <CapsSection client={client} caps={caps} reload={reload} flash={flash} />
 
       <Contacts client={client} contacts={contacts} reload={reload} flash={flash} />
     </div>
@@ -271,3 +315,173 @@ function Contacts({ client, contacts, reload, flash }) {
     </div>
   )
 }
+
+
+// ---------- hour caps: several per client, dated, weekly or monthly, with the alert levels you choose ----------
+const LEVELS = [50, 75, 80, 90, 100, 110]
+const DEFAULT_LEVELS = [50, 80, 90, 100]
+const capColor = (pct) => pct == null ? 'var(--ink-soft)' : pct >= 100 ? 'var(--failed)' : pct >= 90 ? '#ea580c' : pct >= 80 ? '#d97706' : '#16a34a'
+const fmtHrs = (v) => Number(v).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+const perWord = (p) => p === 'week' ? 'week' : 'month'
+
+function Modal({ title, onClose, children, width = 560 }) {
+  return (
+    <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
+      <div className="modal" style={{ width, maxHeight: '90vh', overflowY: 'auto' }} role="dialog" aria-label={title}>
+        <h3 style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 600 }}>{title}</h3>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function CapsSection({ client, caps, reload, flash }) {
+  const today = todayET()
+  const [status, setStatus] = useState([])
+  const [modal, setModal] = useState(null)
+  const [err, setErr] = useState('')
+  const key = caps.map(k => `${k.id}${k.effective_from}${k.effective_to}${k.cap_hours}`).join('|')
+  useEffect(() => {
+    let alive = true
+    supabase.rpc('finance_client_cap_status', { p_as_of: null }).then(({ data }) => { if (alive) setStatus((data || []).filter(x => x.client_id === client.id)) })
+    return () => { alive = false }
+  }, [client.id, key])   // eslint-disable-line
+  const state = (k) => k.effective_from > today ? 'later' : (!k.effective_to || k.effective_to >= today) ? 'now' : 'ended'
+  const levelsText = (k) => (k.thresholds || []).length ? `Alerts at ${k.thresholds.join('%, ')}%` : 'No alerts'
+  const inEffect = (period) => caps.find(k => k.period === period && state(k) === 'now') || caps.filter(k => k.period === period).sort((a, b) => b.effective_from.localeCompare(a.effective_from))[0] || null
+
+  async function remove(k) {
+    if (!window.confirm(`Delete the ${perWord(k.period)}ly cap that starts ${fmtDate(k.effective_from)}?`)) return
+    const { error } = await supabase.rpc('finance_client_cap_delete', { p_cap: k.id })
+    if (error) return setErr(error.message)
+    setErr(''); flash('Cap deleted.'); await reload()
+  }
+  const group = (period) => caps.filter(k => k.period === period).sort((a, b) => b.effective_from.localeCompare(a.effective_from))
+
+  return (
+    <div style={{ ...panel, marginBottom: 14 }} data-caps>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
+        <h3 style={{ margin: 0, fontSize: 16 }}>Hour caps</h3>
+        <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={() => setModal({ kind: 'set', period: 'week' })}>{caps.length ? 'Set or change a cap' : '+ Set a cap'}</button>
+      </div>
+      <p className="page-sub" style={{ margin: '0 0 8px', maxWidth: 700 }}>Limit the hours delivered to this client. It can have a weekly cap and a monthly cap at the same time, and every cap has dates, so a change never rewrites the past. The Admins get a bell alert at the levels you choose.</p>
+      {err && <div className="login-err" role="alert">{err}</div>}
+      {caps.length === 0 && <p className="page-sub" style={{ margin: 0 }}>No caps. Set one if this client has a limit on hours.</p>}
+      {['week', 'month'].map(period => group(period).length > 0 && (
+        <div key={period} data-cap-group={period}>
+          <div style={{ fontWeight: 600, fontSize: 14, margin: '10px 0 2px' }}>{period === 'week' ? 'Weekly caps (Monday to Sunday)' : 'Monthly caps (calendar month)'}</div>
+          {group(period).map(k => {
+            const st = state(k); const s = status.find(x => x.cap_id === k.id)
+            return (
+              <div key={k.id} data-cap={`${period}-${k.effective_from}`} style={{ borderTop: '1px solid var(--line)', padding: '9px 0', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ minWidth: 260, flex: 1 }}>
+                  <div><b>{fmtHrs(k.cap_hours)} hours a {perWord(period)}</b> · from {fmtDate(k.effective_from)} {k.effective_to ? `to ${fmtDate(k.effective_to)}` : 'until changed'}
+                    {st === 'now' && <span className="badge passed" style={{ marginLeft: 6 }}>In effect now</span>}{st === 'later' && <span className="badge needed" style={{ marginLeft: 6 }}>Starts later</span>}{st === 'ended' && <span className="badge" style={{ marginLeft: 6 }}>Ended</span>}</div>
+                  <div className="page-sub" style={{ margin: '2px 0 0' }}>{levelsText(k)}{k.warn_projected ? ' · warns when on pace to exceed' : ''}{k.note ? ` · ${k.note}` : ''}</div>
+                  {st === 'now' && s && (
+                    <div style={{ marginTop: 6, maxWidth: 380 }} data-meter>
+                      <div style={{ position: 'relative', height: 6, borderRadius: 3, background: 'var(--line-soft)', overflow: 'hidden' }}>
+                        <div style={{ position: 'absolute', inset: 0, width: `${Math.min(Number(s.projected_pct) || 0, 100)}%`, background: capColor(Number(s.projected_pct)), opacity: 0.22 }} />
+                        <div style={{ position: 'absolute', inset: 0, width: `${Math.min(Number(s.pct) || 0, 100)}%`, background: capColor(Number(s.pct)) }} />
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 3 }}>
+                        <span style={{ color: capColor(Number(s.pct)), fontWeight: 600 }}>{fmtHrs(s.delivered)}</span> of {fmtHrs(k.cap_hours)} hours this {perWord(period)} ({s.pct}%)
+                        {Number(s.scheduled_remaining) > 0 && ` · ${fmtHrs(s.scheduled_remaining)} still scheduled`}
+                        {Number(s.projected_pct) >= 100 && Number(s.pct) < 100 && <span style={{ color: '#d97706', fontWeight: 600 }}> · on pace for {s.projected_pct}%</span>}
+                      </div>
+                    </div>)}
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignSelf: 'flex-start', flexWrap: 'wrap' }}>
+                  <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => setModal({ kind: 'set', period, base: k })} aria-label={`Change the ${perWord(period)}ly cap from ${fmtDate(k.effective_from)}`}>Change</button>
+                  <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => setModal({ kind: 'end', cap: k })} aria-label={`Set when the ${perWord(period)}ly cap from ${fmtDate(k.effective_from)} stops`}>{k.effective_to ? 'End date' : 'Stop'}</button>
+                  <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => remove(k)} aria-label={`Delete the ${perWord(period)}ly cap from ${fmtDate(k.effective_from)}`}>Delete</button>
+                </div>
+              </div>)
+          })}
+        </div>))}
+      <p className="page-sub" style={{ margin: '10px 0 0', fontSize: 12 }}>What counts: Five9 time for dialer clients, worked shift time for the others, plus tracked task and meeting time for this client. Each alert fires once per week or month.</p>
+      {modal?.kind === 'set' && <SetCapModal client={client} today={today} inEffect={inEffect} start={modal} onClose={() => setModal(null)} onSaved={(m) => { setModal(null); flash(m); reload() }} />}
+      {modal?.kind === 'end' && <EndCapModal cap={modal.cap} today={today} onClose={() => setModal(null)} onSaved={(m) => { setModal(null); flash(m); reload() }} />}
+    </div>
+  )
+}
+
+function SetCapModal({ client, today, inEffect, start, onClose, onSaved }) {
+  const base0 = start.base || inEffect(start.period)
+  const [period, setPeriod] = useState(start.period || 'week')
+  const [startDate, setStartDate] = useState(today)
+  const [hours, setHours] = useState(base0 ? String(Number(base0.cap_hours)) : '')
+  const [levels, setLevels] = useState(base0 ? [...(base0.thresholds || [])] : [...DEFAULT_LEVELS])
+  const [warn, setWarn] = useState(base0 ? !!base0.warn_projected : true)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const existing = inEffect(period)
+  const switchPeriod = (p) => { setPeriod(p); const b = inEffect(p); setHours(b ? String(Number(b.cap_hours)) : ''); setLevels(b ? [...(b.thresholds || [])] : [...DEFAULT_LEVELS]); setWarn(b ? !!b.warn_projected : true) }
+  const toggle = (l) => setLevels(p => p.includes(l) ? p.filter(x => x !== l) : [...p, l])
+  async function save() {
+    setErr('')
+    const h = Number(hours)
+    if (!startDate) return setErr('Choose the date this cap starts.')
+    if (hours === '' || !(h > 0)) return setErr('Enter the cap in hours, more than 0.')
+    setBusy(true)
+    const { error } = await supabase.rpc('finance_client_cap_change_from', { p_client: client.id, p_period: period, p_start: startDate, p_hours: h, p_thresholds: [...levels].sort((a, b) => a - b), p_warn_projected: warn, p_note: note.trim() || null })
+    setBusy(false)
+    if (error) return setErr(error.message)
+    onSaved(`Saved. ${client.name} has a ${period === 'week' ? 'weekly' : 'monthly'} cap of ${fmtHrs(h)} hours from ${fmtDate(startDate)}.`)
+  }
+  return (
+    <Modal title={`Set or change a cap: ${client.name}`} onClose={onClose}>
+      {err && <div className="login-err" role="alert">{err}</div>}
+      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Which kind of cap?</div>
+      {[['week', 'Weekly', 'Counted Monday to Sunday'], ['month', 'Monthly', 'Counted over the calendar month']].map(([v, l, h]) => (
+        <label key={v} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '3px 0' }}><input type="radio" name="cap-period" value={v} checked={period === v} onChange={() => switchPeriod(v)} style={{ marginTop: 3 }} /> <span><b>{l}</b><span style={{ display: 'block', fontSize: 12.5, color: 'var(--ink-soft)' }}>{h}</span></span></label>))}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
+        <div className="field"><label htmlFor="cap-hours">Cap (hours) *</label><input id="cap-hours" inputMode="decimal" value={hours} onChange={e => setHours(e.target.value)} placeholder="e.g. 40" /></div>
+        <div className="field"><label htmlFor="cap-start">Starting on *</label><input id="cap-start" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
+      </div>
+      {existing && <div className="hint" role="note" style={{ marginBottom: 8 }}>This client already has a {period === 'week' ? 'weekly' : 'monthly'} cap of {fmtHrs(existing.cap_hours)} hours. From the start date on, the new cap replaces it, and the earlier one ends the day before.</div>}
+      <div style={{ fontWeight: 600, fontSize: 14, margin: '4px 0' }}>Alert the Admins at</div>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 4 }}>
+        {LEVELS.map(l => <label key={l} style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" aria-label={`Alert at ${l} percent`} checked={levels.includes(l)} onChange={() => toggle(l)} /> {l}%</label>)}
+      </div>
+      <div className="hint" style={{ marginBottom: 8 }}>{levels.length === 0 ? 'No alerts will be sent for this cap.' : 'Each level alerts once per ' + (period === 'week' ? 'week' : 'month') + ' in the bell.'}</div>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0 8px' }}><input type="checkbox" checked={warn} onChange={e => setWarn(e.target.checked)} /> Also warn me when the shifts still scheduled would take the client over the cap</label>
+      <div className="field"><label htmlFor="cap-note">Note (optional)</label><input id="cap-note" value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. per the contract renewal" /></div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save the cap'}</button>
+        <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
+      </div>
+    </Modal>
+  )
+}
+
+function EndCapModal({ cap, today, onClose, onSaved }) {
+  const [noEnd, setNoEnd] = useState(!cap.effective_to && false)
+  const [end, setEnd] = useState(cap.effective_to || today)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  async function save() {
+    setErr('')
+    if (!noEnd && !end) return setErr('Choose the last day of this cap.')
+    if (!noEnd && end < cap.effective_from) return setErr('A cap cannot end before it starts.')
+    setBusy(true)
+    const { error } = await supabase.rpc('finance_client_cap_end', { p_cap: cap.id, p_end: noEnd ? null : end })
+    setBusy(false)
+    if (error) return setErr(error.message)
+    onSaved(noEnd ? 'The cap now runs until changed.' : `The cap ends on ${fmtDate(end)}.`)
+  }
+  return (
+    <Modal title="When does this cap stop?" onClose={onClose} width={440}>
+      {err && <div className="login-err" role="alert">{err}</div>}
+      <p className="page-sub" style={{ marginTop: 0 }}>The {fmtHrs(cap.cap_hours)}-hour {cap.period === 'week' ? 'weekly' : 'monthly'} cap from {fmtDate(cap.effective_from)}.</p>
+      <div className="field"><label htmlFor="cap-end">Last day</label><input id="cap-end" type="date" value={end} min={cap.effective_from} onChange={e => setEnd(e.target.value)} disabled={noEnd} /></div>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '6px 0' }}><input type="checkbox" checked={noEnd} onChange={e => setNoEnd(e.target.checked)} /> No end date: let it run until changed</label>
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+        <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
+      </div>
+    </Modal>
+  )
+}
+
