@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth'
 import { useProjectsData } from './projectsData'
 import { Avatar } from './projectBits'
 import { PRIORITIES } from './projectHelpers'
+import { taskClientChoices } from '../lib/clientChoices'
 
 const FREQ_OPTIONS = [
   { key: 'daily', label: 'Daily' },
@@ -276,7 +277,7 @@ function RecurringModal({ recurringId, onClose }) {
               <Grp label="Client">
                 <select value={clientId} onChange={e => setClientId(e.target.value)} style={inp}>
                   <option value="">— No client —</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {taskClientChoices(clients, clientId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </Grp>
             </Row>
