@@ -1,4 +1,4 @@
-mport React, { useEffect, useMemo, useState, useCallback } from 'react'
+import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { todayET, fmtDate, panel } from './financeBits'
 import FinanceCoverage from './FinanceCoverage'
