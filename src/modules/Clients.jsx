@@ -59,6 +59,7 @@ export default function Clients() {
   const [editName, setEditName] = useState('')
   const fin = useFinanceAccess()
   const [invoicing, setInvoicing] = useState({})   // client_id -> in invoicing (Finance managers only)
+  const [parents, setParents] = useState({})       // client_id -> the client it sits under (a deal or project)
   const [addInvoicing, setAddInvoicing] = useState(true)
   const [addTasks, setAddTasks] = useState(true)
   const [msg, setMsg] = useState('')
@@ -96,8 +97,8 @@ export default function Clients() {
   // which clients are in invoicing: only Finance managers can read this
   useEffect(() => {
     if (!fin?.manager) { setInvoicing({}); return }
-    supabase.from('finance_client_profiles').select('client_id,in_invoicing').then(({ data }) => {
-      const m = {}; (data || []).forEach(r => { m[r.client_id] = r.in_invoicing }); setInvoicing(m)
+    supabase.from('finance_client_profiles').select('client_id,in_invoicing,parent_client_id').then(({ data }) => {
+      const m = {}, pm = {}; (data || []).forEach(r => { m[r.client_id] = r.in_invoicing; if (r.parent_client_id) pm[r.client_id] = r.parent_client_id }); setInvoicing(m); setParents(pm)
     })
   }, [fin?.manager])   // eslint-disable-line
 
@@ -293,7 +294,8 @@ export default function Clients() {
 
                   {/* the two checkboxes */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start' }} data-flags-row>
-                    {fin?.manager && <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer' }}><input type="checkbox" aria-label={`Include ${c.name} in invoicing`} checked={invoicing[c.id] !== false} onChange={e => setFlag(c, { p_in_invoicing: e.target.checked })} /> Invoicing</label>}
+                    {fin?.manager && parents[c.id] && <span style={{ fontSize: 12, color: 'var(--ink-soft)', whiteSpace: 'nowrap' }} data-under>Under {(clients.find(x => x.id === parents[c.id]) || {}).name}</span>}
+                    {fin?.manager && !parents[c.id] && <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer' }}><input type="checkbox" aria-label={`Include ${c.name} in invoicing`} checked={invoicing[c.id] !== false} onChange={e => setFlag(c, { p_in_invoicing: e.target.checked })} /> Invoicing</label>}
                     <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12, whiteSpace: 'nowrap', cursor: canEdit ? 'pointer' : 'default' }}><input type="checkbox" aria-label={`Show ${c.name} in task management`} checked={c.show_in_tasks !== false} disabled={!canEdit} onChange={e => setFlag(c, { p_show_in_tasks: e.target.checked })} /> Task management</label>
                   </div>
 
