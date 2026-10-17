@@ -2,14 +2,18 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
+import { useFinanceAccess } from '../lib/financeAccess'
 
 // ============================================================
 // CLIENTS — company-wide client list, shared by the Projects
 // module (tasks.client_id) and Scheduling (schedules.client_id).
 // View-only for some roles; edit controls gated to clients.edit.
 //
-// Weekly hours cap (clients.max_weekly_hours, NULL = no cap):
-// each client can carry a max billable hours per Mon–Sun week.
+// TWO CHECKBOXES per client: "Invoicing" (is it part of Finance; managers only) and "Task management" (is it offered in the task dropdowns).
+// Hour caps are now set in Finance (Clients and billing > a client > Hour caps): several per client, weekly or monthly,
+// with start and stop dates and the alert levels you choose. This page only SHOWS this week's weekly cap and its meter;
+// the number comes from get_client_hours_week(). (clients.max_weekly_hours is kept in step by the database for older code.)
+// Weekly hours cap: each client can carry a max billable hours per Mon–Sun week.
 // Delivered hours = Five9 billable time for dialer clients +
 // ended claimed shift hours for back-office clients + time
 // entries (task timers / auto-billed meetings). Alerts fire at
@@ -53,8 +57,10 @@ export default function Clients() {
   const [newName, setNewName] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [editName, setEditName] = useState('')
-  const [capEditId, setCapEditId] = useState(null)
-  const [capDraft, setCapDraft] = useState('')
+  const fin = useFinanceAccess()
+  const [invoicing, setInvoicing] = useState({})   // client_id -> in invoicing (Finance managers only)
+  const [addInvoicing, setAddInvoicing] = useState(true)
+  const [addTasks, setAddTasks] = useState(true)
   const [msg, setMsg] = useState('')
 
   const load = useCallback(async () => {
@@ -87,16 +93,42 @@ export default function Clients() {
 
   useEffect(() => { load() }, [load])
 
+  // which clients are in invoicing: only Finance managers can read this
+  useEffect(() => {
+    if (!fin?.manager) { setInvoicing({}); return }
+    supabase.from('finance_client_profiles').select('client_id,in_invoicing').then(({ data }) => {
+      const m = {}; (data || []).forEach(r => { m[r.client_id] = r.in_invoicing }); setInvoicing(m)
+    })
+  }, [fin?.manager])   // eslint-disable-line
+
   function flash(t) { setMsg(t); setTimeout(() => setMsg(''), 2500) }
 
   async function addClient() {
     const name = newName.trim()
     if (!name) return
     if (clients.some(c => c.name.toLowerCase() === name.toLowerCase())) { flash('That client already exists'); return }
-    const { data, error } = await supabase.from('clients').insert({ name }).select().single()
+    const { data, error } = await supabase.from('clients').insert({ name, show_in_tasks: addTasks }).select().single()
     if (error) { flash('Error adding client'); return }
     setClients(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
-    setNewName(''); flash('Client added')
+    if (fin?.manager) {
+      if (!addInvoicing) await supabase.rpc('finance_client_set_flags', { p_client: data.id, p_in_invoicing: false, p_show_in_tasks: null })
+      setInvoicing(prev => ({ ...prev, [data.id]: addInvoicing }))
+    }
+    setNewName(''); setAddInvoicing(true); setAddTasks(true); flash('Client added')
+  }
+
+  // tick or untick Invoicing / Task management on a client
+  async function setFlag(c, patch) {
+    if (fin?.manager) {
+      const { error } = await supabase.rpc('finance_client_set_flags', { p_client: c.id, p_in_invoicing: null, p_show_in_tasks: null, ...patch })
+      if (error) { flash(error.message); return }
+    } else if ('p_show_in_tasks' in patch) {
+      const { error } = await supabase.from('clients').update({ show_in_tasks: patch.p_show_in_tasks }).eq('id', c.id)
+      if (error) { flash('Error saving — admin only'); return }
+    }
+    if ('p_show_in_tasks' in patch) setClients(prev => prev.map(x => x.id === c.id ? { ...x, show_in_tasks: patch.p_show_in_tasks } : x))
+    if ('p_in_invoicing' in patch) setInvoicing(prev => ({ ...prev, [c.id]: patch.p_in_invoicing }))
+    flash('p_in_invoicing' in patch ? (patch.p_in_invoicing ? `${c.name} is in invoicing` : `${c.name} is out of invoicing (its hours are not invoiced)`) : (patch.p_show_in_tasks ? `${c.name} is offered in task management` : `${c.name} is hidden from the task dropdowns`))
   }
 
   async function saveRename(id) {
@@ -106,29 +138,6 @@ export default function Clients() {
     if (error) { flash('Error renaming'); return }
     setClients(prev => prev.map(c => c.id === id ? { ...c, name } : c).sort((a, b) => a.name.localeCompare(b.name)))
     setEditingId(null); flash('Renamed')
-  }
-
-  async function saveCap(id) {
-    const raw = capDraft.trim()
-    let cap = null
-    if (raw !== '') {
-      cap = Number(raw)
-      if (!Number.isFinite(cap) || cap <= 0) { flash('Enter a positive number of hours, or clear it to remove the cap'); return }
-      cap = Math.round(cap * 100) / 100
-    }
-    const { error } = await supabase.from('clients').update({ max_weekly_hours: cap }).eq('id', id)
-    if (error) { flash('Error saving cap — admin only'); return }
-    setClients(prev => prev.map(c => c.id === id ? { ...c, max_weekly_hours: cap } : c))
-    // recompute this row's percentages locally so the meter updates immediately
-    setHours(prev => {
-      const row = prev[id]
-      if (!row) return prev
-      const pct = cap ? Math.round((row.delivered_hours / cap) * 1000) / 10 : null
-      const ppct = cap ? Math.round((row.projected_hours / cap) * 1000) / 10 : null
-      return { ...prev, [id]: { ...row, cap, pct, projected_pct: ppct } }
-    })
-    setCapEditId(null)
-    flash(cap ? `Cap set to ${fmtHrs(cap)} hrs/week` : 'Cap removed')
   }
 
   async function deleteClient(c) {
@@ -207,6 +216,11 @@ export default function Clients() {
             style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} />
           <button onClick={addClient} className="btn btn-primary">Add</button>
         </div>
+        <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap' }}>
+          {fin?.manager && <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12.5 }}><input type="checkbox" aria-label="Add to invoicing" checked={addInvoicing} onChange={e => setAddInvoicing(e.target.checked)} /> Invoicing</label>}
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12.5 }}><input type="checkbox" aria-label="Add to task management" checked={addTasks} onChange={e => setAddTasks(e.target.checked)} /> Task management</label>
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginTop: 4 }}>{fin?.manager ? 'Invoicing puts the client in Finance billing. ' : ''}Task management offers it in the task dropdowns.</div>
       </div>
       )}
 
@@ -223,7 +237,7 @@ export default function Clients() {
           const tCount = taskCounts[c.id] || 0
           const sCount = scheduleCounts[c.id] || 0
           const h = hours[c.id]
-          const cap = c.max_weekly_hours
+          const cap = h && Number(h.cap) > 0 ? Number(h.cap) : null
           const pct = h && cap > 0 ? h.pct : null
           const ppct = h && cap > 0 ? h.projected_pct : null
           const barPct = pct == null ? 0 : Math.min(pct, 100)
@@ -277,26 +291,17 @@ export default function Clients() {
                     )}
                   </div>
 
-                  {/* cap editor */}
-                  {hoursOk && (
-                    capEditId === c.id ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input value={capDraft} onChange={e => setCapDraft(e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') saveCap(c.id); if (e.key === 'Escape') setCapEditId(null) }}
-                          autoFocus type="number" min="0" step="0.5" placeholder="hrs/wk"
-                          style={{ width: 80, padding: '5px 7px', border: '1px solid var(--accent)', borderRadius: 6, fontSize: 12.5, fontFamily: 'inherit' }} />
-                        <button onClick={() => saveCap(c.id)} className="btn btn-primary" style={{ fontSize: 12, padding: '4px 10px' }}>Save</button>
-                        <button onClick={() => setCapEditId(null)} className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }}>Cancel</button>
-                      </div>
-                    ) : canEdit ? (
-                      <button onClick={() => { setCapEditId(c.id); setCapDraft(cap ? String(cap) : '') }}
-                        className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px', whiteSpace: 'nowrap' }}
-                        title="Max billable hours per Mon–Sun week. Leave blank for no cap.">
-                        {cap > 0 ? `Cap ${fmtHrs(cap)} h/wk` : 'Set cap'}
-                      </button>
-                    ) : cap > 0 ? (
-                      <span style={{ fontSize: 12, color: 'var(--ink-soft)', whiteSpace: 'nowrap' }}>Cap {fmtHrs(cap)} h/wk</span>
-                    ) : null
+                  {/* the two checkboxes */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start' }} data-flags-row>
+                    {fin?.manager && <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer' }}><input type="checkbox" aria-label={`Include ${c.name} in invoicing`} checked={invoicing[c.id] !== false} onChange={e => setFlag(c, { p_in_invoicing: e.target.checked })} /> Invoicing</label>}
+                    <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12, whiteSpace: 'nowrap', cursor: canEdit ? 'pointer' : 'default' }}><input type="checkbox" aria-label={`Show ${c.name} in task management`} checked={c.show_in_tasks !== false} disabled={!canEdit} onChange={e => setFlag(c, { p_show_in_tasks: e.target.checked })} /> Task management</label>
+                  </div>
+
+                  {/* the cap itself: shown here, set in Finance */}
+                  {hoursOk && cap > 0 && <span style={{ fontSize: 12, color: 'var(--ink-soft)', whiteSpace: 'nowrap' }}>Cap {fmtHrs(cap)} h/wk</span>}
+                  {hoursOk && fin?.manager && (
+                    <a href="/finance" title="Caps are set in Finance: weekly or monthly, with dates and your own alert levels"
+                      style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{cap > 0 ? 'Manage caps' : 'Set a cap'}</a>
                   )}
 
                   {canEdit && <>
