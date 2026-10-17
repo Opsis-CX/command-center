@@ -60,7 +60,7 @@ export default function HeaderTaskBar() {
       supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at, checked_out_at').eq('profile_id', userId),
       fetchAllRows(() => supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role').order('id')),
       supabase.from('projects').select('id, name').order('name'),
-      supabase.from('clients').select('id, name').order('name'),
+      supabase.from('clients').select('id, name').eq('show_in_tasks', true).order('name'),
     ])
     setTasks(taskRes.data || [])
     setAssignees(taRes.data || [])
