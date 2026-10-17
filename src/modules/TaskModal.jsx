@@ -6,6 +6,7 @@ import { statusLabel, STATUSES, PRIORITIES } from './projectHelpers'
 import { notifyTaskAssigned, notifyTaskAdded } from '../lib/notify'
 import RichTextEditor from './RichTextEditor'
 import { SubtaskDrafts } from './Subtasks'
+import { taskClientChoices } from '../lib/clientChoices'
 
 // ============================================================
 // TASK MODAL — create a new task or edit an existing one.
@@ -268,7 +269,7 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
                 <select value={clientId} onChange={e => { setClientId(e.target.value); setFieldErrors(f => ({ ...f, client: false })) }}
                   style={{ ...inp, borderColor: fieldErrors.client ? 'var(--failed)' : 'var(--line)' }}>
                   <option value="">— Select a client —</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {taskClientChoices(clients, clientId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </Grp>
             </Row>
