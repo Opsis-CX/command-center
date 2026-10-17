@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react'
+mport React, { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { todayET, fmtDate, panel } from './financeBits'
 import FinanceCoverage from './FinanceCoverage'
@@ -68,28 +68,30 @@ export default function FinanceBilling({ lookups, flash }) {
   const [contacts, setContacts] = useState([])
   const [retainers, setRetainers] = useState([])
   const [terms, setTerms] = useState([])
+  const [caps, setCaps] = useState([])
   const [view, setView] = useState('clients')
   const [openClient, setOpenClient] = useState(null)
   const [fromClient, setFromClient] = useState(false)
 
   const load = useCallback(async () => {
-    const [en, li, de, ra, ty, cl, pr, co, rt, tm] = await Promise.all([
+    const [en, li, de, ra, ty, cl, pr, co, rt, tm, cp] = await Promise.all([
       supabase.from('finance_billing_entities').select('*').order('name'),
       supabase.from('finance_client_links').select('*'),
       supabase.from('finance_deals').select('*').order('name'),
       supabase.from('finance_rate_lines').select('*').order('sort').order('product_name'),
       supabase.from('finance_invoice_types').select('*').order('sort').order('name'),
-      supabase.from('clients').select('id,name,max_weekly_hours,uses_five9').order('name'),
+      supabase.from('clients').select('id,name,show_in_tasks').order('name'),
       supabase.from('finance_client_profiles').select('*'),
       supabase.from('finance_client_contacts').select('*').order('created_at'),
       supabase.from('finance_retainers').select('*'),
       supabase.from('finance_coverage_terms').select('*'),
+      supabase.from('finance_client_caps').select('*'),
     ])
     const first = en.error || li.error || de.error || ra.error || ty.error || cl.error || pr.error || co.error
     setErr(first ? first.message : '')
     const ents = en.data || []
     setEntities(ents); setLinks(li.data || []); setDeals(de.data || []); setLines(ra.data || []); setTypes(ty.data || [])
-    setClientsAll(cl.data || []); setProfiles(pr.data || []); setContacts(co.data || []); setRetainers(rt.data || []); setTerms(tm.data || [])
+    setClientsAll(cl.data || []); setProfiles(pr.data || []); setContacts(co.data || []); setRetainers(rt.data || []); setTerms(tm.data || []); setCaps(cp.data || [])
     const dates = {}
     await Promise.all((ty.data || []).filter(t => t.active && t.invoice_day != null).map(async t => {
       const { data } = await supabase.rpc('finance_type_next_invoice_date', { p_type: t.id })
@@ -121,9 +123,9 @@ export default function FinanceBilling({ lookups, flash }) {
       {err && <div className="login-err">{err}</div>}
       {theClient
         ? <ClientPage key={theClient.id} client={theClient} profile={profiles.find(x => x.client_id === theClient.id)} entities={entities} links={links} types={types}
-            contacts={contacts.filter(c => c.client_id === theClient.id)} retainers={retainers} terms={terms} onBack={() => setOpenClient(null)}
+            contacts={contacts.filter(c => c.client_id === theClient.id)} retainers={retainers} terms={terms} caps={caps.filter(k => k.client_id === theClient.id)} onBack={() => setOpenClient(null)}
             onOpenBill={(id) => { setFromClient(true); setOpenId(id) }} reload={load} flash={flash} />
-        : <ClientList clients={clientsAll} profiles={profiles} entities={entities} links={links} types={types} retainers={retainers} terms={terms} onOpen={setOpenClient} />}
+        : <ClientList clients={clientsAll} profiles={profiles} entities={entities} links={links} types={types} retainers={retainers} terms={terms} caps={caps} onOpen={setOpenClient} reload={load} flash={flash} />}
     </div>
   )
 
