@@ -5,6 +5,7 @@ import { StatusSelect, PriorityBadge, DueLabel, AvatarStack } from './projectBit
 import { SubtaskProgress } from './Subtasks'
 import { esc, stripHtml, statusLabel, STATUSES } from './projectHelpers'
 import { exportTasks } from './projectCsv'
+import { taskClientChoices } from '../lib/clientChoices'
 
 // ============================================================
 // DASHBOARD sub-view — stat cards, filters, grouped/table task lists.
@@ -132,7 +133,7 @@ export default function ProjectDashboard({ onOpenTask, onEditTask, onAddTask }) 
         </select>
         <select value={client} onChange={e => setClient(e.target.value)} style={selStyle}>
           <option value="">All clients</option>
-          {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {taskClientChoices(clients, client, new Set((tasks || []).map(t => t.client_id))).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         {onAddTask && (
           <button onClick={() => onAddTask()} className="btn btn-primary" style={{ marginLeft: 'auto' }}>+ Add task</button>
