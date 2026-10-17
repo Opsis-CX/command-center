@@ -123,7 +123,7 @@ export default function FinanceBilling({ lookups, flash }) {
       {err && <div className="login-err">{err}</div>}
       {theClient
         ? <ClientPage key={theClient.id} client={theClient} profile={profiles.find(x => x.client_id === theClient.id)} entities={entities} links={links} types={types}
-            contacts={contacts.filter(c => c.client_id === theClient.id)} retainers={retainers} terms={terms} caps={caps.filter(k => k.client_id === theClient.id)} onBack={() => setOpenClient(null)}
+            contacts={contacts.filter(c => c.client_id === theClient.id)} retainers={retainers} terms={terms} caps={caps.filter(k => k.client_id === theClient.id)} allClients={clientsAll} profiles={profiles} onOpenClient={setOpenClient} onBack={() => setOpenClient(null)}
             onOpenBill={(id) => { setFromClient(true); setOpenId(id) }} reload={load} flash={flash} />
         : <ClientList clients={clientsAll} profiles={profiles} entities={entities} links={links} types={types} retainers={retainers} terms={terms} caps={caps} onOpen={setOpenClient} reload={load} flash={flash} />}
     </div>
