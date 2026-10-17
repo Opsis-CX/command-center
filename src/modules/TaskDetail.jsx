@@ -179,7 +179,7 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
             <Field label="Client">
               <select value={task.client_id || ''} onChange={e => updateField('client_id', e.target.value)} style={inlineSel}>
                 <option value="">— No client —</option>
-                taskClientChoices(clients, task.client_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {taskClientChoices(clients, task.client_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </Field>
             <Field label="Due date">
