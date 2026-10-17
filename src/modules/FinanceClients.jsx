@@ -9,6 +9,8 @@ import { todayET, fmtDate, panel } from './financeBits'
 //   - Invoiced client: which bill (billing entity) its invoices go on, and what happens to the hours worked for it
 //   - Internal (Opsis's own work): never invoiced
 // Hours worked for the client then follow that choice, so there are no rules to keep. A choice on one hour still wins.
+// ONE INVOICE PER CLIENT: a deal or project (GarageCo: Web Leads) sits UNDER a client. Its hours are billed on that client's invoice and paid
+// as usual; it has no invoice of its own and is not listed as a separate client. "Not in invoicing" means only that a client is never billed (Opsis).
 // TWO CHECKBOXES per client: "Invoicing" (is it part of Finance; unticked = hidden here and its hours are not invoiced) and
 // "Task management" (is it offered in the task dropdowns). They are independent.
 // HOUR CAPS: a client can have several caps, weekly and monthly, each with dates and its own alert levels (see CapsSection).
@@ -17,6 +19,8 @@ import { todayET, fmtDate, panel } from './financeBits'
 const KIND = { invoiced: 'Invoiced', internal: 'Internal', not_set: 'Needs setup' }
 const kindBadge = (k) => k === 'invoiced' ? 'badge passed' : k === 'internal' ? 'badge' : 'badge needed'
 const typeBadge = (p) => p.in_invoicing === false ? ['Not in invoicing', 'badge'] : [KIND[p.billing_kind === 'internal' ? 'not_set' : p.billing_kind], kindBadge(p.billing_kind === 'internal' ? 'not_set' : p.billing_kind)]
+const shortName = (child, parent) => parent && child.name.startsWith(parent.name + ': ') ? child.name.slice(parent.name.length + 2) : child.name
+function parentMessage(name, parentName) { return parentName ? `${name} is now a deal under ${parentName}. Its hours are billed on ${parentName}'s invoice and are paid as usual.` : `${name} is no longer under a client.` }
 function flagMessage(name, patch) {
   if ('p_in_invoicing' in patch) return patch.p_in_invoicing ? `${name} is in invoicing.` : `${name} is out of invoicing. Hours worked for it are not invoiced.`
   return patch.p_show_in_tasks ? `${name} is offered in task management.` : `${name} is hidden from the task dropdowns. Names on existing tasks stay.`
@@ -41,54 +45,78 @@ export function ClientList({ clients, profiles, entities, links, types, retainer
   const [q, setQ] = useState('')
   const today = todayET()
   const profileOf = (id) => profiles.find(p => p.client_id === id) || { billing_kind: 'not_set', hours_mode: 'decide', status: 'active', in_invoicing: true }
-  const needs = clients.filter(c => profileOf(c.id).in_invoicing !== false && profileOf(c.id).billing_kind !== 'invoiced' && profileOf(c.id).status !== 'ended').length
+  const parentOf = (id) => { const pid = profileOf(id).parent_client_id; return pid ? clients.find(c => c.id === pid) : null }
+  const childrenOf = (id) => clients.filter(c => profileOf(c.id).parent_client_id === id)
+  const topLevelIn = clients.filter(c => profileOf(c.id).in_invoicing !== false && !profileOf(c.id).parent_client_id)
+  const needs = topLevelIn.filter(c => profileOf(c.id).billing_kind !== 'invoiced' && profileOf(c.id).status !== 'ended').length
   const shown = useMemo(() => clients.filter(c => {
-    const p = profileOf(c.id); const inv = p.in_invoicing !== false
+    const p = profileOf(c.id); const inv = p.in_invoicing !== false; const par = p.parent_client_id
     if (q && !c.name.toLowerCase().includes(q.toLowerCase())) return false
+    if (filter === 'deals') return !!par
+    if (par) return false
     if (filter === 'out') return !inv
     if (!inv) return false
     if (filter === 'needs') return p.billing_kind !== 'invoiced' && p.status !== 'ended'
     if (filter === 'invoiced') return p.billing_kind === 'invoiced'
     return true
   }), [clients, profiles, filter, q])   // eslint-disable-line
-  async function setFlag(c, patch) {
-    const { error } = await supabase.rpc('finance_client_set_flags', { p_client: c.id, p_in_invoicing: null, p_show_in_tasks: null, ...patch })
+  async function call(name, args, msg) {
+    const { error } = await supabase.rpc(name, args)
     if (error) return flash(error.message)
-    flash(flagMessage(c.name, patch)); await reload()
+    flash(msg); await reload()
   }
+  const setFlag = (c, patch) => call('finance_client_set_flags', { p_client: c.id, p_in_invoicing: null, p_show_in_tasks: null, ...patch }, flagMessage(c.name, patch))
+  const setParent = (c, parent) => call('finance_client_set_parent', { p_client: c.id, p_parent: parent ? parent.id : null }, parentMessage(c.name, parent && parent.name))
+  const tickInvoicing = (c, on) => {
+    const n = childrenOf(c.id).length
+    if (!on && n > 0 && !window.confirm(`${c.name} has ${n} deal${n === 1 ? '' : 's'} under it. Taking it out of invoicing means hours on ${n === 1 ? 'it' : 'all of them'} are not invoiced either. Continue?`)) return
+    setFlag(c, { p_in_invoicing: on })
+  }
+  const box = { display: 'flex', gap: 5, alignItems: 'center', fontSize: 12.5, cursor: 'pointer' }
   return (
     <div>
-      <p className="page-sub" style={{ margin: '0 0 12px', maxWidth: 760 }}>The clients you invoice. Tick <b>Invoicing</b> on a client to bring it here, and untick it to take it out (hours worked for it are then not invoiced). <b>Task management</b> is separate: a client stays in the task dropdowns unless you untick it. For each client here, say once how it is billed, and its hours follow that choice. You do not need rules.</p>
+      <p className="page-sub" style={{ margin: '0 0 12px', maxWidth: 780 }}>The clients you invoice, <b>one invoice per client</b>. A deal or project (like GarageCo: Web Leads) sits <b>under</b> its client: its hours are billed on the client's invoice and paid as usual, with no invoice of its own. Untick <b>Invoicing</b> only for a client you never bill (like Opsis). <b>Task management</b> is separate: a client stays in the task dropdowns unless you untick it. For each client, say once how it is billed, and its hours follow that choice. You do not need rules.</p>
       {needs > 0 && <div className="card" role="note" style={{ marginBottom: 12 }}><b data-needs>{needs} client{needs === 1 ? '' : 's'} need{needs === 1 ? 's' : ''} setup.</b> Until a client is set up, hours worked for it wait for your decision. If a client is not one you invoice, untick Invoicing on it.</div>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-        {[['invoicing', 'In invoicing'], ['needs', 'Needs setup'], ['invoiced', 'Invoiced'], ['out', 'Not in invoicing']].map(([k, l]) => <button key={k} style={chip(filter === k)} onClick={() => setFilter(k)} aria-pressed={filter === k}>{l}</button>)}
+        {[['invoicing', 'In invoicing'], ['needs', 'Needs setup'], ['invoiced', 'Invoiced'], ['deals', 'Deals under a client'], ['out', 'Not in invoicing']].map(([k, l]) => <button key={k} style={chip(filter === k)} onClick={() => setFilter(k)} aria-pressed={filter === k}>{l}</button>)}
         <input aria-label="Search clients" placeholder="Search" value={q} onChange={e => setQ(e.target.value)} style={{ padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', minWidth: 180 }} />
       </div>
-      {filter === 'out' && <p className="page-sub" style={{ margin: '0 0 10px' }} data-out-note>These clients are not part of Finance, and hours worked for them are not invoiced. Tick Invoicing to bring one back.</p>}
+      {filter === 'out' && <p className="page-sub" style={{ margin: '0 0 10px' }} data-out-note>These clients are not part of Finance, and hours worked for them are not invoiced (they are still paid as usual). Tick Invoicing to bring one back, or put one under a client if it is a deal or project of that client.</p>}
+      {filter === 'deals' && <p className="page-sub" style={{ margin: '0 0 10px' }} data-deals-note>These are deals and projects under a client. They are billed on that client's invoice and paid as usual.</p>}
       {shown.length === 0 && <p className="page-sub">No clients match.</p>}
       {shown.map(c => {
         const p = profileOf(c.id); const inv = p.in_invoicing !== false
-        const link = links.find(l => l.client_id === c.id)
+        const parent = parentOf(c.id); const kids = childrenOf(c.id)
+        const link = links.find(l => l.client_id === (parent ? parent.id : c.id))
         const bill = link && entities.find(e => e.id === link.entity_id)
+        const owner = parent || c; const op = profileOf(owner.id)
         const rs = bill ? retainers.filter(r => types.some(t => t.id === r.invoice_type_id && t.entity_id === bill.id)) : []
-        const live = rs.filter(r => terms.some(t => t.retainer_id === r.id && t.effective_from <= today && (!t.effective_to || t.effective_to >= today)))
+        const live = parent ? [] : rs.filter(r => terms.some(t => t.retainer_id === r.id && t.effective_from <= today && (!t.effective_to || t.effective_to >= today)))
         const myCaps = caps.filter(k => k.client_id === c.id && k.effective_from <= today && (!k.effective_to || k.effective_to >= today)).sort((a, b) => a.period.localeCompare(b.period) * -1)
         const capText = myCaps.map(k => `${k.period === 'week' ? 'Weekly' : 'Monthly'} cap ${Number(k.cap_hours)} h`).join(' · ')
-        const [badgeText, badgeCls] = typeBadge(p)
+        const [badgeText, badgeCls] = parent ? [`Part of ${parent.name}`, 'badge'] : typeBadge(p)
+        const candidates = topLevelIn.filter(x => x.id !== c.id)
         return (
           <div key={c.id} data-client={c.name} onClick={() => onOpen(c.id)}
             style={{ ...panel, marginBottom: 8, cursor: 'pointer', opacity: p.status === 'ended' ? 0.6 : inv ? 1 : 0.8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') onOpen(c.id) }}>
                 <div style={{ fontWeight: 600, fontSize: 15 }}>{c.name} <span className={badgeCls} style={{ marginLeft: 6 }}>{badgeText}</span>{p.status !== 'active' && <span className="badge failed" style={{ marginLeft: 6 }}>{p.status}</span>}</div>
-                <div className="page-sub" style={{ margin: '2px 0 0' }}>{!inv ? 'Not part of Finance billing' : p.billing_kind === 'invoiced' ? (bill ? `Billed to ${bill.name}` : 'Not billed to anyone yet') : 'Choose how this client is billed'}</div>
+                <div className="page-sub" style={{ margin: '2px 0 0' }}>{parent ? `Billed through ${parent.name}` : !inv ? 'Not part of Finance billing' : p.billing_kind === 'invoiced' ? (bill ? `Billed to ${bill.name}` : 'Not billed to anyone yet') : 'Choose how this client is billed'}</div>
+                {kids.length > 0 && <div className="page-sub" style={{ margin: '2px 0 0' }} data-kids>Deals and projects under it: {kids.map(k => shortName(k, c)).join(', ')}</div>}
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div className="page-sub" style={{ margin: '2px 0 0' }}>{describeHoursSetting(p, types, entities)}</div>
+                <div className="page-sub" style={{ margin: '2px 0 0' }}>{parent ? `Hours follow ${parent.name}: ${describeHoursSetting(op, types, entities)}` : describeHoursSetting(p, types, entities)}</div>
                 {(live.length > 0 || capText) && <div className="page-sub" style={{ margin: '2px 0 0' }}>{live.length > 0 ? `${live.length} retainer${live.length === 1 ? '' : 's'}` : ''}{live.length > 0 && capText ? ' · ' : ''}{capText}</div>}
-                <div onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} style={{ display: 'flex', gap: 14, justifyContent: 'flex-end', marginTop: 6, flexWrap: 'wrap' }} data-flags-row>
-                  <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12.5, cursor: 'pointer' }}><input type="checkbox" aria-label={`Include ${c.name} in invoicing`} checked={inv} onChange={e => setFlag(c, { p_in_invoicing: e.target.checked })} /> Invoicing</label>
-                  <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12.5, cursor: 'pointer' }}><input type="checkbox" aria-label={`Show ${c.name} in task management`} checked={c.show_in_tasks !== false} onChange={e => setFlag(c, { p_show_in_tasks: e.target.checked })} /> Task management</label>
+                <div onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} style={{ display: 'flex', gap: 14, justifyContent: 'flex-end', marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }} data-flags-row>
+                  {parent
+                    ? <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => setParent(c, null)} aria-label={`Take ${c.name} out of ${parent.name}`}>Take out of {parent.name}</button>
+                    : <label style={box}><input type="checkbox" aria-label={`Include ${c.name} in invoicing`} checked={inv} onChange={e => tickInvoicing(c, e.target.checked)} /> Invoicing</label>}
+                  <label style={box}><input type="checkbox" aria-label={`Show ${c.name} in task management`} checked={c.show_in_tasks !== false} onChange={e => setFlag(c, { p_show_in_tasks: e.target.checked })} /> Task management</label>
+                  {!parent && !inv && candidates.length > 0 && (
+                    <select aria-label={`Put ${c.name} under a client`} value="" onChange={e => { const t = candidates.find(x => x.id === e.target.value); if (t) setParent(c, t) }} style={{ fontSize: 12.5 }}>
+                      <option value="">Put under a client…</option>{candidates.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+                    </select>)}
                 </div>
               </div>
             </div>
@@ -98,9 +126,15 @@ export function ClientList({ clients, profiles, entities, links, types, retainer
   )
 }
 
-export function ClientPage({ client, profile, entities, links, types, contacts, retainers, terms, caps = [], onBack, onOpenBill, reload, flash }) {
+export function ClientPage({ client, profile, entities, links, types, contacts, retainers, terms, caps = [], allClients = [], profiles = [], onBack, onOpenBill, onOpenClient, reload, flash }) {
   const p = profile || { billing_kind: 'not_set', hours_mode: 'decide', status: 'active', in_invoicing: true }
   const inv = p.in_invoicing !== false
+  const profOf = (id) => profiles.find(x => x.client_id === id) || {}
+  const parentClient = p.parent_client_id ? allClients.find(c => c.id === p.parent_client_id) : null
+  const isChild = !!parentClient
+  const kids = allClients.filter(c => profOf(c.id).parent_client_id === client.id)
+  const candidates = allClients.filter(c => c.id !== client.id && !profOf(c.id).parent_client_id && !kids.some(k => k.id === c.id) && !allClients.some(x => profOf(x.id).parent_client_id === c.id)).sort((a, b) => a.name.localeCompare(b.name))
+  const parentCandidates = allClients.filter(c => c.id !== client.id && profOf(c.id).in_invoicing !== false && !profOf(c.id).parent_client_id)
   const link = links.find(l => l.client_id === client.id)
   const [kind, setKind] = useState(p.billing_kind === 'internal' ? 'not_set' : p.billing_kind)
   const [billId, setBillId] = useState(link ? link.entity_id : '')
@@ -145,6 +179,15 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
     if (error) return flash(error.message)
     flash(flagMessage(client.name, patch)); await reload()
   }
+  async function setParentFor(child, parent) {
+    const { error } = await supabase.rpc('finance_client_set_parent', { p_client: child.id, p_parent: parent ? parent.id : null })
+    if (error) return flash(error.message)
+    flash(parentMessage(child.name, parent && parent.name)); await reload()
+  }
+  function tickInvoicing(on) {
+    if (!on && kids.length > 0 && !window.confirm(`${client.name} has ${kids.length} deal${kids.length === 1 ? '' : 's'} under it. Taking it out of invoicing means hours on ${kids.length === 1 ? 'it' : 'all of them'} are not invoiced either. Continue?`)) return
+    setFlag({ p_in_invoicing: on })
+  }
   async function saveDetails() {
     setDetErr('')
     if (det.start && det.end && det.end < det.start) return setDetErr('The end date cannot be before the start date.')
@@ -161,23 +204,53 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
   return (
     <div data-client-page={client.name}>
       <button className="btn btn-ghost" style={{ fontSize: 12.5, marginBottom: 10 }} onClick={onBack}>← All clients</button>
-      <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 2px' }}>{client.name} <span className={typeBadge(p)[1]} style={{ marginLeft: 6, fontSize: 12 }}>{typeBadge(p)[0]}</span></h2>
-      <p className="page-sub" style={{ margin: '0 0 14px' }}>{describeHoursSetting(p, types, entities)}</p>
+      <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 2px' }}>{client.name} <span className={isChild ? 'badge' : typeBadge(p)[1]} style={{ marginLeft: 6, fontSize: 12 }}>{isChild ? `Part of ${parentClient.name}` : typeBadge(p)[0]}</span></h2>
+      <p className="page-sub" style={{ margin: '0 0 14px' }}>{isChild ? `Hours follow ${parentClient.name}: ${describeHoursSetting(profOf(parentClient.id), types, entities)}` : describeHoursSetting(p, types, entities)}</p>
 
       <div style={{ ...panel, marginBottom: 14 }} data-flags>
         <h3 style={{ margin: '0 0 6px', fontSize: 16 }}>Where this client is used</h3>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '4px 0' }}>
-          <input type="checkbox" aria-label="Include in invoicing" checked={inv} onChange={e => setFlag({ p_in_invoicing: e.target.checked })} style={{ marginTop: 3 }} />
-          <span><b>Invoicing</b><span style={{ display: 'block', fontSize: 12.5, color: 'var(--ink-soft)' }}>Part of Finance billing. Unticked, this client is hidden from the Clients list here, and hours worked for it are not invoiced.</span></span>
-        </label>
+        {isChild ? (
+          <div data-part-of style={{ padding: '4px 0' }}>
+            <div><b>Part of {parentClient.name}</b></div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: '2px 0 6px' }}>This is a deal or project under {parentClient.name}. Its hours are billed on {parentClient.name}'s invoice and paid as usual. It has no invoice of its own.</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => onOpenClient(parentClient.id)}>Open {parentClient.name}</button>
+              <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setParentFor(client, null)}>Take it out of {parentClient.name}</button>
+            </div>
+          </div>
+        ) : (
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '4px 0' }}>
+            <input type="checkbox" aria-label="Include in invoicing" checked={inv} onChange={e => tickInvoicing(e.target.checked)} style={{ marginTop: 3 }} />
+            <span><b>Invoicing</b><span style={{ display: 'block', fontSize: 12.5, color: 'var(--ink-soft)' }}>This client gets its own invoice. Unticked, it is hidden from the Clients list here, and hours worked for it are not invoiced. Pay is not affected.</span></span>
+          </label>)}
         <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '4px 0' }}>
           <input type="checkbox" aria-label="Show in task management" checked={client.show_in_tasks !== false} onChange={e => setFlag({ p_show_in_tasks: e.target.checked })} style={{ marginTop: 3 }} />
           <span><b>Task management</b><span style={{ display: 'block', fontSize: 12.5, color: 'var(--ink-soft)' }}>Offered in the client dropdowns for the timer, tasks and recurring tasks. Names already on tasks always stay.</span></span>
         </label>
       </div>
 
-      {!inv && <div className="card" style={{ marginBottom: 14 }} data-not-invoiced>This client is not in invoicing. It is hidden from the Clients list here, and hours worked for it are not invoiced. Tick <b>Invoicing</b> above to set up its billing.</div>}
-      {inv && (<>
+      {inv && !isChild && (
+        <div style={{ ...panel, marginBottom: 14 }} data-deals>
+          <h3 style={{ margin: '0 0 6px', fontSize: 16 }}>Deals and projects under {client.name}</h3>
+          <p className="page-sub" style={{ margin: '0 0 8px' }}>One invoice for the client. These roll up into it: their hours are billed on its invoice and paid as usual.</p>
+          {kids.length === 0 && <p className="page-sub" style={{ margin: '0 0 8px' }}>None yet.</p>}
+          {kids.map(k => (
+            <div key={k.id} data-deal={k.name} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', borderTop: '1px solid var(--line)', padding: '6px 0' }}>
+              <span>{k.name}</span>
+              <span style={{ display: 'flex', gap: 6 }}>
+                <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => onOpenClient(k.id)} aria-label={`Open ${k.name}`}>Open</button>
+                <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => setParentFor(k, null)} aria-label={`Take ${k.name} out of ${client.name}`}>Take out</button>
+              </span>
+            </div>))}
+          {candidates.length > 0 && <div className="field" style={{ maxWidth: 420, marginTop: 8 }}><label htmlFor="cl-adddeal">Add a deal or project</label>
+            <select id="cl-adddeal" value="" onChange={e => { const t = candidates.find(x => x.id === e.target.value); if (t) setParentFor(t, client) }}><option value="">Choose a client…</option>{candidates.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
+        </div>)}
+
+      {!inv && !isChild && <div className="card" style={{ marginBottom: 14 }} data-not-invoiced>This client is not in invoicing. It is hidden from the Clients list here, and hours worked for it are not invoiced (they are still paid as usual). Tick <b>Invoicing</b> above to set up its billing.
+        {parentCandidates.length > 0 && <div className="field" style={{ maxWidth: 420, marginTop: 8 }}><label htmlFor="cl-putunder">Or, if this is a deal or project of a client you invoice, put it under that client</label>
+          <select id="cl-putunder" value="" onChange={e => { const t = parentCandidates.find(x => x.id === e.target.value); if (t) setParentFor(client, t) }}><option value="">Choose a client…</option>{parentCandidates.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
+      </div>}
+      {inv && !isChild && (<>
       <div style={{ ...panel, marginBottom: 14 }} data-checklist>
         <b>{left === 0 ? 'This client is ready.' : `${left} thing${left === 1 ? '' : 's'} left to set up`}</b>
         <ul style={{ listStyle: 'none', padding: 0, margin: '6px 0 0' }}>
