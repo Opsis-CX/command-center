@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { todayET, fmtDate, panel } from './financeBits'
 import FinanceCoverage from './FinanceCoverage'
+import { ClientList, ClientPage } from './FinanceClients'
 
 // ============================================================
 // CLIENTS AND BILLING (Admins and Owners)
@@ -10,6 +11,8 @@ import FinanceCoverage from './FinanceCoverage'
 // rate lines. Example: GarageCo has a Consulting invoice on the 1st and a Call center invoice on the 15th.
 // Every rate has dates, so changing a rate never rewrites an old invoice. Hours are never rounded; the decimals
 // setting only changes how many are shown.
+// The front door is the CLIENTS list: every client in Command Center, each set up once as invoiced or internal (see FinanceClients.jsx).
+// The "Billed to" view below it keeps the bills (billing entities) with their invoices, retainers and rates.
 // An invoice is billed either BY THE HOUR (tagged hours x the rate card) or AS A RETAINER (hours open x agents per hour x
 // rate, with dated terms and closed days). GarageCo's Call center is a retainer, so it has terms instead of rate lines.
 // ============================================================
@@ -60,19 +63,33 @@ export default function FinanceBilling({ lookups, flash }) {
   const [err, setErr] = useState('')
   const [openId, setOpenId] = useState(null)
   const [adding, setAdding] = useState(false)
+  const [clientsAll, setClientsAll] = useState([])
+  const [profiles, setProfiles] = useState([])
+  const [contacts, setContacts] = useState([])
+  const [retainers, setRetainers] = useState([])
+  const [terms, setTerms] = useState([])
+  const [view, setView] = useState('clients')
+  const [openClient, setOpenClient] = useState(null)
+  const [fromClient, setFromClient] = useState(false)
 
   const load = useCallback(async () => {
-    const [en, li, de, ra, ty] = await Promise.all([
+    const [en, li, de, ra, ty, cl, pr, co, rt, tm] = await Promise.all([
       supabase.from('finance_billing_entities').select('*').order('name'),
       supabase.from('finance_client_links').select('*'),
       supabase.from('finance_deals').select('*').order('name'),
       supabase.from('finance_rate_lines').select('*').order('sort').order('product_name'),
       supabase.from('finance_invoice_types').select('*').order('sort').order('name'),
+      supabase.from('clients').select('id,name,max_weekly_hours,uses_five9').order('name'),
+      supabase.from('finance_client_profiles').select('*'),
+      supabase.from('finance_client_contacts').select('*').order('created_at'),
+      supabase.from('finance_retainers').select('*'),
+      supabase.from('finance_coverage_terms').select('*'),
     ])
-    const first = en.error || li.error || de.error || ra.error || ty.error
+    const first = en.error || li.error || de.error || ra.error || ty.error || cl.error || pr.error || co.error
     setErr(first ? first.message : '')
     const ents = en.data || []
     setEntities(ents); setLinks(li.data || []); setDeals(de.data || []); setLines(ra.data || []); setTypes(ty.data || [])
+    setClientsAll(cl.data || []); setProfiles(pr.data || []); setContacts(co.data || []); setRetainers(rt.data || []); setTerms(tm.data || [])
     const dates = {}
     await Promise.all((ty.data || []).filter(t => t.active && t.invoice_day != null).map(async t => {
       const { data } = await supabase.rpc('finance_type_next_invoice_date', { p_type: t.id })
@@ -88,11 +105,31 @@ export default function FinanceBilling({ lookups, flash }) {
   if (open) return (
     <EntityDetail key={open.id} entity={open} entities={entities} links={links} deals={deals.filter(d => d.entity_id === open.id)}
       lines={lines.filter(l => l.entity_id === open.id)} types={types.filter(t => t.entity_id === open.id)} next={next} lookups={lookups} flash={flash}
-      onBack={() => setOpenId(null)} reload={load} />
+      onBack={() => { setOpenId(null); if (fromClient) { setView('clients'); setFromClient(false) } }} reload={load} />
+  )
+
+  const chips = (
+    <div style={{ display: 'flex', gap: 8, marginBottom: 14 }} role="tablist">
+      <button role="tab" aria-selected={view === 'clients'} style={chip(view === 'clients')} onClick={() => setView('clients')}>Clients</button>
+      <button role="tab" aria-selected={view === 'bills'} style={chip(view === 'bills')} onClick={() => setView('bills')}>Billed to</button>
+    </div>
+  )
+  const theClient = openClient && clientsAll.find(c => c.id === openClient)
+  if (view === 'clients') return (
+    <div>
+      {chips}
+      {err && <div className="login-err">{err}</div>}
+      {theClient
+        ? <ClientPage key={theClient.id} client={theClient} profile={profiles.find(x => x.client_id === theClient.id)} entities={entities} links={links} types={types}
+            contacts={contacts.filter(c => c.client_id === theClient.id)} retainers={retainers} terms={terms} onBack={() => setOpenClient(null)}
+            onOpenBill={(id) => { setFromClient(true); setOpenId(id) }} reload={load} flash={flash} />
+        : <ClientList clients={clientsAll} profiles={profiles} entities={entities} links={links} types={types} retainers={retainers} terms={terms} onOpen={setOpenClient} />}
+    </div>
   )
 
   return (
     <div>
+      {chips}
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <p className="page-sub" style={{ margin: 0, maxWidth: 640 }}>Each billing entity is one client. Several client labels can roll up into it, and it can have several invoices, each with its own schedule, numbering and rates.</p>
         <button className="btn btn-primary" onClick={() => setAdding(true)}>+ Add billing entity</button>
