@@ -29,6 +29,7 @@ const right = { textAlign: 'right', whiteSpace: 'nowrap' }
 const PAGE = 200
 const NO_CLIENT = '__none'
 const NOTE_TITLES = {
+  not_in_invoicing: 'Hours worked for clients that are not in invoicing (so not invoiced)',
   agent_no_five9: 'Agents with pay set up but no Five9 time in this period',
   five9_not_agent: 'Five9 time that is not counted (not an agent)',
   running_timer: 'Timers still running',
