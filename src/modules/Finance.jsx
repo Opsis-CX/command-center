@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { ACCEPT, money, todayET, fmtDate, StatusBadge, receiptProblem, uploadReceipt, openReceipt, downloadCsv, Toast, panel } from './financeBits'
