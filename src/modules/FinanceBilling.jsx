@@ -69,12 +69,13 @@ export default function FinanceBilling({ lookups, flash }) {
   const [retainers, setRetainers] = useState([])
   const [terms, setTerms] = useState([])
   const [caps, setCaps] = useState([])
+  const [reminders, setReminders] = useState([])
   const [view, setView] = useState('clients')
   const [openClient, setOpenClient] = useState(null)
   const [fromClient, setFromClient] = useState(false)
 
   const load = useCallback(async () => {
-    const [en, li, de, ra, ty, cl, pr, co, rt, tm, cp] = await Promise.all([
+    const [en, li, de, ra, ty, cl, pr, co, rt, tm, cp, rm] = await Promise.all([
       supabase.from('finance_billing_entities').select('*').order('name'),
       supabase.from('finance_client_links').select('*'),
       supabase.from('finance_deals').select('*').order('name'),
@@ -86,12 +87,13 @@ export default function FinanceBilling({ lookups, flash }) {
       supabase.from('finance_retainers').select('*'),
       supabase.from('finance_coverage_terms').select('*'),
       supabase.from('finance_client_caps').select('*'),
+      supabase.from('finance_reminders').select('*').order('created_at'),
     ])
     const first = en.error || li.error || de.error || ra.error || ty.error || cl.error || pr.error || co.error
     setErr(first ? first.message : '')
     const ents = en.data || []
     setEntities(ents); setLinks(li.data || []); setDeals(de.data || []); setLines(ra.data || []); setTypes(ty.data || [])
-    setClientsAll(cl.data || []); setProfiles(pr.data || []); setContacts(co.data || []); setRetainers(rt.data || []); setTerms(tm.data || []); setCaps(cp.data || [])
+    setClientsAll(cl.data || []); setProfiles(pr.data || []); setContacts(co.data || []); setRetainers(rt.data || []); setTerms(tm.data || []); setCaps(cp.data || []); setReminders(rm.data || [])
     const dates = {}
     await Promise.all((ty.data || []).filter(t => t.active && t.invoice_day != null).map(async t => {
       const { data } = await supabase.rpc('finance_type_next_invoice_date', { p_type: t.id })
@@ -123,7 +125,7 @@ export default function FinanceBilling({ lookups, flash }) {
       {err && <div className="login-err">{err}</div>}
       {theClient
         ? <ClientPage key={theClient.id} client={theClient} profile={profiles.find(x => x.client_id === theClient.id)} entities={entities} links={links} types={types}
-            contacts={contacts.filter(c => c.client_id === theClient.id)} retainers={retainers} terms={terms} caps={caps.filter(k => k.client_id === theClient.id)} allClients={clientsAll} profiles={profiles} onOpenClient={setOpenClient} onBack={() => setOpenClient(null)}
+            contacts={contacts.filter(c => c.client_id === theClient.id)} retainers={retainers} terms={terms} caps={caps.filter(k => k.client_id === theClient.id)} reminders={reminders} allClients={clientsAll} profiles={profiles} onOpenClient={setOpenClient} onBack={() => setOpenClient(null)}
             onOpenBill={(id) => { setFromClient(true); setOpenId(id) }} reload={load} flash={flash} />
         : <ClientList clients={clientsAll} profiles={profiles} entities={entities} links={links} types={types} retainers={retainers} terms={terms} caps={caps} onOpen={setOpenClient} reload={load} flash={flash} />}
     </div>
