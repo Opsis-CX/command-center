@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { todayET, fmtDate, panel } from './financeBits'
+import { ReminderModal, describeReminder, saveArgs } from './FinanceReminders'
 
 // ============================================================
 // CLIENTS (Admins and Owners)
@@ -126,7 +127,7 @@ export function ClientList({ clients, profiles, entities, links, types, retainer
   )
 }
 
-export function ClientPage({ client, profile, entities, links, types, contacts, retainers, terms, caps = [], allClients = [], profiles = [], onBack, onOpenBill, onOpenClient, reload, flash }) {
+export function ClientPage({ client, profile, entities, links, types, contacts, retainers, terms, caps = [], reminders = [], allClients = [], profiles = [], onBack, onOpenBill, onOpenClient, reload, flash }) {
   const p = profile || { billing_kind: 'not_set', hours_mode: 'decide', status: 'active', in_invoicing: true }
   const inv = p.in_invoicing !== false
   const profOf = (id) => profiles.find(x => x.client_id === id) || {}
@@ -321,6 +322,8 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
       </div>
 
       <CapsSection client={client} caps={caps} reload={reload} flash={flash} />
+
+      <RemindersSection client={client} bill={isChild ? null : savedBill} billTypes={isChild ? [] : savedTypes} reminders={reminders} entities={entities} types={types} allClients={allClients} reload={reload} flash={flash} />
 
       <Contacts client={client} contacts={contacts} reload={reload} flash={flash} />
     </div>
@@ -558,3 +561,64 @@ function EndCapModal({ cap, today, onClose, onSaved }) {
   )
 }
 
+
+
+// ---------- invoice dates and reminders for this client ----------
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+const ord = (n) => { const x = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (x[(v - 20) % 10] || x[v] || x[0]) }
+export function invoiceScheduleText(t) {
+  if (t.invoice_day == null) return 'No schedule set'
+  if (t.invoice_frequency === 'weekly') return `Every ${WEEKDAYS[t.invoice_day - 1]}`
+  if (t.invoice_frequency === 'biweekly') return `Every two weeks on ${WEEKDAYS[t.invoice_day - 1]}`
+  if (t.invoice_frequency === 'semimonthly') return `Twice a month, on the ${ord(t.invoice_day)} and the ${ord(t.invoice_day2)}`
+  return `Monthly on the ${ord(t.invoice_day)}`
+}
+
+function RemindersSection({ client, bill, billTypes, reminders, entities, types, allClients, reload, flash }) {
+  const [next, setNext] = useState({})
+  const [modal, setModal] = useState(null)
+  const [err, setErr] = useState('')
+  const key = billTypes.map(t => t.id).join(',')
+  useEffect(() => {
+    let alive = true
+    Promise.all(billTypes.filter(t => t.invoice_day != null).map(async t => { const { data } = await supabase.rpc('finance_type_next_invoice_date', { p_type: t.id }); return [t.id, data] }))
+      .then(rows => { if (alive) setNext(Object.fromEntries(rows)) })
+    return () => { alive = false }
+  }, [key])   // eslint-disable-line
+  const mine = reminders.filter(r => (bill && r.entity_id === bill.id && (r.kind === 'invoice_date' || r.kind === 'invoice_overdue')) || (r.kind === 'custom' && r.client_id === client.id))
+  async function toggle(r) {
+    const { error } = await supabase.rpc('finance_reminder_save', saveArgs(r, { active: !r.active }))
+    if (error) return setErr(error.message)
+    setErr(''); flash(`${r.name}: ${r.active ? 'switched off' : 'switched on'}.`); await reload()
+  }
+  return (
+    <div style={{ ...panel, marginBottom: 14 }} data-reminders>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
+        <h3 style={{ margin: 0, fontSize: 16 }}>Invoice dates and reminders</h3>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {bill && <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setModal({ defaults: { kind: 'invoice_date', entity_id: bill.id, lead_days: 3, name: `${client.name}: 3 days before an invoice date` } })}>+ Remind me before an invoice date</button>}
+          <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={() => setModal({ defaults: { kind: 'custom', client_id: client.id, name: '' } })}>+ Add a reminder for this client</button>
+        </div>
+      </div>
+      {err && <div className="login-err" role="alert">{err}</div>}
+      {billTypes.length > 0 && (
+        <div data-invoice-dates style={{ margin: '4px 0 8px' }}>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>Invoice dates</div>
+          {billTypes.map(t => <div key={t.id} className="page-sub" style={{ margin: '2px 0' }} data-invoice-date={t.name}><b>{t.name}</b>: {invoiceScheduleText(t)}{next[t.id] ? ` · next invoice date ${fmtDate(next[t.id])}` : ''}</div>)}
+          <div className="page-sub" style={{ margin: '2px 0', fontSize: 12 }}>Change the dates under "Open the bill".</div>
+        </div>)}
+      <div style={{ fontWeight: 600, fontSize: 14 }}>Reminders for this client</div>
+      {mine.length === 0 && <p className="page-sub" style={{ margin: '2px 0 0' }}>None of its own yet. The built-in reminders (every invoice date, overdue invoices, pay periods) already cover every client and are managed on the Reminders tab.</p>}
+      {mine.map(r => (
+        <div key={r.id} data-client-reminder={r.name} style={{ borderTop: '1px solid var(--line)', padding: '8px 0', display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div><b>{r.name}</b>{!r.active && <span className="badge failed" style={{ marginLeft: 6 }}>Off</span>}<div className="page-sub" style={{ margin: '2px 0 0' }}>{describeReminder(r, entities, types, allClients)}</div></div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12.5, cursor: 'pointer' }}><input type="checkbox" aria-label={`Turn ${r.name} on`} checked={r.active} onChange={() => toggle(r)} /> On</label>
+            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => setModal({ reminder: r })} aria-label={`Change ${r.name}`}>Change</button>
+          </div>
+        </div>))}
+      {modal && <ReminderModal reminder={modal.reminder} defaults={modal.defaults} entities={entities} types={types} clients={allClients} onClose={() => setModal(null)}
+        onSaved={async (msg) => { setModal(null); flash(msg); await reload() }} />}
+    </div>
+  )
+}
