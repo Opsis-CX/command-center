@@ -173,7 +173,7 @@ export default function FinanceInvoices({ flash }) {
   )
 }
 
-function Modal({ title, onClose, children, width = 560 }) {
+export function Modal({ title, onClose, children, width = 560 }) {
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal" style={{ width, maxHeight: '90vh', overflowY: 'auto' }} role="dialog" aria-label={title}>
@@ -284,8 +284,12 @@ function InvoicePage({ invoice: inv, type, entity, company, payments, onBack, re
     const w = window.open('', '_blank')
     if (!w) return setErr('Your browser blocked the print window. Allow pop-ups for this site and try again.')
     w.document.write(invoiceHtml(view, payments, draft)); w.document.close(); w.focus(); setTimeout(() => w.print(), 300)
+    if (!draft) supabase.rpc('finance_log_export', { p_table: 'finance_invoices', p_row: inv.id, p_note: 'Printed or saved as PDF' })
   }
-  function csv() { const { header, rows } = invoiceCsv(view); downloadCsv(`${view.number || 'draft-invoice'}.csv`, header, rows) }
+  function csv() {
+    const { header, rows } = invoiceCsv(view); downloadCsv(`${view.number || 'draft-invoice'}.csv`, header, rows)
+    if (!draft) supabase.rpc('finance_log_export', { p_table: 'finance_invoices', p_row: inv.id, p_note: 'Data file (CSV) downloaded' })
+  }
   async function toggleBehind(l) {
     if (behind[l.id] !== undefined) { setBehind(b => { const n = { ...b }; delete n[l.id]; return n }); return }
     const { data } = await supabase.rpc('finance_invoice_line_breakdown', { p_line: l.id })
