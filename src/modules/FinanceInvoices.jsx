@@ -134,6 +134,142 @@ export default function FinanceInvoices({ flash }) {
   return (
     <div>
       <p className="page-sub" style={{ margin: '0 0 12px', maxWidth: 760 }}>Build an invoice from a period's work, review it, approve it, and record payments. Approving gives it a number and locks the exact hours on it, so nothing is billed twice. Nothing is emailed from here: print or save it as a PDF, or download the data file, and send it yourself.</p>
+      {err && <div className="login-err" role="alert">{err}</div>import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { supabase } from '../lib/supabase'
+import { money, todayET, fmtDate, panel, downloadCsv } from './financeBits'
+
+// ============================================================
+// INVOICES (Admins and Owners)
+// Build a draft from a period's work, review and edit it (every change keeps the original and why), approve it
+// (it gets a number, a frozen snapshot, and the exact hours on it are locked), record payments, or void it.
+// Nothing is emailed from here: print or save as a PDF, or download the data file, and send it yourself.
+// ============================================================
+
+const chip = (on) => ({ fontSize: 12.5, fontWeight: 600, padding: '6px 12px', borderRadius: 999, border: '1px solid var(--line)', cursor: 'pointer', background: on ? 'var(--accent)' : 'var(--surface)', color: on ? 'var(--white, #fff)' : 'var(--ink-soft)' })
+const th = { textAlign: 'left', fontSize: 12, color: 'var(--ink-soft)', fontWeight: 600, padding: '6px 8px', borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap' }
+const td = { padding: '8px', borderBottom: '1px solid var(--line-soft, var(--line))', verticalAlign: 'top', fontSize: 13.5 }
+const num = { ...td, textAlign: 'right', whiteSpace: 'nowrap' }
+
+const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA') }
+const monthEnd = (iso) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), 0).toLocaleDateString('en-CA')
+const prevMonthStart = (iso) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 2, 1).toLocaleDateString('en-CA')
+const fmtQty = (q, d = 2) => Number(q).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
+const hrs = (secs) => (Number(secs) / 3600).toFixed(2)
+const mdy = (iso) => iso ? `${iso.slice(5, 7)}/${iso.slice(8, 10)}/${iso.slice(0, 4)}` : ''
+const paidSum = (payments, id) => payments.filter(p => p.invoice_id === id).reduce((s, p) => s + Number(p.amount), 0)
+
+export function invoiceStatus(inv, balance, today) {
+  if (inv.status === 'void') return ['Void', 'badge failed']
+  if (inv.status === 'draft') return ['Draft', 'badge needed']
+  if (balance <= 0.004) return ['Paid in full', 'badge passed']
+  if (inv.due_date < today) return ['Overdue', 'badge failed']
+  return ['Awaiting payment', 'badge']
+}
+
+// the period a type should be built for next: from the day after its last live invoice (or last month), to the end of that month
+export function suggestPeriod(type, invoices, today) {
+  const live = invoices.filter(i => i.invoice_type_id === type.id && i.status !== 'void')
+  const lastEnd = live.reduce((m, i) => (i.period_end > m ? i.period_end : m), '')
+  const from = lastEnd ? addDays(lastEnd, 1) : prevMonthStart(today)
+  return { from, to: monthEnd(from), lastEnd }
+}
+
+// ---------- the invoice as a printable page, laid out like the example ----------
+export function invoiceHtml(s, payments, draft) {
+  const d = s.decimals ?? 2
+  const paid = payments.reduce((a, p) => a + Number(p.amount), 0)
+  const bal = Number(s.total) - paid
+  const lines = (s.lines || []).map(l => `<tr><td>${esc(l.line)}.</td><td>${esc(l.product_name)}</td><td>${esc(l.description)}</td><td class="r">${esc(fmtQty(l.quantity, d))}</td><td class="r">${esc(money(l.rate))}</td><td class="r">${esc(money(l.amount))}</td></tr>`).join('')
+  const addr = (a) => esc(a).replace(/\n/g, '<br>')
+  const iss = s.issuer || {}
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(s.number || 'Draft invoice')}</title><style>
+    body{font-family:Arial,Helvetica,sans-serif;color:#222;margin:40px;font-size:13px}
+    h1{font-size:26px;letter-spacing:6px;font-weight:400;margin:0 0 18px}
+    .head{display:flex;justify-content:space-between;gap:20px;margin-bottom:26px}.head b{font-size:15px}
+    .cols{display:flex;gap:60px;margin-bottom:22px}.cols div{min-width:240px}
+    h4{margin:0 0 6px;font-size:13px}
+    table{width:100%;border-collapse:collapse;margin-top:8px}th{text-align:left;font-size:12px;border-bottom:2px solid #333;padding:6px 6px}
+    td{padding:8px 6px;border-bottom:1px solid #ddd;vertical-align:top}.r{text-align:right;white-space:nowrap}
+    .tot{text-align:right;font-size:15px;font-weight:700;margin:14px 6px}
+    .draft{color:#b45309;font-weight:700;letter-spacing:2px;margin-bottom:8px}
+    .paid{font-size:22px;font-weight:700;color:#15803d;text-align:center;margin-top:26px;letter-spacing:2px}
+  </style></head><body>
+    ${draft ? '<div class="draft">DRAFT - NOT YET APPROVED</div>' : ''}
+    <h1>INVOICE</h1>
+    <div class="head"><div><b>${esc(iss.name)}</b><br>${addr(iss.address)}</div><div style="text-align:right">${esc(iss.email)}<br>${esc(iss.phone)}</div></div>
+    <div class="cols">
+      <div><h4>Bill to</h4>${esc((s.bill_to || {}).name)}<br>${addr((s.bill_to || {}).address)}</div>
+      <div><h4>Ship to</h4>${esc((s.ship_to || {}).name)}<br>${addr((s.ship_to || {}).address)}</div>
+      <div><h4>Invoice details</h4>Invoice no.: ${esc(s.number || '(draft)')}<br>Terms: Net ${esc(s.terms_days)}<br>Invoice date: ${esc(mdy(s.invoice_date))}<br>Due date: ${esc(mdy(s.due_date))}</div>
+    </div>
+    <table><thead><tr><th>#</th><th>Product or service</th><th>Description</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>${lines}</tbody></table>
+    <div class="tot">Total ${esc(money(s.total))}</div>
+    ${s.notes ? `<p>${esc(s.notes)}</p>` : ''}
+    <h4>Ways to pay</h4><p>${addr(iss.payment_instructions)}</p>
+    ${payments.length ? payments.map(p => `<div class="tot" style="font-weight:400">Payment ${esc(mdy(p.paid_on))}: -${esc(money(p.amount))}</div>`).join('') + `<div class="tot">Balance due ${esc(money(bal))}</div>` : ''}
+    ${!draft && payments.length && bal <= 0.004 ? '<div class="paid">PAID IN FULL</div>' : ''}
+  </body></html>`
+}
+
+export function invoiceCsv(s) {
+  const header = ['Invoice No', 'Customer', 'Invoice Date', 'Due Date', 'Terms', 'Line', 'Product/Service', 'Description', 'Qty', 'Rate', 'Amount', 'Invoice Total']
+  const rows = (s.lines || []).map(l => [s.number, (s.bill_to || {}).name || s.client, s.invoice_date, s.due_date, `Net ${s.terms_days}`, l.line, l.product_name, l.description || '', l.quantity, l.rate, l.amount, s.total])
+  return { header, rows }
+}
+
+export default function FinanceInvoices({ flash }) {
+  const [invoices, setInvoices] = useState([])
+  const [types, setTypes] = useState([])
+  const [entities, setEntities] = useState([])
+  const [companies, setCompanies] = useState([])
+  const [payments, setPayments] = useState([])
+  const [next, setNext] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState('')
+  const [openId, setOpenId] = useState(null)
+  const [filter, setFilter] = useState('all')
+  const [q, setQ] = useState('')
+  const [building, setBuilding] = useState(null)      // null | { type?, from?, to? }
+  const today = todayET()
+
+  const load = useCallback(async () => {
+    const [iv, ty, en, co, pa] = await Promise.all([
+      supabase.from('finance_invoices').select('*').order('created_at', { ascending: false }),
+      supabase.from('finance_invoice_types').select('*').order('sort').order('name'),
+      supabase.from('finance_billing_entities').select('id,name,legal_name,bill_to_address,ship_to_address').order('name'),
+      supabase.from('finance_companies').select('*'),
+      supabase.from('finance_invoice_payments').select('id,invoice_id,paid_on,amount,method,note').order('paid_on'),
+    ])
+    const first = iv.error || ty.error || en.error || co.error || pa.error
+    setErr(first ? first.message : '')
+    setInvoices(iv.data || []); setTypes(ty.data || []); setEntities(en.data || []); setCompanies(co.data || []); setPayments(pa.data || [])
+    const dates = {}
+    await Promise.all((ty.data || []).filter(t => t.active && t.invoice_day != null).map(async t => { const { data } = await supabase.rpc('finance_type_next_invoice_date', { p_type: t.id }); dates[t.id] = data }))
+    setNext(dates); setLoading(false)
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  const entityOf = (id) => entities.find(e => e.id === id)
+  const typeOf = (id) => types.find(t => t.id === id)
+  const rows = useMemo(() => invoices.map(i => ({ inv: i, balance: Number(i.total) - paidSum(payments, i.id) })).filter(({ inv, balance }) => {
+    if (q) { const t = `${inv.number || 'draft'} ${(entityOf(inv.entity_id) || {}).name || ''} ${(typeOf(inv.invoice_type_id) || {}).name || ''}`.toLowerCase(); if (!t.includes(q.toLowerCase())) return false }
+    if (filter === 'drafts') return inv.status === 'draft'
+    if (filter === 'open') return inv.status === 'approved' && balance > 0.004
+    if (filter === 'paid') return inv.status === 'approved' && balance <= 0.004
+    if (filter === 'void') return inv.status === 'void'
+    return true
+  }), [invoices, payments, filter, q, entities, types])   // eslint-disable-line
+
+  if (loading) return <p className="page-sub">Loading…</p>
+  const open = invoices.find(i => i.id === openId)
+  if (open) return <InvoicePage key={open.id} invoice={open} type={typeOf(open.invoice_type_id)} entity={entityOf(open.entity_id)} company={companies.find(c => c.id === open.issuing_company_id)}
+    payments={payments.filter(p => p.invoice_id === open.id)} onBack={() => setOpenId(null)} reload={load} flash={flash} />
+
+  const ready = types.filter(t => t.active && !invoices.some(i => i.invoice_type_id === t.id && i.status === 'draft'))
+  return (
+    <div>
+      <p className="page-sub" style={{ margin: '0 0 12px', maxWidth: 760 }}>Build an invoice from a period's work, review it, approve it, and record payments. Approving gives it a number and locks the exact hours on it, so nothing is billed twice. Nothing is emailed from here: print or save it as a PDF, or download the data file, and send it yourself.</p>
       {err && <div className="login-err" role="alert">{err}</div>}
       <div style={{ ...panel, marginBottom: 14 }} data-ready>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
@@ -301,14 +437,15 @@ function InvoicePage({ invoice: inv, type, entity, company, payments, onBack, re
   async function saveEdit() {
     const q = Number(edit.quantity), r = Number(edit.rate)
     if (edit.quantity === '' || edit.rate === '' || !Number.isFinite(q) || !Number.isFinite(r)) return setErr('Enter a quantity and a rate.')
-    const built = edit.line.kind !== 'manual'
+    const entering = edit.line.kind === 'call' && Number(edit.line.quantity) === 0 && r === Number(edit.line.rate) && edit.product === edit.line.product_name
+    const built = edit.line.kind !== 'manual' && !entering
     const changedFigure = q !== Number(edit.line.quantity) || r !== Number(edit.line.rate) || edit.product !== edit.line.product_name
     if (built && changedFigure && edit.reason.trim().length < 3) return setErr('Say why you are changing this figure. The original is kept with your reason.')
     const res = await call('finance_invoice_line_edit', { p_line: edit.line.id, p_quantity: q, p_rate: r, p_description: edit.description, p_product: edit.product, p_reason: edit.reason.trim() || null }, 'Line changed. The original is kept.')
     if (res.ok) setEdit(null)
   }
   async function saveRemove() {
-    if (removing.kind !== 'manual' && (removing.reason || '').trim().length < 3) return setErr('Say why you are removing this line. Its hours go back to be invoiced later.')
+    if (removing.kind !== 'manual' && (removing.reason || '').trim().length < 3) return setErr(removing.kind === 'call' ? 'Say why you are removing this line, for example that there were no calls.' : 'Say why you are removing this line. Its hours go back to be invoiced later.')
     const res = await call('finance_invoice_line_remove', { p_line: removing.id, p_reason: (removing.reason || '').trim() || null }, 'Line removed.')
     if (res.ok) setRemoving(null)
   }
@@ -459,14 +596,14 @@ function InvoicePage({ invoice: inv, type, entity, company, payments, onBack, re
             <div className="field"><label htmlFor="le-qty">Quantity</label><input id="le-qty" inputMode="decimal" value={edit.quantity} onChange={e => setEdit({ ...edit, quantity: e.target.value })} /></div>
             <div className="field"><label htmlFor="le-rate">Rate</label><input id="le-rate" inputMode="decimal" value={edit.rate} onChange={e => setEdit({ ...edit, rate: e.target.value })} /></div>
           </div>
-          <div className="field"><label htmlFor="le-why">Why are you changing it?{edit.line.kind !== 'manual' ? ' *' : ''}</label><input id="le-why" value={edit.reason} onChange={e => setEdit({ ...edit, reason: e.target.value })} placeholder="e.g. rate agreed with the client" />
-            <div className="hint">{edit.line.kind !== 'manual' ? 'The original quantity, rate and your reason are kept on the invoice.' : 'This is a line you added, so no reason is needed.'} This changes this invoice only. To change the rate for future invoices, change it on the client's rate card.</div></div>
+          <div className="field"><label htmlFor="le-why">Why are you changing it?{edit.line.kind !== 'manual' && !(edit.line.kind === 'call' && Number(edit.line.quantity) === 0) ? ' *' : ''}</label><input id="le-why" value={edit.reason} onChange={e => setEdit({ ...edit, reason: e.target.value })} placeholder="e.g. rate agreed with the client" />
+            <div className="hint">{edit.line.kind === 'call' && Number(edit.line.quantity) === 0 ? 'Enter the number of calls for this period in Quantity. No reason is needed for that.' : edit.line.kind !== 'manual' ? 'The original quantity, rate and your reason are kept on the invoice.' : 'This is a line you added, so no reason is needed.'} This changes this invoice only. To change the rate for future invoices, change it on the client's rate card.</div></div>
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}><button className="btn btn-primary" onClick={saveEdit} disabled={busy}>Save the change</button><button className="btn btn-ghost" onClick={() => setEdit(null)}>Cancel</button></div>
         </Modal>)}
       {removing && (
         <Modal title={`Remove: ${removing.product_name}`} onClose={() => setRemoving(null)} width={460}>
           {err && <div className="login-err" role="alert">{err}</div>}
-          <p className="page-sub" style={{ marginTop: 0 }}>{removing.kind === 'manual' ? 'This line was added by hand.' : 'Its hours go back to be invoiced later.'}</p>
+          <p className="page-sub" style={{ marginTop: 0 }}>{removing.kind === 'manual' ? 'This line was added by hand.' : removing.kind === 'call' ? 'Use this when there were no calls to bill this period.' : 'Its hours go back to be invoiced later.'}</p>
           {removing.kind !== 'manual' && <div className="field"><label htmlFor="lr-why">Why are you removing it? *</label><input id="lr-why" value={removing.reason} onChange={e => setRemoving({ ...removing, reason: e.target.value })} /></div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}><button className="btn btn-primary" onClick={saveRemove} disabled={busy}>Remove the line</button><button className="btn btn-ghost" onClick={() => setRemoving(null)}>Cancel</button></div>
         </Modal>)}
