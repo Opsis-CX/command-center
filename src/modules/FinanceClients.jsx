@@ -127,7 +127,7 @@ export function ClientList({ clients, profiles, entities, links, types, retainer
   )
 }
 
-export function ClientPage({ client, profile, entities, links, types, contacts, retainers, terms, caps = [], reminders = [], allClients = [], profiles = [], onBack, onOpenBill, onOpenClient, reload, flash }) {
+export function ClientPage({ client, profile, entities, links, types, contacts, retainers, terms, caps = [], reminders = [], rates = [], deals = [], allClients = [], profiles = [], onBack, onOpenBill, onOpenClient, reload, flash }) {
   const p = profile || { billing_kind: 'not_set', hours_mode: 'decide', status: 'active', in_invoicing: true }
   const inv = p.in_invoicing !== false
   const profOf = (id) => profiles.find(x => x.client_id === id) || {}
@@ -320,6 +320,8 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
         <div className="field"><label htmlFor="cd-notes">Notes</label><textarea id="cd-notes" rows={3} value={det.notes} onChange={e => setDet({ ...det, notes: e.target.value })} style={{ width: '100%' }} /></div>
         <button className="btn btn-primary" onClick={saveDetails} disabled={detBusy}>{detBusy ? 'Saving…' : 'Save details'}</button>
       </div>
+
+      {!isChild && savedBill && <WhatClientPays bill={savedBill} billTypes={savedTypes} rates={rates} deals={deals} retainers={retainers} terms={terms} onOpenBill={() => onOpenBill(savedBill.id)} />}
 
       <CapsSection client={client} caps={caps} reload={reload} flash={flash} />
 
@@ -619,6 +621,44 @@ function RemindersSection({ client, bill, billTypes, reminders, entities, types,
         </div>))}
       {modal && <ReminderModal reminder={modal.reminder} defaults={modal.defaults} entities={entities} types={types} clients={allClients} onClose={() => setModal(null)}
         onSaved={async (msg) => { setModal(null); flash(msg); await reload() }} />}
+    </div>
+  )
+}
+
+
+// ---------- what this client pays (separate from what the team is paid) ----------
+const rateMoney = (n) => { const v = Number(n); return v.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: v < 1 ? 4 : 2 }) }
+const UNIT_TEXT = { hour: 'per hour', call: 'per call', flat: 'flat fee on each invoice' }
+function WhatClientPays({ bill, billTypes, rates, deals, retainers, terms, onOpenBill }) {
+  const today = todayET()
+  const mine = rates.filter(r => r.entity_id === bill.id && r.active && !(r.effective_to && r.effective_to < today))
+  const dealName = (id) => (deals.find(d => d.id === id) || {}).name
+  const scope = (r) => { const roles = r.roles || [], ds = (r.deal_ids || []).map(dealName).filter(Boolean); return `${roles.length === 0 ? 'any role' : roles.length > 3 ? `${roles.length} roles` : roles.join(', ')} · ${ds.length ? ds.join(', ') : 'any deal'}` }
+  const orphans = mine.filter(r => !r.invoice_type_id)
+  const retainerTerm = (rt) => terms.filter(t => t.retainer_id === rt.id && t.effective_from <= today && (!t.effective_to || t.effective_to >= today)).sort((a, b) => (a.effective_from < b.effective_from ? 1 : -1))[0]
+  return (
+    <div style={{ ...panel, marginBottom: 14 }} data-pays>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <h3 style={{ margin: 0, fontSize: 16 }}>What this client pays</h3>
+        <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={onOpenBill}>Edit rates</button>
+      </div>
+      <p className="page-sub" style={{ margin: '2px 0 6px' }}>Set on this client's bill. These rates are their own and have nothing to do with what you pay your team.</p>
+      {billTypes.length === 0 && <p className="page-sub" style={{ margin: 0 }}>No invoice yet. Add one under "Open the bill".</p>}
+      {billTypes.map(t => {
+        const lines = mine.filter(r => r.invoice_type_id === t.id)
+        const rts = retainers.filter(r => r.invoice_type_id === t.id)
+        return (
+          <div key={t.id} data-pay-invoice={t.name} style={{ borderTop: '1px solid var(--line)', padding: '8px 0' }}>
+            <b>{t.name}</b> <span className="page-sub">· {t.billing_method === 'coverage' ? 'billed as a retainer' : 'billed from hours'}</span>
+            {rts.map(rt => { const tm = retainerTerm(rt); return <div key={rt.id} data-pay-retainer={rt.name} className="page-sub" style={{ margin: '2px 0' }}>Retainer “{rt.name}”: {tm ? `${Number(tm.agents_per_hour)} ${Number(tm.agents_per_hour) === 1 ? 'agent' : 'agents'} per hour at ${rateMoney(tm.rate_per_agent_hour)} per agent hour` : 'no terms yet'}</div> })}
+            {lines.map(r => <div key={r.id} data-pay-rate={r.product_name} className="page-sub" style={{ margin: '2px 0', opacity: r.effective_from > today ? 0.6 : 1 }}>{r.product_name}: {rateMoney(r.rate)} {UNIT_TEXT[r.unit]} · {scope(r)}{r.effective_from > today ? ` · starts ${fmtDate(r.effective_from)}` : ''}</div>)}
+            {rts.length === 0 && lines.length === 0 && <div className="page-sub" style={{ margin: '2px 0' }}>No rates yet.</div>}
+          </div>)
+      })}
+      {orphans.length > 0 && (
+        <div role="note" data-orphans style={{ borderTop: '1px solid var(--line)', padding: '8px 0 0', color: '#b45309' }}>
+          ⚠ Not on any invoice, so never billed: {orphans.map(r => `${r.product_name} (${rateMoney(r.rate)} ${UNIT_TEXT[r.unit]})`).join(', ')}. Open the bill, go to Rate card, press Edit, and choose the invoice.
+        </div>)}
     </div>
   )
 }
