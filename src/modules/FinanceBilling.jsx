@@ -125,7 +125,7 @@ export default function FinanceBilling({ lookups, flash }) {
       {err && <div className="login-err">{err}</div>}
       {theClient
         ? <ClientPage key={theClient.id} client={theClient} profile={profiles.find(x => x.client_id === theClient.id)} entities={entities} links={links} types={types}
-            contacts={contacts.filter(c => c.client_id === theClient.id)} retainers={retainers} terms={terms} caps={caps.filter(k => k.client_id === theClient.id)} reminders={reminders} allClients={clientsAll} profiles={profiles} onOpenClient={setOpenClient} onBack={() => setOpenClient(null)}
+            contacts={contacts.filter(c => c.client_id === theClient.id)} retainers={retainers} terms={terms} caps={caps.filter(k => k.client_id === theClient.id)} reminders={reminders} rates={lines} deals={deals} allClients={clientsAll} profiles={profiles} onOpenClient={setOpenClient} onBack={() => setOpenClient(null)}
             onOpenBill={(id) => { setFromClient(true); setOpenId(id) }} reload={load} flash={flash} />
         : <ClientList clients={clientsAll} profiles={profiles} entities={entities} links={links} types={types} retainers={retainers} terms={terms} caps={caps} onOpen={setOpenClient} reload={load} flash={flash} />}
     </div>
@@ -557,7 +557,7 @@ function RateCard({ entity, lines, deals, types, reload, flash }) {
                 <tr key={l.id} style={{ opacity: ended || !l.active ? 0.55 : 1 }}>
                   <td style={td}><div style={{ fontWeight: 600 }}>{l.product_name}</div>
                     <div style={{ color: 'var(--ink-soft)', fontSize: 12.5 }}>{[l.description, l.split_by_brand ? 'one line per brand' : ''].filter(Boolean).join(' · ')}</div></td>
-                  <td style={td}>{typeName(l.invoice_type_id) || <span style={{ color: 'var(--ink-soft)' }}>None</span>}</td>
+                  <td style={td}>{typeName(l.invoice_type_id) || <span data-orphan style={{ color: '#b45309', fontWeight: 600 }}>⚠ None, so never billed. Use Edit to choose an invoice.</span>}</td>
                   <td style={td}>{UNITS.find(u => u[0] === l.unit)?.[1]}</td>
                   <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{rateText(l.rate)}</td>
                   <td style={td}>
@@ -659,7 +659,9 @@ function RateModal({ modal, entity, deals, roles, types, onClose, onSaved }) {
           {mode === 'add' && <div className="field"><label htmlFor="rt-name">Product or service *</label><input id="rt-name" value={f.product_name} onChange={e => set('product_name', e.target.value)} placeholder="e.g. Consulting, AI QA Calls" /></div>}
           {mode !== 'change' && <div className="field"><label htmlFor="rt-type">Which invoice? {mode === 'add' ? '*' : ''}</label>
             <select id="rt-type" value={f.invoice_type_id} onChange={e => set('invoice_type_id', e.target.value)}><option value="">Choose…</option>{activeTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>}
-          {mode === 'add' && <div className="field"><label htmlFor="rt-unit">Charged</label><select id="rt-unit" value={f.unit} onChange={e => set('unit', e.target.value)}>{UNITS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>}
+          {mode === 'add' && <div className="field"><label htmlFor="rt-unit">Charged</label><select id="rt-unit" value={f.unit} onChange={e => set('unit', e.target.value)}>{UNITS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+            {f.unit === 'call' && <div className="hint" data-unit-hint>Each invoice gets a line waiting for the number of calls. You enter the count when you build the invoice.</div>}
+            {f.unit === 'flat' && <div className="hint" data-unit-hint>A flat fee is added once to every invoice it belongs to.</div>}</div>}
           {mode !== 'edit' && <div className="field"><label htmlFor="rt-rate">{mode === 'change' ? 'New rate (USD)' : 'Rate (USD)'} *</label><input id="rt-rate" inputMode="decimal" value={f.rate} onChange={e => set('rate', e.target.value)} placeholder="0.00" /></div>}
           {mode !== 'edit' && <div className="field"><label htmlFor="rt-from">{mode === 'change' ? 'New rate starts on' : 'Starts on'}</label><input id="rt-from" type="date" value={f.effective_from} onChange={e => set('effective_from', e.target.value)} /></div>}
           {mode !== 'change' && <>
