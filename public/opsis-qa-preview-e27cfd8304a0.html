@@ -144,8 +144,10 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
   function api(body) {
     var k = JSON.stringify(body);
     if (body.action !== 'ask' && cache[k]) return cache[k];
-    var pr = fetch(API, { method: 'POST', headers: { 'content-type': 'application/json', 'x-preview-key': KEY }, body: k })
-      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status)); return j; }); });
+    var once = function () { return fetch(API, { method: 'POST', headers: { 'content-type': 'application/json', 'x-preview-key': KEY }, body: k })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) { var e = new Error(j.error || ('HTTP ' + r.status)); e.status = r.status; throw e; } return j; }); }); };
+    var wait = function (ms) { return new Promise(function (res) { setTimeout(res, ms); }); };
+    var pr = body.action === 'ask' ? once() : once().catch(function (e) { if (e.status === 404 || e.status === 400 || e.status === 429) throw e; return wait(1500).then(once); }).catch(function (e) { if (e.status === 404 || e.status === 400 || e.status === 429) throw e; return wait(3000).then(once); });
     if (body.action !== 'ask') { cache[k] = pr; pr.catch(function () { delete cache[k]; }); }
     return pr;
   }
@@ -181,7 +183,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
   function chipScore(s) { return s >= 85 ? 'background:#E6F0EA;color:#1F5A41' : (s >= 70 ? 'background:#F3F1EC;color:#3B4541' : 'background:#FCEBDD;color:#A8441A'); }
   function chipOut(o) { return o === 'Booked' ? 'background:#E6F0EA;color:#1F5A41' : (o === 'Not Booked' ? 'background:#FCEBDD;color:#A8441A' : (o === 'Transferred' ? 'background:#E8EAF4;color:#3A4380' : 'background:#F3F1EC;color:#3B4541')); }
   function skel(h, n) { var s = ''; for (var i = 0; i < (n || 1); i++) s += '<div class="skel" style="height:' + h + 'px;margin:8px 0"></div>'; return s; }
-  function errBox(e) { return '<div class="card" style="color:#A8441A">Couldn’t load this: ' + esc(e.message || e) + ' <button class="more" data-act="retry">Try again</button></div>'; }
+  function errBox(e) { return '<div class="card" style="color:#A8441A">This is taking longer than usual. <button class="more" data-act="retry">Try again</button></div>'; }
   function iconPath(k) {
     return {
       overview: 'M4 5h16v14H4zM4 9h16M9 9v10', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
@@ -344,7 +346,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
   }
   function callRow(r) {
     return '<button class="click" data-call="' + r.id + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line2)">' +
-      '<span style="width:36px;height:36px;border-radius:999px;border:1px solid #E1DCD2;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="11" height="11" viewBox="0 0 24 24" fill="#1C2421" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></span>' +
+      '<span data-autoplay="' + r.id + '" title="Play recording" style="width:36px;height:36px;border-radius:999px;border:1px solid #E1DCD2;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="11" height="11" viewBox="0 0 24 24" fill="#1C2421" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></span>' +
       '<span style="flex:1;min-width:0"><span style="display:flex;justify-content:space-between;gap:8px"><b style="font-weight:600">' + esc(r.agent || 'Unknown CSR') + '</b><span class="mut num" style="font-size:11.5px">' + fdate(r.date) + ' ' + fhour(r.hour) + ' · ' + fsecs(r.secs) + '</span></span>' +
       '<span class="mut" style="display:block;font-size:12px">' + esc(short(r.brand)) + (r.phone ? ' · ' + esc(r.phone) : '') + (r.topic ? ' · ' + esc(r.topic) : '') + '</span>' + xferPill(r) +
       '<span style="display:block;font-size:12.5px;line-height:1.45;margin-top:4px;color:#3B4541;white-space:normal">' + esc((r.summary || '').slice(0, 150)) + ((r.summary || '').length > 150 ? '…' : '') + '</span></span>' +
@@ -836,14 +838,81 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     return '<div class="crumb">' + parts.map(function (p, i) { return i === parts.length - 1 ? '<span style="color:var(--ink);font-weight:600">' + esc(p[0]) + '</span>' : '<button data-go="' + p[1] + '">' + esc(p[0]) + '</button><span aria-hidden="true">/</span>'; }).join('') + '</div>';
   }
 
+  // ---------- Recording player ----------
+  var AU = new Audio(); AU.preload = 'metadata';
+  var P = { id: null };
+  function tsList(txt) { var out = [], re = /\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]/g, m; while ((m = re.exec(txt || ''))) out.push(m[3] != null ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) : (+m[1]) * 60 + (+m[2])); return out; }
+  function clock(x) { x = Math.max(0, Math.floor(x || 0)); return Math.floor(x / 60) + ':' + ('0' + x % 60).slice(-2); }
+  function pdur() { var d = AU.duration; return isFinite(d) && d > 0 ? d : ((S.cur && S.cur.id === P.id && +S.cur.secs) || ((P.info && P.info.end) ? P.info.end + 3 : 0)); }
+  function stepRange(s) {
+    var ts = tsList(s && s.evidence); if (!ts.length) return null;
+    var a = Math.min.apply(null, ts), b = Math.max.apply(null, ts), segs = (P.info && P.info.segs) || [], end = null;
+    for (var i = 0; i < segs.length; i++) if (+segs[i] > b + 0.5) { end = +segs[i]; break; }
+    if (end == null) end = b + 10;
+    if (end - b < 4) end = b + 4;
+    return [Math.max(0, a - 0.4), end + 0.4];
+  }
+  function loadAudio(id) {
+    AU.pause(); AU.removeAttribute('src'); try { AU.load(); } catch (x) {}
+    P = { id: id, loading: true, step: null, stepEnd: null };
+    api({ action: 'audio', id: id, t: Math.floor(Date.now() / 300000) }).then(function (info) {
+      if (P.id !== id) return; P.loading = false; P.info = info || {};
+      if (info && info.url) { AU.src = info.url; AU.playbackRate = P.rate || 1; } else P.err = 'none';
+      if (S.cur && S.cur.id === id && S.callId === id && $('cd')) drawCall(); else paintPlayer();
+      if (S.autoplay === id) { S.autoplay = null; if (info && info.url) AU.play().catch(function () {}); }
+    }).catch(function () { if (P.id !== id) return; P.loading = false; P.err = 'fail'; paintPlayer(); });
+  }
+  function stopAudio() { AU.pause(); P.step = null; P.stepEnd = null; }
+  function playerInner() {
+    if (P.loading) return '<div style="display:flex;align-items:center;gap:12px"><span class="dots"><span></span><span></span><span></span></span><span class="mut" style="font-size:13px">Loading recording…</span></div>';
+    if (P.err === 'none') return '<div class="mut" style="font-size:13px">No recording is available for this call.</div>';
+    if (P.err === 'fail') return '<div style="font-size:13px;color:#A8441A">The recording didn’t load. <button class="more" data-pretry="1">Try again</button></div>';
+    if (P.err === 'codec') return '<div style="font-size:13px;color:#A8441A">This browser can’t play this recording. Try Chrome or Edge.</div>';
+    var d = pdur(), cur = AU.currentTime || 0, playing = !AU.paused, pci = (P.info && P.info.pci) || [], steps = (S.cur && S.cur.steps) || [];
+    var marks = d ? pci.map(function (r) { return '<span title="Card details skipped" style="position:absolute;top:0;bottom:0;left:' + (r[0] / d * 100).toFixed(2) + '%;width:' + Math.max(0.6, (r[1] - r[0]) / d * 100).toFixed(2) + '%;background:repeating-linear-gradient(45deg,#C9C3B8 0 3px,#E6E1D8 3px 6px);border-radius:2px"></span>'; }).join('') : '';
+    var stepNote = P.step != null && steps[P.step] ? '<span style="color:#1F5A41;font-weight:600">Playing step: ' + esc(steps[P.step].label) + '</span> <button class="more" data-pfull="1">Play full call</button>' : '';
+    return '<div style="display:flex;align-items:center;gap:12px">' +
+      '<button data-pplay="1" aria-label="' + (playing ? 'Pause' : 'Play') + '" style="all:unset;cursor:pointer;width:44px;height:44px;border-radius:999px;background:var(--side);display:flex;align-items:center;justify-content:center;flex-shrink:0">' + (playing ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg>') + '</button>' +
+      '<div style="flex:1;min-width:0"><div style="position:relative;height:22px;display:flex;align-items:center"><div style="position:absolute;left:0;right:0;height:6px;border-radius:999px;background:#EEEBE4;overflow:hidden">' + marks + '<span id="pfill" style="position:absolute;left:0;top:0;bottom:0;background:#2F7D5B;width:' + (d ? Math.min(100, cur / d * 100).toFixed(2) : 0) + '%"></span></div>' +
+      '<label class="sr" for="pseek">Seek</label><input id="pseek" type="range" min="0" max="' + Math.ceil(d || 1) + '" step="0.5" value="' + cur.toFixed(1) + '" style="position:absolute;left:0;right:0;width:100%;margin:0;opacity:0;cursor:pointer;height:22px"></div>' +
+      '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;margin-top:2px"><span class="num mut" id="ptime">' + clock(cur) + ' / ' + clock(d) + '</span><span class="mut">' + (pci.length ? 'Card details are skipped' : '') + '</span></div></div>' +
+      '<button class="sel" data-pspeed="1" aria-label="Playback speed" style="min-height:34px;padding:4px 10px;font-size:12px">' + (P.rate || 1) + '×</button></div>' +
+      (stepNote ? '<div style="font-size:12.5px;margin-top:6px">' + stepNote + '</div>' : '');
+  }
+  function paintPlayer() {
+    var el = $('plr'); if (el) el.innerHTML = playerInner();
+    document.querySelectorAll('[data-pstep]').forEach(function (b) { var on = P.step === +b.getAttribute('data-pstep') && !AU.paused; b.innerHTML = on ? '■ Stop' : '▶ Play this step'; b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.style.background = on ? '#E6F0EA' : ''; });
+  }
+  function tick() {
+    var d = pdur(), cur = AU.currentTime || 0, f = $('pfill'), t = $('ptime'), sk = $('pseek');
+    if (f && d) f.style.width = Math.min(100, cur / d * 100).toFixed(2) + '%';
+    if (t) t.textContent = clock(cur) + ' / ' + clock(d);
+    if (sk && document.activeElement !== sk) { sk.max = Math.ceil(d || 1); sk.value = cur.toFixed(1); }
+  }
+  AU.addEventListener('timeupdate', function () {
+    var cur = AU.currentTime, pci = (P.info && P.info.pci) || [];
+    for (var i = 0; i < pci.length; i++) if (cur >= pci[i][0] && cur < pci[i][1]) { AU.currentTime = pci[i][1]; toast('Card details skipped for security'); return; }
+    if (P.stepEnd != null && cur >= P.stepEnd) { AU.pause(); P.step = null; P.stepEnd = null; paintPlayer(); }
+    tick();
+  });
+  ['play', 'pause', 'ended', 'loadedmetadata', 'durationchange'].forEach(function (ev) { AU.addEventListener(ev, paintPlayer); });
+  AU.addEventListener('error', function () { if (AU.getAttribute('src')) { P.err = 'codec'; paintPlayer(); } });
+  function playStep(i) {
+    var s = S.cur && S.cur.steps[i], r = stepRange(s); if (!r || !P.info || !P.info.url) return;
+    if (P.step === i && !AU.paused) { stopAudio(); paintPlayer(); return; }
+    P.step = i; P.stepEnd = r[1]; AU.currentTime = r[0]; AU.play().catch(function () {}); paintPlayer();
+  }
+
   // ---------- Call drawer ----------
   function callDrawer() {
     var id = S.callId;
+    if (P.id !== id) loadAudio(id);
     $('layer').innerHTML = '<div class="overlay" data-close="1"><div class="drawer" role="dialog" aria-modal="true" aria-label="Call review" id="cd">' + skel(80, 1) + skel(40, 6) + '</div></div>';
     api({ action: 'call', id: id }).then(function (c) {
       if (S.callId !== id || !$('cd')) return; S.cur = c; drawCall();
     }).catch(function (e) { if ($('cd')) $('cd').innerHTML = errBox(e); });
   }
+  function evHtml(t) { return esc(t).replace(/\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]/g, function (m0, a, b, c) { var x = c != null ? (+a) * 3600 + (+b) * 60 + (+c) : (+a) * 60 + (+b); return '<span class="lnk" data-seek="' + x + '" role="button" tabindex="0" title="Play from here" style="font-style:normal">' + m0 + '</span>'; }); }
   function ans(s) { return S.adj[S.callId + '|' + s.key] ? S.adj[S.callId + '|' + s.key].r : s.answer; }
   function drawCall() {
     var c = S.cur; if (!c || !$('cd')) return;
@@ -851,6 +920,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     steps.forEach(function (s) { var a = ans(s), mx = +s.max || +s.points || 0; m += mx; if (a !== 'no') e += mx; if (S.adj[S.callId + '|' + s.key]) changed = true; });
     var sc = changed && m ? Math.round(e / m * 100) : c.score, col = sc >= 80 ? G : (sc >= 60 ? '#E8A06A' : O), yn = function (v) { return v === true ? '<b style="color:#1F5A41">Yes</b>' : (v === false ? '<b style="color:#A61B1B">No</b>' : (v === 'yes' ? '<b style="color:#1F5A41">Yes</b>' : (v === 'no' ? '<b style="color:#A61B1B">No</b>' : '<b class="mut">N/A</b>'))); };
     var h = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><div class="cap">Call review</div><div style="font-size:22px;font-weight:600;letter-spacing:-0.025em;margin-top:4px">' + esc(c.agent || 'Unknown CSR') + ' · ' + esc(short(c.brand)) + '</div><div class="mut" style="font-size:12.5px">' + fdate(c.date) + ' · ' + esc(c.direction || '') + ' · ' + fsecs(c.secs) + (c.phone ? ' · ' + esc(c.phone) : '') + '</div></div><button class="sel" data-close="1" aria-label="Close" style="width:44px;justify-content:center">✕</button></div>' +
+      '<div class="card" id="plr" style="position:sticky;top:-22px;z-index:3;padding:12px 14px;box-shadow:0 4px 14px rgba(20,48,42,.08)">' + playerInner() + '</div>' +
       '<div class="card" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:96px;height:96px;flex-shrink:0"><svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="Score ' + sc + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + (sc / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span class="num" style="font-size:24px;font-weight:600">' + sc + '</span><span class="mut" style="font-size:9.5px">brand avg ' + (c.brand_avg || '—') + '</span></div></div>' +
       '<div style="flex:1;min-width:220px"><div class="row" style="gap:6px"><span class="pill" style="' + chipOut(c.outcome) + '">' + esc(c.outcome || '—') + '</span>' + (c.winnable ? '<span class="pill" style="background:#FFF4E8;color:#9A4A0B">Winnable</span>' : '') + (c.reason ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(c.reason) + '</span>' : '') + (c.topics || []).slice(0, 3).map(function (t) { return '<span class="pill" style="background:#E6F0EA;color:#1F5A41">' + esc(t) + '</span>'; }).join('') + '</div>' +
       (c.caller_wanted ? '<div style="margin-top:10px"><div class="cap">Caller wanted</div><div style="margin-top:3px;line-height:1.45">' + esc(c.caller_wanted) + '</div></div>' : '') + '</div>' +
@@ -873,7 +943,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
         (s.why ? '<div style="font-size:13px;line-height:1.5;color:#3B4541;margin-top:4px">' + esc(s.why) + '</div>' : '') +
         (adj ? '<div style="margin-top:6px;font-size:12.5px;background:#FFF8E8;border-radius:8px;padding:7px 10px;color:#6B4E12"><b>Changed by GarageCo admin:</b> “' + esc(adj.why) + '”</div>' : '') +
         (a === 'no' && s.misses && s.misses.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">' + s.misses.map(function (x) { return '<span class="pill" style="background:#FDECEC;color:#A61B1B">Missed: ' + esc(x) + '</span>'; }).join('') + '</div>' : '') +
-        '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' + (s.evidence ? '<div style="flex:1 1 240px;background:#F5F3EE;border-radius:10px;padding:8px 12px;font-size:12.5px;font-style:italic;color:#3B4541">“' + esc(s.evidence) + '”</div>' : '') + '<button class="sel" data-change="' + i + '" style="min-height:36px;padding:6px 12px">Change</button></div></div></div></div>';
+        '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:flex-start">' + (s.evidence ? '<div style="flex:1 1 240px;background:#F5F3EE;border-radius:10px;padding:8px 12px;font-size:12.5px;font-style:italic;color:#3B4541">“' + evHtml(s.evidence) + '”</div>' : '') + '<div style="display:flex;gap:8px;flex-wrap:wrap">' + (stepRange(s) && P.info && P.info.url ? '<button class="sel" data-pstep="' + i + '" style="min-height:36px;padding:6px 12px;white-space:nowrap">' + (P.step === i && !AU.paused ? '■ Stop' : '▶ Play this step') + '</button>' : '') + '<button class="sel" data-change="' + i + '" style="min-height:36px;padding:6px 12px">Change</button></div></div></div></div></div>';
     });
     h += '</div><div class="row"><button class="sel btnd" data-act="send">Send to CSR</button><button class="sel" data-act="pdf">PDF</button><button class="sel" data-ask="Explain what happened on call [call:' + c.id + '] and how ' + esc(c.agent || 'the CSR') + ' could have booked it.">Ask AI about this call</button></div>';
     $('cd').innerHTML = h;
@@ -955,7 +1025,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
   }
   function go(view) { S.view = view; S.pop = null; window.scrollTo(0, 0); render(); }
   function openCalls(filters, agent) { S.calls = Object.assign({ outcome: null, step: null, scoreMax: null, scoreMin: null, winnable: null, q: '', offset: 0, nocard: false }, filters || {}); S.callsAgent = agent || null; if (S.ask.open) closeLayer(); go('calls'); }
-  function closeLayer() { S.callId = null; S.ask.open = false; $('layer').innerHTML = ''; }
+  function closeLayer() { stopAudio(); P.id = null; S.callId = null; S.ask.open = false; $('layer').innerHTML = ''; }
 
   document.addEventListener('submit', function (e) {
     if (e.target.id === 'askform2') { e.preventDefault(); var q = $('askq2').value; ask(q); }
@@ -975,6 +1045,16 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       if (t === chg || t.closest('[data-closechg]')) { chg.remove(); return; }
       return;
     }
+    var ap = t.closest('[data-autoplay]');
+    if (ap) { var aid = ap.getAttribute('data-autoplay'); S.ask.open = false; S.autoplay = aid; if (P.id === aid && P.info && P.info.url) { S.autoplay = null; AU.play().catch(function () {}); } S.callId = aid; callDrawer(); return; }
+    if (t.closest('[data-pplay]')) { if (AU.paused) { P.step = null; P.stepEnd = null; if (AU.ended) AU.currentTime = 0; AU.play().catch(function () {}); } else AU.pause(); return; }
+    if (t.closest('[data-pfull]')) { P.step = null; P.stepEnd = null; AU.play().catch(function () {}); paintPlayer(); return; }
+    var pst = t.closest('[data-pstep]');
+    if (pst) { playStep(+pst.getAttribute('data-pstep')); return; }
+    var psk = t.closest('[data-seek]');
+    if (psk && P.info && P.info.url) { P.step = null; P.stepEnd = null; AU.currentTime = Math.max(0, +psk.getAttribute('data-seek') - 0.4); AU.play().catch(function () {}); return; }
+    if (t.closest('[data-pspeed]')) { var rs = [1, 1.25, 1.5, 2], ri = rs.indexOf(P.rate || 1); P.rate = rs[(ri + 1) % rs.length]; AU.playbackRate = P.rate; paintPlayer(); return; }
+    if (t.closest('[data-pretry]')) { var rid = P.id; P.id = null; loadAudio(rid); paintPlayer(); return; }
     var rph = t.closest('[data-rphone]');
     if (rph) { phoneDrawer(rph.getAttribute('data-rphone')); return; }
     var rk = t.closest('[data-rkind]');
@@ -1059,6 +1139,9 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       else if (a === 'kbadd') { var tt = $('kbt').value.trim(); if (!tt) { toast('Add a title first'); return; } KB.unshift({ t: tt, cat: $('kbc').value, who: 'GarageCo admin', when: 'Today', body: $('kbb').value.trim() || '—' }); vKb(); toast('Added — the AI uses it on new calls'); }
       else toast({ send: 'Sent to the CSR’s coaching inbox (preview)', pdf: 'PDF ready (preview)', save: 'Saved (preview — not stored)', request: 'Request sent to the Opsis CX Support team (preview)', invite: 'Invite sent (preview)' }[a] || 'Done (preview)');
     }
+  });
+  document.addEventListener('input', function (e) {
+    if (e.target && e.target.id === 'pseek') { P.step = null; P.stepEnd = null; AU.currentTime = +e.target.value; tick(); }
   });
   document.addEventListener('change', function (e) {
     var t = e.target;
