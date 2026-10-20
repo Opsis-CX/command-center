@@ -41,6 +41,7 @@ main{flex:999 1 640px;min-width:0;padding:16px 24px 32px;display:flex;flex-direc
 .tbl{width:100%;border-collapse:collapse;font-size:13px}
 .tbl th{text-align:left;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#56605B;padding:0 8px 10px;white-space:nowrap;cursor:default}
 .tbl th.sortable{cursor:pointer}
+.av{width:32px;height:32px;border-radius:999px;background:#E6F0EA;color:#1F5A41;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
 .tbl th.sortable:hover{color:var(--ink)}
 .tbl td{padding:10px 8px;white-space:nowrap;border-top:1px solid var(--line2)}
 .tbl tr.click{cursor:pointer}
@@ -240,7 +241,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       '<div style="position:relative"><div class="cap" style="letter-spacing:.3em">GarageCo · Call quality intelligence</div><h1 style="margin:10px 0 0;font-size:34px;font-weight:600;line-height:1.1;letter-spacing:-0.03em">Turn every conversation<br>into a booked job.</h1></div></div>' +
       '<div id="kpis" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">' + skel(118, 1).repeat(5) + '</div>' +
       '<div class="row"><div class="card" style="flex:999 1 520px" id="brandcard">' + skel(30, 8) + '</div><div class="card" style="flex:1 1 320px" id="coachcard">' + skel(40, 5) + '</div></div>' +
-      '<div class="row"><div class="card" style="flex:999 1 420px" id="stepcard">' + skel(18, 9) + '</div><div class="card" style="flex:1 1 360px" id="reviewcard">' + skel(50, 4) + '</div></div>' +
+      '<div class="row" style="align-items:flex-start"><div class="card" style="flex:999 1 420px" id="stepcard">' + skel(18, 9) + '</div><div class="card" style="flex:1 1 360px;max-height:470px;overflow-y:auto" id="reviewcard">' + skel(50, 4) + '</div></div>' +
       '<div class="row"><div class="card" style="flex:999 1 520px" id="trendcard">' + skel(200, 1) + '</div><div class="ai" style="flex:1 1 360px" id="insightcard">' + skel(30, 4) + '</div></div>');
     Promise.all([loadReport(), loadPrevReport()]).then(function (r) {
       if (tok !== T) return; var cur = r[0], prev = r[1]; noteKnown(cur);
@@ -288,14 +289,16 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     });
   }
   function sortRows(rows, key) {
-    var f = { calls: function (r) { return -r.calls; }, avg: function (r) { return -(r.avg || 0); }, rate: function (r) { return -(r.rate || 0); }, cc: function (r) { return -(r.cc || 0); }, change: function (r) { return r.pavg == null ? 99 : (r.avg - r.pavg); } }[key] || function (r) { return -r.calls; };
-    return rows.slice().sort(function (a, b) { return f(a) - f(b); });
+    var f = { calls: function (r) { return -r.calls; }, avg: function (r) { return -(r.avg || 0); }, rate: function (r) { return -(r.rate || 0); }, cc: function (r) { return -(r.cc || 0); }, change: function (r) { return r.pavg == null ? -99 : -(r.avg - r.pavg); } }[key] || function (r) { return -r.calls; };
+    var dir = S.brandDir || 1;
+    if (key === 'name') return rows.slice().sort(function (a, b) { return dir * short(a.name).localeCompare(short(b.name)); });
+    return rows.slice().sort(function (a, b) { return dir * (f(a) - f(b)); });
   }
   function brandTable(cur, prev, el, limit) {
     var rows = sortRows(brandRows(cur, prev), S.brandSort), shown = limit ? rows.slice(0, limit) : rows;
-    var th = function (k, l, t) { return '<th class="sortable" data-bsort="' + k + '" title="' + esc(t) + '" aria-sort="' + (S.brandSort === k ? 'descending' : 'none') + '">' + l + (S.brandSort === k ? ' ↓' : '') + '</th>'; };
+    var th = function (k, l, t) { var on = S.brandSort === k, asc = (k === 'name') === ((S.brandDir || 1) === 1); return '<th class="sortable" data-bsort="' + k + '" title="' + esc(t) + ' · click again to reverse" aria-sort="' + (on ? (asc ? 'ascending' : 'descending') : 'none') + '">' + l + (on ? (asc ? ' ↑' : ' ↓') : '') + '</th>'; };
     var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Performance by brand</h2><p class="sub">Click a brand to see why it’s trending the way it is.</p></div>' + (limit ? '<button class="more" data-go="brands">All ' + rows.length + ' brands →</button>' : '') + '</div>' +
-      '<div style="overflow-x:auto;margin-top:12px"><table class="tbl"><thead><tr><th>Brand</th>' + th('calls', 'Calls', 'Conversations scored') + th('avg', 'QA score', 'Average QA score') + th('change', 'Change', 'Score change vs the previous period') + th('rate', 'Booking', 'Booked ÷ calls with a booking decision') + th('cc', 'Card', 'Booked calls with a card collected') + '<th></th></tr></thead><tbody>';
+      '<div style="overflow-x:auto;margin-top:12px"><table class="tbl"><thead><tr>' + th('name', 'Brand', 'Sort A–Z') + '' + th('calls', 'Calls', 'Conversations scored') + th('avg', 'QA score', 'Average QA score') + th('change', 'Change', 'Score change vs the previous period') + th('rate', 'Booking', 'Booked ÷ calls with a booking decision') + th('cc', 'Card', 'Booked calls with a card collected') + '<th></th></tr></thead><tbody>';
     shown.forEach(function (r) {
       h += '<tr class="click" data-brand="' + esc(r.name) + '" tabindex="0"><td><div style="display:flex;align-items:center;gap:10px">' + bbadge(r.name) + '<span style="font-weight:600">' + esc(short(r.name)) + '</span></div></td><td class="num">' + fmt(r.calls) + '</td><td class="num">' + (r.avg != null ? r.avg.toFixed(1) : '—') + '</td><td>' + delta(r.avg, r.pavg, '') + '</td>' +
         '<td><div style="display:flex;align-items:center;gap:8px;min-width:120px"><span class="num" style="width:44px">' + p1(r.rate) + '</span><div class="track" style="flex:1"><div style="background:' + ((r.rate || 0) >= 60 ? G : O) + ';width:' + (r.rate || 0) + '%"></div></div></div></td>' +
@@ -397,7 +400,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       '<div class="row"><button class="sel" data-callsfor="' + kind + '">All calls →</button><button class="sel btnd" data-ask="' + esc(kind === 'brand' ? 'What should we focus on at ' + name + ' this week?' : 'How should we coach ' + name + ' this week?') + '">Ask about ' + esc(title) + '</button></div></div>' +
       '<div class="ai" id="why"><div style="display:flex;gap:10px;align-items:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><b>Why ' + esc(title) + ' is trending this way</b></div><div class="md" style="margin-top:10px"><span class="dots"><span></span><span></span><span></span></span> <span class="mut">Reading this period’s calls…</span></div></div>' +
       '<div id="fk" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">' + skel(90, 1).repeat(4) + '</div>' +
-      '<div class="row"><div class="card" style="flex:999 1 520px" id="fweek">' + skel(200, 1) + '</div><div class="card" style="flex:1 1 360px" id="fsteps">' + skel(18, 9) + '</div></div>' +
+      '<div class="row" style="align-items:flex-start"><div class="card" style="flex:999 1 520px" id="fweek">' + skel(200, 1) + '</div><div class="card" style="flex:1 1 360px" id="fsteps">' + skel(18, 9) + '</div></div>' +
       '<div class="row">' + (kind === 'brand' ? '<div class="card" style="flex:999 1 480px" id="fmovers">' + skel(30, 8) + '</div>' : '<div class="card" style="flex:999 1 480px" id="fcalls">' + skel(50, 5) + '</div>') + '<div class="card" style="flex:1 1 360px" id="fmix">' + skel(20, 10) + '</div></div>' +
       '<div class="card" id="fxfer">' + skel(30, 4) + '</div>');
     var brand = kind === 'brand' ? name : null, agent = kind === 'csr' ? name : null;
@@ -487,10 +490,10 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     Promise.all([loadReport(), loadPrevReport()]).then(function (r) {
       if (tok !== T) return; noteKnown(r[0]);
       var rows = agentRows(r[0], r[1], S.csrMin || 25), key = S.csrSort;
-      var f = { calls: function (a) { return -a.calls; }, avg: function (a) { return -(a.avg || 0); }, change: function (a) { return a.pavg == null ? 99 : a.avg - a.pavg; }, rate: function (a) { return -(a.rate || 0); }, ask: function (a) { return (a.ask == null ? 999 : a.ask); }, xo: function (a) { return -a.xo; }, xi: function (a) { return -a.xi; }, name: function (a) { return 0; } }[key];
-      rows.sort(key === 'name' ? function (a, b) { return a.name.localeCompare(b.name); } : function (a, b) { return f(a) - f(b); });
+      var f = { calls: function (a) { return -a.calls; }, avg: function (a) { return -(a.avg || 0); }, change: function (a) { return a.pavg == null ? -99 : -(a.avg - a.pavg); }, rate: function (a) { return -(a.rate || 0); }, ask: function (a) { return (a.ask == null ? 999 : a.ask); }, xo: function (a) { return -a.xo; }, xi: function (a) { return -a.xi; }, name: function (a) { return 0; } }[key];
+      var dir = S.csrDir || 1; rows.sort(key === 'name' ? function (a, b) { return dir * a.name.localeCompare(b.name); } : function (a, b) { return dir * (f(a) - f(b)); });
       var q = (S.csrQ || '').toLowerCase(); if (q) rows = rows.filter(function (a) { return a.name.toLowerCase().indexOf(q) >= 0 || (a.brand || '').toLowerCase().indexOf(q) >= 0; });
-      var th = function (k, l, t) { return '<th class="sortable" data-csort="' + k + '" title="' + esc(t) + '">' + l + (key === k ? ' ↓' : '') + '</th>'; };
+      var th = function (k, l, t) { var on = key === k, asc = (k === 'name' || k === 'ask') === (dir === 1); return '<th class="sortable" data-csort="' + k + '" title="' + esc(t) + ' · click again to reverse" aria-sort="' + (on ? (asc ? 'ascending' : 'descending') : 'none') + '">' + l + (on ? (asc ? ' ↑' : ' ↓') : '') + '</th>'; };
       var h = '<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">CSR scorecards</h2><p class="sub">' + rows.length + ' CSRs with ' + (S.csrMin || 25) + '+ calls · click a header to sort, a row to open the CSR</p></div><div class="row" style="gap:8px"><label class="sr" for="csrq">Find a CSR</label><input id="csrq" class="field" style="width:220px" placeholder="Find a CSR or brand…" value="' + esc(S.csrQ || '') + '"><select id="csrmin" class="field" style="width:auto" aria-label="Minimum calls"><option value="10"' + (S.csrMin == 10 ? ' selected' : '') + '>10+ calls</option><option value="25"' + (!S.csrMin || S.csrMin == 25 ? ' selected' : '') + '>25+ calls</option><option value="100"' + (S.csrMin == 100 ? ' selected' : '') + '>100+ calls</option></select></div></div>' +
         '<div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13.5px"><thead><tr>' + th('name', 'CSR', 'Sort by name') + '<th>Brand</th>' + th('calls', 'Calls', 'Conversations scored') + th('avg', 'Avg score', 'Average QA score') + th('change', 'Change', 'vs previous period') + th('rate', 'Booking', 'Booked ÷ decided calls') + th('ask', 'Ask rate', 'Lowest first') + th('xo', 'Transfers out', 'Calls this CSR transferred to someone else') + th('xi', 'Transfers in', 'Calls this CSR received from a colleague') + '<th>Cards</th><th></th></tr></thead><tbody>';
       rows.slice(0, 150).forEach(function (a) {
@@ -566,10 +569,18 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     { t: 'What counts as a warranty callback', cat: 'Policy', who: 'Opsis CX', when: 'Oct 3', body: 'Same issue within 90 days of a paid repair = no-charge return visit. Don’t quote a fee; book the earliest slot and note “warranty”.' },
     { t: 'Service areas (zip codes)', cat: 'Coverage', who: 'GarageCo admin', when: 'Sep 28', body: 'Out-of-area calls are excused from booking rate. Upload zip lists per brand.' }
   ];
+  var KBE = null, KBDEL = null;
   function vKb() {
-    setMain(crumb([['Knowledge base']]) + '<div class="row" style="align-items:flex-start"><div class="card" style="flex:999 1 520px"><h2 class="ttl">What the AI should know about your business</h2><p class="sub">Your team can add and edit articles. Changes apply to new calls, and the Opsis CX Support team sees every change.</p>' +
-      KB.map(function (a) { return '<div style="padding:14px 0;border-top:1px solid var(--line2);margin-top:8px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><b>' + esc(a.t) + '</b><span class="pill" style="background:#F3F1EC;color:#3B4541">' + a.cat + '</span></div><div style="font-size:13px;line-height:1.55;margin-top:6px;color:#3B4541">' + esc(a.body) + '</div><div class="mut" style="font-size:11.5px;margin-top:6px">Updated ' + a.when + ' by ' + a.who + '</div></div>'; }).join('') +
-      '</div><div class="card" style="flex:1 1 320px"><h2 class="ttl">Add knowledge</h2><div style="display:flex;flex-direction:column;gap:12px;margin-top:14px"><div><label class="l" for="kbt">Title</label><input id="kbt" class="field" placeholder="e.g. Holiday hours"></div><div><label class="l" for="kbc">Category</label><select id="kbc" class="field"><option>Pricing</option><option>Policy</option><option>Coverage</option><option>Troubleshooting</option></select></div><div><label class="l" for="kbb">What should the AI know?</label><textarea id="kbb" class="field" style="min-height:110px;resize:vertical" placeholder="Write it the way you’d explain it to a new CSR…"></textarea></div><button class="sel btnd" data-act="kbadd">Add to knowledge base</button></div></div></div>');
+    var ed = KBE != null ? KB[KBE] : null, cats = ['Pricing', 'Policy', 'Coverage', 'Troubleshooting', 'Scheduling', 'Other'];
+    setMain(crumb([['Knowledge base']]) + '<div class="row" style="align-items:flex-start"><div class="card" style="flex:999 1 520px"><h2 class="ttl">What the AI should know about your business</h2><p class="sub">Your team can add, edit and remove articles. Changes apply to new calls, and the Opsis CX Support team sees every change.</p>' +
+      (KB.length ? KB.map(function (a, i) { var on = KBE === i;
+        return '<div style="padding:14px 12px;border-top:1px solid var(--line2);margin:8px -12px 0;border-radius:10px;' + (on ? 'background:#EEF4EF' : '') + '"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><b>' + esc(a.t) + '</b><div style="display:flex;gap:6px;align-items:center"><span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(a.cat) + '</span>' +
+          (KBDEL === i ? '<span class="mut" style="font-size:12px">Remove this article?</span><button class="sel" data-act="kbdelyes" data-i="' + i + '" style="padding:5px 10px;font-size:12px;color:#B4461F">Remove</button><button class="sel" data-act="kbdelno" style="padding:5px 10px;font-size:12px">Keep</button>'
+            : '<button class="sel" data-act="kbedit" data-i="' + i + '" style="padding:5px 10px;font-size:12px" aria-label="Edit ' + esc(a.t) + '">' + (on ? 'Editing…' : 'Edit') + '</button><button class="sel" data-act="kbdel" data-i="' + i + '" style="padding:5px 10px;font-size:12px" aria-label="Remove ' + esc(a.t) + '">Remove</button>') +
+          '</div></div><div style="font-size:13px;line-height:1.55;margin-top:6px;color:#3B4541;white-space:pre-wrap">' + esc(a.body) + '</div><div class="mut" style="font-size:11.5px;margin-top:6px">' + (a.edited ? 'Edited ' : 'Updated ') + a.when + ' by ' + a.who + '</div></div>'; }).join('') : '<div class="mut" style="padding:20px 0">No articles yet. Add the first one on the right.</div>') +
+      '</div><div class="card" style="flex:1 1 320px"><h2 class="ttl">' + (ed ? 'Edit article' : 'Add knowledge') + '</h2>' + (ed ? '<p class="sub">Changes apply to new calls once saved.</p>' : '') + '<div style="display:flex;flex-direction:column;gap:12px;margin-top:14px"><div><label class="l" for="kbt">Title</label><input id="kbt" class="field" placeholder="e.g. Holiday hours" value="' + (ed ? esc(ed.t) : '') + '"></div><div><label class="l" for="kbc">Category</label><select id="kbc" class="field">' + cats.map(function (c) { return '<option' + (ed && ed.cat === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></div><div><label class="l" for="kbb">What should the AI know?</label><textarea id="kbb" class="field" style="min-height:140px;resize:vertical" placeholder="Write it the way you’d explain it to a new CSR…">' + (ed ? esc(ed.body) : '') + '</textarea></div>' +
+      (ed ? '<div style="display:flex;gap:8px"><button class="sel btnd" data-act="kbsave" style="flex:1">Save changes</button><button class="sel" data-act="kbcancel">Cancel</button></div>' : '<button class="sel btnd" data-act="kbadd">Add to knowledge base</button>') + '</div></div></div>');
+    if (ed) { var t = $('kbt'); if (t) t.focus(); }
   }
   function vSettings() {
     setMain(crumb([['Settings']]) + '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">' +
@@ -612,11 +623,34 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     setMain(h);
   }
   function keepQs() { var a = $('qmin'), b = $('qsample'), c = $('qthr'); if (a) QS.minLen = +a.value || 0; if (b) QS.sample = Math.min(100, Math.max(1, +b.value || 100)); if (c) QS.threshold = c.value; }
+  var PEOPLE = [{ name: 'Mike Conti', email: 'mike.conti@garagecoholdings.com', role: 'Client admin', brands: [], status: 'Active', last: 'Oct 13' }];
+  var INV = null, PDEL = null;
   function vTeam() {
     var roles = [['Client admin', 'Everything below, plus users, settings and knowledge base', ['See all brands', 'Change scores', 'Edit knowledge base', 'Manage settings', 'Invite users']], ['Brand manager', 'Their brands only — coach, add notes, change scores', ['See own brands', 'Change scores', 'Add notes', 'Send to CSR']], ['Viewer', 'Read-only dashboards and reports', ['See assigned brands', 'Export']], ['CSR', 'Only their own calls and scorecard', ['See own calls', 'Dispute a score']]];
+    var RN = roles.map(function (r) { return r[0]; }), brands = (KNOWN.brands || []);
+    var form = '';
+    if (INV) {
+      var needBrands = INV.role === 'Brand manager' || INV.role === 'Viewer';
+      form = '<div style="margin-top:14px;padding:18px;border:1px solid var(--line);border-radius:14px;background:#FAF8F4"><div style="font-weight:600;font-size:15px">Invite someone</div><div class="mut" style="font-size:12.5px;margin-top:3px">They’ll get an email with a link to set a password. Only GarageCo call quality is visible to them.</div>' +
+        '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:14px"><div><label class="l" for="ivn">Full name</label><input id="ivn" class="field" placeholder="e.g. Jordan Smith" value="' + esc(INV.name) + '"></div><div><label class="l" for="ive">Email</label><input id="ive" class="field" type="email" placeholder="name@company.com" value="' + esc(INV.email) + '"></div><div><label class="l" for="ivr">Role</label><select id="ivr" class="field" data-invrole="1">' + RN.map(function (r) { return '<option' + (INV.role === r ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select></div></div>' +
+        (needBrands ? '<div style="margin-top:14px"><div class="l">Brands they can see</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">' + (brands.length ? brands.map(function (b) { var on = INV.brands.indexOf(b) >= 0; return '<button class="chip' + (on ? ' on' : '') + '" data-invbrand="' + esc(b) + '" aria-pressed="' + on + '">' + (on ? '✓ ' : '') + esc(short(b)) + '</button>'; }).join('') : '<span class="mut" style="font-size:12.5px">Brands load from the dashboard — open Overview first.</span>') + '</div>' + (INV.brands.length ? '' : '<div class="mut" style="font-size:12px;margin-top:6px">Pick at least one brand.</div>') + '</div>' : '') +
+        (INV.role === 'CSR' ? '<div style="margin-top:14px;max-width:320px"><label class="l" for="ivcsr">Match to CSR</label><select id="ivcsr" class="field"><option value="">Choose the CSR’s name on calls…</option>' + (KNOWN.agents || []).slice().sort().map(function (a) { return '<option' + (INV.csr === a ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('') + '</select></div>' : '') +
+        '<div style="display:flex;gap:8px;margin-top:16px"><button class="sel btnd" data-act="invsend">Send invite</button><button class="sel" data-act="invcancel">Cancel</button></div></div>';
+    }
+    var rows = PEOPLE.map(function (u, i) {
+      return '<tr><td><div style="display:flex;align-items:center;gap:10px"><span class="av">' + esc(u.name.split(' ').map(function (w) { return w[0]; }).join('').slice(0, 2).toUpperCase()) + '</span><div><div style="font-weight:600">' + esc(u.name) + '</div><div class="mut" style="font-size:12px">' + esc(u.email) + '</div></div></div></td>' +
+        '<td><label class="sr" for="pr' + i + '">Role for ' + esc(u.name) + '</label><select id="pr' + i + '" class="field" style="padding:6px 10px;font-size:13px;width:auto" data-prole="' + i + '">' + RN.map(function (r) { return '<option' + (u.role === r ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select></td>' +
+        '<td class="mut" style="font-size:12.5px">' + (u.role === 'Client admin' ? 'All brands' : u.role === 'CSR' ? 'Own calls' + (u.csr ? ' · ' + esc(u.csr) : '') : (u.brands.length ? u.brands.map(short).map(esc).join(', ') : '—')) + '</td>' +
+        '<td><span class="pill" style="' + (u.status === 'Active' ? 'background:#E6F0EA;color:#1F5A41' : 'background:#FFF4DE;color:#8A5A00') + '">' + u.status + '</span></td><td class="mut" style="font-size:12.5px">' + esc(u.last) + '</td>' +
+        '<td style="text-align:right;white-space:nowrap">' + (PDEL === i ? '<span class="mut" style="font-size:12px;margin-right:6px">Remove access?</span><button class="sel" data-act="pdelyes" data-i="' + i + '" style="padding:5px 10px;font-size:12px;color:#B4461F">Remove</button> <button class="sel" data-act="pdelno" style="padding:5px 10px;font-size:12px">Keep</button>'
+          : (u.status !== 'Active' ? '<button class="sel" data-act="presend" data-i="' + i + '" style="padding:5px 10px;font-size:12px">Resend</button> ' : '') + '<button class="sel" data-act="pdel" data-i="' + i + '" style="padding:5px 10px;font-size:12px">Remove</button>') + '</td></tr>';
+    }).join('');
     setMain(crumb([['Team & access']]) + '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr))">' + roles.map(function (r) { return '<div class="card"><b style="font-size:15px">' + r[0] + '</b><div class="mut" style="font-size:12.5px;margin-top:4px;line-height:1.45">' + r[1] + '</div><div style="display:flex;flex-direction:column;gap:6px;margin-top:12px">' + r[2].map(function (p) { return '<div style="font-size:12.5px;display:flex;gap:8px"><span style="color:' + G + '">✓</span>' + p + '</div>'; }).join('') + '</div></div>'; }).join('') + '</div>' +
-      '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><h2 class="ttl">People</h2><button class="sel btnd" data-act="invite">+ Invite</button></div><p class="sub">Client logins only ever see GarageCo’s own call quality — never other clients, Opsis staffing, billing, or anything else in Command Center.</p></div>');
+      '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">People</h2><p class="sub">' + PEOPLE.length + ' ' + (PEOPLE.length === 1 ? 'person' : 'people') + ' · client logins only ever see GarageCo’s own call quality — never other clients, Opsis staffing, billing, or anything else in Command Center.</p></div>' + (INV ? '' : '<button class="sel btnd" data-act="invite">+ Invite</button>') + '</div>' + form +
+      '<div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13.5px"><thead><tr><th>Person</th><th>Role</th><th>Access</th><th>Status</th><th>Last active</th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="6" class="mut">No one yet.</td></tr>') + '</tbody></table></div></div>');
+    if (INV) { var n = $('ivn'); if (n && !INV.name) n.focus(); }
   }
+  function keepInv() { if (!INV) return; var n = $('ivn'), e = $('ive'), c = $('ivcsr'); if (n) INV.name = n.value; if (e) INV.email = e.value; if (c) INV.csr = c.value; }
 
   function crumb(parts) {
     return '<div class="crumb">' + parts.map(function (p, i) { return i === parts.length - 1 ? '<span style="color:var(--ink);font-weight:600">' + esc(p[0]) + '</span>' : '<button data-go="' + p[1] + '">' + esc(p[0]) + '</button><span aria-hidden="true">/</span>'; }).join('') + '</div>';
@@ -761,6 +795,8 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       if (t === chg || t.closest('[data-closechg]')) { chg.remove(); return; }
       return;
     }
+    var ib = t.closest('[data-invbrand]');
+    if (ib && INV) { keepInv(); var bn = ib.getAttribute('data-invbrand'), ix = INV.brands.indexOf(bn); if (ix >= 0) INV.brands.splice(ix, 1); else INV.brands.push(bn); vTeam(); return; }
     var q = t.closest('[data-qtog],[data-qsel],[data-qadd],[data-qrm],[data-qaddcsr],[data-qaddmetric],[data-qsaveins]');
     if (q) {
       var qd = q.dataset; keepQs();
@@ -801,8 +837,8 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     else if (d.q !== undefined || d.outcome) { openCalls({ q: d.q || '', outcome: d.outcome || null }); }
     else if (d.pop) { S.pop = S.pop === d.pop ? null : d.pop; render(); }
     else if (d.range) { S.range = d.range; S.pop = null; cache = {}; applyRange(); render(); }
-    else if (d.bsort) { S.brandSort = d.bsort; render(); }
-    else if (d.csort) { S.csrSort = d.csort; render(); }
+    else if (d.bsort) { S.brandDir = S.brandSort === d.bsort ? -(S.brandDir || 1) : 1; S.brandSort = d.bsort; render(); }
+    else if (d.csort) { S.csrDir = S.csrSort === d.csort ? -(S.csrDir || 1) : 1; S.csrSort = d.csort; render(); }
     else if (d.mix) { S.mix = d.mix; if (lastFocus) focusMix(lastFocus, $('fmix').dataset.fb, $('fmix').dataset.fa); }
     else if (d.page) { S.calls.offset = Math.max(0, S.calls.offset + (+d.page) * 25); window.scrollTo(0, 0); render(); }
     else if (d.unfilter) { var c = S.calls; if (d.unfilter === 'all') { S.calls = { offset: 0 }; S.callsAgent = null; } else if (d.unfilter === 'agent') S.callsAgent = null; else { c[d.unfilter] = d.unfilter === 'q' ? '' : null; c.offset = 0; } render(); }
@@ -812,9 +848,32 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       else if (a === 'closepop') { S.pop = null; render(); }
       else if (a === 'retry') { cache = {}; render(); }
       else if (a === 'undo') { Object.keys(S.adj).forEach(function (k) { if (k.indexOf(S.callId + '|') === 0) delete S.adj[k]; }); drawCall(); toast('Restored the AI score'); }
+      else if (a === 'invite') { INV = { name: '', email: '', role: 'Brand manager', brands: [], csr: '' }; vTeam(); }
+      else if (a === 'invcancel') { INV = null; vTeam(); }
+      else if (a === 'invsend') { keepInv(); var nm = INV.name.trim(), em = INV.email.trim();
+        if (!nm) { toast('Add their full name'); return; } if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { toast('Add a valid email'); return; }
+        if ((INV.role === 'Brand manager' || INV.role === 'Viewer') && !INV.brands.length) { toast('Pick at least one brand'); return; }
+        if (INV.role === 'CSR' && !INV.csr) { toast('Match them to a CSR'); return; }
+        if (PEOPLE.some(function (u) { return u.email.toLowerCase() === em.toLowerCase(); })) { toast('That email already has access'); return; }
+        PEOPLE.push({ name: nm, email: em, role: INV.role, brands: INV.brands.slice(), csr: INV.csr, status: 'Invite sent', last: '—' }); INV = null; vTeam(); toast('Invite sent to ' + em + ' (preview)'); }
+      else if (a === 'presend') { toast('Invite re-sent to ' + PEOPLE[+d.i].email + ' (preview)'); }
+      else if (a === 'pdel') { PDEL = +d.i; vTeam(); }
+      else if (a === 'pdelno') { PDEL = null; vTeam(); }
+      else if (a === 'pdelyes') { var gone = PEOPLE.splice(+d.i, 1)[0]; PDEL = null; vTeam(); toast(gone.name + ' no longer has access'); }
+      else if (a === 'kbedit') { KBE = +d.i; KBDEL = null; vKb(); }
+      else if (a === 'kbcancel') { KBE = null; vKb(); }
+      else if (a === 'kbsave') { var t2 = $('kbt').value.trim(); if (!t2) { toast('Add a title first'); return; } var it = KB[KBE]; it.t = t2; it.cat = $('kbc').value; it.body = $('kbb').value.trim() || '—'; it.when = 'Today'; it.who = 'GarageCo admin'; it.edited = true; KBE = null; vKb(); toast('Saved — the AI uses the new version on new calls'); }
+      else if (a === 'kbdel') { KBDEL = +d.i; vKb(); }
+      else if (a === 'kbdelno') { KBDEL = null; vKb(); }
+      else if (a === 'kbdelyes') { KB.splice(+d.i, 1); KBDEL = null; if (KBE != null) KBE = null; vKb(); toast('Removed'); }
       else if (a === 'kbadd') { var tt = $('kbt').value.trim(); if (!tt) { toast('Add a title first'); return; } KB.unshift({ t: tt, cat: $('kbc').value, who: 'GarageCo admin', when: 'Today', body: $('kbb').value.trim() || '—' }); vKb(); toast('Added — the AI uses it on new calls'); }
       else toast({ send: 'Sent to the CSR’s coaching inbox (preview)', pdf: 'PDF ready (preview)', save: 'Saved (preview — not stored)', request: 'Request sent to the Opsis CX Support team (preview)', invite: 'Invite sent (preview)' }[a] || 'Done (preview)');
     }
+  });
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.hasAttribute && t.hasAttribute('data-invrole') && INV) { keepInv(); INV.role = t.value; vTeam(); }
+    else if (t.hasAttribute && t.hasAttribute('data-prole')) { var u = PEOPLE[+t.getAttribute('data-prole')]; u.role = t.value; vTeam(); toast(u.name + ' is now ' + t.value + (t.value === 'Brand manager' || t.value === 'Viewer' ? ' — assign brands from their invite' : '') + ' (preview)'); }
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') { var chg = $('chg'); if (chg) { chg.remove(); return; } if (S.pop) { S.pop = null; render(); return; } if ($('layer').innerHTML) closeLayer(); }
