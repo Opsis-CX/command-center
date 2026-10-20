@@ -242,7 +242,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       '<div id="kpis" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">' + skel(118, 1).repeat(5) + '</div>' +
       '<div class="row"><div class="card" style="flex:999 1 520px" id="brandcard">' + skel(30, 8) + '</div><div class="card" style="flex:1 1 320px" id="coachcard">' + skel(40, 5) + '</div></div>' +
       '<div class="row" style="align-items:flex-start"><div class="card" style="flex:999 1 420px" id="stepcard">' + skel(18, 9) + '</div><div class="card" style="flex:1 1 360px;max-height:470px;overflow-y:auto" id="reviewcard">' + skel(50, 4) + '</div></div>' +
-      '<div class="row"><div class="card" style="flex:999 1 520px" id="trendcard">' + skel(200, 1) + '</div><div class="ai" style="flex:1 1 360px" id="insightcard">' + skel(30, 4) + '</div></div>');
+      '<div class="row" style="align-items:flex-start"><div class="card" style="flex:999 1 520px" id="trendcard">' + skel(200, 1) + '</div><div class="ai" style="flex:1 1 360px" id="insightcard">' + skel(30, 4) + '</div></div>');
     Promise.all([loadReport(), loadPrevReport()]).then(function (r) {
       if (tok !== T) return; var cur = r[0], prev = r[1]; noteKnown(cur);
       kpiCards(cur);
@@ -357,17 +357,51 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     return '';
   }
   function trendCard(rep) {
-    var d = (rep.daily || []).filter(function (x) { return x.calls >= 60; });
-    if (d.length < 2) { $('trendcard').innerHTML = '<h2 class="ttl">Day by day</h2><p class="mut">Not enough days in this range.</p>'; return; }
-    var maxB = Math.max.apply(null, d.map(function (x) { return x.booked; })) || 1;
-    var avgs = d.map(function (x) { return x.avg; }), lo = Math.floor(Math.min.apply(null, avgs) - 2), hi = Math.ceil(Math.max.apply(null, avgs) + 2);
-    var n = d.length, line = d.map(function (x, i) { return (i ? 'L' : 'M') + ((i + .5) / n * 1000).toFixed(1) + ' ' + (196 - (x.avg - lo) / (hi - lo) * 180 - 8).toFixed(1); }).join(' ');
-    var bars = d.map(function (x, i) { return '<div style="flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center" title="' + fdate(x.d) + ': ' + fmt(x.booked) + ' bookings · score ' + x.avg + '"><div style="width:100%;max-width:26px;border-radius:4px 4px 1px 1px;background:#CFE5DF;height:' + Math.round(x.booked / maxB * 100) + '%"></div></div>'; }).join('');
-    var labs = d.map(function (x, i) { return '<div style="flex:1;text-align:center;font-size:10px;color:#5F6763">' + (i % Math.ceil(n / 8) === 0 ? fdate(x.d) : '') + '</div>'; }).join('');
-    $('trendcard').innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">Day by day</h2><p class="sub">Bars are bookings, the line is the average score (business days)</p></div><div class="mut" style="font-size:12px;display:flex;gap:14px"><span>▮ <span style="color:#7DB9A7">bookings</span></span><span>— score</span></div></div>' +
-      '<div style="position:relative;height:220px;margin-top:16px"><div style="position:absolute;inset:0 0 22px 0;display:flex;align-items:flex-end;gap:6px">' + bars + '</div><svg viewBox="0 0 1000 196" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:196px;overflow:visible" aria-hidden="true"><path d="' + line + '" fill="none" stroke="#14302A" stroke-width="2" vector-effect="non-scaling-stroke"/></svg><div style="position:absolute;left:0;right:0;bottom:0;display:flex;gap:6px">' + labs + '</div></div>';
+    var el = $('trendcard'); if (!el) return;
+    var mode = S.tmode || 'dow', daily = rep.daily || [], DN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], DL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    var rows = [];
+    if (mode === 'dow') {
+      var cnt = [0, 0, 0, 0, 0, 0, 0]; daily.forEach(function (x) { if (x.calls > 0) cnt[new Date(x.d + 'T12:00:00').getDay()]++; });
+      var byD = {}; (rep.dow || []).forEach(function (x) { byD[x.d] = x; });
+      [1, 2, 3, 4, 5, 6, 0].forEach(function (k) { var x = byD[k]; if (!x || !cnt[k]) return; rows.push({ lab: DN[k], full: DL[k] + 's', per: x.calls / cnt[k], avg: x.avg, rate: pct(x.booked, x.decided), total: x.calls, n: cnt[k] }); });
+    } else {
+      var bd = daily.filter(function (x) { return x.calls >= 60; }).length || 1, tot = (rep.hourly || []).reduce(function (t, x) { return t + x.calls; }, 0);
+      (rep.hourly || []).filter(function (x) { return x.calls >= tot * 0.004; }).forEach(function (x) { var h = x.h % 12 || 12, ap = x.h < 12 ? 'a' : 'p'; rows.push({ lab: h + ap, full: h + (ap === 'a' ? ' am' : ' pm') + '–' + ((x.h + 1) % 12 || 12) + ((x.h + 1) < 12 ? ' am' : ' pm'), per: x.calls / bd, avg: x.avg, rate: pct(x.booked, x.decided), total: x.calls, n: bd }); });
+    }
+    var tabs = '<div class="seg" role="tablist" style="display:inline-flex;background:#F3F1EC;border-radius:10px;padding:3px;gap:2px">' + [['dow', 'By day of week'], ['hour', 'By hour']].map(function (t) { var on = mode === t[0]; return '<button role="tab" aria-selected="' + on + '" data-tmode="' + t[0] + '" style="border:none;cursor:pointer;font:inherit;font-size:12.5px;padding:6px 12px;border-radius:8px;' + (on ? 'background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.08);font-weight:600' : 'background:transparent;color:#56605B') + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    var head = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:flex-start"><div><h2 class="ttl">When calls come in</h2><p class="sub">Average calls per ' + (mode === 'dow' ? 'day' : 'hour on a business day') + ' and the average QA score · hover a bar for details</p></div>' + tabs + '</div>';
+    if (!rows.length) { el.innerHTML = head + '<p class="mut" style="margin-top:14px">Not enough calls in this range.</p>'; return; }
+    var maxP = Math.max.apply(null, rows.map(function (r) { return r.per; })), step = maxP > 2000 ? 500 : maxP > 800 ? 200 : maxP > 400 ? 100 : maxP > 100 ? 50 : maxP > 40 ? 10 : 5, top = Math.ceil(maxP / step) * step || 1;
+    var sc = rows.filter(function (r) { return r.total >= 50; }).map(function (r) { return r.avg; }); if (!sc.length) sc = rows.map(function (r) { return r.avg; });
+    var lo = Math.floor(Math.min.apply(null, sc) - 2), hi = Math.ceil(Math.max.apply(null, sc) + 1);
+    var H = 200, n = rows.length;
+    var grid = [0, .25, .5, .75, 1].map(function (f) { return '<div style="position:absolute;left:0;right:0;bottom:' + (f * H) + 'px;border-top:1px ' + (f ? 'dashed #ECE8E0' : 'solid #D9D4CA') + '"></div><div style="position:absolute;left:-46px;width:40px;text-align:right;bottom:' + (f * H - 7) + 'px;font-size:11px;color:#6B726E">' + fmt(Math.round(top * f)) + '</div><div style="position:absolute;right:-40px;width:34px;bottom:' + (f * H - 7) + 'px;font-size:11px;color:#14302A">' + (lo + (hi - lo) * f).toFixed(0) + '</div>'; }).join('');
+    var pts = rows.map(function (r, i) { var y = Math.max(0, Math.min(1, (r.avg - lo) / (hi - lo))); return { x: (i + .5) / n * 100, y: (1 - y) * H, r: r }; });
+    var line = '<svg viewBox="0 0 100 ' + H + '" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:' + H + 'px;overflow:visible;pointer-events:none" aria-hidden="true"><polyline points="' + pts.map(function (p) { return p.x.toFixed(2) + ',' + p.y.toFixed(1); }).join(' ') + '" fill="none" stroke="#14302A" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>' +
+      pts.map(function (p) { return '<div style="position:absolute;left:calc(' + p.x + '% - 4px);top:' + (p.y - 4) + 'px;width:8px;height:8px;border-radius:99px;background:#fff;border:2px solid #14302A;pointer-events:none;box-sizing:border-box"></div>'; }).join('');
+    var busiest = rows.reduce(function (m, r) { return r.per > m.per ? r : m; }), big = rows.filter(function (r) { return r.total >= 200; }), worst = (big.length ? big : rows).reduce(function (m, r) { return r.avg < m.avg ? r : m; }), best = (big.length ? big : rows).reduce(function (m, r) { return r.avg > m.avg ? r : m; });
+    var bars = rows.map(function (r, i) {
+      var tip = '<b>' + esc(r.full) + '</b><br>' + fmt(Math.round(r.per)) + ' calls on average' + (mode === 'dow' ? ' (' + r.n + ' ' + DL[DN.indexOf(r.lab)] + (r.n === 1 ? '' : 's') + ')' : '') + '<br>Score ' + r.avg.toFixed(1) + (r.rate != null ? ' · booking ' + r.rate.toFixed(0) + '%' : '') + '<br>' + fmt(r.total) + ' calls total';
+      return '<div class="tcol" data-tip="' + esc(tip) + '" tabindex="0" aria-label="' + esc(r.full + ': ' + Math.round(r.per) + ' calls, score ' + r.avg.toFixed(1)) + '" style="flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center;cursor:default;border-radius:6px"><div style="width:70%;max-width:44px;border-radius:5px 5px 1px 1px;background:' + (r === busiest ? '#8FC3B3' : '#CFE5DF') + ';height:' + (r.per / top * 100).toFixed(1) + '%"></div></div>';
+    }).join('');
+    var labs = rows.map(function (r) { return '<div style="flex:1;text-align:center;font-size:11.5px;color:#3B4541;font-weight:500">' + r.lab + '</div>'; }).join('');
+    var nums = rows.map(function (r) { return '<div style="flex:1;text-align:center;font-size:11px;line-height:1.35"><div style="color:#3B4541">' + fmt(Math.round(r.per)) + '</div><div style="color:' + (r === worst ? '#B4461F' : '#14302A') + ';font-weight:600">' + r.avg.toFixed(1) + '</div></div>'; }).join('');
+    el.innerHTML = head +
+      '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:12.5px"><span><span class="mut">Busiest</span> <b>' + busiest.full + '</b> · ' + fmt(Math.round(busiest.per)) + ' calls</span><span><span class="mut">Best score</span> <b>' + best.full + '</b> · ' + best.avg.toFixed(1) + '</span><span><span class="mut">Lowest score</span> <b style="color:#B4461F">' + worst.full + '</b> · ' + worst.avg.toFixed(1) + '</span></div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:11px;margin-top:14px"><span class="mut">▮ Avg calls</span><span style="color:#14302A">● QA score</span></div>' +
+      '<div style="position:relative;height:' + H + 'px;margin:8px 44px 0 50px">' + grid + '<div style="position:absolute;inset:0;display:flex">' + bars + '</div>' + line + '</div>' +
+      '<div style="display:flex;margin:8px 44px 0 50px">' + labs + '</div>' +
+      '<div style="display:flex;margin:6px 44px 0 50px;padding-top:6px;border-top:1px solid var(--line2)">' + nums + '</div>' +
+      '';
   }
-
+  var tipEl = null;
+  document.addEventListener('mouseover', function (e) {
+    var c = e.target.closest && e.target.closest('[data-tip]');
+    if (!c) { if (tipEl) tipEl.style.display = 'none'; return; }
+    if (!tipEl) { tipEl = document.createElement('div'); tipEl.style.cssText = 'position:fixed;z-index:80;pointer-events:none;background:#14302A;color:#fff;font-size:12px;line-height:1.5;padding:9px 12px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.18);max-width:240px'; document.body.appendChild(tipEl); }
+    tipEl.innerHTML = c.getAttribute('data-tip'); tipEl.style.display = 'block';
+    var r = c.getBoundingClientRect(); tipEl.style.left = Math.min(window.innerWidth - 250, Math.max(8, r.left + r.width / 2 - 110)) + 'px'; tipEl.style.top = Math.max(8, r.top - tipEl.offsetHeight + 40) + 'px';
+  });
   function insightCard(cur, prev) {
     var k = cur.kpis || {}, p = cur.prev || {}, items = [];
     if (k.booking_rate != null && p.booking_rate != null) items.push([(k.booking_rate >= p.booking_rate ? 'Booking rate up ' : 'Booking rate down ') + Math.abs(k.booking_rate - p.booking_rate).toFixed(1) + ' pts to ' + p1(k.booking_rate), 'vs ' + p1(p.booking_rate) + ' the period before', k.booking_rate >= p.booking_rate]);
@@ -795,6 +829,8 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       if (t === chg || t.closest('[data-closechg]')) { chg.remove(); return; }
       return;
     }
+    var tm = t.closest('[data-tmode]');
+    if (tm) { S.tmode = tm.getAttribute('data-tmode'); loadReport().then(trendCard); return; }
     var ib = t.closest('[data-invbrand]');
     if (ib && INV) { keepInv(); var bn = ib.getAttribute('data-invbrand'), ix = INV.brands.indexOf(bn); if (ix >= 0) INV.brands.splice(ix, 1); else INV.brands.push(bn); vTeam(); return; }
     var q = t.closest('[data-qtog],[data-qsel],[data-qadd],[data-qrm],[data-qaddcsr],[data-qaddmetric],[data-qsaveins]');
