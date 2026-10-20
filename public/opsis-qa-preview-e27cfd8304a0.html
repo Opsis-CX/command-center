@@ -186,12 +186,12 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       overview: 'M4 5h16v14H4zM4 9h16M9 9v10', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
       calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
-      team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9'
+      team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
     }[k];
   }
 
   // ---------------- nav + top bar ----------------
-  var NAV = [['', [['overview', 'Overview'], ['brands', 'Brands'], ['csrs', 'CSRs'], ['calls', 'Call reviews'], ['insights', 'Insights']]], ['YOUR SETUP', [['kb', 'Knowledge base'], ['settings', 'Settings'], ['team', 'Team & access']]]];
+  var NAV = [['', [['overview', 'Overview'], ['insights', 'Insights'], ['brands', 'Brands'], ['csrs', 'CSRs'], ['calls', 'Call reviews']]], ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base'], ['settings', 'Tags & reports'], ['team', 'Team & access']]]];
   function renderNav() {
     var cur = S.view === 'brand' ? 'brands' : (S.view === 'csr' ? 'csrs' : S.view);
     $('nav').innerHTML = NAV.map(function (sec) {
@@ -213,7 +213,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       '<button class="sel" data-pop="brands" aria-haspopup="true">' + esc(bl) + ' ▾</button>' +
       '<button class="sel" data-pop="range" aria-haspopup="true">' + esc(rangeLabel()) + ' ▾</button>' +
       popHtml() + '</div>' +
-      '<div class="banner"><b>Preview</b> · Live GarageCo results. Phone numbers and customer details are hidden. Changes you make here aren’t saved.</div>';
+      '<div class="banner"><b>Preview</b> · Live GarageCo results. Customer names are hidden. Changes you make here aren’t saved.</div>';
   }
   function popHtml() {
     if (S.pop === 'range') {
@@ -308,7 +308,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     var pm = {}; (prev && prev.agents || []).forEach(function (a) { pm[a.name] = a; });
     return (cur.agents || []).filter(function (a) { return a.scored >= (minCalls || 1); }).map(function (a) {
       var pa = pm[a.name] || {};
-      return { name: a.name, brand: a.brand, calls: a.scored, avg: a.avg, pavg: a.prev_avg != null ? a.prev_avg : pa.avg, rate: pct(a.booked, a.decided), ask: pct(a.asked, a.opps), opps: a.opps, cc: a.cc_collected };
+      return { name: a.name, brand: a.brand, calls: a.scored, avg: a.avg, pavg: a.prev_avg != null ? a.prev_avg : pa.avg, rate: pct(a.booked, a.decided), ask: pct(a.asked, a.opps), opps: a.opps, cc: a.cc_collected, xo: a.xfer_out || 0, xi: a.xfer_in || 0 };
     });
   }
   function coachCard(rep) {
@@ -343,11 +343,16 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     return '<button class="click" data-call="' + r.id + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line2)">' +
       '<span style="width:36px;height:36px;border-radius:999px;border:1px solid #E1DCD2;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="11" height="11" viewBox="0 0 24 24" fill="#1C2421" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></span>' +
       '<span style="flex:1;min-width:0"><span style="display:flex;justify-content:space-between;gap:8px"><b style="font-weight:600">' + esc(r.agent || 'Unknown CSR') + '</b><span class="mut num" style="font-size:11.5px">' + fdate(r.date) + ' ' + fhour(r.hour) + ' · ' + fsecs(r.secs) + '</span></span>' +
-      '<span class="mut" style="display:block;font-size:12px">' + esc(short(r.brand)) + (r.topic ? ' · ' + esc(r.topic) : '') + '</span>' +
+      '<span class="mut" style="display:block;font-size:12px">' + esc(short(r.brand)) + (r.phone ? ' · ' + esc(r.phone) : '') + (r.topic ? ' · ' + esc(r.topic) : '') + '</span>' + xferPill(r) +
       '<span style="display:block;font-size:12.5px;line-height:1.45;margin-top:4px;color:#3B4541;white-space:normal">' + esc((r.summary || '').slice(0, 150)) + ((r.summary || '').length > 150 ? '…' : '') + '</span></span>' +
       '<span class="pill num" style="' + chipScore(r.score) + ';font-size:13px">' + r.score + '</span></button>';
   }
 
+  function xferPill(r) {
+    if (r.xfer_out) return '<span class="pill" style="background:#E8EAF4;color:#3A4380;margin-top:5px">↗ Transferred out' + (r.xfer_to ? ' to ' + esc(r.xfer_to) : '') + (r.xfer_result && r.xfer_result !== 'Unknown' ? ' · ' + esc(r.xfer_result) : '') + '</span>';
+    if (r.xfer_in) return '<span class="pill" style="background:#EEF6F2;color:#1F5A41;margin-top:5px">↘ Transferred in' + (r.xfer_from ? ' from ' + esc(r.xfer_from) : '') + '</span>';
+    return '';
+  }
   function trendCard(rep) {
     var d = (rep.daily || []).filter(function (x) { return x.calls >= 60; });
     if (d.length < 2) { $('trendcard').innerHTML = '<h2 class="ttl">Day by day</h2><p class="mut">Not enough days in this range.</p>'; return; }
@@ -393,11 +398,12 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       '<div class="ai" id="why"><div style="display:flex;gap:10px;align-items:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><b>Why ' + esc(title) + ' is trending this way</b></div><div class="md" style="margin-top:10px"><span class="dots"><span></span><span></span><span></span></span> <span class="mut">Reading this period’s calls…</span></div></div>' +
       '<div id="fk" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">' + skel(90, 1).repeat(4) + '</div>' +
       '<div class="row"><div class="card" style="flex:999 1 520px" id="fweek">' + skel(200, 1) + '</div><div class="card" style="flex:1 1 360px" id="fsteps">' + skel(18, 9) + '</div></div>' +
-      '<div class="row">' + (kind === 'brand' ? '<div class="card" style="flex:999 1 480px" id="fmovers">' + skel(30, 8) + '</div>' : '<div class="card" style="flex:999 1 480px" id="fcalls">' + skel(50, 5) + '</div>') + '<div class="card" style="flex:1 1 360px" id="fmix">' + skel(20, 10) + '</div></div>');
+      '<div class="row">' + (kind === 'brand' ? '<div class="card" style="flex:999 1 480px" id="fmovers">' + skel(30, 8) + '</div>' : '<div class="card" style="flex:999 1 480px" id="fcalls">' + skel(50, 5) + '</div>') + '<div class="card" style="flex:1 1 360px" id="fmix">' + skel(20, 10) + '</div></div>' +
+      '<div class="card" id="fxfer">' + skel(30, 4) + '</div>');
     var brand = kind === 'brand' ? name : null, agent = kind === 'csr' ? name : null;
     loadFocus(brand, agent).then(function (f) {
       if (tok !== T) return;
-      focusKpis(f); focusWeekly(f); stepCard(f, 'fsteps', brand, agent); focusMix(f, brand, agent);
+      focusKpis(f); focusWeekly(f); stepCard(f, 'fsteps', brand, agent); focusMix(f, brand, agent); focusXfer(f, kind);
       if (kind === 'brand') focusMovers(f);
     }).catch(function (e) { if (tok === T) $('fk').innerHTML = errBox(e); });
     if (kind === 'csr') api(Object.assign({ action: 'calls' }, win({ agent: agent, limit: 6 }))).then(function (c) { if (tok !== T) return; $('fcalls').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start"><div><h2 class="ttl">Recent calls</h2><p class="sub">' + fmt(c.total) + ' scored calls in this period</p></div><button class="more" data-callsfor="csr">All →</button></div>' + (c.rows || []).map(callRow).join(''); }).catch(function () {});
@@ -461,6 +467,19 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     lastFocus = f;
   }
   var lastFocus = null;
+  function focusXfer(f, kind) {
+    var x = f.transfers || {}, cur = (f.kpis || {}).cur || {};
+    var who = kind === 'brand' ? 'this brand’s CSRs' : esc(S.agent);
+    var list = function (rows, attr) { return (rows || []).map(function (r) { return '<button class="click" data-agent="' + esc(r.k) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;justify-content:space-between;gap:10px;padding:8px 2px;border-top:1px solid var(--line2);font-size:12.5px"><span style="display:flex;gap:8px;align-items:center">' + avatar(r.k, 24) + esc(r.k) + '</span><span class="num mut">' + fmt(r.n) + (r.booked != null ? ' · ' + fmt(r.booked) + ' booked' : '') + '</span></button>'; }).join('') || '<p class="mut" style="font-size:12.5px">None matched in this period.</p>'; };
+    var outPct = cur.calls ? Math.round(x.out / cur.calls * 100) : 0;
+    var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">Transfers</h2><p class="sub">Outbound = calls ' + who + ' transferred to someone else · Inbound = calls ' + who + ' received from a colleague</p></div><div class="row" style="gap:8px"><button class="sel" data-xferlist="out">Outbound calls →</button><button class="sel" data-xferlist="in">Inbound calls →</button></div></div>' +
+      '<div class="row" style="margin-top:12px;align-items:flex-start">' +
+      '<div style="flex:1 1 300px;min-width:0"><div style="display:flex;align-items:baseline;gap:10px"><span class="num" style="font-size:28px;font-weight:600">↗ ' + fmt(x.out) + '</span><span class="mut" style="font-size:12.5px">' + outPct + '% of calls · was ' + fmt(x.out_prev) + '</span></div>' +
+      '<div class="mut" style="font-size:12px;margin:6px 0 4px">' + fmt(x.out_linked) + ' matched to the receiving call · <b style="color:#1F5A41">' + fmt(x.out_booked) + ' booked after the transfer</b></div><div class="cap" style="margin-top:10px">Who received them</div>' + list(x.to) + '</div>' +
+      '<div style="flex:1 1 300px;min-width:0"><div style="display:flex;align-items:baseline;gap:10px"><span class="num" style="font-size:28px;font-weight:600">↘ ' + fmt(x.in) + '</span><span class="mut" style="font-size:12.5px">received</span></div>' +
+      '<div class="mut" style="font-size:12px;margin:6px 0 4px">' + (x.in_decided ? '<b style="color:#1F5A41">' + Math.round(x.in_booked / x.in_decided * 100) + '% booked</b> when a decision was made (' + fmt(x.in_booked) + ' of ' + fmt(x.in_decided) + ')' : 'No booking decisions yet') + '</div><div class="cap" style="margin-top:10px">Who sent them</div>' + list(x.from) + '</div></div>';
+    $('fxfer').innerHTML = h;
+  }
 
   // ---------- CSRs ----------
   function vCsrs(tok) {
@@ -468,15 +487,15 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     Promise.all([loadReport(), loadPrevReport()]).then(function (r) {
       if (tok !== T) return; noteKnown(r[0]);
       var rows = agentRows(r[0], r[1], S.csrMin || 25), key = S.csrSort;
-      var f = { calls: function (a) { return -a.calls; }, avg: function (a) { return -(a.avg || 0); }, change: function (a) { return a.pavg == null ? 99 : a.avg - a.pavg; }, rate: function (a) { return -(a.rate || 0); }, ask: function (a) { return (a.ask == null ? 999 : a.ask); }, name: function (a) { return 0; } }[key];
+      var f = { calls: function (a) { return -a.calls; }, avg: function (a) { return -(a.avg || 0); }, change: function (a) { return a.pavg == null ? 99 : a.avg - a.pavg; }, rate: function (a) { return -(a.rate || 0); }, ask: function (a) { return (a.ask == null ? 999 : a.ask); }, xo: function (a) { return -a.xo; }, xi: function (a) { return -a.xi; }, name: function (a) { return 0; } }[key];
       rows.sort(key === 'name' ? function (a, b) { return a.name.localeCompare(b.name); } : function (a, b) { return f(a) - f(b); });
       var q = (S.csrQ || '').toLowerCase(); if (q) rows = rows.filter(function (a) { return a.name.toLowerCase().indexOf(q) >= 0 || (a.brand || '').toLowerCase().indexOf(q) >= 0; });
       var th = function (k, l, t) { return '<th class="sortable" data-csort="' + k + '" title="' + esc(t) + '">' + l + (key === k ? ' ↓' : '') + '</th>'; };
       var h = '<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">CSR scorecards</h2><p class="sub">' + rows.length + ' CSRs with ' + (S.csrMin || 25) + '+ calls · click a header to sort, a row to open the CSR</p></div><div class="row" style="gap:8px"><label class="sr" for="csrq">Find a CSR</label><input id="csrq" class="field" style="width:220px" placeholder="Find a CSR or brand…" value="' + esc(S.csrQ || '') + '"><select id="csrmin" class="field" style="width:auto" aria-label="Minimum calls"><option value="10"' + (S.csrMin == 10 ? ' selected' : '') + '>10+ calls</option><option value="25"' + (!S.csrMin || S.csrMin == 25 ? ' selected' : '') + '>25+ calls</option><option value="100"' + (S.csrMin == 100 ? ' selected' : '') + '>100+ calls</option></select></div></div>' +
-        '<div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13.5px"><thead><tr>' + th('name', 'CSR', 'Sort by name') + '<th>Brand</th>' + th('calls', 'Calls', 'Conversations scored') + th('avg', 'Avg score', 'Average QA score') + th('change', 'Change', 'vs previous period') + th('rate', 'Booking', 'Booked ÷ decided calls') + th('ask', 'Ask rate', 'Lowest first') + '<th>Cards</th><th></th></tr></thead><tbody>';
+        '<div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13.5px"><thead><tr>' + th('name', 'CSR', 'Sort by name') + '<th>Brand</th>' + th('calls', 'Calls', 'Conversations scored') + th('avg', 'Avg score', 'Average QA score') + th('change', 'Change', 'vs previous period') + th('rate', 'Booking', 'Booked ÷ decided calls') + th('ask', 'Ask rate', 'Lowest first') + th('xo', 'Transfers out', 'Calls this CSR transferred to someone else') + th('xi', 'Transfers in', 'Calls this CSR received from a colleague') + '<th>Cards</th><th></th></tr></thead><tbody>';
       rows.slice(0, 150).forEach(function (a) {
         h += '<tr class="click" data-agent="' + esc(a.name) + '" tabindex="0"><td><div style="display:flex;align-items:center;gap:12px">' + avatar(a.name, 32) + '<b style="font-weight:600">' + esc(a.name) + '</b></div></td><td class="mut">' + esc(short(a.brand)) + '</td><td class="num">' + fmt(a.calls) + '</td><td class="num">' + (a.avg != null ? a.avg.toFixed(1) : '—') + '</td><td>' + delta(a.avg, a.pavg, '') + '</td>' +
-          '<td><div style="display:flex;align-items:center;gap:8px;min-width:120px"><span class="num" style="width:40px">' + (a.rate != null ? a.rate.toFixed(0) + '%' : '—') + '</span><div class="track" style="flex:1"><div style="background:' + ((a.rate || 0) >= 60 ? G : O) + ';width:' + (a.rate || 0) + '%"></div></div></div></td><td class="num">' + (a.ask != null ? a.ask.toFixed(0) + '%' : '—') + '</td><td class="num mut">' + fmt(a.cc) + '</td><td class="mut" aria-hidden="true">›</td></tr>';
+          '<td><div style="display:flex;align-items:center;gap:8px;min-width:120px"><span class="num" style="width:40px">' + (a.rate != null ? a.rate.toFixed(0) + '%' : '—') + '</span><div class="track" style="flex:1"><div style="background:' + ((a.rate || 0) >= 60 ? G : O) + ';width:' + (a.rate || 0) + '%"></div></div></div></td><td class="num">' + (a.ask != null ? a.ask.toFixed(0) + '%' : '—') + '</td><td class="num">' + fmt(a.xo) + ' <span class="mut" style="font-size:11px">' + (a.calls ? Math.round(a.xo / a.calls * 100) + '%' : '') + '</span></td><td class="num">' + fmt(a.xi) + '</td><td class="num mut">' + fmt(a.cc) + '</td><td class="mut" aria-hidden="true">›</td></tr>';
       });
       $('csrall').innerHTML = h + '</tbody></table></div>';
       var qi = $('csrq'); if (qi && S.csrFocus) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
@@ -495,13 +514,15 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     if (c.scoreMin != null) chips.push(['Score ≥ ' + c.scoreMin, 'scoreMin']);
     if (c.q) chips.push(['“' + c.q + '”', 'q']);
     if (c.nocard) chips.push(['Booked, no card', 'nocard']);
+    if (c.xfer) chips.push([c.xfer === 'out' ? 'Transferred out' : 'Transferred in', 'xfer']);
     setMain(crumb([['Call reviews']]) + '<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">Call reviews</h2><p class="sub" id="ctot">Loading…</p></div>' +
-      '<form id="callq" class="row" style="gap:8px"><label class="sr" for="cq">Search calls</label><input id="cq" class="field" style="width:230px" placeholder="Search summaries, CSRs, brands…" value="' + esc(c.q || '') + '"><select id="co" class="field" style="width:auto" aria-label="Outcome">' + OUTCOMES.map(function (o) { return '<option value="' + o[0] + '"' + ((c.outcome || '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
+      '<form id="callq" class="row" style="gap:8px"><label class="sr" for="cq">Search calls</label><input id="cq" class="field" style="width:230px" placeholder="Search summaries, CSRs, brands, phone…" value="' + esc(c.q || '') + '"><select id="co" class="field" style="width:auto" aria-label="Outcome">' + OUTCOMES.map(function (o) { return '<option value="' + o[0] + '"' + ((c.outcome || '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
       '<select id="cs2" class="field" style="width:auto" aria-label="Missed step"><option value="">Any step</option>' + Object.keys(STEPNAMES).map(function (k) { return '<option value="' + k + '"' + (c.step === k ? ' selected' : '') + '>Missed: ' + STEPNAMES[k] + '</option>'; }).join('') + '</select>' +
+      '<select id="cxf" class="field" style="width:auto" aria-label="Transfers"><option value="">Any transfer</option><option value="out"' + (c.xfer === 'out' ? ' selected' : '') + '>Transferred out</option><option value="in"' + (c.xfer === 'in' ? ' selected' : '') + '>Transferred in</option></select>' +
       '<select id="csc" class="field" style="width:auto" aria-label="Score"><option value="">Any score</option><option value="max40"' + (c.scoreMax === 40 ? ' selected' : '') + '>40 or lower</option><option value="max70"' + (c.scoreMax === 70 ? ' selected' : '') + '>70 or lower</option><option value="min90"' + (c.scoreMin === 90 ? ' selected' : '') + '>90 or higher</option></select><button class="sel btnd" type="submit">Search</button></form></div>' +
       (chips.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">' + chips.map(function (ch) { return '<button class="chip on" data-unfilter="' + ch[1] + '" aria-label="Remove filter ' + esc(ch[0]) + '">' + esc(ch[0]) + ' ✕</button>'; }).join('') + '<button class="more" data-unfilter="all">Clear all</button></div>' : '') +
       '<div id="clist" style="margin-top:8px">' + skel(54, 6) + '</div><div id="cpager" class="row" style="justify-content:space-between;align-items:center;margin-top:10px"></div></div>');
-    var body = Object.assign({ action: 'calls' }, win({ agent: S.callsAgent || null, outcome: c.nocard ? 'Booked' : c.outcome, step_missed: c.nocard ? 'capture_payment' : c.step, score_max: c.scoreMax, score_min: c.scoreMin, winnable: c.winnable || null, q: c.q || null, limit: 25, offset: c.offset }));
+    var body = Object.assign({ action: 'calls' }, win({ agent: S.callsAgent || null, outcome: c.nocard ? 'Booked' : c.outcome, step_missed: c.nocard ? 'capture_payment' : c.step, score_max: c.scoreMax, score_min: c.scoreMin, winnable: c.winnable || null, xfer: c.xfer || null, q: c.q || null, limit: 25, offset: c.offset }));
     api(body).then(function (r) {
       if (tok !== T) return;
       $('ctot').textContent = fmt(r.total) + ' calls match · newest first · click one for the full review';
@@ -558,6 +579,39 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       '<div class="card"><h2 class="ttl">Score changes</h2><p class="sub">How your admins and managers can correct a score.</p><div style="font-size:13px;line-height:1.6;color:#3B4541;margin-top:10px">Change any step with a reason. The original AI score is always kept, every change is logged, and the Opsis CX Support team reviews them to improve the AI.</div><label style="display:flex;gap:10px;align-items:center;margin-top:12px;font-size:13px"><input type="checkbox" checked> CSRs can dispute their own scores</label><label style="display:flex;gap:10px;align-items:center;margin-top:8px;font-size:13px"><input type="checkbox"> Require a second approver for changes over 15 pts</label></div>' +
       '<div class="card"><h2 class="ttl">Scheduled reports</h2><p class="sub">Email any view to owners and regional managers.</p><div style="display:flex;justify-content:space-between;padding:9px 0;border-top:1px solid var(--line2);font-size:13px;margin-top:10px"><span>Weekly brand summary</span><span class="mut">Mondays 8am</span></div><div style="display:flex;justify-content:space-between;padding:9px 0;border-top:1px solid var(--line2);font-size:13px"><span>Daily card-capture report</span><span class="mut">Weekdays 7am</span></div><button class="sel" data-act="save" style="margin-top:8px">+ New schedule</button></div></div>');
   }
+  var QS = { live: true, types: [], sync: true, ivr: true, coach: true, autoflag: false, crm: false, threshold: '', csrs: [], emptyAgent: false, external: false, metrics: [], instructions: '', minLen: 30, sample: 100, sel: null };
+  function tog(key, title, desc) {
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 0;border-top:1px solid var(--line2)"><div><div style="font-weight:600">' + title + '</div><div class="mut" style="font-size:12.5px;margin-top:3px;line-height:1.45">' + desc + '</div></div>' +
+      '<button role="switch" aria-checked="' + !!QS[key] + '" aria-label="' + esc(title) + '" data-qtog="' + key + '" style="flex-shrink:0;width:48px;height:28px;border-radius:999px;border:none;cursor:pointer;position:relative;background:' + (QS[key] ? G : '#D5CFC4') + '"><span style="position:absolute;top:3px;left:' + (QS[key] ? '23px' : '3px') + ';width:22px;height:22px;border-radius:999px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .15s"></span></button></div>';
+  }
+  function chipsOf(arr, key, empty) {
+    return arr.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">' + arr.map(function (v, i) { return '<button class="chip on" data-qrm="' + key + '|' + i + '" aria-label="Remove ' + esc(v.name || v) + '">' + esc(v.name ? v.name + ' · ' + v.points + ' pts' : v) + ' ✕</button>'; }).join('') + '</div>' : '<div class="mut" style="font-size:12.5px;margin-top:8px">' + empty + '</div>';
+  }
+  function vQaSettings() {
+    var TYPES = ['Conversation', 'Voicemail', 'Internal', 'IVR only', 'Wrong number', 'Spam', 'Outbound', 'Inbound', 'Transferred'];
+    var section = function (title, desc, body, btn) { return '<div style="padding:16px 0;border-top:1px solid var(--line2)"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="font-weight:600">' + title + '</div><div class="mut" style="font-size:12.5px;margin-top:3px;line-height:1.45">' + desc + '</div></div>' + (btn || '') + '</div>' + body + '</div>'; };
+    var h = crumb([['QA settings']]) + '<div class="row" style="align-items:flex-start"><div class="card" style="flex:999 1 560px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><h2 class="ttl">QA settings</h2><p class="sub">Configure which calls are included in the QA process and how they’re scored.</p></div><button data-qtog="live" class="pill" style="border:none;cursor:pointer;font-size:12.5px;padding:7px 12px;' + (QS.live ? 'background:#E6F0EA;color:#1F5A41' : 'background:#F3F1EC;color:#56605B') + '">' + (QS.live ? '● Live' : '○ Paused') + '</button></div>' +
+      section('Call types', 'Select which call types should be included in the QA process.', chipsOf(QS.types, 'types', 'No call types selected — all types will be included.') + (QS.sel === 'types' ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">' + TYPES.filter(function (t) { return QS.types.indexOf(t) < 0; }).map(function (t) { return '<button class="chip" data-qadd="types|' + t + '">+ ' + t + '</button>'; }).join('') + '</div>' : ''), '<button class="sel" data-qsel="types">+ Add call type</button>') +
+      section('Minimum call length', 'Skip very short calls (hang-ups, misdials).', '<div style="display:flex;align-items:center;gap:8px;margin-top:10px"><label class="sr" for="qmin">Minimum seconds</label><input id="qmin" class="field" style="width:110px" type="number" min="0" value="' + QS.minLen + '"><span class="mut">seconds</span></div>') +
+      section('Sample rate', 'Score every call, or a share of them.', '<div style="display:flex;align-items:center;gap:8px;margin-top:10px"><label class="sr" for="qsample">Sample percent</label><input id="qsample" class="field" style="width:110px" type="number" min="1" max="100" value="' + QS.sample + '"><span class="mut">% of eligible calls</span></div>') +
+      tog('sync', 'Sync missing call reasons', 'Apply a call reason to a call when the phone system didn’t record one.') +
+      tog('ivr', 'IVR in call recordings', 'Turn on if your recordings include the phone menu, so it isn’t scored as the CSR.') +
+      tog('coach', 'CSR Coach', 'AI-powered coaching notes, weekly focus and example calls for each CSR.') +
+      tog('autoflag', 'Auto-accept flags', 'Accept CSR score disputes automatically, without manual review.') +
+      tog('crm', 'Push job summary to CRM', 'Send the full QA booking summary to the linked job in your CRM.') +
+      section('Missed opportunity threshold', 'Minimum estimated job value that triggers a missed-opportunity alert.', '<div style="display:flex;align-items:center;gap:8px;margin-top:10px"><span class="mut">$</span><label class="sr" for="qthr">Threshold in dollars</label><input id="qthr" class="field" style="width:160px" type="number" min="0" placeholder="e.g. 500" value="' + esc(QS.threshold) + '"></div>') +
+      section('CSR selection', 'Choose specific CSRs to include in QA review.', chipsOf(QS.csrs, 'csrs', 'No CSRs selected — all CSRs will be included in QA review.') + (QS.sel === 'csrs' ? '<div style="margin-top:10px"><label class="sr" for="qcsr">Find a CSR</label><input id="qcsr" class="field" list="qcsrlist" placeholder="Start typing a name…"><datalist id="qcsrlist">' + KNOWN.agents.map(function (a) { return '<option value="' + esc(a) + '">'; }).join('') + '</datalist><button class="sel btnd" data-qaddcsr="1" style="margin-top:8px">Add</button></div>' : ''), '<button class="sel" data-qsel="csrs">+ Add CSR</button>') +
+      tog('emptyAgent', 'Treat empty agent as CSR', 'Include calls that have no assigned agent in QA review.') +
+      tog('external', 'Treat external agent as CSR', 'Include calls handled by external agents (with external IDs) in QA review.') +
+      section('Score metrics', 'Add your own scoring items on top of the 11-step rubric (positive points only).', chipsOf(QS.metrics, 'metrics', 'No custom metrics yet.') + (QS.sel === 'metrics' ? '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><label class="sr" for="qmn">Metric</label><input id="qmn" class="field" style="flex:1 1 220px" placeholder="e.g. Mentioned the maintenance plan"><label class="sr" for="qmp">Points</label><input id="qmp" class="field" style="width:100px" type="number" min="1" placeholder="Points"><button class="sel btnd" data-qaddmetric="1">Add</button></div>' : ''), '<button class="sel" data-qsel="metrics">+ Add metric</button>') +
+      section('Call reason & lead detection', 'Tell the AI how to classify call reasons and spot leads for your business.', QS.sel === 'instr' ? '<div style="margin-top:10px"><label class="sr" for="qins">Instructions</label><textarea id="qins" class="field" style="min-height:110px" placeholder="e.g. Calls about a door that won’t close are a repair lead, even if the caller only asks about price.">' + esc(QS.instructions) + '</textarea><button class="sel btnd" data-qsaveins="1" style="margin-top:8px">Save instructions</button></div>' : (QS.instructions ? '<div style="font-size:12.5px;margin-top:8px;background:#F5F3EE;border-radius:10px;padding:10px">' + esc(QS.instructions) + '</div>' : ''), '<button class="sel" data-qsel="instr">Manage instructions</button>') +
+      section('Custom tags', 'Custom tags live with your reports.', '', '<button class="sel" data-go="settings">Manage custom tags →</button>') +
+      '<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="sel btnd" data-act="save">Save QA settings</button></div></div>' +
+      '<div class="card" style="flex:1 1 300px"><h2 class="ttl">How this works</h2><p class="sub" style="line-height:1.6">Changes apply to new calls. Every change is logged with who made it, and the Opsis CX Support team is notified so scoring stays consistent across your brands.</p><div class="cap" style="margin-top:16px">Scoring right now</div><div style="font-size:13px;line-height:1.8;margin-top:6px">' + (QS.live ? 'Live' : 'Paused') + ' · ' + (QS.types.length ? QS.types.length + ' call types' : 'all call types') + ' · ' + (QS.csrs.length ? QS.csrs.length + ' CSRs' : 'all CSRs') + ' · ' + QS.sample + '% sample · ' + QS.minLen + 's minimum</div></div></div>';
+    setMain(h);
+  }
+  function keepQs() { var a = $('qmin'), b = $('qsample'), c = $('qthr'); if (a) QS.minLen = +a.value || 0; if (b) QS.sample = Math.min(100, Math.max(1, +b.value || 100)); if (c) QS.threshold = c.value; }
   function vTeam() {
     var roles = [['Client admin', 'Everything below, plus users, settings and knowledge base', ['See all brands', 'Change scores', 'Edit knowledge base', 'Manage settings', 'Invite users']], ['Brand manager', 'Their brands only — coach, add notes, change scores', ['See own brands', 'Change scores', 'Add notes', 'Send to CSR']], ['Viewer', 'Read-only dashboards and reports', ['See assigned brands', 'Export']], ['CSR', 'Only their own calls and scorecard', ['See own calls', 'Dispute a score']]];
     setMain(crumb([['Team & access']]) + '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr))">' + roles.map(function (r) { return '<div class="card"><b style="font-size:15px">' + r[0] + '</b><div class="mut" style="font-size:12.5px;margin-top:4px;line-height:1.45">' + r[1] + '</div><div style="display:flex;flex-direction:column;gap:6px;margin-top:12px">' + r[2].map(function (p) { return '<div style="font-size:12.5px;display:flex;gap:8px"><span style="color:' + G + '">✓</span>' + p + '</div>'; }).join('') + '</div></div>'; }).join('') + '</div>' +
@@ -582,11 +636,18 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     var steps = c.steps || [], e = 0, m = 0, changed = false;
     steps.forEach(function (s) { var a = ans(s), mx = +s.max || +s.points || 0; m += mx; if (a !== 'no') e += mx; if (S.adj[S.callId + '|' + s.key]) changed = true; });
     var sc = changed && m ? Math.round(e / m * 100) : c.score, col = sc >= 80 ? G : (sc >= 60 ? '#E8A06A' : O), yn = function (v) { return v === true ? '<b style="color:#1F5A41">Yes</b>' : (v === false ? '<b style="color:#A61B1B">No</b>' : (v === 'yes' ? '<b style="color:#1F5A41">Yes</b>' : (v === 'no' ? '<b style="color:#A61B1B">No</b>' : '<b class="mut">N/A</b>'))); };
-    var h = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><div class="cap">Call review</div><div style="font-size:22px;font-weight:600;letter-spacing:-0.025em;margin-top:4px">' + esc(c.agent || 'Unknown CSR') + ' · ' + esc(short(c.brand)) + '</div><div class="mut" style="font-size:12.5px">' + fdate(c.date) + ' · ' + esc(c.direction || '') + ' · ' + fsecs(c.secs) + '</div></div><button class="sel" data-close="1" aria-label="Close" style="width:44px;justify-content:center">✕</button></div>' +
+    var h = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><div class="cap">Call review</div><div style="font-size:22px;font-weight:600;letter-spacing:-0.025em;margin-top:4px">' + esc(c.agent || 'Unknown CSR') + ' · ' + esc(short(c.brand)) + '</div><div class="mut" style="font-size:12.5px">' + fdate(c.date) + ' · ' + esc(c.direction || '') + ' · ' + fsecs(c.secs) + (c.phone ? ' · ' + esc(c.phone) : '') + '</div></div><button class="sel" data-close="1" aria-label="Close" style="width:44px;justify-content:center">✕</button></div>' +
       '<div class="card" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:96px;height:96px;flex-shrink:0"><svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="Score ' + sc + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + (sc / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span class="num" style="font-size:24px;font-weight:600">' + sc + '</span><span class="mut" style="font-size:9.5px">brand avg ' + (c.brand_avg || '—') + '</span></div></div>' +
       '<div style="flex:1;min-width:220px"><div class="row" style="gap:6px"><span class="pill" style="' + chipOut(c.outcome) + '">' + esc(c.outcome || '—') + '</span>' + (c.winnable ? '<span class="pill" style="background:#FFF4E8;color:#9A4A0B">Winnable</span>' : '') + (c.reason ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(c.reason) + '</span>' : '') + (c.topics || []).slice(0, 3).map(function (t) { return '<span class="pill" style="background:#E6F0EA;color:#1F5A41">' + esc(t) + '</span>'; }).join('') + '</div>' +
       (c.caller_wanted ? '<div style="margin-top:10px"><div class="cap">Caller wanted</div><div style="margin-top:3px;line-height:1.45">' + esc(c.caller_wanted) + '</div></div>' : '') + '</div>' +
       (changed ? '<div style="flex-basis:100%;background:#FFF8E8;border:1px solid #F0DDB0;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#6B4E12">Score changed by <b>GarageCo admin</b> from ' + c.score + ' to ' + sc + '. The original AI score is kept, the change is logged, and the Opsis CX Support team is notified. <button class="more" data-act="undo">Undo</button></div>' : '') + '</div>';
+    if (c.xfer_out || c.xfer_in) {
+      var leg = c.xfer_out ? c.xfer_to : c.xfer_from;
+      h += '<div class="card" style="background:#F3F4FA;border-color:#D9DCEE"><b style="color:#3A4380">' + (c.xfer_out ? '↗ Outbound transfer' : '↘ Inbound transfer') + '</b><div style="font-size:13px;line-height:1.5;margin-top:6px">' +
+        (c.xfer_out ? esc(c.agent || 'This CSR') + ' transferred this call' + (leg ? ' to <b>' + esc(leg.agent || 'a colleague') + '</b>' + (leg.outcome ? ', and it ended <b>' + esc(leg.outcome) + '</b>' : '') : ' — the receiving call wasn’t matched yet') + '.'
+          : esc(c.agent || 'This CSR') + ' received this call' + (leg ? ' from <b>' + esc(leg.agent || 'a colleague') + '</b>' : '') + '.') +
+        '</div>' + (leg && leg.id ? '<button class="sel" data-call="' + leg.id + '" style="margin-top:10px">Open the ' + (c.xfer_out ? 'receiving' : 'original') + ' call' + (leg.score != null ? ' (score ' + leg.score + ')' : '') + ' →</button>' : '') + '</div>';
+    }
     h += '<div class="card" style="background:#FFF8F0;border-color:#F6D9B8"><b style="color:#7A3A08">Revenue &amp; conversion</b><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr));margin-top:10px;font-size:13px"><div><div class="cap" style="color:#7A5A3A">Asked to book</div>' + yn(c.asked_for_booking) + '</div><div><div class="cap" style="color:#7A5A3A">Info before price</div>' + yn(c.info_before_pricing) + '</div><div><div class="cap" style="color:#7A5A3A">Fee expectations</div>' + yn(c.set_fee_expectations) + '</div><div><div class="cap" style="color:#7A5A3A">Card asked</div>' + yn(c.asked_for_cc) + '</div></div>' + (c.revenue_tip ? '<div style="font-size:13px;line-height:1.5;margin-top:10px"><b>Biggest revenue lever:</b> ' + esc(c.revenue_tip) + '</div>' : '') + '</div>';
     if ((c.risk_flags || []).length) h += '<div class="card" style="background:#FDF0F0;border-color:#F3C9C9"><b style="color:#8A1515">Risk flags</b><ul style="margin:8px 0 0;padding-left:18px;font-size:13px;line-height:1.5">' + c.risk_flags.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul></div>';
     if (c.summary) h += '<div class="card"><b>Summary</b><div style="line-height:1.6;margin-top:6px;font-size:13.5px">' + esc(c.summary) + '</div></div>';
@@ -671,10 +732,10 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
   }
   function render() {
     T++; var tok = T; renderNav(); writeHash();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, calls: vCalls, insights: vInsights, kb: vKb, settings: vSettings, team: vTeam }[S.view] || vOverview;
+    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, calls: vCalls, insights: vInsights, kb: vKb, settings: vSettings, team: vTeam, qasettings: vQaSettings }[S.view] || vOverview;
     v(tok);
     var af = $('askform'); if (af) af.addEventListener('submit', function (e) { e.preventDefault(); var q = $('askq').value; $('askq').value = ''; ask(q); });
-    var cf = $('callq'); if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.offset = 0; render(); });
+    var cf = $('callq'); if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
     var cq = $('csrq'); if (cq) cq.addEventListener('input', function () { S.csrQ = cq.value; S.csrFocus = true; clearTimeout(cq.t); cq.t = setTimeout(render, 250); });
     var cm = $('csrmin'); if (cm) cm.addEventListener('change', function () { S.csrMin = +cm.value; render(); });
   }
@@ -700,7 +761,19 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       if (t === chg || t.closest('[data-closechg]')) { chg.remove(); return; }
       return;
     }
-    var el = t.closest('[data-go],[data-brand],[data-agent],[data-call],[data-close],[data-kpi],[data-step],[data-ask],[data-pop],[data-range],[data-act],[data-bsort],[data-csort],[data-mix],[data-page],[data-unfilter],[data-callsfor],[data-change],[data-q],[data-outcome],[data-brandcb],[data-allbrands]');
+    var q = t.closest('[data-qtog],[data-qsel],[data-qadd],[data-qrm],[data-qaddcsr],[data-qaddmetric],[data-qsaveins]');
+    if (q) {
+      var qd = q.dataset; keepQs();
+      if (qd.qtog) QS[qd.qtog] = !QS[qd.qtog];
+      else if (qd.qsel) QS.sel = QS.sel === qd.qsel ? null : qd.qsel;
+      else if (qd.qadd) { var pr = qd.qadd.split('|'); QS[pr[0]].push(pr[1]); }
+      else if (qd.qrm) { var pr2 = qd.qrm.split('|'); QS[pr2[0]].splice(+pr2[1], 1); }
+      else if (qd.qaddcsr) { var v = ($('qcsr').value || '').trim(); if (v && QS.csrs.indexOf(v) < 0) QS.csrs.push(v); }
+      else if (qd.qaddmetric) { var mn = $('qmn').value.trim(), mp = +$('qmp').value; if (!mn || !(mp > 0)) { toast('Add a name and a positive number of points.'); return; } QS.metrics.push({ name: mn, points: mp }); QS.sel = null; }
+      else if (qd.qsaveins) { QS.instructions = $('qins').value.trim(); QS.sel = null; toast('Instructions saved (preview)'); }
+      vQaSettings(); return;
+    }
+    var el = t.closest('[data-go],[data-brand],[data-agent],[data-call],[data-close],[data-kpi],[data-step],[data-ask],[data-pop],[data-range],[data-act],[data-bsort],[data-csort],[data-mix],[data-page],[data-unfilter],[data-callsfor],[data-xferlist],[data-change],[data-q],[data-outcome],[data-brandcb],[data-allbrands]');
     if (S.pop && !t.closest('.pop') && !t.closest('[data-pop]')) { S.pop = null; render(); if (!el) return; }
     if (!el) return;
     var d = el.dataset;
@@ -722,6 +795,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       openCalls(map[d.kpi]);
     }
     else if (d.step) { openCalls({ step: d.step }, d.sagent || null); if (d.sbrand) { S.brands = [d.sbrand]; render(); } }
+    else if (d.xferlist) { if (S.view === 'csr') openCalls({ xfer: d.xferlist }, S.agent); else { S.brands = [S.brand]; openCalls({ xfer: d.xferlist }); } }
     else if (d.callsfor) { if (d.callsfor === 'csr') openCalls({}, S.agent); else { S.brands = [S.brand]; openCalls({}); } }
     else if (d.ask) { ask(d.ask); }
     else if (d.q !== undefined || d.outcome) { openCalls({ q: d.q || '', outcome: d.outcome || null }); }
