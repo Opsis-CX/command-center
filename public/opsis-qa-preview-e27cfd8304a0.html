@@ -194,7 +194,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
   // ---------------- nav + top bar ----------------
   var NAV = [['', [['overview', 'Overview'], ['insights', 'Insights'], ['phone', 'Phone stats'], ['brands', 'Brands'], ['csrs', 'CSRs'], ['calls', 'Call reviews']]], ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base'], ['settings', 'Tags & reports'], ['team', 'Team & access']]]];
   function renderNav() {
-    var cur = S.view === 'brand' ? 'brands' : (S.view === 'csr' ? 'csrs' : S.view);
+    var cur = S.view === 'brand' ? 'brands' : (S.view === 'csr' ? 'csrs' : (S.view === 'repeat' ? 'insights' : S.view));
     $('nav').innerHTML = NAV.map(function (sec) {
       return (sec[0] ? '<div class="navsec">' + sec[0] + '</div>' : '') + sec[1].map(function (n) {
         return '<button class="' + (cur === n[0] ? 'on' : '') + '" data-go="' + n[0] + '"' + (cur === n[0] ? ' aria-current="page"' : '') + '><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + iconPath(n[0]) + '"/></svg>' + n[1] + '</button>';
@@ -589,11 +589,8 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
           return '<' + (attr ? 'button class="click" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:grid"' : 'div style="display:grid"') + attr + ' style="grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) 60px;gap:12px;align-items:center;font-size:12.5px;padding:6px 2px"><span>' + esc(r.k) + '</span><span class="track" style="height:8px;display:block"><span style="display:block;height:100%;border-radius:999px;background:' + g[3] + ';width:' + (r.n / max * 100).toFixed(1) + '%"></span></span><span class="num mut" style="text-align:right">' + fmt(r.n) + '</span></' + (attr ? 'button' : 'div') + '>';
         }).join('') + '</div></div>';
       }).join('');
-      var rp = rep.repeat || {};
-      h += '<div class="card"><h2 class="ttl">Repeat callers</h2><p class="sub">Customers who called 3+ times in one day</p><div style="display:flex;align-items:baseline;gap:10px;margin:12px 0"><span class="num" style="font-size:30px;font-weight:600">' + (rp.customers ? (rp.repeat_customers / rp.customers * 100).toFixed(1) + '%' : '—') + '</span><span class="mut">' + fmt(rp.repeat_customers) + ' of ' + fmt(rp.customers) + ' customers</span></div>' + (rp.top || []).slice(0, 6).map(function (t) { return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line2);font-size:12.5px"><span><b class="num">' + esc(t.phone) + '</b> <span class="mut">· ' + esc(short(t.brand)) + '</span></span><span class="mut">' + t.n + ' calls · ' + fdate(t.call_date) + ' · ' + esc(t.last_outcome || '') + '</span></div>'; }).join('') + '</div>';
-      var hs = rep.hours_split || {}, reg = hs.regular || {}, aft = hs.after || {};
-      h += '<div class="card"><h2 class="ttl">Business hours vs after hours</h2><p class="sub">Mon–Fri 8a–6p (customer’s local time) vs everything else</p><div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:12px"><div style="background:#F5F3EE;border-radius:12px;padding:14px"><div class="cap">Business hours</div><div class="num" style="font-size:24px;font-weight:600;margin-top:6px">' + p1(pct(reg.booked, reg.decided)) + '</div><div class="mut" style="font-size:12px">booked · score ' + (reg.avg || '—') + ' · ' + fmt(reg.calls) + ' calls</div></div><div style="background:#FFF4E8;border-radius:12px;padding:14px"><div class="cap">After hours</div><div class="num" style="font-size:24px;font-weight:600;margin-top:6px">' + p1(pct(aft.booked, aft.decided)) + '</div><div class="mut" style="font-size:12px">booked · score ' + (aft.avg || '—') + ' · ' + fmt(aft.calls) + ' calls</div></div></div></div>';
-      $('ins').innerHTML = h;
+      h += '<div class="card" id="repcard">' + skel(30, 6) + '</div><div class="card" id="aicard">' + skel(30, 6) + '</div>';
+      $('ins').innerHTML = h; repeatCard(); aiCard();
     }).catch(function (e) { if (tok === T) $('ins').innerHTML = errBox(e); });
   }
 
@@ -770,6 +767,71 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
     var pq = $('phq'); if (pq) { pq.addEventListener('input', function () { S.phQ = pq.value; clearTimeout(pq.t); pq.t = setTimeout(function () { loadPhone().then(phoneCsrs).then(function () { var n = $('phq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }); }, 250); }); }
   }
 
+  var KIND = { customer: ['Customer', 'background:#E6F0EA;color:#1F5A41'], staff: ['Likely staff / tech', 'background:#E8EAF4;color:#3A4380'], no_conversation: ['No conversation', 'background:#F3F1EC;color:#56605B'], unclear: ['Unclear', 'background:#FFF4DE;color:#8A5A00'] };
+  var CLS = { conversation: 'Conversation', internal: 'Internal (staff)', voicemail: 'Voicemail', no_agent: 'No CSR on line', wrong_number: 'Wrong number', ivr_only: 'Phone menu only', spam: 'Spam', non_customer_call: 'Not a customer' };
+  function kindPill(k) { var x = KIND[k] || [k, 'background:#F3F1EC']; return '<span class="pill" style="' + x[1] + ';white-space:nowrap">' + x[0] + '</span>'; }
+  function loadRepeat(min, phone) { return api(Object.assign({ action: 'repeat', min: min || S.rmin || 3, phone: phone || null }, win())); }
+  function repeatCard() {
+    var el = $('repcard'); if (!el) return;
+    loadRepeat(3).then(function (r) {
+      var k = r.kinds || {}, rows = r.rows || [];
+      el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><h2 class="ttl">Repeat callers</h2><p class="sub">Numbers that called 3+ times in one day · click one to see every call</p></div><button class="more" data-go="repeat">See all →</button></div>' +
+        '<div style="display:flex;align-items:baseline;gap:10px;margin:12px 0 8px"><span class="num" style="font-size:30px;font-weight:600">' + (r.customers ? (r.repeat / r.customers * 100).toFixed(1) + '%' : '—') + '</span><span class="mut">' + fmt(r.repeat) + ' of ' + fmt(r.customers) + ' numbers</span></div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">' + ['customer', 'staff', 'no_conversation', 'unclear'].filter(function (x) { return k[x]; }).map(function (x) { return '<button class="chip" data-rkind="' + x + '" style="font-size:12px">' + KIND[x][0] + ' · <b>' + fmt(k[x]) + '</b></button>'; }).join('') + '</div>' +
+        rows.slice(0, 6).map(function (t) { return '<button class="click" data-rphone="' + t.digits + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--line2);font-size:12.5px"><span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span><b class="num">' + esc(t.phone) + '</b> <span class="mut">· ' + esc(short(t.brand)) + '</span></span><span class="mut" style="font-size:11.5px">' + t.max_day + ' calls in one day · ' + fmt(t.calls) + ' total · ' + fmt(t.internal) + ' internal</span></span>' + kindPill(t.kind) + '</button>'; }).join('');
+    }).catch(function (e) { el.innerHTML = '<h2 class="ttl">Repeat callers</h2><p class="mut">' + esc(e.message) + '</p>'; });
+  }
+  function vRepeat(tok) {
+    setMain(crumb([['Insights', 'insights'], ['Repeat callers']]) + '<div class="card" id="repall">' + skel(30, 12) + '</div>');
+    loadRepeat(S.rmin || 3).then(function (r) {
+      if (tok !== T) return;
+      var k = r.kinds || {}, kind = S.rkind || '', q = (S.rq || '').replace(/\D/g, '');
+      var rows = (r.rows || []).filter(function (x) { return (!kind || x.kind === kind) && (!q || x.digits.indexOf(q) >= 0); });
+      var chips = '<div style="display:flex;flex-wrap:wrap;gap:6px">' + [['', 'All', r.repeat]].concat(['customer', 'staff', 'no_conversation', 'unclear'].map(function (x) { return [x, KIND[x][0], k[x] || 0]; })).map(function (c) { var on = kind === c[0]; return '<button class="chip' + (on ? ' on' : '') + '" data-rkind="' + c[0] + '" aria-pressed="' + on + '">' + c[1] + ' · ' + fmt(c[2]) + '</button>'; }).join('') + '</div>';
+      var h = '<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">Repeat callers</h2><p class="sub">' + fmt(r.repeat) + ' of ' + fmt(r.customers) + ' numbers called ' + (S.rmin || 3) + '+ times in one day. Tags come from what the calls were about: <b>likely staff / tech</b> means most calls were internal (a technician or office line), <b>customer</b> means there was a booking opportunity.</p></div>' +
+        '<div style="display:flex;gap:8px;align-items:center"><label class="sr" for="rq">Find a number</label><input id="rq" class="field" style="width:170px" placeholder="Search a number…" value="' + esc(S.rq || '') + '"><label class="sr" for="rmin">Calls in one day</label><select id="rmin" class="field" style="width:auto">' + [2, 3, 4, 5, 8].map(function (n) { return '<option value="' + n + '"' + ((S.rmin || 3) === n ? ' selected' : '') + '>' + n + '+ in a day</option>'; }).join('') + '</select></div></div>' +
+        '<div style="margin-top:12px">' + chips + '</div>' +
+        '<div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13px"><thead><tr><th>Number</th><th>Brand</th><th>Looks like</th><th class="num">Most in a day</th><th class="num">Total calls</th><th class="num">Days</th><th class="num">Conversations</th><th class="num">Internal</th><th class="num">Voicemail / other</th><th class="num">Booked</th><th class="num">Outbound</th><th>Last</th><th></th></tr></thead><tbody>' +
+        (rows.length ? rows.slice(0, 200).map(function (x) { return '<tr class="click" data-rphone="' + x.digits + '" tabindex="0"><td><b class="num">' + esc(x.phone) + '</b></td><td class="mut">' + esc(short(x.brand)) + (x.brands > 1 ? ' +' + (x.brands - 1) : '') + '</td><td>' + kindPill(x.kind) + '</td><td class="num">' + x.max_day + '</td><td class="num">' + fmt(x.calls) + '</td><td class="num">' + x.days + '</td><td class="num">' + fmt(x.conv) + '</td><td class="num">' + fmt(x.internal) + '</td><td class="num mut">' + fmt(x.vm + x.other) + '</td><td class="num">' + fmt(x.booked) + '</td><td class="num mut">' + fmt(x.outbound) + '</td><td class="mut">' + fdate(x.last_date) + ' · ' + esc(x.last_outcome || '') + '</td><td class="mut" aria-hidden="true">›</td></tr>'; }).join('') : '<tr><td colspan="13" class="mut">No numbers match.</td></tr>') +
+        '</tbody></table></div>';
+      $('repall').innerHTML = h;
+      var rq = $('rq'); if (rq) rq.addEventListener('input', function () { S.rq = rq.value; clearTimeout(rq.t); rq.t = setTimeout(function () { render(); var n = $('rq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250); });
+      var rm = $('rmin'); if (rm) rm.addEventListener('change', function () { S.rmin = +rm.value; render(); });
+    }).catch(function (e) { if (tok === T) $('repall').innerHTML = '<p class="mut">' + esc(e.message) + '</p>'; });
+  }
+  function phoneDrawer(digits) {
+    $('layer').innerHTML = '<div class="overlay" data-close="1"><div class="drawer" role="dialog" aria-modal="true" aria-label="Calls from this number" id="pd">' + skel(60, 1) + skel(50, 6) + '</div></div>';
+    loadRepeat(S.rmin || 3, digits).then(function (r) {
+      var el = $('pd'); if (!el) return;
+      var c = r.classes || {}, tot = r.total || 0, internal = c.internal || 0, conv = c.conversation || 0;
+      var verdict = internal >= Math.max(2, tot * 0.4) ? 'staff' : ((r.rows || []).some(function (x) { return x.outcome === 'Booked' || x.outcome === 'Not Booked'; }) ? 'customer' : (conv === 0 ? 'no_conversation' : 'unclear'));
+      var why = verdict === 'staff' ? internal + ' of ' + tot + ' calls were internal (staff talking to staff), so this is probably a technician’s or office phone.' : verdict === 'customer' ? 'Conversations include booking decisions, so this looks like a real customer.' : verdict === 'no_conversation' ? 'No real conversations: voicemails, phone-menu hang-ups or wrong numbers.' : 'Mixed. Read a few summaries below to decide.';
+      var h = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><div class="cap">Calls from this number</div><div class="num" style="font-size:24px;font-weight:600;letter-spacing:-0.02em;margin-top:4px">' + esc(r.phone) + '</div><div style="margin-top:8px">' + kindPill(verdict) + '</div></div><button class="sel" data-close="1" aria-label="Close">✕</button></div>' +
+        '<div class="card" style="padding:14px 16px"><div style="font-size:13px;line-height:1.5">' + esc(why) + '</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">' + Object.keys(c).sort(function (a, b) { return c[b] - c[a]; }).map(function (x) { return '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(CLS[x] || x) + ' · ' + c[x] + '</span>'; }).join('') + '</div>' +
+        '<div class="mut" style="font-size:12px;margin-top:10px">Talked to: ' + (r.agents || []).slice(0, 6).map(function (a) { return esc(a.agent || 'Unknown') + ' (' + a.n + ')'; }).join(', ') + '</div>' +
+        '<div class="mut" style="font-size:12px;margin-top:4px">Busiest days: ' + (r.days || []).slice().sort(function (a, b) { return b.n - a.n; }).slice(0, 4).map(function (d) { return fdate(d.call_date) + ' (' + d.n + ')'; }).join(', ') + '</div></div>' +
+        '<div class="card" style="padding:6px 16px">' + (r.rows || []).map(function (x) {
+          var open = x.scored && x.class === 'conversation';
+          return '<div ' + (open ? 'class="click" data-call="' + x.id + '" role="button" tabindex="0" ' : '') + 'style="padding:12px 0;border-bottom:1px solid var(--line2);' + (open ? 'cursor:pointer' : '') + '"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><span style="font-weight:600">' + esc(x.agent || 'Unknown') + (x.ai ? ' <span class="pill" style="background:#E8EAF4;color:#3A4380">AI agent</span>' : '') + ' <span class="mut" style="font-weight:400">· ' + (x.direction === 'outbound' ? 'Outbound' : 'Inbound') + '</span></span><span class="mut num" style="font-size:12px">' + fdate(x.date) + ' ' + fhour(x.hour) + ' · ' + fsecs(x.secs) + '</span></div>' +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(CLS[x.class] || x.class) + '</span>' + (x.outcome && x.outcome !== 'Internal' ? '<span class="pill" style="' + chipOut(x.outcome) + '">' + esc(x.outcome) + '</span>' : '') + (x.topic ? '<span class="mut" style="font-size:12px">' + esc(x.topic) + '</span>' : '') + (open && x.score != null ? '<span class="pill" style="' + chipScore(x.score) + '">' + x.score + '</span>' : '') + '</div>' +
+            (x.summary ? '<div style="font-size:12.5px;line-height:1.5;color:#3B4541;margin-top:6px">' + esc(x.summary) + '</div>' : '') + '</div>';
+        }).join('') + '</div>';
+      el.innerHTML = h;
+    }).catch(function (e) { var el = $('pd'); if (el) el.innerHTML = '<p class="mut">' + esc(e.message) + '</p>'; });
+  }
+  function aiCard() {
+    var el = $('aicard'); if (!el) return;
+    api(Object.assign({ action: 'ai' }, win())).then(function (r) {
+      var g = {}; (r.grid || []).forEach(function (x) { g[x.seg + (x.ai ? '|ai' : '|csr')] = x; });
+      var segs = [['open', 'Open hours', 'Mon–Fri 8a–6p'], ['early', 'Before 8am', 'weekdays'], ['evening', 'After 6pm', 'weekdays'], ['weekend', 'Weekends', 'Sat–Sun']];
+      var cell = function (x) { if (!x || !x.calls) return '<td class="mut">—</td>'; var rt = x.decided ? x.booked / x.decided * 100 : null; return '<td><b class="num">' + (rt != null ? rt.toFixed(0) + '%' : '—') + '</b> <span class="mut" style="font-size:11.5px">booked</span><div class="mut" style="font-size:11px">' + fmt(x.calls) + ' calls' + (x.decided < 30 ? ' · too few to judge' : '') + '</div></td>'; };
+      var ag = r.agents || [];
+      el.innerHTML = '<h2 class="ttl">Who handles calls, and when</h2><p class="sub">Booking rate on calls with a booking decision, by time of day (customer’s local time). AI agents only appear when their calls were recorded and scored here.</p>' +
+        '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>When</th><th>CSRs</th><th>AI agents</th></tr></thead><tbody>' + segs.map(function (s) { return '<tr><td><b>' + s[1] + '</b><div class="mut" style="font-size:11px">' + s[2] + '</div></td>' + cell(g[s[0] + '|csr']) + cell(g[s[0] + '|ai']) + '</tr>'; }).join('') + '</tbody></table></div>' +
+        (ag.length ? '<div style="margin-top:12px;font-size:12.5px"><div class="cap" style="margin-bottom:6px">AI agents</div>' + ag.map(function (a) { var rt = a.decided ? Math.round(a.booked / a.decided * 100) + '% booked' : 'no booking decisions'; return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line2)"><span class="lnk" data-agent="' + esc(a.agent) + '" role="button" tabindex="0">' + esc(a.agent) + '</span><span class="mut">' + fmt(a.calls) + ' calls · ' + rt + ' · score ' + (a.avg || '—') + ' · ' + fmt(a.after_hours) + ' after hours</span></div>'; }).join('') + '</div>' : '<p class="mut" style="font-size:12.5px;margin-top:10px">No AI agent calls were scored in this range.</p>');
+    }).catch(function (e) { el.innerHTML = '<h2 class="ttl">Who handles calls, and when</h2><p class="mut">' + esc(e.message) + '</p>'; });
+  }
+
   function crumb(parts) {
     return '<div class="crumb">' + parts.map(function (p, i) { return i === parts.length - 1 ? '<span style="color:var(--ink);font-weight:600">' + esc(p[0]) + '</span>' : '<button data-go="' + p[1] + '">' + esc(p[0]) + '</button><span aria-hidden="true">/</span>'; }).join('') + '</div>';
   }
@@ -884,7 +946,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
   }
   function render() {
     T++; var tok = T; renderNav(); writeHash();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, calls: vCalls, insights: vInsights, kb: vKb, settings: vSettings, team: vTeam, qasettings: vQaSettings }[S.view] || vOverview;
+    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, settings: vSettings, team: vTeam, qasettings: vQaSettings }[S.view] || vOverview;
     v(tok);
     var af = $('askform'); if (af) af.addEventListener('submit', function (e) { e.preventDefault(); var q = $('askq').value; $('askq').value = ''; ask(q); });
     var cf = $('callq'); if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
@@ -913,6 +975,10 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       if (t === chg || t.closest('[data-closechg]')) { chg.remove(); return; }
       return;
     }
+    var rph = t.closest('[data-rphone]');
+    if (rph) { phoneDrawer(rph.getAttribute('data-rphone')); return; }
+    var rk = t.closest('[data-rkind]');
+    if (rk) { S.rkind = rk.getAttribute('data-rkind'); if (S.view === 'repeat') render(); else go('repeat'); return; }
     var pm = t.closest('[data-pmode]');
     if (pm) { S.pmode = pm.getAttribute('data-pmode'); loadPhone().then(phoneChart); return; }
     var ps = t.closest('[data-psort]');
