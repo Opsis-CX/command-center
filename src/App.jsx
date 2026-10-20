@@ -49,6 +49,9 @@ import KnowledgeBase from './modules/KnowledgeBase'
 import Scorecard from './modules/Scorecard'
 import QualityAudit from './modules/QualityAudit'
 import CallQA from './modules/CallQA'
+// Opsis QA client portal v2 (2026-10-20): new look for garageco.opsiscx.com. Client logins get it
+// when clients.portal_v2 = true; Opsis QA staff can preview it at /opsis-qa.
+import OpsisQAPortal from './modules/OpsisQAPortal'
 import HelpCenter from './modules/HelpCenter'
 import Coaching from './modules/Coaching'
 import Tokens from './modules/Tokens'
@@ -167,7 +170,7 @@ function LiveStatusPage() {
   )
 }
 export default function App() {
-  const { session, loading, isAdmin, appRole, clientId, inTraining } = useAuth()
+  const { session, loading, isAdmin, appRole, clientId, inTraining, signOut } = useAuth()
   const [navOpen, setNavOpen] = useState(false)
   const location = useLocation()
   // apply the saved light/dark/system theme as early as possible
@@ -203,6 +206,13 @@ export default function App() {
   // Must come before every other gate. The database enforces this too — CSR
   // logins are blocked from every table/RPC except their scorecard.
   if (appRole === 'csr') return <CsrPortal session={session} />
+  // Opsis QA portal v2 preview for Opsis QA staff — exactly what a client account admin sees
+  // (GarageCo by default). Full-screen, outside the Command Center shell. Changes made here are real.
+  const isQaStaff = isAdmin || ['owner', 'admin', 'asc', 'certification', 'quality', 'marketing'].includes(String(appRole || '').toLowerCase())
+  if (location.pathname === '/opsis-qa' && isQaStaff && !inTraining) {
+    return <OpsisQAPortal staff logo={GARAGECO_PORTAL_LOGO} hasCsrs={canAny(appRole, 'quality_audit.call_reviews')} csrMode="staff"
+      onClassic={() => { window.location.href = '/call-qa' }} onSignOut={() => signOut()} />
+  }
   // External client-portal login: a branded, single-purpose shell that shows ONLY
   // Call QA (their own data, RLS-enforced — CallRail/LightSpeed only, never Five9)
   // plus the CSR Scorecards for the CSRs they manage.
@@ -263,17 +273,23 @@ function CsrPortal({ session }) {
 // External client portal — a branded, single-page shell that renders ONLY the
 // Call QA module in portal mode, plus CSR Scorecards. Clients see their own calls
 // (RLS-enforced), can export and add notes, but never manager controls or any other module.
+const GARAGECO_PORTAL_LOGO = 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/garageco/logo.png'
 function ClientPortal({ session, clientId }) {
   const { signOut, user } = useAuth()   // user is needed by PushEnrollmentBanner below
   const [brand, setBrand] = useState(null)          // { portal_name, portal_accent, portal_logo_url, name }
   const [mustChange, setMustChange] = useState(null) // null = still checking
   const [tab, setTab] = useState('qa')                // 'qa' | 'csr'
   const [hasCsrs, setHasCsrs] = useState(false)       // only show the tab when this login manages CSRs
+  // Portal v2 (clients.portal_v2): the new Opsis QA look. "Classic view" switches back to the
+  // original Call QA screen and is remembered on this device.
+  const [myV2, setMyV2] = useState(null)              // profiles.portal_v2: per-person override (null = follow the client)
+  const [classic, setClassic] = useState(() => { try { return localStorage.getItem('oqa-classic') === '1' } catch { return false } })
+  const setClassicView = (v) => { setClassic(v); try { localStorage.setItem('oqa-classic', v ? '1' : '0') } catch { /* private mode */ } }
 
   useEffect(() => {
     let active = true
-    supabase.from('profiles').select('must_change_password').eq('id', session.user.id).single()
-      .then(({ data }) => { if (active) setMustChange(!!data?.must_change_password) })
+    supabase.from('profiles').select('must_change_password, portal_v2').eq('id', session.user.id).single()
+      .then(({ data }) => { if (active) { setMustChange(!!data?.must_change_password); setMyV2(data?.portal_v2 ?? null) } })
       .catch(() => { if (active) setMustChange(false) })
     return () => { active = false }
   }, [session.user.id])
@@ -281,7 +297,7 @@ function ClientPortal({ session, clientId }) {
   useEffect(() => {
     let active = true
     if (!clientId) { setBrand({}); return }
-    supabase.from('clients').select('name, portal_name, portal_accent, portal_logo_url').eq('id', clientId).maybeSingle()
+    supabase.from('clients').select('name, portal_name, portal_accent, portal_logo_url, portal_v2').eq('id', clientId).maybeSingle()
       .then(({ data }) => { if (active) setBrand(data || {}) })
       .catch(() => { if (active) setBrand({}) })
     return () => { active = false }
@@ -298,6 +314,11 @@ function ClientPortal({ session, clientId }) {
   if (mustChange === null || brand === null) return <div className="loading-screen">Loading…</div>
   if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
 
+  const newView = myV2 ?? !!brand.portal_v2
+  if (newView && !classic) {
+    return <OpsisQAPortal logo={brand.portal_logo_url || undefined} hasCsrs={hasCsrs} csrMode="manager"
+      onClassic={() => setClassicView(true)} onSignOut={() => signOut()} />
+  }
   const accent = brand.portal_accent || '#0f766e'
   const name = brand.portal_name || brand.name || 'Call QA'
   const tabBtn = (k, label) => (
@@ -315,6 +336,7 @@ function ClientPortal({ session, clientId }) {
             : <span style={{ fontSize: 13, opacity: 0.85 }}>Call Quality &amp; Conversion</span>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          {newView && <button onClick={() => setClassicView(false)} style={{ background: '#fff', color: accent, border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>Try the new view</button>}
           <span style={{ fontSize: 13, opacity: 0.9 }}>{session.user.email}</span>
           <button onClick={() => signOut()} style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Sign out</button>
         </div>
