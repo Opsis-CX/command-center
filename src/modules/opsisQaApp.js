@@ -65,7 +65,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
     var k = JSON.stringify(body), cacheable = !!CACHEABLE[body.action];
     if (cacheable && cache[k]) return cache[k];
-    var isRead = cacheable || body.action === 'call' || body.action === 'audio' || ((body.action === 'kb' || body.action === 'settings' || body.action === 'team') && !body.op) || (body.action === 'notes' && body.body == null);
+    var isRead = cacheable || body.action === 'call' || body.action === 'export' || body.action === 'scorecards' || body.action === 'audio' || ((body.action === 'kb' || body.action === 'settings' || body.action === 'team') && !body.op) || (body.action === 'notes' && body.body == null);
     var once = function () { return CFG.invoke(body); };
     var wait = function (ms) { return new Promise(function (res) { setTimeout(res, ms); }); };
     var stop = function (e) { return e.status && e.status < 500 && e.status !== 408; };
@@ -111,12 +111,12 @@ export function mountOpsisQA(ROOT, cfg) {
       overview: 'M4 5h16v14H4zM4 9h16M9 9v10', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
       calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
-      scorecards: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8 11h8M8 15h8M8 19h5', team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
+      scorecards: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8 11h8M8 15h8M8 19h5', reporting: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3', team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
     }[k];
   }
 
   // ---------------- nav + top bar ----------------
-  var NAV = [['', [['overview', 'Overview'], ['insights', 'Insights']].concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', 'Brands']]).concat([['csrs', 'CSRs'], ['calls', 'Call reviews']]).concat(CFG.hasCsrs ? [['scorecards', 'CSR scorecards']] : [])],
+  var NAV = [['', [['overview', 'Overview'], ['insights', 'Insights']].concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', 'Brands']]).concat([['csrs', 'CSRs'], ['calls', 'Call reviews'], ['reporting', 'Reporting']]).concat(CFG.hasCsrs ? [['scorecards', 'CSR scorecards']] : [])],
     ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(IS_ADMIN ? [['team', 'Team & access']] : [])]];
   function renderWho() {
     var w = $('oqwho'); if (!w) return;
@@ -653,6 +653,152 @@ export function mountOpsisQA(ROOT, cfg) {
     if (CFG.mountCsr) EXT = CFG.mountCsr($('csrmount'));
   }
 
+
+  // ---------- Reporting & exports (same options as the classic portal) ----------
+  var RP = { sc: null, key: '', busy: '', n: 0, scope: 'notbooked', allTypes: false, agent: '', team: '', csr: '' };
+  var RP_SCOPES = [['notbooked', 'Revenue opportunities — not booked', 'The list to check against your CRM. Includes customer name and phone.'], ['opps', 'All revenue opportunities', 'Booked and not booked.'], ['all', 'All scored calls', 'Every call the AI scored.']];
+  var RP_COLS = ['call_date', 'call_time', 'brand', 'agent', 'ai_csr', 'customer_name', 'customer_phone', 'customer_phone_10', 'customer_state', 'source', 'direction', 'duration_sec', 'disposition', 'call_type',
+    'opportunity', 'outcome', 'transfer_outcome', 'not_booked_reason', 'other_reason', 'opportunity_context', 'objections', 'revenue_tip', 'asked_for_booking', 'info_before_pricing', 'set_fee_expectations',
+    'asked_for_cc', 'collected_cc', 'topics', 'score_pct', 'earned', 'max', 'introduce', 'listen', 'collect_info', 'sell_appointment', 'confirm_thank', 'steps_missed',
+    'summary', 'coaching_note', 'strengths', 'improvements', 'risk_flags', 'manager_adjusted', 'reviewed', 'review_id', 'call_id'];
+  function rpWin() { return { start: S.start, end: S.end, brands: S.brands.length ? S.brands : null }; }
+  function rpTag() { return (S.brands.length === 1 ? '-' + String(S.brands[0]).toLowerCase().replace(/[^a-z0-9]+/g, '-') : S.brands.length ? '-multi-brand' : '') + '-' + S.start + '-to-' + S.end; }
+  function rpFilterText() { return rangeLabel() + ' · ' + (S.brands.length ? (S.brands.length === 1 ? S.brands[0] : S.brands.length + ' brands') : (LOCK || 'All brands')); }
+  function csvCell(v) { var s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+  function saveBlob(name, blob) { var u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; ROOT.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 1500); }
+  function sheetsCsv(name, sheets) {
+    var parts = sheets.map(function (s) { return [s.title ? csvCell(s.title) : ''].concat([s.cols.map(csvCell).join(',')]).concat(s.rows.map(function (r) { return r.map(csvCell).join(','); })).filter(function (x) { return x !== ''; }).join('\n'); });
+    saveBlob(name + '.csv', new Blob(['﻿' + parts.join('\n\n')], { type: 'text/csv;charset=utf-8;' }));
+  }
+  var XLSXP = null;
+  function loadXlsx() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (!XLSXP) XLSXP = new Promise(function (ok, bad) { var s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = function () { ok(window.XLSX); }; s.onerror = function () { XLSXP = null; bad(new Error('Couldn’t load Excel. Try CSV instead.')); }; document.head.appendChild(s); });
+    return XLSXP;
+  }
+  function sheetsXlsx(name, sheets) {
+    return loadXlsx().then(function (X) { var wb = X.utils.book_new(), used = {};
+      sheets.forEach(function (s, i) { var n = String(s.sheet || s.title || ('Sheet' + (i + 1))).replace(/[\\\/?*\[\]:]/g, ' ').slice(0, 31); while (used[n]) n = n.slice(0, 29) + i; used[n] = 1; X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([s.cols].concat(s.rows)), n); });
+      X.writeFile(wb, name + '.xlsx'); });
+  }
+  function pdfShell(w, title, sub, body) {
+    var gen = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    w.document.open();
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title><style>@page{margin:12mm}*{box-sizing:border-box}body{font-family:Montserrat,-apple-system,"Segoe UI",Arial,sans-serif;color:#1C2421;padding:6px 10px;font-size:12px}' +
+      'h1{font-size:18px;margin:0 0 2px;border-bottom:3px solid #14302A;padding-bottom:8px}.sub{color:#5F6763;font-size:11px;margin:6px 0 4px}h2{font-size:13px;margin:16px 0 6px}' +
+      'table{width:100%;border-collapse:collapse;margin-bottom:8px}th{background:#F3F1EC;text-align:left;padding:5px 7px;font-size:10.5px;color:#3B4541}td{padding:4px 7px;border-top:1px solid #ECE8E0;vertical-align:top}tr{page-break-inside:avoid}' +
+      '.foot{margin-top:14px;border-top:1px solid #E8E4DC;padding-top:6px;color:#8A918D;font-size:10px;display:flex;justify-content:space-between}.np{text-align:center;margin-bottom:10px}.np button{background:#14302A;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer}@media print{.np{display:none}body{padding:0}}</style></head><body>' +
+      '<div class="np"><button onclick="window.print()">Save as PDF / Print</button></div><h1>' + esc(title) + '</h1><div class="sub">' + esc(sub) + '</div>' + body +
+      '<div class="foot"><span>Generated ' + esc(gen) + '</span><span>Opsis QA · Opsis CX</span></div><scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}</scr' + 'ipt></body></html>');
+    w.document.close(); try { w.focus(); } catch (x) {}
+  }
+  function sheetsPdf(w, title, sub, sheets) {
+    pdfShell(w, title, sub, sheets.map(function (s) { return '<h2>' + esc(s.title || '') + '</h2><table><thead><tr>' + s.cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      s.rows.map(function (r) { return '<tr>' + r.map(function (c) { return '<td>' + esc(c == null ? '' : c) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table>'; }).join(''));
+  }
+  function pdfWin() { var w = window.open('', '_blank'); if (!w) toast('Please allow pop-ups for this site to save the PDF.'); else { try { w.document.write('<p style="font-family:Arial;padding:20px">Preparing your report…</p>'); } catch (x) {} } return w; }
+  function v1(v) { return v == null ? '' : Math.round(Number(v) * 10) / 10; }
+  function yn(v) { return v === true ? 'yes' : v === false ? 'no' : (v || ''); }
+
+  // pull every matching call, 1,000 at a time
+  function rpPull(body, onCount) {
+    var all = [];
+    function next(after) {
+      var b = Object.assign({ action: 'export' }, rpWin(), body); if (after) { b.after_date = after.call_date; b.after_id = after.review_id; }
+      return api(b).then(function (rows) { rows = rows || []; all = all.concat(rows); if (onCount) onCount(all.length); return rows.length >= 1000 && all.length < 200000 ? next(rows[rows.length - 1]) : all; });
+    }
+    return next(null);
+  }
+
+  // ----- report builders (sheets = [{title, sheet, cols, rows}]) -----
+  function bExec(sc) { var o = sc.overall || {};
+    return [{ title: 'Summary', sheet: 'Summary', cols: ['Metric', 'Value'], rows: [['Calls scored', o.scored || 0], ['Average QA score %', v1(o.avg)], ['Revenue opportunities', o.opps || 0], ['Decided opportunities', o.decided || 0], ['Booked', o.booked || 0], ['Not booked', o.missed || 0], ['Booking rate %', o.decided ? v1(100 * o.booked / o.decided) : '']] },
+      { title: 'Brand ranking', sheet: 'Brands', cols: ['Brand', 'Calls', 'Avg QA %', 'Booking rate %', 'Card asked %', 'Card collected %', 'Not booked', 'CSRs'],
+        rows: (sc.brands || []).slice().sort(function (a, b) { return (b.avg || -1) - (a.avg || -1); }).map(function (b) { return [b.brand, b.calls, v1(b.avg), v1(b.conv), v1(b.card_rate), v1(b.collect_rate), b.missed, b.agents]; }) },
+      { title: 'Top coaching focus', sheet: 'Coaching', cols: ['Coaching focus', 'CSRs with this as #1'], rows: rpGaps(sc, null) }];
+  }
+  function rpGaps(sc, brand) { var m = {}; (sc.agents || []).forEach(function (a) { if (a.ai || !a.focus || (brand && a.brand !== brand)) return; m[a.focus] = (m[a.focus] || 0) + 1; });
+    return Object.keys(m).sort(function (a, b) { return m[b] - m[a]; }).map(function (k) { return [k, m[k]]; }); }
+  function bTeam(sc, brand) { var b = (sc.brands || []).filter(function (x) { return x.brand === brand; })[0] || {};
+    var ag = (sc.agents || []).filter(function (a) { return a.brand === brand; }).sort(function (a, b2) { return (b2.avg || -1) - (a.avg || -1); });
+    return [{ title: brand + ' — summary', sheet: 'Summary', cols: ['Metric', 'Value'], rows: [['Calls scored', b.calls || 0], ['Average QA score %', v1(b.avg)], ['Booking rate %', v1(b.conv)], ['Card asked %', v1(b.card_rate)], ['Not booked', b.missed || 0], ['CSRs', b.agents || 0]] },
+      { title: 'CSR leaderboard', sheet: 'CSRs', cols: ['#', 'CSR', 'AI receptionist', 'Calls', 'Avg QA %', 'Booking rate %', 'Asked for booking %', 'Card asked %', 'Coaching focus'],
+        rows: ag.map(function (a, i) { return [i + 1, a.name, a.ai ? 'yes' : '', a.calls, v1(a.avg), v1(a.conv), v1(a.ask_rate), v1(a.card_rate), a.focus || '']; }) },
+      { title: 'Team coaching focus', sheet: 'Coaching', cols: ['Coaching focus', 'CSRs with this as #1'], rows: rpGaps(sc, brand) }];
+  }
+  function bCsr(sc, key, rows) { var p = key.split('|||'), a = (sc.agents || []).filter(function (x) { return x.name === p[0] && x.brand === p[1]; })[0] || {};
+    return [{ title: p[0] + ' (' + p[1] + ') — scorecard', sheet: 'Scorecard', cols: ['Metric', 'Value'], rows: [['Calls scored', a.calls || 0], ['Average QA score %', v1(a.avg)], ['Booking rate %', v1(a.conv)], ['Asked for booking %', v1(a.ask_rate)], ['Card asked %', v1(a.card_rate)], ['Top coaching focus', a.focus || '']] },
+      { title: 'Calls', sheet: 'Calls', cols: ['Date', 'Time', 'Score %', 'Opportunity', 'Outcome', 'Not booked reason', 'Steps missed', 'Summary'],
+        rows: rows.filter(function (r) { return r.brand === p[1]; }).map(function (r) { return [r.call_date, r.call_time || '', r.score_pct, yn(r.opportunity), r.outcome || '', r.not_booked_reason || '', r.steps_missed || '', r.summary || '']; }) }];
+  }
+  function bHai(sc) { var m = {};
+    (sc.agents || []).forEach(function (a) { var o = m[a.brand] || (m[a.brand] = { brand: a.brand, h: [0, 0, 0, 0], a: [0, 0, 0, 0] }), t = a.ai ? o.a : o.h; t[0] += a.calls; t[1] += (a.avg || 0) * a.calls; t[2] += a.decided || 0; t[3] += a.booked || 0; });
+    var L = Object.keys(m).sort().map(function (k) { return m[k]; }), T = { h: [0, 0, 0, 0], a: [0, 0, 0, 0] };
+    L.forEach(function (o) { for (var i = 0; i < 4; i++) { T.h[i] += o.h[i]; T.a[i] += o.a[i]; } });
+    var avg = function (t) { return t[0] ? t[1] / t[0] : null; }, cl = function (t) { return t[2] ? 100 * t[3] / t[2] : null; }, df = function (x, y) { return x == null || y == null ? '' : v1(y - x); };
+    return [{ title: 'Human vs AI — summary', sheet: 'Summary', cols: ['Metric', 'Human CSRs', 'AI receptionists', 'AI difference'], rows: [['Avg QA %', v1(avg(T.h)), v1(avg(T.a)), df(avg(T.h), avg(T.a))], ['Scored calls', T.h[0], T.a[0], ''], ['Booking rate %', v1(cl(T.h)), v1(cl(T.a)), df(cl(T.h), cl(T.a))], ['Decided opportunities', T.h[2], T.a[2], ''], ['Booked', T.h[3], T.a[3], '']] },
+      { title: 'By brand', sheet: 'By brand', cols: ['Brand', 'Human calls', 'Human avg QA %', 'Human booking %', 'AI calls', 'AI avg QA %', 'AI booking %'],
+        rows: L.map(function (o) { return [o.brand, o.h[0], v1(avg(o.h)), v1(cl(o.h)), o.a[0], v1(avg(o.a)), v1(cl(o.a))]; }) }];
+  }
+
+  function vReporting(tok) {
+    setMain(crumb([['Reporting']]) + '<div id="rpwrap"><div class="oq-card">' + skel(36, 6) + '</div></div>');
+    var key = S.start + '|' + S.end + '|' + S.brands.join(',');
+    if (RP.sc && RP.key === key) { drawReporting(); return; }
+    api(Object.assign({ action: 'scorecards' }, rpWin())).then(function (r) { if (tok !== T) return; RP.sc = r || {}; RP.key = key; drawReporting(); })
+      .catch(function (e) { if (tok === T && $('rpwrap')) $('rpwrap').innerHTML = errBox(e); });
+  }
+  function rpBtns(id) { return '<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="sel" data-act="rpdl" data-r="' + id + '" data-f="pdf"' + (RP.busy ? ' disabled' : '') + '>PDF</button><button class="sel" data-act="rpdl" data-r="' + id + '" data-f="xlsx"' + (RP.busy ? ' disabled' : '') + '>Excel</button><button class="sel" data-act="rpdl" data-r="' + id + '" data-f="csv"' + (RP.busy ? ' disabled' : '') + '>CSV</button></div>'; }
+  function drawReporting() {
+    var w = $('rpwrap'); if (!w || !RP.sc) return; var sc = RP.sc;
+    var brands = (sc.brands || []).map(function (b) { return b.brand; }).filter(function (b) { return b && b !== '—'; }).sort();
+    if (!RP.team || brands.indexOf(RP.team) < 0) RP.team = brands[0] || '';
+    var agents = (sc.agents || []).slice().sort(function (a, b) { return a.name.localeCompare(b.name) || a.brand.localeCompare(b.brand); });
+    if (!RP.csr || !agents.some(function (a) { return a.name + '|||' + a.brand === RP.csr; })) RP.csr = agents.length ? agents[0].name + '|||' + agents[0].brand : '';
+    var names = agents.map(function (a) { return a.name; }).filter(function (n, i, L) { return L.indexOf(n) === i; });
+    var row = function (title, sub, ctl, id) { return '<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;padding:14px 0;border-top:1px solid var(--line2)"><div style="flex:1 1 260px"><b>' + title + '</b><div class="mut" style="font-size:12.5px;margin-top:2px">' + sub + '</div>' + (ctl || '') + '</div>' + rpBtns(id) + '</div>'; };
+    var exp = '<div class="oq-card" style="flex:1 1 380px;align-self:flex-start"><h2 class="ttl">Export calls</h2><p class="sub">A spreadsheet of every matching call — date, brand, CSR, customer, outcome, score, each step and the AI’s notes. Uses the date range and brands at the top.</p>' +
+      '<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px" role="radiogroup" aria-label="Which calls">' + RP_SCOPES.map(function (s) { return '<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid ' + (RP.scope === s[0] ? '#14302A' : 'var(--line2)') + ';border-radius:10px;cursor:pointer"><input type="radio" name="rpscope" data-rpscope="' + s[0] + '"' + (RP.scope === s[0] ? ' checked' : '') + ' style="margin-top:3px;accent-color:#14302A"><span><b style="font-size:13.5px">' + s[1] + '</b><span class="mut" style="display:block;font-size:12px">' + s[2] + '</span></span></label>'; }).join('') + '</div>' +
+      '<div style="margin-top:12px"><label class="l" for="rpag">CSR</label><select id="rpag" class="oq-field" data-rpagent><option value="">All CSRs</option>' + names.map(function (n) { return '<option' + (RP.agent === n ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select></div>' +
+      '<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px"><input type="checkbox" style="accent-color:#14302A" data-rptypes' + (RP.allTypes ? ' checked' : '') + '> Include voicemail, IVR, wrong-number and spam calls</label>' +
+      '<button class="sel btnd" data-act="rpexport" style="margin-top:14px;width:100%;justify-content:center"' + (RP.busy ? ' disabled' : '') + '>' + (RP.busy === 'export' ? 'Preparing… ' + RP.n.toLocaleString() + ' calls' : 'Download CSV') + '</button>' +
+      '<div class="mut" style="font-size:12px;margin-top:8px">' + esc(rpFilterText()) + '</div></div>';
+    var reps = '<div class="oq-card" style="flex:999 1 480px;align-self:flex-start"><h2 class="ttl">Scorecard reports</h2><p class="sub">Download as PDF, Excel or CSV. ' + esc(rpFilterText()) + '.</p><div style="margin-top:8px">' +
+      row(LOCK ? 'Brand scorecard' : 'Executive scorecard', 'Calls scored, average QA, booking rate and card capture' + (LOCK ? '' : ' for every brand') + ', plus the top coaching focus.', '', 'exec') +
+      (brands.length ? row('Team scorecard', 'One brand’s CSR leaderboard and coaching focus.', brands.length > 1 ? '<select class="oq-field" data-rpteam aria-label="Brand" style="margin-top:8px;max-width:280px">' + brands.map(function (b) { return '<option' + (RP.team === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select>' : '', 'team') : '') +
+      (agents.length ? row('CSR scorecard', 'One CSR’s numbers and every call they took in this range.', '<select class="oq-field" data-rpcsr aria-label="CSR" style="margin-top:8px;max-width:280px">' + agents.map(function (a) { var k = a.name + '|||' + a.brand; return '<option value="' + esc(k) + '"' + (RP.csr === k ? ' selected' : '') + '>' + esc(a.name) + (LOCK ? '' : ' — ' + esc(a.brand)) + '</option>'; }).join('') + '</select>', 'csr') : '') +
+      row('Human vs AI receptionists', 'Your CSRs next to the AI receptionists, by brand.', '', 'hai') +
+      '<div class="mut" style="font-size:12.5px;padding-top:14px;border-top:1px solid var(--line2)">Need one call? Open it in Call reviews and choose <b>Print / save PDF</b>.</div></div></div>';
+    w.innerHTML = '<div class="row" style="align-items:flex-start">' + exp + reps + '</div>';
+  }
+  function rpExport() {
+    if (RP.busy) return; RP.busy = 'export'; RP.n = 0; drawReporting();
+    var tick = function (n) { RP.n = n; var b = document.querySelector('#oqa [data-act="rpexport"]'); if (b) b.textContent = 'Preparing… ' + n.toLocaleString() + ' calls'; };
+    rpPull({ scope: RP.scope, agent: RP.agent || null, all_types: RP.allTypes }, tick).then(function (rows) {
+      RP.busy = ''; drawReporting();
+      if (!rows.length) { toast('No calls match these filters'); return; }
+      var lines = [RP_COLS.join(',')]; rows.forEach(function (r) { lines.push(RP_COLS.map(function (k) { var v = r[k]; return csvCell(typeof v === 'boolean' ? yn(v) : v); }).join(',')); });
+      var tag = RP.scope === 'notbooked' ? 'not-booked-opportunities' : RP.scope === 'opps' ? 'revenue-opportunities' : 'all-calls';
+      saveBlob('opsis-qa-' + tag + (RP.agent ? '-' + RP.agent.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '') + rpTag() + '.csv', new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
+      toast('Downloaded ' + rows.length.toLocaleString() + ' calls');
+    }).catch(function (e) { RP.busy = ''; drawReporting(); toast(e.message || 'Export failed. Try a shorter date range.'); });
+  }
+  function rpDownload(id, fmt) {
+    var sc = RP.sc; if (!sc || RP.busy) return;
+    var title = id === 'exec' ? (LOCK ? LOCK + ' — Brand scorecard' : 'Executive scorecard') : id === 'team' ? RP.team + ' — Team scorecard' : id === 'csr' ? RP.csr.split('|||')[0] + ' — CSR scorecard' : 'Human vs AI receptionists';
+    var file = 'opsis-qa-' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + S.start + '-to-' + S.end, sub = rpFilterText();
+    var w = fmt === 'pdf' ? pdfWin() : null; if (fmt === 'pdf' && !w) return;
+    var go = function (sheets) { if (fmt === 'pdf') sheetsPdf(w, title, sub, sheets); else if (fmt === 'csv') sheetsCsv(file, sheets); else return sheetsXlsx(file, sheets); };
+    var fail = function (e) { if (w) try { w.close(); } catch (x) {} RP.busy = ''; drawReporting(); toast(e.message || 'Couldn’t build that report.'); };
+    if (id === 'csr') {
+      var p = RP.csr.split('|||'); RP.busy = 'csr'; drawReporting();
+      rpPull({ scope: 'all', agent: p[0], brands: [p[1]] }).then(function (rows) { RP.busy = ''; drawReporting(); return go(bCsr(sc, RP.csr, rows)); }).catch(fail);
+      return;
+    }
+    var sheets = id === 'exec' ? bExec(sc) : id === 'team' ? bTeam(sc, RP.team) : bHai(sc);
+    try { var pr = go(sheets); if (pr && pr.catch) { RP.busy = 'x'; drawReporting(); pr.then(function () { RP.busy = ''; drawReporting(); }).catch(fail); } } catch (e) { fail(e); }
+  }
+
   function loadPhone() { return api(Object.assign({ action: 'phone' }, win())); }
   function phonePct(a, b) { return b ? a / b * 100 : null; }
   function vPhone(tok) {
@@ -1023,7 +1169,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function render() {
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards }[S.view] || vOverview;
+    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting }[S.view] || vOverview;
     v(tok);
     var af = $('askform'); if (af) af.addEventListener('submit', function (e) { e.preventDefault(); var q = $('askq').value; $('askq').value = ''; ask(q); });
     var cf = $('callq'); if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
@@ -1135,6 +1281,8 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'kbdelno') { KBS.del = null; drawKb(); }
       else if (a === 'kbdelyes') { kbWrite({ op: 'remove', id: KBS.list[+d.i].id }, 'Removed', el); }
       else if (a === 'kbadd') { var t3 = $('kbt').value.trim(), b3 = $('kbb').value.trim(); if (!t3 || !b3) { toast('Add a title and the details'); return; } kbWrite({ op: 'add', title: t3, category: $('kbc').value, body: b3 }, 'Added — used when scoring new calls', el); }
+      else if (a === 'rpexport') { rpExport(); }
+      else if (a === 'rpdl') { rpDownload(d.r, d.f); }
       else if (a === 'qsinsedit') { QSE.ins = true; drawQs(); }
       else if (a === 'qsinscancel') { QSE.ins = false; drawQs(); }
       else if (a === 'qsins') { var gtxt = $('qins').value; qsWrite({ op: 'guidance', text: gtxt }, 'Saved — used when scoring new calls', function () { QSE.ins = false; }, el); }
@@ -1155,6 +1303,11 @@ export function mountOpsisQA(ROOT, cfg) {
   on(document, 'change', function (e) {
     var t = e.target;
     if (t.hasAttribute && t.hasAttribute('data-invrole') && TM.inv) { keepInv(); TM.inv.role = t.value; drawTeam(); }
+    else if (t.hasAttribute && t.hasAttribute('data-rpscope')) { RP.scope = t.getAttribute('data-rpscope'); drawReporting(); }
+    else if (t.hasAttribute && t.hasAttribute('data-rpagent')) { RP.agent = t.value; }
+    else if (t.hasAttribute && t.hasAttribute('data-rptypes')) { RP.allTypes = t.checked; }
+    else if (t.hasAttribute && t.hasAttribute('data-rpteam')) { RP.team = t.value; }
+    else if (t.hasAttribute && t.hasAttribute('data-rpcsr')) { RP.csr = t.value; }
     else if (t.hasAttribute && t.hasAttribute('data-trow') && TM.list) {
       var u = TM.list[+t.getAttribute('data-trow')], rs = $('tr-' + u.id), bs = $('tb-' + u.id);
       var role = rs ? rs.value : u.role, brand = role === 'admin' ? null : (bs ? (bs.value || null) : (u.brand || null));
