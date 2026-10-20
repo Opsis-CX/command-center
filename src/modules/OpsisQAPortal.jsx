@@ -15,7 +15,9 @@ import CsrScorecard from './CsrScorecard'
 import { mountOpsisQA } from './opsisQaApp'
 
 async function invoke(body) {
-  const { data, error } = await supabase.functions.invoke('opsis-qa-portal', { body })
+  // Reporting (call export + scorecard reports) is served by its own read-only function.
+  const fn = body?.action === 'export' || body?.action === 'scorecards' ? 'opsis-qa-reports' : 'opsis-qa-portal'
+  const { data, error } = await supabase.functions.invoke(fn, { body })
   if (error) {
     let msg = 'Something went wrong loading that.'
     const status = error.context?.status
