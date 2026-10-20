@@ -65,7 +65,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
     var k = JSON.stringify(body), cacheable = !!CACHEABLE[body.action];
     if (cacheable && cache[k]) return cache[k];
-    var isRead = cacheable || body.action === 'call' || body.action === 'export' || body.action === 'scorecards' || body.action === 'audio' || ((body.action === 'kb' || body.action === 'settings' || body.action === 'team') && !body.op) || (body.action === 'notes' && body.body == null);
+    var isRead = cacheable || body.action === 'call' || body.action === 'export' || body.action === 'scorecards' || body.action === 'money' || body.action === 'excused' || body.action === 'billing' || (body.action === 'jobvalues' && !body.op) || body.action === 'audio' || ((body.action === 'kb' || body.action === 'settings' || body.action === 'team') && !body.op) || (body.action === 'notes' && body.body == null);
     var once = function () { return CFG.invoke(body); };
     var wait = function (ms) { return new Promise(function (res) { setTimeout(res, ms); }); };
     var stop = function (e) { return e.status && e.status < 500 && e.status !== 408; };
@@ -111,12 +111,12 @@ export function mountOpsisQA(ROOT, cfg) {
       overview: 'M4 5h16v14H4zM4 9h16M9 9v10', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
       calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
-      scorecards: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8 11h8M8 15h8M8 19h5', reporting: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3', team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
+      scorecards: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8 11h8M8 15h8M8 19h5', reporting: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3', money: 'M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5s-5 1.6-5 3.5 2.2 3.2 5 3.5 5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5', team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
     }[k];
   }
 
   // ---------------- nav + top bar ----------------
-  var NAV = [['', [['overview', 'Overview'], ['insights', 'Insights']].concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', 'Brands']]).concat([['csrs', 'CSRs'], ['calls', 'Call reviews'], ['reporting', 'Reporting']]).concat(CFG.hasCsrs ? [['scorecards', 'CSR scorecards']] : [])],
+  var NAV = [['', [['overview', 'Overview'], ['insights', 'Insights']].concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', 'Brands']]).concat([['csrs', 'CSRs'], ['calls', 'Call reviews'], ['money', 'Revenue'], ['reporting', 'Reporting']]).concat(CFG.hasCsrs ? [['scorecards', 'CSR scorecards']] : [])],
     ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(IS_ADMIN ? [['team', 'Team & access']] : [])]];
   function renderWho() {
     var w = $('oqwho'); if (!w) return;
@@ -655,12 +655,12 @@ export function mountOpsisQA(ROOT, cfg) {
 
 
   // ---------- Reporting & exports (same options as the classic portal) ----------
-  var RP = { sc: null, key: '', busy: '', n: 0, scope: 'notbooked', allTypes: false, agent: '', team: '', csr: '' };
+  var RP = { sc: null, bill: null, key: '', busy: '', n: 0, scope: 'notbooked', allTypes: false, trans: false, agent: '', team: '', csr: '' };
   var RP_SCOPES = [['notbooked', 'Revenue opportunities — not booked', 'The list to check against your CRM. Includes customer name and phone.'], ['opps', 'All revenue opportunities', 'Booked and not booked.'], ['all', 'All scored calls', 'Every call the AI scored.']];
   var RP_COLS = ['call_date', 'call_time', 'brand', 'agent', 'ai_csr', 'customer_name', 'customer_phone', 'customer_phone_10', 'customer_state', 'source', 'direction', 'duration_sec', 'disposition', 'call_type',
     'opportunity', 'outcome', 'transfer_outcome', 'not_booked_reason', 'other_reason', 'opportunity_context', 'objections', 'revenue_tip', 'asked_for_booking', 'info_before_pricing', 'set_fee_expectations',
     'asked_for_cc', 'collected_cc', 'topics', 'score_pct', 'earned', 'max', 'introduce', 'listen', 'collect_info', 'sell_appointment', 'confirm_thank', 'steps_missed',
-    'summary', 'coaching_note', 'strengths', 'improvements', 'risk_flags', 'manager_adjusted', 'reviewed', 'review_id', 'call_id'];
+    'job_type', 'segment', 'missed_type', 'missed_why', 'summary', 'coaching_note', 'strengths', 'improvements', 'risk_flags', 'manager_adjusted', 'reviewed', 'review_id', 'call_id'];
   function rpWin() { return { start: S.start, end: S.end, brands: S.brands.length ? S.brands : null }; }
   function rpTag() { return (S.brands.length === 1 ? '-' + String(S.brands[0]).toLowerCase().replace(/[^a-z0-9]+/g, '-') : S.brands.length ? '-multi-brand' : '') + '-' + S.start + '-to-' + S.end; }
   function rpFilterText() { return rangeLabel() + ' · ' + (S.brands.length ? (S.brands.length === 1 ? S.brands[0] : S.brands.length + ' brands') : (LOCK || 'All brands')); }
@@ -705,7 +705,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var all = [];
     function next(after) {
       var b = Object.assign({ action: 'export' }, rpWin(), body); if (after) { b.after_date = after.call_date; b.after_id = after.review_id; }
-      return api(b).then(function (rows) { rows = rows || []; all = all.concat(rows); if (onCount) onCount(all.length); return rows.length >= 1000 && all.length < 200000 ? next(rows[rows.length - 1]) : all; });
+      return api(b).then(function (rows) { rows = rows || []; all = all.concat(rows); if (onCount) onCount(all.length); return rows.length >= (body.transcript ? 250 : 1000) && all.length < 200000 ? next(rows[rows.length - 1]) : all; });
     }
     return next(null);
   }
@@ -745,7 +745,7 @@ export function mountOpsisQA(ROOT, cfg) {
     setMain(crumb([['Reporting']]) + '<div id="rpwrap"><div class="oq-card">' + skel(36, 6) + '</div></div>');
     var key = S.start + '|' + S.end + '|' + S.brands.join(',');
     if (RP.sc && RP.key === key) { drawReporting(); return; }
-    api(Object.assign({ action: 'scorecards' }, rpWin())).then(function (r) { if (tok !== T) return; RP.sc = r || {}; RP.key = key; drawReporting(); })
+    Promise.all([api(Object.assign({ action: 'scorecards' }, rpWin())), api({ action: 'billing' }).catch(function () { return null; })]).then(function (r) { if (tok !== T) return; RP.sc = r[0] || {}; RP.bill = r[1]; RP.key = key; drawReporting(); })
       .catch(function (e) { if (tok === T && $('rpwrap')) $('rpwrap').innerHTML = errBox(e); });
   }
   function rpBtns(id) { return '<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="sel" data-act="rpdl" data-r="' + id + '" data-f="pdf"' + (RP.busy ? ' disabled' : '') + '>PDF</button><button class="sel" data-act="rpdl" data-r="' + id + '" data-f="xlsx"' + (RP.busy ? ' disabled' : '') + '>Excel</button><button class="sel" data-act="rpdl" data-r="' + id + '" data-f="csv"' + (RP.busy ? ' disabled' : '') + '>CSV</button></div>'; }
@@ -761,6 +761,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px" role="radiogroup" aria-label="Which calls">' + RP_SCOPES.map(function (s) { return '<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid ' + (RP.scope === s[0] ? '#14302A' : 'var(--line2)') + ';border-radius:10px;cursor:pointer"><input type="radio" name="rpscope" data-rpscope="' + s[0] + '"' + (RP.scope === s[0] ? ' checked' : '') + ' style="margin-top:3px;accent-color:#14302A"><span><b style="font-size:13.5px">' + s[1] + '</b><span class="mut" style="display:block;font-size:12px">' + s[2] + '</span></span></label>'; }).join('') + '</div>' +
       '<div style="margin-top:12px"><label class="l" for="rpag">CSR</label><select id="rpag" class="oq-field" data-rpagent><option value="">All CSRs</option>' + names.map(function (n) { return '<option' + (RP.agent === n ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select></div>' +
       '<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px"><input type="checkbox" style="accent-color:#14302A" data-rptypes' + (RP.allTypes ? ' checked' : '') + '> Include voicemail, IVR, wrong-number and spam calls</label>' +
+      '<label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13px"><input type="checkbox" style="accent-color:#14302A" data-rptrans' + (RP.trans ? ' checked' : '') + '> Include full transcripts <span class="mut" style="font-size:12px">(bigger file, slower)</span></label>' +
       '<button class="sel btnd" data-act="rpexport" style="margin-top:14px;width:100%;justify-content:center"' + (RP.busy ? ' disabled' : '') + '>' + (RP.busy === 'export' ? 'Preparing… ' + RP.n.toLocaleString() + ' calls' : 'Download CSV') + '</button>' +
       '<div class="mut" style="font-size:12px;margin-top:8px">' + esc(rpFilterText()) + '</div></div>';
     var reps = '<div class="oq-card" style="flex:999 1 480px;align-self:flex-start"><h2 class="ttl">Scorecard reports</h2><p class="sub">Download as PDF, Excel or CSV. ' + esc(rpFilterText()) + '.</p><div style="margin-top:8px">' +
@@ -769,15 +770,17 @@ export function mountOpsisQA(ROOT, cfg) {
       (agents.length ? row('CSR scorecard', 'One CSR’s numbers and every call they took in this range.', '<select class="oq-field" data-rpcsr aria-label="CSR" style="margin-top:8px;max-width:280px">' + agents.map(function (a) { var k = a.name + '|||' + a.brand; return '<option value="' + esc(k) + '"' + (RP.csr === k ? ' selected' : '') + '>' + esc(a.name) + (LOCK ? '' : ' — ' + esc(a.brand)) + '</option>'; }).join('') + '</select>', 'csr') : '') +
       row('Human vs AI receptionists', 'Your CSRs next to the AI receptionists, by brand.', '', 'hai') +
       '<div class="mut" style="font-size:12.5px;padding-top:14px;border-top:1px solid var(--line2)">Need one call? Open it in Call reviews and choose <b>Print / save PDF</b>.</div></div></div>';
-    w.innerHTML = '<div class="row" style="align-items:flex-start">' + exp + reps + '</div>';
+    var bc = billingCard(RP.bill);
+    w.innerHTML = '<div class="row" style="align-items:flex-start">' + exp + reps + '</div>' + (bc ? '<div class="row" style="margin-top:16px">' + bc + '</div>' : '');
   }
   function rpExport() {
     if (RP.busy) return; RP.busy = 'export'; RP.n = 0; drawReporting();
     var tick = function (n) { RP.n = n; var b = document.querySelector('#oqa [data-act="rpexport"]'); if (b) b.textContent = 'Preparing… ' + n.toLocaleString() + ' calls'; };
-    rpPull({ scope: RP.scope, agent: RP.agent || null, all_types: RP.allTypes }, tick).then(function (rows) {
+    rpPull({ scope: RP.scope, agent: RP.agent || null, all_types: RP.allTypes, transcript: RP.trans }, tick).then(function (rows) {
       RP.busy = ''; drawReporting();
       if (!rows.length) { toast('No calls match these filters'); return; }
-      var lines = [RP_COLS.join(',')]; rows.forEach(function (r) { lines.push(RP_COLS.map(function (k) { var v = r[k]; return csvCell(typeof v === 'boolean' ? yn(v) : v); }).join(',')); });
+      var cols = RP.trans ? RP_COLS.concat(['transcript']) : RP_COLS;
+      var lines = [cols.join(',')]; rows.forEach(function (r) { lines.push(cols.map(function (k) { var v = r[k]; return csvCell(typeof v === 'boolean' ? yn(v) : v); }).join(',')); });
       var tag = RP.scope === 'notbooked' ? 'not-booked-opportunities' : RP.scope === 'opps' ? 'revenue-opportunities' : 'all-calls';
       saveBlob('opsis-qa-' + tag + (RP.agent ? '-' + RP.agent.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '') + rpTag() + '.csv', new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
       toast('Downloaded ' + rows.length.toLocaleString() + ' calls');
@@ -797,6 +800,110 @@ export function mountOpsisQA(ROOT, cfg) {
     }
     var sheets = id === 'exec' ? bExec(sc) : id === 'team' ? bTeam(sc, RP.team) : bHai(sc);
     try { var pr = go(sheets); if (pr && pr.catch) { RP.busy = 'x'; drawReporting(); pr.then(function () { RP.busy = ''; drawReporting(); }).catch(fail); } } catch (e) { fail(e); }
+  }
+
+
+  // ---------- Revenue: controllable vs not, job values (estimate -> actual), why calls were excused ----------
+  var MN = { d: null, ex: null, jv: null, key: '', bucket: null, edit: null, busy: false };
+  var usd = function (v) { return v == null ? '—' : '$' + Math.round(+v).toLocaleString(); };
+  var n0 = function (v) { return (+v || 0).toLocaleString(); };
+  var pc = function (v) { return v == null ? '—' : (+v).toFixed(1) + '%'; };
+  function vMoney(tok) {
+    setMain(crumb([['Revenue']]) + '<div id="mnwrap"><div class="oq-card">' + skel(36, 6) + '</div></div>');
+    var key = S.start + '|' + S.end + '|' + S.brands.join(',');
+    if (MN.d && MN.key === key) { drawMoney(); return; }
+    var w = { start: S.start, end: S.end, brands: S.brands.length ? S.brands : null };
+    Promise.all([api(Object.assign({ action: 'money' }, w)), api(Object.assign({ action: 'excused' }, w)), api({ action: 'jobvalues' })]).then(function (r) {
+      if (tok !== T) return; MN.d = r[0] || {}; MN.ex = r[1] || {}; MN.jv = r[2] || {}; MN.key = key; drawMoney();
+    }).catch(function (e) { if (tok === T && $('mnwrap')) $('mnwrap').innerHTML = errBox(e); });
+  }
+  function mnTile(label, big, sub, color, tip) {
+    return '<div class="oq-card" style="flex:1 1 210px;padding:18px" title="' + esc(tip || '') + '"><div class="cap">' + label + '</div><div class="num" style="font-size:28px;font-weight:600;letter-spacing:-0.02em;margin-top:6px;color:' + (color || 'inherit') + '">' + big + '</div><div class="mut" style="font-size:12.5px;margin-top:4px">' + sub + '</div></div>';
+  }
+  function drawMoney() {
+    var w = $('mnwrap'); if (!w || !MN.d) return; var d = MN.d, t = d.totals || {}, ex = MN.ex || {};
+    var rate = t.decided ? 100 * t.booked / t.decided : null;
+    var tiles = '<div class="row">' +
+      mnTile('Controllable misses', usd(t.ctrl_value), n0(t.ctrl_n) + ' calls the CSR could have saved' + (t.ctrl_unvalued ? ' · ' + n0(t.ctrl_unvalued) + ' with no job value yet' : ''), '#A8441A', 'Unbooked revenue opportunities where the CSR didn’t ask for the booking or had a knowledge gap.') +
+      mnTile('Not controllable', usd(t.nc_value), n0(t.nc_n) + ' calls · customer said no after being asked, or another team owns the follow-up', '#56605B') +
+      mnTile('Booked', usd(t.booked_value), n0(t.booked) + ' bookings · ' + pc(rate) + ' booking rate · estimated value' + (t.booked_actual_n ? ' · ' + usd(t.booked_actual) + ' invoiced on ' + n0(t.booked_actual_n) : ''), '#1F5A41') + '</div>';
+    var whyMax = Math.max.apply(null, (d.by_why || []).map(function (x) { return +x.n || 0; }).concat([1]));
+    var why = '<div class="oq-card" style="flex:1 1 380px"><h2 class="ttl">Why opportunities didn’t book</h2><p class="sub">Every unbooked revenue opportunity, split by whether the CSR could have saved it.</p>' +
+      (d.by_why || []).map(function (x) { var c = x.kind === 'controllable' ? '#C2562A' : '#9AA19D';
+        return '<div style="margin-top:12px"><div style="display:flex;justify-content:space-between;gap:8px;font-size:13px"><span><b style="font-weight:600">' + esc(x.why) + '</b> <span class="pill" style="font-size:11px;background:' + (x.kind === 'controllable' ? '#FBEDE6;color:#A8441A' : '#EEEBE4;color:#56605B') + '">' + (x.kind === 'controllable' ? 'Controllable' : 'Not controllable') + '</span></span><span class="num">' + n0(x.n) + ' · ' + usd(x.value) + '</span></div>' +
+          '<div style="height:8px;background:#F3F1EC;border-radius:6px;margin-top:6px;overflow:hidden"><div style="height:100%;width:' + (100 * x.n / whyMax).toFixed(1) + '%;background:' + c + '"></div></div></div>'; }).join('') +
+      '<p class="mut" style="font-size:12px;margin-top:14px">Dollar values use your invoice average once 10+ invoices match a brand and job type; until then the estimate below.</p></div>';
+    var seg = (d.by_segment || []);
+    var segCard = '<div class="oq-card" style="flex:1 1 260px"><h2 class="ttl">Residential vs commercial</h2><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th></th><th>Decided</th><th>Booked</th><th>Rate</th><th>Controllable</th></tr></thead><tbody>' +
+      seg.map(function (s) { return '<tr><td><b style="font-weight:600">' + esc(s.segment) + '</b></td><td class="num">' + n0(s.decided) + '</td><td class="num">' + n0(s.booked) + '</td><td class="num">' + pc(s.rate) + '</td><td class="num">' + n0(s.ctrl_n) + '</td></tr>'; }).join('') + '</tbody></table></div>';
+    var brands = '<div class="oq-card" style="flex:1 1 460px"><h2 class="ttl">By brand</h2><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th>Brand</th><th>Booking rate</th><th>Booked</th><th>Controllable</th><th>Controllable $</th><th>Not controllable</th></tr></thead><tbody>' +
+      (d.by_brand || []).map(function (b) { return '<tr><td><b style="font-weight:600">' + esc(short(b.brand)) + '</b></td><td class="num">' + pc(b.rate) + '</td><td class="num">' + n0(b.booked) + '</td><td class="num">' + n0(b.ctrl_n) + '</td><td class="num" style="color:#A8441A">' + usd(b.ctrl_value) + '</td><td class="num">' + n0(b.nc_n) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
+    var jobs = '<div class="oq-card" style="flex:1 1 460px"><h2 class="ttl">By job type</h2><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th>Job type</th><th>Residential</th><th>Commercial</th><th>Booking rate</th><th>Controllable</th><th>Controllable $</th></tr></thead><tbody>' +
+      (d.by_job || []).map(function (j) { return '<tr><td><b style="font-weight:600">' + esc(j.job_type) + '</b></td><td class="num">' + n0(j.residential) + '</td><td class="num">' + n0(j.commercial) + '</td><td class="num">' + pc(j.rate) + '</td><td class="num">' + n0(j.ctrl_n) + '</td><td class="num" style="color:#A8441A">' + (j.ctrl_n && !+j.ctrl_value ? '<span class="mut">needs value</span>' : usd(j.ctrl_value)) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
+    var top = '<div class="oq-card" style="flex:1 1 460px"><h2 class="ttl">Biggest controllable misses</h2><p class="sub">Click a call to listen and see what the CSR could have done.</p>' +
+      ((d.top || []).length ? (d.top || []).map(function (c) {
+        return '<button class="click" data-call="' + c.id + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--line2)"><span style="flex:1;min-width:0"><b style="font-weight:600">' + esc(c.agent || 'Unknown CSR') + '</b> <span class="mut" style="font-size:12px">· ' + esc(short(c.brand)) + ' · ' + fdate(c.date) + '</span><span class="mut" style="display:block;font-size:12px">' + esc(c.job_type) + (c.segment === 'Commercial' ? ' · Commercial' : '') + ' · ' + esc(c.why) + '</span></span><span class="num" style="font-weight:600;color:#A8441A">' + usd(c.value) + '</span><span class="pill num" style="' + chipScore(c.score) + ';font-size:12.5px">' + (c.score == null ? '—' : c.score) + '</span></button>'; }).join('') : '<div class="mut" style="padding:14px 0">No controllable misses in this range.</div>') + '</div>';
+    // why calls were excused
+    var B = ex.buckets || [], bmax = Math.max.apply(null, B.map(function (b) { return +b.n || 0; }).concat([1]));
+    var exc = '<div class="oq-card" style="flex:1 1 460px"><h2 class="ttl">Calls that weren’t revenue opportunities</h2><p class="sub">' + n0(ex.excused) + ' of ' + n0(ex.total) + ' calls (' + (ex.total ? Math.round(100 * ex.excused / ex.total) : 0) + '%). Click a row for example calls.</p>' +
+      B.map(function (b, i) { var on = MN.bucket === i;
+        return '<button data-act="mnbucket" data-i="' + i + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:9px 0;border-top:1px solid var(--line2)" aria-expanded="' + on + '"><div style="display:flex;justify-content:space-between;gap:8px;font-size:13px"><span><b style="font-weight:600">' + esc(b.bucket) + '</b>' + (b.conversation ? '' : ' <span class="mut" style="font-size:11.5px">· no conversation</span>') + '</span><span class="num">' + n0(b.n) + (b.avg != null ? ' · avg score ' + b.avg : '') + '</span></div>' +
+          '<div style="height:6px;background:#F3F1EC;border-radius:6px;margin-top:6px;overflow:hidden"><div style="height:100%;width:' + (100 * b.n / bmax).toFixed(1) + '%;background:#9AA19D"></div></div></button>' +
+          (on ? '<div style="display:flex;gap:6px;flex-wrap:wrap;padding:4px 0 10px">' + (b.examples || []).map(function (id, k) { return '<button class="sel" data-call="' + id + '" style="padding:5px 10px;font-size:12px">Example call ' + (k + 1) + '</button>'; }).join('') + '</div>' : ''); }).join('') + '</div>';
+    w.innerHTML = tiles + '<div class="row" style="align-items:flex-start;margin-top:16px">' + why + segCard + '</div>' +
+      '<div class="row" style="align-items:flex-start;margin-top:16px">' + top + brands + '</div>' +
+      '<div class="row" style="align-items:flex-start;margin-top:16px">' + jobs + exc + '</div>' +
+      '<div class="row" style="align-items:flex-start;margin-top:16px">' + jvCard() + '</div>';
+  }
+  function jvCard() {
+    var J = MN.jv || {}, types = J.job_types || [], vals = J.values || [], eff = J.effective || [];
+    var def = function (jt) { return vals.filter(function (v) { return v.brand == null && v.job_type === jt; })[0]; };
+    var learned = function (jt) { var e = eff.filter(function (x) { return x.job_type === jt && x.basis === 'invoices'; }); return e.length; };
+    var invN = function (jt) { return eff.filter(function (x) { return x.job_type === jt; }).reduce(function (a, x) { return a + (+x.n || 0); }, 0); };
+    var rows = types.map(function (jt) { var v = def(jt), on = MN.edit === jt, lb = learned(jt);
+      return '<tr><td><b style="font-weight:600">' + esc(jt) + '</b>' + (v && v.note ? '<div class="mut" style="font-size:11.5px">' + esc(v.note) + '</div>' : '') + '</td>' +
+        '<td class="num">' + (on ? '<label class="sr" for="jvv">Value</label><input id="jvv" class="oq-field" type="number" min="0" step="1" style="width:110px" value="' + (v && v.est_value != null ? v.est_value : '') + '">' : (v && v.est_value != null ? usd(v.est_value) : '<span class="mut">Not set</span>')) + '</td>' +
+        '<td class="mut" style="font-size:12px">' + (lb ? 'Using invoices for ' + lb + ' brand' + (lb > 1 ? 's' : '') : invN(jt) ? n0(invN(jt)) + ' invoices matched so far' : 'Estimate') + '</td>' +
+        '<td style="text-align:right">' + (!IS_ADMIN ? '' : on ? '<button class="sel btnd" data-act="jvsave" data-jt="' + esc(jt) + '" style="padding:5px 10px;font-size:12px"' + (MN.busy ? ' disabled' : '') + '>Save</button> <button class="sel" data-act="jvcancel" style="padding:5px 10px;font-size:12px">Cancel</button>' : '<button class="sel" data-act="jvedit" data-jt="' + esc(jt) + '" style="padding:5px 10px;font-size:12px" aria-label="Edit ' + esc(jt) + ' value">Edit</button>') + '</td></tr>'; }).join('');
+    return '<div class="oq-card" style="flex:1 1 640px"><h2 class="ttl">Job values</h2><p class="sub">The estimate used for each job type. When you upload invoices, each booked call uses its real invoice amount, and once 10+ invoices match a brand and job type, that average replaces the estimate.' + (IS_ADMIN ? '' : ' Only account admins can change these.') + '</p>' +
+      '<div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th>Job type</th><th>Estimate</th><th>Source</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      (IS_ADMIN ? '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line2);display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1 1 300px"><b style="font-size:13.5px">Upload invoices</b><div class="mut" style="font-size:12px">CSV with invoice number, invoice date, amount and customer phone (brand and job type optional). Each invoice is matched to the booked call from that phone in the 45 days before.</div></div><label class="sel" style="cursor:pointer">' + (MN.busy === 'inv' ? 'Uploading…' : 'Choose CSV') + '<input type="file" accept=".csv,text/csv" data-invfile style="display:none"></label></div>' : '') + '</div>';
+  }
+  function jvSave(jt) {
+    var el = $('jvv'); if (!el || MN.busy) return; MN.busy = true;
+    api({ action: 'jobvalues', op: 'set', job_type: jt, value: el.value === '' ? null : +el.value }).then(function (r) { MN.busy = false; MN.jv = r; MN.edit = null; MN.d = null; toast('Saved — revenue numbers updated'); render(); })
+      .catch(function (e) { MN.busy = false; toast(e.message || 'Couldn’t save. Try again.'); });
+  }
+  function parseCsv(text) {
+    var rows = [], row = [], f = '', q = false;
+    for (var i = 0; i < text.length; i++) { var c = text[i];
+      if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+      else if (c === '"') q = true; else if (c === ',') { row.push(f); f = ''; } else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; } else f += c; }
+    if (f !== '' || row.length) { row.push(f); rows.push(row); }
+    return rows.filter(function (r) { return r.some(function (x) { return String(x).trim(); }); });
+  }
+  function invUpload(file) {
+    if (!file || MN.busy) return; var rd = new FileReader();
+    rd.onload = function () {
+      var R = parseCsv(String(rd.result || '').replace(/^﻿/, '')); if (R.length < 2) { toast('That file looks empty'); return; }
+      var h = R[0].map(function (x) { return String(x).toLowerCase().replace(/[^a-z0-9]/g, ''); });
+      var col = function (names) { for (var i = 0; i < h.length; i++) for (var k = 0; k < names.length; k++) if (h[i] === names[k] || h[i].indexOf(names[k]) === 0) return i; return -1; };
+      var ci = { no: col(['invoiceno', 'invoicenumber', 'invoice', 'refnbr', 'referencenbr', 'docno']), d: col(['invoicedate', 'date', 'docdate']), a: col(['amount', 'total', 'invoicetotal', 'docamount']), p: col(['phone', 'customerphone', 'phone1']), b: col(['brand', 'branch', 'company']), j: col(['jobtype', 'type', 'worktype']) };
+      if (ci.no < 0 || ci.d < 0 || ci.a < 0 || ci.p < 0) { toast('Needs columns for invoice number, date, amount and phone'); return; }
+      var rows = R.slice(1).map(function (r) { var dd = String(r[ci.d] || '').trim(), m = dd.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+        if (m) dd = (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + ('0' + m[1]).slice(-2) + '-' + ('0' + m[2]).slice(-2);
+        return { invoice_no: r[ci.no], invoice_date: dd.slice(0, 10), amount: r[ci.a], phone: r[ci.p], brand: ci.b >= 0 ? r[ci.b] : null, job_type: ci.j >= 0 ? r[ci.j] : null }; });
+      MN.busy = 'inv'; drawMoney();
+      api({ action: 'invoices', rows: rows }).then(function (x) { MN.busy = false; MN.d = null; toast('Saved ' + n0(x.saved) + ' invoices · matched ' + n0(x.matched) + ' to calls' + (x.skipped ? ' · skipped ' + x.skipped : '')); render(); })
+        .catch(function (e) { MN.busy = false; drawMoney(); toast(e.message || 'Upload failed'); });
+    };
+    rd.readAsText(file);
+  }
+  function billingCard(b) {
+    if (!b || b.hidden || !(b.months || []).length) return '';
+    return '<div class="oq-card" style="flex:1 1 100%"><h2 class="ttl">Billing statement</h2><p class="sub">Calls audited each month × your rate. This is what your Opsis CX invoice is based on.</p><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th>Month</th><th>Calls audited</th><th>Rate</th><th>Amount</th><th>Top brands</th></tr></thead><tbody>' +
+      b.months.map(function (m) { var mo = new Date(m.month + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+        return '<tr><td><b style="font-weight:600">' + mo + '</b>' + (m.partial ? ' <span class="mut" style="font-size:11.5px">so far</span>' : '') + '</td><td class="num">' + n0(m.calls) + '</td><td class="num">' + (m.rate != null ? '$' + (+m.rate).toFixed(2) : '—') + '</td><td class="num">' + (m.rate != null ? '$' + (+m.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—') + '</td><td class="mut" style="font-size:12px">' + (m.brands || []).slice(0, 3).map(function (x) { return esc(short(x.brand || '—')) + ' ' + n0(x.calls); }).join(' · ') + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
   }
 
   function loadPhone() { return api(Object.assign({ action: 'phone' }, win())); }
@@ -1169,7 +1276,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function render() {
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting }[S.view] || vOverview;
+    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney }[S.view] || vOverview;
     v(tok);
     var af = $('askform'); if (af) af.addEventListener('submit', function (e) { e.preventDefault(); var q = $('askq').value; $('askq').value = ''; ask(q); });
     var cf = $('callq'); if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
@@ -1282,6 +1389,10 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'kbdelyes') { kbWrite({ op: 'remove', id: KBS.list[+d.i].id }, 'Removed', el); }
       else if (a === 'kbadd') { var t3 = $('kbt').value.trim(), b3 = $('kbb').value.trim(); if (!t3 || !b3) { toast('Add a title and the details'); return; } kbWrite({ op: 'add', title: t3, category: $('kbc').value, body: b3 }, 'Added — used when scoring new calls', el); }
       else if (a === 'rpexport') { rpExport(); }
+      else if (a === 'mnbucket') { MN.bucket = MN.bucket === +d.i ? null : +d.i; drawMoney(); }
+      else if (a === 'jvedit') { MN.edit = d.jt; drawMoney(); var jv = $('jvv'); if (jv) jv.focus(); }
+      else if (a === 'jvcancel') { MN.edit = null; drawMoney(); }
+      else if (a === 'jvsave') { jvSave(d.jt); }
       else if (a === 'rpdl') { rpDownload(d.r, d.f); }
       else if (a === 'qsinsedit') { QSE.ins = true; drawQs(); }
       else if (a === 'qsinscancel') { QSE.ins = false; drawQs(); }
@@ -1306,6 +1417,8 @@ export function mountOpsisQA(ROOT, cfg) {
     else if (t.hasAttribute && t.hasAttribute('data-rpscope')) { RP.scope = t.getAttribute('data-rpscope'); drawReporting(); }
     else if (t.hasAttribute && t.hasAttribute('data-rpagent')) { RP.agent = t.value; }
     else if (t.hasAttribute && t.hasAttribute('data-rptypes')) { RP.allTypes = t.checked; }
+    else if (t.hasAttribute && t.hasAttribute('data-rptrans')) { RP.trans = t.checked; }
+    else if (t.hasAttribute && t.hasAttribute('data-invfile')) { invUpload(t.files && t.files[0]); t.value = ''; }
     else if (t.hasAttribute && t.hasAttribute('data-rpteam')) { RP.team = t.value; }
     else if (t.hasAttribute && t.hasAttribute('data-rpcsr')) { RP.csr = t.value; }
     else if (t.hasAttribute && t.hasAttribute('data-trow') && TM.list) {
