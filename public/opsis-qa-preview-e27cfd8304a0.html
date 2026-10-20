@@ -184,7 +184,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
   function errBox(e) { return '<div class="card" style="color:#A8441A">Couldn’t load this: ' + esc(e.message || e) + ' <button class="more" data-act="retry">Try again</button></div>'; }
   function iconPath(k) {
     return {
-      overview: 'M4 5h16v14H4zM4 9h16M9 9v10', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
+      overview: 'M4 5h16v14H4zM4 9h16M9 9v10', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
       calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
@@ -192,7 +192,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
   }
 
   // ---------------- nav + top bar ----------------
-  var NAV = [['', [['overview', 'Overview'], ['insights', 'Insights'], ['brands', 'Brands'], ['csrs', 'CSRs'], ['calls', 'Call reviews']]], ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base'], ['settings', 'Tags & reports'], ['team', 'Team & access']]]];
+  var NAV = [['', [['overview', 'Overview'], ['insights', 'Insights'], ['phone', 'Phone stats'], ['brands', 'Brands'], ['csrs', 'CSRs'], ['calls', 'Call reviews']]], ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base'], ['settings', 'Tags & reports'], ['team', 'Team & access']]]];
   function renderNav() {
     var cur = S.view === 'brand' ? 'brands' : (S.view === 'csr' ? 'csrs' : S.view);
     $('nav').innerHTML = NAV.map(function (sec) {
@@ -686,6 +686,90 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
   }
   function keepInv() { if (!INV) return; var n = $('ivn'), e = $('ive'), c = $('ivcsr'); if (n) INV.name = n.value; if (e) INV.email = e.value; if (c) INV.csr = c.value; }
 
+  function loadPhone() { return api(Object.assign({ action: 'phone' }, win())); }
+  function phonePct(a, b) { return b ? a / b * 100 : null; }
+  function vPhone(tok) {
+    setMain(crumb([['Phone stats']]) + '<div id="phtop">' + skel(110, 1) + '</div><div class="card" id="phchart">' + skel(220, 1) + '</div><div class="card" id="phbrands">' + skel(30, 8) + '</div><div class="card" id="phcsr">' + skel(30, 10) + '</div>');
+    loadPhone().then(function (p) {
+      if (tok !== T) return;
+      var k = p.kpis || {}, pv = p.prev || {}, cov = p.coverage || {};
+      var rate = phonePct(k.abandoned, k.calls), prate = phonePct(pv.abandoned, pv.calls);
+      var note = (cov.first && S.start < cov.first) ? '<div class="banner" style="margin:0 0 12px;background:#F3F1EC;border-color:#E2DDD2;color:#3B4541">Phone data from LightSpeed starts <b>' + fdate(cov.first) + '</b>, so this range only covers ' + fdate(cov.first) + ' onward' + (cov.last ? ' (latest ' + fdate(cov.last) + ')' : '') + '.</div>' : '';
+      var card = function (label, val, sub, d) { return '<div class="card" style="flex:1 1 190px;padding:16px 18px 14px"><span class="cap">' + label + '</span><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px"><span class="num" style="font-size:30px;font-weight:600;letter-spacing:-0.03em;line-height:1">' + val + '</span>' + (d || '') + '</div><div class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.45">' + sub + '</div></div>'; };
+      $('phtop').innerHTML = note + '<div class="row">' +
+        card('Inbound CSR calls', fmt(k.calls || 0), (k.wd_days ? fmt(Math.round(k.wd_calls / k.wd_days)) + ' per weekday on average' : 'No weekday data in range'), '') +
+        card('Abandoned', rate != null ? rate.toFixed(1) + '%' : '—', fmt(k.abandoned || 0) + ' callers hung up before a CSR answered' + (k.wd_days ? ' · ' + (k.wd_ab / k.wd_days).toFixed(1) + ' per weekday' : ''), delta(rate, prate, ' pts', false)) +
+        card('Avg time to answer', k.tta != null ? k.tta + 's' : '—', 'From the call reaching the CSR queue to pickup', delta(k.tta, pv.tta, 's', false)) +
+        card('Hung up before reaching a CSR', fmt(k.ivr || 0), 'In the phone menu or before a CSR group rang. Not counted in the abandon rate.', '') +
+        card('Time to abandon', k.tab != null ? k.tab + 's' : 'Not measured', k.tab_n ? 'Measured on ' + k.tab_n + ' rollover calls only. LightSpeed doesn’t send hang-up times, so other abandons can’t be timed.' : 'LightSpeed doesn’t send hang-up times for abandoned calls.', '') +
+        '</div>';
+      phoneChart(p);
+      phoneBrands(p);
+      phoneCsrs(p);
+    }).catch(function (e) { if (tok === T) $('phtop').innerHTML = '<div class="card"><p class="mut">Couldn’t load phone stats. ' + esc(e.message) + ' <button class="lnk" data-act="retry">Try again</button></p></div>'; });
+  }
+  function phoneChart(p) {
+    var el = $('phchart'); if (!el) return;
+    var mode = S.pmode || 'hour', DN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], DL = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'], rows = [];
+    if (mode === 'dow') { [1, 2, 3, 4, 5, 6, 0].forEach(function (d) { var x = (p.dow || []).filter(function (r) { return r.d === d; })[0]; if (x && x.days) rows.push({ lab: DN[d], full: DL[d], per: x.calls / x.days, ab: x.abandoned / x.days, tot: x.calls, tab: x.abandoned, tta: x.tta, n: x.days }); }); }
+    else { var tot = (p.hourly || []).reduce(function (t, x) { return t + x.calls; }, 0); (p.hourly || []).filter(function (x) { return x.calls >= tot * 0.004; }).forEach(function (x) { var h = x.h % 12 || 12, ap = x.h < 12 ? 'a' : 'p', n = x.days || 1; rows.push({ lab: h + ap, full: h + (ap === 'a' ? ' am' : ' pm') + '–' + ((x.h + 1) % 12 || 12) + (x.h + 1 < 12 ? ' am' : ' pm'), per: x.calls / n, ab: x.abandoned / n, tot: x.calls, tab: x.abandoned, tta: x.tta, n: n }); }); }
+    var tabs = '<div style="display:inline-flex;background:#F3F1EC;border-radius:10px;padding:3px;gap:2px" role="tablist">' + [['hour', 'By hour'], ['dow', 'By day of week']].map(function (t) { var on = mode === t[0]; return '<button role="tab" aria-selected="' + on + '" data-pmode="' + t[0] + '" style="border:none;cursor:pointer;font:inherit;font-size:12.5px;padding:6px 12px;border-radius:8px;' + (on ? 'background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.08);font-weight:600' : 'background:transparent;color:#56605B') + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    var head = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:flex-start"><div><h2 class="ttl">Calls and abandons</h2><p class="sub">Average inbound CSR calls per ' + (mode === 'dow' ? 'day' : 'hour on a business day') + '. The orange part is calls abandoned before a CSR answered. Hover a bar for details.</p></div>' + tabs + '</div>';
+    if (!rows.length) { el.innerHTML = head + '<p class="mut" style="margin-top:14px">No phone data in this range.</p>'; return; }
+    var maxP = Math.max.apply(null, rows.map(function (r) { return r.per; })), step = maxP > 2000 ? 500 : maxP > 800 ? 200 : maxP > 400 ? 100 : maxP > 100 ? 50 : maxP > 40 ? 10 : 5, top = Math.ceil(maxP / step) * step || 1, H = 190;
+    var grid = [0, .25, .5, .75, 1].map(function (f) { return '<div style="position:absolute;left:0;right:0;bottom:' + (f * H) + 'px;border-top:1px ' + (f ? 'dashed #ECE8E0' : 'solid #D9D4CA') + '"></div><div style="position:absolute;left:-46px;width:40px;text-align:right;bottom:' + (f * H - 7) + 'px;font-size:11px;color:#6B726E">' + fmt(Math.round(top * f)) + '</div>'; }).join('');
+    var worst = rows.filter(function (r) { return r.tot >= 30; }).reduce(function (m, r) { return !m || r.tab / r.tot > m.tab / m.tot ? r : m; }, null);
+    var bars = rows.map(function (r) {
+      var rt = r.tot ? r.tab / r.tot * 100 : 0;
+      var tip = '<b>' + esc(r.full) + '</b><br>' + fmt(Math.round(r.per)) + ' calls on average<br>' + r.ab.toFixed(1) + ' abandoned (' + rt.toFixed(1) + '%)' + (r.tta != null ? '<br>Answered in ' + r.tta + 's on average' : '') + '<br>' + fmt(r.tot) + ' calls, ' + fmt(r.tab) + ' abandoned in total';
+      return '<div data-tip="' + esc(tip) + '" tabindex="0" aria-label="' + esc(r.full + ': ' + Math.round(r.per) + ' calls, ' + rt.toFixed(1) + '% abandoned') + '" style="flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center"><div style="width:70%;max-width:44px;height:' + (r.per / top * 100).toFixed(1) + '%;display:flex;flex-direction:column;border-radius:5px 5px 1px 1px;overflow:hidden"><div style="background:' + O + ';height:' + (r.per ? r.ab / r.per * 100 : 0).toFixed(1) + '%"></div><div style="background:#CFE5DF;flex:1"></div></div></div>';
+    }).join('');
+    var labs = rows.map(function (r) { return '<div style="flex:1;text-align:center;font-size:11.5px;color:#3B4541;font-weight:500">' + r.lab + '</div>'; }).join('');
+    var nums = rows.map(function (r) { var rt = r.tot ? r.tab / r.tot * 100 : 0; return '<div style="flex:1;text-align:center;font-size:11px;line-height:1.35"><div style="color:#3B4541">' + fmt(Math.round(r.per)) + '</div><div style="color:' + (r === worst ? '#B4461F' : '#14302A') + ';font-weight:600">' + rt.toFixed(1) + '%</div></div>'; }).join('');
+    el.innerHTML = head + (worst ? '<div style="font-size:12.5px;margin-top:12px"><span class="mut">Highest abandon rate</span> <b style="color:#B4461F">' + worst.full + '</b> · ' + (worst.tab / worst.tot * 100).toFixed(1) + '% of ' + fmt(worst.tot) + ' calls</div>' : '') +
+      '<div style="display:flex;gap:16px;font-size:11px;margin-top:12px" class="mut"><span><span style="display:inline-block;width:9px;height:9px;background:#CFE5DF;border-radius:2px"></span> Answered</span><span><span style="display:inline-block;width:9px;height:9px;background:' + O + ';border-radius:2px"></span> Abandoned</span></div>' +
+      '<div style="position:relative;height:' + H + 'px;margin:8px 8px 0 50px">' + grid + '<div style="position:absolute;inset:0;display:flex">' + bars + '</div></div>' +
+      '<div style="display:flex;margin:8px 8px 0 50px">' + labs + '</div>' +
+      '<div style="display:flex;margin:6px 8px 0 50px;padding-top:6px;border-top:1px solid var(--line2)">' + nums + '</div><div class="mut" style="font-size:10.5px;margin:4px 0 0 50px">Avg calls · abandon %</div>';
+  }
+  function psortTh(t, k, l, tip, asc0) {
+    var key = S['ps' + t] || (t === 'b' ? 'calls' : 'in'), dir = S['pd' + t] || 1, on = key === k, asc = (asc0 || false) === (dir === 1);
+    return '<th class="sortable" data-psort="' + t + '|' + k + '" title="' + esc(tip) + ' · click again to reverse" aria-sort="' + (on ? (asc ? 'ascending' : 'descending') : 'none') + '">' + l + (on ? (asc ? ' ↑' : ' ↓') : '') + '</th>';
+  }
+  function psortRows(t, rows, fns, ascKeys) {
+    var key = S['ps' + t] || (t === 'b' ? 'calls' : 'in'), dir = S['pd' + t] || 1, f = fns[key];
+    if (!f) return rows;
+    var asc = ascKeys.indexOf(key) >= 0;
+    return rows.slice().sort(function (a, b) { var x = f(a), y = f(b); var c = typeof x === 'string' ? x.localeCompare(y) : ((x == null ? -1e9 : x) - (y == null ? -1e9 : y)); return dir * (asc ? c : -c); });
+  }
+  function phoneBrands(p) {
+    var el = $('phbrands'); if (!el) return;
+    var rows = (p.brands || []).map(function (b) { return { name: b.brand, calls: b.calls, per: b.per_wd, ab: b.abandoned, rate: phonePct(b.abandoned, b.calls), prate: phonePct(b.prev_ab, b.prev_calls), tta: b.tta, ivr: b.ivr }; });
+    rows = psortRows('b', rows, { name: function (r) { return short(r.name); }, calls: function (r) { return r.calls; }, per: function (r) { return r.per; }, ab: function (r) { return r.ab; }, rate: function (r) { return r.rate; }, tta: function (r) { return r.tta; }, ivr: function (r) { return r.ivr; } }, ['name']);
+    var locs = {}; (p.locations || []).forEach(function (l) { (locs[l.brand] = locs[l.brand] || []).push(l); });
+    var h = '<h2 class="ttl">Abandons by brand</h2><p class="sub">Inbound calls to each brand’s CSR queues and ring groups. Brands with more than one location show the split underneath.</p><div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13.5px"><thead><tr>' +
+      psortTh('b', 'name', 'Brand', 'Sort A–Z', true) + psortTh('b', 'calls', 'Calls', 'Inbound CSR calls') + psortTh('b', 'per', 'Per weekday', 'Average calls Mon–Fri') + psortTh('b', 'ab', 'Abandoned', 'Hung up before a CSR answered') + psortTh('b', 'rate', 'Abandon %', 'Abandoned ÷ calls') + '<th>Change</th>' + psortTh('b', 'tta', 'Avg answer', 'Seconds to answer') + psortTh('b', 'ivr', 'Before a CSR', 'Hung up in the menu or before a CSR group rang') + '</tr></thead><tbody>';
+    rows.forEach(function (r) {
+      h += '<tr><td><div style="display:flex;align-items:center;gap:10px">' + bbadge(r.name) + '<span style="font-weight:600">' + esc(short(r.name)) + '</span></div></td><td class="num">' + fmt(r.calls) + '</td><td class="num">' + (r.per != null ? fmt(Math.round(r.per)) : '—') + '</td><td class="num">' + fmt(r.ab) + '</td><td><div style="display:flex;align-items:center;gap:8px;min-width:110px"><span class="num" style="width:44px;' + ((r.rate || 0) >= 6 ? 'color:#B4461F;font-weight:600' : '') + '">' + (r.rate != null ? r.rate.toFixed(1) + '%' : '—') + '</span><div class="track" style="flex:1"><div style="background:' + ((r.rate || 0) >= 6 ? O : G) + ';width:' + Math.min(100, (r.rate || 0) * 6) + '%"></div></div></div></td><td>' + delta(r.rate, r.prate, ' pts', false) + '</td><td class="num">' + (r.tta != null ? r.tta + 's' : '—') + '</td><td class="num mut">' + fmt(r.ivr) + '</td></tr>';
+      var L = locs[r.name] || []; if (L.length > 1) L.forEach(function (l) { var lr = phonePct(l.abandoned, l.calls); h += '<tr class="mut" style="font-size:12.5px"><td style="padding-left:46px">' + esc(l.location) + '</td><td class="num">' + fmt(l.calls) + '</td><td></td><td class="num">' + fmt(l.abandoned) + '</td><td class="num">' + (lr != null ? lr.toFixed(1) + '%' : '—') + '</td><td></td><td class="num">' + (l.tta != null ? l.tta + 's' : '—') + '</td><td></td></tr>'; });
+    });
+    el.innerHTML = h + '</tbody></table></div><p class="mut" style="font-size:11.5px;margin-top:10px">Cedar Park uses the same groups as Switchboard’s CPOD report. Other brands use every CSR queue and ring group, leaving out technician, manager, accounting, sales, after-hours, test and Broccoli-forward groups.</p>';
+  }
+  function phoneCsrs(p) {
+    var el = $('phcsr'); if (!el) return;
+    var brandAns = {}; (p.brands || []).forEach(function (b) { brandAns[b.brand] = b.answered; });
+    var rows = (p.agents || []).map(function (a) { var tot = a.in_calls + a.out_calls; return { name: a.agent, brand: a.brand, in: a.in_calls, share: phonePct(a.in_calls, brandAns[a.brand]), talk: a.in_calls ? a.in_talk / a.in_calls / 60 : null, inhrs: a.in_talk / 3600, tta: a.tta, out: a.out_calls, outday: a.days ? a.out_calls / a.days : null, outhrs: a.out_talk / 3600, inpct: phonePct(a.in_calls, tot), days: a.days }; });
+    var q = (S.phQ || '').toLowerCase(); if (q) rows = rows.filter(function (r) { return r.name.toLowerCase().indexOf(q) >= 0 || r.brand.toLowerCase().indexOf(q) >= 0; });
+    rows = psortRows('a', rows, { name: function (r) { return r.name; }, brand: function (r) { return short(r.brand); }, in: function (r) { return r.in; }, share: function (r) { return r.share; }, talk: function (r) { return r.talk; }, inhrs: function (r) { return r.inhrs; }, tta: function (r) { return r.tta; }, out: function (r) { return r.out; }, outday: function (r) { return r.outday; }, outhrs: function (r) { return r.outhrs; }, inpct: function (r) { return r.inpct; } }, ['name', 'brand']);
+    var h = '<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">CSR phone activity</h2><p class="sub">' + rows.length + ' people who answered inbound CSR calls in this range · click a header to sort</p></div><div><label class="sr" for="phq">Find a CSR</label><input id="phq" class="field" style="width:220px" placeholder="Find a CSR or brand…" value="' + esc(S.phQ || '') + '"></div></div>' +
+      '<div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13px"><thead><tr>' + psortTh('a', 'name', 'CSR', 'Sort A–Z', true) + psortTh('a', 'brand', 'Brand', 'Sort A–Z', true) + psortTh('a', 'in', 'Inbound answered', 'Inbound CSR calls this person answered') + psortTh('a', 'share', '% of brand', 'Share of the brand’s answered inbound calls') + psortTh('a', 'talk', 'Avg talk', 'Minutes per inbound call') + psortTh('a', 'inhrs', 'Inbound talk', 'Hours on inbound calls') + psortTh('a', 'tta', 'Avg answer', 'Seconds to pick up') + psortTh('a', 'out', 'Outbound', 'Outbound calls placed') + psortTh('a', 'outday', 'Outbound / day', 'Outbound calls per day worked') + psortTh('a', 'outhrs', 'Outbound talk', 'Hours on outbound calls') + psortTh('a', 'inpct', '% inbound', 'Inbound ÷ all calls') + '</tr></thead><tbody>';
+    rows.slice(0, 200).forEach(function (r) {
+      h += '<tr><td><div style="display:flex;align-items:center;gap:10px">' + avatar(r.name, 28) + '<span style="font-weight:600">' + esc(r.name) + '</span></div></td><td class="mut">' + esc(short(r.brand)) + '</td><td class="num">' + fmt(r.in) + '</td><td class="num">' + (r.share != null ? r.share.toFixed(1) + '%' : '—') + '</td><td class="num">' + (r.talk != null ? r.talk.toFixed(1) + 'm' : '—') + '</td><td class="num">' + r.inhrs.toFixed(1) + 'h</td><td class="num">' + (r.tta != null ? r.tta + 's' : '—') + '</td><td class="num">' + fmt(r.out) + '</td><td class="num">' + (r.outday != null ? r.outday.toFixed(1) : '—') + '</td><td class="num">' + r.outhrs.toFixed(1) + 'h</td><td class="num mut">' + (r.inpct != null ? r.inpct.toFixed(0) + '%' : '—') + '</td></tr>';
+    });
+    el.innerHTML = h + '</tbody></table></div><p class="mut" style="font-size:11.5px;margin-top:10px">Utilization needs logged-in hours, which LightSpeed doesn’t send. Names come from LightSpeed extensions, so a shared phone (like “Front Desk”) shows as one person.</p>';
+    var pq = $('phq'); if (pq) { pq.addEventListener('input', function () { S.phQ = pq.value; clearTimeout(pq.t); pq.t = setTimeout(function () { loadPhone().then(phoneCsrs).then(function () { var n = $('phq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }); }, 250); }); }
+  }
+
   function crumb(parts) {
     return '<div class="crumb">' + parts.map(function (p, i) { return i === parts.length - 1 ? '<span style="color:var(--ink);font-weight:600">' + esc(p[0]) + '</span>' : '<button data-go="' + p[1] + '">' + esc(p[0]) + '</button><span aria-hidden="true">/</span>'; }).join('') + '</div>';
   }
@@ -800,7 +884,7 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
   }
   function render() {
     T++; var tok = T; renderNav(); writeHash();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, calls: vCalls, insights: vInsights, kb: vKb, settings: vSettings, team: vTeam, qasettings: vQaSettings }[S.view] || vOverview;
+    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, calls: vCalls, insights: vInsights, kb: vKb, settings: vSettings, team: vTeam, qasettings: vQaSettings }[S.view] || vOverview;
     v(tok);
     var af = $('askform'); if (af) af.addEventListener('submit', function (e) { e.preventDefault(); var q = $('askq').value; $('askq').value = ''; ask(q); });
     var cf = $('callq'); if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
@@ -829,6 +913,10 @@ label.l{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#3B
       if (t === chg || t.closest('[data-closechg]')) { chg.remove(); return; }
       return;
     }
+    var pm = t.closest('[data-pmode]');
+    if (pm) { S.pmode = pm.getAttribute('data-pmode'); loadPhone().then(phoneChart); return; }
+    var ps = t.closest('[data-psort]');
+    if (ps) { var pk = ps.getAttribute('data-psort').split('|'); S['pd' + pk[0]] = S['ps' + pk[0]] === pk[1] ? -(S['pd' + pk[0]] || 1) : 1; S['ps' + pk[0]] = pk[1]; loadPhone().then(pk[0] === 'b' ? phoneBrands : phoneCsrs); return; }
     var tm = t.closest('[data-tmode]');
     if (tm) { S.tmode = tm.getAttribute('data-tmode'); loadReport().then(trendCard); return; }
     var ib = t.closest('[data-invbrand]');
