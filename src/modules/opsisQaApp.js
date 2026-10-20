@@ -165,6 +165,14 @@ export function mountOpsisQA(ROOT, cfg) {
   // ---------------- views ----------------
   function setMain(html) { $('main').innerHTML = topbar() + html + '<div class="foot">Powered by <b>Opsis CX</b> · ' + esc(CLIENT) + ' call quality</div>'; }
 
+  // Keep "Calls to review" no taller than the call-flow card beside it (it scrolls), so the
+  // next row sits right under both instead of leaving a gap under the shorter card.
+  function fitReview() {
+    var s = $('stepcard'), r = $('reviewcard'); if (!s || !r) return;
+    if (s.querySelector('.skel')) return;
+    var side = Math.abs(r.getBoundingClientRect().top - s.getBoundingClientRect().top) < 4;
+    r.style.maxHeight = side ? Math.max(260, s.offsetHeight) + 'px' : '470px';
+  }
   function vOverview(tok) {
     setMain('<div class="hero" style="position:relative;overflow:hidden;border-radius:16px;padding:16px 8px 8px;min-height:120px">' +
       '<svg viewBox="0 0 700 180" preserveAspectRatio="xMaxYMid slice" style="position:absolute;right:0;top:0;width:60%;height:100%" aria-hidden="true"><path d="M0 180 C120 150 180 70 300 90 C420 110 470 20 560 30 C620 36 660 10 700 0 L700 180 Z" fill="#DCE5DD"/><path d="M80 180 C200 140 260 110 360 120 C470 132 520 60 610 70 C650 75 680 60 700 50 L700 180 Z" fill="#C6D5C9"/><path d="M200 180 C300 160 360 140 450 146 C540 152 600 110 700 100 L700 180 Z" fill="#A9C0AF"/><path d="M330 180 C420 170 500 160 580 164 C640 167 680 150 700 146 L700 180 Z" fill="#8AAA93"/></svg>' +
@@ -181,7 +189,7 @@ export function mountOpsisQA(ROOT, cfg) {
       trendCard(cur);
       insightCard(cur, prev);
     }).catch(function (e) { if (tok === T) $('kpis').outerHTML = errBox(e); });
-    loadFocus(null, null).then(function (f) { if (tok === T) stepCard(f, 'stepcard', null, null); }).catch(function () {});
+    loadFocus(null, null).then(function (f) { if (tok === T) stepCard(f, 'stepcard', null, null); fitReview(); }).catch(function () {});
     api(Object.assign({ action: 'calls' }, win({ winnable: true, score_max: 40, limit: 5 }))).then(function (c) { if (tok === T) reviewCard(c); }).catch(function () {});
   }
 
@@ -270,7 +278,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><h2 class="ttl">Calls to review</h2><p class="sub">Winnable calls that didn’t book, scored 40 or lower</p></div><button class="more" data-kpi="winnable">All ' + fmt(c.total) + ' →</button></div>';
     (c.rows || []).forEach(function (r) { h += callRow(r); });
     if (!(c.rows || []).length) h += '<p class="mut">None in this period — nice.</p>';
-    $('reviewcard').innerHTML = h;
+    $('reviewcard').innerHTML = h; fitReview();
   }
   function callRow(r) {
     return '<button class="click" data-call="' + r.id + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line2)">' +
@@ -1158,6 +1166,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr.click,.lnk')) { e.preventDefault(); e.target.click(); }
     if (e.key === '/' && !e.target.matches('input,textarea,select')) { e.preventDefault(); var q = $('askq'); if (q) q.focus(); }
   });
+  on(window, 'resize', function () { clearTimeout(fitReview.t); fitReview.t = setTimeout(fitReview, 150); });
   on(window, 'hashchange', function () { var before = location.hash; readHash(); render(); });
   var lg = $('oqlogo'); if (lg) { lg.src = CFG.logo || 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/garageco/logo.png'; lg.alt = CLIENT; }
   readHash(); render();
