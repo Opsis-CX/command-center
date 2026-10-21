@@ -195,8 +195,17 @@ export function mountOpsisQA(ROOT, cfg) {
     api(Object.assign({ action: 'calls' }, win({ winnable: true, score_max: 40, limit: 5 }))).then(function (c) { if (tok === T) reviewCard(c); }).catch(function () {});
   }
 
+  var BKEY = 'oqBrands:' + CLIENT;
+  try { var bc = JSON.parse(localStorage.getItem(BKEY) || '[]'); if (Array.isArray(bc)) KNOWN.brands = bc.filter(function (x) { return typeof x === 'string'; }); } catch (x) {}
+  function setKnownBrands(list) { if (!list.length) return; BRDONE = true; var same = list.join('|') === KNOWN.brands.join('|'); KNOWN.brands = list; try { localStorage.setItem(BKEY, JSON.stringify(list)); } catch (x) {} if (!same && S.pop === 'brands') render(); }
+  var BRLOAD = null, BRDONE = false;
+  function ensureBrands() {
+    if (BRLOAD || BRDONE || LOCK) return;
+    BRLOAD = api(Object.assign({ action: 'report' }, win({ brands: null }))).then(function (rep) { setKnownBrands((rep.brands || []).map(function (b) { return b.brand; }).filter(function (b) { return b && b !== '—'; }).sort()); BRDONE = true; }).catch(function () {}).then(function () { BRLOAD = null; });
+  }
+  setTimeout(function () { if (!KNOWN.brands.length) ensureBrands(); }, 1200);
   function noteKnown(rep) {
-    if (!S.brands.length) KNOWN.brands = (rep.brands || []).map(function (b) { return b.brand; }).filter(function (b) { return b && b !== '—'; }).sort();
+    if (!S.brands.length) setKnownBrands((rep.brands || []).map(function (b) { return b.brand; }).filter(function (b) { return b && b !== '—'; }).sort());
     (rep.agents || []).forEach(function (a) { if (a.scored >= 40 && KNOWN.agents.indexOf(a.name) < 0) KNOWN.agents.push(a.name); });
   }
 
@@ -2122,7 +2131,7 @@ export function mountOpsisQA(ROOT, cfg) {
     else if (d.callsfor) { if (d.callsfor === 'csr') openCalls({}, S.agent); else { S.brands = [S.brand]; openCalls({}); } }
     else if (d.ask) { ask(d.ask); }
     else if (d.q !== undefined || d.outcome) { openCalls({ q: d.q || '', outcome: d.outcome || null }); }
-    else if (d.pop) { S.pop = S.pop === d.pop ? null : d.pop; render(); }
+    else if (d.pop) { S.pop = S.pop === d.pop ? null : d.pop; render(); if (S.pop === 'brands') ensureBrands(); }
     else if (d.range) { S.range = d.range; S.pop = null; cache = {}; applyRange(); render(); }
     else if (d.bsort) { S.brandDir = S.brandSort === d.bsort ? -(S.brandDir || 1) : 1; S.brandSort = d.bsort; render(); }
     else if (d.csort) { S.csrDir = S.csrSort === d.csort ? -(S.csrDir || 1) : 1; S.csrSort = d.csort; render(); }
