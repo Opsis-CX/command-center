@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { pushSupported, pushPermission, enablePush, isPushEnabled } from '../lib/push'
+import { isPreviewing } from '../lib/rolePreview'
 
 // ============================================================
 // PushEnrollmentBanner
@@ -39,6 +40,9 @@ export default function PushEnrollmentBanner({ profileId }) {
     let cancelled = false
     ;(async () => {
       if (!profileId || !pushSupported()) return
+      // An admin viewing as a test account must never register this device to it
+      // (that would move their own push notifications onto the test account).
+      if (isPreviewing(profileId)) return
       // Someone who actively said "no" at the browser prompt should not be nagged;
       // they have to undo that in browser settings, which a banner cannot do.
       if (pushPermission() === 'denied') return
