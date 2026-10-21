@@ -500,10 +500,11 @@ export function mountOpsisQA(ROOT, cfg) {
       '<select id="csc" class="oq-field" style="width:auto" aria-label="Score"><option value="">Any score</option><option value="max40"' + (c.scoreMax === 40 ? ' selected' : '') + '>40 or lower</option><option value="max70"' + (c.scoreMax === 70 ? ' selected' : '') + '>70 or lower</option><option value="min90"' + (c.scoreMin === 90 ? ' selected' : '') + '>90 or higher</option></select><button class="sel btnd" type="submit">Search</button></form></div>' +
       (chips.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">' + chips.map(function (ch) { return '<button class="chip on" data-unfilter="' + ch[1] + '" aria-label="Remove filter ' + esc(ch[0]) + '">' + esc(ch[0]) + ' ✕</button>'; }).join('') + '<button class="more" data-unfilter="all">Clear all</button></div>' : '') +
       '<div id="clist" style="margin-top:8px">' + skel(54, 6) + '</div><div id="cpager" class="row" style="justify-content:space-between;align-items:center;margin-top:10px"></div></div>');
-    var body = c.bucket ? Object.assign({ action: 'bucketcalls', bucket: c.bucket }, win({ limit: 25, offset: c.offset })) : Object.assign({ action: 'calls' }, win({ agent: S.callsAgent || null, outcome: c.nocard ? 'Booked' : c.outcome, step_missed: c.nocard ? 'capture_payment' : c.step, score_max: c.scoreMax, score_min: c.scoreMin, winnable: c.winnable || null, xfer: c.xfer || null, q: c.q || null, limit: 25, offset: c.offset }));
+    var body = c.bucket ? Object.assign({ action: 'bucketcalls', bucket: c.bucket }, win({ limit: 25, offset: c.offset })) : Object.assign({ action: 'calls' }, win({ agent: S.callsAgent || null, outcome: c.nocard ? 'Booked' : c.outcome, step_missed: c.nocard ? 'capture_payment' : c.step, score_max: c.scoreMax, score_min: c.scoreMin, winnable: c.winnable || null, xfer: c.xfer || null, q: phoneQ(c.q) || c.q || null, limit: 25, offset: c.offset }));
+    if (!c.bucket && phoneQ(c.q)) { body.start = '2025-01-01'; body.end = todayET(); }
     api(body).then(function (r) {
       if (tok !== T) return;
-      $('ctot').textContent = c.bucket ? fmt(r.total) + ' customer conversations (transfers counted once) · lowest score first · click one for the full review' : fmt(r.total) + ' calls match · newest first · click one for the full review';
+      $('ctot').textContent = (!c.bucket && phoneQ(c.q)) ? fmt(r.total) + ' calls from this number · all dates, not just the range above · newest first' : c.bucket ? fmt(r.total) + ' customer conversations (transfers counted once) · lowest score first · click one for the full review' : fmt(r.total) + ' calls match · newest first · click one for the full review';
       $('clist').innerHTML = (r.rows || []).map(callRow).join('') || '<p class="mut">No calls match these filters.</p>';
       var pages = Math.ceil(r.total / 25), pg = Math.floor(c.offset / 25) + 1;
       $('cpager').innerHTML = r.total > 25 ? '<span class="mut num" style="font-size:12.5px">Page ' + pg + ' of ' + fmt(pages) + '</span><div class="row" style="gap:6px"><button class="sel" data-page="-1"' + (pg <= 1 ? ' disabled' : '') + '>← Newer</button><button class="sel" data-page="1"' + (pg >= pages ? ' disabled' : '') + '>Older →</button></div>' : '';
@@ -1103,12 +1104,18 @@ export function mountOpsisQA(ROOT, cfg) {
       if (S.autoplay === id) { S.autoplay = null; if (info && info.url) AU.play().catch(function () {}); }
     }).catch(function () { if (P.id !== id) return; P.loading = false; P.err = 'fail'; paintPlayer(); });
   }
+  function dlHref(u) {
+    if (!u || u.indexOf('/storage/v1/object/sign/') < 0) return u;
+    var c = S.cur && S.cur.id === P.id ? S.cur : {}, ext = ((u.split('?')[0].match(/\.(mp3|wav|ogg|m4a|opus|webm)$/i) || [])[1] || 'mp3').toLowerCase();
+    var nm = ['call', c.date || '', (c.agent || '').replace(/[^\w]+/g, '-'), (c.brand ? short(c.brand) : '').replace(/[^\w]+/g, '-')].filter(Boolean).join('_') + '.' + ext;
+    return u + (u.indexOf('?') >= 0 ? '&' : '?') + 'download=' + encodeURIComponent(nm);
+  }
   function stopAudio() { AU.pause(); P.step = null; P.stepEnd = null; }
   function playerInner() {
     if (P.loading) return '<div style="display:flex;align-items:center;gap:12px"><span class="dots"><span></span><span></span><span></span></span><span class="mut" style="font-size:13px">Loading recording…</span></div>';
     if (P.err === 'none') return '<div class="mut" style="font-size:13px">No recording is available for this call.</div>';
     if (P.err === 'fail') return '<div style="font-size:13px;color:#A8441A">The recording didn’t load. <button class="more" data-pretry="1">Try again</button></div>';
-    if (P.err === 'codec') return '<div style="font-size:13px;color:#A8441A">This browser can’t play this recording. Try Chrome or Edge.</div>';
+    if (P.err === 'codec') return '<div style="font-size:13px;color:#A8441A">This browser can’t play this recording. Try Chrome or Edge, or <button class="more" data-pdl="1">download it</button>.</div>';
     var d = pdur(), cur = AU.currentTime || 0, playing = !AU.paused, pci = (P.info && P.info.pci) || [], steps = (S.cur && S.cur.steps) || [];
     var marks = d ? pci.map(function (r) { return '<span title="Card details skipped" style="position:absolute;top:0;bottom:0;left:' + (r[0] / d * 100).toFixed(2) + '%;width:' + Math.max(0.6, (r[1] - r[0]) / d * 100).toFixed(2) + '%;background:repeating-linear-gradient(45deg,#C9C3B8 0 3px,#E6E1D8 3px 6px);border-radius:2px"></span>'; }).join('') : '';
     var stepNote = P.step != null && steps[P.step] ? '<span style="color:#1F5A41;font-weight:600">Playing step: ' + esc(steps[P.step].label) + '</span> <button class="more" data-pfull="1">Play full call</button>' : '';
@@ -1117,7 +1124,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div style="flex:1;min-width:0"><div style="position:relative;height:22px;display:flex;align-items:center"><div style="position:absolute;left:0;right:0;height:6px;border-radius:999px;background:#EEEBE4;overflow:hidden">' + marks + '<span id="pfill" style="position:absolute;left:0;top:0;bottom:0;background:#2F7D5B;width:' + (d ? Math.min(100, cur / d * 100).toFixed(2) : 0) + '%"></span></div>' +
       '<label class="sr" for="pseek">Seek</label><input id="pseek" type="range" min="0" max="' + Math.ceil(d || 1) + '" step="0.5" value="' + cur.toFixed(1) + '" style="position:absolute;left:0;right:0;width:100%;margin:0;opacity:0;cursor:pointer;height:22px"></div>' +
       '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;margin-top:2px"><span class="num mut" id="ptime">' + clock(cur) + ' / ' + clock(d) + '</span><span class="mut">' + (pci.length ? 'Card details are skipped' : '') + '</span></div></div>' +
-      '<button class="sel" data-pspeed="1" aria-label="Playback speed" style="min-height:34px;padding:4px 10px;font-size:12px">' + (P.rate || 1) + '×</button></div>' +
+      '<button class="sel" data-pspeed="1" aria-label="Playback speed" style="min-height:34px;padding:4px 10px;font-size:12px">' + (P.rate || 1) + '×</button>' + (P.info && P.info.url ? '<button class="sel" data-pdl="1" aria-label="Download recording" title="Download recording" style="min-height:34px;padding:4px 10px;font-size:12px;gap:5px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download</button>' : '') + '</div>' +
       (stepNote ? '<div style="font-size:12.5px;margin-top:6px">' + stepNote + '</div>' : '');
   }
   function paintPlayer() {
@@ -1161,7 +1168,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var steps = c.steps || [], changed = !!c.adjusted && c.ai_score != null;
     var who = steps.filter(function (s) { return s.adj; }).map(function (s) { return s.adj.by; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
     var sc = c.score, col = sc >= 80 ? G : (sc >= 60 ? '#E8A06A' : O), yn = function (v) { return v === true ? '<b style="color:#1F5A41">Yes</b>' : (v === false ? '<b style="color:#A61B1B">No</b>' : (v === 'yes' ? '<b style="color:#1F5A41">Yes</b>' : (v === 'no' ? '<b style="color:#A61B1B">No</b>' : '<b class="mut">N/A</b>'))); };
-    var h = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><div class="cap">Call review</div><div style="font-size:22px;font-weight:600;letter-spacing:-0.025em;margin-top:4px">' + esc(c.agent || 'Unknown CSR') + ' · ' + esc(short(c.brand)) + '</div><div class="mut" style="font-size:12.5px">' + fdate(c.date) + ' · ' + esc(c.direction || '') + ' · ' + fsecs(c.secs) + (c.phone ? ' · ' + esc(c.phone) : '') + '</div></div><button class="sel" data-close="1" aria-label="Close" style="width:44px;justify-content:center">✕</button></div>' +
+    var h = '' + (S.fromAsk ? '<button class="sel" data-backask="1" style="align-self:flex-start;min-height:34px;padding:4px 12px;font-size:12.5px">← Back to AI answer</button>' : '') + '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><div class="cap">Call review</div><div style="font-size:22px;font-weight:600;letter-spacing:-0.025em;margin-top:4px">' + esc(c.agent || 'Unknown CSR') + ' · ' + esc(short(c.brand)) + '</div><div class="mut" style="font-size:12.5px">' + fdate(c.date) + ' · ' + esc(c.direction || '') + ' · ' + fsecs(c.secs) + (c.phone ? ' · ' + esc(c.phone) : '') + '</div></div><button class="sel" data-close="1" aria-label="Close" style="width:44px;justify-content:center">✕</button></div>' +
       '<div class="oq-card" id="plr" style="position:sticky;top:-22px;z-index:3;padding:12px 14px;box-shadow:0 4px 14px rgba(20,48,42,.08)">' + playerInner() + '</div>' +
       '<div class="oq-card" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:96px;height:96px;flex-shrink:0"><svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="Score ' + sc + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + (sc / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span class="num" style="font-size:24px;font-weight:600">' + sc + '</span><span class="mut" style="font-size:9.5px">brand avg ' + (c.brand_avg || '—') + '</span></div></div>' +
       '<div style="flex:1;min-width:220px"><div class="row" style="gap:6px"><span class="pill" style="' + chipOut(c.outcome) + '">' + esc(c.outcome || '—') + '</span>' + (c.winnable ? '<span class="pill" style="background:#FFF4E8;color:#9A4A0B">Winnable</span>' : '') + (c.reason ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(c.reason) + '</span>' : '') + (c.topics || []).slice(0, 3).map(function (t) { return '<span class="pill" style="background:#E6F0EA;color:#1F5A41">' + esc(t) + '</span>'; }).join('') + '</div>' +
@@ -1266,8 +1273,10 @@ export function mountOpsisQA(ROOT, cfg) {
     var cv = $('convo'); if (cv) cv.parentNode.scrollTop = cv.parentNode.scrollHeight;
     var i2 = $('askq2'); if (i2 && !A.busy) i2.focus();
   }
+  function phoneQ(q) { var s = String(q || '').trim(), d = s.replace(/\D/g, ''); if (!/^[\d\s()+.\-]+$/.test(s) || d.length < 7) return null; return d.length === 11 && d[0] === '1' ? d.slice(1) : d; }
   function ask(q) {
     q = (q || '').trim(); if (!q) return;
+    if (phoneQ(q)) { openCalls({ q: q }); return; }
     var A = S.ask; A.open = true; S.callId = null;
     var history = A.msgs.filter(function (m) { return !m.error; }).slice(-6);
     A.msgs.push({ role: 'user', content: q }); A.busy = true; askPanel();
@@ -1305,7 +1314,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function go(view) { S.view = view; S.pop = null; window.scrollTo(0, 0); render(); }
   function openCalls(filters, agent) { S.calls = Object.assign({ outcome: null, step: null, scoreMax: null, scoreMin: null, winnable: null, q: '', offset: 0, nocard: false }, filters || {}); S.callsAgent = agent || null; if (S.ask.open) closeLayer(); go('calls'); }
-  function closeLayer() { stopAudio(); P.id = null; S.callId = null; S.ask.open = false; $('layer').innerHTML = ''; }
+  function closeLayer() { stopAudio(); P.id = null; S.callId = null; S.fromAsk = false; S.ask.open = false; $('layer').innerHTML = ''; }
 
   on(document, 'submit', function (e) {
     if (e.target.id === 'askform2') { e.preventDefault(); var q = $('askq2').value; ask(q); }
@@ -1330,13 +1339,16 @@ export function mountOpsisQA(ROOT, cfg) {
       return;
     }
     var ap = t.closest('[data-autoplay]');
-    if (ap) { var aid = ap.getAttribute('data-autoplay'); S.ask.open = false; S.autoplay = aid; if (P.id === aid && P.info && P.info.url) { S.autoplay = null; AU.play().catch(function () {}); } S.callId = aid; callDrawer(); return; }
+    if (ap) { var aid = ap.getAttribute('data-autoplay'); S.fromAsk = !!S.ask.open; S.ask.open = false; S.autoplay = aid; if (P.id === aid && P.info && P.info.url) { S.autoplay = null; AU.play().catch(function () {}); } S.callId = aid; callDrawer(); return; }
     if (t.closest('[data-pplay]')) { if (AU.paused) { P.step = null; P.stepEnd = null; if (AU.ended) AU.currentTime = 0; AU.play().catch(function () {}); } else AU.pause(); return; }
     if (t.closest('[data-pfull]')) { P.step = null; P.stepEnd = null; AU.play().catch(function () {}); paintPlayer(); return; }
     var pst = t.closest('[data-pstep]');
     if (pst) { playStep(+pst.getAttribute('data-pstep')); return; }
     var psk = t.closest('[data-seek]');
     if (psk && P.info && P.info.url) { P.step = null; P.stepEnd = null; AU.currentTime = Math.max(0, +psk.getAttribute('data-seek') - 0.4); AU.play().catch(function () {}); return; }
+    var pdl = t.closest('[data-pdl]');
+    if (pdl) { var did = P.id; toast('Preparing download…'); api({ action: 'audio', id: did, t: Date.now() }).then(function (info) { if (!info || !info.url) { toast('No recording is available for this call.'); return; } var a = document.createElement('a'); a.href = dlHref(info.url); if (a.href.indexOf('download=') < 0) { a.target = '_blank'; a.rel = 'noopener'; } ROOT.appendChild(a); a.click(); a.remove(); }).catch(function () { toast('The download didn’t start. Try again.'); }); return; }
+    if (t.closest('[data-backask]')) { stopAudio(); P.id = null; S.callId = null; S.fromAsk = false; S.ask.open = true; askPanel(); return; }
     if (t.closest('[data-pspeed]')) { var rs = [1, 1.25, 1.5, 2], ri = rs.indexOf(P.rate || 1); P.rate = rs[(ri + 1) % rs.length]; AU.playbackRate = P.rate; paintPlayer(); return; }
     if (t.closest('[data-pretry]')) { var rid = P.id; P.id = null; loadAudio(rid); paintPlayer(); return; }
     var rph = t.closest('[data-rphone]');
@@ -1364,7 +1376,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (d.go) { if (S.ask.open || S.callId) closeLayer(); go(d.go); }
     else if (d.brand !== undefined && !d.outcome) { closeLayer(); S.brand = d.brand; go('brand'); }
     else if (d.agent !== undefined) { closeLayer(); S.agent = d.agent; go('csr'); }
-    else if (d.call) { S.ask.open = false; S.callId = d.call; callDrawer(); }
+    else if (d.call) { S.fromAsk = !!S.ask.open || (!!S.fromAsk && !!S.callId); S.ask.open = false; S.callId = d.call; callDrawer(); }
     else if (d.change !== undefined) { S.change = +d.change; changeModal(); }
     else if (d.kpi) {
       var map = { lowscore: { scoreMax: 40 }, notbooked: { outcome: 'Not Booked' }, noask: { step: 'ask_booking' }, nocard: { nocard: true }, winnable: { winnable: true, scoreMax: 40 } };
@@ -1449,7 +1461,7 @@ export function mountOpsisQA(ROOT, cfg) {
     }
   });
   on(document, 'keydown', function (e) {
-    if (e.key === 'Escape') { var chg = $('chg'); if (chg) { chg.remove(); return; } if (S.pop) { S.pop = null; render(); return; } if ($('layer').innerHTML) closeLayer(); }
+    if (e.key === 'Escape') { var chg = $('chg'); if (chg) { chg.remove(); return; } if (S.pop) { S.pop = null; render(); return; } if (S.fromAsk && S.callId && !S.ask.open) { stopAudio(); P.id = null; S.callId = null; S.fromAsk = false; S.ask.open = true; askPanel(); return; } if ($('layer').innerHTML) closeLayer(); }
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr.click,.lnk')) { e.preventDefault(); e.target.click(); }
     if (e.key === '/' && !e.target.matches('input,textarea,select')) { e.preventDefault(); var q = $('askq'); if (q) q.focus(); }
   });
