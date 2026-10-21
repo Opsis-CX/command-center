@@ -8,6 +8,8 @@
 //   - client logins, when their client has clients.portal_v2 = true (ClientPortal in App.jsx)
 //   - Opsis admins/QA staff at /opsis-qa (admin preview — they act as an account admin)
 // The CSR scorecards page mounts the existing <CsrScorecard> inside the new shell.
+// Coaching Hub (2026-10-21): actions starting with "hub" go to the edge function opsis-coaching-hub.
+// csrSelf = a CSR login: the portal shows only their own Coaching Hub (Home / Ask my coach / My wins).
 import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { supabase } from '../lib/supabase'
@@ -16,7 +18,7 @@ import { mountOpsisQA } from './opsisQaApp'
 
 async function invoke(body) {
   // Reporting (call export + scorecard reports) is served by its own read-only function.
-  const fn = ['export', 'scorecards', 'money', 'excused', 'billing', 'jobvalues', 'invoices', 'bucketcalls', 'callchat', 'scorereq', 'xfercalls', 'factcalls', 'rubric', 'teaminvite', 'calledit'].includes(body?.action) ? 'opsis-qa-reports' : 'opsis-qa-portal'
+  const fn = String(body?.action || '').startsWith('hub') ? 'opsis-coaching-hub' : ['export', 'scorecards', 'money', 'excused', 'billing', 'jobvalues', 'invoices', 'bucketcalls', 'callchat', 'scorereq', 'xfercalls', 'factcalls', 'rubric', 'teaminvite', 'calledit', 'callmetrics'].includes(body?.action) ? 'opsis-qa-reports' : 'opsis-qa-portal'
   const { data, error } = await supabase.functions.invoke(fn, { body })
   if (error) {
     let msg = 'Something went wrong loading that.'
@@ -27,14 +29,14 @@ async function invoke(body) {
   return data
 }
 
-export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, csrMode = 'manager', onSignOut, onClassic, staff = false }) {
+export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, csrMode = 'manager', onSignOut, onClassic, staff = false, csrSelf = false }) {
   const ref = useRef(null)
   const [me, setMe] = useState(null)
   const [err, setErr] = useState('')
 
   useEffect(() => {
     let active = true
-    invoke(clientId ? { action: 'me', client_id: clientId } : { action: 'me' })
+    invoke(csrSelf ? { action: 'hubme' } : clientId ? { action: 'me', client_id: clientId } : { action: 'me' })
       .then((m) => { if (active) setMe(m) })
       .catch((e) => { if (active) setErr(e.message || 'Could not load your account.') })
     return () => { active = false }
@@ -45,15 +47,17 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
     const destroy = mountOpsisQA(ref.current, {
       invoke,
       clientId,
-      role: me.role,
-      brandLock: me.brand_lock,
+      role: csrSelf ? 'csr' : me.role,
+      brandLock: csrSelf ? me.brand : me.brand_lock,
       clientName: me.client_name,
+      csrSelf,
+      userFirst: me.first || (me.name || '').split(' ')[0],
       staff: staff || me.staff,
       userName: me.name,
       email: me.email,
-      logo,
+      logo: logo || (csrSelf ? me.logo || undefined : undefined),
       hasCsrs,
-      phone: me.client === 'c7c50cda-92a6-4665-baa3-3e207f853326',
+      phone: !csrSelf && me.client === 'c7c50cda-92a6-4665-baa3-3e207f853326',
       onSignOut,
       onClassic,
       mountCsr: (el) => {
@@ -69,7 +73,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F5F3EE', fontFamily: 'Montserrat, Arial, sans-serif', padding: 16 }}>
         <div style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 14, padding: 24, maxWidth: 420, color: '#1C2421' }}>
-          <b>We couldn’t open your call quality portal.</b>
+          <b>{csrSelf ? 'We couldn’t open your Coaching Hub.' : 'We couldn’t open your call quality portal.'}</b>
           <p style={{ fontSize: 13, color: '#5F6763', lineHeight: 1.5 }}>{err} If this keeps happening, contact the Opsis CX Support team.</p>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => window.location.reload()} style={{ border: '1px solid #14302A', background: '#14302A', color: '#fff', borderRadius: 10, padding: '8px 14px', cursor: 'pointer' }}>Try again</button>
