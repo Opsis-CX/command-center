@@ -408,18 +408,32 @@ function hiddenBy(prefMap, c) {
   return true
 }
 
-function NameModal({ title, initial, onSave, onClose }) {
+const GROUP_ICONS = ['📁', '⭐', '📊', '👥', '⚙️', '🏢', '🚀', '📞', '💼', '🛠️', '📣', '🎯', '💡', '❤️', '💜', '🔥']
+
+function NameModal({ title, initial, initialIcon = '📁', withIcon = false, onSave, onClose }) {
   const [val, setVal] = useState(initial || '')
+  const [icon, setIcon] = useState(initialIcon)
   const ok = val.trim().length > 0 && val.trim().length <= 60
-  const submit = () => { if (!ok) return; onSave(val); onClose() }
+  const submit = () => { if (!ok) return; onSave(val, withIcon ? icon : undefined); onClose() }
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 70, display: 'grid', placeItems: 'center', padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: 18, width: 'min(360px, 100%)', boxShadow: '0 20px 50px rgba(0,0,0,.25)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: 18, width: 'min(380px, 100%)', boxShadow: '0 20px 50px rgba(0,0,0,.25)' }}>
         <b style={{ fontSize: 15 }}>{title}</b>
-        <input autoFocus value={val} maxLength={60} onChange={e => setVal(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose() }}
-          placeholder="e.g. GarageCo, Leadership, Projects"
-          style={{ width: '100%', boxSizing: 'border-box', marginTop: 12, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 14 }} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          {withIcon && <span style={{ width: 38, height: 38, flex: 'none', display: 'grid', placeItems: 'center', border: '1px solid var(--line)', borderRadius: 8, fontSize: 18 }}>{icon}</span>}
+          <input autoFocus value={val} maxLength={60} onChange={e => setVal(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose() }}
+            placeholder="e.g. Clients / Brands, Internal, Tools & Projects"
+            style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 14 }} />
+        </div>
+        {withIcon && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10 }}>
+            {GROUP_ICONS.map(ic => (
+              <button key={ic} onClick={() => setIcon(ic)}
+                style={{ width: 32, height: 32, fontSize: 16, borderRadius: 7, cursor: 'pointer', border: icon === ic ? '2px solid var(--accent)' : '1px solid var(--line)', background: icon === ic ? 'var(--accent-bg)' : 'var(--surface)' }}>{ic}</button>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn" disabled={!ok} onClick={submit}>Save</button>
@@ -428,6 +442,22 @@ function NameModal({ title, initial, onSave, onClose }) {
     </div>
   )
 }
+
+// Sidebar styling (hover-only ⋯ on desktop, compact rows). Kept here so Chat.jsx
+// stays a single drop-in file.
+const SIDEBAR_CSS = `
+.chat-side-row { display: flex; align-items: center; border-radius: 6px; margin: 0 2px 1px; }
+.chat-side-row:hover { background: var(--surface); }
+.chat-side-row.is-active { background: var(--accent-bg); }
+.chat-side-btn { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; border-radius: 6px; cursor: pointer; font-family: inherit; line-height: 1.35; }
+.chat-side-more { border: 0; background: transparent; cursor: pointer; color: var(--ink-soft); font-size: 15px; line-height: 1; padding: 4px 7px; flex: none; border-radius: 6px; opacity: 0; }
+.chat-side-row:hover .chat-side-more, .chat-side-head:hover .chat-side-more, .chat-side-more.is-open, .chat-side-more:focus-visible { opacity: 1; }
+.chat-side-more:hover { background: var(--line); }
+.chat-side-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 2px 2px; }
+.chat-side-head-btn { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; cursor: pointer; padding: 3px 8px; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink-soft); min-width: 0; border-radius: 6px; }
+.chat-side-head-btn:hover { background: var(--surface); color: var(--ink); }
+@media (hover: none) { .chat-side-more { opacity: .6; } }
+`
 
 function ChatSearchBar({ channels, profiles, dmNames, prefs = {}, onJump }) {
   const [raw, setRaw] = useState('')
@@ -748,10 +778,10 @@ export default function Chat() {
     if (activeId === c.id) { setActiveId(null); setMobileView('list') }
   }
 
-  async function createSection(name, thenMove) {
+  async function createSection(name, thenMove, icon = null) {
     const sort_order = sections.length ? Math.max(...sections.map(s => s.sort_order || 0)) + 1 : 0
     const { data, error } = await supabase.from('chat_sections')
-      .insert({ profile_id: me.id, name: name.trim(), sort_order }).select().single()
+      .insert({ profile_id: me.id, name: name.trim(), icon: icon || null, sort_order }).select().single()
     if (error) { window.alert('Could not create group: ' + error.message); return }
     setSections(prev => [...prev, data])
     if (thenMove) moveToSection(thenMove, data.id)
@@ -893,54 +923,50 @@ export default function Chat() {
 
   const renderRow = (c, { dim = false } = {}) => {
     const active = c.id === activeId && !isMobile
+    const unread = unreadCounts[c.id] || 0
     const pinnedHere = !!prefs[c.id]?.pinned_at
     const peer = c.is_dm && dmPeers[c.id] ? profiles.find(p => p.id === dmPeers[c.id]) : null
     const st = peer && effStatus(peer)
+    const label = c.is_dm ? (dmNames[c.id] || c.name || 'Direct message') : c.name
+    const isGroupDm = c.is_dm && !peer
     return (
-      <div key={c.id} className="chat-side-row" style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2, opacity: dim ? 0.75 : 1 }}>
-        <button onClick={() => openChannel(c.id)}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, textAlign: 'left', border: 0, background: active ? 'var(--accent-bg)' : 'transparent', color: active ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: unreadCounts[c.id] ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-          {c.is_dm
-            ? (peer ? <PresenceDot profile={peer} size={9} ring="var(--canvas)" /> : <span style={{ width: 9, flex: 'none' }} />)
-            : null}
-          <span style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {c.is_dm ? (dmNames[c.id] || c.name || 'Direct message') : `# ${c.name}`}
+      <div key={c.id} className={'chat-side-row' + (active ? ' is-active' : '')} style={{ opacity: dim ? 0.7 : 1 }}>
+        <button onClick={() => openChannel(c.id)} className="chat-side-btn"
+          style={{ color: active ? 'var(--accent)' : unread ? 'var(--ink)' : 'var(--ink-soft)', fontWeight: unread ? 700 : 500, padding: isMobile ? '9px 10px' : '4px 8px', fontSize: isMobile ? 15 : 13.5 }}>
+          {c.is_dm ? (
+            <span style={{ position: 'relative', width: 20, height: 20, flex: 'none' }}>
+              <span style={{ width: 20, height: 20, borderRadius: 5, background: isGroupDm ? 'var(--line)' : avatarColor(label), color: isGroupDm ? 'var(--ink-soft)' : '#fff', fontSize: 9, fontWeight: 700, display: 'grid', placeItems: 'center' }}>
+                {isGroupDm ? (label.split(',').length) : initials(label)}
+              </span>
+              {peer && <span style={{ position: 'absolute', right: -3, bottom: -3 }}><PresenceDot profile={peer} size={8} ring="var(--canvas)" /></span>}
             </span>
+          ) : (
+            <span style={{ width: 20, textAlign: 'center', flex: 'none', opacity: 0.7, fontWeight: 500 }}>#</span>
+          )}
+          <span style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
             {st && st.emoji ? <span title={st.text || ''} style={{ fontSize: 12, flex: 'none' }}>{st.emoji}</span> : null}
-            {pinnedHere && <span title="Pinned" style={{ fontSize: 10.5, flex: 'none' }}>📌</span>}
+            {pinnedHere && <span title="Pinned" style={{ fontSize: 10, flex: 'none' }}>📌</span>}
           </span>
-          {unreadBadge(unreadCounts[c.id])}
+          {unreadBadge(unread)}
         </button>
         <button onClick={(e) => openMenu(e, 'item', c.id)} title="Options" aria-label="Options"
-          className="chat-side-more"
-          style={{ border: 0, background: menu?.id === c.id ? 'var(--surface)' : 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 15, lineHeight: 1, padding: isMobile ? '10px 10px' : '6px 7px', flex: 'none', borderRadius: 6 }}>⋯</button>
+          className={'chat-side-more' + (menu?.id === c.id ? ' is-open' : '')}>⋯</button>
       </div>
     )
   }
 
-  // Inside Favorites and custom groups, keep channels and DMs apart:
-  // channels first, then DMs, each with a small label when both are present.
-  const renderTyped = (list, keyPrefix) => {
-    const chs = list.filter(c => !c.is_dm)
-    const dms = list.filter(c => c.is_dm)
-    const both = chs.length > 0 && dms.length > 0
-    const sub = (k, label) => (
-      <div key={k} style={{ padding: '6px 16px 2px', fontSize: 10, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--ink-soft)', opacity: 0.8 }}>{label}</div>
-    )
-    return (<>
-      {both && sub(keyPrefix + '-sub-ch', 'Channels')}
-      {chs.map(c => renderRow(c))}
-      {both && sub(keyPrefix + '-sub-dm', 'Direct messages')}
-      {dms.map(c => renderRow(c))}
-    </>)
-  }
+  // Inside Favorites and custom groups: channels first, then DMs.
+  const renderTyped = (list) => (<>
+    {list.filter(c => !c.is_dm).map(c => renderRow(c))}
+    {list.filter(c => c.is_dm).map(c => renderRow(c))}
+  </>)
 
-  const renderHeader = ({ key, label, count, collapsed, onToggle, right, unread }) => (
-    <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 6px 6px 6px' }}>
-      <button onClick={onToggle}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 0, background: 'transparent', cursor: 'pointer', padding: '0 5px', fontFamily: 'inherit', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-soft)', minWidth: 0 }}>
-        <span style={{ fontSize: 9, width: 9 }}>{collapsed ? '▸' : '▾'}</span>
+  const renderHeader = ({ key, label, icon, count, collapsed, onToggle, right, unread }) => (
+    <div key={key} className="chat-side-head">
+      <button onClick={onToggle} className="chat-side-head-btn">
+        <span style={{ fontSize: 9, width: 10, flex: 'none', opacity: 0.8 }}>{collapsed ? '▶' : '▼'}</span>
+        {icon && <span style={{ fontSize: 13, width: 18, textAlign: 'center', flex: 'none' }}>{icon}</span>}
         <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}{count != null ? ` (${count})` : ''}</span>
         {unread ? unreadBadge(unread) : null}
       </button>
@@ -971,7 +997,7 @@ export default function Chat() {
           {menuItem('‹ Back', () => setMenu({ ...menu, view: 'main' }))}
           <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />
           {sections.map(sec => menuItem(sec.name, () => { moveToSection(c, sec.id); close() }, { checked: pref.section_id === sec.id && !pref.favorite }))}
-          {menuItem('＋ New group…', () => { close(); setNameModal({ title: 'New group', initial: '', onSave: (n) => createSection(n, c) }) })}
+          {menuItem('＋ New group…', () => { close(); setNameModal({ title: 'New group', initial: '', withIcon: true, onSave: (n, ic) => createSection(n, c, ic) }) })}
           {pref.section_id && sectionIds.has(pref.section_id) && menuItem('Remove from group', () => { moveToSection(c, null); close() })}
         </>)
       } else {
@@ -993,7 +1019,7 @@ export default function Chat() {
       if (!sec) return null
       const idx = sections.findIndex(x => x.id === sec.id)
       body = (<>
-        {menuItem('✏️ Rename', () => { close(); setNameModal({ title: 'Rename group', initial: sec.name, onSave: (n) => updateSection(sec.id, { name: n.trim() }) }) })}
+        {menuItem('✏️ Rename / change icon', () => { close(); setNameModal({ title: 'Edit group', initial: sec.name, initialIcon: sec.icon || '📁', withIcon: true, onSave: (n, ic) => updateSection(sec.id, { name: n.trim(), icon: ic || null }) }) })}
         {idx > 0 && menuItem('↑ Move up', () => { moveSection(sec, -1); close() })}
         {idx < sections.length - 1 && menuItem('↓ Move down', () => { moveSection(sec, 1); close() })}
         <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />
@@ -1015,20 +1041,21 @@ export default function Chat() {
     <div ref={shellRef} style={{ display: isMobile ? 'block' : 'grid', gridTemplateColumns: '240px 1fr', gap: 0, height: chatH || 'calc(100dvh - 150px)', maxHeight: chatH || 'calc(100dvh - 150px)', minHeight: 380, border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
       {showList && (
         <div style={{ borderRight: isMobile ? 'none' : '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--canvas)', minHeight: 0, height: isMobile ? '100%' : 'auto' }}>
+          <style>{SIDEBAR_CSS}</style>
           <ChatSearchBar channels={channels} profiles={profiles} dmNames={dmNames} prefs={prefs} onJump={jumpToSearchResult} />
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 'none', gap: 6 }}>
             <b style={{ fontSize: 14 }}>Chat</b>
             <span style={{ display: 'inline-flex', gap: 4 }}>
               <button className="btn btn-ghost" title="New group" style={{ padding: '4px 9px', fontSize: 12 }}
-                onClick={() => setNameModal({ title: 'New group', initial: '', onSave: (n) => createSection(n) })}>＋ Group</button>
+                onClick={() => setNameModal({ title: 'New group', initial: '', withIcon: true, onSave: (n, ic) => createSection(n, null, ic) })}>＋ Group</button>
               {canCreateChannels && <button className="btn btn-ghost" style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => setShowCreate(true)}>+ New</button>}
             </span>
           </div>
-          <div style={{ overflowY: 'auto', flex: 1, padding: 8, minHeight: 0 }}>
+          <div style={{ overflowY: 'auto', flex: 1, padding: '2px 6px 10px', minHeight: 0 }}>
 
             {favList.length > 0 && (<>
-              {renderHeader({ key: 'h-fav', label: '⭐ Favorites', collapsed: builtinCollapsed.fav, onToggle: () => toggleBuiltin('fav') })}
-              {renderTyped(whenCollapsed(favList, builtinCollapsed.fav), 'fav')}
+              {renderHeader({ key: 'h-fav', label: 'Favorites', icon: '⭐', collapsed: builtinCollapsed.fav, onToggle: () => toggleBuiltin('fav') })}
+              {renderTyped(whenCollapsed(favList, builtinCollapsed.fav))}
             </>)}
 
             {sections.map(sec => {
@@ -1036,35 +1063,35 @@ export default function Chat() {
               return (
                 <React.Fragment key={sec.id}>
                   {renderHeader({
-                    key: 'h-' + sec.id, label: sec.name, collapsed: sec.collapsed,
+                    key: 'h-' + sec.id, label: sec.name, icon: sec.icon || '📁', collapsed: sec.collapsed,
                     onToggle: () => updateSection(sec.id, { collapsed: !sec.collapsed }),
-                    right: <button onClick={(e) => openMenu(e, 'section', sec.id)} title="Group options"
-                      style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 14, padding: '2px 6px', borderRadius: 6 }}>⋯</button>,
+                    right: <button onClick={(e) => openMenu(e, 'section', sec.id)} title="Group options" aria-label="Group options"
+                      className={'chat-side-more' + (menu?.id === sec.id ? ' is-open' : '')}>⋯</button>,
                   })}
                   {items.length === 0 && !sec.collapsed && (
-                    <div className="page-sub" style={{ padding: '2px 16px 6px', fontSize: 11.5 }}>Empty — use ⋯ → Move to group on any chat.</div>
+                    <div className="page-sub" style={{ padding: '2px 12px 6px 36px', fontSize: 11.5 }}>Empty — use ⋯ → Move to group on any chat.</div>
                   )}
-                  {renderTyped(whenCollapsed(items, sec.collapsed), sec.id)}
+                  {renderTyped(whenCollapsed(items, sec.collapsed))}
                 </React.Fragment>
               )
             })}
 
-            {renderHeader({ key: 'h-ch', label: 'Channels', collapsed: builtinCollapsed.channels, onToggle: () => toggleBuiltin('channels') })}
+            {renderHeader({ key: 'h-ch', label: 'Channels', icon: '#', collapsed: builtinCollapsed.channels, onToggle: () => toggleBuiltin('channels') })}
             {channelList.length === 0 && !builtinCollapsed.channels && channels.filter(c => !c.is_dm).length === 0 && (
               <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{canCreateChannels ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>
             )}
             {whenCollapsed(channelList, builtinCollapsed.channels).map(c => renderRow(c))}
 
             {(dmList.length > 0 || canCreateDMs) && renderHeader({
-              key: 'h-dm', label: 'Direct messages', collapsed: builtinCollapsed.dms, onToggle: () => toggleBuiltin('dms'),
+              key: 'h-dm', label: 'Direct messages', icon: '💬', collapsed: builtinCollapsed.dms, onToggle: () => toggleBuiltin('dms'),
               right: canCreateDMs ? <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button> : null,
             })}
             {whenCollapsed(dmList, builtinCollapsed.dms).map(c => renderRow(c))}
 
             {hiddenList.length > 0 && (<>
-              {renderHeader({ key: 'h-hidden', label: '🙈 Hidden', count: hiddenList.length, collapsed: !showHidden, onToggle: () => setShowHidden(v => !v), unread: hiddenUnread })}
+              {renderHeader({ key: 'h-hidden', label: 'Hidden', icon: '🙈', count: hiddenList.length, collapsed: !showHidden, onToggle: () => setShowHidden(v => !v), unread: hiddenUnread })}
               {showHidden && (<>
-                <div className="page-sub" style={{ padding: '0 16px 6px', fontSize: 11.5 }}>Hidden channels stay here. Hidden DMs come back on a new message.</div>
+                <div className="page-sub" style={{ padding: '0 12px 6px 36px', fontSize: 11.5 }}>Hidden channels stay here. Hidden DMs come back on a new message.</div>
                 {hiddenList.map(c => renderRow(c, { dim: true }))}
               </>)}
             </>)}
