@@ -919,6 +919,23 @@ export default function Chat() {
     )
   }
 
+  // Inside Favorites and custom groups, keep channels and DMs apart:
+  // channels first, then DMs, each with a small label when both are present.
+  const renderTyped = (list, keyPrefix) => {
+    const chs = list.filter(c => !c.is_dm)
+    const dms = list.filter(c => c.is_dm)
+    const both = chs.length > 0 && dms.length > 0
+    const sub = (k, label) => (
+      <div key={k} style={{ padding: '6px 16px 2px', fontSize: 10, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--ink-soft)', opacity: 0.8 }}>{label}</div>
+    )
+    return (<>
+      {both && sub(keyPrefix + '-sub-ch', 'Channels')}
+      {chs.map(c => renderRow(c))}
+      {both && sub(keyPrefix + '-sub-dm', 'Direct messages')}
+      {dms.map(c => renderRow(c))}
+    </>)
+  }
+
   const renderHeader = ({ key, label, count, collapsed, onToggle, right, unread }) => (
     <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 6px 6px 6px' }}>
       <button onClick={onToggle}
@@ -1011,7 +1028,7 @@ export default function Chat() {
 
             {favList.length > 0 && (<>
               {renderHeader({ key: 'h-fav', label: '⭐ Favorites', collapsed: builtinCollapsed.fav, onToggle: () => toggleBuiltin('fav') })}
-              {whenCollapsed(favList, builtinCollapsed.fav).map(c => renderRow(c))}
+              {renderTyped(whenCollapsed(favList, builtinCollapsed.fav), 'fav')}
             </>)}
 
             {sections.map(sec => {
@@ -1027,7 +1044,7 @@ export default function Chat() {
                   {items.length === 0 && !sec.collapsed && (
                     <div className="page-sub" style={{ padding: '2px 16px 6px', fontSize: 11.5 }}>Empty — use ⋯ → Move to group on any chat.</div>
                   )}
-                  {whenCollapsed(items, sec.collapsed).map(c => renderRow(c))}
+                  {renderTyped(whenCollapsed(items, sec.collapsed), sec.id)}
                 </React.Fragment>
               )
             })}
