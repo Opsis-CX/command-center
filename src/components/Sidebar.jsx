@@ -114,6 +114,7 @@ const NAV_MAIN = [
           { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
           { to: '/sms-consents', label: 'SMS Consent', perm: '__admin' },   // agent text opt-in report (admins only)
           { to: '/roles', label: 'Roles & permissions', perm: '__admin' }, // admins/owners only
+          { to: '/service-account', label: 'Service account', perm: '__admin' }, // the account automated posts use (Turri)
           { to: '/survey', label: 'New Hire Survey', perm: '__admin' },   // results view; agents reach the form from their notification
         ],
       },
