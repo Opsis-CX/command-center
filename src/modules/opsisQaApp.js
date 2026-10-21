@@ -66,7 +66,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
     var k = JSON.stringify(body), cacheable = !!CACHEABLE[body.action];
     if (cacheable && cache[k]) return cache[k];
-    var isRead = cacheable || body.action === 'call' || body.action === 'export' || body.action === 'bucketcalls' || body.action === 'factcalls' || (body.action === 'xfercalls' && body.op !== 'why') || body.action === 'scorecards' || body.action === 'money' || body.action === 'excused' || body.action === 'billing' || (body.action === 'jobvalues' && !body.op) || body.action === 'audio' || ((body.action === 'kb' || body.action === 'settings' || body.action === 'team') && !body.op) || (body.action === 'notes' && body.body == null);
+    var isRead = cacheable || body.action === 'call' || body.action === 'export' || body.action === 'bucketcalls' || body.action === 'factcalls' || body.action === 'callmetrics' || body.action === 'hubhome' || body.action === 'hubwins' || body.action === 'hubroster' || body.action === 'hubaudio' || (body.action === 'xfercalls' && body.op !== 'why') || body.action === 'scorecards' || body.action === 'money' || body.action === 'excused' || body.action === 'billing' || (body.action === 'jobvalues' && !body.op) || body.action === 'audio' || ((body.action === 'kb' || body.action === 'settings' || body.action === 'team') && !body.op) || (body.action === 'notes' && body.body == null);
     var once = function () { return CFG.invoke(body); };
     var wait = function (ms) { return new Promise(function (res) { setTimeout(res, ms); }); };
     var stop = function (e) { return e.status && e.status < 500 && e.status !== 408; };
@@ -112,12 +112,13 @@ export function mountOpsisQA(ROOT, cfg) {
       overview: 'M4 5h16v14H4zM4 9h16M9 9v10', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
       calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
+      hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
       scorecards: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8 11h8M8 15h8M8 19h5', reporting: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3', money: 'M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5s-5 1.6-5 3.5 2.2 3.2 5 3.5 5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5', team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
     }[k];
   }
 
   // ---------------- nav + top bar ----------------
-  var NAV = [['', [['overview', 'Overview'], ['insights', 'Insights']].concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', 'Brands']]).concat([['csrs', 'CSRs'], ['calls', 'Call reviews'], ['money', 'Revenue'], ['reporting', 'Reporting']]).concat(CFG.hasCsrs ? [['scorecards', 'CSR scorecards']] : [])],
+  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview'], ['insights', 'Insights']].concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', 'Brands']]).concat([['csrs', 'CSRs'], ['calls', 'Call reviews'], ['money', 'Revenue'], ['reporting', 'Reporting']]).concat([['hub', 'Coaching Hub']])],
     ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(IS_ADMIN ? [['team', 'Team & access']] : [])]];
   function renderWho() {
     var w = $('oqwho'); if (!w) return;
@@ -635,7 +636,7 @@ export function mountOpsisQA(ROOT, cfg) {
   // Team & access
   var TM = { list: null, inv: null, del: null, busy: false };
   var ROLES = [['admin', 'Account admin', 'Everything, plus people, QA settings and the knowledge base', ['All brands', 'Change scores and add notes', 'Edit knowledge base + QA settings', 'Invite and remove people']], ['manager', 'Brand manager', 'Coach their brand — notes and score changes', ['One brand or all brands', 'Change scores and add notes', 'Ask the AI, play recordings']], ['viewer', 'Viewer', 'Read-only dashboards and call reviews', ['One brand or all brands', 'Play recordings, ask the AI', 'No changes']]];
-  var RNAME = { admin: 'Account admin', manager: 'Brand manager', viewer: 'Viewer' };
+  var RNAME = { admin: 'Account admin', manager: 'Brand manager', viewer: 'Viewer', csr: 'CSR' };
   function vTeam(tok) {
     if (!IS_ADMIN) { setMain(crumb([['Team & access']]) + noRights('Team & access')); return; }
     setMain(crumb([['Team & access']]) + '<div id="tmwrap"><div class="oq-card">' + skel(40, 6) + '</div></div>');
@@ -962,6 +963,360 @@ export function mountOpsisQA(ROOT, cfg) {
         return '<tr><td><b style="font-weight:600">' + mo + '</b>' + (m.partial ? ' <span class="mut" style="font-size:11.5px">so far</span>' : '') + '</td><td class="num">' + n0(m.calls) + '</td><td class="num">' + (m.rate != null ? '$' + (+m.rate).toFixed(2) : '—') + '</td><td class="num">' + (m.rate != null ? '$' + (+m.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—') + '</td><td class="mut" style="font-size:12px">' + (m.brands || []).slice(0, 3).map(function (x) { return esc(short(x.brand || '—')) + ' ' + n0(x.calls); }).join(' · ') + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
   }
 
+  // ---------- CSR Coaching Hub (2026-10-21) ----------
+  // Managers/admins: sidebar "Coaching Hub" -> their CSRs -> one CSR's hub (+ focus, swap calls, kudos, call of the week).
+  // CSR logins (CFG.csrSelf): only their own hub (Home / Ask my coach / My wins). Data: edge fn opsis-coaching-hub.
+  var SELF = !!CFG.csrSelf;
+  var HUB = { roster: null, home: {}, wins: {}, tab: 'home', chat: {}, audio: {}, modal: null };
+  var HUBTABS = [['home', 'Home'], ['ask', 'Ask my coach'], ['wins', 'My wins']];
+  function hubCsrId() { return SELF ? 'me' : S.hubCsr; }
+  function hubBody(extra) { var b = Object.assign({}, extra || {}); if (!SELF && S.hubCsr) b.csr = S.hubCsr; return b; }
+  function setHub(html) { $('main').innerHTML = html + '<div class="foot">Powered by <b>Opsis CX</b> · ' + esc(CLIENT) + ' coaching</div>'; }
+  var fwhen = function (ts) { if (!ts) return ''; var d = new Date(ts); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }); };
+  var FLAME = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E0662A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-4-1-6 1-10z"/></svg>';
+  var SPARK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>';
+  var PLAY = '<svg width="15" height="15" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg>';
+
+  // ----- badges: real medals, each with its own shape, color and emblem -----
+  var BDEF = {
+    closer: { shape: 'shield', c: ['#F6CF5C', '#E3A21A', '#9C6A08'], g: 'M5 6h14v13H5zM5 10h14M9 4v4M15 4v4M9 15l2 2 4-4' },
+    hot5: { shape: 'hex', c: ['#FF9A5C', '#EE5A24', '#A63A12'], g: 'M12 3c1 3.5 4.5 5.5 4.5 10a4.5 4.5 0 0 1-9 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3.5-1-6 .5-9z' },
+    framer: { shape: 'medal', c: ['#4FD1B5', '#1E9C84', '#0F5F51'], g: 'M12 4v16M16 8c0-1.7-1.8-3-4-3s-4 1.3-4 3 1.8 2.6 4 3 4 1.3 4 3-1.8 3-4 3-4-1.3-4-3' },
+    discovery: { shape: 'medal', c: ['#7FB2FF', '#3D7DD8', '#1F4A8C'], g: 'M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM15.5 15.5L20 20' },
+    card: { shape: 'shield', c: ['#7EDB9C', '#2F9E5B', '#17603A'], g: 'M3.5 7h17v10h-17zM3.5 10.5h17M7 14.5h4' },
+    save: { shape: 'star', c: ['#C4A2FF', '#8A5CD6', '#52308F'], g: 'M5 12a7 7 0 1 0 2.1-5M5 4v4h4' },
+    calm: { shape: 'medal', c: ['#FF9CC0', '#E0598B', '#982E58'], g: 'M12 19s-6.5-4-6.5-9A3.5 3.5 0 0 1 12 7.5 3.5 3.5 0 0 1 18.5 10c0 5-6.5 9-6.5 9z' },
+    perfect: { shape: 'star', c: ['#FFE27A', '#F2B705', '#A87C00'], g: 'M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z' },
+    machine: { shape: 'hex', c: ['#9EA6FF', '#4B56C8', '#2A3182'], g: 'M13 3L5 13h6l-1 8 8-10h-6z' },
+    cotw: { shape: 'medal', c: ['#FFD866', '#D9A520', '#8A640A'], g: 'M8 20h8M12 16v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h2.5v2a3 3 0 0 1-3 3M7 5H4.5v2a3 3 0 0 0 3 3' }
+  };
+  var BID = 0;
+  function bshape(shape, cx, cy, r) {
+    var pts = [], i, n;
+    if (shape === 'shield') return 'M' + cx + ' ' + (cy - r) + ' L' + (cx + r * 0.88) + ' ' + (cy - r * 0.68) + ' V' + (cy + r * 0.1) + ' C' + (cx + r * 0.88) + ' ' + (cy + r * 0.62) + ' ' + (cx + r * 0.45) + ' ' + (cy + r * 0.9) + ' ' + cx + ' ' + (cy + r * 1.08) + ' C' + (cx - r * 0.45) + ' ' + (cy + r * 0.9) + ' ' + (cx - r * 0.88) + ' ' + (cy + r * 0.62) + ' ' + (cx - r * 0.88) + ' ' + (cy + r * 0.1) + ' V' + (cy - r * 0.68) + ' Z';
+    if (shape === 'hex') { for (i = 0; i < 6; i++) { var a = Math.PI / 3 * i - Math.PI / 2; pts.push((cx + r * Math.cos(a)).toFixed(1) + ',' + (cy + r * Math.sin(a)).toFixed(1)); } return 'M' + pts.join('L') + 'Z'; }
+    n = shape === 'star' ? 10 : 24;
+    for (i = 0; i < n * 2; i++) { var rr = i % 2 ? (shape === 'star' ? r * 0.78 : r * 0.9) : r, b = Math.PI / n * i - Math.PI / 2; pts.push((cx + rr * Math.cos(b)).toFixed(1) + ',' + (cy + rr * Math.sin(b)).toFixed(1)); }
+    return 'M' + pts.join('L') + 'Z';
+  }
+  function badgeSvg(key, earned, size) {
+    var d = BDEF[key] || BDEF.closer, id = 'hb' + (++BID), c = earned ? d.c : ['#ECE9E3', '#C9C3B8', '#9C968B'], rib = earned ? [d.c[2], d.c[1]] : ['#B5AFA4', '#CFC9BF'];
+    return '<svg width="' + size + '" height="' + Math.round(size * 1.12) + '" viewBox="0 0 100 112" ' + (earned ? 'role="img" aria-label="Badge earned"' : 'aria-hidden="true"') + '>' +
+      '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + c[0] + '"/><stop offset="1" stop-color="' + c[1] + '"/></linearGradient></defs>' +
+      '<path d="M32 66 L22 108 L36 100 L44 110 L50 70 Z" fill="' + rib[0] + '"/><path d="M68 66 L78 108 L64 100 L56 110 L50 70 Z" fill="' + rib[1] + '"/>' +
+      '<path d="' + bshape(d.shape, 50, 47, 44) + '" fill="' + c[2] + '"/>' +
+      '<path d="' + bshape(d.shape, 50, 47, 39) + '" fill="url(#' + id + ')"/>' +
+      '<circle cx="50" cy="47" r="23" fill="' + c[2] + '" opacity=".28"/><circle cx="50" cy="47" r="23" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="2"/>' +
+      '<path d="M24 32 Q50 12 76 32" fill="none" stroke="#fff" stroke-opacity="' + (earned ? '.45' : '.5') + '" stroke-width="3" stroke-linecap="round"/>' +
+      '<g transform="translate(35 32) scale(1.25)" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="' + d.g + '"/></g>' +
+      (earned ? '' : '<g transform="translate(64 62)"><circle r="11" fill="#fff" stroke="#C9C3B8" stroke-width="2"/><path d="M-4.5 -1h9v7h-9zM-2.8 -1v-2.6a2.8 2.8 0 0 1 5.6 0V-1" fill="none" stroke="#7B766C" stroke-width="1.8" stroke-linejoin="round"/></g>') +
+      '</svg>';
+  }
+
+  // ----- shared bits -----
+  function hubHeader(name, sub) {
+    var tabs = '<div class="row" role="tablist" aria-label="Coaching Hub" style="gap:6px">' + HUBTABS.map(function (t) { var on = HUB.tab === t[0]; return '<button class="sel" role="tab" aria-selected="' + on + '" data-hubtab="' + t[0] + '" style="' + (on ? 'background:var(--side);border-color:var(--side);color:#fff;font-weight:600' : '') + '">' + (t[0] === 'wins' && !SELF ? 'Wins' : t[1]) + '</button>'; }).join('') + '</div>';
+    return (SELF ? '' : '<div class="oq-crumb"><button data-hubroster="1">Coaching Hub</button><span aria-hidden="true">/</span><span style="color:var(--ink);font-weight:600">' + esc(name) + '</span></div>') +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><div class="cap">' + esc(sub || '') + '</div><h1 style="margin:4px 0 0;font-size:26px;font-weight:600;letter-spacing:-0.025em">' + esc(SELF && HUB.tab === 'home' ? greet() + ', ' + (CFG.userFirst || '') : name) + '</h1></div>' + (SELF ? '' : tabs) + '</div>';
+  }
+  function greet() { var h = +new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/New_York' }); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
+  function tile(label, val, sub) { return '<div style="background:#FAF9F6;border:1px solid #EEEBE4;border-radius:12px;padding:10px 12px;min-width:0"><div class="cap">' + label + '</div><div class="num" style="font-weight:700;font-size:19px;margin-top:2px">' + val + '</div><div class="mut" style="font-size:11.5px">' + (sub || '&nbsp;') + '</div></div>'; }
+  function playBtn(rid, color, label) {
+    var a = HUB.audio[rid];
+    if (a && a.url) return '<audio controls autoplay src="' + esc(a.url) + '" style="width:100%;max-width:340px;height:40px"></audio>';
+    return '<button class="hubplay" data-hubplay="' + rid + '" aria-label="' + esc(label || 'Play call') + '" style="width:44px;height:44px;border-radius:999px;border:0;background:' + color + ';display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">' + (a && a.busy ? '<span class="dots"><span></span><span></span><span></span></span>' : PLAY) + '</button>';
+  }
+
+  // ----- views -----
+  function vHub(tok) {
+    if (SELF) { HUB.tab = S.view === 'hubask' ? 'ask' : S.view === 'hubwins' ? 'wins' : 'home'; }
+    if (!SELF && !S.hubCsr) return hubRoster(tok);
+    if (HUB.tab === 'ask') return hubAsk();
+    if (HUB.tab === 'wins') return hubWins(tok);
+    return hubHome(tok);
+  }
+  function hubRoster(tok) {
+    setHub('<div class="oq-crumb"><span style="color:var(--ink);font-weight:600">Coaching Hub</span></div><div id="hubr" style="display:flex;flex-direction:column;gap:4px">' + skel(60, 4) + '</div>');
+    var paint = function () {
+      var el = $('hubr'); if (!el || tok !== T) return; var R = HUB.roster;
+      if (!R.rows.length) { el.innerHTML = '<div class="oq-card"><b>No CSRs in the Coaching Hub yet</b><p class="sub">CSRs show up here once they have a coaching login. Ask the Opsis CX Support team to add your team.</p></div>'; return; }
+      var brands = {}; R.rows.forEach(function (r) { (brands[r.brand_short] = brands[r.brand_short] || []).push(r); });
+      var dl = function (v, l) { if (v == null || l == null) return ''; var x = v - l; return x === 0 ? '<span class="mut">even</span>' : '<span style="color:' + (x > 0 ? '#1F5A41' : '#A8441A') + ';font-weight:600">' + (x > 0 ? '▲ ' : '▼ ') + Math.abs(x) + '</span>'; };
+      el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">Coaching Hub</h1><p class="sub">' + esc(R.week_label) + ' · ' + R.rows.length + ' CSRs · open anyone to see exactly what they see, set their focus or send kudos</p></div></div>' +
+        Object.keys(brands).sort().map(function (b) {
+          return '<div style="margin-top:16px"><div class="cap" style="margin-bottom:8px">' + esc(b) + '</div><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">' + brands[b].map(function (r) {
+            return '<button class="oq-card click" data-hubcsr="' + r.id + '" style="text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:10px;padding:16px;font:inherit;color:inherit">' +
+              '<span style="display:flex;align-items:center;gap:10px;width:100%"><span class="av">' + esc(r.name.split(' ').map(function (p) { return p[0]; }).join('').slice(0, 2)) + '</span><span style="flex:1;min-width:0"><b style="font-weight:600;display:block">' + esc(r.name) + '</b><span class="mut" style="font-size:12px">' + r.n + ' scored calls this week</span></span>' +
+              (r.requests ? '<span class="pill" style="background:#EEF2FB;color:#2B3A67">' + r.requests + ' to review</span>' : '') + '</span>' +
+              '<span style="display:flex;gap:16px;align-items:baseline;width:100%"><span><span class="num" style="font-size:22px;font-weight:700">' + (r.score == null ? '—' : r.score) + '</span> <span class="mut" style="font-size:12px">score</span></span><span style="font-size:12px">' + dl(r.score, r.last) + '</span><span class="mut" style="font-size:12px;margin-left:auto">' + (r.opps ? r.booked + '/' + r.opps + ' booked' : '') + '</span></span>' +
+              '<span class="mut" style="font-size:12px;line-height:1.4;width:100%">' + (r.focus ? '<b style="color:var(--ink);font-weight:600">Focus:</b> ' + esc(r.focus) : 'Focus set when you open them') + (r.kudos ? ' · ♥ ' + r.kudos : '') + '</span></button>';
+          }).join('') + '</div></div>';
+        }).join('');
+    };
+    if (HUB.roster) { setTimeout(paint, 0); }
+    api({ action: 'hubroster' }).then(function (r) { HUB.roster = r; paint(); }).catch(function (e) { var el = $('hubr'); if (el && !HUB.roster) el.innerHTML = errBox(e); });
+  }
+  function loadHome(force) {
+    var id = hubCsrId();
+    if (!force && HUB.home[id] && HUB.home[id].data) return Promise.resolve(HUB.home[id].data);
+    return api(Object.assign({ action: 'hubhome' }, hubBody())).then(function (d) { HUB.home[id] = { data: d }; return d; });
+  }
+  function hubHome(tok) {
+    var id = hubCsrId(), cached = HUB.home[id] && HUB.home[id].data;
+    setHub('<div id="hubh" style="display:flex;flex-direction:column;gap:16px">' + (cached ? '' : skel(40, 1) + '<div class="grid" style="grid-template-columns:2fr 1fr;gap:16px">' + skel(260) + skel(260) + '</div>' + skel(200)) + '</div>');
+    if (cached) paintHome(cached);
+    loadHome(true).then(function (d) { if (tok === T) paintHome(d); }).catch(function (e) { var el = $('hubh'); if (el && !cached) el.innerHTML = errBox(e); });
+  }
+  function paintHome(d) {
+    var el = $('hubh'); if (!el) return;
+    var f = d.focus, sc = d.score, mg = d.can_manage && !SELF, first = d.csr.first;
+    var h = hubHeader(d.csr.name, d.week_label + (SELF ? '' : ' · ' + d.csr.brand_short));
+    if (mg) h += '<div class="row" style="gap:8px"><button class="sel btnd" data-hubact="kudos">♥ Send kudos</button><button class="sel" data-hubact="focus">Change focus</button><button class="sel" data-hubact="cotw">Pick call of the week</button></div>';
+    (d.requests || []).forEach(function (r) { h += '<div class="oq-card" style="background:#EEF2FB;border-color:#D5DDF2;padding:14px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b style="color:#2B3A67">' + esc(first) + ' asked you to review a score</b><span style="font-size:13px;flex:1;min-width:200px">“' + esc(r.why) + '” · ' + fwhen(r.at) + '</span>' + (r.review_id ? '<button class="sel" data-call="' + r.review_id + '">Open the call</button>' : '') + '<button class="sel" data-hubreqdone="' + r.id + '">Mark reviewed</button></div>'; });
+    // focus hero
+    var pct = f && f.of ? Math.round(100 * f.done / f.of) : 0, goalN = f && f.of ? Math.ceil(f.of * (f.goal_pct || 80) / 100) : null;
+    var focus = f ? '<section class="oq-card" aria-label="Focus this week" style="grid-column:span 2;background:var(--side);border-color:var(--side);color:#fff;padding:24px;display:flex;flex-direction:column;gap:14px">' +
+      '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><span class="cap" style="color:#9DBBAE">' + (SELF ? 'Your focus this week' : first + '’s focus this week') + '</span><span style="font-size:12px;color:#BFD1C8">' + (f.set_by ? 'Set by ' + esc(f.set_by) : 'Picked from last week’s calls') + '</span></div>' +
+      '<h2 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.25">' + esc(f.title) + '</h2>' +
+      (f.body ? '<p style="margin:0;font-size:14px;line-height:1.6;color:#D6E2DC;max-width:680px;white-space:pre-line">' + esc(f.body) + '</p>' : '') +
+      (f.say ? '<div style="background:#1F3F37;border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.5"><div class="cap" style="color:#9DBBAE;margin-bottom:4px">Try saying</div>“' + esc(f.say) + '”</div>' : '') +
+      (f.of ? '<div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;gap:8px;flex-wrap:wrap"><span>' + esc(f.metric || 'Done') + ' on <b>' + f.done + ' of ' + f.of + '</b> calls this week</span><span style="color:#BFD1C8">Goal: ' + goalN + ' of ' + f.of + '</span></div><div style="height:8px;border-radius:999px;background:#2A4A42;overflow:hidden"><div style="width:' + pct + '%;height:100%;border-radius:999px;background:' + (pct >= (f.goal_pct || 80) ? '#F6CF5C' : '#7CC4A4') + '"></div></div></div>' : '<div style="font-size:13px;color:#BFD1C8">Progress shows up after the first scored calls this week.</div>') +
+      '<div class="row" style="gap:10px"><button class="sel" data-hubgood="1" style="background:#fff;border-color:#fff">' + PLAY.replace('#fff', '#14302A') + ' Hear a great example</button><button class="sel" data-hubtab="ask" data-hubq="How do I get better at: ' + esc(f.title) + '?" style="background:transparent;border-color:#4E6E64;color:#fff">Ask how to do this</button></div></section>' : '';
+    var delta = sc.delta == null ? '' : sc.delta === 0 ? '<span class="mut" style="font-size:13px">Same as last week</span>' : '<span style="color:' + (sc.delta > 0 ? '#1F5A41' : '#A8441A') + ';font-weight:600;font-size:13px">' + (sc.delta > 0 ? '▲ ' : '▼ ') + Math.abs(sc.delta) + ' vs last week</span>';
+    var col = sc.now == null ? '#EEEBE4' : sc.now >= 80 ? '#2F7D5B' : sc.now >= 60 ? '#E8A06A' : '#E0662A';
+    var week = '<section class="oq-card" aria-label="This week" style="display:flex;flex-direction:column;gap:14px"><div style="display:flex;justify-content:space-between;align-items:center"><span class="cap">This week</span>' + (d.streak && d.streak.now ? '<span class="pill" style="background:#FFF4E8;color:#8A3D0C">' + FLAME + ' ' + d.streak.now + '-day streak</span>' : '') + '</div>' +
+      '<div style="display:flex;align-items:center;gap:16px"><div style="position:relative;width:100px;height:100px;flex-shrink:0"><svg width="100" height="100" viewBox="0 0 120 120" role="img" aria-label="Score ' + (sc.now == null ? 'not yet' : sc.now) + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + ((sc.now || 0) / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span class="num" style="font-size:27px;font-weight:700">' + (sc.now == null ? '—' : sc.now) + '</span><span class="mut" style="font-size:10.5px">call score</span></div></div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' + delta + '<span class="mut" style="font-size:12.5px">' + sc.n + ' scored call' + (sc.n === 1 ? '' : 's') + '</span></div></div>' +
+      '<div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">' + tile('Personal best', sc.best_week == null ? '—' : sc.best_week, 'best week') + tile('Booked', sc.opps ? sc.booked + ' of ' + sc.opps : '—', 'booking chances') + '</div>' +
+      (sc.best_week != null && sc.now != null ? '<button class="more" data-hubtab="wins">' + (sc.now >= sc.best_week ? 'New personal best pace!' : (sc.best_week - sc.now) + ' points from your personal best') + ' →</button>' : '') + '</section>';
+    h += '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">' + focus + week + '</div>';
+    // coaching calls
+    var good = (d.picks || []).filter(function (p) { return p.kind === 'good'; }), grow = (d.picks || []).filter(function (p) { return p.kind === 'grow'; });
+    var pickRow = function (p, i) {
+      var g = p.kind === 'good';
+      return '<div style="display:flex;gap:12px;align-items:flex-start;background:' + (g ? '#F3F8F5' : '#FFF8F1') + ';border:1px solid ' + (g ? '#D5E6DC' : '#F6DCC4') + ';border-radius:14px;padding:14px"' + (g && i === 0 ? ' id="hubgood0"' : '') + '>' +
+        '<div data-hubslot="' + p.review_id + '" style="flex-shrink:0">' + playBtn(p.review_id, g ? '#2F7D5B' : '#C2551F') + '</div>' +
+        '<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">' + (mg ? '<button class="more" data-call="' + p.review_id + '" style="font-size:14px;color:var(--ink)">' + esc(p.title) + '</button>' : '<b style="font-weight:600">' + esc(p.title) + '</b>') + '<span class="mut num" style="font-size:12px;white-space:nowrap">' + fwhen(p.date) + ' · ' + fsecs(p.secs) + (p.score != null ? ' · ' + p.score : '') + '</span></div>' +
+        (p.why ? '<div style="font-size:13px;line-height:1.5;color:#3B4541;margin-top:4px">' + esc(p.why) + '</div>' : '') +
+        (p.tip ? '<div style="font-size:13px;line-height:1.5;margin-top:6px"><b>Next time:</b> ' + esc(p.tip) + '</div>' : '') +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center"><span class="pill" style="background:' + (g ? '#E6F0EA' : '#FCEBDD') + ';color:' + (g ? '#1F5A41' : '#8A3D0C') + '">' + esc(p.step_label || (g ? 'Great call' : 'Room to grow')) + '</span>' +
+        '<span style="margin-left:auto;display:flex;gap:10px"><button class="more" data-hubtab="ask" data-hubrev="' + p.review_id + '" data-hubq="' + (g ? 'What made this call great?' : 'Why was this call scored this way?') + '">' + (g ? 'What made it great?' : 'Why this score?') + '</button>' + (mg ? '<button class="more" data-hubswap="' + p.id + '">Swap</button>' : '') + '</span></div></div></div>';
+    };
+    h += '<section class="oq-card" aria-label="Coaching calls" style="display:flex;flex-direction:column;gap:14px"><div><h2 class="ttl">' + (SELF ? 'Your coaching calls' : first + '’s coaching calls') + '</h2><p class="sub">' + (SELF ? 'Picked from your calls this week. Listen, then ask why if anything is unclear.' : 'What ' + esc(first) + ' sees. Swap any call, or open it to see the full review.') + '</p></div>' +
+      ((d.picks || []).length ? '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px"><div style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;align-items:center;gap:8px;color:#1F5A41;font-weight:600;font-size:13px"><span aria-hidden="true" style="width:8px;height:8px;border-radius:99px;background:#2F7D5B"></span>Great calls, keep doing this</div>' + (good.map(pickRow).join('') || '<p class="mut" style="font-size:13px">No standout calls yet this week.</p>') + '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;align-items:center;gap:8px;color:#8A3D0C;font-weight:600;font-size:13px"><span aria-hidden="true" style="width:8px;height:8px;border-radius:99px;background:#E0662A"></span>Room to grow, try it differently</div>' + (grow.map(pickRow).join('') || '<p class="mut" style="font-size:13px">Nothing to work on from these calls. Nice!</p>') + '</div></div>' : '<p class="mut" style="font-size:13px">Your coaching calls show up once a few of your calls have been scored.</p>') + '</section>';
+    // ask / call of the week / kudos
+    var c = d.cotw;
+    h += '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">' +
+      '<section class="oq-card" aria-label="Ask my coach" style="display:flex;flex-direction:column;gap:12px"><div style="display:flex;align-items:center;gap:8px">' + SPARK + '<h2 class="ttl" style="font-size:16px">Ask my coach</h2></div><p class="sub" style="margin:0">Ask why a call scored the way it did, or how ' + esc(d.csr.brand_short) + ' handles something.</p>' +
+      '<form id="hubqf" style="display:flex;gap:8px"><label class="sr" for="hubqi">Ask a question</label><input id="hubqi" class="oq-field" autocomplete="off" maxlength="600" style="flex:1;min-width:0" placeholder="e.g. What do I say if they want a price first?"><button class="sel btnd" type="submit">Ask</button></form>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px">' + ['Why did my last low call score that way?', 'Customer wants a price over the phone', 'How do we handle warranty calls?'].map(function (q, i) { return '<button class="chip" data-hubtab="ask" data-hubmode="' + (i ? 'brand' : 'score') + '" data-hubq="' + esc(q) + '">' + esc(q) + '</button>'; }).join('') + '</div></section>' +
+      '<section class="oq-card" aria-label="Call of the week" style="display:flex;flex-direction:column;gap:12px"><div style="display:flex;align-items:center;gap:10px">' + badgeSvg('cotw', true, 34) + '<h2 class="ttl" style="font-size:16px">' + esc(d.csr.brand_short) + ' call of the week</h2></div>' +
+      (c ? '<div style="display:flex;gap:12px;align-items:center"><div data-hubslot="' + c.review_id + '">' + playBtn(c.review_id, '#14302A', 'Play call of the week') + '</div><div><b style="font-weight:600">' + esc(c.agent) + '</b><div class="mut" style="font-size:12px">' + fwhen(c.date) + ' · ' + fsecs(c.secs) + ' · ' + esc(c.title) + '</div></div></div>' +
+        (c.why ? '<p style="margin:0;font-size:13px;line-height:1.55;color:#3B4541">' + esc(c.why) + '</p>' : '') + '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (c.score != null ? '<span class="pill" style="background:#FFF4DB;color:#7A5410">Score ' + c.score + '</span>' : '') + (c.saved ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">Booked after push-back</span>' : '') + (c.by ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">Picked by ' + esc(c.by) + '</span>' : '') + '</div>'
+        : '<p class="mut" style="font-size:13px;margin:0">The call of the week is picked from last week’s best booked calls. Check back Monday.</p>') + '</section>' +
+      '<section class="oq-card" aria-label="Kudos" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C2551F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg><h2 class="ttl" style="font-size:16px">' + (SELF ? 'Kudos for you' : 'Kudos') + '</h2>' + ((d.kudos || []).filter(function (k) { return k.isNew; }).length ? '<span class="pill" style="margin-left:auto;background:#FCEBDD;color:#8A3D0C">' + d.kudos.filter(function (k) { return k.isNew; }).length + ' new</span>' : '') + '</div>' +
+      ((d.kudos || []).length ? d.kudos.slice(0, 3).map(function (k) { return '<div style="background:#FAF9F6;border:1px solid #EEEBE4;border-radius:12px;padding:12px 14px">' + (k.tag ? '<span class="pill" style="background:#FCEBDD;color:#8A3D0C;margin-bottom:6px">' + esc(k.tag) + '</span>' : '') + (k.body ? '<div style="font-size:13.5px;line-height:1.5">“' + esc(k.body) + '”</div>' : '') + '<div class="mut" style="font-size:12px;margin-top:6px">' + esc(k.from || '') + ' · ' + fwhen(k.at) + '</div></div>'; }).join('')
+        : '<p class="mut" style="font-size:13px;margin:0">' + (SELF ? 'When your manager spots a great call, their kudos show up here.' : 'No kudos yet. ') + '</p>' + (mg ? '<button class="sel" data-hubact="kudos" style="align-self:flex-start">♥ Send ' + esc(first) + ' kudos</button>' : '')) + '</section></div>';
+    // badges + most improved
+    var B = d.badges || {}, nx = B.next;
+    h += '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px">' +
+      '<section class="oq-card" aria-label="Badges" style="display:flex;flex-direction:column;gap:14px"><div style="display:flex;justify-content:space-between;align-items:center"><h2 class="ttl" style="font-size:16px">Badges <span class="mut" style="font-weight:400;font-size:13px">· ' + (B.total || 0) + ' earned</span></h2><button class="more" data-hubtab="wins">See all →</button></div>' +
+      ((B.earned || []).length ? '<div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">' + B.earned.map(function (b) { return '<div style="text-align:center;padding:10px 4px">' + badgeSvg(b.key, true, 64) + '<div style="font-weight:600;font-size:12.5px;margin-top:4px">' + esc(b.name) + '</div><div class="mut" style="font-size:11.5px">' + esc(b.when || '') + '</div></div>'; }).join('') + '</div>' : '<p class="mut" style="font-size:13px;margin:0">Your first badge is close. Keep going!</p>') +
+      (nx ? '<div style="background:#F3F8F5;border-radius:12px;padding:12px 14px;display:flex;gap:12px;align-items:center">' + badgeSvg(nx.key, false, 40) + '<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;gap:8px"><span><b>Next: ' + esc(nx.name) + '</b> · ' + esc(nx.how) + '</span><span class="mut num">' + nx.progress + ' / ' + nx.goal + '</span></div><div class="track" style="height:8px;background:#DDEBE3"><div style="width:' + Math.round(100 * nx.progress / nx.goal) + '%;background:#2F7D5B"></div></div></div></div>' : '') + '</section>' +
+      improvedCard(d.improved, d.csr.brand_short) + '</div>';
+    el.innerHTML = h;
+  }
+  function improvedCard(list, brand) {
+    return '<section class="oq-card" aria-label="Most improved" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h2 class="ttl" style="font-size:16px">Most improved at ' + esc(brand) + '</h2><span class="mut" style="font-size:12px">Last 3 weeks vs the 4 before</span></div>' +
+      ((list || []).length ? list.map(function (m) { return '<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;background:' + (m.me ? '#E6F0EA' : '#FAF9F6') + '"><span class="num" style="width:22px;font-weight:700;color:#5F6763;text-align:center">' + m.rank + '</span><span style="flex:1;font-weight:' + (m.me ? 700 : 500) + '">' + esc(m.name) + '</span><span class="num" style="font-weight:700;color:' + (m.gain >= 0 ? '#1F5A41' : '#A8441A') + '">' + (m.gain > 0 ? '+' : '') + m.gain + '</span></div>'; }).join('') : '<p class="mut" style="font-size:13px;margin:0">Shows up once there are a few weeks of scored calls.</p>') +
+      '<p class="mut" style="font-size:12px;margin:0">Ranked by how much the score went up, so everyone has a shot. Only the top 3' + (SELF ? ' and you' : '') + ' are shown.</p></section>';
+  }
+  function hubWins(tok) {
+    var id = hubCsrId(), cached = HUB.wins[id];
+    setHub('<div id="hubw" style="display:flex;flex-direction:column;gap:16px">' + (cached ? '' : skel(40) + skel(120) + skel(260)) + '</div>');
+    var paint = function (d) {
+      var el = $('hubw'); if (!el || tok !== T) return;
+      var tr = d.trend || [], vals = tr.filter(function (x) { return x.avg != null; }).map(function (x) { return x.avg; }), lo = Math.min.apply(null, vals.concat([70])) - 5, hi = Math.max.apply(null, vals.concat([90])) + 3;
+      var X = function (i) { return 40 + i * (480 / Math.max(tr.length - 1, 1)); }, Y = function (v) { return 170 - (v - lo) / (hi - lo) * 140; };
+      var pts = tr.map(function (x, i) { return x.avg == null ? null : X(i).toFixed(0) + ',' + Y(x.avg).toFixed(0); }).filter(Boolean);
+      var best = vals.length ? Math.max.apply(null, vals) : null;
+      var chart = '<svg viewBox="0 0 540 200" role="img" aria-label="Weekly score for the last 8 weeks" style="width:100%;height:auto">' + [lo, (lo + hi) / 2, hi].map(function (v) { return '<line x1="34" x2="530" y1="' + Y(v).toFixed(0) + '" y2="' + Y(v).toFixed(0) + '" stroke="#F1EEE8"/><text x="0" y="' + (Y(v) + 4).toFixed(0) + '" font-size="11" fill="#5F6763">' + Math.round(v) + '</text>'; }).join('') +
+        (pts.length > 1 ? '<polyline fill="none" stroke="#2F7D5B" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" points="' + pts.join(' ') + '"/>' : '') +
+        tr.map(function (x, i) { return (x.avg == null ? '' : '<circle cx="' + X(i).toFixed(0) + '" cy="' + Y(x.avg).toFixed(0) + '" r="' + (x.avg === best ? 6 : 4) + '" fill="' + (x.avg === best ? '#D9A520' : '#2F7D5B') + '"><title>Week of ' + x.label + ': ' + x.avg + ' (' + x.n + ' calls)</title></circle>' + (x.avg === best ? '<text x="' + X(i).toFixed(0) + '" y="' + (Y(x.avg) - 12).toFixed(0) + '" text-anchor="middle" font-size="11.5" font-weight="600" fill="#7A5410">Best ' + x.avg + '</text>' : '')) + (i % 2 === 0 || i === tr.length - 1 ? '<text x="' + X(i).toFixed(0) + '" y="194" text-anchor="middle" font-size="11" fill="#5F6763">' + x.label + '</text>' : ''); }).join('') + '</svg>';
+      var h = hubHeader(d.csr.name, SELF ? 'My wins' : 'Wins · ' + d.csr.brand_short);
+      h += '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px">' + d.streaks.map(function (s) { return '<div class="oq-card" style="display:flex;gap:14px;align-items:center"><div aria-hidden="true" style="width:52px;height:52px;border-radius:14px;background:#FFF4E8;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + FLAME.replace('width="16" height="16"', 'width="26" height="26"') + '</div><div style="min-width:0"><div class="num" style="font-size:22px;font-weight:700">' + s.now + ' ' + esc(s.unit) + '</div><div style="font-size:13px;line-height:1.4">' + esc(s.what) + '</div><div class="mut" style="font-size:11.5px;margin-top:2px">' + (s.best > s.now ? 'Best: ' + s.best : s.now ? 'Your best ever!' : 'Start one today') + '</div></div></div>'; }).join('') + '</div>';
+      h += '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px"><section class="oq-card" aria-label="Personal bests" style="display:flex;flex-direction:column;gap:12px"><h2 class="ttl" style="font-size:16px">Personal bests</h2><div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">' + d.bests.map(function (b) { return tile(esc(b.label), esc(b.value), esc(b.when)); }).join('') + '</div></section>' +
+        '<section class="oq-card" aria-label="Score by week" style="display:flex;flex-direction:column;gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 class="ttl" style="font-size:16px">Score, week by week</h2><span class="mut" style="font-size:12px">Last 8 weeks</span></div>' + (pts.length ? chart : '<p class="mut" style="font-size:13px">Shows up after a week of scored calls.</p>') + '</section></div>';
+      h += '<section class="oq-card" aria-label="All badges" style="display:flex;flex-direction:column;gap:14px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h2 class="ttl" style="font-size:16px">Badges <span class="mut" style="font-weight:400;font-size:13px">· ' + d.earned + ' of ' + d.badges.length + ' earned</span></h2></div>' +
+        '<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px">' + d.badges.slice().sort(function (a, b) { return (b.earned ? 1 : 0) - (a.earned ? 1 : 0); }).map(function (b) {
+          return '<div style="border-radius:16px;padding:16px 12px;border:1px solid ' + (b.earned ? '#E8E4DC' : '#EEEBE4') + ';background:' + (b.earned ? '#fff' : '#FAF9F6') + ';display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px">' + badgeSvg(b.key, b.earned, 76) +
+            '<div style="font-weight:700;font-size:13.5px">' + esc(b.name) + '</div><div style="font-size:12px;line-height:1.45;color:#3B4541">' + esc(b.how) + '</div>' +
+            (b.earned ? '<div style="font-size:11.5px;font-weight:600;color:#1F5A41">' + esc(b.when) + '</div>' : (b.goal > 1 ? '<div style="width:100%;margin-top:2px"><div class="track" style="height:6px"><div style="width:' + Math.round(100 * b.progress / b.goal) + '%;background:#9C968B"></div></div><div class="mut num" style="font-size:11.5px;margin-top:4px">' + b.progress + ' of ' + b.goal + '</div></div>' : '<div class="mut" style="font-size:11.5px">Not yet</div>')) + '</div>';
+        }).join('') + '</div></section>';
+      h += improvedCard(d.improved, d.csr.brand_short);
+      el.innerHTML = h;
+    };
+    if (cached) paint(cached);
+    api(Object.assign({ action: 'hubwins' }, hubBody())).then(function (d) { HUB.wins[id] = d; paint(d); }).catch(function (e) { var el = $('hubw'); if (el && !cached) el.innerHTML = errBox(e); });
+  }
+
+  // ----- Ask my coach -----
+  function chatState() { var id = hubCsrId(); return HUB.chat[id] = HUB.chat[id] || { mode: 'score', msgs: [], busy: false, review: null }; }
+  function hubAsk() {
+    var C0 = chatState(), d = HUB.home[hubCsrId()] && HUB.home[hubCsrId()].data, bs = (d && d.csr.brand_short) || (LOCK ? short(LOCK) : 'your brand'), nm = (d && d.csr.name) || '';
+    var topics = C0.mode === 'score' ? ['Why did my last low call score that way?', 'What should I work on most?', 'What does “Collect info” mean?', 'How do I earn the Closer badge?', 'How is my score worked out?'] : ['Customer wants a price over the phone', 'How do we handle warranty calls?', 'What do I say when they want to think about it?', 'Commercial or business callers', 'Taking a card on file'];
+    var h = hubHeader(SELF ? 'Ask my coach' : nm, SELF ? 'Private to you' : 'Ask on ' + (d ? d.csr.first : 'their') + '’s behalf');
+    h += '<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start"><div style="flex:1 1 260px;max-width:100%;display:flex;flex-direction:column;gap:14px">' +
+      '<div class="oq-card" style="display:flex;flex-direction:column;gap:12px"><span class="cap">What do you need?</span><div class="seg" role="group" aria-label="Question type" style="display:flex">' +
+      '<button class="' + (C0.mode === 'score' ? 'on' : '') + '" data-hubmode="score" aria-pressed="' + (C0.mode === 'score') + '" style="flex:1;white-space:nowrap;padding:0 8px">My scores</button><button class="' + (C0.mode === 'brand' ? 'on' : '') + '" data-hubmode="brand" aria-pressed="' + (C0.mode === 'brand') + '" style="flex:1;white-space:nowrap;padding:0 8px">How we do it</button></div>' +
+      '<p class="sub" style="margin:0">' + (C0.mode === 'score' ? 'Ask why any call scored the way it did. The coach reads the call and explains it step by step.' : 'Ask how ' + esc(bs) + ' handles something. Answers come from the ' + esc(bs) + ' playbook and its best calls.') + '</p></div>' +
+      '<div class="oq-card" style="display:flex;flex-direction:column;gap:8px"><span class="cap" style="margin-bottom:4px">' + (C0.mode === 'score' ? 'Common questions' : esc(bs) + ' playbook') + '</span>' + topics.map(function (q) { return '<button class="sel" data-hubq="' + esc(q) + '" style="justify-content:space-between;white-space:normal;text-align:left">' + esc(q) + '<span aria-hidden="true">›</span></button>'; }).join('') + '</div></div>' +
+      '<section class="oq-card" aria-label="Chat" style="flex:999 1 520px;min-width:0;display:flex;flex-direction:column;gap:14px;padding:22px"><div style="display:flex;align-items:center;gap:10px">' + SPARK + '<h2 class="ttl">Ask my coach</h2>' + (C0.msgs.length ? '<button class="more" data-hubclear="1" style="margin-left:auto">Start over</button>' : '') + '</div>' +
+      (C0.review ? '<div class="pill" style="align-self:flex-start;background:#EEF2FB;color:#2B3A67">About one call · <button class="more" data-hubnorev="1" style="min-height:0;font-size:12px">clear</button></div>' : '') +
+      '<div id="hubthread" aria-live="polite" style="display:flex;flex-direction:column;gap:12px">' + chatInner(C0, bs) + '</div>' +
+      '<form id="hubchat" style="display:flex;gap:8px"><label class="sr" for="hubci">Ask a question</label><input id="hubci" class="oq-field" autocomplete="off" maxlength="600" style="flex:1;min-width:0;min-height:48px" placeholder="' + (C0.mode === 'score' ? (C0.msgs.length ? 'Ask a follow-up…' : 'e.g. Why did my call on Tuesday score 62?') : 'Ask how ' + esc(bs) + ' handles something…') + '"><button class="sel btnd" type="submit"' + (C0.busy ? ' disabled' : '') + '>Ask</button></form></section></div>';
+    setHub(h);
+    var q = HUB.pendingQ; HUB.pendingQ = null; if (q) chatAsk(q);
+  }
+  function chatInner(C0, bs) {
+    if (!C0.msgs.length) return '<p class="mut" style="font-size:13px;margin:0">' + (C0.mode === 'score' ? 'Pick a question on the left or type your own. Your coach can see your scored calls from the last 30 days.' : 'Ask anything about how ' + esc(bs) + ' does things on the phone: prices, warranty, scheduling, what to say.') + '</p>';
+    var out = C0.msgs.map(function (m) {
+      return m.role === 'user' ? '<div style="align-self:flex-end;max-width:82%;background:var(--side);color:#fff;border-radius:14px 14px 4px 14px;padding:11px 14px;font-size:14px;line-height:1.5">' + esc(m.content) + '</div>'
+        : '<div class="md" style="max-width:90%;background:#F7F6F2;border:1px solid #EEEBE4;border-radius:14px 14px 14px 4px;padding:12px 16px;font-size:14px;line-height:1.6' + (m.error ? ';color:#A8441A' : '') + '">' + (m.error ? esc(m.content) : md(m.content)) + '</div>';
+    }).join('');
+    if (C0.busy) out += '<div style="display:flex;gap:8px;align-items:center"><span class="dots"><span></span><span></span><span></span></span><span class="mut" style="font-size:12.5px">' + (C0.mode === 'score' ? 'Reading your calls…' : 'Checking the playbook…') + '</span></div>';
+    else if (SELF) out += '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;border-top:1px solid var(--line2);padding-top:12px"><span class="mut" style="font-size:12.5px">' + (C0.mode === 'score' ? 'Still think a score is wrong?' : 'Not covered or not right?') + '</span><button class="sel" data-hubact="' + (C0.mode === 'score' ? 'review' : 'flag') + '">' + (C0.mode === 'score' ? 'Ask my manager to review it' : 'Flag for my supervisor') + '</button></div>';
+    return out;
+  }
+  function chatPaint() { var C0 = chatState(), el = $('hubthread'); if (!el) return; var d = HUB.home[hubCsrId()] && HUB.home[hubCsrId()].data; el.innerHTML = chatInner(C0, (d && d.csr.brand_short) || 'your brand'); var b = document.querySelector('#hubchat button'); if (b) b.disabled = !!C0.busy; if (el.lastElementChild) el.lastElementChild.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+  function chatAsk(q) {
+    var C0 = chatState(); q = String(q || '').trim(); if (!q || C0.busy) return;
+    var hist = C0.msgs.filter(function (m) { return !m.error; }).slice(-10).map(function (m) { return { role: m.role, content: m.content }; });
+    C0.msgs.push({ role: 'user', content: q }); C0.busy = true; var inp = $('hubci'); if (inp) inp.value = ''; chatPaint();
+    api(Object.assign({ action: 'hubask', mode: C0.mode, question: q, history: hist, review_id: C0.review }, hubBody()))
+      .then(function (r) { C0.msgs.push({ role: 'assistant', content: r.answer || '' }); })
+      .catch(function (e) { C0.msgs.push({ role: 'assistant', content: (e && e.message) || 'Something went wrong. Try again.', error: true }); })
+      .then(function () { C0.busy = false; chatPaint(); var i2 = $('hubci'); if (i2) i2.focus(); });
+  }
+
+  // ----- modals (kudos, focus, call of the week, review request) -----
+  function hubModal(title, inner, okLabel) {
+    var L = document.createElement('div');
+    L.innerHTML = '<div class="overlay" id="hubm" style="justify-content:center;align-items:center;z-index:70"><div class="oq-card" role="dialog" aria-modal="true" aria-label="' + esc(title) + '" style="width:540px;max-width:calc(100% - 32px);max-height:calc(100vh - 40px);overflow:auto;padding:22px;display:flex;flex-direction:column;gap:14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2 class="ttl">' + esc(title) + '</h2><button class="sel" data-hubmclose="1" aria-label="Close" style="width:44px;justify-content:center">✕</button></div>' + inner +
+      '<div class="row" style="gap:8px"><button class="sel btnd" data-hubmok="1">' + esc(okLabel) + '</button><button class="sel" data-hubmclose="1">Cancel</button></div></div></div>';
+    ROOT.appendChild(L.firstChild);
+  }
+  var KTAGS = ['Great save', 'Nailed the booking', 'Textbook greeting', 'So patient', 'Great listening'];
+  function kudosModal(csr, review) {
+    HUB.modal = { kind: 'kudos', csr: csr.id, review: review || null, tag: null };
+    var picks = (HUB.home[csr.id] && HUB.home[csr.id].data && HUB.home[csr.id].data.picks) || [];
+    hubModal('Send ' + csr.first + ' kudos', '<div><div class="cap" style="margin-bottom:8px">Quick picks</div><div style="display:flex;flex-wrap:wrap;gap:8px">' + KTAGS.map(function (t) { return '<button class="chip" data-hubktag="' + esc(t) + '">' + esc(t) + '</button>'; }).join('') + '</div></div>' +
+      '<div><label class="l" for="hubkb">Add a note (optional)</label><textarea id="hubkb" class="oq-field" maxlength="600" style="min-height:80px;resize:vertical" placeholder="What did they do well?"></textarea></div>' +
+      (review ? '<label style="display:flex;gap:10px;align-items:center;font-size:13px"><input type="checkbox" id="hubknom" style="width:18px;height:18px"> Nominate this call for ' + esc(csr.brand_short || 'the brand') + ' call of the week</label>'
+        : (picks.filter(function (p) { return p.kind === 'good'; }).length ? '<div><label class="l" for="hubkrev">About a call (optional)</label><select id="hubkrev" class="oq-field"><option value="">No specific call</option>' + picks.filter(function (p) { return p.kind === 'good'; }).map(function (p) { return '<option value="' + p.review_id + '">' + esc(p.title + ' · ' + fwhen(p.date)) + '</option>'; }).join('') + '</select></div>' : '')) +
+      '<p class="mut" style="font-size:12px;margin:0">' + esc(csr.first) + ' sees it on their Coaching Hub home page.</p>', 'Send kudos');
+  }
+  function focusModal(d) {
+    HUB.modal = { kind: 'focus', csr: d.csr.id, pick: null };
+    var o = d.focus_options || [];
+    hubModal('Set ' + d.csr.first + '’s focus for this week', '<p class="sub" style="margin:0">Sorted by what ' + esc(d.csr.first) + ' missed most over the last two weeks.</p>' +
+      o.map(function (x, i) { return '<label style="display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:12px;border:1px solid #EEEBE4;background:#FAF9F6;cursor:pointer"><input type="radio" name="hubfo" value="' + i + '" style="margin-top:3px;width:18px;height:18px"><span><b style="font-weight:600">' + esc(x.title) + '</b><span class="mut" style="display:block;font-size:12px;margin-top:2px">' + esc(x.label) + (x.of ? ' · done on ' + x.done + ' of ' + x.of + ' calls (' + x.pct + '%)' : ' · not enough calls yet') + '</span></span></label>'; }).join('') +
+      '<label style="display:flex;gap:10px;align-items:center;padding:12px;border-radius:12px;border:1px solid #EEEBE4;background:#FAF9F6;cursor:pointer"><input type="radio" name="hubfo" value="custom" style="width:18px;height:18px"><b style="font-weight:600">Write my own</b></label>' +
+      '<div><label class="l" for="hubft">Focus</label><input id="hubft" class="oq-field" maxlength="140" value="' + esc((d.focus && d.focus.title) || '') + '"></div>' +
+      '<div><label class="l" for="hubfs">Line to try saying</label><textarea id="hubfs" class="oq-field" maxlength="400" style="min-height:60px">' + esc((d.focus && d.focus.say) || '') + '</textarea></div>' +
+      '<div><label class="l" for="hubfb">Why it matters (optional)</label><textarea id="hubfb" class="oq-field" maxlength="600" style="min-height:60px">' + esc((d.focus && !d.focus.auto && d.focus.body) || '') + '</textarea></div>' +
+      '<div><label class="l" for="hubfg">Goal: % of calls</label><input id="hubfg" class="oq-field" type="number" min="10" max="100" value="' + ((d.focus && d.focus.goal_pct) || 80) + '" style="max-width:120px"></div>', 'Save focus');
+    HUB.modal.opts = o;
+  }
+  function cotwModal(d) {
+    HUB.modal = { kind: 'cotw', brand: d.csr.brand };
+    hubModal(d.csr.brand_short + ' call of the week', '<p class="sub" style="margin:0">The best booked calls from last week. Nominated calls are listed first.</p><div id="hubco">' + skel(60, 3) + '</div>', 'Make it call of the week');
+    api({ action: 'hubcotw', op: 'options', brand: d.csr.brand }).then(function (r) {
+      var el = $('hubco'); if (!el) return; var o = r.options || [];
+      el.innerHTML = o.length ? o.map(function (x, i) { return '<label style="display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:12px;border:1px solid #EEEBE4;background:#FAF9F6;cursor:pointer;margin-bottom:8px"><input type="radio" name="hubcw" value="' + x.review_id + '"' + (i ? '' : ' checked') + ' style="margin-top:3px;width:18px;height:18px"><span style="min-width:0"><b style="font-weight:600">' + esc(x.agent) + '</b> <span class="mut" style="font-size:12px">· ' + esc(x.title) + ' · ' + fsecs(x.secs) + ' · score ' + x.score + (x.nominated ? ' · ♥ nominated' : '') + '</span><span style="display:block;font-size:12.5px;line-height:1.45;margin-top:4px;color:#3B4541">' + esc(x.why || '') + '</span></span></label>'; }).join('') : '<p class="mut">No booked calls from last week qualify yet.</p>';
+    }).catch(function (e) { var el = $('hubco'); if (el) el.innerHTML = errBox(e); });
+  }
+  function reqModal(kind) {
+    var C0 = chatState();
+    HUB.modal = { kind: kind, review: C0.review };
+    hubModal(kind === 'review' ? 'Ask my manager to review it' : 'Flag for my supervisor', '<div><label class="l" for="hubrw">' + (kind === 'review' ? 'Which call, and what do you think was scored wrong?' : 'What should the playbook cover?') + '</label><textarea id="hubrw" class="oq-field" maxlength="1000" style="min-height:90px">' + esc(C0.msgs.filter(function (m) { return m.role === 'user'; }).slice(-1).map(function (m) { return m.content; })[0] || '') + '</textarea></div>', 'Send');
+  }
+  function modalOk(btn) {
+    var M = HUB.modal; if (!M) return; var close = function () { var m = $('hubm'); if (m) m.remove(); HUB.modal = null; };
+    var done = function (msg, reload) { close(); toast(msg); if (reload) { delete HUB.wins[hubCsrId()]; render(); } };
+    var fail = function (e) { btn.disabled = false; toast((e && e.message) || 'Couldn’t save that.'); };
+    btn.disabled = true;
+    if (M.kind === 'kudos') {
+      var body = ($('hubkb') || {}).value || '', rv = M.review || (($('hubkrev') || {}).value || null);
+      if (!M.tag && !body.trim()) { btn.disabled = false; toast('Pick a quick note or write one'); return; }
+      api({ action: 'hubkudos', csr: M.csr, tag: M.tag, body: body.trim() || null, review_id: rv, nominate: !!($('hubknom') && $('hubknom').checked) }).then(function () { done('Kudos sent', S.view === 'hub'); }).catch(fail);
+    } else if (M.kind === 'focus') {
+      var sel = document.querySelector('input[name="hubfo"]:checked'), o = sel && sel.value !== 'custom' ? M.opts[+sel.value] : null;
+      var title = ($('hubft').value || '').trim(); if (!title) { btn.disabled = false; toast('Add a focus'); return; }
+      api({ action: 'hubfocus', op: 'set', csr: M.csr, step_key: o ? o.step_key : null, title: title, say: ($('hubfs').value || '').trim() || null, body: ($('hubfb').value || '').trim() || null, goal_pct: +$('hubfg').value || 80 }).then(function () { done('Focus saved. ' + 'They’ll see it on their home page.', true); }).catch(fail);
+    } else if (M.kind === 'cotw') {
+      var c = document.querySelector('input[name="hubcw"]:checked'); if (!c) { btn.disabled = false; return; }
+      api({ action: 'hubcotw', op: 'set', brand: M.brand, review_id: c.value }).then(function () { done('Call of the week updated', true); }).catch(fail);
+    } else {
+      var w = ($('hubrw').value || '').trim(); if (!w) { btn.disabled = false; toast('Add a short note'); return; }
+      api({ action: 'hubreq', op: M.kind === 'flag' ? 'flag' : 'create', why: w, review_id: M.review }).then(function (r) { done(r.sent_to ? 'Sent to your manager' : 'Sent. Your manager will see it.'); }).catch(fail);
+    }
+  }
+
+  // ----- events -----
+  on(document, 'submit', function (e) {
+    if (e.target.id === 'hubqf') { e.preventDefault(); var q = $('hubqi').value.trim(); if (!q) return; var C0 = chatState(); C0.mode = /price|warrant|policy|how do we|what do i say|handle/i.test(q) ? 'brand' : 'score'; HUB.pendingQ = q; hubGoTab('ask'); }
+    else if (e.target.id === 'hubchat') { e.preventDefault(); chatAsk($('hubci').value); }
+  });
+  function hubGoTab(t) { HUB.tab = t; if (SELF) go(t === 'ask' ? 'hubask' : t === 'wins' ? 'hubwins' : 'hub'); else { window.scrollTo(0, 0); render(); } }
+  on(document, 'click', function (e) {
+    var t = e.target, x;
+    if (t.closest('[data-go="hub"]') && !SELF) { S.hubCsr = null; }
+    if ($('hubm')) {
+      var kt = t.closest('[data-hubktag]'); if (kt) { HUB.modal.tag = HUB.modal.tag === kt.getAttribute('data-hubktag') ? null : kt.getAttribute('data-hubktag'); document.querySelectorAll('[data-hubktag]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-hubktag') === HUB.modal.tag); }); return; }
+      var fo = t.closest('input[name="hubfo"]'); if (fo && fo.value !== 'custom') { var o = HUB.modal.opts[+fo.value]; $('hubft').value = o.title; $('hubfs').value = o.say; return; }
+      if (t.closest('[data-hubmok]')) { modalOk(t.closest('[data-hubmok]')); return; }
+      if (t.closest('[data-hubmclose]') || t.id === 'hubm') { $('hubm').remove(); HUB.modal = null; return; }
+      return;
+    }
+    if ((x = t.closest('[data-hubcsr]'))) { S.hubCsr = x.getAttribute('data-hubcsr'); HUB.tab = 'home'; go('hub'); return; }
+    if (t.closest('[data-hubroster]')) { S.hubCsr = null; go('hub'); return; }
+    if ((x = t.closest('[data-hubtab]'))) {
+      var C1 = chatState();
+      if (x.hasAttribute('data-hubrev')) { if (C1.review !== x.getAttribute('data-hubrev')) C1.msgs = []; C1.review = x.getAttribute('data-hubrev'); C1.mode = 'score'; }
+      if (x.hasAttribute('data-hubmode')) C1.mode = x.getAttribute('data-hubmode');
+      if (x.hasAttribute('data-hubq')) HUB.pendingQ = x.getAttribute('data-hubq');
+      hubGoTab(x.getAttribute('data-hubtab')); return;
+    }
+    if ((x = t.closest('[data-hubmode]'))) { var C2 = chatState(); if (C2.mode !== x.getAttribute('data-hubmode')) { C2.mode = x.getAttribute('data-hubmode'); C2.msgs = []; C2.review = null; } hubAsk(); return; }
+    if ((x = t.closest('[data-hubq]'))) { chatAsk(x.getAttribute('data-hubq')); return; }
+    if (t.closest('[data-hubclear]')) { var C3 = chatState(); C3.msgs = []; C3.review = null; hubAsk(); return; }
+    if (t.closest('[data-hubnorev]')) { chatState().review = null; hubAsk(); return; }
+    if (t.closest('[data-hubgood]')) { var g = $('hubgood0'); if (g) { g.scrollIntoView({ block: 'center', behavior: 'smooth' }); var pb = g.querySelector('[data-hubplay]'); if (pb) pb.click(); } else toast('No great-call example yet this week'); return; }
+    if ((x = t.closest('[data-hubplay]'))) {
+      var rid = x.getAttribute('data-hubplay'); if (HUB.audio[rid] && HUB.audio[rid].busy) return;
+      HUB.audio[rid] = { busy: true }; var slot = function () { document.querySelectorAll('[data-hubslot="' + rid + '"]').forEach(function (s) { s.innerHTML = playBtn(rid, s.querySelector('[data-hubplay]') ? s.querySelector('[data-hubplay]').style.background : '#14302A'); }); };
+      slot();
+      api({ action: 'hubaudio', id: rid }).then(function (r) { if (!r || !r.url) { delete HUB.audio[rid]; slot(); toast('No recording is available for this call.'); return; } HUB.audio[rid] = { url: r.url }; slot(); })
+        .catch(function (e2) { delete HUB.audio[rid]; slot(); toast((e2 && e2.message) || 'Couldn’t load the recording.'); }); return;
+    }
+    if ((x = t.closest('[data-hubswap]'))) { x.disabled = true; x.textContent = 'Swapping…'; api(Object.assign({ action: 'hubswap', pick: x.getAttribute('data-hubswap') }, hubBody())).then(function () { toast('Swapped in another call'); render(); }).catch(function (e3) { x.disabled = false; x.textContent = 'Swap'; toast(e3.message || 'Couldn’t swap that call.'); }); return; }
+    if ((x = t.closest('[data-hubreqdone]'))) { x.disabled = true; api({ action: 'hubreq', op: 'done', req: +x.getAttribute('data-hubreqdone') }).then(function () { toast('Marked reviewed. They’ll get a note.'); render(); }).catch(function (e4) { x.disabled = false; toast(e4.message || 'Couldn’t update.'); }); return; }
+    if ((x = t.closest('[data-hubact]'))) {
+      var a = x.getAttribute('data-hubact'), d = HUB.home[hubCsrId()] && HUB.home[hubCsrId()].data;
+      if (a === 'review' || a === 'flag') { reqModal(a); return; }
+      if (!d) return;
+      if (a === 'kudos') kudosModal(d.csr); else if (a === 'focus') focusModal(d); else if (a === 'cotw') cotwModal(d);
+      return;
+    }
+    if ((x = t.closest('[data-hubkudoscall]'))) {
+      var cid = x.getAttribute('data-hubkudoscall'); x.disabled = true;
+      api({ action: 'hubkudos', op: 'callcsr', id: cid }).then(function (r) { x.disabled = false; if (!r.csr) { toast('This call isn’t linked to a CSR in the Coaching Hub yet.'); return; } var nm = r.csr.name.split(' ')[0]; kudosModal({ id: r.csr.id, first: nm, brand_short: short(r.csr.brand) }, cid); })
+        .catch(function (e5) { x.disabled = false; toast(e5.message || 'Couldn’t open kudos.'); });
+    }
+  });
+
   function loadPhone() { return api(Object.assign({ action: 'phone' }, win())); }
   function phonePct(a, b) { return b ? a / b * 100 : null; }
   function vPhone(tok) {
@@ -1227,6 +1582,7 @@ export function mountOpsisQA(ROOT, cfg) {
       (c.caller_wanted ? '<div style="margin-top:10px"><div class="cap">Caller wanted</div><div style="margin-top:3px;line-height:1.45">' + esc(c.caller_wanted) + '</div></div>' : '') + '</div>' +
       (changed ? '<div style="flex-basis:100%;background:#FFF8E8;border:1px solid #F0DDB0;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#6B4E12">Score updated' + (who.length ? ' by <b>' + who.map(esc).join(', ') + '</b>' : '') + '.</div>' : '') + '</div>';
     h += factsBar(c);
+    if (CFG.showMetrics) h += metCard(c);
     h += ccCard(c);
     if (c.xfer_out || c.xfer_in) {
       var leg = c.xfer_out ? c.xfer_to : c.xfer_from;
@@ -1252,7 +1608,7 @@ export function mountOpsisQA(ROOT, cfg) {
     });
     h += '</div><div class="oq-card" id="cnotes"><b>Notes</b><div id="cnlist" style="margin-top:8px">' + skel(18, 2) + '</div>' +
       (CAN_EDIT ? '<form id="cnform" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"><label class="sr" for="cnbody">Add a note</label><textarea id="cnbody" class="oq-field" style="min-height:64px;resize:vertical" maxlength="4000" placeholder="Add a note for your team or the Opsis CX Support team…"></textarea><div><button class="sel btnd" type="submit">Add note</button></div></form>' : '') + '</div>' +
-      '<div class="row"><button class="sel" data-act="pdf">Print / save PDF</button><button class="sel" data-ccgo="1">Ask AI about this call</button></div>';
+      '<div class="row"><button class="sel" data-act="pdf">Print / save PDF</button><button class="sel" data-ccgo="1">Ask AI about this call</button>' + (CAN_EDIT && !CFG.csrSelf ? '<button class="sel" data-hubkudoscall="' + c.id + '">♥ Send kudos</button>' : '') + '</div>';
     var keep = $('cnbody') ? $('cnbody').value : ''; var keepq = $('ccq') ? $('ccq').value : '';
     $('cd').innerHTML = h;
     if (keep && $('cnbody')) $('cnbody').value = keep;
@@ -1313,6 +1669,42 @@ export function mountOpsisQA(ROOT, cfg) {
     }).join('');
     if (T.busy) h += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center"><span class="dots"><span></span><span></span><span></span></span><span class="mut" style="font-size:12px">' + (/re-?score|rescore|call flow|5.step|five.step/i.test((T.msgs[T.msgs.length - 1] || {}).content || '') ? 'Re-scoring the call on the current call flow (about 30 seconds)…' : 'Reading the call…') + '</span></div>';
     return h;
+  }
+  // ---------- conversation metrics (talk-to-listen, speed, monologue, fillers, questions, mood) ----------
+  var MET = {};
+  function metLoad(id) {
+    if (MET[id]) return; MET[id] = { busy: true };
+    api({ action: 'callmetrics', id: id }).then(function (r) { MET[id] = r || { available: false }; }).catch(function () { MET[id] = { available: false, why: 'Couldn’t load the metrics right now.' }; })
+      .then(function () { var el = $('cmet'); if (el && S.cur && S.cur.id === id) el.outerHTML = metCard(S.cur); });
+  }
+  function metTile(label, val, sub, tone, hint) {
+    var dot = { g: '#2F7D5B', o: '#E8A06A', r: '#C24141', n: '#B9B4AA' }[tone || 'n'];
+    return '<div style="background:#FAF9F6;border:1px solid #EEEBE4;border-radius:12px;padding:10px 12px;min-width:0"><div class="cap" style="display:flex;gap:6px;align-items:center"><span aria-hidden="true" style="width:8px;height:8px;border-radius:99px;background:' + dot + ';flex-shrink:0"></span>' + label + '</div>' +
+      '<div class="num" style="font-size:18px;font-weight:600;margin-top:4px">' + val + (sub ? ' <span class="mut" style="font-size:12px;font-weight:400">' + sub + '</span>' : '') + '</div>' + (hint ? '<div class="mut" style="font-size:11.5px;margin-top:2px">' + hint + '</div>' : '') + '</div>';
+  }
+  function metCard(c) {
+    var m = MET[c.id];
+    if (!m) { metLoad(c.id); m = MET[c.id]; }
+    var head = '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap"><b>Conversation metrics</b><span class="mut" style="font-size:11.5px">Estimated from the recording</span></div>';
+    if (!m || m.busy) return '<div class="oq-card" id="cmet">' + head + '<div style="margin-top:10px">' + skel(16, 2) + '</div></div>';
+    var moodT = m.mood === 'Upset' ? 'r' : 'g', moodTile = metTile('Customer mood', esc(m.mood || 'Calm'), '', moodT, m.mood === 'Upset' ? 'Flagged on this call' : 'No upset signs');
+    if (!m.available) return '<div class="oq-card" id="cmet">' + head + '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px">' + moodTile + '</div><div class="mut" style="font-size:12.5px;margin-top:8px">' + esc(m.why || 'Talk-time metrics aren’t available for this recording.') + '</div></div>';
+    var tr = m.talk_ratio, trT = tr >= 35 && tr <= 65 ? 'g' : (tr >= 25 && tr <= 75 ? 'o' : 'r');
+    var w = m.wpm, wT = w == null ? 'n' : (w >= 130 && w <= 175 ? 'g' : (w >= 110 && w <= 195 ? 'o' : 'r'));
+    var lm = m.longest_monologue_sec, lmT = lm <= 45 ? 'g' : (lm <= 75 ? 'o' : 'r');
+    var f = m.fillers_per_min, fT = f <= 2 ? 'g' : (f <= 4 ? 'o' : 'r');
+    var q = m.questions, qT = q >= 3 ? 'g' : (q >= 1 ? 'o' : 'r');
+    var fm = function (sec) { sec = Math.round(sec || 0); return sec >= 60 ? Math.floor(sec / 60) + 'm ' + (sec % 60) + 's' : sec + 's'; };
+    var bar = '<div style="display:flex;height:6px;border-radius:99px;overflow:hidden;margin-top:6px;background:#EEEBE4" aria-hidden="true"><div style="width:' + tr + '%;background:#2F7D5B"></div><div style="flex:1;background:#C9D8E8"></div></div>';
+    return '<div class="oq-card" id="cmet">' + head +
+      '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px">' +
+      moodTile +
+      '<div style="background:#FAF9F6;border:1px solid #EEEBE4;border-radius:12px;padding:10px 12px;min-width:0"><div class="cap" style="display:flex;gap:6px;align-items:center"><span aria-hidden="true" style="width:8px;height:8px;border-radius:99px;background:' + { g: '#2F7D5B', o: '#E8A06A', r: '#C24141' }[trT] + '"></span>Talk-to-listen</div><div class="num" style="font-size:18px;font-weight:600;margin-top:4px">' + tr + '% <span class="mut" style="font-size:12px;font-weight:400">CSR</span></div>' + bar + '<div class="mut" style="font-size:11.5px;margin-top:4px">CSR ' + fm(m.csr_talk_sec) + ' · customer ' + fm(m.customer_talk_sec) + ' · aim 35–65%</div></div>' +
+      metTile('Talking speed', w == null ? '—' : w, w == null ? '' : 'words/min', wT, 'Aim 130–175') +
+      metTile('Longest monologue', fm(lm), '', lmT, 'Aim under 45s') +
+      metTile('Filler words', f, 'per min', fT, 'Um, uh, you know · aim 2 or fewer') +
+      metTile('Questions asked', q, '', qT, 'Discovery questions · aim 3+') +
+      '</div>' + (m.estimated ? '<div class="mut" style="font-size:11.5px;margin-top:8px">The recording’s speaker separation was weak on this call, so treat these as rough.</div>' : '') + '</div>';
   }
   function ccCard(c) {
     var T = CC[c.id] || { msgs: [] };
@@ -1501,6 +1893,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.range === 'custom') { o.s = S.start; o.e = S.end; }
     if (S.brands.length) o.b = S.brands.join('|');
     if (S.view === 'calls' && S.calls.bucket) o.bucket = S.calls.bucket;
+    if (S.view === 'hub' && S.hubCsr && !CFG.csrSelf) { o.csr = S.hubCsr; o.t = HUB.tab; }
     if (S.view === 'brand') o.brand = S.brand; if (S.view === 'csr') o.agent = S.agent;
     var h = '#' + Object.keys(o).map(function (k) { return k + '=' + encodeURIComponent(o[k]); }).join('&');
     if (location.hash !== h) history.replaceState(null, '', h);
@@ -1509,12 +1902,14 @@ export function mountOpsisQA(ROOT, cfg) {
     var q = {}; location.hash.replace(/^#/, '').split('&').forEach(function (p) { var kv = p.split('='); if (kv[0]) q[kv[0]] = decodeURIComponent(kv[1] || ''); });
     if (q.v) S.view = q.v; if (q.r) S.range = q.r; if (q.s && q.e) { S.start = q.s; S.end = q.e; }
     if (q.bucket && /^(upset|low|ctrl|other)$/.test(q.bucket)) { S.calls.bucket = q.bucket; S.calls.offset = 0; }
+    if (q.csr && /^[0-9a-f-]{36}$/i.test(q.csr)) S.hubCsr = q.csr; if (q.t && /^(home|ask|wins)$/.test(q.t)) HUB.tab = q.t;
     if (q.b) S.brands = q.b.split('|'); if (q.brand) S.brand = q.brand; if (q.agent) S.agent = q.agent;
     applyRange();
   }
   function render() {
+    if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney }[S.view] || vOverview;
+    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, hub: vHub, hubask: vHub, hubwins: vHub }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
     var cq = $('csrq'); if (cq) cq.addEventListener('input', function () { S.csrQ = cq.value; S.csrFocus = true; clearTimeout(cq.t); cq.t = setTimeout(render, 250); });
@@ -1732,7 +2127,7 @@ export function mountOpsisQA(ROOT, cfg) {
   var lg = $('oqlogo'); if (lg) { lg.src = CFG.logo || 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/garageco/logo.png'; lg.alt = CLIENT; }
   var DEEP_CALL = (location.hash.match(/(?:^#|&)call=([0-9a-f-]{36})/i) || [])[1];
   readHash(); render();
-  if (DEEP_CALL) { S.callId = DEEP_CALL; callDrawer(); }
+  if (DEEP_CALL && !CFG.csrSelf) { S.callId = DEEP_CALL; callDrawer(); }
   return function destroy() {
     LISTENERS.forEach(function (l) { l[0].removeEventListener(l[1], l[2]); }); LISTENERS = [];
     try { AU.pause(); AU.removeAttribute('src'); AU.load(); } catch (x) {}
