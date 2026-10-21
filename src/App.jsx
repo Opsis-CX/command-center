@@ -65,6 +65,7 @@ import CsrScorecard from './modules/CsrScorecard'
 // --- Who's On: live check-ins (LiveStatus) + Slack-style team presence board ---
 import LiveStatus from './modules/LiveStatus'
 import { usePresenceHeartbeat, MyStatusButton, TeamStatus } from './components/Presence'
+import { ViewAsMenu } from './components/RolePreview'
 import MeetingReminder from './components/MeetingReminder'
 import LsaReminderPopup from './components/LsaReminderPopup'
 import TaskAssignedPopup from './components/TaskAssignedPopup'
@@ -474,6 +475,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <div className="crumb"><b>{titleFor(location.pathname)}</b></div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <ViewAsMenu />
               <MyStatusButton />
               <HeaderTaskBar />
               <NotificationBell />
