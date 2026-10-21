@@ -66,7 +66,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
     var k = JSON.stringify(body), cacheable = !!CACHEABLE[body.action];
     if (cacheable && cache[k]) return cache[k];
-    var isRead = cacheable || body.action === 'call' || body.action === 'export' || body.action === 'bucketcalls' || body.action === 'scorecards' || body.action === 'money' || body.action === 'excused' || body.action === 'billing' || (body.action === 'jobvalues' && !body.op) || body.action === 'audio' || ((body.action === 'kb' || body.action === 'settings' || body.action === 'team') && !body.op) || (body.action === 'notes' && body.body == null);
+    var isRead = cacheable || body.action === 'call' || body.action === 'export' || body.action === 'bucketcalls' || body.action === 'factcalls' || (body.action === 'xfercalls' && body.op !== 'why') || body.action === 'scorecards' || body.action === 'money' || body.action === 'excused' || body.action === 'billing' || (body.action === 'jobvalues' && !body.op) || body.action === 'audio' || ((body.action === 'kb' || body.action === 'settings' || body.action === 'team') && !body.op) || (body.action === 'notes' && body.body == null);
     var once = function () { return CFG.invoke(body); };
     var wait = function (ms) { return new Promise(function (res) { setTimeout(res, ms); }); };
     var stop = function (e) { return e.status && e.status < 500 && e.status !== 408; };
@@ -254,9 +254,11 @@ export function mountOpsisQA(ROOT, cfg) {
     });
   }
   function coachCard(rep) {
-    var rows = agentRows(rep, null, 100).filter(function (a) { return a.opps >= 40 && a.ask != null; }).sort(function (a, b) { return a.ask - b.ask; }).slice(0, 5);
+    var AIS = ['Dane', 'Sophia', 'Jason'], rows = [], tiers = [[100, 40], [50, 20], [25, 10], [10, 5], [3, 2], [1, 1]], tierUsed = null;
+    for (var ti = 0; ti < tiers.length && rows.length < 3; ti++) { rows = agentRows(rep, null, tiers[ti][0]).filter(function (a) { return a.opps >= tiers[ti][1] && a.ask != null && AIS.indexOf(a.name) < 0; }).sort(function (a, b) { return a.ask - b.ask || b.opps - a.opps; }).slice(0, 5); tierUsed = tiers[ti]; }
     var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><h2 class="ttl">Top coaching opportunities</h2><p class="sub">Busiest CSRs who ask for the booking least often</p></div><button class="more" data-go="csrs">All CSRs →</button></div>';
-    if (!rows.length) h += '<p class="mut">Not enough calls in this period.</p>';
+    if (!rows.length) h += '<p class="mut">No scored booking opportunities in this period yet.</p>';
+    else if (tierUsed && tierUsed[1] < 40) h += '<p class="mut" style="font-size:11.5px;margin:-4px 0 6px">Short period, so this includes CSRs with ' + tierUsed[1] + '+ booking opportunities.</p>';
     rows.forEach(function (c, i) {
       h += '<button class="click" data-agent="' + esc(c.name) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line2)"><span style="width:26px;height:26px;border-radius:999px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;' + (i < 3 ? 'background:#FCEBDD;color:#A8441A' : 'background:#F3F1EC') + '">' + (i + 1) + '</span>' + avatar(c.name, 34) +
         '<span style="flex:1;min-width:0"><span style="display:block;font-weight:600">' + esc(c.name) + '</span><span class="mut" style="display:block;font-size:11.5px">' + esc(short(c.brand)) + ' · ' + fmt(c.calls) + ' calls</span><span class="track" style="display:block;margin-top:6px;width:110px"><span style="display:block;height:100%;border-radius:999px;background:' + G + ';width:' + c.ask + '%"></span></span></span>' +
@@ -425,16 +427,16 @@ export function mountOpsisQA(ROOT, cfg) {
   function focusMix(f, brand, agent) {
     var tabs = [['reasons', 'Why calls didn’t book'], ['objections', 'Objections'], ['topics', 'What callers wanted'], ['hours', 'Time of day']];
     var cur = S.mix || 'reasons';
-    var h = '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><h2 class="ttl">What’s different</h2><div class="seg" role="tablist">' + tabs.map(function (t) { return '<button role="tab" aria-selected="' + (cur === t[0]) + '" class="' + (cur === t[0] ? 'on' : '') + '" data-mix="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div></div><p class="sub">This period vs the one before</p><div style="margin-top:10px">';
+    var h = '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><h2 class="ttl">What’s different</h2><div class="seg" role="tablist">' + tabs.map(function (t) { return '<button role="tab" aria-selected="' + (cur === t[0]) + '" class="' + (cur === t[0] ? 'on' : '') + '" data-mix="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div></div><p class="sub">This period vs the one before · click a row to hear those calls</p><div style="margin-top:10px">';
     if (cur === 'hours') {
       var hs = f.hours || [], mx = Math.max.apply(null, hs.map(function (x) { return x.calls; }).concat([1]));
-      h += '<div style="display:flex;align-items:flex-end;gap:4px;height:150px">' + hs.map(function (x) { var r = x.decided ? Math.round(x.booked / x.decided * 100) : null; return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px" title="' + fhour(x.h) + ': ' + fmt(x.calls) + ' calls · score ' + x.avg + (r != null ? ' · ' + r + '% booked' : '') + '"><span class="num" style="font-size:10px;color:#1F5A41">' + (r != null ? r + '%' : '') + '</span><div style="width:100%;border-radius:3px;background:' + ((x.avg || 0) < 78 ? '#F1B48E' : '#9CC6B2') + ';height:' + Math.max(3, Math.round(x.calls / mx * 100)) + 'px"></div><span style="font-size:10px;color:#5F6763">' + fhour(x.h) + '</span></div>'; }).join('') + '</div><p class="mut" style="font-size:11.5px">Orange bars = hours where the average score is under 78. Numbers on top = booking rate.</p>';
+      h += '<div style="display:flex;align-items:flex-end;gap:4px;height:150px">' + hs.map(function (x) { var r = x.decided ? Math.round(x.booked / x.decided * 100) : null; return '<div class="click" data-ffk="hour" data-ffv="' + x.h + '" role="button" tabindex="0" style="cursor:pointer;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px" title="Click to hear the ' + fhour(x.h) + ' calls · ' + fhour(x.h) + ': ' + fmt(x.calls) + ' calls · score ' + x.avg + (r != null ? ' · ' + r + '% booked' : '') + '"><span class="num" style="font-size:10px;color:#1F5A41">' + (r != null ? r + '%' : '') + '</span><div style="width:100%;border-radius:3px;background:' + ((x.avg || 0) < 78 ? '#F1B48E' : '#9CC6B2') + ';height:' + Math.max(3, Math.round(x.calls / mx * 100)) + 'px"></div><span style="font-size:10px;color:#5F6763">' + fhour(x.h) + '</span></div>'; }).join('') + '</div><p class="mut" style="font-size:11.5px">Orange bars = hours where the average score is under 78. Numbers on top = booking rate.</p>';
     } else {
       var rows = f[cur] || [], mx2 = Math.max.apply(null, rows.map(function (x) { return Math.max(x.n, x.pn); }).concat([1]));
       rows.forEach(function (r) {
         var dd = r.pn ? Math.round((r.n - r.pn) / r.pn * 100) : null;
-        h += '<div style="padding:7px 0;font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>' + esc(r.k) + '</span><span class="num mut">' + fmt(r.n) + ' <span style="font-size:11px">(' + (dd == null ? 'new' : (dd >= 0 ? '+' : '') + dd + '%') + ')</span></span></div>' +
-          '<div style="display:flex;flex-direction:column;gap:2px;margin-top:4px"><div class="track"><div style="background:' + (cur === 'reasons' ? O : G) + ';width:' + (r.n / mx2 * 100) + '%"></div></div><div class="track" style="height:4px"><div style="background:#C9C3B8;width:' + (r.pn / mx2 * 100) + '%"></div></div></div></div>';
+        h += '<button class="click" data-ffk="' + ({ reasons: 'reason', objections: 'objection', topics: 'topic' }[cur]) + '" data-ffv="' + esc(r.k) + '" title="Hear these calls" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:7px 0;font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>' + esc(r.k) + ' <span class="mut" aria-hidden="true">›</span></span><span class="num mut">' + fmt(r.n) + ' <span style="font-size:11px">(' + (dd == null ? 'new' : (dd >= 0 ? '+' : '') + dd + '%') + ')</span></span></div>' +
+          '<div style="display:flex;flex-direction:column;gap:2px;margin-top:4px"><div class="track"><div style="background:' + (cur === 'reasons' ? O : G) + ';width:' + (r.n / mx2 * 100) + '%"></div></div><div class="track" style="height:4px"><div style="background:#C9C3B8;width:' + (r.pn / mx2 * 100) + '%"></div></div></div></button>';
       });
       h += '<p class="mut" style="font-size:11.5px">Top bar = now · grey bar = before</p>';
     }
@@ -446,14 +448,14 @@ export function mountOpsisQA(ROOT, cfg) {
   function focusXfer(f, kind) {
     var x = f.transfers || {}, cur = (f.kpis || {}).cur || {};
     var who = kind === 'brand' ? 'this brand’s CSRs' : esc(S.agent);
-    var list = function (rows, attr) { return (rows || []).map(function (r) { return '<button class="click" data-agent="' + esc(r.k) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;justify-content:space-between;gap:10px;padding:8px 2px;border-top:1px solid var(--line2);font-size:12.5px"><span style="display:flex;gap:8px;align-items:center">' + avatar(r.k, 24) + esc(r.k) + '</span><span class="num mut">' + fmt(r.n) + (r.booked != null ? ' · ' + fmt(r.booked) + ' booked' : '') + '</span></button>'; }).join('') || '<p class="mut" style="font-size:12.5px">None matched in this period.</p>'; };
+    var list = function (rows, attr) { return (rows || []).map(function (r) { return '<button class="click" data-xferpair="' + attr + '|' + esc(r.k) + '" title="' + (attr === 'out' ? 'Hear the calls transferred to ' : 'Hear the calls received from ') + esc(r.k) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;justify-content:space-between;gap:10px;padding:8px 2px;border-top:1px solid var(--line2);font-size:12.5px"><span style="display:flex;gap:8px;align-items:center">' + avatar(r.k, 24) + esc(r.k) + '</span><span class="num mut">' + fmt(r.n) + (r.booked != null ? ' · ' + fmt(r.booked) + ' booked' : '') + '</span></button>'; }).join('') || '<p class="mut" style="font-size:12.5px">None matched in this period.</p>'; };
     var outPct = cur.calls ? Math.round(x.out / cur.calls * 100) : 0;
     var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">Transfers</h2><p class="sub">Outbound = calls ' + who + ' transferred to someone else · Inbound = calls ' + who + ' received from a colleague</p></div><div class="row" style="gap:8px"><button class="sel" data-xferlist="out">Outbound calls →</button><button class="sel" data-xferlist="in">Inbound calls →</button></div></div>' +
       '<div class="row" style="margin-top:12px;align-items:flex-start">' +
       '<div style="flex:1 1 300px;min-width:0"><div style="display:flex;align-items:baseline;gap:10px"><span class="num" style="font-size:28px;font-weight:600">↗ ' + fmt(x.out) + '</span><span class="mut" style="font-size:12.5px">' + outPct + '% of calls · was ' + fmt(x.out_prev) + '</span></div>' +
-      '<div class="mut" style="font-size:12px;margin:6px 0 4px">' + fmt(x.out_linked) + ' matched to the receiving call · <b style="color:#1F5A41">' + fmt(x.out_booked) + ' booked after the transfer</b></div><div class="cap" style="margin-top:10px">Who received them</div>' + list(x.to) + '</div>' +
+      '<div class="mut" style="font-size:12px;margin:6px 0 4px">' + fmt(x.out_linked) + ' matched to the receiving call · <b style="color:#1F5A41">' + fmt(x.out_booked) + ' booked after the transfer</b></div><div class="cap" style="margin-top:10px">Who received them</div>' + list(x.to, 'out') + '</div>' +
       '<div style="flex:1 1 300px;min-width:0"><div style="display:flex;align-items:baseline;gap:10px"><span class="num" style="font-size:28px;font-weight:600">↘ ' + fmt(x.in) + '</span><span class="mut" style="font-size:12.5px">received</span></div>' +
-      '<div class="mut" style="font-size:12px;margin:6px 0 4px">' + (x.in_decided ? '<b style="color:#1F5A41">' + Math.round(x.in_booked / x.in_decided * 100) + '% booked</b> when a decision was made (' + fmt(x.in_booked) + ' of ' + fmt(x.in_decided) + ')' : 'No booking decisions yet') + '</div><div class="cap" style="margin-top:10px">Who sent them</div>' + list(x.from) + '</div></div>';
+      '<div class="mut" style="font-size:12px;margin:6px 0 4px">' + (x.in_decided ? '<b style="color:#1F5A41">' + Math.round(x.in_booked / x.in_decided * 100) + '% booked</b> when a decision was made (' + fmt(x.in_booked) + ' of ' + fmt(x.in_decided) + ')' : 'No booking decisions yet') + '</div><div class="cap" style="margin-top:10px">Who sent them</div>' + list(x.from, 'in') + '</div></div>';
     $('fxfer').innerHTML = h;
   }
 
@@ -463,12 +465,12 @@ export function mountOpsisQA(ROOT, cfg) {
     Promise.all([loadReport(), loadPrevReport()]).then(function (r) {
       if (tok !== T) return; noteKnown(r[0]);
       var rows = agentRows(r[0], r[1], S.csrMin || 25), key = S.csrSort;
-      var f = { calls: function (a) { return -a.calls; }, avg: function (a) { return -(a.avg || 0); }, change: function (a) { return a.pavg == null ? -99 : -(a.avg - a.pavg); }, rate: function (a) { return -(a.rate || 0); }, ask: function (a) { return (a.ask == null ? 999 : a.ask); }, xo: function (a) { return -a.xo; }, xi: function (a) { return -a.xi; }, name: function (a) { return 0; } }[key];
+      var f = { calls: function (a) { return -a.calls; }, avg: function (a) { return -(a.avg || 0); }, change: function (a) { return a.pavg == null ? -99 : -(a.avg - a.pavg); }, rate: function (a) { return -(a.rate || 0); }, ask: function (a) { return (a.ask == null ? 999 : a.ask); }, xo: function (a) { return -a.xo; }, xi: function (a) { return -a.xi; }, cc: function (a) { return -(a.cc || 0); }, name: function (a) { return 0; } }[key];
       var dir = S.csrDir || 1; rows.sort(key === 'name' ? function (a, b) { return dir * a.name.localeCompare(b.name); } : function (a, b) { return dir * (f(a) - f(b)); });
       var q = (S.csrQ || '').toLowerCase(); if (q) rows = rows.filter(function (a) { return a.name.toLowerCase().indexOf(q) >= 0 || (a.brand || '').toLowerCase().indexOf(q) >= 0; });
       var th = function (k, l, t) { var on = key === k, asc = (k === 'name' || k === 'ask') === (dir === 1); return '<th class="sortable" data-csort="' + k + '" title="' + esc(t) + ' · click again to reverse" aria-sort="' + (on ? (asc ? 'ascending' : 'descending') : 'none') + '">' + l + (on ? (asc ? ' ↑' : ' ↓') : '') + '</th>'; };
       var h = '<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">CSR scorecards</h2><p class="sub">' + rows.length + ' CSRs with ' + (S.csrMin || 25) + '+ calls · click a header to sort, a row to open the CSR</p></div><div class="row" style="gap:8px"><label class="sr" for="csrq">Find a CSR</label><input id="csrq" class="oq-field" style="width:220px" placeholder="Find a CSR or brand…" value="' + esc(S.csrQ || '') + '"><select id="csrmin" class="oq-field" style="width:auto" aria-label="Minimum calls"><option value="10"' + (S.csrMin == 10 ? ' selected' : '') + '>10+ calls</option><option value="25"' + (!S.csrMin || S.csrMin == 25 ? ' selected' : '') + '>25+ calls</option><option value="100"' + (S.csrMin == 100 ? ' selected' : '') + '>100+ calls</option></select></div></div>' +
-        '<div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13.5px"><thead><tr>' + th('name', 'CSR', 'Sort by name') + '<th>Brand</th>' + th('calls', 'Calls', 'Conversations scored') + th('avg', 'Avg score', 'Average QA score') + th('change', 'Change', 'vs previous period') + th('rate', 'Booking', 'Booked ÷ decided calls') + th('ask', 'Ask rate', 'Lowest first') + th('xo', 'Transfers out', 'Calls this CSR transferred to someone else') + th('xi', 'Transfers in', 'Calls this CSR received from a colleague') + '<th>Cards</th><th></th></tr></thead><tbody>';
+        '<div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13.5px"><thead><tr>' + th('name', 'CSR', 'Sort by name') + '<th>Brand</th>' + th('calls', 'Calls', 'Conversations scored') + th('avg', 'Avg score', 'Average QA score') + th('change', 'Change', 'vs previous period') + th('rate', 'Booking', 'Booked ÷ decided calls') + th('ask', 'Ask rate', 'Lowest first') + th('xo', 'Transfers out', 'Calls this CSR transferred to someone else') + th('xi', 'Transfers in', 'Calls this CSR received from a colleague') + th('cc', 'Cards', 'Cards collected on booked calls') + '<th></th></tr></thead><tbody>';
       rows.slice(0, 150).forEach(function (a) {
         h += '<tr class="click" data-agent="' + esc(a.name) + '" tabindex="0"><td><div style="display:flex;align-items:center;gap:12px">' + avatar(a.name, 32) + '<b style="font-weight:600">' + esc(a.name) + '</b></div></td><td class="mut">' + esc(short(a.brand)) + '</td><td class="num">' + fmt(a.calls) + '</td><td class="num">' + (a.avg != null ? a.avg.toFixed(1) : '—') + '</td><td>' + delta(a.avg, a.pavg, '') + '</td>' +
           '<td><div style="display:flex;align-items:center;gap:8px;min-width:120px"><span class="num" style="width:40px">' + (a.rate != null ? a.rate.toFixed(0) + '%' : '—') + '</span><div class="track" style="flex:1"><div style="background:' + ((a.rate || 0) >= 60 ? G : O) + ';width:' + (a.rate || 0) + '%"></div></div></div></td><td class="num">' + (a.ask != null ? a.ask.toFixed(0) + '%' : '—') + '</td><td class="num">' + fmt(a.xo) + ' <span class="mut" style="font-size:11px">' + (a.calls ? Math.round(a.xo / a.calls * 100) + '%' : '') + '</span></td><td class="num">' + fmt(a.xi) + '</td><td class="num mut">' + fmt(a.cc) + '</td><td class="mut" aria-hidden="true">›</td></tr>';
@@ -492,19 +494,23 @@ export function mountOpsisQA(ROOT, cfg) {
     if (c.scoreMin != null) chips.push(['Score ≥ ' + c.scoreMin, 'scoreMin']);
     if (c.q) chips.push(['“' + c.q + '”', 'q']);
     if (c.nocard) chips.push(['Booked, no card', 'nocard']);
-    if (c.xfer) chips.push([c.xfer === 'out' ? 'Transferred out' : 'Transferred in', 'xfer']);
-    setMain(crumb([['Call reviews']]) + '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">Call reviews</h2><p class="sub" id="ctot">Loading…</p></div>' +
+    if (c.ff) chips.push([c.ff.label, 'ff']);
+    if (c.xfer) chips.push([c.xferWith ? (c.xfer === 'out' ? 'Transferred to ' + c.xferWith : 'Received from ' + c.xferWith) : (c.xfer === 'out' ? 'Transferred out' : 'Transferred in'), 'xfer']);
+    setMain(crumb([['Call reviews']]) + '<div class="oq-card" id="sreqs" style="display:none"></div><div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">Call reviews</h2><p class="sub" id="ctot">Loading…</p></div>' +
       '<form id="callq" class="row" style="gap:8px"><label class="sr" for="cq">Search calls</label><input id="cq" class="oq-field" style="width:230px" placeholder="Search summaries, CSRs, brands, phone…" value="' + esc(c.q || '') + '"><select id="co" class="oq-field" style="width:auto" aria-label="Outcome">' + OUTCOMES.map(function (o) { return '<option value="' + o[0] + '"' + ((c.outcome || '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
       '<select id="cs2" class="oq-field" style="width:auto" aria-label="Missed step"><option value="">Any step</option>' + Object.keys(STEPNAMES).slice(0, 5).map(function (k) { return '<option value="' + k + '"' + (c.step === k ? ' selected' : '') + '>Missed: ' + STEPNAMES[k] + '</option>'; }).join('') + '</select>' +
       '<select id="cxf" class="oq-field" style="width:auto" aria-label="Transfers"><option value="">Any transfer</option><option value="out"' + (c.xfer === 'out' ? ' selected' : '') + '>Transferred out</option><option value="in"' + (c.xfer === 'in' ? ' selected' : '') + '>Transferred in</option></select>' +
       '<select id="csc" class="oq-field" style="width:auto" aria-label="Score"><option value="">Any score</option><option value="max40"' + (c.scoreMax === 40 ? ' selected' : '') + '>40 or lower</option><option value="max70"' + (c.scoreMax === 70 ? ' selected' : '') + '>70 or lower</option><option value="min90"' + (c.scoreMin === 90 ? ' selected' : '') + '>90 or higher</option></select><button class="sel btnd" type="submit">Search</button></form></div>' +
       (chips.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">' + chips.map(function (ch) { return '<button class="chip on" data-unfilter="' + ch[1] + '" aria-label="Remove filter ' + esc(ch[0]) + '">' + esc(ch[0]) + ' ✕</button>'; }).join('') + '<button class="more" data-unfilter="all">Clear all</button></div>' : '') +
-      '<div id="clist" style="margin-top:8px">' + skel(54, 6) + '</div><div id="cpager" class="row" style="justify-content:space-between;align-items:center;margin-top:10px"></div></div>');
+      (c.xferWith ? '<div id="xwhy" style="margin-top:12px;background:#F5F3EE;border-radius:12px;padding:12px 14px"></div>' : '') + '<div id="clist" style="margin-top:8px">' + skel(54, 6) + '</div><div id="cpager" class="row" style="justify-content:space-between;align-items:center;margin-top:10px"></div></div>');
     var body = c.bucket ? Object.assign({ action: 'bucketcalls', bucket: c.bucket }, win({ limit: 25, offset: c.offset })) : Object.assign({ action: 'calls' }, win({ agent: S.callsAgent || null, outcome: c.nocard ? 'Booked' : c.outcome, step_missed: c.nocard ? 'capture_payment' : c.step, score_max: c.scoreMax, score_min: c.scoreMin, winnable: c.winnable || null, xfer: c.xfer || null, q: phoneQ(c.q) || c.q || null, limit: 25, offset: c.offset }));
     if (!c.bucket && phoneQ(c.q)) { body.start = '2025-01-01'; body.end = todayET(); }
+    if (c.ff) body = Object.assign({ action: 'factcalls', kind: c.ff.kind, value: c.ff.value, agent: S.callsAgent || null, notbooked: !!c.ff.notbooked }, win({ limit: 25, offset: c.offset }));
+    if (c.xferWith) { body = Object.assign({ action: 'xfercalls', dir: c.xfer === 'in' ? 'in' : 'out', with: c.xferWith, agent: S.callsAgent || null }, win({ limit: 25, offset: c.offset })); xferWhy(c); }
+    if (CAN_EDIT) drawReqCard();
     api(body).then(function (r) {
       if (tok !== T) return;
-      $('ctot').textContent = (!c.bucket && phoneQ(c.q)) ? fmt(r.total) + ' calls from this number · all dates, not just the range above · newest first' : c.bucket ? fmt(r.total) + ' customer conversations (transfers counted once) · lowest score first · click one for the full review' : fmt(r.total) + ' calls match · newest first · click one for the full review';
+      $('ctot').textContent = c.ff ? fmt(r.total) + ' calls · ' + c.ff.label + ' · newest first · press ▶ to listen' : c.xferWith ? fmt(r.total) + (c.xfer === 'in' ? ' calls ' + (S.callsAgent || 'this brand') + ' received from ' + c.xferWith : ' calls ' + (S.callsAgent || 'this brand') + ' transferred to ' + c.xferWith + ' · ' + fmt(r.booked) + ' booked after the transfer') + ' · newest first · press ▶ to listen' : (!c.bucket && phoneQ(c.q)) ? fmt(r.total) + ' calls from this number · all dates, not just the range above · newest first' : c.bucket ? fmt(r.total) + ' customer conversations (transfers counted once) · lowest score first · click one for the full review' : fmt(r.total) + ' calls match · newest first · click one for the full review';
       $('clist').innerHTML = (r.rows || []).map(callRow).join('') || '<p class="mut">No calls match these filters.</p>';
       var pages = Math.ceil(r.total / 25), pg = Math.floor(c.offset / 25) + 1;
       $('cpager').innerHTML = r.total > 25 ? '<span class="mut num" style="font-size:12.5px">Page ' + pg + ' of ' + fmt(pages) + '</span><div class="row" style="gap:6px"><button class="sel" data-page="-1"' + (pg <= 1 ? ' disabled' : '') + '>← Newer</button><button class="sel" data-page="1"' + (pg >= pages ? ' disabled' : '') + '>Older →</button></div>' : '';
@@ -517,18 +523,18 @@ export function mountOpsisQA(ROOT, cfg) {
     Promise.all([loadReport(), loadFocus(null, null)]).then(function (r) {
       if (tok !== T) return; var rep = r[0], f = r[1]; noteKnown(rep);
       var groups = [
-        ['Why calls didn’t book', 'Reason on every Not Booked call · click to see those calls', rep.reasons, O, 'reason'],
-        ['What customers pushed back on', 'Objections heard on calls · click to search', rep.objections, '#2F5E4E', 'q'],
-        ['Top coaching priorities', 'Most-missed habits across all calls', rep.priorities, '#14302A', null],
-        ['What CSRs do well', 'Most-earned habits', rep.strengths, G, null],
-        ['What callers wanted', 'Top call topics · click to search', rep.topics, '#3A4380', 'q'],
-        ['How every call ended', 'All calls, including voicemail and internal', rep.outcomes, '#8C8478', 'outcome']
+        ['Why calls didn’t book', 'Reason on every Not Booked call · click one to hear those calls', rep.reasons, O, 'reason', 'reason'],
+        ['What customers pushed back on', 'Objections heard on calls · click one to hear those calls', rep.objections, '#2F5E4E', 'q', 'objection'],
+        ['Top coaching priorities', 'Most-missed habits · click one to hear the calls that missed it', rep.priorities, '#14302A', 'x', 'priority'],
+        ['What CSRs do well', 'Most-earned habits · click one to hear good examples', rep.strengths, G, 'x', 'strength'],
+        ['What callers wanted', 'Top call topics · click one to hear those calls', rep.topics, '#3A4380', 'q', 'topic'],
+        ['How every call ended', 'All calls, including voicemail and internal · click one to hear them', rep.outcomes, '#8C8478', 'outcome', 'outcome']
       ];
       var h = groups.map(function (g) {
         var rows = g[2] || [], max = rows.length ? rows[0].n : 1;
         return '<div class="oq-card"><h2 class="ttl">' + g[0] + '</h2><p class="sub">' + g[1] + '</p><div style="margin-top:10px">' + rows.slice(0, 9).map(function (r) {
-          var attr = g[4] === 'reason' ? ' data-q="' + esc(r.k) + '" data-outcome="Not Booked"' : (g[4] === 'q' ? ' data-q="' + esc(r.k.split(' / ')[0].split(' - ')[0]) + '"' : (g[4] === 'outcome' && ['Booked', 'Not Booked', 'Transferred', 'No Opportunity'].indexOf(r.k) >= 0 ? ' data-outcome="' + esc(r.k) + '"' : ''));
-          return '<' + (attr ? 'button class="click" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:grid"' : 'div style="display:grid"') + attr + ' style="grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) 60px;gap:12px;align-items:center;font-size:12.5px;padding:6px 2px"><span>' + esc(r.k) + '</span><span class="track" style="height:8px;display:block"><span style="display:block;height:100%;border-radius:999px;background:' + g[3] + ';width:' + (r.n / max * 100).toFixed(1) + '%"></span></span><span class="num mut" style="text-align:right">' + fmt(r.n) + '</span></' + (attr ? 'button' : 'div') + '>';
+          var attr = ' data-ffk="' + g[5] + '" data-ffv="' + esc(r.k) + '" title="Hear these calls"';
+          return '<' + (attr ? 'button class="click" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:grid;' : 'div style="display:grid;') + 'grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) 60px;gap:12px;align-items:center;font-size:12.5px;padding:6px 2px"' + attr + '><span>' + esc(r.k) + '</span><span class="track" style="height:8px;display:block"><span style="display:block;height:100%;border-radius:999px;background:' + g[3] + ';width:' + (r.n / max * 100).toFixed(1) + '%"></span></span><span class="num mut" style="text-align:right">' + fmt(r.n) + '</span></' + (attr ? 'button' : 'div') + '>';
         }).join('') + '</div></div>';
       }).join('');
       h += '<div class="oq-card" id="repcard">' + skel(30, 6) + '</div><div class="oq-card" id="aicard">' + skel(30, 6) + '</div>';
@@ -576,6 +582,23 @@ export function mountOpsisQA(ROOT, cfg) {
     api({ action: 'settings' }).then(function (r) { if (tok !== T) return; QS = r; drawQs(); })
       .catch(function (e) { if (tok === T && $('qswrap')) $('qswrap').innerHTML = errBox(e); });
   }
+  var RUBREQ = null;
+  function rubReqs() {
+    if (RUBREQ === null) { RUBREQ = []; api({ action: 'rubric', op: 'list' }).then(function (r) { RUBREQ = r.requests || []; if (RUBREQ.length) drawQs(); }).catch(function () {}); return ''; }
+    if (!RUBREQ.length) return '';
+    return '<div style="margin-top:12px;background:#EEF2FB;border-radius:12px;padding:10px 12px"><b style="font-size:13px;color:#2B3A67">' + (IS_ADMIN ? 'Change requests from your team' : 'Your requests waiting for your admin') + '</b>' + RUBREQ.map(function (q) {
+      return '<div style="padding:8px 0;border-top:1px solid #D9E0F2;font-size:12.5px;line-height:1.5"><div>' + esc(q.text) + '</div><div class="mut">' + esc(q.requested_by || '') + ' · ' + ago(q.at) + '</div>' + (IS_ADMIN ? '<div class="row" style="gap:6px;margin-top:6px"><button class="sel" data-act="rubreqdone" data-r="' + q.id + '" style="padding:5px 10px;font-size:12px">Done</button><button class="sel" data-act="rubreqno" data-r="' + q.id + '" style="padding:5px 10px;font-size:12px">Dismiss</button></div>' : '') + '</div>';
+    }).join('') + '</div>';
+  }
+  function readRubForm() { (QSE.redit || []).forEach(function (x, i) { var l = $('rl' + i), p = $('rp' + i), g = $('rg' + i); if (l) x.label = l.value; if (p) x.points = p.value; if (g) x.guidance = g.value; }); }
+  function rubForm() {
+    var tot = (QSE.redit || []).reduce(function (t, x) { return t + (+x.points || 0); }, 0);
+    return '<div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">' + QSE.redit.map(function (x, i) {
+      return '<div style="border:1px solid var(--line);border-radius:12px;padding:12px;background:#FAF8F4"><div class="row" style="gap:8px;align-items:flex-end"><div style="flex:1 1 260px"><label class="l" for="rl' + i + '">Step</label><input id="rl' + i + '" class="oq-field" maxlength="300" value="' + esc(x.label) + '" placeholder="e.g. Step 6 Offer the maintenance plan"></div><div style="width:100px"><label class="l" for="rp' + i + '">Points</label><input id="rp' + i + '" class="oq-field" type="number" min="0" max="100" value="' + esc(String(x.points)) + '"></div></div>' +
+        '<label class="l" for="rg' + i + '" style="margin-top:8px">What counts as done (the AI uses this)</label><textarea id="rg' + i + '" class="oq-field" style="min-height:70px" maxlength="4000">' + esc(x.guidance || '') + '</textarea></div>';
+    }).join('') + '<div class="row" style="gap:8px;align-items:center"><button class="sel" data-act="rubadd">+ Add step</button><span class="mut" style="font-size:12.5px">Total: <b class="num" id="rubtot">' + tot + '</b> pts' + (tot !== 100 ? ' · most call flows add up to 100' : '') + '</span></div>' +
+      '<div class="row" style="gap:8px"><button class="sel btnd" data-act="rubsave">Save call flow</button><button class="sel" data-act="rubcancel">Cancel</button></div><div class="mut" style="font-size:12px">Past calls keep their scores. To re-score a past call on the new flow, ask the AI on that call.</div></div>';
+  }
   function drawQs() {
     var w = $('qswrap'); if (!w || !QS) return;
     var rub = QS.rubric || [], mine = rub.filter(function (r) { return r.section === 'custom'; }), core = rub.filter(function (r) { return r.section !== 'custom'; });
@@ -595,11 +618,11 @@ export function mountOpsisQA(ROOT, cfg) {
         }).join('') + '</div>' : '<div class="mut" style="font-size:12.5px;margin-top:8px">No custom metrics.</div>') +
         (QSE.metric ? '<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#FAF8F4"><div class="row" style="gap:8px"><div style="flex:1 1 240px"><label class="l" for="qmn">Metric</label><input id="qmn" class="oq-field" maxlength="200" placeholder="e.g. Mentioned the maintenance plan"></div><div style="width:120px"><label class="l" for="qmp">Points</label><input id="qmp" class="oq-field" type="number" min="1" max="50" placeholder="1–50"></div></div><div><label class="l" for="qmg">How should the AI judge it? (optional)</label><input id="qmg" class="oq-field" maxlength="1000" placeholder="e.g. Yes if the CSR offers the plan before ending the call"></div><div style="display:flex;gap:8px"><button class="sel btnd" data-act="qsmadd"' + dis + '>' + (QSE.busy ? 'Saving…' : 'Add metric') + '</button><button class="sel" data-act="qsmcancel">Cancel</button></div></div>' : ''),
         IS_ADMIN && !QSE.metric ? '<button class="sel" data-act="qsmnew">+ Add metric</button>' : '') +
-      section('Rubric', 'The steps every call is scored on. The Opsis CX Support team keeps these consistent across brands — request a change any time.',
-        '<div style="display:flex;flex-direction:column;margin-top:10px">' + core.map(function (r) { return '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--line2);font-size:13px"><span>' + esc(r.label) + '</span><span class="mut num" style="white-space:nowrap">' + r.points + ' pts</span></div>'; }).join('') + '</div>' +
-        (QSE.req ? '<div style="margin-top:12px"><label class="l" for="qreq">What would you like changed?</label><textarea id="qreq" class="oq-field" style="min-height:90px" maxlength="3000" placeholder="e.g. Don’t score card capture on warranty calls."></textarea><div style="display:flex;gap:8px;margin-top:8px"><button class="sel btnd" data-act="qsreqsend"' + dis + '>' + (QSE.busy ? 'Sending…' : 'Send request') + '</button><button class="sel" data-act="qsreqcancel">Cancel</button></div></div>' : ''),
-        CAN_EDIT && !QSE.req ? '<button class="sel" data-act="qsreq">Request a change</button>' : '') +
-      '</div><div class="oq-card" style="flex:1 1 300px;align-self:flex-start"><h2 class="ttl">How this works</h2><p class="sub" style="line-height:1.6">Changes apply to calls scored after you save — past scores don’t change. Every change is logged with who made it, and the Opsis CX Support team is notified so scoring stays consistent across your brands.</p>' + (IS_ADMIN ? '' : '<p class="sub" style="line-height:1.6;margin-top:10px">Only account admins can change instructions and metrics.</p>') + '</div></div>';
+      section('Call flow', IS_ADMIN ? 'The steps every call is scored on. Edit them any time; changes apply to calls scored after you save.' : 'The steps every call is scored on. Ask your account admin for a change.',
+        (QSE.redit ? rubForm() : '<div style="display:flex;flex-direction:column;margin-top:10px">' + core.map(function (r) { return '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--line2);font-size:13px"><span>' + esc(r.label) + '</span><span class="mut num" style="white-space:nowrap">' + r.points + ' pts</span></div>'; }).join('') + '</div>') + rubReqs() +
+        (QSE.req ? '<div style="margin-top:12px"><label class="l" for="qreq">What would you like changed?</label><textarea id="qreq" class="oq-field" style="min-height:90px" maxlength="3000" placeholder="e.g. Don’t score card capture on warranty calls."></textarea><div class="mut" style="font-size:12px;margin-top:4px">This goes to your account admin.</div><div style="display:flex;gap:8px;margin-top:8px"><button class="sel btnd" data-act="qsreqsend"' + dis + '>' + (QSE.busy ? 'Sending…' : 'Send request') + '</button><button class="sel" data-act="qsreqcancel">Cancel</button></div></div>' : ''),
+        IS_ADMIN ? (QSE.redit ? '' : '<button class="sel" data-act="rubedit">Edit call flow</button>') : (CAN_EDIT && !QSE.req ? '<button class="sel" data-act="qsreq">Request a change</button>' : '')) +
+      '</div><div class="oq-card" style="flex:1 1 300px;align-self:flex-start"><h2 class="ttl">How this works</h2><p class="sub" style="line-height:1.6">Changes apply to calls scored after you save — past scores don’t change. Every change is logged with who made it.</p>' + (IS_ADMIN ? '' : '<p class="sub" style="line-height:1.6;margin-top:10px">Only account admins can change instructions and metrics.</p>') + '</div></div>';
     w.innerHTML = h;
     var f = $('qins') || $('qmn') || $('qreq'); if (f) f.focus();
   }
@@ -1055,8 +1078,8 @@ export function mountOpsisQA(ROOT, cfg) {
         '<div class="mut" style="font-size:12px;margin-top:10px">Talked to: ' + (r.agents || []).slice(0, 6).map(function (a) { return esc(a.agent || 'Unknown') + ' (' + a.n + ')'; }).join(', ') + '</div>' +
         '<div class="mut" style="font-size:12px;margin-top:4px">Busiest days: ' + (r.days || []).slice().sort(function (a, b) { return b.n - a.n; }).slice(0, 4).map(function (d) { return fdate(d.call_date) + ' (' + d.n + ')'; }).join(', ') + '</div></div>' +
         '<div class="oq-card" style="padding:6px 16px">' + (r.rows || []).map(function (x) {
-          var open = x.scored && x.class === 'conversation';
-          return '<div ' + (open ? 'class="click" data-call="' + x.id + '" role="button" tabindex="0" ' : '') + 'style="padding:12px 0;border-bottom:1px solid var(--line2);' + (open ? 'cursor:pointer' : '') + '"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><span style="font-weight:600">' + esc(x.agent || 'Unknown') + (x.ai ? ' <span class="pill" style="background:#E8EAF4;color:#3A4380">AI agent</span>' : '') + ' <span class="mut" style="font-weight:400">· ' + (x.direction === 'outbound' ? 'Outbound' : 'Inbound') + '</span></span><span class="mut num" style="font-size:12px">' + fdate(x.date) + ' ' + fhour(x.hour) + ' · ' + fsecs(x.secs) + '</span></div>' +
+          var open = !!x.id;
+          return '<div ' + (open ? 'class="click" data-call="' + x.id + '" role="button" tabindex="0" ' : '') + 'style="padding:12px 0;border-bottom:1px solid var(--line2);' + (open ? 'cursor:pointer' : '') + '"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><span style="font-weight:600;display:flex;align-items:center;gap:8px">' + (open ? '<span data-autoplay="' + x.id + '" title="Play recording" style="width:30px;height:30px;border-radius:999px;border:1px solid #E1DCD2;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="10" height="10" viewBox="0 0 24 24" fill="#1C2421" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></span>' : '') + esc(x.agent || 'Unknown') + (x.ai ? ' <span class="pill" style="background:#E8EAF4;color:#3A4380">AI agent</span>' : '') + ' <span class="mut" style="font-weight:400">· ' + (x.direction === 'outbound' ? 'Outbound' : 'Inbound') + '</span></span><span class="mut num" style="font-size:12px">' + fdate(x.date) + ' ' + fhour(x.hour) + ' · ' + fsecs(x.secs) + '</span></div>' +
             '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(CLS[x.class] || x.class) + '</span>' + (x.outcome && x.outcome !== 'Internal' ? '<span class="pill" style="' + chipOut(x.outcome) + '">' + esc(x.outcome) + '</span>' : '') + (x.topic ? '<span class="mut" style="font-size:12px">' + esc(x.topic) + '</span>' : '') + (open && x.score != null ? '<span class="pill" style="' + chipScore(x.score) + '">' + x.score + '</span>' : '') + '</div>' +
             (x.summary ? '<div style="font-size:12.5px;line-height:1.5;color:#3B4541;margin-top:6px">' + esc(x.summary) + '</div>' : '') + '</div>';
         }).join('') + '</div>';
@@ -1068,12 +1091,27 @@ export function mountOpsisQA(ROOT, cfg) {
     api(Object.assign({ action: 'ai' }, win())).then(function (r) {
       var g = {}; (r.grid || []).forEach(function (x) { g[x.seg + (x.ai ? '|ai' : '|csr')] = x; });
       var segs = [['open', 'Open hours', 'Mon–Fri 8a–6p'], ['early', 'Before 8am', 'weekdays'], ['evening', 'After 6pm', 'weekdays'], ['weekend', 'Weekends', 'Sat–Sun']];
-      var cell = function (x) { if (!x || !x.calls) return '<td class="mut">—</td>'; var rt = x.decided ? x.booked / x.decided * 100 : null; return '<td><b class="num">' + (rt != null ? rt.toFixed(0) + '%' : '—') + '</b> <span class="mut" style="font-size:11.5px">booked</span><div class="mut" style="font-size:11px">' + fmt(x.calls) + ' calls' + (x.decided < 30 ? ' · too few to judge' : '') + '</div></td>'; };
-      var ag = r.agents || [];
-      el.innerHTML = '<h2 class="ttl">Who handles calls, and when</h2><p class="sub">Booking rate on calls with a booking decision, by time of day (customer’s local time). AI agents only appear when their calls were recorded and scored here.</p>' +
-        '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>When</th><th>CSRs</th><th>AI agents</th></tr></thead><tbody>' + segs.map(function (s) { return '<tr><td><b>' + s[1] + '</b><div class="mut" style="font-size:11px">' + s[2] + '</div></td>' + cell(g[s[0] + '|csr']) + cell(g[s[0] + '|ai']) + '</tr>'; }).join('') + '</tbody></table></div>' +
-        (ag.length ? '<div style="margin-top:12px;font-size:12.5px"><div class="cap" style="margin-bottom:6px">AI agents</div>' + ag.map(function (a) { var rt = a.decided ? Math.round(a.booked / a.decided * 100) + '% booked' : 'no booking decisions'; return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line2)"><span class="lnk" data-agent="' + esc(a.agent) + '" role="button" tabindex="0">' + esc(a.agent) + '</span><span class="mut">' + fmt(a.calls) + ' calls · ' + rt + ' · score ' + (a.avg || '—') + ' · ' + fmt(a.after_hours) + ' after hours</span></div>'; }).join('') + '</div>' : '<p class="mut" style="font-size:12.5px;margin-top:10px">No AI agent calls were scored in this range.</p>');
-    }).catch(function (e) { el.innerHTML = '<h2 class="ttl">Who handles calls, and when</h2><p class="mut">' + esc(e.message) + '</p>'; });
+      var rate = function (x) { return x && x.decided >= 1 ? x.booked / x.decided * 100 : null; };
+      var base = rate(g['open|csr']), tot = segs.reduce(function (t, s) { return t + ((g[s[0] + '|csr'] || {}).calls || 0); }, 0) || 1;
+      var worst = null; segs.slice(1).forEach(function (s) { var x = g[s[0] + '|csr'], rt = rate(x); if (x && x.decided >= 10 && base != null && rt != null && rt < base - 5 && (!worst || rt - base < worst.gap)) worst = { s: s, gap: rt - base, rt: rt, x: x }; });
+      var lost = worst ? Math.round(worst.x.decided * (base - worst.rt) / 100) : 0;
+      var h = '<h2 class="ttl">When calls come in</h2><p class="sub">How calls go at different times (customer’s local time) · click a row to hear those calls</p>';
+      h += worst ? '<div style="margin-top:10px;background:#FFF4E8;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.5;color:#7A3A08"><b>' + worst.s[1] + ' calls book ' + worst.rt.toFixed(0) + '%</b> vs ' + base.toFixed(0) + '% in open hours. At the open-hours rate that’s about <b>' + fmt(lost) + ' more booked jobs</b> this period. <button class="more" data-ffk="seg" data-ffv="' + worst.s[0] + '" data-ffnb="1">Hear the ones that didn’t book →</button></div>'
+        : '<div class="mut" style="margin-top:10px;font-size:12.5px">No time of day is booking noticeably worse than open hours in this period.</div>';
+      h += '<div style="margin-top:10px">' + segs.map(function (s) {
+        var x = g[s[0] + '|csr'] || {}, rt = rate(x), share = (x.calls || 0) / tot * 100, bad = rt != null && base != null && s[0] !== 'open' && rt < base - 5 && x.decided >= 10;
+        return '<button class="click" data-ffk="seg" data-ffv="' + s[0] + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:grid;grid-template-columns:minmax(0,1.2fr) 70px 70px 60px 14px;gap:10px;align-items:center;padding:9px 2px;border-top:1px solid var(--line2);font-size:12.5px">' +
+          '<span><b style="font-weight:600">' + s[1] + '</b><span class="mut" style="display:block;font-size:11.5px">' + s[2] + ' · ' + share.toFixed(0) + '% of calls</span></span>' +
+          '<span class="num" style="text-align:right">' + fmt(x.calls || 0) + '<span class="mut" style="display:block;font-size:11px">calls</span></span>' +
+          '<span class="num" style="text-align:right;color:' + (bad ? '#B4461F' : '#1F5A41') + ';font-weight:600">' + (rt != null ? rt.toFixed(0) + '%' : '—') + '<span class="mut" style="display:block;font-size:11px;font-weight:400">booked</span></span>' +
+          '<span class="num" style="text-align:right">' + (x.avg != null ? Number(x.avg).toFixed(0) : '—') + '<span class="mut" style="display:block;font-size:11px">score</span></span><span class="mut" aria-hidden="true">›</span></button>';
+      }).join('') + '</div>';
+      var ca = (r.csr_after || []).slice(0, 5);
+      if (ca.length) h += '<div class="cap" style="margin-top:14px">Who takes calls outside open hours</div>' + ca.map(function (a) { var rt = a.decided ? Math.round(a.booked / a.decided * 100) : null; return '<button class="click" data-agent="' + esc(a.agent) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;justify-content:space-between;gap:10px;padding:7px 2px;border-top:1px solid var(--line2);font-size:12.5px"><span style="display:flex;gap:8px;align-items:center">' + avatar(a.agent, 22) + esc(a.agent) + '</span><span class="num mut">' + fmt(a.calls) + ' calls · ' + (rt != null ? rt + '% booked' : 'no decisions') + '</span></button>'; }).join('');
+      var ai = (r.agents || []).reduce(function (t, a) { return t + (a.calls || 0); }, 0);
+      if (ai) h += '<p class="mut" style="font-size:11.5px;margin-top:10px">AI receptionists handled ' + fmt(ai) + ' recorded call' + (ai === 1 ? '' : 's') + ' in this period (not included above).</p>';
+      el.innerHTML = h;
+    }).catch(function (e) { el.innerHTML = '<h2 class="ttl">When calls come in</h2><p class="mut">' + esc(e.message) + '</p>'; });
   }
 
   function crumb(parts) {
@@ -1173,7 +1211,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div class="oq-card" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:96px;height:96px;flex-shrink:0"><svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="Score ' + sc + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + (sc / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span class="num" style="font-size:24px;font-weight:600">' + sc + '</span><span class="mut" style="font-size:9.5px">brand avg ' + (c.brand_avg || '—') + '</span></div></div>' +
       '<div style="flex:1;min-width:220px"><div class="row" style="gap:6px"><span class="pill" style="' + chipOut(c.outcome) + '">' + esc(c.outcome || '—') + '</span>' + (c.winnable ? '<span class="pill" style="background:#FFF4E8;color:#9A4A0B">Winnable</span>' : '') + (c.reason ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(c.reason) + '</span>' : '') + (c.topics || []).slice(0, 3).map(function (t) { return '<span class="pill" style="background:#E6F0EA;color:#1F5A41">' + esc(t) + '</span>'; }).join('') + '</div>' +
       (c.caller_wanted ? '<div style="margin-top:10px"><div class="cap">Caller wanted</div><div style="margin-top:3px;line-height:1.45">' + esc(c.caller_wanted) + '</div></div>' : '') + '</div>' +
-      (changed ? '<div style="flex-basis:100%;background:#FFF8E8;border:1px solid #F0DDB0;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#6B4E12">Score changed from <b>' + c.ai_score + '</b> (AI) to <b>' + sc + '</b>' + (who.length ? ' by <b>' + who.map(esc).join(', ') + '</b>' : '') + '. The original AI score is kept and every change is logged.</div>' : '') + '</div>';
+      (changed ? '<div style="flex-basis:100%;background:#FFF8E8;border:1px solid #F0DDB0;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#6B4E12">Score updated' + (who.length ? ' by <b>' + who.map(esc).join(', ') + '</b>' : '') + '.</div>' : '') + '</div>';
     h += ccCard(c);
     if (c.xfer_out || c.xfer_in) {
       var leg = c.xfer_out ? c.xfer_to : c.xfer_from;
@@ -1186,14 +1224,16 @@ export function mountOpsisQA(ROOT, cfg) {
     if ((c.risk_flags || []).length) h += '<div class="oq-card" style="background:#FDF0F0;border-color:#F3C9C9"><b style="color:#8A1515">Risk flags</b><ul style="margin:8px 0 0;padding-left:18px;font-size:13px;line-height:1.5">' + c.risk_flags.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul></div>';
     if (c.summary) h += '<div class="oq-card"><b>Summary</b><div style="line-height:1.6;margin-top:6px;font-size:13.5px">' + esc(c.summary) + '</div></div>';
     if (c.coaching) h += '<div class="oq-card" style="background:#EEF6F2;border-color:#CFE3D8"><b style="color:#1F5A41">Coaching note</b><div style="line-height:1.6;margin-top:6px;font-size:13.5px">' + esc(c.coaching) + '</div></div>';
-    h += '<div class="oq-card" style="padding:14px 8px"><div style="padding:0 12px"><b>Detailed scoring</b>' + (CAN_EDIT ? '<div class="mut" style="font-size:12px;margin-top:2px">Heard something different? Use <b>Change</b> on any step.</div>' : '') + '</div>';
+    h += '<div class="oq-card" style="padding:14px 8px"><div style="padding:0 12px"><b>Detailed scoring</b>' + (CAN_EDIT ? '<div class="mut" style="font-size:12px;margin-top:2px">Heard something different? Use <b>' + (IS_ADMIN ? 'Change' : 'Request change') + '</b> on any step.</div>' : '') + '</div>';
     steps.forEach(function (s, i) {
+      var rq = ((REQS[c.id] || []).filter(function (x) { return x.key === s.key; }))[0];
       var a = ans(s), cc = a === 'yes' ? ['#E6F0EA', '#1F5A41', '✓'] : (a === 'no' ? ['#FDECEC', '#A61B1B', '✕'] : ['#EEEBE4', '#56605B', '–']), adj = s.adj;
       h += '<div class="step"><div style="display:flex;gap:12px;align-items:flex-start"><div style="width:28px;height:28px;border-radius:999px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;background:' + cc[0] + ';color:' + cc[1] + '" aria-label="' + (a === 'yes' ? 'done' : a === 'no' ? 'missed' : 'not applicable') + '">' + cc[2] + '</div><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:10px"><b style="font-weight:600;line-height:1.35">' + esc(s.label) + '</b><span class="num mut" style="font-size:12px;white-space:nowrap">' + (a === 'no' ? 0 : (s.max || s.points)) + ' / ' + (s.max || s.points) + '</span></div>' +
         (s.why ? '<div style="font-size:13px;line-height:1.5;color:#3B4541;margin-top:4px">' + esc(s.why) + '</div>' : '') +
-        (adj ? '<div style="margin-top:6px;font-size:12.5px;background:#FFF8E8;border-radius:8px;padding:7px 10px;color:#6B4E12"><b>Changed by ' + esc(adj.by || 'a manager') + '</b> from ' + (ANS[s.ai_answer] || s.ai_answer) + ' to ' + (ANS[a] || a) + (adj.at ? ' · ' + ago(adj.at) : '') + ': “' + esc(adj.why || '') + '”' + (CAN_EDIT ? ' <button class="more" data-act="restore" data-k="' + esc(s.key) + '">Restore AI answer</button>' : '') + '</div>' : '') +
+        (adj ? '<div style="margin-top:6px;font-size:12.5px;background:#FFF8E8;border-radius:8px;padding:7px 10px;color:#6B4E12"><b>Changed to ' + (ANS[a] || a) + ' by ' + esc(adj.by || 'an admin') + '</b>' + (adj.at ? ' · ' + ago(adj.at) : '') + (adj.why ? ': “' + esc(adj.why) + '”' : '') + (IS_ADMIN ? ' <button class="more" data-act="restore" data-k="' + esc(s.key) + '">Undo</button>' : '') + '</div>' : '') +
+        (rq ? '<div style="margin-top:6px;font-size:12.5px;background:#EEF2FB;border-radius:8px;padding:7px 10px;color:#2B3A67"><b>' + esc(rq.requested_by || 'Someone') + ' asked to change this to ' + (ANS[rq.to] || rq.to) + '</b> · ' + ago(rq.at) + ': “' + esc(rq.why || '') + '”' + (IS_ADMIN ? ' <button class="more" data-act="reqok" data-r="' + rq.id + '">Approve</button> <button class="more" data-act="reqno" data-r="' + rq.id + '">Decline</button>' : ' <span class="mut">Waiting for your account admin.</span>') + '</div>' : '') +
         (a === 'no' && s.misses && s.misses.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">' + s.misses.map(function (x) { return '<span class="pill" style="background:#FDECEC;color:#A61B1B">Missed: ' + esc(x) + '</span>'; }).join('') + '</div>' : '') +
-        '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:flex-start">' + (s.evidence ? '<div style="flex:1 1 240px;background:#F5F3EE;border-radius:10px;padding:8px 12px;font-size:12.5px;font-style:italic;color:#3B4541">“' + evHtml(s.evidence) + '”</div>' : '') + '<div style="display:flex;gap:8px;flex-wrap:wrap">' + (stepRange(s) && P.info && P.info.url ? '<button class="sel" data-pstep="' + i + '" style="min-height:36px;padding:6px 12px;white-space:nowrap">' + (P.step === i && !AU.paused ? '■ Stop' : '▶ Play this step') + '</button>' : (P.info && P.info.url ? '<span class="mut" style="font-size:12px;align-self:center">' + (a === 'no' ? 'Not done on the call, so there’s no moment to play' : 'No moment to play for this step') + '</span>' : '')) + (CAN_EDIT ? '<button class="sel" data-change="' + i + '" style="min-height:36px;padding:6px 12px">Change</button>' : '') + '</div></div></div></div></div>';
+        '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:flex-start">' + (s.evidence ? '<div style="flex:1 1 240px;background:#F5F3EE;border-radius:10px;padding:8px 12px;font-size:12.5px;font-style:italic;color:#3B4541">“' + evHtml(s.evidence) + '”</div>' : '') + '<div style="display:flex;gap:8px;flex-wrap:wrap">' + (stepRange(s) && P.info && P.info.url ? '<button class="sel" data-pstep="' + i + '" style="min-height:36px;padding:6px 12px;white-space:nowrap">' + (P.step === i && !AU.paused ? '■ Stop' : '▶ Play this step') + '</button>' : (P.info && P.info.url ? '<span class="mut" style="font-size:12px;align-self:center">' + (a === 'no' ? 'Not done on the call, so there’s no moment to play' : 'No moment to play for this step') + '</span>' : '')) + (CAN_EDIT ? '<button class="sel" data-change="' + i + '" style="min-height:36px;padding:6px 12px">' + (IS_ADMIN ? 'Change' : 'Request change') + '</button>' : '') + '</div></div></div></div></div>';
     });
     h += '</div><div class="oq-card" id="cnotes"><b>Notes</b><div id="cnlist" style="margin-top:8px">' + skel(18, 2) + '</div>' +
       (CAN_EDIT ? '<form id="cnform" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"><label class="sr" for="cnbody">Add a note</label><textarea id="cnbody" class="oq-field" style="min-height:64px;resize:vertical" maxlength="4000" placeholder="Add a note for your team or the Opsis CX Support team…"></textarea><div><button class="sel btnd" type="submit">Add note</button></div></form>' : '') + '</div>' +
@@ -1203,7 +1243,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (keep && $('cnbody')) $('cnbody').value = keep;
     if (keepq && $('ccq')) $('ccq').value = keepq;
     ccPaint(c.id, true);
-    loadNotes(c.id);
+    loadNotes(c.id); loadReqs(c.id);
   }
   var NOTES = {};
   function drawNotes(id) {
@@ -1240,7 +1280,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var s = S.cur.steps[S.change], cur = ans(s);
     S.pick = cur;
     var L = document.createElement('div');
-    L.innerHTML = '<div class="overlay" id="chg" style="justify-content:center;align-items:center;z-index:70" data-closechg="1"><div class="oq-card" role="dialog" aria-modal="true" aria-label="Change step score" style="width:480px;max-width:calc(100% - 32px);padding:24px;display:flex;flex-direction:column;gap:14px"><div class="cap">Change score</div><b style="line-height:1.4">' + esc(s.label) + '</b><div class="mut" style="font-size:12.5px">AI said: <b>' + (ANS[s.ai_answer] || 'N/A') + '</b>' + (s.adj ? ' · now: <b>' + (ANS[cur] || cur) + '</b>' : '') + '</div><div class="seg">' + [['yes', 'Done'], ['no', 'Missed'], ['na', 'N/A']].map(function (o) { return '<button class="' + (cur === o[0] ? 'on' : '') + '" data-pick="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div><div><label class="l" for="chgwhy">What did you hear? (required)</label><textarea id="chgwhy" class="oq-field" style="min-height:80px" maxlength="1000" placeholder="e.g. She asked “how can I help?” at 0:28 — the AI missed it."></textarea></div><div class="mut" style="font-size:12px">The original AI score is kept, the change is logged, and the Opsis CX Support team is notified.</div><div class="row" style="justify-content:flex-end"><button class="sel" data-closechg="1">Cancel</button><button class="sel btnd" data-act="applychange">Save change</button></div></div></div>';
+    L.innerHTML = '<div class="overlay" id="chg" style="justify-content:center;align-items:center;z-index:70" data-closechg="1"><div class="oq-card" role="dialog" aria-modal="true" aria-label="Change step score" style="width:480px;max-width:calc(100% - 32px);padding:24px;display:flex;flex-direction:column;gap:14px"><div class="cap">' + (IS_ADMIN ? 'Change score' : 'Request a score change') + '</div><b style="line-height:1.4">' + esc(s.label) + '</b><div class="mut" style="font-size:12.5px">Currently: <b>' + (ANS[cur] || cur) + '</b></div><div class="seg">' + [['yes', 'Done'], ['no', 'Missed'], ['na', 'N/A']].map(function (o) { return '<button class="' + (cur === o[0] ? 'on' : '') + '" data-pick="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div><div><label class="l" for="chgwhy">What did you hear?' + (IS_ADMIN ? ' (optional)' : ' (required)') + '</label><textarea id="chgwhy" class="oq-field" style="min-height:80px" maxlength="1000" placeholder="e.g. She asked “how can I help?” at 0:28 — the AI missed it."></textarea></div><div class="mut" style="font-size:12px">' + (IS_ADMIN ? 'This updates the call’s score right away.' : 'Your request goes to your account admin. The score changes once they approve it.') + '</div><div class="row" style="justify-content:flex-end"><button class="sel" data-closechg="1">Cancel</button><button class="sel btnd" data-act="applychange">' + (IS_ADMIN ? 'Save change' : 'Send request') + '</button></div></div></div>';
     ROOT.appendChild(L.firstChild); $("chgwhy").focus();
   }
 
@@ -1256,7 +1296,7 @@ export function mountOpsisQA(ROOT, cfg) {
         ? '<div style="display:flex;justify-content:flex-end;margin-top:10px"><div style="max-width:85%;background:var(--side);color:#fff;border-radius:14px 14px 4px 14px;padding:8px 12px;font-size:13px;line-height:1.45;white-space:pre-wrap">' + esc(m.content) + '</div></div>'
         : '<div style="max-width:95%;margin-top:10px;background:#F5F3EE;border-radius:14px 14px 14px 4px;padding:6px 12px;font-size:13px;line-height:1.5' + (m.error ? ';color:#A8441A' : '') + '">' + ccMd(m.content) + '</div>';
     }).join('');
-    if (T.busy) h += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center"><span class="dots"><span></span><span></span><span></span></span><span class="mut" style="font-size:12px">Reading the call…</span></div>';
+    if (T.busy) h += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center"><span class="dots"><span></span><span></span><span></span></span><span class="mut" style="font-size:12px">' + (/re-?score|rescore|call flow|5.step|five.step/i.test((T.msgs[T.msgs.length - 1] || {}).content || '') ? 'Re-scoring the call on the current call flow (about 30 seconds)…' : 'Reading the call…') + '</span></div>';
     return h;
   }
   function ccCard(c) {
@@ -1282,9 +1322,42 @@ export function mountOpsisQA(ROOT, cfg) {
     var hist = T.msgs.filter(function (m) { return !m.error; }).slice(-12).map(function (m) { return { role: m.role, content: m.content }; });
     T.msgs.push({ role: 'user', content: q }); T.busy = true; if ($('ccq')) $('ccq').value = ''; ccPaint(id);
     api({ action: 'callchat', id: id, question: q, history: hist })
-      .then(function (r) { T.msgs.push({ role: 'assistant', content: (r && r.answer) || '' }); })
+      .then(function (r) {
+        T.msgs.push({ role: 'assistant', content: (r && r.answer) || '' });
+        if (r && r.rescored) { cache = {}; return api({ action: 'call', id: id }).then(function (c) { if (S.callId === id) { S.cur = c; drawCall(); } toast('Call re-scored on the current call flow'); }).catch(function () {}); }
+      })
       .catch(function (e) { T.msgs.push({ role: 'assistant', content: (e && e.message) || 'Something went wrong. Try again.', error: true }); })
       .then(function () { T.busy = false; ccPaint(id); if ($('ccq') && S.cur && S.cur.id === id) $('ccq').focus(); });
+  }
+
+  // ---------- score-change requests (non-admins request, the client's account admins approve) ----------
+  var REQS = {};
+  function loadReqs(id, force) {
+    if (REQS[id] && !force) return;
+    api({ action: 'scorereq', op: 'forcall', id: id }).then(function (r) { var had = JSON.stringify(REQS[id] || []); REQS[id] = r.rows || []; if (S.cur && S.cur.id === id && JSON.stringify(REQS[id]) !== had) drawCall(); }).catch(function () { REQS[id] = REQS[id] || []; });
+  }
+  function decideReq(rid, approve, btn) {
+    if (btn) btn.disabled = true;
+    return api({ action: 'scorereq', op: 'decide', req: rid, decision: approve ? 'approve' : 'decline' }).then(function (r) {
+      toast(approve ? 'Approved · score updated' : 'Request declined');
+      cache = {};
+      Object.keys(REQS).forEach(function (k) { REQS[k] = (REQS[k] || []).filter(function (x) { return String(x.id) !== String(rid); }); });
+      if (r && r.call && S.cur && r.call.id === S.cur.id) { S.cur = r.call; drawCall(); } else if (S.cur && $('cd')) drawCall();
+      if ($('sreqs')) drawReqCard();
+    }).catch(function (e) { if (btn) btn.disabled = false; toast(e.message || 'Couldn’t update that request.'); });
+  }
+  function drawReqCard() {
+    if (!$('sreqs')) return;
+    api({ action: 'scorereq', op: 'list' }).then(function (r) {
+      var L = r.rows || [], el = $('sreqs'); if (!el) return;
+      if (!L.length) { el.innerHTML = ''; el.style.display = 'none'; return; }
+      el.style.display = '';
+      el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Score change requests</h2><p class="sub">' + (r.can_decide ? 'Your team asked to change these scores. Approve to update the call, or decline.' : 'Your requests waiting for your account admin.') + '</p></div><span class="pill" style="background:#EEF2FB;color:#2B3A67">' + L.length + ' waiting</span></div>' +
+        L.map(function (q) {
+          return '<div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--line2)"><div style="flex:1 1 320px;min-width:0;font-size:13px;line-height:1.45"><b>' + esc(q.agent || 'CSR') + '</b> · ' + esc(short(q.brand || '')) + ' · ' + fdate(q.date) + '<div>' + esc(q.label || q.key) + ': <b>' + (ANS[q.from] || q.from) + ' → ' + (ANS[q.to] || q.to) + '</b></div><div class="mut">' + esc(q.requested_by || '') + ' · ' + ago(q.at) + ': “' + esc(q.why || '') + '”</div></div>' +
+            '<div class="row" style="gap:6px"><button class="sel" data-call="' + esc(q.review_id) + '">Open call</button>' + (r.can_decide ? '<button class="sel btnd" data-act="reqok" data-r="' + q.id + '">Approve</button><button class="sel" data-act="reqno" data-r="' + q.id + '">Decline</button>' : '') + '</div></div>';
+        }).join('');
+    }).catch(function () { var e2 = $('sreqs'); if (e2) e2.style.display = 'none'; });
   }
 
   // ---------- Ask panel ----------
@@ -1358,6 +1431,18 @@ export function mountOpsisQA(ROOT, cfg) {
     var cm = $('csrmin'); if (cm) cm.addEventListener('change', function () { S.csrMin = +cm.value; render(); });
   }
   function go(view) { S.view = view; S.pop = null; window.scrollTo(0, 0); render(); }
+  var XWHY = {};
+  function xferWhy(c) {
+    var k = [c.xfer, c.xferWith, S.callsAgent, S.start, S.end, S.brands.join('|')].join('~');
+    var paint = function () { var el = $('xwhy'), v = XWHY[k]; if (!el) return;
+      el.innerHTML = '<div style="display:flex;gap:8px;align-items:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><b style="font-size:13.5px">Why these were ' + (c.xfer === 'in' ? 'sent over' : 'transferred') + '</b></div>' +
+        (!v || v.busy ? '<div style="margin-top:8px;display:flex;gap:8px;align-items:center"><span class="dots"><span></span><span></span><span></span></span><span class="mut" style="font-size:12.5px">Reading the calls…</span></div>' : v.err ? '<div class="mut" style="font-size:12.5px;margin-top:6px">' + esc(v.err) + '</div>' : '<div class="md" style="font-size:13px;margin-top:4px">' + md(v.answer || '') + '</div>'); };
+    if (!XWHY[k]) { XWHY[k] = { busy: true }; api({ action: 'xfercalls', op: 'why', dir: c.xfer === 'in' ? 'in' : 'out', with: c.xferWith, agent: S.callsAgent || null, start: S.start, end: S.end, brands: S.brands.length ? S.brands : null })
+      .then(function (r) { XWHY[k] = { answer: r.answer }; paint(); }).catch(function (e) { XWHY[k] = { err: e.message || 'Couldn’t read the calls.' }; paint(); }); }
+    setTimeout(paint, 0);
+  }
+  var FFL = { reason: 'Didn’t book: ', objection: 'Objection: ', topic: 'Wanted: ', priority: 'Missed: ', strength: 'Did well: ', outcome: 'Ended: ', hour: 'Hour: ', seg: '' };
+  var SEGL = { open: 'Open hours (Mon–Fri 8a–6p)', early: 'Before 8am (weekdays)', evening: 'After 6pm (weekdays)', weekend: 'Weekends' };
   function openCalls(filters, agent) { S.calls = Object.assign({ outcome: null, step: null, scoreMax: null, scoreMin: null, winnable: null, q: '', offset: 0, nocard: false }, filters || {}); S.callsAgent = agent || null; if (S.ask.open) closeLayer(); go('calls'); }
   function closeLayer() { stopAudio(); P.id = null; S.callId = null; S.fromAsk = false; S.ask.open = false; $('layer').innerHTML = ''; }
 
@@ -1377,9 +1462,16 @@ export function mountOpsisQA(ROOT, cfg) {
       if (t.closest('[data-act="applychange"]')) {
         var s = S.cur.steps[S.change], why = $("chgwhy").value.trim(), back = S.pick === s.ai_answer;
         if (S.pick === s.answer) { chg.remove(); return; }
-        if (!back && !why) { toast('Add a short reason so the change can be reviewed.'); return; }
-        var sb = t.closest('[data-act="applychange"]'); sb.disabled = true; sb.textContent = 'Saving…';
-        saveAdjust(s.key, S.pick, why).then(function () { var g = $('chg'); if (g) g.remove(); toast(back ? 'Restored the AI answer' : 'Score updated · original kept · Opsis CX Support team notified'); })
+        var sb = t.closest('[data-act="applychange"]');
+        if (!IS_ADMIN) {
+          if (!why) { toast('Add a short reason so your admin can review it.'); return; }
+          sb.disabled = true; sb.textContent = 'Sending…'; var rid0 = S.cur.id;
+          api({ action: 'scorereq', op: 'create', id: rid0, key: s.key, answer: S.pick, why: why }).then(function (r) { var g = $('chg'); if (g) g.remove(); toast(r && r.admins ? 'Sent to your account admin to approve' : 'Request saved. Your account has no admin login yet, so ask the Opsis CX Support team to add one.'); loadReqs(rid0, true); })
+            .catch(function (e2) { sb.disabled = false; sb.textContent = 'Send request'; toast(e2.message || 'Couldn’t send the request.'); });
+          return;
+        }
+        sb.disabled = true; sb.textContent = 'Saving…';
+        saveAdjust(s.key, S.pick, why || (back ? null : 'Updated by account admin')).then(function () { var g = $('chg'); if (g) g.remove(); toast('Score updated'); })
           .catch(function (e2) { sb.disabled = false; sb.textContent = 'Save change'; toast(e2.message || 'Couldn’t save the change.'); });
         return;
       }
@@ -1394,6 +1486,12 @@ export function mountOpsisQA(ROOT, cfg) {
     if (pst) { playStep(+pst.getAttribute('data-pstep')); return; }
     var psk = t.closest('[data-seek]');
     if (psk && P.info && P.info.url) { P.step = null; P.stepEnd = null; AU.currentTime = Math.max(0, +psk.getAttribute('data-seek') - 0.4); AU.play().catch(function () {}); return; }
+    var ffb = t.closest('[data-ffk]');
+    if (ffb) { var fk = ffb.getAttribute('data-ffk'), fv = ffb.getAttribute('data-ffv'), fl = (FFL[fk] || '') + (fk === 'hour' ? fhour(+fv) : fk === 'seg' ? (SEGL[fv] || fv) + (ffb.getAttribute('data-ffnb') ? ' · not booked' : '') : fv);
+      var ffo = { ff: { kind: fk, value: fv, label: fl, notbooked: !!ffb.getAttribute('data-ffnb') } };
+      if (S.view === 'csr') openCalls(ffo, S.agent); else { if (S.view === 'brand' && S.brand) S.brands = [S.brand]; openCalls(ffo); } return; }
+    var xp = t.closest('[data-xferpair]');
+    if (xp) { var xv = xp.getAttribute('data-xferpair').split('|'), xd = xv.shift(), xn = xv.join('|'); if (S.view === 'csr') openCalls({ xfer: xd, xferWith: xn }, S.agent); else { if (S.view === 'brand' && S.brand) S.brands = [S.brand]; openCalls({ xfer: xd, xferWith: xn }); } return; }
     var ccq = t.closest('[data-ccq]');
     if (ccq) { ccAsk(ccq.getAttribute('data-ccq')); return; }
     if (t.closest('[data-ccclear]')) { if (S.cur) { CC[S.cur.id] = { msgs: [] }; ccPaint(S.cur.id, true); } return; }
@@ -1445,7 +1543,7 @@ export function mountOpsisQA(ROOT, cfg) {
     else if (d.csort) { S.csrDir = S.csrSort === d.csort ? -(S.csrDir || 1) : 1; S.csrSort = d.csort; render(); }
     else if (d.mix) { S.mix = d.mix; if (lastFocus) focusMix(lastFocus, $('fmix').dataset.fb, $('fmix').dataset.fa); }
     else if (d.page) { S.calls.offset = Math.max(0, S.calls.offset + (+d.page) * 25); window.scrollTo(0, 0); render(); }
-    else if (d.unfilter) { var c = S.calls; if (d.unfilter === 'all') { S.calls = { offset: 0 }; S.callsAgent = null; } else if (d.unfilter === 'agent') S.callsAgent = null; else { c[d.unfilter] = d.unfilter === 'q' ? '' : null; c.offset = 0; } render(); }
+    else if (d.unfilter) { var c = S.calls; if (d.unfilter === 'all') { S.calls = { offset: 0 }; S.callsAgent = null; } else if (d.unfilter === 'agent') S.callsAgent = null; else { c[d.unfilter] = d.unfilter === 'q' ? '' : null; if (d.unfilter === 'xfer') c.xferWith = null; c.offset = 0; } render(); }
     else if (d.act) {
       var a = d.act;
       if (a === 'customrange') { var cs = $('cs').value, ce = $('ce').value; if (cs && ce && cs <= ce) { S.range = 'custom'; S.start = cs; S.end = ce; S.pop = null; render(); } else toast('Pick a start date before the end date.'); }
@@ -1454,7 +1552,8 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'signout') { if (CFG.onSignOut) CFG.onSignOut(); }
       else if (a === 'classic') { if (CFG.onClassic) CFG.onClassic(); }
       else if (a === 'pdf') { printCall(); }
-      else if (a === 'restore') { var rk = d.k, st = ((S.cur && S.cur.steps) || []).filter(function (x) { return x.key === rk; })[0]; if (st) { el.disabled = true; saveAdjust(rk, st.ai_answer, null).then(function () { toast('Restored the AI answer'); }).catch(function (e2) { el.disabled = false; toast(e2.message || 'Couldn’t restore.'); }); } }
+      else if (a === 'reqok' || a === 'reqno') { decideReq(d.r, a === 'reqok', el); }
+      else if (a === 'restore') { var rk = d.k, st = ((S.cur && S.cur.steps) || []).filter(function (x) { return x.key === rk; })[0]; if (st) { el.disabled = true; saveAdjust(rk, st.ai_answer, null).then(function () { toast('Change undone'); }).catch(function (e2) { el.disabled = false; toast(e2.message || 'Couldn’t restore.'); }); } }
       else if (a === 'invite') { TM.inv = { name: '', email: '', role: 'manager', brand: '' }; drawTeam(); }
       else if (a === 'invcancel') { TM.inv = null; drawTeam(); }
       else if (a === 'invsend') { keepInv(); var I = TM.inv, nm = I.name.trim(), em = I.email.trim();
@@ -1489,7 +1588,14 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'qsmdelyes') { qsWrite({ op: 'metric_remove', key: d.k }, 'Metric removed', function () { QSE.del = null; }, el); }
       else if (a === 'qsreq') { QSE.req = true; drawQs(); }
       else if (a === 'qsreqcancel') { QSE.req = false; drawQs(); }
-      else if (a === 'qsreqsend') { var rq = $('qreq').value.trim(); if (!rq) { toast('Describe the change you’d like'); return; } qsWrite({ op: 'request', text: rq }, 'Request sent to the Opsis CX Support team', function () { QSE.req = false; }, el); }
+      else if (a === 'qsreqsend') { var rq = $('qreq').value.trim(); if (!rq) { toast('Describe the change you’d like'); return; } el.disabled = true; api({ action: 'rubric', op: 'request', text: rq }).then(function (r) { QSE.req = false; RUBREQ = null; drawQs(); toast(r && r.admins ? 'Sent to your account admin' : 'Saved. Your account has no admin login yet.'); }).catch(function (e2) { el.disabled = false; toast(e2.message || 'Couldn’t send.'); }); }
+      else if (a === 'rubedit') { var rub0 = (QS.rubric || []).filter(function (r) { return r.section !== 'custom'; }); QSE.redit = rub0.map(function (r) { return { key: r.key, label: r.label, points: r.points, guidance: r.guidance || '' }; }); drawQs(); }
+      else if (a === 'rubadd') { readRubForm(); QSE.redit.push({ key: null, label: '', points: 0, guidance: '' }); drawQs(); }
+      else if (a === 'rubcancel') { QSE.redit = null; drawQs(); }
+      else if (a === 'rubsave') { readRubForm(); var stp = QSE.redit.filter(function (x) { return (x.label || '').trim(); }); el.disabled = true; el.textContent = 'Saving…';
+        api({ action: 'rubric', op: 'save', steps: stp }).then(function (r) { return api({ action: 'settings' }).then(function (s2) { QS = s2; QSE.redit = null; drawQs(); toast(r.changed ? 'Call flow saved · applies to newly scored calls' : 'No changes'); }); })
+          .catch(function (e2) { el.disabled = false; el.textContent = 'Save call flow'; toast(e2.message || 'Couldn’t save.'); }); }
+      else if (a === 'rubreqdone' || a === 'rubreqno') { el.disabled = true; api({ action: 'rubric', op: 'dismiss', req: d.r, done: a === 'rubreqdone' }).then(function () { RUBREQ = null; drawQs(); }).catch(function (e2) { el.disabled = false; toast(e2.message || 'Couldn’t update.'); }); }
     }
   });
   on(document, 'input', function (e) {
