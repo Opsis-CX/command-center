@@ -51,6 +51,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function applyRange() {
     var t = todayET();
     if (S.range === 'custom' && S.start && S.end) return;
+    if (S.range === 'yesterday') { S.end = addDays(t, -1); S.start = S.end; return; }
     if (S.range === 'month') { S.end = t; S.start = t.slice(0, 8) + '01'; return; }
     if (S.range === 'lastmonth') { var f = t.slice(0, 8) + '01'; S.end = addDays(f, -1); S.start = S.end.slice(0, 8) + '01'; return; }
     var n = +S.range || 30; S.end = t; S.start = addDays(t, -(n - 1));
@@ -131,7 +132,7 @@ export function mountOpsisQA(ROOT, cfg) {
       }).join('');
     }).join('');
   }
-  var RANGES = [['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['month', 'This month'], ['lastmonth', 'Last month'], ['custom', 'Custom…']];
+  var RANGES = [['yesterday', 'Yesterday'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['month', 'This month'], ['lastmonth', 'Last month'], ['custom', 'Custom…']];
   function rangeLabel() { if (S.range === 'custom') return fdate(S.start) + ' – ' + fdate(S.end); var r = RANGES.filter(function (x) { return x[0] === S.range; })[0]; return r ? r[1] : ''; }
   function topbar() {
     var bl = S.brands.length ? (S.brands.length === 1 ? short(S.brands[0]) : S.brands.length + ' brands') : 'All brands';
@@ -1451,8 +1452,9 @@ export function mountOpsisQA(ROOT, cfg) {
   on(window, 'resize', function () { clearTimeout(fitReview.t); fitReview.t = setTimeout(fitReview, 150); });
   on(window, 'hashchange', function () { var before = location.hash; readHash(); render(); });
   var lg = $('oqlogo'); if (lg) { lg.src = CFG.logo || 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/garageco/logo.png'; lg.alt = CLIENT; }
+  var DEEP_CALL = (location.hash.match(/(?:^#|&)call=([0-9a-f-]{36})/i) || [])[1];
   readHash(); render();
-  (function () { var m = location.hash.match(/(?:^#|&)call=([0-9a-f-]{36})/i); if (m) { S.callId = m[1]; callDrawer(); } })();
+  if (DEEP_CALL) { S.callId = DEEP_CALL; callDrawer(); }
   return function destroy() {
     LISTENERS.forEach(function (l) { l[0].removeEventListener(l[1], l[2]); }); LISTENERS = [];
     try { AU.pause(); AU.removeAttribute('src'); AU.load(); } catch (x) {}
