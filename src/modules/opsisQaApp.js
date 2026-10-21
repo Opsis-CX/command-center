@@ -1087,7 +1087,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function clock(x) { x = Math.max(0, Math.floor(x || 0)); return Math.floor(x / 60) + ':' + ('0' + x % 60).slice(-2); }
   function pdur() { var d = AU.duration; return isFinite(d) && d > 0 ? d : ((S.cur && S.cur.id === P.id && +S.cur.secs) || ((P.info && P.info.end) ? P.info.end + 3 : 0)); }
   function stepRange(s) {
-    var ts = tsList(s && s.evidence); if (!ts.length) return null;
+    var ts = tsList(s && s.evidence); if (!ts.length && s && s.at != null && isFinite(+s.at)) ts = [+s.at]; if (!ts.length) return null;
     var a = Math.min.apply(null, ts), b = Math.max.apply(null, ts), segs = (P.info && P.info.segs) || [], end = null;
     for (var i = 0; i < segs.length; i++) if (+segs[i] > b + 0.5) { end = +segs[i]; break; }
     if (end == null) end = b + 10;
@@ -1193,7 +1193,7 @@ export function mountOpsisQA(ROOT, cfg) {
         (s.why ? '<div style="font-size:13px;line-height:1.5;color:#3B4541;margin-top:4px">' + esc(s.why) + '</div>' : '') +
         (adj ? '<div style="margin-top:6px;font-size:12.5px;background:#FFF8E8;border-radius:8px;padding:7px 10px;color:#6B4E12"><b>Changed by ' + esc(adj.by || 'a manager') + '</b> from ' + (ANS[s.ai_answer] || s.ai_answer) + ' to ' + (ANS[a] || a) + (adj.at ? ' · ' + ago(adj.at) : '') + ': “' + esc(adj.why || '') + '”' + (CAN_EDIT ? ' <button class="more" data-act="restore" data-k="' + esc(s.key) + '">Restore AI answer</button>' : '') + '</div>' : '') +
         (a === 'no' && s.misses && s.misses.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">' + s.misses.map(function (x) { return '<span class="pill" style="background:#FDECEC;color:#A61B1B">Missed: ' + esc(x) + '</span>'; }).join('') + '</div>' : '') +
-        '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:flex-start">' + (s.evidence ? '<div style="flex:1 1 240px;background:#F5F3EE;border-radius:10px;padding:8px 12px;font-size:12.5px;font-style:italic;color:#3B4541">“' + evHtml(s.evidence) + '”</div>' : '') + '<div style="display:flex;gap:8px;flex-wrap:wrap">' + (stepRange(s) && P.info && P.info.url ? '<button class="sel" data-pstep="' + i + '" style="min-height:36px;padding:6px 12px;white-space:nowrap">' + (P.step === i && !AU.paused ? '■ Stop' : '▶ Play this step') + '</button>' : '') + (CAN_EDIT ? '<button class="sel" data-change="' + i + '" style="min-height:36px;padding:6px 12px">Change</button>' : '') + '</div></div></div></div></div>';
+        '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:flex-start">' + (s.evidence ? '<div style="flex:1 1 240px;background:#F5F3EE;border-radius:10px;padding:8px 12px;font-size:12.5px;font-style:italic;color:#3B4541">“' + evHtml(s.evidence) + '”</div>' : '') + '<div style="display:flex;gap:8px;flex-wrap:wrap">' + (stepRange(s) && P.info && P.info.url ? '<button class="sel" data-pstep="' + i + '" style="min-height:36px;padding:6px 12px;white-space:nowrap">' + (P.step === i && !AU.paused ? '■ Stop' : '▶ Play this step') + '</button>' : (P.info && P.info.url ? '<span class="mut" style="font-size:12px;align-self:center">' + (a === 'no' ? 'Not done on the call, so there’s no moment to play' : 'No moment to play for this step') + '</span>' : '')) + (CAN_EDIT ? '<button class="sel" data-change="' + i + '" style="min-height:36px;padding:6px 12px">Change</button>' : '') + '</div></div></div></div></div>';
     });
     h += '</div><div class="oq-card" id="cnotes"><b>Notes</b><div id="cnlist" style="margin-top:8px">' + skel(18, 2) + '</div>' +
       (CAN_EDIT ? '<form id="cnform" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"><label class="sr" for="cnbody">Add a note</label><textarea id="cnbody" class="oq-field" style="min-height:64px;resize:vertical" maxlength="4000" placeholder="Add a note for your team or the Opsis CX Support team…"></textarea><div><button class="sel btnd" type="submit">Add note</button></div></form>' : '') + '</div>' +
@@ -1353,8 +1353,7 @@ export function mountOpsisQA(ROOT, cfg) {
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash();
     var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney }[S.view] || vOverview;
     v(tok);
-    var af = $('askform'); if (af) af.addEventListener('submit', function (e) { e.preventDefault(); var q = $('askq').value; $('askq').value = ''; ask(q); });
-    var cf = $('callq'); if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
+    var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
     var cq = $('csrq'); if (cq) cq.addEventListener('input', function () { S.csrQ = cq.value; S.csrFocus = true; clearTimeout(cq.t); cq.t = setTimeout(render, 250); });
     var cm = $('csrmin'); if (cm) cm.addEventListener('change', function () { S.csrMin = +cm.value; render(); });
   }
@@ -1363,6 +1362,8 @@ export function mountOpsisQA(ROOT, cfg) {
   function closeLayer() { stopAudio(); P.id = null; S.callId = null; S.fromAsk = false; S.ask.open = false; $('layer').innerHTML = ''; }
 
   on(document, 'submit', function (e) {
+    if (e.target.id === 'askform') { e.preventDefault(); var q0 = $('askq').value; $('askq').value = ''; ask(q0); return; }
+    if (e.target.id === 'callq') { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); return; }
     if (e.target.id === 'askform2') { e.preventDefault(); var q = $('askq2').value; ask(q); }
     else if (e.target.id === 'cnform') { e.preventDefault(); addNote(); }
     else if (e.target.id === 'ccform') { e.preventDefault(); ccAsk($('ccq').value); }
@@ -1382,7 +1383,7 @@ export function mountOpsisQA(ROOT, cfg) {
           .catch(function (e2) { sb.disabled = false; sb.textContent = 'Save change'; toast(e2.message || 'Couldn’t save the change.'); });
         return;
       }
-      if (t === chg || t.closest('[data-closechg]')) { chg.remove(); return; }
+      if (t === chg || t.closest('button[data-closechg]')) { chg.remove(); return; }
       return;
     }
     var ap = t.closest('[data-autoplay]');
