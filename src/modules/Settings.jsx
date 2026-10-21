@@ -5,7 +5,107 @@ import { US_ZONES, detectedTZ, tzAbbrev, COMPANY_TZ } from '../lib/tz'
 import { NOTIF_CATEGORIES } from '../lib/notify'
 import { loadNotifPrefs, saveNotifPref } from '../lib/notif_prefs'
 import { pushSupported, pushPermission, enablePush, disablePush, isPushEnabled } from '../lib/push'
+import { isStaffProfile, isAgentProfile } from './Chat'
 
+
+// ---- Direct messages from agents (internal staff only) ----
+// Main switch + per-agent exceptions. The database enforces it: a blocked agent
+// can read the DM but can't send in it (1:1 and group DMs). Staff-to-staff DMs
+// can never be turned off, and agents never see this card.
+function AgentDmCard({ userId }) {
+  const [loaded, setLoaded] = useState(false)
+  const [blockAll, setBlockAll] = useState(false)
+  const [overrides, setOverrides] = useState({})   // agentId -> blocked
+  const [agents, setAgents] = useState([])
+  const [pick, setPick] = useState('')
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!userId) return
+    ;(async () => {
+      const [sRes, oRes, aRes] = await Promise.all([
+        supabase.from('dm_agent_settings').select('block_all').eq('profile_id', userId).maybeSingle(),
+        supabase.from('dm_agent_overrides').select('agent_id, blocked').eq('staff_id', userId),
+        supabase.from('profiles').select('id, full_name, role, is_admin').eq('is_active', true).ilike('role', '%agent%').order('full_name'),
+      ])
+      setBlockAll(!!sRes.data?.block_all)
+      const o = {}; (oRes.data || []).forEach(r => { o[r.agent_id] = r.blocked }); setOverrides(o)
+      setAgents((aRes.data || []).filter(isAgentProfile))
+      setLoaded(true)
+    })()
+  }, [userId])
+
+  async function saveMain(v) {
+    setErr(''); setBlockAll(v)
+    const { error } = await supabase.from('dm_agent_settings')
+      .upsert({ profile_id: userId, block_all: v, updated_at: new Date().toISOString() }, { onConflict: 'profile_id' })
+    if (error) { setErr(error.message); setBlockAll(!v) }
+  }
+  async function setOverride(agentId, blocked) {
+    setErr(''); setOverrides(prev => ({ ...prev, [agentId]: blocked }))
+    const { error } = await supabase.from('dm_agent_overrides')
+      .upsert({ staff_id: userId, agent_id: agentId, blocked, updated_at: new Date().toISOString() }, { onConflict: 'staff_id,agent_id' })
+    if (error) setErr(error.message)
+  }
+  async function removeOverride(agentId) {
+    setErr(''); setOverrides(prev => { const n = { ...prev }; delete n[agentId]; return n })
+    const { error } = await supabase.from('dm_agent_overrides').delete().eq('staff_id', userId).eq('agent_id', agentId)
+    if (error) setErr(error.message)
+  }
+
+  if (!loaded) return null
+  // An exception is any agent whose setting differs from the main switch.
+  const exceptions = agents.filter(a => overrides[a.id] !== undefined && overrides[a.id] !== blockAll)
+  const addable = agents.filter(a => !exceptions.some(e => e.id === a.id))
+  const pill = (blocked) => (
+    <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: blocked ? '#fde8e8' : '#e7f3e7', color: blocked ? '#b42318' : '#2e7d32' }}>
+      {blocked ? '🔕 Off' : '🔔 On'}
+    </span>
+  )
+
+  return (
+    <div className="card" style={{ padding: 20, marginTop: 16 }}>
+      <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Direct messages from agents</div>
+      <p className="page-sub" style={{ marginTop: 0, fontSize: 13, marginBottom: 14 }}>
+        Turn this off to stop agents from messaging you directly, so questions go to their team channel. Agents can still read
+        your past conversations, and you can still message them. Messages from staff are never affected.
+      </p>
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14 }}>
+        <input type="checkbox" checked={!blockAll} onChange={e => saveMain(!e.target.checked)} style={{ width: 18, height: 18 }} />
+        <span><b>Allow agents to message me</b> {pill(blockAll)}</span>
+      </label>
+
+      <div style={{ marginTop: 18, fontSize: 13.5, fontWeight: 600 }}>
+        Exceptions <span className="page-sub" style={{ fontWeight: 400, fontSize: 12.5 }}>
+          — {blockAll ? 'agents who CAN still message you' : 'agents who CAN’T message you'}
+        </span>
+      </div>
+      {exceptions.length === 0 && <div className="page-sub" style={{ fontSize: 12.5, marginTop: 6 }}>None.</div>}
+      {exceptions.map(a => (
+        <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--line)' }}>
+          <span style={{ flex: 1, fontSize: 13.5 }}>{a.full_name}</span>
+          {pill(overrides[a.id])}
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => removeOverride(a.id)}>Remove</button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+        <select value={pick} onChange={e => setPick(e.target.value)}
+          style={{ fontSize: 13.5, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--line)', minWidth: 220 }}>
+          <option value="">Add an agent…</option>
+          {addable.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+        </select>
+        <button className="btn" disabled={!pick} onClick={() => { setOverride(pick, !blockAll); setPick('') }}>
+          {blockAll ? 'Allow this agent' : 'Turn off this agent'}
+        </button>
+      </div>
+      <p className="page-sub" style={{ fontSize: 12, marginBottom: 0, marginTop: 12 }}>
+        Tip: you can also turn one agent on or off from the ⋯ menu next to your DM with them in Chat.
+      </p>
+      {err && <div style={{ color: '#DC2626', fontSize: 12.5, marginTop: 8 }}>{err}</div>}
+    </div>
+  )
+}
 
 function PushCard({ userId }) {
   const [enabled, setEnabled] = React.useState(false)
@@ -212,7 +312,7 @@ function PhotoCard({ userId }) {
 }
 
 export default function Settings() {
-  const { user } = useAuth()
+  const { user, appRole, isAdmin } = useAuth()
   const [tz, setTz] = useState(COMPANY_TZ)
   const [loaded, setLoaded] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -274,6 +374,8 @@ export default function Settings() {
       </div>
 
       <NotificationPrefsCard userId={user?.id} />
+
+      {isStaffProfile({ role: appRole, is_admin: isAdmin }) && <AgentDmCard userId={user?.id} />}
     </div>
   )
 }
