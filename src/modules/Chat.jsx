@@ -736,14 +736,14 @@ export default function Chat() {
   }
   const unhideItem = (c) => savePref(c.id, { hidden_at: null })
 
-  // "Delete" a DM for me only: drop it from my list and clear the history I see.
-  // The other person keeps everything. A new message brings it back, showing only
-  // messages after this point.
+  // "Delete" a DM for me only: drop it from my list. History is kept — the other
+  // people keep everything, and if a new message comes in it comes back with
+  // the full conversation.
   async function deleteDmForMe(c) {
     const who = dmNames[c.id] || 'this person'
-    if (!window.confirm(`Delete your conversation with ${who}?\n\nIt's removed from your list and the history is cleared for you. ${who} keeps their copy. If a new message comes in, it comes back with only the new messages.`)) return
-    const now = new Date().toISOString()
-    await savePref(c.id, { hidden_at: now, cleared_at: now, pinned_at: null, favorite: false, section_id: null })
+    const many = who.includes(',')
+    if (!window.confirm(`Remove your conversation with ${who}?\n\nIt's removed from your list only. ${who} ${many ? 'still have' : 'still has'} it. If a new message comes in, it comes back with the full history.`)) return
+    await savePref(c.id, { hidden_at: new Date().toISOString(), pinned_at: null, favorite: false, section_id: null })
     markRead(c.id)
     if (activeId === c.id) { setActiveId(null); setMobileView('list') }
   }
@@ -966,7 +966,7 @@ export default function Chat() {
             ? menuItem('👁 Unhide', () => { unhideItem(c); close() })
             : menuItem('🙈 Hide', () => { hideItem(c); close() })}
           {c.is_dm && <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />}
-          {c.is_dm && menuItem('🗑 Delete conversation', () => { close(); deleteDmForMe(c) }, { danger: true })}
+          {c.is_dm && menuItem('✕ Remove conversation', () => { close(); deleteDmForMe(c) })}
           {isOwner && !c.is_dm && <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />}
           {isOwner && menuItem(c.is_dm ? '⚠ Delete for everyone' : '🗑 Delete channel for everyone', () => { close(); deleteChannel(c) }, { danger: true })}
         </>)
@@ -1075,7 +1075,7 @@ export default function Chat() {
         onClose={() => setShowDM(false)}
         onCreated={(id) => {
           setShowDM(false)
-          // Starting a DM with someone whose conversation I'd hidden/deleted brings it back.
+          // Starting a DM with someone whose conversation I'd hidden/removed brings it back.
           if (prefs[id]?.hidden_at) savePref(id, { hidden_at: null })
           load(); openChannel(id)
         }} />}
