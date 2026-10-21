@@ -1,4 +1,4 @@
-mport { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useUnread } from '../lib/unread'
