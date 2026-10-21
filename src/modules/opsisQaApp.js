@@ -804,7 +804,7 @@ export function mountOpsisQA(ROOT, cfg) {
 
 
   // ---------- Revenue: controllable vs not, job values (estimate -> actual), why calls were excused ----------
-  var MN = { d: null, ex: null, jv: null, key: '', bucket: null, edit: null, busy: false };
+  var MN = { d: null, ex: null, jv: null, key: '', bucket: null, edit: null, busy: false, jvb: '' };
   var usd = function (v) { return v == null ? '—' : '$' + Math.round(+v).toLocaleString(); };
   var n0 = function (v) { return (+v || 0).toLocaleString(); };
   var pc = function (v) { return v == null ? '—' : (+v).toFixed(1) + '%'; };
@@ -824,25 +824,25 @@ export function mountOpsisQA(ROOT, cfg) {
     var w = $('mnwrap'); if (!w || !MN.d) return; var d = MN.d, t = d.totals || {}, ex = MN.ex || {};
     var rate = t.decided ? 100 * t.booked / t.decided : null;
     var tiles = '<div class="row">' +
-      mnTile('Controllable misses', usd(t.ctrl_value), n0(t.ctrl_n) + ' calls the CSR could have saved' + (t.ctrl_unvalued ? ' · ' + n0(t.ctrl_unvalued) + ' with no job value yet' : ''), '#A8441A', 'Unbooked revenue opportunities where the CSR didn’t ask for the booking or had a knowledge gap.') +
-      mnTile('Not controllable', usd(t.nc_value), n0(t.nc_n) + ' calls · customer said no after being asked, or another team owns the follow-up', '#56605B') +
-      mnTile('Booked', usd(t.booked_value), n0(t.booked) + ' bookings · ' + pc(rate) + ' booking rate · estimated value' + (t.booked_actual_n ? ' · ' + usd(t.booked_actual) + ' invoiced on ' + n0(t.booked_actual_n) : ''), '#1F5A41') + '</div>';
+      mnTile('Controllable misses', +t.ctrl_value ? usd(t.ctrl_value) : n0(t.ctrl_n) + ' calls', n0(t.ctrl_n) + ' calls the CSR could have saved' + (t.ctrl_unvalued ? ' · ' + (t.ctrl_unvalued === t.ctrl_n ? 'add job values below to see dollars' : n0(t.ctrl_unvalued) + ' with no job value yet') : ''), '#A8441A', 'Unbooked revenue opportunities where the CSR didn’t ask for the booking or had a knowledge gap.') +
+      mnTile('Not controllable', +t.nc_value ? usd(t.nc_value) : n0(t.nc_n) + ' calls', n0(t.nc_n) + ' calls · customer said no after being asked, or another team owns the follow-up', '#56605B') +
+      mnTile('Booked', +t.booked_value ? usd(t.booked_value) : n0(t.booked) + ' calls', n0(t.booked) + ' bookings · ' + pc(rate) + ' booking rate' + (+t.booked_value ? ' · estimated value' : '') + (t.booked_actual_n ? ' · ' + usd(t.booked_actual) + ' invoiced on ' + n0(t.booked_actual_n) : ''), '#1F5A41') + '</div>';
     var whyMax = Math.max.apply(null, (d.by_why || []).map(function (x) { return +x.n || 0; }).concat([1]));
     var why = '<div class="oq-card" style="flex:1 1 380px"><h2 class="ttl">Why opportunities didn’t book</h2><p class="sub">Every unbooked revenue opportunity, split by whether the CSR could have saved it.</p>' +
       (d.by_why || []).map(function (x) { var c = x.kind === 'controllable' ? '#C2562A' : '#9AA19D';
-        return '<div style="margin-top:12px"><div style="display:flex;justify-content:space-between;gap:8px;font-size:13px"><span><b style="font-weight:600">' + esc(x.why) + '</b> <span class="pill" style="font-size:11px;background:' + (x.kind === 'controllable' ? '#FBEDE6;color:#A8441A' : '#EEEBE4;color:#56605B') + '">' + (x.kind === 'controllable' ? 'Controllable' : 'Not controllable') + '</span></span><span class="num">' + n0(x.n) + ' · ' + usd(x.value) + '</span></div>' +
+        return '<div style="margin-top:12px"><div style="display:flex;justify-content:space-between;gap:8px;font-size:13px"><span><b style="font-weight:600">' + esc(x.why) + '</b> <span class="pill" style="font-size:11px;background:' + (x.kind === 'controllable' ? '#FBEDE6;color:#A8441A' : '#EEEBE4;color:#56605B') + '">' + (x.kind === 'controllable' ? 'Controllable' : 'Not controllable') + '</span></span><span class="num">' + n0(x.n) + (+x.value ? ' · ' + usd(x.value) : '') + '</span></div>' +
           '<div style="height:8px;background:#F3F1EC;border-radius:6px;margin-top:6px;overflow:hidden"><div style="height:100%;width:' + (100 * x.n / whyMax).toFixed(1) + '%;background:' + c + '"></div></div></div>'; }).join('') +
       '<p class="mut" style="font-size:12px;margin-top:14px">Dollar values use your invoice average once 10+ invoices match a brand and job type; until then the estimate below.</p></div>';
     var seg = (d.by_segment || []);
     var segCard = '<div class="oq-card" style="flex:1 1 260px"><h2 class="ttl">Residential vs commercial</h2><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th></th><th>Decided</th><th>Booked</th><th>Rate</th><th>Controllable</th></tr></thead><tbody>' +
       seg.map(function (s) { return '<tr><td><b style="font-weight:600">' + esc(s.segment) + '</b></td><td class="num">' + n0(s.decided) + '</td><td class="num">' + n0(s.booked) + '</td><td class="num">' + pc(s.rate) + '</td><td class="num">' + n0(s.ctrl_n) + '</td></tr>'; }).join('') + '</tbody></table></div>';
     var brands = '<div class="oq-card" style="flex:1 1 460px"><h2 class="ttl">By brand</h2><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th>Brand</th><th>Booking rate</th><th>Booked</th><th>Controllable</th><th>Controllable $</th><th>Not controllable</th></tr></thead><tbody>' +
-      (d.by_brand || []).map(function (b) { return '<tr><td><b style="font-weight:600">' + esc(short(b.brand)) + '</b></td><td class="num">' + pc(b.rate) + '</td><td class="num">' + n0(b.booked) + '</td><td class="num">' + n0(b.ctrl_n) + '</td><td class="num" style="color:#A8441A">' + usd(b.ctrl_value) + '</td><td class="num">' + n0(b.nc_n) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
+      (d.by_brand || []).map(function (b) { return '<tr><td><b style="font-weight:600">' + esc(short(b.brand)) + '</b></td><td class="num">' + pc(b.rate) + '</td><td class="num">' + n0(b.booked) + '</td><td class="num">' + n0(b.ctrl_n) + '</td><td class="num" style="color:#A8441A">' + (+b.ctrl_value ? usd(b.ctrl_value) : '<span class="mut">needs values</span>') + '</td><td class="num">' + n0(b.nc_n) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
     var jobs = '<div class="oq-card" style="flex:1 1 460px"><h2 class="ttl">By job type</h2><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th>Job type</th><th>Residential</th><th>Commercial</th><th>Booking rate</th><th>Controllable</th><th>Controllable $</th></tr></thead><tbody>' +
       (d.by_job || []).map(function (j) { return '<tr><td><b style="font-weight:600">' + esc(j.job_type) + '</b></td><td class="num">' + n0(j.residential) + '</td><td class="num">' + n0(j.commercial) + '</td><td class="num">' + pc(j.rate) + '</td><td class="num">' + n0(j.ctrl_n) + '</td><td class="num" style="color:#A8441A">' + (j.ctrl_n && !+j.ctrl_value ? '<span class="mut">needs value</span>' : usd(j.ctrl_value)) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
     var top = '<div class="oq-card" style="flex:1 1 460px"><h2 class="ttl">Biggest controllable misses</h2><p class="sub">Click a call to listen and see what the CSR could have done.</p>' +
       ((d.top || []).length ? (d.top || []).map(function (c) {
-        return '<button class="click" data-call="' + c.id + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--line2)"><span style="flex:1;min-width:0"><b style="font-weight:600">' + esc(c.agent || 'Unknown CSR') + '</b> <span class="mut" style="font-size:12px">· ' + esc(short(c.brand)) + ' · ' + fdate(c.date) + '</span><span class="mut" style="display:block;font-size:12px">' + esc(c.job_type) + (c.segment === 'Commercial' ? ' · Commercial' : '') + ' · ' + esc(c.why) + '</span></span><span class="num" style="font-weight:600;color:#A8441A">' + usd(c.value) + '</span><span class="pill num" style="' + chipScore(c.score) + ';font-size:12.5px">' + (c.score == null ? '—' : c.score) + '</span></button>'; }).join('') : '<div class="mut" style="padding:14px 0">No controllable misses in this range.</div>') + '</div>';
+        return '<button class="click" data-call="' + c.id + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--line2)"><span style="flex:1;min-width:0"><b style="font-weight:600">' + esc(c.agent || 'Unknown CSR') + '</b> <span class="mut" style="font-size:12px">· ' + esc(short(c.brand)) + ' · ' + fdate(c.date) + '</span><span class="mut" style="display:block;font-size:12px">' + esc(c.job_type) + (c.segment === 'Commercial' ? ' · Commercial' : '') + ' · ' + esc(c.why) + '</span></span><span class="num" style="font-weight:600;color:#A8441A">' + (c.value != null ? usd(c.value) : '') + '</span><span class="pill num" style="' + chipScore(c.score) + ';font-size:12.5px">' + (c.score == null ? '—' : c.score) + '</span></button>'; }).join('') : '<div class="mut" style="padding:14px 0">No controllable misses in this range.</div>') + '</div>';
     // why calls were excused
     var B = ex.buckets || [], bmax = Math.max.apply(null, B.map(function (b) { return +b.n || 0; }).concat([1]));
     var exc = '<div class="oq-card" style="flex:1 1 460px"><h2 class="ttl">Calls that weren’t revenue opportunities</h2><p class="sub">' + n0(ex.excused) + ' of ' + n0(ex.total) + ' calls (' + (ex.total ? Math.round(100 * ex.excused / ex.total) : 0) + '%). Click a row for example calls.</p>' +
@@ -857,21 +857,36 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function jvCard() {
     var J = MN.jv || {}, types = J.job_types || [], vals = J.values || [], eff = J.effective || [];
-    var def = function (jt) { return vals.filter(function (v) { return v.brand == null && v.job_type === jt; })[0]; };
-    var learned = function (jt) { var e = eff.filter(function (x) { return x.job_type === jt && x.basis === 'invoices'; }); return e.length; };
-    var invN = function (jt) { return eff.filter(function (x) { return x.job_type === jt; }).reduce(function (a, x) { return a + (+x.n || 0); }, 0); };
-    var rows = types.map(function (jt) { var v = def(jt), on = MN.edit === jt, lb = learned(jt);
-      return '<tr><td><b style="font-weight:600">' + esc(jt) + '</b>' + (v && v.note ? '<div class="mut" style="font-size:11.5px">' + esc(v.note) + '</div>' : '') + '</td>' +
-        '<td class="num">' + (on ? '<label class="sr" for="jvv">Value</label><input id="jvv" class="oq-field" type="number" min="0" step="1" style="width:110px" value="' + (v && v.est_value != null ? v.est_value : '') + '">' : (v && v.est_value != null ? usd(v.est_value) : '<span class="mut">Not set</span>')) + '</td>' +
-        '<td class="mut" style="font-size:12px">' + (lb ? 'Using invoices for ' + lb + ' brand' + (lb > 1 ? 's' : '') : invN(jt) ? n0(invN(jt)) + ' invoices matched so far' : 'Estimate') + '</td>' +
-        '<td style="text-align:right">' + (!IS_ADMIN ? '' : on ? '<button class="sel btnd" data-act="jvsave" data-jt="' + esc(jt) + '" style="padding:5px 10px;font-size:12px"' + (MN.busy ? ' disabled' : '') + '>Save</button> <button class="sel" data-act="jvcancel" style="padding:5px 10px;font-size:12px">Cancel</button>' : '<button class="sel" data-act="jvedit" data-jt="' + esc(jt) + '" style="padding:5px 10px;font-size:12px" aria-label="Edit ' + esc(jt) + ' value">Edit</button>') + '</td></tr>'; }).join('');
-    return '<div class="oq-card" style="flex:1 1 640px"><h2 class="ttl">Job values</h2><p class="sub">The estimate used for each job type. When you upload invoices, each booked call uses its real invoice amount, and once 10+ invoices match a brand and job type, that average replaces the estimate.' + (IS_ADMIN ? '' : ' Only account admins can change these.') + '</p>' +
-      '<div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th>Job type</th><th>Estimate</th><th>Source</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    var brands = eff.map(function (x) { return x.brand; }).filter(function (b, i, L) { return b && L.indexOf(b) === i; }).sort();
+    if (LOCK) MN.jvb = LOCK; else if (MN.jvb && brands.indexOf(MN.jvb) < 0) MN.jvb = '';
+    var B = MN.jvb || null;
+    var own = function (jt) { return vals.filter(function (v) { return (v.brand || null) === B && v.job_type === jt; })[0]; };
+    var dflt = function (jt) { return vals.filter(function (v) { return v.brand == null && v.job_type === jt; })[0]; };
+    var effOf = function (jt) { return eff.filter(function (x) { return x.job_type === jt && (!B || x.brand === B); }); };
+    var setCount = brands.filter(function (b) { return vals.some(function (v) { return v.brand === b && v.est_value != null; }); }).length;
+    var rows = types.map(function (jt) {
+      var v = own(jt), d = B ? dflt(jt) : null, on = MN.edit === jt, ef = effOf(jt);
+      var inv = ef.filter(function (x) { return x.basis === 'invoices'; }), n = ef.reduce(function (a, x) { return a + (+x.n || 0); }, 0);
+      var src = inv.length ? (B ? 'Your invoices (' + n0(inv[0].n) + ')' : 'Invoices for ' + inv.length + ' brand' + (inv.length > 1 ? 's' : ''))
+        : n ? n0(n) + ' invoices matched so far' : (v && v.est_value != null ? 'Your estimate' : (d && d.est_value != null ? 'All-brands default' : '—'));
+      var shown = v && v.est_value != null ? usd(v.est_value) : (d && d.est_value != null ? '<span class="mut">' + usd(d.est_value) + ' (default)</span>' : '<span class="mut">Not set</span>');
+      return '<tr><td><b style="font-weight:600">' + esc(jt) + '</b></td>' +
+        '<td class="num">' + (on ? '<label class="sr" for="jvv">Value</label><input id="jvv" class="oq-field" type="number" min="0" step="1" style="width:110px" value="' + (v && v.est_value != null ? v.est_value : '') + '">' : shown) + '</td>' +
+        '<td class="mut" style="font-size:12px">' + src + '</td>' +
+        '<td style="text-align:right">' + (!IS_ADMIN ? '' : on ? '<button class="sel btnd" data-act="jvsave" data-jt="' + esc(jt) + '" style="padding:5px 10px;font-size:12px"' + (MN.busy ? ' disabled' : '') + '>Save</button> <button class="sel" data-act="jvcancel" style="padding:5px 10px;font-size:12px">Cancel</button>'
+          : '<button class="sel" data-act="jvedit" data-jt="' + esc(jt) + '" style="padding:5px 10px;font-size:12px" aria-label="Edit ' + esc(jt) + ' value">Edit</button>') + '</td></tr>';
+    }).join('');
+    var pickB = LOCK ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(short(LOCK)) + '</span>'
+      : '<label class="sr" for="jvb">Brand</label><select id="jvb" class="oq-field" data-jvbrand style="max-width:260px"><option value="">All brands (default)</option>' + brands.map(function (b) { return '<option' + (B === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select>';
+    return '<div class="oq-card" style="flex:1 1 640px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start"><div style="flex:1 1 360px"><h2 class="ttl">Job values</h2>' +
+      '<p class="sub">Average ticket for each job type, set per brand. Dollars show once a brand has values. When invoices are uploaded, each booked call uses its real amount, and once 10+ invoices match a brand and job type, that average replaces the estimate.' + (IS_ADMIN ? '' : ' Only account admins can change these.') + '</p>' +
+      (LOCK ? '' : '<p class="mut" style="font-size:12px;margin-top:6px">' + setCount + ' of ' + brands.length + ' brands have values.</p>') + '</div>' + pickB + '</div>' +
+      '<div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th>Job type</th><th>' + (B ? esc(short(B)) : 'All brands') + '</th><th>Source</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       (IS_ADMIN ? '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line2);display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1 1 300px"><b style="font-size:13.5px">Upload invoices</b><div class="mut" style="font-size:12px">CSV with invoice number, invoice date, amount and customer phone (brand and job type optional). Each invoice is matched to the booked call from that phone in the 45 days before.</div></div><label class="sel" style="cursor:pointer">' + (MN.busy === 'inv' ? 'Uploading…' : 'Choose CSV') + '<input type="file" accept=".csv,text/csv" data-invfile style="display:none"></label></div>' : '') + '</div>';
   }
   function jvSave(jt) {
     var el = $('jvv'); if (!el || MN.busy) return; MN.busy = true;
-    api({ action: 'jobvalues', op: 'set', job_type: jt, value: el.value === '' ? null : +el.value }).then(function (r) { MN.busy = false; MN.jv = r; MN.edit = null; MN.d = null; toast('Saved — revenue numbers updated'); render(); })
+    api({ action: 'jobvalues', op: 'set', job_type: jt, brand: MN.jvb || null, value: el.value === '' ? null : +el.value }).then(function (r) { MN.busy = false; MN.jv = r; MN.edit = null; MN.d = null; toast('Saved — revenue numbers updated'); render(); })
       .catch(function (e) { MN.busy = false; toast(e.message || 'Couldn’t save. Try again.'); });
   }
   function parseCsv(text) {
@@ -1418,6 +1433,7 @@ export function mountOpsisQA(ROOT, cfg) {
     else if (t.hasAttribute && t.hasAttribute('data-rpagent')) { RP.agent = t.value; }
     else if (t.hasAttribute && t.hasAttribute('data-rptypes')) { RP.allTypes = t.checked; }
     else if (t.hasAttribute && t.hasAttribute('data-rptrans')) { RP.trans = t.checked; }
+    else if (t.hasAttribute && t.hasAttribute('data-jvbrand')) { MN.jvb = t.value; MN.edit = null; drawMoney(); }
     else if (t.hasAttribute && t.hasAttribute('data-invfile')) { invUpload(t.files && t.files[0]); t.value = ''; }
     else if (t.hasAttribute && t.hasAttribute('data-rpteam')) { RP.team = t.value; }
     else if (t.hasAttribute && t.hasAttribute('data-rpcsr')) { RP.csr = t.value; }
@@ -1436,6 +1452,7 @@ export function mountOpsisQA(ROOT, cfg) {
   on(window, 'hashchange', function () { var before = location.hash; readHash(); render(); });
   var lg = $('oqlogo'); if (lg) { lg.src = CFG.logo || 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/garageco/logo.png'; lg.alt = CLIENT; }
   readHash(); render();
+  (function () { var m = location.hash.match(/(?:^#|&)call=([0-9a-f-]{36})/i); if (m) { S.callId = m[1]; callDrawer(); } })();
   return function destroy() {
     LISTENERS.forEach(function (l) { l[0].removeEventListener(l[1], l[2]); }); LISTENERS = [];
     try { AU.pause(); AU.removeAttribute('src'); AU.load(); } catch (x) {}
