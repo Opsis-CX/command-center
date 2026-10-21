@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './lib/auth'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
+import { RolePreviewPill } from './components/RolePreview'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -15,6 +16,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <BrowserRouter>
         <AuthProvider>
           <App />
+          {/* Admin "View as role" bar — sits above every shell (main app, client, CSR, trainee). */}
+          <RolePreviewPill />
         </AuthProvider>
       </BrowserRouter>
     </ErrorBoundary>
