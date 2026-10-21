@@ -180,6 +180,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<svg viewBox="0 0 700 180" preserveAspectRatio="xMaxYMid slice" style="position:absolute;right:0;top:0;width:60%;height:100%" aria-hidden="true"><path d="M0 180 C120 150 180 70 300 90 C420 110 470 20 560 30 C620 36 660 10 700 0 L700 180 Z" fill="#DCE5DD"/><path d="M80 180 C200 140 260 110 360 120 C470 132 520 60 610 70 C650 75 680 60 700 50 L700 180 Z" fill="#C6D5C9"/><path d="M200 180 C300 160 360 140 450 146 C540 152 600 110 700 100 L700 180 Z" fill="#A9C0AF"/><path d="M330 180 C420 170 500 160 580 164 C640 167 680 150 700 146 L700 180 Z" fill="#8AAA93"/></svg>' +
       '<div style="position:relative"><div class="cap" style="letter-spacing:.3em">GarageCo · Call quality intelligence</div><h1 style="margin:10px 0 0;font-size:34px;font-weight:600;line-height:1.1;letter-spacing:-0.03em">Turn every conversation<br>into a booked job.</h1></div></div>' +
       '<div id="kpis" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">' + skel(118, 1).repeat(5) + '</div>' +
+      '<div class="oq-card" id="needscard">' + skel(60, 1) + '</div>' +
       '<div class="row"><div class="oq-card" style="flex:999 1 520px" id="brandcard">' + skel(30, 8) + '</div><div class="oq-card" style="flex:1 1 320px" id="coachcard">' + skel(40, 5) + '</div></div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 420px" id="stepcard">' + skel(18, 9) + '</div><div class="oq-card" style="flex:1 1 360px;max-height:470px;overflow-y:auto" id="reviewcard">' + skel(50, 4) + '</div></div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 520px" id="trendcard">' + skel(200, 1) + '</div><div class="ai" style="flex:1 1 360px" id="insightcard">' + skel(30, 4) + '</div></div>');
@@ -193,6 +194,7 @@ export function mountOpsisQA(ROOT, cfg) {
     }).catch(function (e) { if (tok === T) $('kpis').outerHTML = errBox(e); });
     loadFocus(null, null).then(function (f) { if (tok === T) stepCard(f, 'stepcard', null, null); fitReview(); }).catch(function () {});
     api(Object.assign({ action: 'calls' }, win({ winnable: true, score_max: 40, limit: 5 }))).then(function (c) { if (tok === T) reviewCard(c); }).catch(function () {});
+    needsCard(tok);
   }
 
   var BKEY = 'oqBrands:' + CLIENT;
@@ -287,6 +289,27 @@ export function mountOpsisQA(ROOT, cfg) {
     $(el).innerHTML = h + '</div>';
   }
 
+  var NEEDS = [['upset', 'Upset customers', 'Upset, angry or complaint signs on the call', '#B42318', '#FDECEA'],
+    ['low', 'Low scores', 'Real opportunities scored 40 or under', '#C2551F', '#FFF4E8'],
+    ['ctrl', 'Controllable misses', 'Not booked for a reason the CSR could fix', '#8A5A00', '#FBF3DF'],
+    ['other', 'Other not booked', 'Not booked, reason outside the CSR’s control', '#3B4541', '#F3F1EC']];
+  function needsCard(tok) {
+    var got = {}, left = NEEDS.length;
+    function draw() {
+      var el = $('needscard'); if (!el) return;
+      el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Needs attention</h2><p class="sub">The same lists as the 8am daily summary, for the dates and brands picked above. One row per customer conversation.</p></div></div>' +
+        '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:12px">' +
+        NEEDS.map(function (n) { var v = got[n[0]];
+          return '<button class="click" data-needs="' + n[0] + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:12px;background:' + n[4] + ';border:1px solid transparent">' +
+            '<span style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:' + n[3] + '"><span aria-hidden="true" style="width:8px;height:8px;border-radius:999px;background:' + n[3] + '"></span>' + n[1] + '</span>' +
+            '<span class="num" style="font-size:26px;font-weight:700;color:#1C2421">' + (v == null ? '…' : (v < 0 ? '—' : fmt(v))) + '</span>' +
+            '<span class="mut" style="font-size:11.5px">' + n[2] + '</span></button>'; }).join('') + '</div>';
+    }
+    draw();
+    NEEDS.forEach(function (n) {
+      api(Object.assign({ action: 'bucketcalls', bucket: n[0] }, win({ limit: 1, offset: 0 }))).then(function (r) { got[n[0]] = r.total || 0; }).catch(function () { got[n[0]] = -1; }).then(function () { if (tok === T) draw(); });
+    });
+  }
   function reviewCard(c) {
     var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><h2 class="ttl">Calls to review</h2><p class="sub">Winnable calls that didn’t book, scored 40 or lower</p></div><button class="more" data-kpi="winnable">All ' + fmt(c.total) + ' →</button></div>';
     (c.rows || []).forEach(function (r) { h += callRow(r); });
@@ -2105,7 +2128,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (ps) { var pk = ps.getAttribute('data-psort').split('|'); S['pd' + pk[0]] = S['ps' + pk[0]] === pk[1] ? -(S['pd' + pk[0]] || 1) : 1; S['ps' + pk[0]] = pk[1]; loadPhone().then(pk[0] === 'b' ? phoneBrands : phoneCsrs); return; }
     var tm = t.closest('[data-tmode]');
     if (tm) { S.tmode = tm.getAttribute('data-tmode'); loadReport().then(trendCard); return; }
-    var el = t.closest('[data-go],[data-brand],[data-agent],[data-call],[data-close],[data-kpi],[data-step],[data-ask],[data-pop],[data-range],[data-act],[data-bsort],[data-csort],[data-mix],[data-page],[data-unfilter],[data-callsfor],[data-xferlist],[data-change],[data-q],[data-outcome],[data-brandcb],[data-allbrands]');
+    var el = t.closest('[data-go],[data-brand],[data-agent],[data-call],[data-close],[data-kpi],[data-step],[data-ask],[data-pop],[data-range],[data-act],[data-bsort],[data-csort],[data-mix],[data-page],[data-unfilter],[data-callsfor],[data-needs],[data-xferlist],[data-change],[data-q],[data-outcome],[data-brandcb],[data-allbrands]');
     if (S.pop && !t.closest('.pop') && !t.closest('[data-pop]')) { S.pop = null; render(); if (!el) return; }
     if (!el) return;
     var d = el.dataset;
@@ -2128,6 +2151,7 @@ export function mountOpsisQA(ROOT, cfg) {
     }
     else if (d.step) { openCalls({ step: d.step }, d.sagent || null); if (d.sbrand) { S.brands = [d.sbrand]; render(); } }
     else if (d.xferlist) { if (S.view === 'csr') openCalls({ xfer: d.xferlist }, S.agent); else { S.brands = [S.brand]; openCalls({ xfer: d.xferlist }); } }
+    else if (d.needs) { openCalls({ bucket: d.needs }); }
     else if (d.callsfor) { if (d.callsfor === 'csr') openCalls({}, S.agent); else { S.brands = [S.brand]; openCalls({}); } }
     else if (d.ask) { ask(d.ask); }
     else if (d.q !== undefined || d.outcome) { openCalls({ q: d.q || '', outcome: d.outcome || null }); }
