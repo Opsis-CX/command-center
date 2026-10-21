@@ -1174,6 +1174,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div style="flex:1;min-width:220px"><div class="row" style="gap:6px"><span class="pill" style="' + chipOut(c.outcome) + '">' + esc(c.outcome || '—') + '</span>' + (c.winnable ? '<span class="pill" style="background:#FFF4E8;color:#9A4A0B">Winnable</span>' : '') + (c.reason ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(c.reason) + '</span>' : '') + (c.topics || []).slice(0, 3).map(function (t) { return '<span class="pill" style="background:#E6F0EA;color:#1F5A41">' + esc(t) + '</span>'; }).join('') + '</div>' +
       (c.caller_wanted ? '<div style="margin-top:10px"><div class="cap">Caller wanted</div><div style="margin-top:3px;line-height:1.45">' + esc(c.caller_wanted) + '</div></div>' : '') + '</div>' +
       (changed ? '<div style="flex-basis:100%;background:#FFF8E8;border:1px solid #F0DDB0;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#6B4E12">Score changed from <b>' + c.ai_score + '</b> (AI) to <b>' + sc + '</b>' + (who.length ? ' by <b>' + who.map(esc).join(', ') + '</b>' : '') + '. The original AI score is kept and every change is logged.</div>' : '') + '</div>';
+    h += ccCard(c);
     if (c.xfer_out || c.xfer_in) {
       var leg = c.xfer_out ? c.xfer_to : c.xfer_from;
       h += '<div class="oq-card" style="background:#F3F4FA;border-color:#D9DCEE"><b style="color:#3A4380">' + (c.xfer_out ? '↗ Outbound transfer' : '↘ Inbound transfer') + '</b><div style="font-size:13px;line-height:1.5;margin-top:6px">' +
@@ -1196,10 +1197,12 @@ export function mountOpsisQA(ROOT, cfg) {
     });
     h += '</div><div class="oq-card" id="cnotes"><b>Notes</b><div id="cnlist" style="margin-top:8px">' + skel(18, 2) + '</div>' +
       (CAN_EDIT ? '<form id="cnform" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"><label class="sr" for="cnbody">Add a note</label><textarea id="cnbody" class="oq-field" style="min-height:64px;resize:vertical" maxlength="4000" placeholder="Add a note for your team or the Opsis CX Support team…"></textarea><div><button class="sel btnd" type="submit">Add note</button></div></form>' : '') + '</div>' +
-      '<div class="row"><button class="sel" data-act="pdf">Print / save PDF</button><button class="sel" data-ask="Explain what happened on call [call:' + c.id + '] and how ' + esc(c.agent || 'the CSR') + ' could have booked it.">Ask AI about this call</button></div>';
-    var keep = $('cnbody') ? $('cnbody').value : '';
+      '<div class="row"><button class="sel" data-act="pdf">Print / save PDF</button><button class="sel" data-ccgo="1">Ask AI about this call</button></div>';
+    var keep = $('cnbody') ? $('cnbody').value : ''; var keepq = $('ccq') ? $('ccq').value : '';
     $('cd').innerHTML = h;
     if (keep && $('cnbody')) $('cnbody').value = keep;
+    if (keepq && $('ccq')) $('ccq').value = keepq;
+    ccPaint(c.id, true);
     loadNotes(c.id);
   }
   var NOTES = {};
@@ -1239,6 +1242,49 @@ export function mountOpsisQA(ROOT, cfg) {
     var L = document.createElement('div');
     L.innerHTML = '<div class="overlay" id="chg" style="justify-content:center;align-items:center;z-index:70" data-closechg="1"><div class="oq-card" role="dialog" aria-modal="true" aria-label="Change step score" style="width:480px;max-width:calc(100% - 32px);padding:24px;display:flex;flex-direction:column;gap:14px"><div class="cap">Change score</div><b style="line-height:1.4">' + esc(s.label) + '</b><div class="mut" style="font-size:12.5px">AI said: <b>' + (ANS[s.ai_answer] || 'N/A') + '</b>' + (s.adj ? ' · now: <b>' + (ANS[cur] || cur) + '</b>' : '') + '</div><div class="seg">' + [['yes', 'Done'], ['no', 'Missed'], ['na', 'N/A']].map(function (o) { return '<button class="' + (cur === o[0] ? 'on' : '') + '" data-pick="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div><div><label class="l" for="chgwhy">What did you hear? (required)</label><textarea id="chgwhy" class="oq-field" style="min-height:80px" maxlength="1000" placeholder="e.g. She asked “how can I help?” at 0:28 — the AI missed it."></textarea></div><div class="mut" style="font-size:12px">The original AI score is kept, the change is logged, and the Opsis CX Support team is notified.</div><div class="row" style="justify-content:flex-end"><button class="sel" data-closechg="1">Cancel</button><button class="sel btnd" data-act="applychange">Save change</button></div></div></div>';
     ROOT.appendChild(L.firstChild); $("chgwhy").focus();
+  }
+
+  // ---------- ongoing AI chat about this call (2026-10-21) ----------
+  var CC = {};
+  var CC_SUGG = ['What did the customer want, and what got in the way?', 'Where could the CSR have booked it?', 'Was this really a transfer?', 'Write a short coaching note for the CSR'];
+  function ccMd(t) { return md(t).replace(/\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]/g, function (m0, a, b, c) { var x = c != null ? (+a) * 3600 + (+b) * 60 + (+c) : (+a) * 60 + (+b); return '<span class="lnk" data-seek="' + x + '" role="button" tabindex="0" title="Play from here">' + m0 + '</span>'; }); }
+  function ccInner(id) {
+    var T = CC[id] || { msgs: [] }, h = '';
+    if (!T.msgs.length) h += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">' + CC_SUGG.map(function (q) { return '<button class="chip" data-ccq="' + esc(q) + '">' + esc(q) + '</button>'; }).join('') + '</div>';
+    h += T.msgs.map(function (m) {
+      return m.role === 'user'
+        ? '<div style="display:flex;justify-content:flex-end;margin-top:10px"><div style="max-width:85%;background:var(--side);color:#fff;border-radius:14px 14px 4px 14px;padding:8px 12px;font-size:13px;line-height:1.45;white-space:pre-wrap">' + esc(m.content) + '</div></div>'
+        : '<div style="max-width:95%;margin-top:10px;background:#F5F3EE;border-radius:14px 14px 14px 4px;padding:6px 12px;font-size:13px;line-height:1.5' + (m.error ? ';color:#A8441A' : '') + '">' + ccMd(m.content) + '</div>';
+    }).join('');
+    if (T.busy) h += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center"><span class="dots"><span></span><span></span><span></span></span><span class="mut" style="font-size:12px">Reading the call…</span></div>';
+    return h;
+  }
+  function ccCard(c) {
+    var T = CC[c.id] || { msgs: [] };
+    return '<div class="oq-card" id="ccx"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div style="display:flex;gap:8px;align-items:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><b>Ask about this call</b></div>' +
+      '<button class="more" data-ccclear="1"' + (T.msgs.length ? '' : ' style="display:none"') + '>Start over</button></div>' +
+      '<div class="mut" style="font-size:12px;margin-top:2px">Ask anything about what happened. Keep asking follow-ups; the AI remembers this conversation and has the full transcript.</div>' +
+      '<div id="ccthread" aria-live="polite">' + ccInner(c.id) + '</div>' +
+      '<form id="ccform" style="display:flex;gap:8px;margin-top:10px"><label class="sr" for="ccq">Ask about this call</label><input id="ccq" class="oq-field" autocomplete="off" maxlength="600" style="flex:1;min-width:0" placeholder="' + (T.msgs.length ? 'Ask a follow-up…' : 'e.g. What did the customer say about price?') + '"><button class="sel btnd" type="submit"' + (T.busy ? ' disabled' : '') + '>Ask</button></form></div>';
+  }
+  function ccPaint(id, quiet) {
+    var el = $('ccthread'); if (!el || !S.cur || S.cur.id !== id) return;
+    el.innerHTML = ccInner(id);
+    var T = CC[id] || { msgs: [] }, f = $('ccform'), b = f && f.querySelector('button'), q = $('ccq'), clr = document.querySelector('[data-ccclear]');
+    if (b) b.disabled = !!T.busy;
+    if (q) q.placeholder = T.msgs.length ? 'Ask a follow-up…' : 'e.g. What did the customer say about price?';
+    if (clr) clr.style.display = T.msgs.length ? '' : 'none';
+    if (!quiet && el.lastElementChild) el.lastElementChild.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  function ccAsk(q) {
+    var id = S.cur && S.cur.id; q = String(q || '').trim(); if (!id || !q) return;
+    var T = CC[id] = CC[id] || { msgs: [] }; if (T.busy) return;
+    var hist = T.msgs.filter(function (m) { return !m.error; }).slice(-12).map(function (m) { return { role: m.role, content: m.content }; });
+    T.msgs.push({ role: 'user', content: q }); T.busy = true; if ($('ccq')) $('ccq').value = ''; ccPaint(id);
+    api({ action: 'callchat', id: id, question: q, history: hist })
+      .then(function (r) { T.msgs.push({ role: 'assistant', content: (r && r.answer) || '' }); })
+      .catch(function (e) { T.msgs.push({ role: 'assistant', content: (e && e.message) || 'Something went wrong. Try again.', error: true }); })
+      .then(function () { T.busy = false; ccPaint(id); if ($('ccq') && S.cur && S.cur.id === id) $('ccq').focus(); });
   }
 
   // ---------- Ask panel ----------
@@ -1319,6 +1365,7 @@ export function mountOpsisQA(ROOT, cfg) {
   on(document, 'submit', function (e) {
     if (e.target.id === 'askform2') { e.preventDefault(); var q = $('askq2').value; ask(q); }
     else if (e.target.id === 'cnform') { e.preventDefault(); addNote(); }
+    else if (e.target.id === 'ccform') { e.preventDefault(); ccAsk($('ccq').value); }
   });
   on(document, 'click', function (e) {
     var t = e.target;
@@ -1346,6 +1393,10 @@ export function mountOpsisQA(ROOT, cfg) {
     if (pst) { playStep(+pst.getAttribute('data-pstep')); return; }
     var psk = t.closest('[data-seek]');
     if (psk && P.info && P.info.url) { P.step = null; P.stepEnd = null; AU.currentTime = Math.max(0, +psk.getAttribute('data-seek') - 0.4); AU.play().catch(function () {}); return; }
+    var ccq = t.closest('[data-ccq]');
+    if (ccq) { ccAsk(ccq.getAttribute('data-ccq')); return; }
+    if (t.closest('[data-ccclear]')) { if (S.cur) { CC[S.cur.id] = { msgs: [] }; ccPaint(S.cur.id, true); } return; }
+    if (t.closest('[data-ccgo]')) { var cx = $('ccx'); if (cx) { cx.scrollIntoView({ block: 'center', behavior: 'smooth' }); setTimeout(function () { if ($('ccq')) $('ccq').focus(); }, 300); } return; }
     var pdl = t.closest('[data-pdl]');
     if (pdl) { var did = P.id; toast('Preparing download…'); api({ action: 'audio', id: did, t: Date.now() }).then(function (info) { if (!info || !info.url) { toast('No recording is available for this call.'); return; } var a = document.createElement('a'); a.href = dlHref(info.url); if (a.href.indexOf('download=') < 0) { a.target = '_blank'; a.rel = 'noopener'; } ROOT.appendChild(a); a.click(); a.remove(); }).catch(function () { toast('The download didn’t start. Try again.'); }); return; }
     if (t.closest('[data-backask]')) { stopAudio(); P.id = null; S.callId = null; S.fromAsk = false; S.ask.open = true; askPanel(); return; }
