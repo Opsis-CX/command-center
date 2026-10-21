@@ -1,3 +1,4 @@
+import { isPreviewing } from './rolePreview'
 import { supabase } from './supabase'
 
 // ============================================================
@@ -295,6 +296,11 @@ export function pushPermission() {
 }
 
 export async function enablePush(profileId) {
+  // Never register this device to a test account an admin is viewing as —
+  // the device would stop getting the admin's own notifications.
+  if (isPreviewing(profileId)) {
+    throw new Error('Notifications can’t be turned on while viewing as another role.')
+  }
   if (!profileId) {
     throw new Error(
       'A profile ID is required to enable push.'
