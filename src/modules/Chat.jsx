@@ -38,7 +38,12 @@ const LSA_CHANNEL_ID = 'e68ebda8-90ba-42c2-9c41-1c3905f12bd1'
 // ============================================================
 
 function initials(name) {
-  const p = (name || '?').trim().split(/\s+/); return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase() || '?'
+  const words = (name || '?').trim().split(/\s+/)
+  const letters = words.filter(w => /\p{L}/u.test(w))
+  const emoji = words.find(w => /\p{Extended_Pictographic}/u.test(w))
+  // A one-word name with an emoji (the "Turri 🪼" service account) uses the emoji as its avatar.
+  if (emoji && letters.length === 1) return emoji
+  return ((letters[0]?.[0] || '') + (letters[1]?.[0] || '')).toUpperCase() || '?'
 }
 
 function avatarColor(name) {
