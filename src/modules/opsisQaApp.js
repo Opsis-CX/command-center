@@ -66,7 +66,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
     var k = JSON.stringify(body), cacheable = !!CACHEABLE[body.action];
     if (cacheable && cache[k]) return cache[k];
-    var isRead = cacheable || body.action === 'call' || body.action === 'export' || body.action === 'scorecards' || body.action === 'money' || body.action === 'excused' || body.action === 'billing' || (body.action === 'jobvalues' && !body.op) || body.action === 'audio' || ((body.action === 'kb' || body.action === 'settings' || body.action === 'team') && !body.op) || (body.action === 'notes' && body.body == null);
+    var isRead = cacheable || body.action === 'call' || body.action === 'export' || body.action === 'bucketcalls' || body.action === 'scorecards' || body.action === 'money' || body.action === 'excused' || body.action === 'billing' || (body.action === 'jobvalues' && !body.op) || body.action === 'audio' || ((body.action === 'kb' || body.action === 'settings' || body.action === 'team') && !body.op) || (body.action === 'notes' && body.body == null);
     var once = function () { return CFG.invoke(body); };
     var wait = function (ms) { return new Promise(function (res) { setTimeout(res, ms); }); };
     var stop = function (e) { return e.status && e.status < 500 && e.status !== 408; };
@@ -482,6 +482,8 @@ export function mountOpsisQA(ROOT, cfg) {
   var OUTCOMES = [['', 'Any outcome'], ['Booked', 'Booked'], ['Not Booked', 'Not booked'], ['Transferred', 'Transferred'], ['No Opportunity', 'No opportunity']];
   function vCalls(tok) {
     var c = S.calls, chips = [];
+    var BUCKETNAMES = { upset: 'Upset customers', low: 'Low scores (40 or under)', ctrl: 'Controllable misses (not booked)', other: 'Other not booked' };
+    if (c.bucket) chips.push([BUCKETNAMES[c.bucket] || c.bucket, 'bucket']);
     if (S.callsAgent) chips.push(['CSR: ' + S.callsAgent, 'agent']);
     if (c.outcome) chips.push(['Outcome: ' + c.outcome, 'outcome']);
     if (c.step) chips.push(['Missed: ' + (STEPNAMES[c.step] || c.step), 'step']);
@@ -498,10 +500,10 @@ export function mountOpsisQA(ROOT, cfg) {
       '<select id="csc" class="oq-field" style="width:auto" aria-label="Score"><option value="">Any score</option><option value="max40"' + (c.scoreMax === 40 ? ' selected' : '') + '>40 or lower</option><option value="max70"' + (c.scoreMax === 70 ? ' selected' : '') + '>70 or lower</option><option value="min90"' + (c.scoreMin === 90 ? ' selected' : '') + '>90 or higher</option></select><button class="sel btnd" type="submit">Search</button></form></div>' +
       (chips.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">' + chips.map(function (ch) { return '<button class="chip on" data-unfilter="' + ch[1] + '" aria-label="Remove filter ' + esc(ch[0]) + '">' + esc(ch[0]) + ' ✕</button>'; }).join('') + '<button class="more" data-unfilter="all">Clear all</button></div>' : '') +
       '<div id="clist" style="margin-top:8px">' + skel(54, 6) + '</div><div id="cpager" class="row" style="justify-content:space-between;align-items:center;margin-top:10px"></div></div>');
-    var body = Object.assign({ action: 'calls' }, win({ agent: S.callsAgent || null, outcome: c.nocard ? 'Booked' : c.outcome, step_missed: c.nocard ? 'capture_payment' : c.step, score_max: c.scoreMax, score_min: c.scoreMin, winnable: c.winnable || null, xfer: c.xfer || null, q: c.q || null, limit: 25, offset: c.offset }));
+    var body = c.bucket ? Object.assign({ action: 'bucketcalls', bucket: c.bucket }, win({ limit: 25, offset: c.offset })) : Object.assign({ action: 'calls' }, win({ agent: S.callsAgent || null, outcome: c.nocard ? 'Booked' : c.outcome, step_missed: c.nocard ? 'capture_payment' : c.step, score_max: c.scoreMax, score_min: c.scoreMin, winnable: c.winnable || null, xfer: c.xfer || null, q: c.q || null, limit: 25, offset: c.offset }));
     api(body).then(function (r) {
       if (tok !== T) return;
-      $('ctot').textContent = fmt(r.total) + ' calls match · newest first · click one for the full review';
+      $('ctot').textContent = c.bucket ? fmt(r.total) + ' customer conversations (transfers counted once) · lowest score first · click one for the full review' : fmt(r.total) + ' calls match · newest first · click one for the full review';
       $('clist').innerHTML = (r.rows || []).map(callRow).join('') || '<p class="mut">No calls match these filters.</p>';
       var pages = Math.ceil(r.total / 25), pg = Math.floor(c.offset / 25) + 1;
       $('cpager').innerHTML = r.total > 25 ? '<span class="mut num" style="font-size:12.5px">Page ' + pg + ' of ' + fmt(pages) + '</span><div class="row" style="gap:6px"><button class="sel" data-page="-1"' + (pg <= 1 ? ' disabled' : '') + '>← Newer</button><button class="sel" data-page="1"' + (pg >= pages ? ' disabled' : '') + '>Older →</button></div>' : '';
@@ -1280,6 +1282,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var o = { v: S.view, r: S.range };
     if (S.range === 'custom') { o.s = S.start; o.e = S.end; }
     if (S.brands.length) o.b = S.brands.join('|');
+    if (S.view === 'calls' && S.calls.bucket) o.bucket = S.calls.bucket;
     if (S.view === 'brand') o.brand = S.brand; if (S.view === 'csr') o.agent = S.agent;
     var h = '#' + Object.keys(o).map(function (k) { return k + '=' + encodeURIComponent(o[k]); }).join('&');
     if (location.hash !== h) history.replaceState(null, '', h);
@@ -1287,6 +1290,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function readHash() {
     var q = {}; location.hash.replace(/^#/, '').split('&').forEach(function (p) { var kv = p.split('='); if (kv[0]) q[kv[0]] = decodeURIComponent(kv[1] || ''); });
     if (q.v) S.view = q.v; if (q.r) S.range = q.r; if (q.s && q.e) { S.start = q.s; S.end = q.e; }
+    if (q.bucket && /^(upset|low|ctrl|other)$/.test(q.bucket)) { S.calls.bucket = q.bucket; S.calls.offset = 0; }
     if (q.b) S.brands = q.b.split('|'); if (q.brand) S.brand = q.brand; if (q.agent) S.agent = q.agent;
     applyRange();
   }
