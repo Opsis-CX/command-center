@@ -404,6 +404,18 @@ function snippetAround(text, term) {
   return (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : '')
 }
 
+// Mirrors public.is_staff_profile / is_agent_profile in the database (keep in sync).
+const STAFF_ROLE_KEYS = ['owner', 'admin', 'marketing', 'sales', 'asc', 'support', 'certification', 'quality']
+const roleKeys = (p) => String(p?.role || '').toLowerCase().split(',').map(r => r.trim()).filter(Boolean)
+export function isStaffProfile(p) {
+  if (!p) return false
+  const k = roleKeys(p)
+  return (p.is_admin || k.some(r => STAFF_ROLE_KEYS.includes(r))) && !k.includes('agent') && !k.includes('client')
+}
+export function isAgentProfile(p) {
+  return !!p && !p.is_admin && roleKeys(p).includes('agent')
+}
+
 // Hidden from my sidebar? Channels stay hidden until unhidden; DMs come back as
 // soon as there's a message newer than when I hid (or deleted) them.
 function hiddenBy(prefMap, c) {
@@ -615,6 +627,8 @@ export default function Chat() {
   const [menu, setMenu] = useState(null)          // { kind:'item'|'section', id, x, y, view }
   const [showHidden, setShowHidden] = useState(false)
   const [nameModal, setNameModal] = useState(null) // { title, initial, onSave }
+  // Staff only: DMs from agents turned off (main switch + per-agent exceptions).
+  const [agentDm, setAgentDm] = useState({ blockAll: false, overrides: {} })
   const [builtinCollapsed, setBuiltinCollapsed] = useState(() => {
     try { return JSON.parse(localStorage.getItem('chat.sidebarCollapsed') || '{}') } catch { return {} }
   })
@@ -637,7 +651,7 @@ export default function Chat() {
         myChannelIds.length
           ? supabase.from('channels').select('*').in('id', myChannelIds).order('name')
           : Promise.resolve({ data: [], error: null }),
-        supabase.from('profiles').select('id, full_name, is_active, last_seen_at, status_emoji, status_text, status_type, status_until').eq('is_active', true).order('full_name'),
+        supabase.from('profiles').select('id, full_name, role, is_admin, is_active, last_seen_at, status_emoji, status_text, status_type, status_until').eq('is_active', true).order('full_name'),
       ])
       if (chRes.error) throw chRes.error
       setMe(meRes.data)
@@ -654,6 +668,15 @@ export default function Chat() {
       ])
       const prefMap = {}; (prefRes.data || []).forEach(r => { prefMap[r.channel_id] = r })
       setPrefs(prefMap)
+
+      if (isStaffProfile(meRes.data)) {
+        const [setRes, ovRes] = await Promise.all([
+          supabase.from('dm_agent_settings').select('block_all').eq('profile_id', user.id).maybeSingle(),
+          supabase.from('dm_agent_overrides').select('agent_id, blocked').eq('staff_id', user.id),
+        ])
+        const ov = {}; (ovRes.data || []).forEach(r => { ov[r.agent_id] = r.blocked })
+        setAgentDm({ blockAll: !!setRes.data?.block_all, overrides: ov })
+      }
       setSections(secRes.data || [])
 
       const all = chRes.data || []
@@ -762,6 +785,32 @@ export default function Chat() {
       .upsert({ profile_id: me.id, channel_id: channelId, ...patch }, { onConflict: 'profile_id,channel_id' })
     if (error) { window.alert('Could not save: ' + error.message); load() }
   }
+  // ---- Turning off DMs from agents (staff only; enforced by the database) ----
+  // For the open 1:1 DM: a staff-side note + one-click "turn on" when the agent can't reply.
+  const agentMutedFor = (channelId) => {
+    const c = channels.find(x => x.id === channelId)
+    const ag = agentPeer(c)
+    if (!amStaff || !ag || !agentBlocked(ag.id)) return null
+    return { name: ag.full_name, onTurnOn: () => setAgentBlocked(ag.id, false) }
+  }
+  const amStaff = isStaffProfile(me)
+  const agentBlocked = (agentId) => {
+    if (!amStaff || !agentId) return false
+    const o = agentDm.overrides[agentId]
+    return o === undefined ? agentDm.blockAll : o
+  }
+  const agentPeer = (c) => {
+    if (!c?.is_dm) return null
+    const peer = dmPeers[c.id] ? profiles.find(p => p.id === dmPeers[c.id]) : null
+    return peer && isAgentProfile(peer) ? peer : null
+  }
+  async function setAgentBlocked(agentId, blocked) {
+    setAgentDm(prev => ({ ...prev, overrides: { ...prev.overrides, [agentId]: blocked } }))
+    const { error } = await supabase.from('dm_agent_overrides')
+      .upsert({ staff_id: me.id, agent_id: agentId, blocked, updated_at: new Date().toISOString() }, { onConflict: 'staff_id,agent_id' })
+    if (error) { window.alert('Could not save: ' + error.message); load() }
+  }
+
   const toggleFavorite = (c) => savePref(c.id, { favorite: !prefs[c.id]?.favorite })
   const togglePin = (c) => savePref(c.id, { pinned_at: prefs[c.id]?.pinned_at ? null : new Date().toISOString() })
   const moveToSection = (c, sectionId) => savePref(c.id, { section_id: sectionId, ...(sectionId ? { favorite: false } : {}) })
@@ -952,6 +1001,7 @@ export default function Chat() {
             <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
             {st && st.emoji ? <span title={st.text || ''} style={{ fontSize: 12, flex: 'none' }}>{st.emoji}</span> : null}
             {pinnedHere && <span title="Pinned" style={{ fontSize: 10, flex: 'none' }}>📌</span>}
+            {amStaff && peer && isAgentProfile(peer) && agentBlocked(peer.id) && <span title="Messages from this agent are turned off" style={{ fontSize: 10.5, flex: 'none' }}>🔕</span>}
           </span>
           {unreadBadge(unread)}
         </button>
@@ -1014,6 +1064,10 @@ export default function Chat() {
             ? menuItem('👁 Unhide', () => { unhideItem(c); close() })
             : menuItem('🙈 Hide', () => { hideItem(c); close() })}
           {c.is_dm && <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />}
+          {amStaff && agentPeer(c) && (() => {
+            const ag = agentPeer(c), off = agentBlocked(ag.id), first = (ag.full_name || 'this agent').split(' ')[0]
+            return menuItem(off ? `🔔 Turn on messages from ${first}` : `🔕 Turn off messages from ${first}`, () => { setAgentBlocked(ag.id, !off); close() })
+          })()}
           {c.is_dm && menuItem('✕ Remove conversation', () => { close(); deleteDmForMe(c) })}
           {isOwner && !c.is_dm && <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />}
           {isOwner && menuItem(c.is_dm ? '⚠ Delete for everyone' : '🗑 Delete channel for everyone', () => { close(); deleteChannel(c) }, { danger: true })}
@@ -1108,12 +1162,12 @@ export default function Chat() {
         activeId
           ? (activeId === LSA_CHANNEL_ID
               ? <LsaChannelView key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} isOwner={isOwner} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead}
-                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} />
+                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} agentMuted={agentMutedFor(activeId)} />
               : activeId === TRADE_BOARD_CHANNEL_ID
               ? <SetterChannelView key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} isOwner={isOwner} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead}
-                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} />
+                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} agentMuted={agentMutedFor(activeId)} />
               : <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} isOwner={isOwner} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead}
-                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} />)
+                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} agentMuted={agentMutedFor(activeId)} />)
           : <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-soft)', height: '100%' }}>Select a channel</div>
       )}
 
@@ -1194,7 +1248,15 @@ function LsaChannelView(props) {
   )
 }
 
-function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profiles, isMobile, onBack, markRead, targetMessageId, onTargetConsumed, clearedAt = null }) {
+function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profiles, isMobile, onBack, markRead, targetMessageId, onTargetConsumed, clearedAt = null, agentMuted = null }) {
+  // Agent side: names of staff in this DM who have turned off messages from agents.
+  const [dmBlockedBy, setDmBlockedBy] = useState([])
+  const refreshDmBlock = useCallback(async () => {
+    if (!channel?.is_dm || !isAgentProfile(me)) { setDmBlockedBy([]); return }
+    const { data } = await supabase.rpc('dm_agent_block_status', { p_channel: channelId })
+    setDmBlockedBy(Array.isArray(data) ? data : [])
+  }, [channelId, channel?.is_dm, me])
+  useEffect(() => { refreshDmBlock() }, [refreshDmBlock])
   // A DM I "deleted" only shows messages after the point I cleared it.
   const afterCleared = (q) => clearedAt ? q.gt('created_at', clearedAt) : q
   const { appRole } = useAuth()
@@ -1777,6 +1839,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     if (error) {
       setErr(error.message)
       setMessages(prev => prev.filter(m => m.id !== temp.id)); setPending(filesToSend); setUploading(false)
+      if (/can't accept direct messages|turned off direct messages/i.test(error.message || '')) refreshDmBlock()
       return
     }
 
@@ -2121,7 +2184,23 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 
       <TypingLine names={typerNames} />
 
+      {dmBlockedBy.length > 0 ? (
+        <div style={{ borderTop: '1px solid var(--line)', padding: '14px 16px', flex: 'none', background: 'var(--canvas)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <span style={{ fontSize: 18 }}>🔕</span>
+          <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>
+            <b>{dmBlockedBy.length > 1 ? dmBlockedBy.slice(0, -1).join(', ') + ' and ' + dmBlockedBy[dmBlockedBy.length - 1] : dmBlockedBy[0]}</b> can't accept direct messages right now.
+            {' '}Please direct your questions to the main chat. If this is a private matter, please email{' '}
+            <a href="mailto:support@opsiscx.com" style={{ color: 'var(--accent)', fontWeight: 600 }}>support@opsiscx.com</a>.
+          </div>
+        </div>
+      ) : (
       <div style={{ borderTop: '1px solid var(--line)', padding: '10px 16px', flex: 'none', background: 'var(--surface)' }}>
+        {agentMuted && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 8, flexWrap: 'wrap' }}>
+            <span>🔕 Messages from <b style={{ color: 'var(--ink)' }}>{agentMuted.name}</b> are turned off — they can read this but can't reply.</span>
+            <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '2px 8px' }} onClick={agentMuted.onTurnOn}>Turn on</button>
+          </div>
+        )}
         {/* Pending scheduled messages you've queued for this conversation. */}
         {scheduled.length > 0 && (
           <div style={{ marginBottom: 8, border: '1px solid var(--line)', borderRadius: 8, padding: '6px 8px', background: 'var(--canvas)' }}>
@@ -2240,6 +2319,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
           )}
         </div>
       </div>
+      )}
 
       {trackFor && <TrackPanel messageId={trackFor} me={me} members={members} profiles={profiles} acks={acks} onClose={() => setTrackFor(null)} />}
       {threadFor && <ThreadPanel parentId={threadFor} channelId={channelId} me={me} senders={senders} profiles={profiles} channel={channel} members={members} canModerate={canModerate} onClose={() => setThreadFor(null)} onSeen={markThreadRead} highlightId={highlightId} />}
