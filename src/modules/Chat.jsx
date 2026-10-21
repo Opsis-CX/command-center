@@ -408,9 +408,9 @@ function hiddenBy(prefMap, c) {
   return true
 }
 
-const GROUP_ICONS = ['📁', '⭐', '📊', '👥', '⚙️', '🏢', '🚀', '📞', '💼', '🛠️', '📣', '🎯', '💡', '❤️', '💜', '🔥']
+const GROUP_ICONS = [null, '⭐', '📊', '👥', '⚙️', '🏢', '🚀', '📞', '💼', '🛠️', '📣', '🎯', '💡', '❤️', '💜', '🔥']
 
-function NameModal({ title, initial, initialIcon = '📁', withIcon = false, onSave, onClose }) {
+function NameModal({ title, initial, initialIcon = null, withIcon = false, onSave, onClose }) {
   const [val, setVal] = useState(initial || '')
   const [icon, setIcon] = useState(initialIcon)
   const ok = val.trim().length > 0 && val.trim().length <= 60
@@ -420,7 +420,7 @@ function NameModal({ title, initial, initialIcon = '📁', withIcon = false, onS
       <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: 18, width: 'min(380px, 100%)', boxShadow: '0 20px 50px rgba(0,0,0,.25)' }}>
         <b style={{ fontSize: 15 }}>{title}</b>
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          {withIcon && <span style={{ width: 38, height: 38, flex: 'none', display: 'grid', placeItems: 'center', border: '1px solid var(--line)', borderRadius: 8, fontSize: 18 }}>{icon}</span>}
+          {withIcon && icon && <span style={{ width: 38, height: 38, flex: 'none', display: 'grid', placeItems: 'center', border: '1px solid var(--line)', borderRadius: 8, fontSize: 18 }}>{icon}</span>}
           <input autoFocus value={val} maxLength={60} onChange={e => setVal(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose() }}
             placeholder="e.g. Clients / Brands, Internal, Tools & Projects"
@@ -429,8 +429,8 @@ function NameModal({ title, initial, initialIcon = '📁', withIcon = false, onS
         {withIcon && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10 }}>
             {GROUP_ICONS.map(ic => (
-              <button key={ic} onClick={() => setIcon(ic)}
-                style={{ width: 32, height: 32, fontSize: 16, borderRadius: 7, cursor: 'pointer', border: icon === ic ? '2px solid var(--accent)' : '1px solid var(--line)', background: icon === ic ? 'var(--accent-bg)' : 'var(--surface)' }}>{ic}</button>
+              <button key={ic || 'none'} onClick={() => setIcon(ic)} title={ic ? '' : 'No icon'}
+                style={{ width: ic ? 32 : 'auto', padding: ic ? 0 : '0 9px', height: 32, fontSize: ic ? 16 : 12, color: 'var(--ink-soft)', fontFamily: 'inherit', borderRadius: 7, cursor: 'pointer', border: icon === ic ? '2px solid var(--accent)' : '1px solid var(--line)', background: icon === ic ? 'var(--accent-bg)' : 'var(--surface)' }}>{ic || 'No icon'}</button>
             ))}
           </div>
         )}
@@ -965,7 +965,7 @@ export default function Chat() {
   const renderHeader = ({ key, label, icon, count, collapsed, onToggle, right, unread }) => (
     <div key={key} className="chat-side-head">
       <button onClick={onToggle} className="chat-side-head-btn">
-        <span style={{ fontSize: 9, width: 10, flex: 'none', opacity: 0.8 }}>{collapsed ? '▶' : '▼'}</span>
+        <span style={{ fontSize: 12, width: 10, flex: 'none', opacity: 0.8 }}>{collapsed ? '▸' : '▾'}</span>
         {icon && <span style={{ fontSize: 13, width: 18, textAlign: 'center', flex: 'none' }}>{icon}</span>}
         <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}{count != null ? ` (${count})` : ''}</span>
         {unread ? unreadBadge(unread) : null}
@@ -1019,7 +1019,7 @@ export default function Chat() {
       if (!sec) return null
       const idx = sections.findIndex(x => x.id === sec.id)
       body = (<>
-        {menuItem('✏️ Rename / change icon', () => { close(); setNameModal({ title: 'Edit group', initial: sec.name, initialIcon: sec.icon || '📁', withIcon: true, onSave: (n, ic) => updateSection(sec.id, { name: n.trim(), icon: ic || null }) }) })}
+        {menuItem('✏️ Rename / change icon', () => { close(); setNameModal({ title: 'Edit group', initial: sec.name, initialIcon: sec.icon || null, withIcon: true, onSave: (n, ic) => updateSection(sec.id, { name: n.trim(), icon: ic || null }) }) })}
         {idx > 0 && menuItem('↑ Move up', () => { moveSection(sec, -1); close() })}
         {idx < sections.length - 1 && menuItem('↓ Move down', () => { moveSection(sec, 1); close() })}
         <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />
@@ -1063,7 +1063,7 @@ export default function Chat() {
               return (
                 <React.Fragment key={sec.id}>
                   {renderHeader({
-                    key: 'h-' + sec.id, label: sec.name, icon: sec.icon || '📁', collapsed: sec.collapsed,
+                    key: 'h-' + sec.id, label: sec.name, icon: sec.icon || null, collapsed: sec.collapsed,
                     onToggle: () => updateSection(sec.id, { collapsed: !sec.collapsed }),
                     right: <button onClick={(e) => openMenu(e, 'section', sec.id)} title="Group options" aria-label="Group options"
                       className={'chat-side-more' + (menu?.id === sec.id ? ' is-open' : '')}>⋯</button>,
