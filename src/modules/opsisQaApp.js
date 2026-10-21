@@ -1019,6 +1019,7 @@ export function mountOpsisQA(ROOT, cfg) {
     return (SELF ? '' : '<div class="oq-crumb"><button data-hubroster="1">Coaching Hub</button><span aria-hidden="true">/</span><span style="color:var(--ink);font-weight:600">' + esc(name) + '</span></div>') +
       '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><div class="cap">' + esc(sub || '') + '</div><h1 style="margin:4px 0 0;font-size:26px;font-weight:600;letter-spacing:-0.025em">' + esc(SELF && HUB.tab === 'home' ? greet() + ', ' + (CFG.userFirst || '') : name) + '</h1></div>' + (SELF ? '' : tabs) + '</div>';
   }
+  function sayFill(t) { return String(t || '').replace(/\{day1\}/g, 'Thursday at 9').replace(/\{day2\}/g, 'Friday at 1').replace(/\{day\}/g, 'Thursday').replace(/\{window\}/g, '8 and 12').replace(/\{problem\}/g, 'won’t open').replace(/\{when\}/g, 'this morning'); }
   function greet() { var h = +new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/New_York' }); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
   function tile(label, val, sub) { return '<div style="background:#FAF9F6;border:1px solid #EEEBE4;border-radius:12px;padding:10px 12px;min-width:0"><div class="cap">' + label + '</div><div class="num" style="font-weight:700;font-size:19px;margin-top:2px">' + val + '</div><div class="mut" style="font-size:11.5px">' + (sub || '&nbsp;') + '</div></div>'; }
   function playBtn(rid, color, label) {
@@ -1039,12 +1040,12 @@ export function mountOpsisQA(ROOT, cfg) {
     setHub('<div class="oq-crumb"><span style="color:var(--ink);font-weight:600">Coaching Hub</span></div><div id="hubr" style="display:flex;flex-direction:column;gap:4px">' + skel(60, 4) + '</div>');
     var paint = function () {
       var el = $('hubr'); if (!el || tok !== T) return; var R = HUB.roster;
-      if (!R.rows.length) { el.innerHTML = '<div class="oq-card"><b>No CSRs in the Coaching Hub yet</b><p class="sub">CSRs show up here once they have a coaching login. Ask the Opsis CX Support team to add your team.</p></div>'; return; }
+      if (!R.rows.length) { el.innerHTML = '<div class="oq-card"><b>No CSRs in the Coaching Hub yet</b><p class="sub">Add the people who answer your phones.</p>' + (LOCK ? '<button class="sel btnd" data-hubpeople="' + esc(LOCK) + '">Add CSRs</button>' : '') + '</div>'; return; }
       var brands = {}; R.rows.forEach(function (r) { (brands[r.brand_short] = brands[r.brand_short] || []).push(r); });
       var dl = function (v, l) { if (v == null || l == null) return ''; var x = v - l; return x === 0 ? '<span class="mut">even</span>' : '<span style="color:' + (x > 0 ? '#1F5A41' : '#A8441A') + ';font-weight:600">' + (x > 0 ? '▲ ' : '▼ ') + Math.abs(x) + '</span>'; };
-      el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">Coaching Hub</h1><p class="sub">' + esc(R.week_label) + ' · ' + R.rows.length + ' CSRs · open anyone to see exactly what they see, set their focus or send kudos</p></div></div>' +
+      el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">Coaching Hub</h1><p class="sub">' + esc(R.week_label) + ' · ' + R.rows.length + ' CSRs · open anyone to see exactly what they see, set their focus or send kudos</p></div>' + (LOCK ? '<button class="sel" data-hubpeople="' + esc(LOCK) + '">Edit CSR list</button>' : '') + '</div>' +
         Object.keys(brands).sort().map(function (b) {
-          return '<div style="margin-top:16px"><div class="cap" style="margin-bottom:8px">' + esc(b) + '</div><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">' + brands[b].map(function (r) {
+          return '<div style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="cap">' + esc(b) + ' · ' + brands[b].length + '</span>' + (LOCK ? '' : '<button class="more" data-hubpeople="' + esc(brands[b][0].brand) + '">Edit list</button>') + '</div><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">' + brands[b].map(function (r) {
             return '<button class="oq-card click" data-hubcsr="' + r.id + '" style="text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:10px;padding:16px;font:inherit;color:inherit">' +
               '<span style="display:flex;align-items:center;gap:10px;width:100%"><span class="av">' + esc(r.name.split(' ').map(function (p) { return p[0]; }).join('').slice(0, 2)) + '</span><span style="flex:1;min-width:0"><b style="font-weight:600;display:block">' + esc(r.name) + '</b><span class="mut" style="font-size:12px">' + r.n + ' scored calls this week</span></span>' +
               (r.requests ? '<span class="pill" style="background:#EEF2FB;color:#2B3A67">' + r.requests + ' to review</span>' : '') + '</span>' +
@@ -1079,7 +1080,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><span class="cap" style="color:#9DBBAE">' + (SELF ? 'Your focus this week' : first + '’s focus this week') + '</span><span style="font-size:12px;color:#BFD1C8">' + (f.set_by ? 'Set by ' + esc(f.set_by) : 'Picked from last week’s calls') + '</span></div>' +
       '<h2 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.25">' + esc(f.title) + '</h2>' +
       (f.body ? '<p style="margin:0;font-size:14px;line-height:1.6;color:#D6E2DC;max-width:680px;white-space:pre-line">' + esc(f.body) + '</p>' : '') +
-      (f.say ? '<div style="background:#1F3F37;border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.5"><div class="cap" style="color:#9DBBAE;margin-bottom:4px">Try saying</div>“' + esc(f.say) + '”</div>' : '') +
+      (f.say ? '<div style="background:#1F3F37;border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.5"><div class="cap" style="color:#9DBBAE;margin-bottom:4px">Try saying</div>“' + esc(sayFill(f.say)) + '”</div>' : '') +
       (f.of ? '<div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;gap:8px;flex-wrap:wrap"><span>' + esc(f.metric || 'Done') + ' on <b>' + f.done + ' of ' + f.of + '</b> calls this week</span><span style="color:#BFD1C8">Goal: ' + goalN + ' of ' + f.of + '</span></div><div style="height:8px;border-radius:999px;background:#2A4A42;overflow:hidden"><div style="width:' + pct + '%;height:100%;border-radius:999px;background:' + (pct >= (f.goal_pct || 80) ? '#F6CF5C' : '#7CC4A4') + '"></div></div></div>' : '<div style="font-size:13px;color:#BFD1C8">Progress shows up after the first scored calls this week.</div>') +
       '<div class="row" style="gap:10px"><button class="sel" data-hubgood="1" style="background:#fff;border-color:#fff">' + PLAY.replace('#fff', '#14302A') + ' Hear a great example</button><button class="sel" data-hubtab="ask" data-hubq="How do I get better at: ' + esc(f.title) + '?" style="background:transparent;border-color:#4E6E64;color:#fff">Ask how to do this</button></div></section>' : '';
     var delta = sc.delta == null ? '' : sc.delta === 0 ? '<span class="mut" style="font-size:13px">Same as last week</span>' : '<span style="color:' + (sc.delta > 0 ? '#1F5A41' : '#A8441A') + ';font-weight:600;font-size:13px">' + (sc.delta > 0 ? '▲ ' : '▼ ') + Math.abs(sc.delta) + ' vs last week</span>';
@@ -1224,7 +1225,7 @@ export function mountOpsisQA(ROOT, cfg) {
       o.map(function (x, i) { return '<label style="display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:12px;border:1px solid #EEEBE4;background:#FAF9F6;cursor:pointer"><input type="radio" name="hubfo" value="' + i + '" style="margin-top:3px;width:18px;height:18px"><span><b style="font-weight:600">' + esc(x.title) + '</b><span class="mut" style="display:block;font-size:12px;margin-top:2px">' + esc(x.label) + (x.of ? ' · done on ' + x.done + ' of ' + x.of + ' calls (' + x.pct + '%)' : ' · not enough calls yet') + '</span></span></label>'; }).join('') +
       '<label style="display:flex;gap:10px;align-items:center;padding:12px;border-radius:12px;border:1px solid #EEEBE4;background:#FAF9F6;cursor:pointer"><input type="radio" name="hubfo" value="custom" style="width:18px;height:18px"><b style="font-weight:600">Write my own</b></label>' +
       '<div><label class="l" for="hubft">Focus</label><input id="hubft" class="oq-field" maxlength="140" value="' + esc((d.focus && d.focus.title) || '') + '"></div>' +
-      '<div><label class="l" for="hubfs">Line to try saying</label><textarea id="hubfs" class="oq-field" maxlength="400" style="min-height:60px">' + esc((d.focus && d.focus.say) || '') + '</textarea></div>' +
+      '<div><label class="l" for="hubfs">Line to try saying</label><textarea id="hubfs" class="oq-field" maxlength="400" style="min-height:60px">' + esc(sayFill((d.focus && d.focus.say) || '')) + '</textarea></div>' +
       '<div><label class="l" for="hubfb">Why it matters (optional)</label><textarea id="hubfb" class="oq-field" maxlength="600" style="min-height:60px">' + esc((d.focus && !d.focus.auto && d.focus.body) || '') + '</textarea></div>' +
       '<div><label class="l" for="hubfg">Goal: % of calls</label><input id="hubfg" class="oq-field" type="number" min="10" max="100" value="' + ((d.focus && d.focus.goal_pct) || 80) + '" style="max-width:120px"></div>', 'Save focus');
     HUB.modal.opts = o;
@@ -1242,11 +1243,34 @@ export function mountOpsisQA(ROOT, cfg) {
     HUB.modal = { kind: kind, review: C0.review };
     hubModal(kind === 'review' ? 'Ask my manager to review it' : 'Flag for my supervisor', '<div><label class="l" for="hubrw">' + (kind === 'review' ? 'Which call, and what do you think was scored wrong?' : 'What should the playbook cover?') + '</label><textarea id="hubrw" class="oq-field" maxlength="1000" style="min-height:90px">' + esc(C0.msgs.filter(function (m) { return m.role === 'user'; }).slice(-1).map(function (m) { return m.content; })[0] || '') + '</textarea></div>', 'Send');
   }
+  function peopleModal(brand) {
+    HUB.modal = { kind: 'people', brand: brand };
+    hubModal('CSRs at ' + short(brand), '<p class="sub" style="margin:0">Everyone listed gets a Coaching Hub. Remove anyone who doesn’t take customer calls (techs, sales, managers). Add people from the phone system below.</p><div id="hubpl">' + skel(40, 4) + '</div>', 'Done');
+    paintPeople();
+  }
+  function paintPeople() {
+    var M = HUB.modal; if (!M || M.kind !== 'people') return; var el = $('hubpl'); if (!el) return;
+    var cur = ((HUB.roster && HUB.roster.rows) || []).filter(function (r) { return r.brand === M.brand; });
+    var row = function (l, r) { return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line2)">' + l + r + '</div>'; };
+    var h = '<div class="cap" style="margin:6px 0 4px">In the Coaching Hub (' + cur.length + ')</div>' + (cur.length ? cur.map(function (r) { return row('<span><b style="font-weight:600">' + esc(r.name) + '</b>' + (r.has_login ? ' <span class="pill" style="background:#E6F0EA;color:#1F5A41">Has login</span>' : '') + '</span>', '<button class="more" data-hubprem="' + r.id + '">Remove</button>'); }).join('') : '<p class="mut" style="font-size:13px">Nobody yet.</p>');
+    h += '<div class="cap" style="margin:14px 0 4px">Others who took calls (last 45 days)</div>';
+    if (!M.cands) h += skel(30, 3);
+    else if (!M.cands.length) h += '<p class="mut" style="font-size:13px">No one else took enough calls to add.</p>';
+    else h += M.cands.map(function (c) { return row('<span>' + esc(c.name) + ' <span class="mut" style="font-size:12px">· ' + c.calls + ' calls' + (c.removed ? ' · removed earlier' : '') + '</span></span>', '<button class="more" data-hubpadd="' + esc(c.ls_user_id) + '">Add</button>'); }).join('');
+    el.innerHTML = h;
+    if (!M.cands && !M.loading) { M.loading = true; api({ action: 'hubpeople', brand: M.brand }).then(function (r) { M.cands = r.candidates || []; M.loading = false; paintPeople(); }).catch(function (e) { M.cands = []; M.loading = false; toast(e.message || 'Couldn’t load people'); paintPeople(); }); }
+  }
+  function peopleChange(body, btn) {
+    btn.disabled = true; var M = HUB.modal;
+    api(Object.assign({ action: 'hubpeople', brand: M.brand }, body)).then(function () { return api({ action: 'hubroster' }); }).then(function (r) { HUB.roster = r; M.cands = null; paintPeople(); toast(body.op === 'add' ? 'Added to the Coaching Hub' : 'Removed from the Coaching Hub'); })
+      .catch(function (e) { btn.disabled = false; toast(e.message || 'Couldn’t update the list'); });
+  }
   function modalOk(btn) {
     var M = HUB.modal; if (!M) return; var close = function () { var m = $('hubm'); if (m) m.remove(); HUB.modal = null; };
     var done = function (msg, reload) { close(); toast(msg); if (reload) { delete HUB.wins[hubCsrId()]; render(); } };
     var fail = function (e) { btn.disabled = false; toast((e && e.message) || 'Couldn’t save that.'); };
     btn.disabled = true;
+    if (M.kind === 'people') { close(); if (S.view === 'hub' && !S.hubCsr) render(); return; }
     if (M.kind === 'kudos') {
       var body = ($('hubkb') || {}).value || '', rv = M.review || (($('hubkrev') || {}).value || null);
       if (!M.tag && !body.trim()) { btn.disabled = false; toast('Pick a quick note or write one'); return; }
@@ -1275,13 +1299,16 @@ export function mountOpsisQA(ROOT, cfg) {
     if (t.closest('[data-go="hub"]') && !SELF) { S.hubCsr = null; }
     if ($('hubm')) {
       var kt = t.closest('[data-hubktag]'); if (kt) { HUB.modal.tag = HUB.modal.tag === kt.getAttribute('data-hubktag') ? null : kt.getAttribute('data-hubktag'); document.querySelectorAll('[data-hubktag]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-hubktag') === HUB.modal.tag); }); return; }
-      var fo = t.closest('input[name="hubfo"]'); if (fo && fo.value !== 'custom') { var o = HUB.modal.opts[+fo.value]; $('hubft').value = o.title; $('hubfs').value = o.say; return; }
+      var pa = t.closest('[data-hubpadd]'); if (pa) { peopleChange({ op: 'add', ls_user_id: pa.getAttribute('data-hubpadd') }, pa); return; }
+      var pr = t.closest('[data-hubprem]'); if (pr) { peopleChange({ op: 'remove', id: pr.getAttribute('data-hubprem') }, pr); return; }
+      var fo = t.closest('input[name="hubfo"]'); if (fo && fo.value !== 'custom') { var o = HUB.modal.opts[+fo.value]; $('hubft').value = o.title; $('hubfs').value = sayFill(o.say); return; }
       if (t.closest('[data-hubmok]')) { modalOk(t.closest('[data-hubmok]')); return; }
       if (t.closest('[data-hubmclose]') || t.id === 'hubm') { $('hubm').remove(); HUB.modal = null; return; }
       return;
     }
     if ((x = t.closest('[data-hubcsr]'))) { S.hubCsr = x.getAttribute('data-hubcsr'); HUB.tab = 'home'; go('hub'); return; }
     if (t.closest('[data-hubroster]')) { S.hubCsr = null; go('hub'); return; }
+    if ((x = t.closest('[data-hubpeople]'))) { peopleModal(x.getAttribute('data-hubpeople')); return; }
     if ((x = t.closest('[data-hubtab]'))) {
       var C1 = chatState();
       if (x.hasAttribute('data-hubrev')) { if (C1.review !== x.getAttribute('data-hubrev')) C1.msgs = []; C1.review = x.getAttribute('data-hubrev'); C1.mode = 'score'; }
