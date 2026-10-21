@@ -126,7 +126,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<span style="display:flex;gap:14px;flex-wrap:wrap">' + (CFG.onClassic ? '<button data-act="classic">Classic view</button>' : '') + (CFG.onSignOut ? '<button data-act="signout">Sign out</button>' : '') + '</span>';
   }
   function renderNav() {
-    var cur = S.view === 'brand' ? 'brands' : (S.view === 'csr' ? 'csrs' : (S.view === 'repeat' ? 'insights' : S.view));
+    var cur = S.view === 'brand' ? 'brands' : (S.view === 'csr' ? 'csrs' : (S.view === 'repeat' ? 'insights' : (S.view === 'hubqs' ? 'hub' : S.view)));
     $('nav').innerHTML = NAV.map(function (sec) {
       return (sec[0] ? '<div class="navsec">' + sec[0] + '</div>' : '') + sec[1].map(function (n) {
         return '<button class="' + (cur === n[0] ? 'on' : '') + '" data-go="' + n[0] + '"' + (cur === n[0] ? ' aria-current="page"' : '') + '><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + iconPath(n[0]) + '"/></svg>' + n[1] + '</button>';
@@ -1043,7 +1043,7 @@ export function mountOpsisQA(ROOT, cfg) {
       if (!R.rows.length) { el.innerHTML = '<div class="oq-card"><b>No CSRs in the Coaching Hub yet</b><p class="sub">Add the people who answer your phones.</p>' + (LOCK ? '<button class="sel btnd" data-hubpeople="' + esc(LOCK) + '">Add CSRs</button>' : '') + '</div>'; return; }
       var brands = {}; R.rows.forEach(function (r) { (brands[r.brand_short] = brands[r.brand_short] || []).push(r); });
       var dl = function (v, l) { if (v == null || l == null) return ''; var x = v - l; return x === 0 ? '<span class="mut">even</span>' : '<span style="color:' + (x > 0 ? '#1F5A41' : '#A8441A') + ';font-weight:600">' + (x > 0 ? '▲ ' : '▼ ') + Math.abs(x) + '</span>'; };
-      el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">Coaching Hub</h1><p class="sub">' + esc(R.week_label) + ' · ' + R.rows.length + ' CSRs · open anyone to see exactly what they see, set their focus or send kudos</p></div>' + (LOCK ? '<button class="sel" data-hubpeople="' + esc(LOCK) + '">Edit CSR list</button>' : '') + '</div>' +
+      el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">Coaching Hub</h1><p class="sub">' + esc(R.week_label) + ' · ' + R.rows.length + ' CSRs · open anyone to see exactly what they see, set their focus or send kudos</p></div>' + '<div class="row" style="gap:8px"><button class="sel btnd" data-go="hubqs">What CSRs are asking</button>' + (LOCK ? '<button class="sel" data-hubpeople="' + esc(LOCK) + '">Edit CSR list</button>' : '') + '</div></div>' +
         Object.keys(brands).sort().map(function (b) {
           return '<div style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="cap">' + esc(b) + ' · ' + brands[b].length + '</span>' + (LOCK ? '' : '<button class="more" data-hubpeople="' + esc(brands[b][0].brand) + '">Edit list</button>') + '</div><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">' + brands[b].map(function (r) {
             return '<button class="oq-card click" data-hubcsr="' + r.id + '" style="text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:10px;padding:16px;font:inherit;color:inherit">' +
@@ -1119,6 +1119,8 @@ export function mountOpsisQA(ROOT, cfg) {
       '<section class="oq-card" aria-label="Kudos" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C2551F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg><h2 class="ttl" style="font-size:16px">' + (SELF ? 'Kudos for you' : 'Kudos') + '</h2>' + ((d.kudos || []).filter(function (k) { return k.isNew; }).length ? '<span class="pill" style="margin-left:auto;background:#FCEBDD;color:#8A3D0C">' + d.kudos.filter(function (k) { return k.isNew; }).length + ' new</span>' : '') + '</div>' +
       ((d.kudos || []).length ? d.kudos.slice(0, 3).map(function (k) { return '<div style="background:#FAF9F6;border:1px solid #EEEBE4;border-radius:12px;padding:12px 14px">' + (k.tag ? '<span class="pill" style="background:#FCEBDD;color:#8A3D0C;margin-bottom:6px">' + esc(k.tag) + '</span>' : '') + (k.body ? '<div style="font-size:13.5px;line-height:1.5">“' + esc(k.body) + '”</div>' : '') + '<div class="mut" style="font-size:12px;margin-top:6px">' + esc(k.from || '') + ' · ' + fwhen(k.at) + '</div></div>'; }).join('')
         : '<p class="mut" style="font-size:13px;margin:0">' + (SELF ? 'When your manager spots a great call, their kudos show up here.' : 'No kudos yet. ') + '</p>' + (mg ? '<button class="sel" data-hubact="kudos" style="align-self:flex-start">♥ Send ' + esc(first) + ' kudos</button>' : '')) + '</section></div>';
+    if (mg && (d.questions || []).length) h += '<section class="oq-card" aria-label="Questions" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h2 class="ttl" style="font-size:16px">What ' + esc(first) + ' asked the coach</h2><button class="more" data-hubqcsr="' + d.csr.id + '">See all →</button></div>' +
+      d.questions.map(function (q) { return '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line2)"><span class="pill" style="background:' + (q.mode === 'brand' ? '#EEF2FB;color:#2B3A67' : '#F3F1EC;color:#3B4541') + ';flex-shrink:0">' + esc(q.topic || 'Other') + '</span><span style="flex:1;font-size:13.5px;line-height:1.45">' + esc(q.question) + (q.by_manager ? ' <span class="mut" style="font-size:12px">(asked by a manager)</span>' : '') + '</span><span class="mut" style="font-size:12px;white-space:nowrap">' + fwhen(q.at) + '</span></div>'; }).join('') + '</section>';
     // badges + most improved
     var B = d.badges || {}, nx = B.next;
     h += '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px">' +
@@ -1160,6 +1162,57 @@ export function mountOpsisQA(ROOT, cfg) {
     };
     if (cached) paint(cached);
     api(Object.assign({ action: 'hubwins' }, hubBody())).then(function (d) { HUB.wins[id] = d; paint(d); }).catch(function (e) { var el = $('hubw'); if (el && !cached) el.innerHTML = errBox(e); });
+  }
+
+  // ----- What CSRs are asking (managers) -----
+  var HQ = { days: 30, brand: LOCK || '', topic: null, csr: null, data: null, themes: {}, key: '' };
+  var TOPIC_COL = { 'Pricing & fees': ['#FFF1E6', '#8A3D0C'], 'Card & payment': ['#E8F3EC', '#1F5A41'], 'Warranty': ['#EEF2FB', '#2B3A67'], 'Scheduling': ['#F1ECFB', '#52308F'], 'Objections': ['#FDECEC', '#A61B1B'], 'Commercial': ['#EAF4F6', '#1E5F6B'], 'Products & repairs': ['#F6F1E3', '#6B5410'], 'My score': ['#F3F1EC', '#3B4541'], 'Other': ['#F3F1EC', '#56605B'] };
+  function tpill(t) { var c = TOPIC_COL[t] || TOPIC_COL.Other; return '<span class="pill" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(t) + '</span>'; }
+  function vHubQs(tok) {
+    if (SELF) { S.view = 'hub'; return vHub(tok); }
+    var key = [HQ.days, HQ.brand, HQ.csr || ''].join('|');
+    setHub('<div class="oq-crumb"><button data-hubroster="1">Coaching Hub</button><span aria-hidden="true">/</span><span style="color:var(--ink);font-weight:600">What CSRs are asking</span></div><div id="hubqs" style="display:flex;flex-direction:column;gap:16px">' + (HQ.data && HQ.key === key ? '' : skel(50) + skel(200)) + '</div>');
+    if (HQ.data && HQ.key === key) paintQs(tok);
+    var brands = HUB.roster ? Promise.resolve(HUB.roster) : api({ action: 'hubroster' }).then(function (r) { HUB.roster = r; return r; });
+    Promise.all([api({ action: 'hubquestions', days: HQ.days, brand: HQ.brand || null, csr: HQ.csr }), brands.catch(function () { return null; })])
+      .then(function (r) { if (tok !== T) return; HQ.data = r[0]; HQ.key = key; paintQs(tok); })
+      .catch(function (e) { var el = $('hubqs'); if (el && tok === T) el.innerHTML = errBox(e); });
+  }
+  function paintQs(tok) {
+    var el = $('hubqs'), D = HQ.data; if (!el || !D) return;
+    var bl = {}; ((HUB.roster && HUB.roster.rows) || []).forEach(function (r) { bl[r.brand] = r.brand_short; });
+    var csrName = HQ.csr ? ((D.csrs || []).filter(function (c) { return c.id === HQ.csr; })[0] || {}).name || 'this CSR' : null;
+    var rows = (D.rows || []).filter(function (r) { return !HQ.topic || r.topic === HQ.topic; });
+    var h = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">What CSRs are asking</h1><p class="sub">Every question asked in Ask my coach' + (csrName ? ' by <b>' + esc(csrName) + '</b> <button class="more" data-hubqclear="1">· show everyone</button>' : '') + '. Use it to spot where people are stuck and what the playbook is missing.</p></div>' +
+      '<div class="row" style="gap:8px;align-items:center">' + (LOCK ? '' : '<label class="sr" for="hubqb">Brand</label><select id="hubqb" class="oq-field" data-hubqbrand="1" style="min-width:170px"><option value="">All brands</option>' + Object.keys(bl).sort().map(function (b) { return '<option value="' + esc(b) + '"' + (HQ.brand === b ? ' selected' : '') + '>' + esc(bl[b]) + '</option>'; }).join('') + '</select>') +
+      '<div class="seg" role="group" aria-label="Period" style="display:flex">' + [7, 30, 90].map(function (n) { return '<button class="' + (HQ.days === n ? 'on' : '') + '" data-hubqdays="' + n + '" style="padding:0 12px;white-space:nowrap">' + n + ' days</button>'; }).join('') + '</div></div></div>';
+    if (!D.total && !(D.flags || []).length) { el.innerHTML = h + '<div class="oq-card"><b>No questions yet</b><p class="sub">Once CSRs start using Ask my coach, their questions show up here with the topics they struggle with most.</p></div>'; return; }
+    var maxT = Math.max.apply(null, (D.topics || []).map(function (t) { return t.n; }).concat([1]));
+    h += '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">' +
+      '<section class="oq-card" aria-label="Where CSRs are struggling" style="grid-column:span 2;display:flex;flex-direction:column;gap:8px"><div style="display:flex;align-items:center;gap:8px">' + SPARK + '<h2 class="ttl" style="font-size:16px">Where CSRs are struggling</h2><span class="mut" style="font-size:12px;margin-left:auto">' + D.total + ' questions' + (D.from_csrs < D.total ? ' · ' + D.from_csrs + ' from CSRs' : '') + '</span></div><div id="hubqthemes" class="md" style="font-size:13.5px;line-height:1.6">' + themesInner() + '</div></section>' +
+      '<section class="oq-card" aria-label="Topics" style="display:flex;flex-direction:column;gap:8px"><h2 class="ttl" style="font-size:16px">Topics</h2>' + (D.topics || []).map(function (t) { var c = TOPIC_COL[t.k] || TOPIC_COL.Other, on = HQ.topic === t.k; return '<button data-hubqtopic="' + esc(t.k) + '" style="all:unset;cursor:pointer;display:block;padding:6px 8px;border-radius:10px;' + (on ? 'background:#F3F8F5;outline:1.5px solid #2F7D5B' : '') + '"><span style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>' + esc(t.k) + '</span><b class="num">' + t.n + '</b></span><span class="track" style="display:block;height:6px"><span style="display:block;height:100%;border-radius:99px;width:' + Math.round(100 * t.n / maxT) + '%;background:' + c[1] + '"></span></span></button>'; }).join('') + '</section></div>';
+    if ((D.flags || []).length) h += '<section class="oq-card" aria-label="Playbook gaps" style="display:flex;flex-direction:column;gap:10px"><div><h2 class="ttl" style="font-size:16px">Playbook gaps CSRs flagged</h2><p class="sub">Questions the coach couldn’t answer from your playbook. ' + (IS_ADMIN ? 'Add the answer once and every CSR gets it.' : 'Your account admin can add these to the knowledge base.') + '</p></div>' +
+      D.flags.map(function (f) { return '<div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;padding:10px 12px;border-radius:12px;background:#FFF8F1;border:1px solid #F6DCC4"><div style="flex:1;min-width:220px"><div style="font-size:13.5px;line-height:1.5">“' + esc(f.why) + '”</div><div class="mut" style="font-size:12px;margin-top:4px">' + esc(f.csr || 'A CSR') + ' · ' + esc(f.brand_short || '') + ' · ' + fwhen(f.at) + '</div></div><div class="row" style="gap:8px">' + (IS_ADMIN ? '<button class="sel btnd" data-hubqkb="' + f.id + '">Add to knowledge base</button>' : '') + '<button class="sel" data-hubqdismiss="' + f.id + '">Dismiss</button></div></div>'; }).join('') + '</section>';
+    h += '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px"><section class="oq-card" aria-label="Questions" style="grid-column:span 2;display:flex;flex-direction:column;gap:4px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px"><h2 class="ttl" style="font-size:16px">Questions' + (HQ.topic ? ' about ' + esc(HQ.topic) : '') + '</h2>' + (HQ.topic ? '<button class="more" data-hubqtopic="' + esc(HQ.topic) + '">Clear topic</button>' : '') + '</div>' +
+      (rows.length ? rows.map(function (r) { return '<details style="border-top:1px solid var(--line2);padding:10px 0"><summary style="cursor:pointer;list-style:none;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap"><span style="flex:1;min-width:220px;font-size:13.5px;line-height:1.5"><b style="font-weight:600">' + esc(r.question) + '</b><span class="mut" style="display:block;font-size:12px;margin-top:2px">' + esc(r.csr) + ' · ' + esc(r.brand_short) + ' · ' + fwhen(r.at) + ' · ' + (r.mode === 'brand' ? 'How we do it' : 'My scores') + (r.by_manager ? ' · asked by a manager' : '') + '</span></span>' + tpill(r.topic) + '</summary>' +
+        '<div class="md" style="margin-top:8px;background:#F7F6F2;border:1px solid #EEEBE4;border-radius:12px;padding:10px 14px;font-size:13px;line-height:1.55">' + md(r.answer || '') + '</div><div class="row" style="gap:12px;margin-top:6px"><button class="more" data-hubcsr="' + r.csr_id + '">Open ' + esc(r.csr.split(' ')[0]) + '’s hub</button>' + (r.review_id ? '<button class="more" data-call="' + r.review_id + '">Open the call</button>' : '') + '</div></details>'; }).join('') : '<p class="mut" style="font-size:13px">No questions match.</p>') + '</section>' +
+      '<section class="oq-card" aria-label="Who is asking" style="display:flex;flex-direction:column;gap:6px"><h2 class="ttl" style="font-size:16px">Who’s asking</h2><p class="sub" style="margin:0 0 4px">Asking is good. A CSR with lots of questions is engaged, or may need a coaching session.</p>' + (D.csrs || []).map(function (c) { return '<button data-hubqcsr="' + c.id + '" style="all:unset;cursor:pointer;display:flex;justify-content:space-between;padding:8px 10px;border-radius:10px;' + (HQ.csr === c.id ? 'background:#F3F8F5' : '') + '"><span>' + esc(c.name) + '</span><b class="num">' + c.n + '</b></button>'; }).join('') + '</section></div>';
+    el.innerHTML = h;
+    loadThemes(tok);
+  }
+  function themesInner() { var k = HQ.key, t = HQ.themes[k]; if (!t || t.busy) return '<div style="display:flex;gap:8px;align-items:center"><span class="dots"><span></span><span></span><span></span></span><span class="mut" style="font-size:12.5px">Reading the questions…</span></div>'; if (t.err) return '<span class="mut">' + esc(t.err) + '</span>'; return md(t.answer || ''); }
+  function loadThemes(tok) {
+    var k = HQ.key; if (HQ.themes[k] || !HQ.data || !HQ.data.total) { if (HQ.data && !HQ.data.total) { var e0 = $('hubqthemes'); if (e0) e0.innerHTML = '<span class="mut">No questions in this period yet.</span>'; } return; }
+    HQ.themes[k] = { busy: true };
+    api({ action: 'hubquestions', op: 'themes', days: HQ.days, brand: HQ.brand || null, csr: HQ.csr }).then(function (r) { HQ.themes[k] = { answer: r.answer }; }).catch(function (e) { HQ.themes[k] = { err: e.message || 'Couldn’t summarize right now.' }; })
+      .then(function () { var el = $('hubqthemes'); if (el && HQ.key === k) el.innerHTML = themesInner(); });
+  }
+  function kbModal(flag) {
+    HUB.modal = { kind: 'kbadd', flag: flag.id };
+    hubModal('Add to the knowledge base', '<p class="sub" style="margin:0">' + esc(flag.csr || 'A CSR') + ' asked: “' + esc(flag.why) + '”. Write the answer the way you’d explain it to a new CSR. The coach uses it right away, and so does call scoring.</p>' +
+      '<div><label class="l" for="hubkt">Title</label><input id="hubkt" class="oq-field" maxlength="200" value="' + esc(String(flag.why).slice(0, 80)) + '"></div>' +
+      '<div><label class="l" for="hubkc">Category</label><select id="hubkc" class="oq-field">' + ['Pricing', 'Policy', 'Coverage', 'Troubleshooting', 'Scheduling', 'Other'].map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select></div>' +
+      '<div><label class="l" for="hubkbody">Answer</label><textarea id="hubkbody" class="oq-field" maxlength="8000" style="min-height:140px" placeholder="e.g. Warranty calls within 1 year of install have no trip charge…"></textarea></div>', 'Add to knowledge base');
   }
 
   // ----- Ask my coach -----
@@ -1271,6 +1324,12 @@ export function mountOpsisQA(ROOT, cfg) {
     var fail = function (e) { btn.disabled = false; toast((e && e.message) || 'Couldn’t save that.'); };
     btn.disabled = true;
     if (M.kind === 'people') { close(); if (S.view === 'hub' && !S.hubCsr) render(); return; }
+    if (M.kind === 'kbadd') {
+      var kt = ($('hubkt').value || '').trim(), kb = ($('hubkbody').value || '').trim(); if (!kt || !kb) { btn.disabled = false; toast('Add a title and the answer'); return; }
+      api({ action: 'kb', op: 'add', title: kt, category: $('hubkc').value, body: kb }).then(function () { return api({ action: 'hubquestions', op: 'flagdone', req: M.flag, added: true }); })
+        .then(function () { HQ.data = null; done('Added to the knowledge base. The coach uses it from now on.'); if (S.view === 'hubqs') render(); }).catch(fail);
+      return;
+    }
     if (M.kind === 'kudos') {
       var body = ($('hubkb') || {}).value || '', rv = M.review || (($('hubkrev') || {}).value || null);
       if (!M.tag && !body.trim()) { btn.disabled = false; toast('Pick a quick note or write one'); return; }
@@ -1309,6 +1368,12 @@ export function mountOpsisQA(ROOT, cfg) {
     if ((x = t.closest('[data-hubcsr]'))) { S.hubCsr = x.getAttribute('data-hubcsr'); HUB.tab = 'home'; go('hub'); return; }
     if (t.closest('[data-hubroster]')) { S.hubCsr = null; go('hub'); return; }
     if ((x = t.closest('[data-hubpeople]'))) { peopleModal(x.getAttribute('data-hubpeople')); return; }
+    if ((x = t.closest('[data-hubqdays]'))) { HQ.days = +x.getAttribute('data-hubqdays'); render(); return; }
+    if ((x = t.closest('[data-hubqtopic]'))) { var tk = x.getAttribute('data-hubqtopic'); HQ.topic = HQ.topic === tk ? null : tk; paintQs(T); return; }
+    if ((x = t.closest('[data-hubqcsr]'))) { HQ.csr = HQ.csr === x.getAttribute('data-hubqcsr') ? null : x.getAttribute('data-hubqcsr'); HQ.topic = null; if (S.view === 'hubqs') render(); else go('hubqs'); return; }
+    if (t.closest('[data-hubqclear]')) { HQ.csr = null; render(); return; }
+    if ((x = t.closest('[data-hubqkb]'))) { var fid = +x.getAttribute('data-hubqkb'), fg = ((HQ.data && HQ.data.flags) || []).filter(function (f) { return f.id === fid; })[0]; if (fg) kbModal(fg); return; }
+    if ((x = t.closest('[data-hubqdismiss]'))) { x.disabled = true; api({ action: 'hubquestions', op: 'flagdone', req: +x.getAttribute('data-hubqdismiss') }).then(function () { HQ.data = null; toast('Dismissed'); render(); }).catch(function (e6) { x.disabled = false; toast(e6.message || 'Couldn’t update.'); }); return; }
     if ((x = t.closest('[data-hubtab]'))) {
       var C1 = chatState();
       if (x.hasAttribute('data-hubrev')) { if (C1.review !== x.getAttribute('data-hubrev')) C1.msgs = []; C1.review = x.getAttribute('data-hubrev'); C1.mode = 'score'; }
@@ -1936,7 +2001,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function render() {
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, hub: vHub, hubask: vHub, hubwins: vHub }[S.view] || vOverview;
+    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
     var cq = $('csrq'); if (cq) cq.addEventListener('input', function () { S.csrQ = cq.value; S.csrFocus = true; clearTimeout(cq.t); cq.t = setTimeout(render, 250); });
@@ -2138,6 +2203,7 @@ export function mountOpsisQA(ROOT, cfg) {
     else if (t.hasAttribute && t.hasAttribute('data-invfile')) { invUpload(t.files && t.files[0]); t.value = ''; }
     else if (t.hasAttribute && t.hasAttribute('data-rpteam')) { RP.team = t.value; }
     else if (t.hasAttribute && t.hasAttribute('data-rpcsr')) { RP.csr = t.value; }
+    else if (t.hasAttribute && t.hasAttribute('data-hubqbrand')) { HQ.brand = t.value; HQ.csr = null; HQ.topic = null; render(); }
     else if (t.hasAttribute && t.hasAttribute('data-trow') && TM.list) {
       var u = TM.list[+t.getAttribute('data-trow')], rs = $('tr-' + u.id), bs = $('tb-' + u.id);
       var role = rs ? rs.value : u.role, brand = role === 'admin' ? null : (bs ? (bs.value || null) : (u.brand || null));
