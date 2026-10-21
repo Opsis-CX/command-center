@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+mport { useState, useEffect } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useUnread } from '../lib/unread'
@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase'
 import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
 import { canAny } from '../lib/permissions'
 import { useRsnAccess } from '../lib/rsnAccess'
+import { useFinanceAccess } from '../lib/financeAccess'
 import ChangePassword from './ChangePassword'
 // Sidebar navigation, organized into labelled GROUPS.
 //
@@ -67,6 +68,7 @@ const NAV_MAIN = [
           { to: '/dialer', label: 'Dialer', perm: '__dialer' },
           { to: '/phone', label: 'Phone', perm: '__caller' },
           { to: '/campaigns', label: 'Campaigns', perm: '__caller' },
+          { to: '/inbound', label: 'Inbound', perm: '__caller' },
         ],
       },
       { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },
@@ -85,7 +87,6 @@ const NAV_MAIN = [
         children: [
           { to: '/reporting', label: 'Reporting hub', perm: 'reporting' },
           { to: '/reporting/hourly', label: 'Hourly', perm: 'reporting' },
-          { to: '/reporting/calls', label: 'Call reports', perm: '__caller' },
         ],
       },
       {
@@ -103,6 +104,8 @@ const NAV_MAIN = [
       { type: 'link', to: '/rsn', label: 'RSN Pipeline', ic: '🔗', perm: '__rsn' },
       { type: 'link', to: '/quality', label: 'Quality', ic: '✅', perm: 'quality_audit.call_reviews' },
       { type: 'link', to: '/meetings', label: 'Meetings', ic: '🎙️', perm: 'meetings' },
+      { type: 'link', to: '/finance', label: 'Finance', ic: '💰', perm: '__finance' },                    // Admins and Owners only (enforced by the database)
+      { type: 'link', to: '/submit-purchase', label: 'Submit a purchase', ic: '🧾', perm: '__finance_submit' }, // roles owners choose, plus Admins and Owners
       {
         type: 'section', key: 'backend', label: 'Backend', ic: '⚙',
         children: [
@@ -111,6 +114,7 @@ const NAV_MAIN = [
           { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
           { to: '/sms-consents', label: 'SMS Consent', perm: '__admin' },   // agent text opt-in report (admins only)
           { to: '/roles', label: 'Roles & permissions', perm: '__admin' }, // admins/owners only
+          { to: '/service-account', label: 'Service account', perm: '__admin' }, // the account automated posts use (Turri)
           { to: '/survey', label: 'New Hire Survey', perm: '__admin' },   // results view; agents reach the form from their notification
         ],
       },
@@ -140,11 +144,13 @@ function formatRole(raw) {
 }
 export default function Sidebar({ open, onNavigate }) {
   const { isAdmin, level, roles, user, signOut, appRole } = useAuth()
-    const navigate = useNavigate()
+  const navigate = useNavigate()
   const { total: unreadTotal } = useUnread()
   const location = useLocation()
   // RSN pipeline is gated by a DB check (not the role matrix); null = still loading → hidden.
   const rsnOk = useRsnAccess()
+  // Finance links are gated by the database too: '__finance' = Admins/Owners, '__finance_submit' = roles allowed to submit purchases.
+  const fin = useFinanceAccess()
   const isOwner = level >= 100 || (roles || []).includes('owner')
   // One place that answers "can this person see an item with this perm key?"
   //   '__rsn'    → DB-gated RSN access
@@ -162,6 +168,8 @@ export default function Sidebar({ open, onNavigate }) {
   }, [user?.id])
   const permOk = (p) =>
     p === '__rsn' ? rsnOk === true
+    : p === '__finance' ? fin?.manager === true
+    : p === '__finance_submit' ? fin?.submitter === true
     : p === '__admin' ? (isAdmin || isOwner)
     : p === '__caller' ? !NO_CALL_ROLES.includes(appRole)
     : p === '__dialer' ? (!NO_CALL_ROLES.includes(appRole) || onCampaign)
@@ -297,18 +305,13 @@ export default function Sidebar({ open, onNavigate }) {
           <span className="nav-caret" style={{ marginLeft: 'auto', transition: 'transform .15s ease', transform: settingsOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
         </button>
         {settingsOpen && (
-                  <NavLink to="/profile" onClick={() => onNavigate && onNavigate()}
-              className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
-              style={{ paddingLeft: 34 }}>
-              My profile
-            </NavLink>
           <div className="nav-section-body">
-            <NavLink to="/settings" onClick={() => onNavigate && onNavigate()}
-                          <NavLink to="/profile" onClick={() => onNavigate && onNavigate()}
+            <NavLink to="/profile" onClick={() => onNavigate && onNavigate()}
               className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
               style={{ paddingLeft: 34 }}>
               My profile
             </NavLink>
+            <NavLink to="/settings" onClick={() => onNavigate && onNavigate()}
               className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
               style={{ paddingLeft: 34 }}>
               Timezone
