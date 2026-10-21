@@ -399,7 +399,37 @@ function snippetAround(text, term) {
   return (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : '')
 }
 
-function ChatSearchBar({ channels, profiles, dmNames, onJump }) {
+// Hidden from my sidebar? Channels stay hidden until unhidden; DMs come back as
+// soon as there's a message newer than when I hid (or deleted) them.
+function hiddenBy(prefMap, c) {
+  const h = prefMap[c.id]?.hidden_at
+  if (!h) return false
+  if (c.is_dm && c.last_message_at && new Date(c.last_message_at) > new Date(h)) return false
+  return true
+}
+
+function NameModal({ title, initial, onSave, onClose }) {
+  const [val, setVal] = useState(initial || '')
+  const ok = val.trim().length > 0 && val.trim().length <= 60
+  const submit = () => { if (!ok) return; onSave(val); onClose() }
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 70, display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: 18, width: 'min(360px, 100%)', boxShadow: '0 20px 50px rgba(0,0,0,.25)' }}>
+        <b style={{ fontSize: 15 }}>{title}</b>
+        <input autoFocus value={val} maxLength={60} onChange={e => setVal(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose() }}
+          placeholder="e.g. GarageCo, Leadership, Projects"
+          style={{ width: '100%', boxSizing: 'border-box', marginTop: 12, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 14 }} />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn" disabled={!ok} onClick={submit}>Save</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ChatSearchBar({ channels, profiles, dmNames, prefs = {}, onJump }) {
   const [raw, setRaw] = useState('')
   const [open, setOpen] = useState(false)
   const [results, setResults] = useState([])
@@ -470,7 +500,9 @@ function ChatSearchBar({ channels, profiles, dmNames, onJump }) {
     setLoading(false)
     if (error) { setHint(error.message); setResults([]); return }
     setHint(hintMsg)
-    setResults((data || []).map(m => ({ ...m, _term: text })))
+    setResults((data || [])
+      .filter(m => { const cl = prefs[m.channel_id]?.cleared_at; return !cl || new Date(m.created_at) > new Date(cl) })
+      .map(m => ({ ...m, _term: text })))
   }
 
   function channelLabel(channelId) {
@@ -540,6 +572,18 @@ export default function Chat() {
   const [dmPeers, setDmPeers] = useState({}) // channelId -> the other person's profile_id (1:1 DMs only)
   const [mobileView, setMobileView] = useState('list') // 'list' | 'convo' (mobile only)
 
+  // ---- Sidebar organization — per person (favorites, pins, groups, hide, delete DM) ----
+  // Stored in channel_prefs (own-row RLS) + chat_sections. Nothing here changes
+  // anyone else's sidebar.
+  const [prefs, setPrefs] = useState({})          // channelId -> my channel_prefs row
+  const [sections, setSections] = useState([])    // my custom groups, ordered
+  const [menu, setMenu] = useState(null)          // { kind:'item'|'section', id, x, y, view }
+  const [showHidden, setShowHidden] = useState(false)
+  const [nameModal, setNameModal] = useState(null) // { title, initial, onSave }
+  const [builtinCollapsed, setBuiltinCollapsed] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('chat.sidebarCollapsed') || '{}') } catch { return {} }
+  })
+
   // Read activeId inside load() without making load() depend on it (stale-closure fix).
   const activeIdRef = useRef(activeId)
   useEffect(() => { activeIdRef.current = activeId }, [activeId])
@@ -565,10 +609,23 @@ export default function Chat() {
       setChannels(chRes.data || [])
       setProfiles(profRes.data || [])
 
+      const [prefRes, secRes] = await Promise.all([
+        myChannelIds.length
+          ? supabase.from('channel_prefs').select('channel_id, favorite, pinned_at, section_id, hidden_at, cleared_at')
+              .eq('profile_id', user.id).in('channel_id', myChannelIds)
+          : Promise.resolve({ data: [] }),
+        supabase.from('chat_sections').select('*').eq('profile_id', user.id)
+          .order('sort_order').order('created_at'),
+      ])
+      const prefMap = {}; (prefRes.data || []).forEach(r => { prefMap[r.channel_id] = r })
+      setPrefs(prefMap)
+      setSections(secRes.data || [])
+
       const all = chRes.data || []
-      if (!activeIdRef.current && all.length && window.innerWidth > 700) {
+      const visibleAll = all.filter(c => !hiddenBy(prefMap, c))
+      if (!activeIdRef.current && visibleAll.length && window.innerWidth > 700) {
         // Open the most recently active conversation, matching the sidebar order.
-        const mostRecent = all.slice().sort((a, b) =>
+        const mostRecent = visibleAll.slice().sort((a, b) =>
           new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0))[0]
         setActiveId(mostRecent.id)
       }
@@ -663,6 +720,83 @@ export default function Chat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, searchParams])
 
+  // ---- Sidebar organization actions ----
+  async function savePref(channelId, patch) {
+    setPrefs(prev => ({ ...prev, [channelId]: { ...(prev[channelId] || {}), channel_id: channelId, ...patch } }))
+    const { error } = await supabase.from('channel_prefs')
+      .upsert({ profile_id: me.id, channel_id: channelId, ...patch }, { onConflict: 'profile_id,channel_id' })
+    if (error) { window.alert('Could not save: ' + error.message); load() }
+  }
+  const toggleFavorite = (c) => savePref(c.id, { favorite: !prefs[c.id]?.favorite })
+  const togglePin = (c) => savePref(c.id, { pinned_at: prefs[c.id]?.pinned_at ? null : new Date().toISOString() })
+  const moveToSection = (c, sectionId) => savePref(c.id, { section_id: sectionId, ...(sectionId ? { favorite: false } : {}) })
+  const hideItem = (c) => {
+    savePref(c.id, { hidden_at: new Date().toISOString() })
+    if (activeId === c.id) { setActiveId(null); setMobileView('list') }
+  }
+  const unhideItem = (c) => savePref(c.id, { hidden_at: null })
+
+  // "Delete" a DM for me only: drop it from my list and clear the history I see.
+  // The other person keeps everything. A new message brings it back, showing only
+  // messages after this point.
+  async function deleteDmForMe(c) {
+    const who = dmNames[c.id] || 'this person'
+    if (!window.confirm(`Delete your conversation with ${who}?\n\nIt's removed from your list and the history is cleared for you. ${who} keeps their copy. If a new message comes in, it comes back with only the new messages.`)) return
+    const now = new Date().toISOString()
+    await savePref(c.id, { hidden_at: now, cleared_at: now, pinned_at: null, favorite: false, section_id: null })
+    markRead(c.id)
+    if (activeId === c.id) { setActiveId(null); setMobileView('list') }
+  }
+
+  async function createSection(name, thenMove) {
+    const sort_order = sections.length ? Math.max(...sections.map(s => s.sort_order || 0)) + 1 : 0
+    const { data, error } = await supabase.from('chat_sections')
+      .insert({ profile_id: me.id, name: name.trim(), sort_order }).select().single()
+    if (error) { window.alert('Could not create group: ' + error.message); return }
+    setSections(prev => [...prev, data])
+    if (thenMove) moveToSection(thenMove, data.id)
+  }
+  async function updateSection(id, patch) {
+    setSections(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s))
+    const { error } = await supabase.from('chat_sections').update(patch).eq('id', id)
+    if (error) window.alert('Could not update group: ' + error.message)
+  }
+  async function deleteSection(sec) {
+    if (!window.confirm(`Delete the group "${sec.name}"? Its chats move back to Channels / Direct messages. Nothing is deleted.`)) return
+    setSections(prev => prev.filter(s => s.id !== sec.id))
+    setPrefs(prev => {
+      const n = { ...prev }
+      Object.keys(n).forEach(k => { if (n[k].section_id === sec.id) n[k] = { ...n[k], section_id: null } })
+      return n
+    })
+    // FK is ON DELETE SET NULL, so prefs rows are released server-side.
+    const { error } = await supabase.from('chat_sections').delete().eq('id', sec.id)
+    if (error) { window.alert('Could not delete group: ' + error.message); load() }
+  }
+  async function moveSection(sec, dir) {
+    const list = sections.slice()
+    const i = list.findIndex(s => s.id === sec.id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= list.length) return
+    ;[list[i], list[j]] = [list[j], list[i]]
+    const reordered = list.map((s, idx) => ({ ...s, sort_order: idx }))
+    setSections(reordered)
+    const changed = reordered.filter(s => sections.find(o => o.id === s.id)?.sort_order !== s.sort_order)
+    await Promise.all(changed.map(s => supabase.from('chat_sections').update({ sort_order: s.sort_order }).eq('id', s.id)))
+  }
+  function toggleBuiltin(key) {
+    setBuiltinCollapsed(prev => {
+      const n = { ...prev, [key]: !prev[key] }
+      try { localStorage.setItem('chat.sidebarCollapsed', JSON.stringify(n)) } catch { /* ignore */ }
+      return n
+    })
+  }
+  function openMenu(e, kind, id) {
+    e.stopPropagation()
+    const r = e.currentTarget.getBoundingClientRect()
+    setMenu(prev => prev && prev.id === id && prev.kind === kind ? null : { kind, id, x: r.right, y: r.bottom, view: 'main' })
+  }
+
   async function deleteChannel(ch) {
     const label = ch.is_dm ? (dmNames[ch.id] || 'this direct message') : `#${ch.name}`
     if (!window.confirm(`Delete ${label}? This permanently removes the conversation and all its messages for everyone. This cannot be undone.`)) return
@@ -732,62 +866,191 @@ export default function Chat() {
     if (tb !== ta) return tb - ta
     return (a.name || '').localeCompare(b.name || '')
   }
-  const channelList = channels.filter(c => !c.is_dm).sort(byActivity)
-  const dmList = channels.filter(c => c.is_dm).sort(byActivity)
+  // Pinned items first (in the order they were pinned), then by activity.
+  const byPinThenActivity = (a, b) => {
+    const pa = prefs[a.id]?.pinned_at, pb = prefs[b.id]?.pinned_at
+    if (pa && !pb) return -1
+    if (pb && !pa) return 1
+    if (pa && pb) return new Date(pa) - new Date(pb)
+    return byActivity(a, b)
+  }
+  const sectionIds = new Set(sections.map(s => s.id))
+  const visible = channels.filter(c => !hiddenBy(prefs, c))
+  const hiddenList = channels.filter(c => hiddenBy(prefs, c)).sort(byActivity)
+  const isFav = (c) => !!prefs[c.id]?.favorite
+  const groupOf = (c) => (!isFav(c) && sectionIds.has(prefs[c.id]?.section_id)) ? prefs[c.id].section_id : null
+  const favList = visible.filter(isFav).sort(byPinThenActivity)
+  const channelList = visible.filter(c => !c.is_dm && !isFav(c) && !groupOf(c)).sort(byPinThenActivity)
+  const dmList = visible.filter(c => c.is_dm && !isFav(c) && !groupOf(c)).sort(byPinThenActivity)
+  const hiddenUnread = hiddenList.reduce((n, c) => n + (unreadCounts[c.id] || 0), 0)
+
+  // A collapsed section still shows anything unread (and whatever is open).
+  const whenCollapsed = (list, collapsed) => collapsed ? list.filter(c => unreadCounts[c.id] || c.id === activeId) : list
+
+  const unreadBadge = (n) => n > 0 && (
+    <span style={{ background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', flex: 'none' }}>{n > 99 ? '99+' : n}</span>
+  )
+
+  const renderRow = (c, { dim = false } = {}) => {
+    const active = c.id === activeId && !isMobile
+    const pinnedHere = !!prefs[c.id]?.pinned_at
+    const peer = c.is_dm && dmPeers[c.id] ? profiles.find(p => p.id === dmPeers[c.id]) : null
+    const st = peer && effStatus(peer)
+    return (
+      <div key={c.id} className="chat-side-row" style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2, opacity: dim ? 0.75 : 1 }}>
+        <button onClick={() => openChannel(c.id)}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, textAlign: 'left', border: 0, background: active ? 'var(--accent-bg)' : 'transparent', color: active ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: unreadCounts[c.id] ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+          {c.is_dm
+            ? (peer ? <PresenceDot profile={peer} size={9} ring="var(--canvas)" /> : <span style={{ width: 9, flex: 'none' }} />)
+            : null}
+          <span style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {c.is_dm ? (dmNames[c.id] || c.name || 'Direct message') : `# ${c.name}`}
+            </span>
+            {st && st.emoji ? <span title={st.text || ''} style={{ fontSize: 12, flex: 'none' }}>{st.emoji}</span> : null}
+            {pinnedHere && <span title="Pinned" style={{ fontSize: 10.5, flex: 'none' }}>📌</span>}
+          </span>
+          {unreadBadge(unreadCounts[c.id])}
+        </button>
+        <button onClick={(e) => openMenu(e, 'item', c.id)} title="Options" aria-label="Options"
+          className="chat-side-more"
+          style={{ border: 0, background: menu?.id === c.id ? 'var(--surface)' : 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 15, lineHeight: 1, padding: isMobile ? '10px 10px' : '6px 7px', flex: 'none', borderRadius: 6 }}>⋯</button>
+      </div>
+    )
+  }
+
+  const renderHeader = ({ key, label, count, collapsed, onToggle, right, unread }) => (
+    <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 6px 6px 6px' }}>
+      <button onClick={onToggle}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 0, background: 'transparent', cursor: 'pointer', padding: '0 5px', fontFamily: 'inherit', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-soft)', minWidth: 0 }}>
+        <span style={{ fontSize: 9, width: 9 }}>{collapsed ? '▸' : '▾'}</span>
+        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}{count != null ? ` (${count})` : ''}</span>
+        {unread ? unreadBadge(unread) : null}
+      </button>
+      {right}
+    </div>
+  )
+
+  const menuItem = (label, onClick, { danger = false, checked = false } = {}) => (
+    <button key={label} onClick={(e) => { e.stopPropagation(); onClick() }}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', border: 0, background: 'transparent', padding: '8px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: danger ? '#DC2626' : 'var(--ink)' }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--canvas)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+      <span style={{ flex: 1 }}>{label}</span>{checked && <span>✓</span>}
+    </button>
+  )
+
+  const renderMenu = () => {
+    if (!menu) return null
+    const close = () => setMenu(null)
+    let body = null
+    if (menu.kind === 'item') {
+      const c = channels.find(x => x.id === menu.id)
+      if (!c) return null
+      const pref = prefs[c.id] || {}
+      const hidden = hiddenBy(prefs, c)
+      if (menu.view === 'groups') {
+        body = (<>
+          {menuItem('‹ Back', () => setMenu({ ...menu, view: 'main' }))}
+          <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />
+          {sections.map(sec => menuItem(sec.name, () => { moveToSection(c, sec.id); close() }, { checked: pref.section_id === sec.id && !pref.favorite }))}
+          {menuItem('＋ New group…', () => { close(); setNameModal({ title: 'New group', initial: '', onSave: (n) => createSection(n, c) }) })}
+          {pref.section_id && sectionIds.has(pref.section_id) && menuItem('Remove from group', () => { moveToSection(c, null); close() })}
+        </>)
+      } else {
+        body = (<>
+          {!hidden && menuItem(pref.favorite ? '☆ Remove from Favorites' : '⭐ Add to Favorites', () => { toggleFavorite(c); close() })}
+          {!hidden && menuItem(pref.pinned_at ? '📌 Unpin' : '📌 Pin to top', () => { togglePin(c); close() })}
+          {!hidden && menuItem('📁 Move to group…', () => setMenu({ ...menu, view: 'groups' }))}
+          {hidden
+            ? menuItem('👁 Unhide', () => { unhideItem(c); close() })
+            : menuItem('🙈 Hide', () => { hideItem(c); close() })}
+          {c.is_dm && <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />}
+          {c.is_dm && menuItem('🗑 Delete conversation', () => { close(); deleteDmForMe(c) }, { danger: true })}
+          {isOwner && !c.is_dm && <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />}
+          {isOwner && menuItem(c.is_dm ? '⚠ Delete for everyone' : '🗑 Delete channel for everyone', () => { close(); deleteChannel(c) }, { danger: true })}
+        </>)
+      }
+    } else {
+      const sec = sections.find(x => x.id === menu.id)
+      if (!sec) return null
+      const idx = sections.findIndex(x => x.id === sec.id)
+      body = (<>
+        {menuItem('✏️ Rename', () => { close(); setNameModal({ title: 'Rename group', initial: sec.name, onSave: (n) => updateSection(sec.id, { name: n.trim() }) }) })}
+        {idx > 0 && menuItem('↑ Move up', () => { moveSection(sec, -1); close() })}
+        {idx < sections.length - 1 && menuItem('↓ Move down', () => { moveSection(sec, 1); close() })}
+        <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />
+        {menuItem('🗑 Delete group', () => { close(); deleteSection(sec) }, { danger: true })}
+      </>)
+    }
+    const W = 230
+    const left = Math.max(8, Math.min(menu.x - W, window.innerWidth - W - 8))
+    const openUp = menu.y + 300 > window.innerHeight
+    return (<>
+      <div onClick={close} style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
+      <div style={{ position: 'fixed', left, ...(openUp ? { bottom: window.innerHeight - menu.y + 34 } : { top: menu.y + 4 }), width: W, maxHeight: 360, overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.18)', zIndex: 61, padding: '4px 0' }}>
+        {body}
+      </div>
+    </>)
+  }
 
   return (
     <div ref={shellRef} style={{ display: isMobile ? 'block' : 'grid', gridTemplateColumns: '240px 1fr', gap: 0, height: chatH || 'calc(100dvh - 150px)', maxHeight: chatH || 'calc(100dvh - 150px)', minHeight: 380, border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
       {showList && (
         <div style={{ borderRight: isMobile ? 'none' : '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--canvas)', minHeight: 0, height: isMobile ? '100%' : 'auto' }}>
-          <ChatSearchBar channels={channels} profiles={profiles} dmNames={dmNames} onJump={jumpToSearchResult} />
-          <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 'none' }}>
-            <b style={{ fontSize: 14 }}>Channels</b>
-            {canCreateChannels && <button className="btn btn-ghost" style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => setShowCreate(true)}>+ New</button>}
+          <ChatSearchBar channels={channels} profiles={profiles} dmNames={dmNames} prefs={prefs} onJump={jumpToSearchResult} />
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 'none', gap: 6 }}>
+            <b style={{ fontSize: 14 }}>Chat</b>
+            <span style={{ display: 'inline-flex', gap: 4 }}>
+              <button className="btn btn-ghost" title="New group" style={{ padding: '4px 9px', fontSize: 12 }}
+                onClick={() => setNameModal({ title: 'New group', initial: '', onSave: (n) => createSection(n) })}>＋ Group</button>
+              {canCreateChannels && <button className="btn btn-ghost" style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => setShowCreate(true)}>+ New</button>}
+            </span>
           </div>
           <div style={{ overflowY: 'auto', flex: 1, padding: 8, minHeight: 0 }}>
-            {channelList.length === 0 && <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{canCreateChannels ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>}
-            {channelList.map(c => (
-              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
-                <button onClick={() => openChannel(c.id)}
-                  style={{ display: 'flex', alignItems: 'center', flex: 1, textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: unreadCounts[c.id] ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  <span style={{ flex: 1 }}># {c.name}</span>
-                  {unreadCounts[c.id] > 0 && (
-                    <span style={{ background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', flex: 'none' }}>{unreadCounts[c.id] > 99 ? '99+' : unreadCounts[c.id]}</span>
-                  )}
-                </button>
-                {isOwner && (
-                  <button onClick={() => deleteChannel(c)} title="Delete channel"
-                    style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, padding: '6px 8px', flex: 'none', borderRadius: 6 }}>🗑</button>
-                )}
-              </div>
-            ))}
 
-            {(dmList.length > 0 || canCreateDMs) && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 11px 6px' }}>
-                <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-soft)' }}>Direct messages</span>
-                {canCreateDMs && <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button>}
-              </div>
+            {favList.length > 0 && (<>
+              {renderHeader({ key: 'h-fav', label: '⭐ Favorites', collapsed: builtinCollapsed.fav, onToggle: () => toggleBuiltin('fav') })}
+              {whenCollapsed(favList, builtinCollapsed.fav).map(c => renderRow(c))}
+            </>)}
+
+            {sections.map(sec => {
+              const items = visible.filter(c => groupOf(c) === sec.id).sort(byPinThenActivity)
+              return (
+                <React.Fragment key={sec.id}>
+                  {renderHeader({
+                    key: 'h-' + sec.id, label: sec.name, collapsed: sec.collapsed,
+                    onToggle: () => updateSection(sec.id, { collapsed: !sec.collapsed }),
+                    right: <button onClick={(e) => openMenu(e, 'section', sec.id)} title="Group options"
+                      style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 14, padding: '2px 6px', borderRadius: 6 }}>⋯</button>,
+                  })}
+                  {items.length === 0 && !sec.collapsed && (
+                    <div className="page-sub" style={{ padding: '2px 16px 6px', fontSize: 11.5 }}>Empty — use ⋯ → Move to group on any chat.</div>
+                  )}
+                  {whenCollapsed(items, sec.collapsed).map(c => renderRow(c))}
+                </React.Fragment>
+              )
+            })}
+
+            {renderHeader({ key: 'h-ch', label: 'Channels', collapsed: builtinCollapsed.channels, onToggle: () => toggleBuiltin('channels') })}
+            {channelList.length === 0 && !builtinCollapsed.channels && channels.filter(c => !c.is_dm).length === 0 && (
+              <div className="page-sub" style={{ padding: 12, fontSize: 12.5 }}>No channels yet.{canCreateChannels ? ' Create one with + New.' : ' An admin needs to add you to a channel.'}</div>
             )}
+            {whenCollapsed(channelList, builtinCollapsed.channels).map(c => renderRow(c))}
 
-            {dmList.map(c => (
-              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
-                <button onClick={() => openChannel(c.id)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, textAlign: 'left', border: 0, background: c.id === activeId && !isMobile ? 'var(--accent-bg)' : 'transparent', color: c.id === activeId && !isMobile ? 'var(--accent)' : 'var(--ink)', padding: isMobile ? '13px 12px' : '9px 11px', borderRadius: 8, fontSize: isMobile ? 15 : 13.5, fontWeight: unreadCounts[c.id] ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  {(() => { const peer = dmPeers[c.id] ? profiles.find(p => p.id === dmPeers[c.id]) : null; return peer ? <PresenceDot profile={peer} size={9} ring="var(--canvas)" /> : <span style={{ width: 9, flex: 'none' }} /> })()}
-                  <span style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{dmNames[c.id] || c.name || 'Direct message'}</span>
-                    {(() => { const peer = dmPeers[c.id] ? profiles.find(p => p.id === dmPeers[c.id]) : null; const s = peer && effStatus(peer); return s && s.emoji ? <span title={s.text || ''} style={{ fontSize: 12, flex: 'none' }}>{s.emoji}</span> : null })()}
-                  </span>
-                  {unreadCounts[c.id] > 0 && (
-                    <span style={{ background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', flex: 'none' }}>{unreadCounts[c.id] > 99 ? '99+' : unreadCounts[c.id]}</span>
-                  )}
-                </button>
-                {isOwner && (
-                  <button onClick={() => deleteChannel(c)} title="Delete conversation"
-                    style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, padding: '6px 8px', flex: 'none', borderRadius: 6 }}>🗑</button>
-                )}
-              </div>
-            ))}
+            {(dmList.length > 0 || canCreateDMs) && renderHeader({
+              key: 'h-dm', label: 'Direct messages', collapsed: builtinCollapsed.dms, onToggle: () => toggleBuiltin('dms'),
+              right: canCreateDMs ? <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button> : null,
+            })}
+            {whenCollapsed(dmList, builtinCollapsed.dms).map(c => renderRow(c))}
+
+            {hiddenList.length > 0 && (<>
+              {renderHeader({ key: 'h-hidden', label: '🙈 Hidden', count: hiddenList.length, collapsed: !showHidden, onToggle: () => setShowHidden(v => !v), unread: hiddenUnread })}
+              {showHidden && (<>
+                <div className="page-sub" style={{ padding: '0 16px 6px', fontSize: 11.5 }}>Hidden channels stay here. Hidden DMs come back on a new message.</div>
+                {hiddenList.map(c => renderRow(c, { dim: true }))}
+              </>)}
+            </>)}
           </div>
         </div>
       )}
@@ -796,12 +1059,12 @@ export default function Chat() {
         activeId
           ? (activeId === LSA_CHANNEL_ID
               ? <LsaChannelView key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} isOwner={isOwner} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead}
-                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} />
+                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} />
               : activeId === TRADE_BOARD_CHANNEL_ID
               ? <SetterChannelView key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} isOwner={isOwner} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead}
-                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} />
+                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} />
               : <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} isOwner={isOwner} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead}
-                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} />)
+                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} />)
           : <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-soft)', height: '100%' }}>Select a channel</div>
       )}
 
@@ -810,7 +1073,14 @@ export default function Chat() {
         onCreated={(id) => { setShowCreate(false); load(); openChannel(id) }} />}
       {showDM && <CreateDMModal me={me} profiles={profiles}
         onClose={() => setShowDM(false)}
-        onCreated={(id) => { setShowDM(false); load(); openChannel(id) }} />}
+        onCreated={(id) => {
+          setShowDM(false)
+          // Starting a DM with someone whose conversation I'd hidden/deleted brings it back.
+          if (prefs[id]?.hidden_at) savePref(id, { hidden_at: null })
+          load(); openChannel(id)
+        }} />}
+      {renderMenu()}
+      {nameModal && <NameModal {...nameModal} onClose={() => setNameModal(null)} />}
     </div>
   )
 }
@@ -875,7 +1145,9 @@ function LsaChannelView(props) {
   )
 }
 
-function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profiles, isMobile, onBack, markRead, targetMessageId, onTargetConsumed }) {
+function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profiles, isMobile, onBack, markRead, targetMessageId, onTargetConsumed, clearedAt = null }) {
+  // A DM I "deleted" only shows messages after the point I cleared it.
+  const afterCleared = (q) => clearedAt ? q.gt('created_at', clearedAt) : q
   const { appRole } = useAuth()
   // Who can post an @update (require-read) message: admins + non-agent staff (the moderator tier).
   const canPostUpdate = isAdmin || String(appRole || 'agent').trim().toLowerCase() !== 'agent'
@@ -946,7 +1218,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
       setLoading(true); setErr('')
       try {
         const [msgRes, memRes] = await Promise.all([
-          supabase.from('messages').select('*').eq('channel_id', channelId).is('deleted_at', null).order('created_at', { ascending: false }).limit(200),
+          afterCleared(supabase.from('messages').select('*').eq('channel_id', channelId).is('deleted_at', null)).order('created_at', { ascending: false }).limit(200),
           supabase.from('channel_members').select('profile_id').eq('channel_id', channelId),
         ])
         if (msgRes.error) throw msgRes.error
@@ -974,8 +1246,8 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   // this finds nothing new and costs one cheap query.
   useEffect(() => {
     const t = setInterval(async () => {
-      const { data } = await supabase.from('messages')
-        .select('*').eq('channel_id', channelId).is('deleted_at', null)
+      const { data } = await afterCleared(supabase.from('messages')
+        .select('*').eq('channel_id', channelId).is('deleted_at', null))
         .order('created_at', { ascending: false }).limit(200)
       if (!data) return
       const fresh = data.slice().reverse()
@@ -1058,6 +1330,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         const { data } = await supabase.from('messages').select('*').eq('id', targetMessageId).single()
         msg = data || null
       }
+      if (msg && clearedAt && new Date(msg.created_at) <= new Date(clearedAt)) msg = null
       if (cancelled) return
       if (msg?.parent_id) {
         setThreadFor(msg.parent_id)
@@ -1112,9 +1385,9 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   // Pinned messages are loaded separately from the 200-message window so a pin
   // stays visible even after it scrolls far up the history.
   async function loadPinned() {
-    const { data } = await supabase.from('messages')
+    const { data } = await afterCleared(supabase.from('messages')
       .select('*').eq('channel_id', channelId)
-      .not('pinned_at', 'is', null).is('deleted_at', null)
+      .not('pinned_at', 'is', null).is('deleted_at', null))
       .order('pinned_at', { ascending: false })
     const list = data || []
     setPinned(list)
