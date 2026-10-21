@@ -16,7 +16,7 @@ import { mountOpsisQA } from './opsisQaApp'
 
 async function invoke(body) {
   // Reporting (call export + scorecard reports) is served by its own read-only function.
-  const fn = ['export', 'scorecards', 'money', 'excused', 'billing', 'jobvalues', 'invoices', 'bucketcalls'].includes(body?.action) ? 'opsis-qa-reports' : 'opsis-qa-portal'
+  const fn = ['export', 'scorecards', 'money', 'excused', 'billing', 'jobvalues', 'invoices', 'bucketcalls', 'callchat'].includes(body?.action) ? 'opsis-qa-reports' : 'opsis-qa-portal'
   const { data, error } = await supabase.functions.invoke(fn, { body })
   if (error) {
     let msg = 'Something went wrong loading that.'
