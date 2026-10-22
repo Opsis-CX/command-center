@@ -113,7 +113,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function iconPath(k) {
     return {
       overview: 'M4 5h16v14H4zM4 9h16M9 9v10', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
-      cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+      cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
       scorecards: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8 11h8M8 15h8M8 19h5', reporting: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3', money: 'M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5s-5 1.6-5 3.5 2.2 3.2 5 3.5 5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5', team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
@@ -121,7 +121,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   // ---------------- nav + top bar ----------------
-  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview'], ['insights', 'Insights']].concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', 'Brands']]).concat([['csrs', 'CSRs'], ['calls', 'Call reviews'], ['cardcap', 'Card capture'], ['money', 'Revenue'], ['reporting', 'Reporting']]).concat([['hub', 'Coaching Hub']])],
+  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview'], ['insights', 'Insights']].concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', 'Brands']]).concat([['csrs', 'CSRs'], ['calls', 'Call reviews'], ['cardcap', 'Card capture'], ['money', 'Revenue'], ['reporting', 'Reporting']]).concat([['hub', 'Coaching Hub']]).concat(!LOCK && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])],
     ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(IS_ADMIN ? [['team', 'Team & access']] : [])]];
   function renderWho() {
     var w = $('oqwho'); if (!w) return;
@@ -2214,6 +2214,237 @@ export function mountOpsisQA(ROOT, cfg) {
     }).catch(function (e) { A.msgs.push({ role: 'assistant', content: e.message, error: true }); A.busy = false; if (A.open) askPanel(); });
   }
 
+  // ---------- Calibration (2026-10-22) ----------
+  // Blind audits that keep the AI scorer honest. Each weekday the tool picks a set of yesterday's
+  // calls (Monday covers Fri–Sun). The quality team scores each one without seeing the AI's answers,
+  // then sees the AI's answers side by side. Disagreements feed "Suggested scoring rules".
+  // API: opsis-qa-calibration (actions calib*). State lives in CAL; the audit form only redraws itself
+  // (never the player) so the recording keeps playing while the auditor scores.
+  var CAN_CAL = !CFG.csrSelf && !LOCK && ROLE !== 'viewer';
+  var CAL = { tab: 'today', day: null, data: null, busy: false, item: null, form: null, t0: 0, stats: null, sdays: 30, why: {}, skip: false, open: {} };
+  var CANS = { yes: 'Done', no: 'Missed', na: 'N/A' };
+  var CPICK = { random: 'Random', not_booked: 'Not booked', booked: 'Booked', low: 'Low AI score', high: 'High AI score', no_opp: 'No opportunity / transfer', replacement: 'Replacement' };
+  function calPct(v) { return v == null ? '—' : Math.round(v * 100) + '%'; }
+  function calAns(a) { return CANS[a] || (a === true || a === 'true' ? 'Yes' : a === false || a === 'false' ? 'No' : (a == null ? '—' : String(a))); }
+  function calChip(a) { var c = a === 'yes' || a === true || a === 'true' ? 'background:#E6F0EA;color:#1F5A41' : a === 'no' || a === false || a === 'false' ? 'background:#FCEBDD;color:#A8441A' : 'background:#F3F1EC;color:#3B4541'; return '<span class="pill" style="' + c + '">' + esc(calAns(a)) + '</span>'; }
+  function stepName(l) { var s = String(l || ''), i = s.indexOf(':'); return i > 0 ? s.slice(0, i) : s; }
+  function stepDesc(l) { var s = String(l || ''), i = s.indexOf(':'); return i > 0 ? s.slice(i + 1).trim() : ''; }
+  function fday(d) { if (!d) return ''; var x = new Date(d + 'T12:00:00Z'); return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][x.getUTCDay()] + ' ' + fdate(d); }
+  function calRelease() { var it = CAL.item; if (it && it.status === 'open') api({ action: 'calibrelease', id: it.id }).catch(function () {}); }
+  function calLeave() { stopAudio(); P.id = null; calRelease(); CAL.item = null; CAL.form = null; CAL.skip = false; }
+
+  function vCalib(tok) {
+    if (!CAN_CAL) { S.view = 'overview'; return vOverview(tok); }
+    if (CAL.item) return drawAuditPage();
+    var tabs = '<div class="seg" role="tablist" style="margin-top:4px">' + [['today', 'Daily audits'], ['results', 'AI vs. your team']].map(function (t) { return '<button role="tab" aria-selected="' + (CAL.tab === t[0]) + '" class="' + (CAL.tab === t[0] ? 'on' : '') + '" data-cal="tab" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    setMain(crumb([['Calibration']]) + '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">Calibration</h1><p class="sub" style="max-width:720px">Your quality team scores a few calls blind every weekday. The AI’s answers stay hidden until you submit, then you see both side by side. Every difference teaches the AI through Suggested scoring rules.</p></div>' + tabs + '</div><div id="calwrap"><div class="oq-card">' + skel(36, 6) + '</div></div>');
+    if (CAL.tab === 'results') return calLoadStats(tok);
+    calLoadDay(tok);
+  }
+  function calLoadDay(tok, quiet) {
+    api({ action: 'calibday', day: CAL.day || null }).then(function (d) { if (tok != null && tok !== T) return; CAL.data = d; if (!CAL.day) CAL.day = d.day; drawCalDay(); })
+      .catch(function (e) { if (!quiet && $('calwrap')) $('calwrap').innerHTML = errBox(e); });
+  }
+  function drawCalDay() {
+    var w = $('calwrap'), d = CAL.data; if (!w || !d) return;
+    var items = d.items || [], done = items.filter(function (i) { return i.status === 'done'; }), skipped = items.filter(function (i) { return i.status === 'skipped'; });
+    var target = items.length - skipped.length, ag = 0, tot = 0; done.forEach(function (i) { ag += i.agree || 0; tot += i.steps || 0; });
+    var tiles = '<div class="row">' +
+      mnTile('Audited', done.length + ' <span class="mut" style="font-size:16px">of ' + target + '</span>', d.day === d.today ? 'Today’s blind audits' : 'Blind audits for ' + fday(d.day), done.length >= target && target ? '#1F5A41' : '') +
+      mnTile('Agreement with the AI', tot ? calPct(ag / tot) : '—', tot ? ag + ' of ' + tot + ' steps scored the same' : 'Shows once a call is audited', '#2B3A67', 'Steps where your answer matched the AI’s answer, before anyone saw the AI’s answer.') +
+      mnTile('Left to do', String(Math.max(target - done.length, 0)), skipped.length ? skipped.length + ' skipped and replaced' : 'About 6 minutes per call', Math.max(target - done.length, 0) ? '#A8441A' : '') + '</div>';
+    var hist = (d.days || []).slice(-10);
+    var dayChips = hist.length ? '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="cap" style="margin-right:4px">Day</span>' + hist.map(function (h) {
+      var full = h.done >= h.total - h.skipped && h.total; return '<button class="chip' + (h.day === d.day ? ' on' : '') + '" data-cal="day" data-v="' + h.day + '" style="min-height:30px;padding:4px 10px;font-size:12px">' + esc(fday(h.day)) + ' <span class="num" style="opacity:.75">' + h.done + '/' + (h.total - h.skipped) + (full ? ' ✓' : '') + '</span></button>'; }).join('') + '</div>' : '';
+    var cfg = d.can_config ? '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label class="l" for="calper" style="margin:0">Calls per weekday</label><select id="calper" class="oq-field" style="width:auto;padding:6px 10px">' + [5, 8, 10, 12, 15, 20].concat([d.per_day]).filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(function (a, b) { return a - b; }).map(function (n) { return '<option value="' + n + '"' + (n === d.per_day ? ' selected' : '') + '>' + n + (n === 10 ? ' (suggested)' : '') + '</option>'; }).join('') + '</select><button class="sel" data-cal="saveper" style="min-height:34px;padding:5px 12px">Save</button><span class="mut" style="font-size:12px">Starts with the next day’s set.</span></div>' : '';
+    var list;
+    if (!d.weekday) list = '<div class="mut" style="padding:14px 0">No audits on weekends. The Monday set covers Friday through Sunday calls.</div>';
+    else if (!items.length) list = '<div class="mut" style="padding:14px 0">' + (d.enabled ? 'No calls were picked for this day.' : 'Calibration is turned off for this account.') + '</div>';
+    else list = items.map(function (it) {
+      var st, btn;
+      if (it.status === 'done') { st = '<span class="pill" style="background:#E6F0EA;color:#1F5A41">Done · ' + esc(it.auditor || '') + '</span>' + (it.steps ? ' <span class="pill num" style="' + (it.agree === it.steps ? 'background:#E6F0EA;color:#1F5A41' : 'background:#FCEBDD;color:#A8441A') + '">' + it.agree + '/' + it.steps + ' match</span>' : ''); btn = '<button class="sel" data-cal="open" data-v="' + it.id + '">See result</button>'; }
+      else if (it.status === 'skipped') { st = '<span class="pill" style="background:#F3F1EC;color:#56605B" title="' + esc(it.skip_reason || '') + '">Skipped</span>'; btn = ''; }
+      else if (it.claimed && !it.claimed.me) { st = '<span class="pill" style="background:#E8EAF4;color:#3A4380">' + esc(it.claimed.name || 'Someone') + ' is on it</span>'; btn = '<button class="sel" data-cal="open" data-v="' + it.id + '" data-take="1">Take over</button>'; }
+      else { st = it.claimed ? '<span class="pill" style="background:#E8EAF4;color:#3A4380">You started this</span>' : '<span class="pill" style="background:#FFF3E0;color:#8A5A2B">To do</span>'; btn = '<button class="sel btnd" data-cal="open" data-v="' + it.id + '">' + (it.claimed ? 'Continue' : 'Start audit') + '</button>'; }
+      return '<div style="display:flex;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line2);flex-wrap:wrap">' +
+        '<span class="num mut" style="width:26px;font-weight:600">' + it.slot + '</span>' + bbadge(it.brand) +
+        '<span style="flex:1 1 220px;min-width:0"><b style="font-weight:600">' + esc(it.agent || 'Unknown CSR') + '</b> <span class="mut" style="font-size:12.5px">· ' + esc(short(it.brand)) + '</span><span class="mut" style="display:block;font-size:12.5px;margin-top:2px">' + esc(fday(it.date)) + (it.hour != null ? ' · ' + fhour(it.hour) : '') + ' · ' + esc(it.direction || '') + ' · ' + fsecs(it.secs) + (it.pick_reason ? ' · picked: ' + esc(CPICK[it.pick_reason] || it.pick_reason) : '') + '</span></span>' +
+        '<span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + st + '</span>' + btn + '</div>';
+    }).join('');
+    w.innerHTML = tiles + '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start"><div><h2 class="ttl">' + (d.day === d.today ? 'Today’s calls' : 'Calls for ' + esc(fday(d.day))) + '</h2><p class="sub">Picked at 6am from the previous workday: a random mix plus booked, not-booked, high, low and no-opportunity calls, spread across brands. Why each call was picked shows after it’s audited, so it can’t sway you.</p></div>' + cfg + '</div><div style="margin-top:10px">' + dayChips + '</div><div style="margin-top:6px">' + list + '</div></div>';
+  }
+
+  // ----- the audit screen -----
+  function calOpen(id, take) {
+    if (CAL.busy) return; CAL.busy = true;
+    var w = $('calwrap'); if (w) w.insertAdjacentHTML('afterbegin', '<div class="banner" id="calopening">Opening the call…</div>');
+    api({ action: 'calibopen', id: +id, take: !!take }).then(function (it) {
+      CAL.busy = false; CAL.item = it; CAL.skip = false; CAL.t0 = Date.now();
+      CAL.form = { steps: {}, opp: null, outcome: '', note: '' };
+      S.cur = Object.assign({ steps: [] }, it.call); TR.open[it.call.id] = true;
+      loadAudio(it.call.id);
+      EXT = function () { calLeave(); };
+      window.scrollTo(0, 0); drawAuditPage();
+    }).catch(function (e) { CAL.busy = false; var b = $('calopening'); if (b) b.remove(); toast(e.message || 'Couldn’t open that call.'); calLoadDay(null, true); });
+  }
+  function drawAuditPage() {
+    var it = CAL.item, c = it.call, d = CAL.data || {}, items = d.items || [];
+    var head = '<div class="oq-card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">' + bbadge(c.brand) + '<div style="flex:1 1 260px;min-width:0"><div style="font-weight:600;font-size:16px">' + esc(c.agent || 'Unknown CSR') + ' <span class="mut" style="font-weight:400;font-size:13px">· ' + esc(c.brand || '') + '</span></div><div class="mut" style="font-size:12.5px;margin-top:3px">' + esc(fday(c.date)) + (c.started ? ' · ' + new Date(c.started).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) + ' ET' : '') + ' · ' + esc(c.direction || '') + ' · ' + fsecs(c.secs) + ' · call ' + it.slot + (items.length ? ' of ' + items.length : '') + '</div></div>' +
+      (it.status === 'open' ? '<span class="pill" style="background:#E8EAF4;color:#3A4380">Blind audit · AI score hidden</span>' : '') + '<button class="sel" data-cal="back">Back to the list</button></div>';
+    setMain(crumb([['Calibration', 'calib'], ['Call ' + it.slot]]) + head +
+      '<div class="row" style="align-items:flex-start"><div style="flex:1 1 380px;min-width:0;display:flex;flex-direction:column;gap:14px"><div class="oq-card" id="plr">' + playerInner() + '</div>' + trCard(S.cur) + '</div>' +
+      '<div style="flex:1 1 420px;min-width:0" id="calform"></div></div>');
+    bindTr(); drawCalForm();
+  }
+  function seg3(k, cur, allowNa) {
+    return '<div class="seg" role="group" aria-label="Answer">' + ['yes', 'no'].concat(allowNa ? ['na'] : []).map(function (a) { return '<button type="button" data-cal="ans" data-k="' + k + '" data-v="' + a + '" aria-pressed="' + (cur === a) + '" class="' + (cur === a ? 'on' : '') + '">' + CANS[a] + '</button>'; }).join('') + '</div>';
+  }
+  function drawCalForm() {
+    var el = $('calform'), it = CAL.item; if (!el || !it) return;
+    if (it.result) { el.innerHTML = calResultHtml(it); return; }
+    var F = CAL.form, steps = it.steps || [], answered = steps.filter(function (s) { return F.steps[s.key] && F.steps[s.key].answer; }).length;
+    var h = '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 class="ttl">Score this call</h2><span class="mut num" style="font-size:12.5px">' + answered + ' of ' + steps.length + ' steps</span></div><p class="sub">Listen and score each step the way your team would. Missed? Tick what was missed. A short note on any step helps the AI learn.</p>';
+    steps.forEach(function (s) {
+      var f = F.steps[s.key] || {}, open = CAL.open[s.key];
+      h += '<div class="step" style="padding:14px 0 12px"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1 1 220px;min-width:0"><div style="font-weight:600">' + esc(stepName(s.label)) + ' <span class="mut num" style="font-weight:400;font-size:12px">· ' + s.points + ' pts</span></div><div class="mut" style="font-size:12.5px;line-height:1.45;margin-top:2px">' + esc(stepDesc(s.label)) + '</div></div>' + seg3(s.key, f.answer, s.allow_na !== false) + '</div>' +
+        (f.answer === 'no' && (s.misses || []).length ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' + s.misses.map(function (m) { var on = (f.misses || []).indexOf(m) >= 0; return '<button type="button" class="chip' + (on ? ' on' : '') + '" aria-pressed="' + on + '" data-cal="miss" data-k="' + s.key + '" data-v="' + esc(m) + '" style="min-height:30px;padding:4px 10px;font-size:12px">' + esc(m) + '</button>'; }).join('') + '</div>' : '') +
+        '<div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap"><label class="sr" for="caln-' + s.key + '">Note for ' + esc(stepName(s.label)) + '</label><input id="caln-' + s.key + '" data-calnote="' + s.key + '" class="oq-field" placeholder="Note (optional): what you heard" value="' + esc(f.note || '') + '" style="flex:1 1 220px;padding:7px 10px;font-size:13px">' +
+        (s.guidance ? '<button type="button" class="more" data-cal="rule" data-k="' + s.key + '">' + (open ? 'Hide rule' : 'Scoring rule') + '</button>' : '') + '</div>' +
+        (open && s.guidance ? '<div style="background:#FAF8F4;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.55;margin-top:8px">' + esc(s.guidance) + '</div>' : '') + '</div>';
+    });
+    h += '<div class="step" style="padding:14px 0 6px"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><div style="font-weight:600">Was this a booking opportunity?</div><div class="seg" role="group" aria-label="Booking opportunity">' + [[true, 'Yes'], [false, 'No']].map(function (o) { return '<button type="button" data-cal="opp" data-v="' + o[0] + '" aria-pressed="' + (F.opp === o[0]) + '" class="' + (F.opp === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
+      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px"><label for="calout" style="font-weight:600">How did the call end?</label><select id="calout" class="oq-field" style="width:auto;min-width:200px"><option value="">Pick one…</option>' + (it.outcomes || []).map(function (o) { return '<option' + (F.outcome === o ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select></div>' +
+      '<label class="l" for="calnote" style="margin-top:14px">Anything else about this call? (optional)</label><textarea id="calnote" class="oq-field" rows="2" placeholder="e.g. Recording cuts off at the end">' + esc(F.note || '') + '</textarea></div>';
+    var ready = answered === steps.length && F.opp != null && F.outcome;
+    h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:center"><button class="sel btnd" data-cal="submit"' + (ready ? '' : ' aria-disabled="true" style="opacity:.55"') + '>Submit and see the AI’s answers</button><button class="sel" data-cal="skipask">Can’t audit this call</button></div>';
+    if (CAL.skip) h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center"><label class="sr" for="calskip">Why can’t you audit it?</label><input id="calskip" class="oq-field" placeholder="e.g. No audio, wrong call, voicemail" style="flex:1 1 240px"><button class="sel" data-cal="skip">Skip and replace</button></div>';
+    h += '</div>';
+    el.innerHTML = h;
+  }
+  function calSync() {
+    var F = CAL.form; if (!F) return;
+    document.querySelectorAll('[data-calnote]').forEach(function (i) { var k = i.getAttribute('data-calnote'); F.steps[k] = F.steps[k] || {}; F.steps[k].note = i.value; });
+    var o = $('calout'); if (o) F.outcome = o.value; var n = $('calnote'); if (n) F.note = n.value;
+  }
+  function calSubmit(btn) {
+    calSync(); var it = CAL.item, F = CAL.form;
+    var miss = (it.steps || []).filter(function (s) { return !(F.steps[s.key] && F.steps[s.key].answer); });
+    if (miss.length) { toast('Score ' + stepName(miss[0].label) + ' first.'); return; }
+    if (F.opp == null) { toast('Say whether it was a booking opportunity.'); return; }
+    if (!F.outcome) { toast('Pick how the call ended.'); return; }
+    var steps = {}; Object.keys(F.steps).forEach(function (k) { var s = F.steps[k]; steps[k] = { answer: s.answer, misses: s.misses || [], note: s.note || '' }; });
+    btn.disabled = true; btn.textContent = 'Submitting…';
+    api({ action: 'calibsubmit', id: it.id, steps: steps, opportunity: F.opp, outcome: F.outcome, note: F.note || '', secs: Math.round((Date.now() - CAL.t0) / 1000) }).then(function (r) {
+      CAL.item = r; CAL.stats = null; drawCalForm(); var hd = document.querySelector('#main .pill'); if (hd && /Blind audit/.test(hd.textContent)) hd.remove();
+      var fm = $('calform'); if (fm) fm.scrollIntoView({ behavior: 'smooth', block: 'start' }); calLoadDay(null, true);
+    }).catch(function (e) { btn.disabled = false; btn.textContent = 'Submit and see the AI’s answers'; toast(e.message || 'Couldn’t submit.'); });
+  }
+  function evBtn(ev) { var ts = tsList(ev); return ts.length ? ' <button type="button" class="more" data-seek="' + ts[0] + '" style="min-height:24px">▶ ' + clock(ts[0]) + '</button>' : ''; }
+  function calResultHtml(it) {
+    var r = it.result, d = CAL.data || {};
+    if (it.status === 'skipped') return '<div class="oq-card"><h2 class="ttl">Skipped</h2><p class="sub">' + esc(it.skip_reason || '') + '</p></div>';
+    var gap = (+r.human_score || 0) - (+r.ai_score || 0);
+    var h = '<div class="row">' + mnTile('Your score', r.human_score == null ? '—' : Math.round(r.human_score), 'Same points as the AI uses') + mnTile('AI score', r.ai_score == null ? '—' : Math.round(r.ai_score), (Math.abs(gap) < 0.5 ? 'Same as yours' : (gap > 0 ? 'AI was ' + Math.round(gap) + ' pts stricter' : 'AI was ' + Math.round(-gap) + ' pts more generous')), Math.abs(gap) >= 10 ? '#A8441A' : '') +
+      mnTile('Steps that match', r.agree + '/' + r.total, 'Picked as: ' + esc(CPICK[r.pick_reason] || r.pick_reason || ''), r.agree === r.total ? '#1F5A41' : '#A8441A') + '</div>';
+    h += '<div class="oq-card" style="margin-top:12px"><h2 class="ttl">Your answers vs. the AI</h2><p class="sub">Where you differ, read the AI’s reasoning. If the AI was right, say so and that difference won’t be used to retrain it. Otherwise your answer stands and goes into Suggested scoring rules.</p>';
+    var row = function (key, name, mine, ai, agree, verdict, extra) {
+      var vb = agree ? '' : '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button type="button" class="chip' + (verdict !== 'ai' ? ' on' : '') + '" data-cal="verdict" data-k="' + key + '" data-v="me" style="min-height:30px;padding:4px 10px;font-size:12px">My answer stands</button><button type="button" class="chip' + (verdict === 'ai' ? ' on' : '') + '" data-cal="verdict" data-k="' + key + '" data-v="ai" style="min-height:30px;padding:4px 10px;font-size:12px">The AI was right</button></div>';
+      return '<div class="step" style="padding:14px 0;' + (agree ? '' : 'background:linear-gradient(90deg,#FFF8F2,transparent)') + '"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><b style="font-weight:600">' + esc(name) + '</b><span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12.5px"><span class="mut">You</span>' + calChip(mine) + '<span class="mut">AI</span>' + calChip(ai) + (agree ? '<span class="pill" style="background:#E6F0EA;color:#1F5A41">✓ Match</span>' : '<span class="pill" style="background:#FCEBDD;color:#A8441A">Different</span>') + '</span></div>' + (extra || '') + vb + '</div>';
+    };
+    (r.steps || []).forEach(function (s) {
+      var ex = '';
+      if (s.human_misses && s.human_misses.length) ex += '<div style="font-size:12.5px;margin-top:6px"><span class="mut">You marked missed:</span> ' + esc(s.human_misses.join(', ')) + '</div>';
+      if (s.ai_misses && s.ai_misses.length) ex += '<div style="font-size:12.5px;margin-top:4px"><span class="mut">AI marked missed:</span> ' + esc(s.ai_misses.join(', ')) + '</div>';
+      if (!s.agree || CAL.open['r_' + s.key]) ex += '<div style="font-size:12.5px;line-height:1.5;margin-top:6px"><span class="mut">AI’s reasoning:</span> ' + esc(s.rationale || '—') + (s.evidence ? '<div class="mut" style="margin-top:3px">“' + esc(s.evidence) + '”' + evBtn(s.evidence) + '</div>' : '') + '</div>';
+      else ex += '<button type="button" class="more" data-cal="rule" data-k="r_' + s.key + '" style="min-height:26px;margin-top:2px">Show the AI’s reasoning</button>';
+      if (s.note) ex += '<div style="font-size:12.5px;margin-top:4px"><span class="mut">Your note:</span> ' + esc(s.note) + '</div>';
+      h += row(s.key, stepName(s.label), s.human, s.ai, s.agree, s.verdict, ex);
+    });
+    h += row('opportunity', 'Booking opportunity', r.opportunity.human, r.opportunity.ai, r.opportunity.agree, r.opportunity.verdict);
+    h += row('outcome', 'How the call ended', r.outcome.human, r.outcome.ai, r.outcome.agree, r.outcome.verdict, r.outcome.ai_reason && !r.outcome.agree ? '<div class="mut" style="font-size:12.5px;margin-top:6px">AI’s not-booked reason: ' + esc(r.outcome.ai_reason) + '</div>' : '');
+    if (r.note) h += '<div class="mut" style="font-size:12.5px;padding-top:10px;border-top:1px solid var(--line2)">Your note: ' + esc(r.note) + '</div>';
+    h += '<div class="mut" style="font-size:12px;margin-top:10px">Audited by ' + esc(r.auditor || '') + (r.secs_spent ? ' in ' + Math.max(1, Math.round(r.secs_spent / 60)) + ' min' : '') + '.</div></div>';
+    var next = (d.items || []).filter(function (x) { return x.status === 'open' && x.id !== it.id && !(x.claimed && !x.claimed.me); })[0];
+    h += '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' + (next ? '<button class="sel btnd" data-cal="open" data-v="' + next.id + '">Next call (' + next.slot + ')</button>' : '<span class="pill" style="background:#E6F0EA;color:#1F5A41;padding:10px 14px">All of today’s calls are done</span>') + '<button class="sel" data-cal="back">Back to the list</button></div>';
+    return h;
+  }
+
+  // ----- results: AI vs. your team -----
+  function calLoadStats(tok) {
+    if (CAL.stats && CAL.stats.days === CAL.sdays) return drawCalStats();
+    api({ action: 'calibstats', days: CAL.sdays }).then(function (s) { if (tok != null && tok !== T) return; CAL.stats = s; drawCalStats(); })
+      .catch(function (e) { if ($('calwrap')) $('calwrap').innerHTML = errBox(e); });
+  }
+  function bar(v, col) { return '<div class="track" style="width:90px;display:inline-block;vertical-align:middle;margin-right:8px"><div style="width:' + Math.round((v || 0) * 100) + '%;background:' + (col || G) + '"></div></div>'; }
+  function drawCalStats() {
+    var w = $('calwrap'), s = CAL.stats; if (!w || !s) return;
+    var rng = '<div class="seg" role="group" aria-label="Period">' + [[30, 'Last 30 days'], [90, 'Last 90 days']].map(function (o) { return '<button data-cal="sdays" data-v="' + o[0] + '" class="' + (CAL.sdays === o[0] ? 'on' : '') + '" aria-pressed="' + (CAL.sdays === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div>';
+    if (!s.audited) { w.innerHTML = '<div style="display:flex;justify-content:flex-end">' + rng + '</div><div class="oq-card"><h2 class="ttl">No audits yet</h2><p class="sub">Once your team finishes some daily audits, this page shows how often the AI agrees with them, where it differs and why.</p><button class="sel btnd" data-cal="tab" data-v="today" style="margin-top:10px">Go to today’s audits</button></div>'; return; }
+    var tiles = '<div class="row">' +
+      mnTile('Calls audited', n0(s.audited), 'Blind audits since ' + esc(fdate(s.since))) +
+      mnTile('Step agreement', calPct(s.agreement), 'Same answer as the AI, scored blind', '#2B3A67', 'Every step on every audited call where your team’s blind answer matched the AI’s.') +
+      mnTile('AI accuracy', calPct(s.accuracy), 'Counting differences where the team said the AI was right', '#1F5A41') +
+      mnTile('Score variance', s.avg_score_gap == null ? '—' : s.avg_score_gap.toFixed(1) + ' pts', 'Average gap between the AI’s score and yours', s.avg_score_gap >= 10 ? '#A8441A' : '') +
+      mnTile('Outcome agreement', calPct(s.outcome_agreement), 'Booking opportunity: ' + calPct(s.opp_agreement)) + '</div>';
+    // Step variance table
+    var rows = (s.steps || []).map(function (x) { return { key: x.key, name: stepName(x.label), n: x.n, agree: x.agree, a: x.ai_yes_me_no, b: x.ai_no_me_yes, c: x.na_diff, con: x.conceded }; });
+    rows.push({ key: 'opportunity', name: 'Booking opportunity', n: s.audited, agree: Math.round((s.opp_agreement || 0) * s.audited), field: true });
+    rows.push({ key: 'outcome', name: 'How the call ended', n: s.audited, agree: Math.round((s.outcome_agreement || 0) * s.audited), field: true });
+    var stepTbl = '<div class="oq-card"><h2 class="ttl">Where the AI and your team differ</h2><p class="sub">Each step, how often you agree and which way the differences go. Click “Why?” and the AI reads every difference (its reasoning next to your team’s answers and notes) and explains the pattern.</p><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px"><thead><tr><th>Step</th><th style="text-align:right">Calls</th><th>Agreement</th><th style="text-align:right" title="AI said Done, your team said Missed">AI too generous</th><th style="text-align:right" title="AI said Missed, your team said Done">AI too strict</th><th style="text-align:right" title="One side said N/A">N/A differences</th><th></th></tr></thead><tbody>' +
+      rows.map(function (x) {
+        var r = x.n ? x.agree / x.n : null, diffs = x.n - x.agree, wy = CAL.why[x.key];
+        return '<tr><td><b style="font-weight:600">' + esc(x.name) + '</b></td><td class="num" style="text-align:right">' + x.n + '</td><td class="num">' + bar(r, r != null && r < 0.8 ? O : G) + calPct(r) + '</td>' +
+          (x.field ? '<td colspan="3" class="mut" style="font-size:12.5px">' + diffs + ' different</td>' : '<td class="num" style="text-align:right">' + (x.a || 0) + '</td><td class="num" style="text-align:right">' + (x.b || 0) + '</td><td class="num" style="text-align:right">' + (x.c || 0) + '</td>') +
+          '<td>' + (diffs ? '<button class="sel" data-cal="why" data-k="' + x.key + '" style="min-height:32px;padding:4px 12px">' + (wy && wy.open ? 'Hide' : 'Why?') + '</button>' : '<span class="pill" style="background:#E6F0EA;color:#1F5A41">All match</span>') + '</td></tr>' +
+          (wy && wy.open ? '<tr><td colspan="7" style="white-space:normal;background:#F6FAF7"><div class="ai" style="border:none;padding:6px 4px"><div class="md" style="font-size:13px">' + (wy.busy ? '<span class="dots"><span></span><span></span><span></span></span> <span class="mut">Reading ' + diffs + ' difference' + (diffs === 1 ? '' : 's') + '…</span>' : wy.err ? '<span style="color:#A8441A">' + esc(wy.err) + '</span>' : md(wy.answer || '')) + '</div></div></td></tr>' : '');
+      }).join('') + '</tbody></table></div><p class="mut" style="font-size:12px;margin:10px 0 0">Every difference where your answer stands is sent to <span class="lnk" role="link" tabindex="0" data-go="qasettings">Suggested scoring rules</span>. When the same difference comes up 3 or more times, a rule is drafted for your admins to approve.</p></div>';
+    // Score variance per call
+    var calls = (s.calls || []).slice().sort(function (a, b) { return Math.abs(b.gap) - Math.abs(a.gap); }).slice(0, 15);
+    var varTbl = '<div class="oq-card" style="flex:1 1 460px;min-width:0"><h2 class="ttl">Biggest score differences</h2><p class="sub">Calls where the AI’s score and your team’s score were furthest apart.</p><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px"><thead><tr><th>Call</th><th style="text-align:right">AI</th><th style="text-align:right">Team</th><th style="text-align:right">Gap</th><th>Audited by</th></tr></thead><tbody>' +
+      calls.map(function (c) { return '<tr class="click" tabindex="0" data-cal="open" data-v="' + c.id + '"><td><b style="font-weight:600">' + esc(c.agent || '') + '</b> <span class="mut" style="font-size:12px">· ' + esc(short(c.brand)) + ' · ' + esc(fdate(c.date)) + '</span></td><td class="num" style="text-align:right">' + Math.round(c.ai_score || 0) + '</td><td class="num" style="text-align:right">' + Math.round(c.human_score || 0) + '</td><td class="num" style="text-align:right;font-weight:600;color:' + (Math.abs(c.gap) >= 10 ? '#A8441A' : 'inherit') + '">' + (c.gap > 0 ? '+' : '') + Math.round(c.gap) + '</td><td class="mut">' + esc(c.auditor || '') + '</td></tr>'; }).join('') +
+      '</tbody></table></div><p class="mut" style="font-size:12px;margin:8px 0 0">Gap = team score minus AI score. Negative means the AI scored higher than your team.</p></div>';
+    var wk = (s.weeks || []).map(function (x) { var r = x.total ? x.agree / x.total : null; return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line2)"><span class="mut" style="width:96px;font-size:12.5px">Week of ' + esc(fdate(x.week)) + '</span><span style="flex:1">' + bar(r) + '<b class="num">' + calPct(r) + '</b></span><span class="mut num" style="font-size:12px">' + x.calls + ' calls</span></div>'; }).join('');
+    var au = (s.auditors || []).map(function (x) { return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line2)">' + avatar(x.name, 26) + '<span style="flex:1;min-width:0">' + esc(x.name) + '</span><span class="num mut" style="font-size:12.5px">' + x.calls + ' calls · ' + calPct(x.total ? x.agree / x.total : null) + ' match' + (x.timed ? ' · ' + Math.round(x.secs / x.timed / 60) + ' min each' : '') + '</span></div>'; }).join('');
+    var side = '<div style="flex:1 1 300px;min-width:0;display:flex;flex-direction:column;gap:14px"><div class="oq-card"><h2 class="ttl">Agreement by week</h2><p class="sub">Should climb as approved rules teach the AI.</p>' + wk + '</div><div class="oq-card"><h2 class="ttl">Auditors</h2><p class="sub">If one person differs from the AI far more than the rest, align the team first.</p>' + au + '</div></div>';
+    // Disagreement feed
+    var feed = '<div class="oq-card"><h2 class="ttl">Every difference, and why</h2><p class="sub">Newest first. The AI’s reasoning next to your team’s answer and note.</p>' + ((s.recent || []).slice(0, 25).map(function (c) {
+      return '<div style="padding:12px 0;border-top:1px solid var(--line2)"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><span><b style="font-weight:600">' + esc(c.agent || '') + '</b> <span class="mut" style="font-size:12.5px">· ' + esc(short(c.brand)) + ' · ' + esc(fdate(c.date)) + ' · audited by ' + esc(c.auditor || '') + '</span></span><span style="display:flex;gap:8px;align-items:center"><span class="mut num" style="font-size:12.5px">AI ' + Math.round(c.ai_score || 0) + ' · team ' + Math.round(c.human_score || 0) + '</span><button class="more" data-cal="open" data-v="' + c.id + '">Open</button></span></div>' +
+        c.diffs.map(function (x) { return '<div style="margin-top:8px;padding-left:12px;border-left:3px solid ' + (x.conceded ? '#C9C3B8' : '#F0B48F') + '"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12.5px"><b style="font-weight:600">' + esc(stepName(x.label)) + '</b><span class="mut">AI</span>' + calChip(x.ai) + '<span class="mut">team</span>' + calChip(x.me) + (x.conceded ? '<span class="pill" style="background:#F3F1EC;color:#56605B">Team agreed the AI was right</span>' : '') + '</div>' +
+          (x.ai_why ? '<div style="font-size:12.5px;line-height:1.5;margin-top:4px"><span class="mut">AI:</span> ' + esc(x.ai_why) + '</div>' : '') + (x.me_misses && x.me_misses.length ? '<div style="font-size:12.5px;margin-top:3px"><span class="mut">Team marked missed:</span> ' + esc(x.me_misses.join(', ')) + '</div>' : '') + (x.note ? '<div style="font-size:12.5px;margin-top:3px"><span class="mut">Team:</span> ' + esc(x.note) + '</div>' : '') + '</div>'; }).join('') + '</div>';
+    }).join('') || '<div class="mut" style="padding:10px 0">No differences yet.</div>') + '</div>';
+    w.innerHTML = '<div style="display:flex;justify-content:flex-end">' + rng + '</div>' + tiles + stepTbl + '<div class="row" style="align-items:flex-start">' + varTbl + side + '</div>' + feed;
+  }
+  function calWhy(key) {
+    var cur = CAL.why[key];
+    if (cur && cur.open) { cur.open = false; drawCalStats(); return; }
+    if (cur && cur.answer) { cur.open = true; drawCalStats(); return; }
+    CAL.why[key] = { open: true, busy: true }; drawCalStats();
+    api({ action: 'calibexplain', key: key, days: CAL.sdays }).then(function (r) { CAL.why[key] = { open: true, answer: r.answer }; drawCalStats(); })
+      .catch(function (e) { CAL.why[key] = { open: true, err: e.message || 'Couldn’t explain this one. Try again.' }; drawCalStats(); });
+  }
+  on(document, 'click', function (e) {
+    var b = e.target.closest('[data-cal]'); if (!b || !$('oqa') || !$('oqa').contains(b)) return;
+    var a = b.getAttribute('data-cal'), v = b.getAttribute('data-v'), k = b.getAttribute('data-k'), F = CAL.form;
+    e.preventDefault();
+    if (a === 'tab') { if (CAL.item) calLeave(); CAL.tab = v; render(); }
+    else if (a === 'day') { CAL.day = v; CAL.data = null; $('calwrap').innerHTML = '<div class="oq-card">' + skel(36, 6) + '</div>'; calLoadDay(T); }
+    else if (a === 'open') { if (CAL.item) { stopAudio(); if (CAL.item.status === 'open' && CAL.item.id !== +v) calRelease(); } CAL.item = null; if (S.view !== 'calib') { S.view = 'calib'; } calOpen(v, b.getAttribute('data-take')); }
+    else if (a === 'back') { calLeave(); EXT = null; render(); }
+    else if (a === 'ans' && F) { calSync(); var s = F.steps[k] = F.steps[k] || {}; s.answer = v; if (v !== 'no') s.misses = []; drawCalForm(); }
+    else if (a === 'miss' && F) { calSync(); var s2 = F.steps[k] = F.steps[k] || {}; s2.misses = s2.misses || []; var i = s2.misses.indexOf(v); if (i >= 0) s2.misses.splice(i, 1); else s2.misses.push(v); drawCalForm(); }
+    else if (a === 'opp' && F) { calSync(); F.opp = v === 'true'; drawCalForm(); }
+    else if (a === 'rule') { calSync(); CAL.open[k] = !CAL.open[k]; drawCalForm(); }
+    else if (a === 'submit') calSubmit(b);
+    else if (a === 'skipask') { calSync(); CAL.skip = !CAL.skip; drawCalForm(); var si = $('calskip'); if (si) si.focus(); }
+    else if (a === 'skip') { var why = ($('calskip') || {}).value || ''; if (!why.trim()) { toast('Say why you can’t audit it.'); return; } b.disabled = true;
+      api({ action: 'calibskip', id: CAL.item.id, reason: why.trim() }).then(function () { toast('Skipped. A replacement call was added.'); stopAudio(); P.id = null; CAL.item = null; CAL.form = null; EXT = null; render(); }).catch(function (e2) { b.disabled = false; toast(e2.message || 'Couldn’t skip.'); }); }
+    else if (a === 'verdict') { b.disabled = true; api({ action: 'calibverdict', id: CAL.item.id, key: k, side: v }).then(function (r) { CAL.item = r; CAL.stats = null; drawCalForm(); toast(v === 'ai' ? 'Noted. This difference won’t be used to retrain the AI.' : 'Your answer stands.'); }).catch(function (e2) { b.disabled = false; toast(e2.message || 'Couldn’t save.'); }); }
+    else if (a === 'saveper') { var n = +($('calper') || {}).value; b.disabled = true; api({ action: 'calibconfig', per_day: n }).then(function () { CAL.data.per_day = n; toast('Saved. ' + n + ' calls a weekday from the next set.'); drawCalDay(); }).catch(function (e2) { b.disabled = false; toast(e2.message || 'Couldn’t save.'); }); }
+    else if (a === 'sdays') { CAL.sdays = +v; CAL.stats = null; CAL.why = {}; $('calwrap').innerHTML = '<div class="oq-card">' + skel(36, 6) + '</div>'; calLoadStats(T); }
+    else if (a === 'why') calWhy(k);
+  });
+  on(document, 'change', function (e) { if (e.target && e.target.id === 'calout' && CAL.form) { CAL.form.outcome = e.target.value; calSync(); drawCalForm(); } });
+
   // ---------- routing ----------
   var T = 0;
   function writeHash() {
@@ -2239,7 +2470,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function render() {
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, cardcap: vCard, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, cardcap: vCard, calib: vCalib, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
     var cq = $('csrq'); if (cq) cq.addEventListener('input', function () { S.csrQ = cq.value; S.csrFocus = true; clearTimeout(cq.t); cq.t = setTimeout(render, 250); });
