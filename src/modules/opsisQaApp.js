@@ -1626,28 +1626,49 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   AU.addEventListener('loadedmetadata', function () { if (P.pendingSeek != null) { try { AU.currentTime = P.pendingSeek; } catch (x) {} P.pendingSeek = null; } });
   AU.addEventListener('ended', function () { var L = P.legs; if (L && L.length && (P.li || 0) < L.length - 1) vseek(L[(P.li || 0) + 1].offset, true); });
+  // Parts on one timeline: the transferring CSR's call (xfer_from), this call, its hold continuations (legs),
+  // and the colleague who took the transfer (xfer_to). Offsets come in seconds from THIS call's start;
+  // P.base shifts them so the first part starts at 0. Step/evidence times stay on this call's clock (+P.base).
   function loadLegs(c) {
-    if (!c || !c.legs || !c.legs.length || P.id !== c.id || P.legsFor === c.id) return;
-    P.legsFor = c.id; var id = c.id;
+    var hasX = c && ((c.xfer_to && c.xfer_to.id) || (c.xfer_from && c.xfer_from.id));
+    if (!c || (!(c.legs && c.legs.length) && !hasX) || P.id !== c.id || P.legsFor === c.id) return;
+    P.legsFor = c.id; var id = c.id, me = c.agent || 'This CSR', parts = [];
+    if (c.xfer_from && c.xfer_from.id) parts.push({ id: c.xfer_from.id, offset: c.xfer_from.offset != null ? +c.xfer_from.offset : -(+c.xfer_from.secs || 0), secs: +c.xfer_from.secs || 0, label: (c.xfer_from.agent || 'First CSR'), kind: 'from' });
+    parts.push({ id: null, offset: 0, secs: +c.secs || 0, label: me, kind: 'self' });
+    (c.legs || []).forEach(function (l) { parts.push({ id: l.id, offset: +l.offset || 0, secs: +l.secs || 0, label: me + ' (after hold)', kind: 'hold' }); });
+    if (c.xfer_to && c.xfer_to.id) parts.push({ id: c.xfer_to.id, offset: c.xfer_to.offset != null ? +c.xfer_to.offset : null, secs: +c.xfer_to.secs || 0, label: (c.xfer_to.agent || 'Next CSR') + ' (after transfer)', kind: 'to' });
     var wait = new Promise(function (res) { if (P.info) return res(); var n = 0, iv = setInterval(function () { if (P.info || ++n > 150 || P.id !== id) { clearInterval(iv); res(); } }, 100); });
-    wait.then(function () { return Promise.all(c.legs.map(function (l) { return api({ action: 'audio', id: l.id, t: Math.floor(Date.now() / 300000) }).catch(function () { return null; }); })); }).then(function (infos) {
+    wait.then(function () { return Promise.all(parts.map(function (pt) { return pt.id ? api({ action: 'audio', id: pt.id, t: Math.floor(Date.now() / 300000) }).catch(function () { return null; }) : Promise.resolve(P.info); })); }).then(function (infos) {
       if (P.id !== id || !P.info || !P.info.url) return;
-      var L = [{ offset: 0, secs: +c.secs || (P.info.end ? P.info.end + 3 : 0), url: P.info.url }], segs = (P.info.segs || []).slice(), pci = (P.info.pci || []).slice();
-      c.legs.forEach(function (l, i) {
-        var inf = infos[i]; if (!inf || !inf.url) return; var o = +l.offset || 0;
-        L.push({ offset: o, secs: +l.secs || (inf.end ? inf.end + 3 : 0), url: inf.url });
-        (inf.segs || []).forEach(function (t) { segs.push(o + (+t)); });
-        (inf.pci || []).forEach(function (r) { pci.push([o + (+r[0]), o + (+r[1])]); });
+      var keep = [];
+      parts.forEach(function (pt, i) { var inf = infos[i]; if (!inf || !inf.url) return; pt.url = inf.url; pt.inf = inf; if (!pt.secs) pt.secs = inf.end ? inf.end + 3 : 0; keep.push(pt); });
+      if (keep.length < 2) return;
+      // no overlaps: a part whose offset is unknown follows the previous one; an overlapping previous part is trimmed
+      for (var i = 0; i < keep.length; i++) {
+        var pt = keep[i], pv = keep[i - 1];
+        if (pt.offset == null) pt.offset = pv ? pv.offset + pv.secs : 0;
+        if (pv && pt.offset < pv.offset + pv.secs) { if (pt.kind === 'self') pv.secs = Math.max(1, pt.offset - pv.offset); else if (pt.kind === 'from') pt.offset = pv.offset + pv.secs; else pv.secs = Math.max(1, pt.offset - pv.offset); }
+      }
+      var base = -keep[0].offset, L = [], segs = [], pci = [], li = 0;
+      keep.forEach(function (pt, i) {
+        var o = pt.offset + base;
+        L.push({ offset: o, secs: pt.secs, url: pt.url, label: pt.label, kind: pt.kind });
+        if (pt.kind === 'self') li = i;
+        (pt.inf.segs || []).forEach(function (t) { segs.push(pt.offset + (+t)); });
+        (pt.inf.pci || []).forEach(function (r) { pci.push([o + (+r[0]), o + (+r[1])]); });
       });
-      if (L.length < 2) return;
-      P.legs = L; P.li = 0; P.info.segs = segs.sort(function (a, b) { return a - b; }); P.info.pci = pci;
+      P.legs = L; P.li = li; P.base = base; P.info.segs = segs.sort(function (x, y) { return x - y; }); P.info.pci = pci;
       paintPlayer();
     });
   }
   function legsNote(c) {
     if (c.leg_of && c.leg_of.id) return '<div class="oq-card" style="background:#F3F8F5;border-color:#BFDCCB;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap"><div style="font-size:13px;line-height:1.5"><b>This is part ' + (c.leg_of.n || 2) + ' of a longer call.</b> The phone system started a new recording when the caller came back from hold. The score is on the full call.</div><button class="sel btnd" data-call="' + esc(c.leg_of.id) + '">Open the full call</button></div>';
-    if (c.legs && c.legs.length) return '<div class="mut" style="font-size:12.5px;line-height:1.5;margin-top:-4px">Recorded in ' + (c.legs.length + 1) + ' parts because the caller was on hold in between. The score covers the whole call, and the player plays the parts back to back.</div>';
-    return '';
+    var bits = [];
+    if (c.xfer_from && c.xfer_from.id) bits.push('starts with <b>' + esc(c.xfer_from.agent || 'the first CSR') + '</b>’s part before the transfer');
+    if (c.legs && c.legs.length) bits.push('includes ' + c.legs.length + ' more recording' + (c.legs.length > 1 ? 's' : '') + ' after a hold');
+    if (c.xfer_to && c.xfer_to.id) bits.push('continues into <b>' + esc(c.xfer_to.agent || 'the next CSR') + '</b>’s part after the transfer');
+    if (!bits.length) return '';
+    return '<div class="mut" style="font-size:12.5px;line-height:1.5;margin-top:-4px">The player ' + bits.join(', ') + '. ' + ((c.xfer_from && c.xfer_from.id) || (c.xfer_to && c.xfer_to.id) ? 'Each CSR is scored only on their own part.' : 'The score covers the whole call.') + '</div>';
   }
   function tsList(txt) { var out = [], re = /\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]/g, m; while ((m = re.exec(txt || ''))) out.push(m[3] != null ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) : (+m[1]) * 60 + (+m[2])); return out; }
   function clock(x) { x = Math.max(0, Math.floor(x || 0)); return Math.floor(x / 60) + ':' + ('0' + x % 60).slice(-2); }
@@ -1692,7 +1713,14 @@ export function mountOpsisQA(ROOT, cfg) {
       '<label class="sr" for="pseek">Seek</label><input id="pseek" type="range" min="0" max="' + Math.ceil(d || 1) + '" step="0.5" value="' + cur.toFixed(1) + '" style="position:absolute;left:0;right:0;width:100%;margin:0;opacity:0;cursor:pointer;height:22px"></div>' +
       '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;margin-top:2px"><span class="num mut" id="ptime">' + clock(cur) + ' / ' + clock(d) + '</span><span class="mut">' + (pci.length ? 'Card details are skipped' : '') + '</span></div></div>' +
       '<button class="sel" data-pspeed="1" aria-label="Playback speed" style="min-height:34px;padding:4px 10px;font-size:12px">' + (P.rate || 1) + '×</button>' + (P.info && P.info.url ? '<button class="sel" data-pdl="1" aria-label="Download recording" title="Download recording" style="min-height:34px;padding:4px 10px;font-size:12px;gap:5px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download</button>' : '') + '</div>' +
-      (stepNote ? '<div style="font-size:12.5px;margin-top:6px">' + stepNote + '</div>' : '');
+      (stepNote ? '<div style="font-size:12.5px;margin-top:6px">' + stepNote + '</div>' : '') + partChips();
+  }
+  function partChips() {
+    var L = P.legs; if (!L || L.length < 2) return '';
+    return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px" role="group" aria-label="Parts of this call">' + L.map(function (l, i) {
+      var on = i === (P.li || 0);
+      return '<button class="chip' + (on ? ' on' : '') + '" data-ppart="' + i + '" aria-pressed="' + on + '" style="min-height:30px;padding:3px 10px;font-size:12px"><span class="num">' + clock(l.offset) + '</span> ' + esc(l.label || ('Part ' + (i + 1))) + '</button>';
+    }).join('') + '</div>';
   }
   function paintPlayer() {
     var el = $('plr'); if (el) el.innerHTML = playerInner();
@@ -1707,6 +1735,8 @@ export function mountOpsisQA(ROOT, cfg) {
   AU.addEventListener('timeupdate', function () {
     var cur = vcur(), pci = (P.info && P.info.pci) || [];
     for (var i = 0; i < pci.length; i++) if (cur >= pci[i][0] && cur < pci[i][1]) { vseek(pci[i][1]); toast('Card details skipped for security'); return; }
+    var Lg = P.legs, li0 = P.li || 0;
+    if (Lg && li0 < Lg.length - 1 && Lg[li0].secs && AU.currentTime > Lg[li0].secs + 0.3) { vseek(Lg[li0 + 1].offset, true); return; }
     if (P.stepEnd != null && cur >= P.stepEnd) { AU.pause(); P.step = null; P.stepEnd = null; paintPlayer(); }
     tick();
   });
@@ -1715,7 +1745,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function playStep(i) {
     var s = S.cur && S.cur.steps[i], r = stepRange(s); if (!r || !P.info || !P.info.url) return;
     if (P.step === i && !AU.paused) { stopAudio(); paintPlayer(); return; }
-    P.step = i; P.stepEnd = r[1]; vseek(r[0], true); paintPlayer();
+    P.step = i; P.stepEnd = r[1] + (P.base || 0); vseek(r[0] + (P.base || 0), true); paintPlayer();
   }
 
   // ---------- Call drawer ----------
@@ -2134,12 +2164,13 @@ export function mountOpsisQA(ROOT, cfg) {
     }
     var ap = t.closest('[data-autoplay]');
     if (ap) { var aid = ap.getAttribute('data-autoplay'); S.fromAsk = !!S.ask.open; S.ask.open = false; S.autoplay = aid; if (P.id === aid && P.info && P.info.url) { S.autoplay = null; AU.play().catch(function () {}); } S.callId = aid; callDrawer(); return; }
+    var ppt = t.closest('[data-ppart]'); if (ppt && P.legs) { P.step = null; P.stepEnd = null; vseek(P.legs[+ppt.getAttribute('data-ppart')].offset, true); paintPlayer(); return; }
     if (t.closest('[data-pplay]')) { if (AU.paused) { P.step = null; P.stepEnd = null; if (AU.ended && (!P.legs || (P.li || 0) === P.legs.length - 1)) vseek(0); AU.play().catch(function () {}); } else AU.pause(); return; }
     if (t.closest('[data-pfull]')) { P.step = null; P.stepEnd = null; AU.play().catch(function () {}); paintPlayer(); return; }
     var pst = t.closest('[data-pstep]');
     if (pst) { playStep(+pst.getAttribute('data-pstep')); return; }
     var psk = t.closest('[data-seek]');
-    if (psk && P.info && P.info.url) { P.step = null; P.stepEnd = null; vseek(Math.max(0, +psk.getAttribute('data-seek') - 0.4), true); return; }
+    if (psk && P.info && P.info.url) { P.step = null; P.stepEnd = null; vseek(Math.max(0, +psk.getAttribute('data-seek') - 0.4) + (P.base || 0), true); return; }
     var ffb = t.closest('[data-ffk]');
     if (ffb) { var fk = ffb.getAttribute('data-ffk'), fv = ffb.getAttribute('data-ffv'), fl = (FFL[fk] || '') + (fk === 'hour' ? fhour(+fv) : fk === 'seg' ? (SEGL[fv] || fv) + (ffb.getAttribute('data-ffnb') ? ' · not booked' : '') : fv);
       var ffo = { ff: { kind: fk, value: fv, label: fl, notbooked: !!ffb.getAttribute('data-ffnb') } };
