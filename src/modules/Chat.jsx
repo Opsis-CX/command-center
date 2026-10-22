@@ -2737,7 +2737,181 @@ function ReadByPanel({ names, unread, onClose }) {
   )
 }
 
+// ============================================================
+// Custom emoji (team-uploaded images for reactions).
+// Stored in public.custom_emojis + the "custom-emojis" bucket. A reaction
+// with a custom emoji is saved as ":shortcode:" in message_reactions.emoji.
+// Staff can add; the uploader or an admin can remove; everyone can use them.
+// ============================================================
+let _customEmojis = null
+let _ceLoading = null
+const _ceListeners = new Set()
+async function loadCustomEmojis(force = false) {
+  if (_customEmojis && !force) return _customEmojis
+  if (_ceLoading && !force) return _ceLoading
+  _ceLoading = supabase.from('custom_emojis').select('id, shortcode, image_url, storage_path, created_by, created_at').order('shortcode')
+    .then(({ data }) => {
+      _customEmojis = data || []
+      _ceLoading = null
+      _ceListeners.forEach(fn => fn(_customEmojis))
+      return _customEmojis
+    })
+  return _ceLoading
+}
+function useCustomEmojis() {
+  const [list, setList] = useState(_customEmojis || [])
+  useEffect(() => {
+    _ceListeners.add(setList)
+    loadCustomEmojis().then(setList)
+    return () => { _ceListeners.delete(setList) }
+  }, [])
+  return list
+}
+const CUSTOM_RE = /^:([a-z0-9_]{2,32}):$/
+// Renders a reaction: a normal emoji as text, ":shortcode:" as its image.
+function EmojiGlyph({ emoji, size = 16, custom }) {
+  const m = CUSTOM_RE.exec(emoji || '')
+  const c = m && custom.find(x => x.shortcode === m[1])
+  if (c) return <img src={c.image_url} alt={emoji} title={emoji} style={{ width: size, height: size, objectFit: 'contain', verticalAlign: 'middle' }} />
+  return <span className="chat-emoji" style={{ fontSize: size - 2 }}>{emoji}</span>
+}
+const pickerCustomEmojis = (list) => list.map(c => ({ id: `:${c.shortcode}:`, names: [c.shortcode], imgUrl: c.image_url }))
+const pickedEmoji = (e) => e.isCustom ? `:${(e.names && e.names[0]) || ''}:` : e.emoji
+
+// Shrink any image to a 128×128 PNG (transparent padding). GIFs under 512 KB
+// are kept as-is so animation survives.
+async function prepareEmojiImage(file) {
+  if (file.type === 'image/gif' && file.size <= 512 * 1024) return { blob: file, ext: 'gif', type: 'image/gif' }
+  const url = URL.createObjectURL(file)
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url })
+    const S = 128, canvas = document.createElement('canvas'); canvas.width = S; canvas.height = S
+    const ctx = canvas.getContext('2d')
+    const r = Math.min(S / img.width, S / img.height)
+    const w = img.width * r, h = img.height * r
+    ctx.drawImage(img, (S - w) / 2, (S - h) / 2, w, h)
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'))
+    return { blob, ext: 'png', type: 'image/png' }
+  } finally { URL.revokeObjectURL(url) }
+}
+
+function CustomEmojiModal({ onClose }) {
+  const { user, isAdmin, appRole } = useAuth()
+  const list = useCustomEmojis()
+  const canAdd = isStaffProfile({ role: appRole, is_admin: isAdmin })
+  const [name, setName] = useState('')
+  const [file, setFile] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const fileRef = useRef(null)
+
+  const code = name.trim().toLowerCase().replace(/^:+|:+$/g, '').replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '')
+  const taken = list.some(c => c.shortcode === code)
+  const validName = /^[a-z0-9_]{2,32}$/.test(code)
+
+  function pickFile(f) {
+    setErr('')
+    if (!f) return
+    if (!/^image\/(png|gif|webp|jpeg)$/.test(f.type)) { setErr('Use a PNG, GIF, JPG or WebP image.'); return }
+    if (f.size > 5 * 1024 * 1024) { setErr('That image is over 5 MB.'); return }
+    setFile(f)
+    if (preview) URL.revokeObjectURL(preview)
+    setPreview(URL.createObjectURL(f))
+    if (!name) setName(f.name.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32))
+  }
+
+  async function add() {
+    if (!file || !validName || taken) return
+    setBusy(true); setErr('')
+    try {
+      const { blob, ext, type } = await prepareEmojiImage(file)
+      if (blob.size > 1024 * 1024) throw new Error('That image is still over 1 MB after shrinking — try a smaller one.')
+      const path = `${user.id}/${code}-${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage.from('custom-emojis').upload(path, blob, { contentType: type, upsert: false })
+      if (upErr) throw upErr
+      const image_url = supabase.storage.from('custom-emojis').getPublicUrl(path).data.publicUrl
+      const { error: insErr } = await supabase.from('custom_emojis').insert({ shortcode: code, image_url, storage_path: path, created_by: user.id })
+      if (insErr) {
+        await supabase.storage.from('custom-emojis').remove([path])
+        throw new Error(/duplicate|unique/i.test(insErr.message) ? `:${code}: is already taken.` : insErr.message)
+      }
+      await loadCustomEmojis(true)
+      setName(''); setFile(null); setPreview(null); if (fileRef.current) fileRef.current.value = ''
+    } catch (e) { setErr(e.message || String(e)) }
+    setBusy(false)
+  }
+
+  async function remove(c) {
+    if (!window.confirm(`Remove :${c.shortcode}:? Reactions that used it will show as text.`)) return
+    const { error } = await supabase.from('custom_emojis').delete().eq('id', c.id)
+    if (error) { setErr(error.message); return }
+    await supabase.storage.from('custom-emojis').remove([c.storage_path])
+    loadCustomEmojis(true)
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 90, display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, width: 'min(460px, 100%)', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 50px rgba(0,0,0,.25)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <b style={{ fontSize: 16 }}>Custom emoji</b>
+          <button className="btn btn-ghost" style={{ padding: '3px 10px', fontSize: 12 }} onClick={onClose}>Close</button>
+        </div>
+        <p className="page-sub" style={{ fontSize: 12.5, marginTop: 4 }}>Team emoji everyone can react with. Find them under the custom tab in the reaction picker.</p>
+
+        {canAdd ? (
+          <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 14, marginTop: 10 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <button onClick={() => fileRef.current?.click()} title="Choose image"
+                style={{ width: 64, height: 64, flex: 'none', borderRadius: 10, border: '1px dashed var(--line)', background: 'var(--canvas)', cursor: 'pointer', display: 'grid', placeItems: 'center', fontSize: 12, color: 'var(--ink-soft)', fontFamily: 'inherit', padding: 0 }}>
+                {preview ? <img src={preview} alt="" style={{ width: 48, height: 48, objectFit: 'contain' }} /> : 'Upload'}
+              </button>
+              <input ref={fileRef} type="file" accept="image/png,image/gif,image/webp,image/jpeg" hidden onChange={e => pickFile(e.target.files?.[0])} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-soft)' }}>Name</label>
+                <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--line)', borderRadius: 8, padding: '0 8px', marginTop: 4 }}>
+                  <span style={{ color: 'var(--ink-soft)' }}>:</span>
+                  <input value={name} maxLength={40} onChange={e => setName(e.target.value)} placeholder="ty_heart"
+                    style={{ flex: 1, minWidth: 0, border: 0, outline: 'none', padding: '7px 4px', background: 'transparent', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 14 }} />
+                  <span style={{ color: 'var(--ink-soft)' }}>:</span>
+                </div>
+                <div style={{ fontSize: 11.5, marginTop: 4, color: taken ? '#DC2626' : 'var(--ink-soft)' }}>
+                  {!name ? 'Lowercase letters, numbers and _' : taken ? `:${code}: is already taken` : !validName ? '2–32 characters: a–z, 0–9, _' : `Saved as :${code}:`}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+              <button className="btn" disabled={busy || !file || !validName || taken} onClick={add}>{busy ? 'Adding…' : 'Add emoji'}</button>
+            </div>
+            <div className="page-sub" style={{ fontSize: 11.5, marginTop: 4 }}>Square images work best. Images are shrunk to 128×128.</div>
+          </div>
+        ) : (
+          <div className="page-sub" style={{ fontSize: 12.5, marginTop: 6 }}>Ask a team lead if you'd like a new emoji added.</div>
+        )}
+
+        {err && <div style={{ color: '#DC2626', fontSize: 12.5, marginTop: 8 }}>{err}</div>}
+
+        <div style={{ fontSize: 13, fontWeight: 600, margin: '16px 0 8px' }}>All custom emoji ({list.length})</div>
+        {list.length === 0 && <div className="page-sub" style={{ fontSize: 12.5 }}>None yet.</div>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 6 }}>
+          {list.map(c => (
+            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 7px', border: '1px solid var(--line)', borderRadius: 8, minWidth: 0 }}>
+              <img src={c.image_url} alt="" style={{ width: 24, height: 24, objectFit: 'contain', flex: 'none' }} />
+              <span style={{ fontSize: 12, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`:${c.shortcode}:`}>:{c.shortcode}:</span>
+              {(c.created_by === user?.id || isAdmin) && (
+                <button onClick={() => remove(c)} title="Remove" style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, padding: 2 }}>✕</button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, pickerOpen, onOpenPicker, onClosePicker, reactorsFor, setReactorsFor }) {
+  const custom = useCustomEmojis()
+  const [manageEmoji, setManageEmoji] = useState(false)
   const mine = reactions.filter(r => r.message_id === messageId)
   // If there isn't ~380px of room below the bar (i.e. the message sits low on
   // screen, which is where people usually react), open the picker UPWARD so
@@ -2781,7 +2955,7 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
             border: '1px solid ' + (g.byMe ? 'var(--accent)' : 'var(--line)'),
             background: g.byMe ? 'var(--accent-bg)' : 'var(--surface)', color: g.byMe ? 'var(--accent)' : 'var(--ink)' }}>
-          <span className="chat-emoji" style={{ fontSize: 14 }}>{emoji}</span> {g.count}
+          <EmojiGlyph emoji={emoji} size={16} custom={custom} /> {g.count}
         </button>
       ))}
       <button onClick={onOpenPicker} title="Add reaction"
@@ -2796,7 +2970,7 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
           <div onClick={() => setReactorsFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
           <div style={{ position: 'absolute', top: 26, left: 0, zIndex: 41, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', boxShadow: '0 6px 20px rgba(0,0,0,.14)', padding: '8px 10px', minWidth: 170 }}>
             <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 5 }}>
-              <span className="chat-emoji" style={{ fontSize: 14 }}>{open}</span> · {groups[open].count}
+              <EmojiGlyph emoji={open} size={16} custom={custom} /> · {groups[open].count}
             </div>
             {groups[open].who.map(pid => {
               const n = nameOf(pid)
@@ -2815,11 +2989,19 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
         <>
           <div onClick={onClosePicker} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
           <div style={{ position: 'absolute', ...(openUp ? { bottom: 26 } : { top: 26 }), left: 0, zIndex: 41 }}>
-            <EmojiPicker onEmojiClick={(e) => onToggle(messageId, e.emoji)}
-              width={300} height={360} previewConfig={{ showPreview: false }} reactionsDefaultOpen={true} />
+            <div style={{ background: 'var(--surface)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.14)' }}>
+              <EmojiPicker onEmojiClick={(e) => onToggle(messageId, pickedEmoji(e))}
+                customEmojis={pickerCustomEmojis(custom)}
+                width={300} height={360} previewConfig={{ showPreview: false }} reactionsDefaultOpen={true} />
+              <button onClick={() => { onClosePicker(); setManageEmoji(true) }}
+                style={{ display: 'block', width: '100%', border: 0, borderTop: '1px solid var(--line)', background: 'transparent', padding: '7px 10px', fontSize: 12, color: 'var(--accent)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                ＋ Custom emoji
+              </button>
+            </div>
           </div>
         </>
       )}
+      {manageEmoji && <CustomEmojiModal onClose={() => setManageEmoji(false)} />}
     </div>
   )
 }
