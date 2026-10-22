@@ -1,5 +1,7 @@
-// Opsis QA client portal — the app shown at garageco.opsiscx.com (generated; do not hand-edit).
-// Built from the Opsis QA preview page by scratchpad/portal/build.py. All data comes from the
+// Opsis QA client portal — the app shown at garageco.opsiscx.com.
+// 2026-10-22: hand-edited — wording points to the account's own admins (not Opsis CX), and QA settings
+// gains "Suggested scoring rules" (opsis-qa-portal action 'rulesugs' -> opsis-qa-rules).
+// Adds the Card capture page (2026-10-22). Built from the Opsis QA preview page by scratchpad/portal/build.py. All data comes from the
 // authenticated edge function opsis-qa-portal (scoped to the signed-in login's client + brand).
 // mountOpsisQA(rootEl, cfg) renders the app and returns a destroy() function.
 // cfg: { invoke(body) -> Promise<json>, role, brandLock, clientName, clientId, staff, userName, email,
@@ -62,7 +64,7 @@ export function mountOpsisQA(ROOT, cfg) {
 
   // ---------------- data ----------------
   var cache = {};
-  var CACHEABLE = { report: 1, focus: 1, calls: 1, phone: 1, repeat: 1, ai: 1 };
+  var CACHEABLE = { report: 1, focus: 1, calls: 1, phone: 1, repeat: 1, ai: 1, cardcap: 1 };
   function api(body) {
     if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
     var k = JSON.stringify(body), cacheable = !!CACHEABLE[body.action];
@@ -111,7 +113,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function iconPath(k) {
     return {
       overview: 'M4 5h16v14H4zM4 9h16M9 9v10', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
-      calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+      cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
       scorecards: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8 11h8M8 15h8M8 19h5', reporting: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3', money: 'M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5s-5 1.6-5 3.5 2.2 3.2 5 3.5 5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5', team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
@@ -119,7 +121,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   // ---------------- nav + top bar ----------------
-  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview'], ['insights', 'Insights']].concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', 'Brands']]).concat([['csrs', 'CSRs'], ['calls', 'Call reviews'], ['money', 'Revenue'], ['reporting', 'Reporting']]).concat([['hub', 'Coaching Hub']])],
+  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview'], ['insights', 'Insights']].concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', 'Brands']]).concat([['csrs', 'CSRs'], ['calls', 'Call reviews'], ['cardcap', 'Card capture'], ['money', 'Revenue'], ['reporting', 'Reporting']]).concat([['hub', 'Coaching Hub']])],
     ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(IS_ADMIN ? [['team', 'Team & access']] : [])]];
   function renderWho() {
     var w = $('oqwho'); if (!w) return;
@@ -576,7 +578,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   // ---------- Setup pages (real — saved through opsis-qa-portal) ----------
-  function noRights(what) { return '<div class="oq-card"><h2 class="ttl">' + esc(what) + '</h2><p class="sub">Only ' + esc(CLIENT) + ' account admins can change this. Ask your admin, or the Opsis CX Support team.</p></div>'; }
+  function noRights(what) { return '<div class="oq-card"><h2 class="ttl">' + esc(what) + '</h2><p class="sub">Only ' + esc(CLIENT) + ' account admins can change this. Ask your account admin.</p></div>'; }
   function ago(ts) { if (!ts) return '—'; var d = String(ts).slice(0, 10); return fdate(d) + (d.slice(0, 4) !== todayET().slice(0, 4) ? ', ' + d.slice(0, 4) : ''); }
 
   // Knowledge base
@@ -589,7 +591,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function drawKb() {
     var w = $('kbwrap'); if (!w || !KBS.list) return;
     var L = KBS.list, ed = KBS.edit != null ? L[KBS.edit] : null, cats = ['Pricing', 'Policy', 'Coverage', 'Troubleshooting', 'Scheduling', 'Other'];
-    var list = '<div class="oq-card" style="flex:999 1 520px"><h2 class="ttl">What the AI should know about your business</h2><p class="sub">The AI reads these when it scores new calls (for example, to check a CSR quoted the right fee). ' + (IS_ADMIN ? 'Every change is logged and the Opsis CX Support team is notified.' : 'Only account admins can edit them.') + '</p>' +
+    var list = '<div class="oq-card" style="flex:999 1 520px"><h2 class="ttl">What the AI should know about your business</h2><p class="sub">The AI reads these when it scores new calls (for example, to check a CSR quoted the right fee). ' + (IS_ADMIN ? 'Every change is logged with who made it.' : 'Only account admins can edit them.') + '</p>' +
       (L.length ? L.map(function (a, i) { var on = KBS.edit === i;
         return '<div style="padding:14px 12px;border-top:1px solid var(--line2);margin:8px -12px 0;border-radius:10px;' + (on ? 'background:#EEF4EF' : '') + '"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><b>' + esc(a.title) + '</b><div style="display:flex;gap:6px;align-items:center">' + (a.category ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(a.category) + '</span>' : '') +
           (!IS_ADMIN ? '' : KBS.del === i ? '<span class="mut" style="font-size:12px">Remove this article?</span><button class="sel" data-act="kbdelyes" data-i="' + i + '" style="padding:5px 10px;font-size:12px;color:#B4461F"' + (KBS.busy ? ' disabled' : '') + '>Remove</button><button class="sel" data-act="kbdelno" style="padding:5px 10px;font-size:12px">Keep</button>'
@@ -608,11 +610,107 @@ export function mountOpsisQA(ROOT, cfg) {
       .catch(function (e) { KBS.busy = false; busyBtn(btn, false); toast(e.message || 'Couldn’t save. Try again.'); });
   }
 
+  // Card capture: booked service calls where the CSR asked for a card to hold the appointment (asked)
+  // and the customer gave one (captured). Same numbers as the daily card capture email.
+  var CAP = { d: null, key: null, f: 'all', ag: null, b: null, shown: 50 };
+  function vCard(tok) {
+    setMain(crumb([['Card capture']]) + '<div id="ccwrap"><div class="oq-card">' + skel(36, 6) + '</div></div>');
+    var key = S.start + '|' + S.end + '|' + S.brands.join(',');
+    if (CAP.d && CAP.key === key) { drawCard(); return; }
+    api(win({ action: 'cardcap' })).then(function (r) { if (tok !== T) return; CAP.d = r || {}; CAP.key = key; CAP.ag = null; CAP.b = null; CAP.shown = 50; drawCard(); })
+      .catch(function (e) { if (tok === T && $('ccwrap')) $('ccwrap').innerHTML = errBox(e); });
+  }
+  function ccPct(a, b) { return b ? pc(100 * a / b) : '—'; }
+  function ccYes(v, yes, no) { return v === true ? '<span class="pill" style="background:#E6F0EA;color:#1F5A41">' + yes + '</span>' : v === false ? '<span class="pill" style="background:#FDECEC;color:#A61B1B">' + no + '</span>' : '<span class="pill" style="background:#F3F1EC;color:#56605B">—</span>'; }
+  function ccRows() {
+    var f = CAP.f;
+    return (CAP.d.calls || []).filter(function (c) {
+      if (CAP.ag && (c.agent !== CAP.ag || c.brand !== CAP.b)) return false;
+      if (CAP.b && !CAP.ag && c.brand !== CAP.b) return false;
+      return f === 'all' || (f === 'asked' && c.asked_for_cc) || (f === 'cap' && c.collected_cc) || (f === 'miss' && c.asked_for_cc && !c.collected_cc) || (f === 'not' && !c.asked_for_cc);
+    });
+  }
+  function drawCard() {
+    var w = $('ccwrap'); if (!w || !CAP.d) return; var d = CAP.d, o = d.overall || {};
+    var bk = +o.booked || 0, as = +o.asked_cc || 0, cp = +o.captured_cc || 0;
+    var tiles = '<div class="row">' +
+      mnTile('Booked service calls', n0(bk), 'Repair and maintenance appointments booked by CSRs', '', 'Booked service calls handled by your CSRs, duplicates removed.') +
+      mnTile('Card asked', ccPct(as, bk), n0(as) + ' of ' + n0(bk) + ' bookings · the CSR asked for a card to hold the appointment', '#2B3A67', 'This is the CSR behavior. A card mentioned only as a way to pay later does not count.') +
+      mnTile('Card captured', ccPct(cp, as), n0(cp) + ' of ' + n0(as) + ' asks · ' + ccPct(cp, bk) + ' of all bookings', '#1F5A41', 'The customer gave a card when asked.') +
+      mnTile('Asked, not captured', n0(Math.max(as - cp, 0)), 'Customer declined or the card wasn’t taken', '#A8441A') + '</div>';
+    var tbl = function (title, sub, rows, isAgent) {
+      if (!rows.length) return '';
+      return '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">' + title + '</h2><p class="sub">' + sub + '</p></div>' + (isAgent ? '<button class="sel" data-act="cccsv">Download CSV</button>' : '') + '</div><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;width:100%"><thead><tr><th style="text-align:left">' + (isAgent ? 'CSR' : 'Brand') + '</th>' + (isAgent && !LOCK ? '<th style="text-align:left">Brand</th>' : '') + '<th style="text-align:right">Booked</th><th style="text-align:right">Asked</th><th style="text-align:right">Asked %</th><th style="text-align:right">Captured</th><th style="text-align:right">Captured ÷ asked</th><th style="text-align:right">Captured ÷ booked</th></tr></thead><tbody>' +
+        rows.map(function (r) {
+          var on = isAgent ? (CAP.ag === r.agent && CAP.b === r.brand) : (CAP.b === r.brand && !CAP.ag);
+          return '<tr style="cursor:pointer' + (on ? ';background:#EEF2FB' : '') + '" data-act="' + (isAgent ? 'ccag' : 'ccbr') + '" data-ag="' + esc(r.agent || '') + '" data-br="' + esc(r.brand) + '"><td>' + esc(isAgent ? r.agent : r.brand) + '</td>' + (isAgent && !LOCK ? '<td class="mut">' + esc(r.brand) + '</td>' : '') +
+            '<td class="num" style="text-align:right">' + n0(r.booked) + '</td><td class="num" style="text-align:right">' + n0(r.asked_cc) + '</td><td class="num" style="text-align:right">' + ccPct(r.asked_cc, r.booked) + '</td><td class="num" style="text-align:right">' + n0(r.captured_cc) + '</td><td class="num" style="text-align:right">' + ccPct(r.captured_cc, r.asked_cc) + '</td><td class="num" style="text-align:right">' + ccPct(r.captured_cc, r.booked) + '</td></tr>';
+        }).join('') +
+        '<tr style="font-weight:600;border-top:2px solid var(--line)"><td>Total</td>' + (isAgent && !LOCK ? '<td></td>' : '') + '<td class="num" style="text-align:right">' + n0(bk) + '</td><td class="num" style="text-align:right">' + n0(as) + '</td><td class="num" style="text-align:right">' + ccPct(as, bk) + '</td><td class="num" style="text-align:right">' + n0(cp) + '</td><td class="num" style="text-align:right">' + ccPct(cp, as) + '</td><td class="num" style="text-align:right">' + ccPct(cp, bk) + '</td></tr>' +
+        '</tbody></table></div></div>';
+    };
+    var brands = d.by_brand || [], agents = d.by_agent || [];
+    var rows = ccRows(), shown = rows.slice(0, CAP.shown);
+    var chip = function (k, l) { return '<button class="sel' + (CAP.f === k ? ' btnd' : '') + '" data-act="ccf" data-f="' + k + '" style="padding:5px 12px;font-size:12.5px">' + l + '</button>'; };
+    var who = CAP.ag ? esc(CAP.ag) + (LOCK ? '' : ' · ' + esc(CAP.b)) : CAP.b ? esc(CAP.b) : '';
+    var list = '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Booked calls' + (who ? ' · ' + who : '') + '</h2><p class="sub">Click a call to hear it and read what was said.' + (who ? ' <button class="lnk" data-act="ccclr">Show everyone</button>' : '') + '</p></div><div style="display:flex;gap:6px;flex-wrap:wrap">' + chip('all', 'All') + chip('asked', 'Card asked') + chip('cap', 'Captured') + chip('miss', 'Asked, not captured') + chip('not', 'Not asked') + '</div></div>' +
+      (shown.length ? shown.map(function (c) {
+        var q = c.cc_quote;
+        return '<button class="click" data-call="' + esc(c.review_id) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--line2)"><span class="mut num" style="width:58px;flex:none;font-size:12.5px">' + fdate(c.call_date) + '</span><span style="flex:1;min-width:0"><span style="font-weight:600">' + esc(c.agent || 'Unknown') + '</span>' + (LOCK ? '' : ' <span class="mut" style="font-size:12.5px">· ' + esc(c.brand) + '</span>') + (q ? '<span class="mut" style="display:block;font-size:12.5px;margin-top:2px;line-height:1.45">“' + esc(q) + '”</span>' : '') + '</span><span style="display:flex;gap:6px;flex:none">' + ccYes(c.asked_for_cc, 'Asked', 'Not asked') + (c.asked_for_cc ? ccYes(c.collected_cc, 'Captured', 'Not captured') : '') + '</span></button>';
+      }).join('') : '<div class="mut" style="padding:14px 0">No calls match.</div>') +
+      (rows.length > shown.length ? '<button class="sel" data-act="ccmore" style="margin-top:10px;width:100%;justify-content:center">Show more (' + n0(rows.length - shown.length) + ' left)</button>' : '') + '</div>';
+    w.innerHTML = '<div class="oq-card" style="background:#FAF8F4"><p class="sub" style="line-height:1.55;margin:0"><b>Card asked</b> means that while booking a repair or maintenance visit, the CSR asked for a card to hold or secure the appointment. <b>Captured</b> means the customer gave one. A card mentioned only as a way to pay the technician later doesn’t count. These are the same numbers as the daily card capture email.</p></div>' +
+      tiles + (LOCK || brands.length < 2 ? '' : tbl('By brand', 'Click a brand to see its calls.', brands, false)) + tbl('By CSR', 'Click a CSR to see their calls.', agents, true) + list;
+  }
+  function ccCsv() {
+    var a = (CAP.d && CAP.d.by_agent) || [], o = (CAP.d && CAP.d.overall) || {};
+    var q = function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var p = function (x, y) { return y ? (100 * x / y).toFixed(1) + '%' : ''; };
+    var lines = [['CSR', 'Brand', 'Booked', 'Asked', 'Asked %', 'Captured', 'Captured / asked', 'Captured / booked'].join(',')].concat(a.map(function (r) { return [q(r.agent), q(r.brand), r.booked, r.asked_cc, p(r.asked_cc, r.booked), r.captured_cc, p(r.captured_cc, r.asked_cc), p(r.captured_cc, r.booked)].join(','); }));
+    lines.push(['Total', '', o.booked, o.asked_cc, p(o.asked_cc, o.booked), o.captured_cc, p(o.captured_cc, o.asked_cc), p(o.captured_cc, o.booked)].join(','));
+    saveBlob('card-capture-' + S.start + '-to-' + S.end + '.csv', new Blob([lines.join('\n')], { type: 'text/csv' }));
+  }
   // QA settings
   var QS = null, QSE = { ins: false, metric: false, req: false, del: null, busy: false };
+  // Suggested scoring rules: patterns the tool finds in corrections your team keeps making.
+  var RS = { data: null, busy: false, err: null };
+  function loadRules() {
+    if (!IS_ADMIN) return;
+    api({ action: 'rulesugs', op: 'list' }).then(function (r) { RS.data = r; RS.err = null; drawRules(); })
+      .catch(function (e) { RS.err = e; drawRules(); });
+  }
+  function rulesOp(body, done, el) {
+    if (RS.busy) return; RS.busy = true; if (el) el.disabled = true; drawRules();
+    api(Object.assign({ action: 'rulesugs' }, body)).then(function (r) { RS.busy = false; RS.data = r; drawRules(); toast(done(r)); })
+      .catch(function (e) { RS.busy = false; drawRules(); toast(e && e.message ? e.message : 'Something went wrong. Try again.'); });
+  }
+  function drawRules() {
+    var w = $('rsbox'); if (!w) return;
+    if (!IS_ADMIN) { w.style.display = 'none'; return; }
+    w.style.display = '';
+    var dis = RS.busy ? ' disabled' : '';
+    var head = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="flex:1 1 300px"><h2 class="ttl">Suggested scoring rules</h2><p class="sub">Each week the tool looks for scores and call details your team keeps correcting the same way, and drafts a rule so the AI gets it right next time. Approve to add the rule to your call flow (you can edit the wording first), or dismiss it.</p></div><button class="sel" data-act="rsrun"' + dis + '>' + (RS.busy === 'run' ? 'Checking…' : 'Check now') + '</button></div>';
+    if (RS.err && !RS.data) { w.innerHTML = head + '<div class="mut" style="font-size:12.5px;margin-top:10px">Couldn’t load suggestions. <button class="lnk" data-act="rsreload">Try again</button></div>'; return; }
+    if (!RS.data) { w.innerHTML = head + '<div class="mut" style="font-size:12.5px;margin-top:10px">Loading…</div>'; return; }
+    var pend = RS.data.pending || [], done = RS.data.decided || [];
+    var body = pend.length ? pend.map(function (q) {
+      var ex = (q.examples || []).slice(0, 4);
+      return '<div style="padding:14px 0;border-top:1px solid var(--line2)">' +
+        '<div style="font-weight:600">' + esc(q.title || q.target_label) + '</div>' +
+        '<div class="mut" style="font-size:12.5px;margin-top:3px">' + esc(q.target_label || '') + ' · corrected ' + q.corrections + ' time' + (q.corrections === 1 ? '' : 's') + ' by ' + q.people + ' ' + (q.people === 1 ? 'person' : 'people') + ' · AI said <b>' + esc(q.from_label || '') + '</b>, your team changed it to <b>' + esc(q.to_label || '') + '</b></div>' +
+        (q.explanation ? '<div style="font-size:13px;line-height:1.5;margin-top:8px">' + esc(q.explanation) + '</div>' : '') +
+        '<label class="l" for="rsr' + q.id + '" style="margin-top:10px">Rule the AI will follow</label><textarea id="rsr' + q.id + '" class="oq-field" style="min-height:70px;resize:vertical" maxlength="1200">' + esc(q.rule || '') + '</textarea>' +
+        (ex.length ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><span class="mut" style="font-size:12px;align-self:center">Example calls:</span>' + ex.map(function (e) { return '<button class="sel" data-call="' + esc(e.review_id) + '" style="padding:4px 10px;font-size:12px">' + esc((e.agent || 'Call') + (e.date ? ' · ' + e.date : '')) + '</button>'; }).join('') + '</div>' : '') +
+        '<div style="display:flex;gap:8px;margin-top:10px"><button class="sel btnd" data-act="rsok" data-id="' + q.id + '"' + dis + '>Approve rule</button><button class="sel" data-act="rsno" data-id="' + q.id + '"' + dis + '>Dismiss</button></div></div>';
+    }).join('') : '<div class="mut" style="font-size:12.5px;margin-top:10px">No suggestions waiting. The tool checks again every Monday, or use Check now.</div>';
+    var hist = done.length ? '<details style="margin-top:12px"><summary class="mut" style="font-size:12.5px;cursor:pointer">Recent decisions (' + done.length + ')</summary>' + done.map(function (q) {
+      return '<div style="padding:8px 0;border-top:1px solid var(--line2);font-size:12.5px;line-height:1.5"><b style="font-weight:600">' + esc(q.title || q.target_label) + '</b> <span class="mut">· ' + (q.status === 'approved' ? 'Approved' : 'Dismissed') + ' by ' + esc(q.decided_by_name || 'an admin') + (q.decided_at ? ' · ' + ago(q.decided_at) : '') + '</span>' + (q.status === 'approved' && q.applied_rule ? '<div class="mut">' + esc(q.applied_rule) + '</div>' : '') + '</div>';
+    }).join('') + '</details>' : '';
+    w.innerHTML = head + body + hist;
+  }
   function vQaSettings(tok) {
     setMain(crumb([['QA settings']]) + '<div id="qswrap"><div class="oq-card">' + skel(36, 7) + '</div></div>');
-    api({ action: 'settings' }).then(function (r) { if (tok !== T) return; QS = r; drawQs(); })
+    api({ action: 'settings' }).then(function (r) { if (tok !== T) return; QS = r; drawQs(); loadRules(); })
       .catch(function (e) { if (tok === T && $('qswrap')) $('qswrap').innerHTML = errBox(e); });
   }
   var RUBREQ = null;
@@ -637,10 +735,10 @@ export function mountOpsisQA(ROOT, cfg) {
     var rub = QS.rubric || [], mine = rub.filter(function (r) { return r.section === 'custom'; }), core = rub.filter(function (r) { return r.section !== 'custom'; });
     var section = function (title, desc, body, btn) { return '<div style="padding:16px 0;border-top:1px solid var(--line2)"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="flex:1 1 260px"><div style="font-weight:600">' + title + '</div><div class="mut" style="font-size:12.5px;margin-top:3px;line-height:1.45">' + desc + '</div></div>' + (btn || '') + '</div>' + body + '</div>'; };
     var dis = QSE.busy ? ' disabled' : '';
-    var h = '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 560px">' +
+    var h = '<div class="oq-card" id="rsbox" style="display:none"></div><div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 560px">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><h2 class="ttl">QA settings</h2><p class="sub">How ' + esc(CLIENT) + '’s calls are scored. Changes apply to new calls.</p></div><span class="pill" style="' + (QS.live ? 'background:#E6F0EA;color:#1F5A41' : 'background:#F3F1EC;color:#56605B') + '">' + (QS.live ? '● Scoring live' : '○ Scoring paused') + '</span></div>' +
-      section('Which calls are scored', (QS.sample >= 100 ? 'Every call' : QS.sample + '% of calls') + (QS.min_seconds ? ' longer than ' + QS.min_seconds + ' seconds' : '') + ' with a recording. Voicemail, internal and IVR-only calls are recognised automatically and kept out of the scores.', '<div class="mut" style="font-size:12px;margin-top:8px">To pause scoring or change which calls are included, ask the Opsis CX Support team.</div>') +
-      section('Your scoring instructions', 'Extra guidance the AI follows when it scores and classifies your calls — for example how to treat warranty calls or what counts as a lead. The Opsis CX Support team’s own rules still apply.',
+      section('Which calls are scored', (QS.sample >= 100 ? 'Every call' : QS.sample + '% of calls') + (QS.min_seconds ? ' longer than ' + QS.min_seconds + ' seconds' : '') + ' with a recording. Voicemail, internal and IVR-only calls are recognised automatically and kept out of the scores.', '') +
+      section('Your scoring instructions', 'Extra guidance the AI follows when it scores and classifies your calls — for example how to treat warranty calls or what counts as a lead. Your call flow below still applies.',
         (QSE.ins ? '<div style="margin-top:10px"><label class="sr" for="qins">Scoring instructions</label><textarea id="qins" class="oq-field" style="min-height:140px;resize:vertical" maxlength="6000" placeholder="e.g. A caller asking only for a price on a new door is still a sales lead — the CSR should offer an estimate visit.">' + esc(QS.guidance) + '</textarea><div style="display:flex;gap:8px;margin-top:8px"><button class="sel btnd" data-act="qsins"' + dis + '>' + (QSE.busy ? 'Saving…' : 'Save instructions') + '</button><button class="sel" data-act="qsinscancel">Cancel</button></div></div>'
           : (QS.guidance ? '<div style="font-size:13px;line-height:1.55;margin-top:10px;background:#F5F3EE;border-radius:10px;padding:10px 12px;white-space:pre-wrap">' + esc(QS.guidance) + '</div>' : '<div class="mut" style="font-size:12.5px;margin-top:8px">No instructions yet.</div>')),
         IS_ADMIN && !QSE.ins ? '<button class="sel" data-act="qsinsedit">' + (QS.guidance ? 'Edit' : '+ Add instructions') + '</button>' : '') +
@@ -655,8 +753,8 @@ export function mountOpsisQA(ROOT, cfg) {
         (QSE.redit ? rubForm() : '<div style="display:flex;flex-direction:column;margin-top:10px">' + core.map(function (r) { return '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--line2);font-size:13px"><span>' + esc(r.label) + '</span><span class="mut num" style="white-space:nowrap">' + r.points + ' pts</span></div>'; }).join('') + '</div>') + rubReqs() +
         (QSE.req ? '<div style="margin-top:12px"><label class="l" for="qreq">What would you like changed?</label><textarea id="qreq" class="oq-field" style="min-height:90px" maxlength="3000" placeholder="e.g. Don’t score card capture on warranty calls."></textarea><div class="mut" style="font-size:12px;margin-top:4px">This goes to your account admin.</div><div style="display:flex;gap:8px;margin-top:8px"><button class="sel btnd" data-act="qsreqsend"' + dis + '>' + (QSE.busy ? 'Sending…' : 'Send request') + '</button><button class="sel" data-act="qsreqcancel">Cancel</button></div></div>' : ''),
         IS_ADMIN ? (QSE.redit ? '' : '<button class="sel" data-act="rubedit">Edit call flow</button>') : (CAN_EDIT && !QSE.req ? '<button class="sel" data-act="qsreq">Request a change</button>' : '')) +
-      '</div><div class="oq-card" style="flex:1 1 300px;align-self:flex-start"><h2 class="ttl">How this works</h2><p class="sub" style="line-height:1.6">Changes apply to calls scored after you save — past scores don’t change. Every change is logged with who made it.</p>' + (IS_ADMIN ? '' : '<p class="sub" style="line-height:1.6;margin-top:10px">Only account admins can change instructions and metrics.</p>') + '</div></div>';
-    w.innerHTML = h;
+      '</div><div class="oq-card" style="flex:1 1 300px;align-self:flex-start"><h2 class="ttl">How this works</h2><p class="sub" style="line-height:1.6">Changes apply to calls scored after you save — past scores don’t change. Every change is logged with who made it.</p><p class="sub" style="line-height:1.6;margin-top:10px">Each Monday the tool also looks for corrections your team keeps making and suggests a rule. Your account admins decide whether to add it.</p>' + (IS_ADMIN ? '' : '<p class="sub" style="line-height:1.6;margin-top:10px">Only account admins can change instructions and metrics.</p>') + '</div></div>';
+    w.innerHTML = h; drawRules();
     var f = $('qins') || $('qmn') || $('qreq'); if (f) f.focus();
   }
   function qsWrite(body, done, after, btn) {
@@ -1837,7 +1935,7 @@ export function mountOpsisQA(ROOT, cfg) {
         '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:flex-start">' + (s.evidence ? '<div style="flex:1 1 240px;background:#F5F3EE;border-radius:10px;padding:8px 12px;font-size:12.5px;font-style:italic;color:#3B4541">“' + evHtml(s.evidence) + '”</div>' : '') + '<div style="display:flex;gap:8px;flex-wrap:wrap">' + (stepRange(s) && P.info && P.info.url ? '<button class="sel" data-pstep="' + i + '" style="min-height:36px;padding:6px 12px;white-space:nowrap">' + (P.step === i && !AU.paused ? '■ Stop' : '▶ Play this step') + '</button>' : (P.info && P.info.url ? '<span class="mut" style="font-size:12px;align-self:center">' + (a === 'no' ? 'Not done on the call, so there’s no moment to play' : 'No moment to play for this step') + '</span>' : '')) + (CAN_EDIT ? '<button class="sel" data-change="' + i + '" style="min-height:36px;padding:6px 12px">' + (IS_ADMIN ? 'Change' : 'Request change') + '</button>' : '') + '</div></div></div></div></div>';
     });
     h += '</div>' + trCard(c) + '<div class="oq-card" id="cnotes"><b>Notes</b><div id="cnlist" style="margin-top:8px">' + skel(18, 2) + '</div>' +
-      (CAN_EDIT ? '<form id="cnform" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"><label class="sr" for="cnbody">Add a note</label><textarea id="cnbody" class="oq-field" style="min-height:64px;resize:vertical" maxlength="4000" placeholder="Add a note for your team or the Opsis CX Support team…"></textarea><div><button class="sel btnd" type="submit">Add note</button></div></form>' : '') + '</div>' +
+      (CAN_EDIT ? '<form id="cnform" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"><label class="sr" for="cnbody">Add a note</label><textarea id="cnbody" class="oq-field" style="min-height:64px;resize:vertical" maxlength="4000" placeholder="Add a note for your team…"></textarea><div><button class="sel btnd" type="submit">Add note</button></div></form>' : '') + '</div>' +
       '<div class="row"><button class="sel" data-act="pdf">Print / save PDF</button><button class="sel" data-ccgo="1">Ask AI about this call</button>' + (CAN_EDIT && !CFG.csrSelf ? '<button class="sel" data-hubkudoscall="' + c.id + '">♥ Send kudos</button>' : '') + '</div>';
     var keep = $('cnbody') ? $('cnbody').value : ''; var keepq = $('ccq') ? $('ccq').value : '';
     $('cd').innerHTML = h; bindTr();
@@ -2141,7 +2239,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function render() {
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, cardcap: vCard, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
     var cq = $('csrq'); if (cq) cq.addEventListener('input', function () { S.csrQ = cq.value; S.csrFocus = true; clearTimeout(cq.t); cq.t = setTimeout(render, 250); });
@@ -2191,7 +2289,7 @@ export function mountOpsisQA(ROOT, cfg) {
         if (!IS_ADMIN) {
           if (!why) { toast('Add a short reason so your admin can review it.'); return; }
           sb.disabled = true; sb.textContent = 'Sending…'; var rid0 = S.cur.id;
-          api({ action: 'scorereq', op: 'create', id: rid0, key: s.key, answer: S.pick, why: why }).then(function (r) { var g = $('chg'); if (g) g.remove(); toast(r && r.admins ? 'Sent to your account admin to approve' : 'Request saved. Your account has no admin login yet, so ask the Opsis CX Support team to add one.'); loadReqs(rid0, true); })
+          api({ action: 'scorereq', op: 'create', id: rid0, key: s.key, answer: S.pick, why: why }).then(function (r) { var g = $('chg'); if (g) g.remove(); toast(r && r.admins ? 'Sent to your account admin to approve' : 'Request saved. Your account has no admin login yet.'); loadReqs(rid0, true); })
             .catch(function (e2) { sb.disabled = false; sb.textContent = 'Send request'; toast(e2.message || 'Couldn’t send the request.'); });
           return;
         }
@@ -2318,6 +2416,16 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'jvsave') { jvSave(d.jt); }
       else if (a === 'rpdl') { rpDownload(d.r, d.f); }
       else if (a === 'qsinsedit') { QSE.ins = true; drawQs(); }
+      else if (a === 'ccf') { CAP.f = d.f; CAP.shown = 50; drawCard(); }
+      else if (a === 'ccag') { if (CAP.ag === d.ag && CAP.b === d.br) { CAP.ag = null; CAP.b = null; } else { CAP.ag = d.ag; CAP.b = d.br; } CAP.shown = 50; drawCard(); }
+      else if (a === 'ccbr') { if (CAP.b === d.br && !CAP.ag) CAP.b = null; else { CAP.b = d.br; CAP.ag = null; } CAP.shown = 50; drawCard(); }
+      else if (a === 'ccclr') { CAP.ag = null; CAP.b = null; drawCard(); }
+      else if (a === 'ccmore') { CAP.shown += 100; drawCard(); }
+      else if (a === 'cccsv') { ccCsv(); }
+      else if (a === 'rsreload') { RS.err = null; drawRules(); loadRules(); }
+      else if (a === 'rsrun') { if (RS.busy) return; rulesOp({ op: 'run' }, function (r) { return r && r.found ? r.found + ' new suggestion' + (r.found === 1 ? '' : 's') : 'No new patterns found'; }, el); RS.busy = 'run'; drawRules(); }
+      else if (a === 'rsok') { var rsr = $('rsr' + d.id); rulesOp({ op: 'approve', id: +d.id, rule: rsr ? rsr.value : '' }, function () { return 'Rule added · new calls use it now'; }, el); }
+      else if (a === 'rsno') { rulesOp({ op: 'dismiss', id: +d.id }, function () { return 'Suggestion dismissed'; }, el); }
       else if (a === 'qsinscancel') { QSE.ins = false; drawQs(); }
       else if (a === 'qsins') { var gtxt = $('qins').value; qsWrite({ op: 'guidance', text: gtxt }, 'Saved — used when scoring new calls', function () { QSE.ins = false; }, el); }
       else if (a === 'qsmnew') { QSE.metric = true; drawQs(); }
