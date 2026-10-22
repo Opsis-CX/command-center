@@ -1614,9 +1614,44 @@ export function mountOpsisQA(ROOT, cfg) {
   // ---------- Recording player ----------
   var AU = new Audio(); AU.preload = 'metadata';
   var P = { id: null };
+  function vcur() { var L = P.legs; return L && L.length ? (L[P.li || 0].offset + (AU.currentTime || 0)) : (AU.currentTime || 0); }
+  function vseek(t, play) {
+    var L = P.legs; t = Math.max(0, +t || 0);
+    if (!L || !L.length) { AU.currentTime = t; if (play) AU.play().catch(function () {}); return; }
+    var k = 0; for (var i = 0; i < L.length; i++) if (t >= L[i].offset - 0.01) k = i;
+    var loc = t - L[k].offset;
+    if (L[k].secs && loc > L[k].secs && k < L.length - 1) { k++; loc = 0; }
+    if (k !== (P.li || 0)) { var go = play || !AU.paused; P.li = k; P.pendingSeek = Math.max(0, loc); AU.src = L[k].url; AU.playbackRate = P.rate || 1; if (go) AU.play().catch(function () {}); }
+    else { AU.currentTime = Math.max(0, loc); if (play) AU.play().catch(function () {}); }
+  }
+  AU.addEventListener('loadedmetadata', function () { if (P.pendingSeek != null) { try { AU.currentTime = P.pendingSeek; } catch (x) {} P.pendingSeek = null; } });
+  AU.addEventListener('ended', function () { var L = P.legs; if (L && L.length && (P.li || 0) < L.length - 1) vseek(L[(P.li || 0) + 1].offset, true); });
+  function loadLegs(c) {
+    if (!c || !c.legs || !c.legs.length || P.id !== c.id || P.legsFor === c.id) return;
+    P.legsFor = c.id; var id = c.id;
+    var wait = new Promise(function (res) { if (P.info) return res(); var n = 0, iv = setInterval(function () { if (P.info || ++n > 150 || P.id !== id) { clearInterval(iv); res(); } }, 100); });
+    wait.then(function () { return Promise.all(c.legs.map(function (l) { return api({ action: 'audio', id: l.id, t: Math.floor(Date.now() / 300000) }).catch(function () { return null; }); })); }).then(function (infos) {
+      if (P.id !== id || !P.info || !P.info.url) return;
+      var L = [{ offset: 0, secs: +c.secs || (P.info.end ? P.info.end + 3 : 0), url: P.info.url }], segs = (P.info.segs || []).slice(), pci = (P.info.pci || []).slice();
+      c.legs.forEach(function (l, i) {
+        var inf = infos[i]; if (!inf || !inf.url) return; var o = +l.offset || 0;
+        L.push({ offset: o, secs: +l.secs || (inf.end ? inf.end + 3 : 0), url: inf.url });
+        (inf.segs || []).forEach(function (t) { segs.push(o + (+t)); });
+        (inf.pci || []).forEach(function (r) { pci.push([o + (+r[0]), o + (+r[1])]); });
+      });
+      if (L.length < 2) return;
+      P.legs = L; P.li = 0; P.info.segs = segs.sort(function (a, b) { return a - b; }); P.info.pci = pci;
+      paintPlayer();
+    });
+  }
+  function legsNote(c) {
+    if (c.leg_of && c.leg_of.id) return '<div class="oq-card" style="background:#F3F8F5;border-color:#BFDCCB;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap"><div style="font-size:13px;line-height:1.5"><b>This is part ' + (c.leg_of.n || 2) + ' of a longer call.</b> The phone system started a new recording when the caller came back from hold. The score is on the full call.</div><button class="sel btnd" data-call="' + esc(c.leg_of.id) + '">Open the full call</button></div>';
+    if (c.legs && c.legs.length) return '<div class="mut" style="font-size:12.5px;line-height:1.5;margin-top:-4px">Recorded in ' + (c.legs.length + 1) + ' parts because the caller was on hold in between. The score covers the whole call, and the player plays the parts back to back.</div>';
+    return '';
+  }
   function tsList(txt) { var out = [], re = /\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]/g, m; while ((m = re.exec(txt || ''))) out.push(m[3] != null ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) : (+m[1]) * 60 + (+m[2])); return out; }
   function clock(x) { x = Math.max(0, Math.floor(x || 0)); return Math.floor(x / 60) + ':' + ('0' + x % 60).slice(-2); }
-  function pdur() { var d = AU.duration; return isFinite(d) && d > 0 ? d : ((S.cur && S.cur.id === P.id && +S.cur.secs) || ((P.info && P.info.end) ? P.info.end + 3 : 0)); }
+  function pdur() { if (P.legs && P.legs.length) { var z = P.legs[P.legs.length - 1]; return z.offset + (z.secs || 0); } var d = AU.duration; return isFinite(d) && d > 0 ? d : ((S.cur && S.cur.id === P.id && +S.cur.secs) || ((P.info && P.info.end) ? P.info.end + 3 : 0)); }
   function stepRange(s) {
     var ts = tsList(s && s.evidence); if (!ts.length && s && s.at != null && isFinite(+s.at)) ts = [+s.at]; if (!ts.length) return null;
     var a = Math.min.apply(null, ts), b = Math.max.apply(null, ts), segs = (P.info && P.info.segs) || [], end = null;
@@ -1647,8 +1682,9 @@ export function mountOpsisQA(ROOT, cfg) {
     if (P.err === 'none') return '<div class="mut" style="font-size:13px">No recording is available for this call.</div>';
     if (P.err === 'fail') return '<div style="font-size:13px;color:#A8441A">The recording didn’t load. <button class="more" data-pretry="1">Try again</button></div>';
     if (P.err === 'codec') return '<div style="font-size:13px;color:#A8441A">This browser can’t play this recording. Try Chrome or Edge, or <button class="more" data-pdl="1">download it</button>.</div>';
-    var d = pdur(), cur = AU.currentTime || 0, playing = !AU.paused, pci = (P.info && P.info.pci) || [], steps = (S.cur && S.cur.steps) || [];
+    var d = pdur(), cur = vcur(), playing = !AU.paused, pci = (P.info && P.info.pci) || [], steps = (S.cur && S.cur.steps) || [];
     var marks = d ? pci.map(function (r) { return '<span title="Card details skipped" style="position:absolute;top:0;bottom:0;left:' + (r[0] / d * 100).toFixed(2) + '%;width:' + Math.max(0.6, (r[1] - r[0]) / d * 100).toFixed(2) + '%;background:repeating-linear-gradient(45deg,#C9C3B8 0 3px,#E6E1D8 3px 6px);border-radius:2px"></span>'; }).join('') : '';
+    if (d && P.legs) for (var gi = 1; gi < P.legs.length; gi++) { var g0 = P.legs[gi - 1].offset + (P.legs[gi - 1].secs || 0), g1 = P.legs[gi].offset; if (g1 > g0 + 1) marks += '<span title="On hold (not recorded)" style="position:absolute;top:0;bottom:0;left:' + (g0 / d * 100).toFixed(2) + '%;width:' + ((g1 - g0) / d * 100).toFixed(2) + '%;background:#D9D4C9"></span>'; }
     var stepNote = P.step != null && steps[P.step] ? '<span style="color:#1F5A41;font-weight:600">Playing step: ' + esc(steps[P.step].label) + '</span> <button class="more" data-pfull="1">Play full call</button>' : '';
     return '<div style="display:flex;align-items:center;gap:12px">' +
       '<button data-pplay="1" aria-label="' + (playing ? 'Pause' : 'Play') + '" style="all:unset;cursor:pointer;width:44px;height:44px;border-radius:999px;background:var(--side);display:flex;align-items:center;justify-content:center;flex-shrink:0">' + (playing ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg>') + '</button>' +
@@ -1663,14 +1699,14 @@ export function mountOpsisQA(ROOT, cfg) {
     document.querySelectorAll('[data-pstep]').forEach(function (b) { var on = P.step === +b.getAttribute('data-pstep') && !AU.paused; b.innerHTML = on ? '■ Stop' : '▶ Play this step'; b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.style.background = on ? '#E6F0EA' : ''; });
   }
   function tick() {
-    var d = pdur(), cur = AU.currentTime || 0, f = $('pfill'), t = $('ptime'), sk = $('pseek');
+    var d = pdur(), cur = vcur(), f = $('pfill'), t = $('ptime'), sk = $('pseek');
     if (f && d) f.style.width = Math.min(100, cur / d * 100).toFixed(2) + '%';
     if (t) t.textContent = clock(cur) + ' / ' + clock(d);
     if (sk && document.activeElement !== sk) { sk.max = Math.ceil(d || 1); sk.value = cur.toFixed(1); }
   }
   AU.addEventListener('timeupdate', function () {
-    var cur = AU.currentTime, pci = (P.info && P.info.pci) || [];
-    for (var i = 0; i < pci.length; i++) if (cur >= pci[i][0] && cur < pci[i][1]) { AU.currentTime = pci[i][1]; toast('Card details skipped for security'); return; }
+    var cur = vcur(), pci = (P.info && P.info.pci) || [];
+    for (var i = 0; i < pci.length; i++) if (cur >= pci[i][0] && cur < pci[i][1]) { vseek(pci[i][1]); toast('Card details skipped for security'); return; }
     if (P.stepEnd != null && cur >= P.stepEnd) { AU.pause(); P.step = null; P.stepEnd = null; paintPlayer(); }
     tick();
   });
@@ -1679,7 +1715,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function playStep(i) {
     var s = S.cur && S.cur.steps[i], r = stepRange(s); if (!r || !P.info || !P.info.url) return;
     if (P.step === i && !AU.paused) { stopAudio(); paintPlayer(); return; }
-    P.step = i; P.stepEnd = r[1]; AU.currentTime = r[0]; AU.play().catch(function () {}); paintPlayer();
+    P.step = i; P.stepEnd = r[1]; vseek(r[0], true); paintPlayer();
   }
 
   // ---------- Call drawer ----------
@@ -1688,7 +1724,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (P.id !== id) loadAudio(id);
     $('layer').innerHTML = '<div class="overlay" data-close="1"><div class="drawer" role="dialog" aria-modal="true" aria-label="Call review" id="cd">' + skel(80, 1) + skel(40, 6) + '</div></div>';
     api({ action: 'call', id: id }).then(function (c) {
-      if (S.callId !== id || !$('cd')) return; S.cur = c; drawCall();
+      if (S.callId !== id || !$('cd')) return; S.cur = c; drawCall(); loadLegs(c);
     }).catch(function (e) { if ($('cd')) $('cd').innerHTML = errBox(e); });
   }
   function evHtml(t) { return esc(t).replace(/\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]/g, function (m0, a, b, c) { var x = c != null ? (+a) * 3600 + (+b) * 60 + (+c) : (+a) * 60 + (+b); return '<span class="lnk" data-seek="' + x + '" role="button" tabindex="0" title="Play from here" style="font-style:normal">' + m0 + '</span>'; }); }
@@ -1706,6 +1742,7 @@ export function mountOpsisQA(ROOT, cfg) {
       (c.caller_wanted ? '<div style="margin-top:10px"><div class="cap">Caller wanted</div><div style="margin-top:3px;line-height:1.45">' + esc(c.caller_wanted) + '</div></div>' : '') + '</div>' +
       (changed ? '<div style="flex-basis:100%;background:#FFF8E8;border:1px solid #F0DDB0;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#6B4E12">Score updated' + (who.length ? ' by <b>' + who.map(esc).join(', ') + '</b>' : '') + '.</div>' : '') + '</div>';
     h += factsBar(c);
+    h += legsNote(c);
     if (CFG.showMetrics) h += metCard(c);
     h += ccCard(c);
     if (c.xfer_out || c.xfer_in) {
@@ -2097,12 +2134,12 @@ export function mountOpsisQA(ROOT, cfg) {
     }
     var ap = t.closest('[data-autoplay]');
     if (ap) { var aid = ap.getAttribute('data-autoplay'); S.fromAsk = !!S.ask.open; S.ask.open = false; S.autoplay = aid; if (P.id === aid && P.info && P.info.url) { S.autoplay = null; AU.play().catch(function () {}); } S.callId = aid; callDrawer(); return; }
-    if (t.closest('[data-pplay]')) { if (AU.paused) { P.step = null; P.stepEnd = null; if (AU.ended) AU.currentTime = 0; AU.play().catch(function () {}); } else AU.pause(); return; }
+    if (t.closest('[data-pplay]')) { if (AU.paused) { P.step = null; P.stepEnd = null; if (AU.ended && (!P.legs || (P.li || 0) === P.legs.length - 1)) vseek(0); AU.play().catch(function () {}); } else AU.pause(); return; }
     if (t.closest('[data-pfull]')) { P.step = null; P.stepEnd = null; AU.play().catch(function () {}); paintPlayer(); return; }
     var pst = t.closest('[data-pstep]');
     if (pst) { playStep(+pst.getAttribute('data-pstep')); return; }
     var psk = t.closest('[data-seek]');
-    if (psk && P.info && P.info.url) { P.step = null; P.stepEnd = null; AU.currentTime = Math.max(0, +psk.getAttribute('data-seek') - 0.4); AU.play().catch(function () {}); return; }
+    if (psk && P.info && P.info.url) { P.step = null; P.stepEnd = null; vseek(Math.max(0, +psk.getAttribute('data-seek') - 0.4), true); return; }
     var ffb = t.closest('[data-ffk]');
     if (ffb) { var fk = ffb.getAttribute('data-ffk'), fv = ffb.getAttribute('data-ffv'), fl = (FFL[fk] || '') + (fk === 'hour' ? fhour(+fv) : fk === 'seg' ? (SEGL[fv] || fv) + (ffb.getAttribute('data-ffnb') ? ' · not booked' : '') : fv);
       var ffo = { ff: { kind: fk, value: fv, label: fl, notbooked: !!ffb.getAttribute('data-ffnb') } };
@@ -2223,7 +2260,7 @@ export function mountOpsisQA(ROOT, cfg) {
     }
   });
   on(document, 'input', function (e) {
-    if (e.target && e.target.id === 'pseek') { P.step = null; P.stepEnd = null; AU.currentTime = +e.target.value; tick(); }
+    if (e.target && e.target.id === 'pseek') { P.step = null; P.stepEnd = null; vseek(+e.target.value); tick(); }
   });
   on(document, 'change', function (e) {
     var t = e.target;
