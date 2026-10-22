@@ -51,6 +51,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function applyRange() {
     var t = todayET();
     if (S.range === 'custom' && S.start && S.end) return;
+    if (S.range === 'today') { S.end = t; S.start = t; return; }
     if (S.range === 'yesterday') { S.end = addDays(t, -1); S.start = S.end; return; }
     if (S.range === 'month') { S.end = t; S.start = t.slice(0, 8) + '01'; return; }
     if (S.range === 'lastmonth') { var f = t.slice(0, 8) + '01'; S.end = addDays(f, -1); S.start = S.end.slice(0, 8) + '01'; return; }
@@ -133,7 +134,7 @@ export function mountOpsisQA(ROOT, cfg) {
       }).join('');
     }).join('');
   }
-  var RANGES = [['yesterday', 'Yesterday'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['month', 'This month'], ['lastmonth', 'Last month'], ['custom', 'Custom…']];
+  var RANGES = [['today', 'Today'], ['yesterday', 'Yesterday'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['month', 'This month'], ['lastmonth', 'Last month'], ['custom', 'Custom…']];
   function rangeLabel() { if (S.range === 'custom') return fdate(S.start) + ' – ' + fdate(S.end); var r = RANGES.filter(function (x) { return x[0] === S.range; })[0]; return r ? r[1] : ''; }
   function topbar() {
     var bl = S.brands.length ? (S.brands.length === 1 ? short(S.brands[0]) : S.brands.length + ' brands') : 'All brands';
@@ -144,7 +145,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<button class="sel btnd" type="submit" style="min-height:36px;padding:6px 14px">Ask</button></form>' +
       '<div style="flex:1 1 0"></div>' +
       (LOCK ? '<span class="sel" style="cursor:default">' + esc(short(LOCK)) + '</span>' : '<button class="sel" data-pop="brands" aria-haspopup="true">' + esc(bl) + ' ▾</button>') +
-      '<button class="sel" data-pop="range" aria-haspopup="true">' + esc(rangeLabel()) + ' ▾</button>' +
+      (/^hub/.test(S.view) ? '<span class="sel" style="cursor:default" title="The Coaching Hub runs week by week, Monday to Sunday">' + esc((HUB.roster && HUB.roster.week_label) || 'This week') + '</span>' : '<button class="sel" data-pop="range" aria-haspopup="true">' + esc(rangeLabel()) + ' ▾</button>') +
       popHtml() + '</div>' +
       (CFG.staff ? '<div class="banner"><b>Opsis view</b> · You’re seeing ' + esc(CLIENT) + '’s portal as an account admin. Changes you make here are real and are logged.</div>' : '');
   }
@@ -302,13 +303,12 @@ export function mountOpsisQA(ROOT, cfg) {
         NEEDS.map(function (n) { var v = got[n[0]];
           return '<button class="click" data-needs="' + n[0] + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:12px;background:' + n[4] + ';border:1px solid transparent">' +
             '<span style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:' + n[3] + '"><span aria-hidden="true" style="width:8px;height:8px;border-radius:999px;background:' + n[3] + '"></span>' + n[1] + '</span>' +
-            '<span class="num" style="font-size:26px;font-weight:700;color:#1C2421">' + (v == null ? '…' : (v < 0 ? '—' : fmt(v))) + '</span>' +
+            '<span class="num" style="font-size:26px;font-weight:700;color:#1C2421">' + (v == null ? '<span class="dots"><span></span><span></span><span></span></span>' : (v < 0 ? '<span style="font-size:13px;font-weight:600;color:#A8441A">Didn’t load. Click to open the list.</span>' : fmt(v))) + '</span>' +
             '<span class="mut" style="font-size:11.5px">' + n[2] + '</span></button>'; }).join('') + '</div>';
     }
     draw();
-    NEEDS.forEach(function (n) {
-      api(Object.assign({ action: 'bucketcalls', bucket: n[0] }, win({ limit: 1, offset: 0 }))).then(function (r) { got[n[0]] = r.total || 0; }).catch(function () { got[n[0]] = -1; }).then(function () { if (tok === T) draw(); });
-    });
+    var one = function (n) { return api(Object.assign({ action: 'bucketcalls', bucket: n[0] }, win({ limit: 1, offset: 0 }))).then(function (r) { got[n[0]] = r.total || 0; }).catch(function () { got[n[0]] = -1; }).then(function () { if (tok === T) draw(); }); };
+    one(NEEDS[0]).then(function () { if (tok === T) NEEDS.slice(1).forEach(one); });
   }
   function reviewCard(c) {
     var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><h2 class="ttl">Calls to review</h2><p class="sub">Winnable calls that didn’t book, scored 40 or lower</p></div><button class="more" data-kpi="winnable">All ' + fmt(c.total) + ' →</button></div>';
@@ -1003,7 +1003,7 @@ export function mountOpsisQA(ROOT, cfg) {
   var HUBTABS = [['home', 'Home'], ['ask', 'Ask my coach'], ['wins', 'My wins']];
   function hubCsrId() { return SELF ? 'me' : S.hubCsr; }
   function hubBody(extra) { var b = Object.assign({}, extra || {}); if (!SELF && S.hubCsr) b.csr = S.hubCsr; return b; }
-  function setHub(html) { $('main').innerHTML = html + '<div class="foot">Powered by <b>Opsis CX</b> · ' + esc(CLIENT) + ' coaching</div>'; }
+  function setHub(html) { $('main').innerHTML = (SELF ? '' : topbar()) + html + '<div class="foot">Powered by <b>Opsis CX</b> · ' + esc(CLIENT) + ' coaching</div>'; }
   var fwhen = function (ts) { if (!ts) return ''; var d = new Date(ts); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }); };
   var FLAME = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E0662A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-4-1-6 1-10z"/></svg>';
   var SPARK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>';
@@ -1072,10 +1072,13 @@ export function mountOpsisQA(ROOT, cfg) {
     setHub('<div class="oq-crumb"><span style="color:var(--ink);font-weight:600">Coaching Hub</span></div><div id="hubr" style="display:flex;flex-direction:column;gap:4px">' + skel(60, 4) + '</div>');
     var paint = function () {
       var el = $('hubr'); if (!el || tok !== T) return; var R = HUB.roster;
+      var wp = document.querySelector('span.sel[title*="week by week"]'); if (wp && R.week_label) wp.textContent = R.week_label;
+      var ALLN = R.rows.length; R = Object.assign({}, R, { rows: S.brands.length ? R.rows.filter(function (r) { return S.brands.indexOf(r.brand) >= 0; }) : R.rows });
+      if (!R.rows.length && ALLN) { el.innerHTML = '<div class="oq-card"><b>No CSRs for the brands picked above</b><p class="sub">Pick other brands at the top, or <button class="more" data-act="huballbrands">show all brands</button>.</p></div>'; return; }
       if (!R.rows.length) { el.innerHTML = '<div class="oq-card"><b>No CSRs in the Coaching Hub yet</b><p class="sub">Add the people who answer your phones.</p>' + (LOCK ? '<button class="sel btnd" data-hubpeople="' + esc(LOCK) + '">Add CSRs</button>' : '') + '</div>'; return; }
       var brands = {}; R.rows.forEach(function (r) { (brands[r.brand_short] = brands[r.brand_short] || []).push(r); });
       var dl = function (v, l) { if (v == null || l == null) return ''; var x = v - l; return x === 0 ? '<span class="mut">even</span>' : '<span style="color:' + (x > 0 ? '#1F5A41' : '#A8441A') + ';font-weight:600">' + (x > 0 ? '▲ ' : '▼ ') + Math.abs(x) + '</span>'; };
-      el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">Coaching Hub</h1><p class="sub">' + esc(R.week_label) + ' · ' + R.rows.length + ' CSRs · open anyone to see exactly what they see, set their focus or send kudos</p></div>' + '<div class="row" style="gap:8px"><button class="sel btnd" data-go="hubqs">What CSRs are asking</button>' + (LOCK ? '<button class="sel" data-hubpeople="' + esc(LOCK) + '">Edit CSR list</button>' : '') + '</div></div>' +
+      el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">Coaching Hub</h1><p class="sub">' + esc(R.week_label) + ' · ' + R.rows.length + ' CSRs' + (R.rows.length < ALLN ? ' of ' + ALLN + ' (filtered by brand)' : '') + ' · open anyone to see exactly what they see, set their focus or send kudos</p></div>' + '<div class="row" style="gap:8px"><button class="sel btnd" data-go="hubqs">What CSRs are asking</button>' + (LOCK ? '<button class="sel" data-hubpeople="' + esc(LOCK) + '">Edit CSR list</button>' : '') + '</div></div>' +
         Object.keys(brands).sort().map(function (b) {
           return '<div style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="cap">' + esc(b) + ' · ' + brands[b].length + '</span>' + (LOCK ? '' : '<button class="more" data-hubpeople="' + esc(brands[b][0].brand) + '">Edit list</button>') + '</div><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">' + brands[b].map(function (r) {
             return '<button class="oq-card click" data-hubcsr="' + r.id + '" style="text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:10px;padding:16px;font:inherit;color:inherit">' +
@@ -2273,6 +2276,7 @@ export function mountOpsisQA(ROOT, cfg) {
       var a = d.act;
       if (a === 'customrange') { var cs = $('cs').value, ce = $('ce').value; if (cs && ce && cs <= ce) { S.range = 'custom'; S.start = cs; S.end = ce; S.pop = null; render(); } else toast('Pick a start date before the end date.'); }
       else if (a === 'closepop') { S.pop = null; render(); }
+      else if (a === 'huballbrands') { S.brands = []; render(); }
       else if (a === 'copylink') {
         writeHash(); var href = location.href, done = function () { toast('Link copied. Anyone with a portal login for these brands can open it.'); };
         var fallback = function () { var ta = document.createElement('textarea'); ta.value = href; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (x) { toast('Copy this link: ' + href); } ta.remove(); };
