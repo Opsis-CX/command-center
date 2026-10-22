@@ -529,7 +529,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (c.nocard) chips.push(['Booked, no card', 'nocard']);
     if (c.ff) chips.push([c.ff.label, 'ff']);
     if (c.xfer) chips.push([c.xferWith ? (c.xfer === 'out' ? 'Transferred to ' + c.xferWith : 'Received from ' + c.xferWith) : (c.xfer === 'out' ? 'Transferred out' : 'Transferred in'), 'xfer']);
-    setMain(crumb([['Call reviews']]) + '<div class="oq-card" id="sreqs" style="display:none"></div><div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">Call reviews</h2><p class="sub" id="ctot">Loading…</p></div>' +
+    setMain(crumb([['Call reviews']]) + '<div class="oq-card" id="sreqs" style="display:none"></div><div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px"><div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h2 class="ttl">Call reviews</h2><button class="sel" data-act="copylink" title="Copy a link to exactly this list" style="min-height:32px;padding:3px 10px;font-size:12.5px;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>Copy link</button></div><p class="sub" id="ctot">Loading…</p></div>' +
       '<form id="callq" class="row" style="gap:8px"><label class="sr" for="cq">Search calls</label><input id="cq" class="oq-field" style="width:230px" placeholder="Search summaries, CSRs, brands, phone…" value="' + esc(c.q || '') + '"><select id="co" class="oq-field" style="width:auto" aria-label="Outcome">' + OUTCOMES.map(function (o) { return '<option value="' + o[0] + '"' + ((c.outcome || '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
       '<select id="cs2" class="oq-field" style="width:auto" aria-label="Missed step"><option value="">Any step</option>' + Object.keys(STEPNAMES).slice(0, 5).map(function (k) { return '<option value="' + k + '"' + (c.step === k ? ' selected' : '') + '>Missed: ' + STEPNAMES[k] + '</option>'; }).join('') + '</select>' +
       '<select id="cxf" class="oq-field" style="width:auto" aria-label="Transfers"><option value="">Any transfer</option><option value="out"' + (c.xfer === 'out' ? ' selected' : '') + '>Transferred out</option><option value="in"' + (c.xfer === 'in' ? ' selected' : '') + '>Transferred in</option></select>' +
@@ -2084,6 +2084,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.range === 'custom') { o.s = S.start; o.e = S.end; }
     if (S.brands.length) o.b = S.brands.join('|');
     if (S.view === 'calls' && S.calls.bucket) o.bucket = S.calls.bucket;
+    if (S.view === 'calls' && !S.calls.bucket) { if (S.calls.q) o.q = S.calls.q; if (S.calls.outcome) o.out = S.calls.outcome; if (S.calls.step) o.step = S.calls.step; }
     if (S.view === 'hub' && S.hubCsr && !CFG.csrSelf) { o.csr = S.hubCsr; o.t = HUB.tab; }
     if (S.view === 'brand') o.brand = S.brand; if (S.view === 'csr') o.agent = S.agent;
     var h = '#' + Object.keys(o).map(function (k) { return k + '=' + encodeURIComponent(o[k]); }).join('&');
@@ -2093,6 +2094,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var q = {}; location.hash.replace(/^#/, '').split('&').forEach(function (p) { var kv = p.split('='); if (kv[0]) q[kv[0]] = decodeURIComponent(kv[1] || ''); });
     if (q.v) S.view = q.v; if (q.r) S.range = q.r; if (q.s && q.e) { S.start = q.s; S.end = q.e; }
     if (q.bucket && /^(upset|low|ctrl|other)$/.test(q.bucket)) { S.calls.bucket = q.bucket; S.calls.offset = 0; }
+    if (q.v === 'calls' && !q.bucket) { if (q.q) S.calls.q = q.q.slice(0, 120); if (q.out && OUTCOMES.some(function (o) { return o[0] === q.out; })) S.calls.outcome = q.out; if (q.step && STEPNAMES[q.step]) S.calls.step = q.step; S.calls.offset = 0; }
     if (q.csr && /^[0-9a-f-]{36}$/i.test(q.csr)) S.hubCsr = q.csr; if (q.t && /^(home|ask|wins)$/.test(q.t)) HUB.tab = q.t;
     if (q.b) S.brands = q.b.split('|'); if (q.brand) S.brand = q.brand; if (q.agent) S.agent = q.agent;
     applyRange();
@@ -2234,6 +2236,11 @@ export function mountOpsisQA(ROOT, cfg) {
       var a = d.act;
       if (a === 'customrange') { var cs = $('cs').value, ce = $('ce').value; if (cs && ce && cs <= ce) { S.range = 'custom'; S.start = cs; S.end = ce; S.pop = null; render(); } else toast('Pick a start date before the end date.'); }
       else if (a === 'closepop') { S.pop = null; render(); }
+      else if (a === 'copylink') {
+        writeHash(); var href = location.href, done = function () { toast('Link copied. Anyone with a portal login for these brands can open it.'); };
+        var fallback = function () { var ta = document.createElement('textarea'); ta.value = href; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (x) { toast('Copy this link: ' + href); } ta.remove(); };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(href).then(done, fallback); else fallback();
+      }
       else if (a === 'retry') { cache = {}; render(); }
       else if (a === 'signout') { if (CFG.onSignOut) CFG.onSignOut(); }
       else if (a === 'classic') { if (CFG.onClassic) CFG.onClassic(); }
