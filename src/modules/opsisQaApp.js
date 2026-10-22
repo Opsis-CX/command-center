@@ -1726,11 +1726,47 @@ export function mountOpsisQA(ROOT, cfg) {
     var el = $('plr'); if (el) el.innerHTML = playerInner();
     document.querySelectorAll('[data-pstep]').forEach(function (b) { var on = P.step === +b.getAttribute('data-pstep') && !AU.paused; b.innerHTML = on ? '■ Stop' : '▶ Play this step'; b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.style.background = on ? '#E6F0EA' : ''; });
   }
+  var TR = { open: {} };
+  function trWho(s) { s = String(s || ''); return /^agent$/i.test(s) ? 'CSR' : (/^caller$/i.test(s) ? 'Caller' : (s.replace(/^Speaker\s*/i, 'Speaker ') || '')); }
+  function trText(t) { return esc(String(t || '').replace(/\[(CREDIT_CARD|CVV|CARD|BANK|ACCOUNT|ROUTING|SSN|EXPIRATION)[A-Z_]*\d*\]/g, '[card details removed]')); }
+  function trCard(c) {
+    var L = c.transcript || []; if (!L.length) return '';
+    var open = !!TR.open[c.id], q = (TR.q && TR.q.id === c.id) ? TR.q.s : '', ql = q.toLowerCase();
+    var who = { from: (c.xfer_from && c.xfer_from.agent) || 'First CSR', self: c.agent || 'CSR', hold: c.agent || 'CSR', to: (c.xfer_to && c.xfer_to.agent) || 'Next CSR' };
+    var head = { from: 'Before the transfer: ' + who.from, self: (c.xfer_from ? 'After the transfer: ' : '') + who.self, hold: 'Back from hold', to: 'After the transfer: ' + who.to };
+    var rows = [], last = null, shown = 0, max = open || ql ? 1e9 : 8;
+    for (var i = 0; i < L.length && shown < max; i++) {
+      var l = L[i], t = +l[0], kind = l[1];
+      if (ql && String(l[3] || '').toLowerCase().indexOf(ql) < 0) continue;
+      if (kind !== last && (last !== null || kind !== 'self' || c.xfer_from)) rows.push('<div class="cap" style="margin:12px 0 4px;color:#3A4380">' + esc(head[kind] || '') + '</div>');
+      last = kind; shown++;
+      rows.push('<div class="trl" data-trt="' + t + '" data-seek="' + t + '" role="button" tabindex="0" style="display:grid;grid-template-columns:44px 64px 1fr;gap:8px;padding:5px 6px;border-radius:8px;cursor:pointer;font-size:13px;line-height:1.5"><span class="num mut" style="font-size:11.5px;padding-top:2px">' + clock(t) + '</span><b style="font-weight:600;font-size:12px;padding-top:1px;color:' + (/^agent$/i.test(l[2]) ? '#1F5A41' : '#5F6763') + '">' + esc(trWho(l[2])) + '</b><span>' + trText(l[3]) + '</span></div>');
+    }
+    return '<div class="oq-card" id="trc"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><b>Transcript</b>' +
+      '<label class="sr" for="trq">Search the transcript</label><input id="trq" class="oq-field" data-trq="' + esc(c.id) + '" placeholder="Search the transcript" value="' + esc(q) + '" style="max-width:220px;padding:6px 10px;font-size:13px"></div>' +
+      '<div class="mut" style="font-size:11.5px;margin-top:4px">Click a line to play from there. Speaker labels are automatic and can be wrong. Card details are removed.</div>' +
+      '<div id="trl" style="margin-top:6px">' + (rows.length ? rows.join('') : '<p class="mut" style="margin:8px 0">No lines match.</p>') + '</div>' +
+      (!ql && L.length > 8 ? '<button class="more" data-trall="' + esc(c.id) + '" style="margin-top:6px">' + (open ? 'Show less' : 'Show full transcript (' + L.length + ' lines)') + '</button>' : '') + '</div>';
+  }
+  function bindTr() {
+    var tq = $('trq'); if (!tq) return;
+    tq.addEventListener('input', function () {
+      var id = tq.getAttribute('data-trq'); TR.q = { id: id, s: tq.value }; clearTimeout(TR.tm);
+      TR.tm = setTimeout(function () { var tc = $('trc'); if (!tc || !S.cur || S.cur.id !== id) return; tc.outerHTML = trCard(S.cur); bindTr(); var n = $('trq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 200);
+    });
+  }
+  function trFollow() {
+    var box = $('trl'); if (!box || AU.paused) return;
+    var cur = vcur() - (P.base || 0), best = null;
+    box.querySelectorAll('[data-trt]').forEach(function (el) { var t = +el.getAttribute('data-trt'); if (t <= cur + 0.3) best = el; el.style.background = ''; });
+    if (best) best.style.background = '#E6F0EA';
+  }
   function tick() {
     var d = pdur(), cur = vcur(), f = $('pfill'), t = $('ptime'), sk = $('pseek');
     if (f && d) f.style.width = Math.min(100, cur / d * 100).toFixed(2) + '%';
     if (t) t.textContent = clock(cur) + ' / ' + clock(d);
     if (sk && document.activeElement !== sk) { sk.max = Math.ceil(d || 1); sk.value = cur.toFixed(1); }
+    trFollow();
   }
   AU.addEventListener('timeupdate', function () {
     var cur = vcur(), pci = (P.info && P.info.pci) || [];
@@ -1797,11 +1833,11 @@ export function mountOpsisQA(ROOT, cfg) {
         (a === 'no' && s.misses && s.misses.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">' + s.misses.map(function (x) { return '<span class="pill" style="background:#FDECEC;color:#A61B1B">Missed: ' + esc(x) + '</span>'; }).join('') + '</div>' : '') +
         '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:flex-start">' + (s.evidence ? '<div style="flex:1 1 240px;background:#F5F3EE;border-radius:10px;padding:8px 12px;font-size:12.5px;font-style:italic;color:#3B4541">“' + evHtml(s.evidence) + '”</div>' : '') + '<div style="display:flex;gap:8px;flex-wrap:wrap">' + (stepRange(s) && P.info && P.info.url ? '<button class="sel" data-pstep="' + i + '" style="min-height:36px;padding:6px 12px;white-space:nowrap">' + (P.step === i && !AU.paused ? '■ Stop' : '▶ Play this step') + '</button>' : (P.info && P.info.url ? '<span class="mut" style="font-size:12px;align-self:center">' + (a === 'no' ? 'Not done on the call, so there’s no moment to play' : 'No moment to play for this step') + '</span>' : '')) + (CAN_EDIT ? '<button class="sel" data-change="' + i + '" style="min-height:36px;padding:6px 12px">' + (IS_ADMIN ? 'Change' : 'Request change') + '</button>' : '') + '</div></div></div></div></div>';
     });
-    h += '</div><div class="oq-card" id="cnotes"><b>Notes</b><div id="cnlist" style="margin-top:8px">' + skel(18, 2) + '</div>' +
+    h += '</div>' + trCard(c) + '<div class="oq-card" id="cnotes"><b>Notes</b><div id="cnlist" style="margin-top:8px">' + skel(18, 2) + '</div>' +
       (CAN_EDIT ? '<form id="cnform" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"><label class="sr" for="cnbody">Add a note</label><textarea id="cnbody" class="oq-field" style="min-height:64px;resize:vertical" maxlength="4000" placeholder="Add a note for your team or the Opsis CX Support team…"></textarea><div><button class="sel btnd" type="submit">Add note</button></div></form>' : '') + '</div>' +
       '<div class="row"><button class="sel" data-act="pdf">Print / save PDF</button><button class="sel" data-ccgo="1">Ask AI about this call</button>' + (CAN_EDIT && !CFG.csrSelf ? '<button class="sel" data-hubkudoscall="' + c.id + '">♥ Send kudos</button>' : '') + '</div>';
     var keep = $('cnbody') ? $('cnbody').value : ''; var keepq = $('ccq') ? $('ccq').value : '';
-    $('cd').innerHTML = h;
+    $('cd').innerHTML = h; bindTr();
     if (keep && $('cnbody')) $('cnbody').value = keep;
     if (keepq && $('ccq')) $('ccq').value = keepq;
     ccPaint(c.id, true);
@@ -2166,6 +2202,7 @@ export function mountOpsisQA(ROOT, cfg) {
     }
     var ap = t.closest('[data-autoplay]');
     if (ap) { var aid = ap.getAttribute('data-autoplay'); S.fromAsk = !!S.ask.open; S.ask.open = false; S.autoplay = aid; if (P.id === aid && P.info && P.info.url) { S.autoplay = null; AU.play().catch(function () {}); } S.callId = aid; callDrawer(); return; }
+    var tra = t.closest('[data-trall]'); if (tra) { var tid = tra.getAttribute('data-trall'); TR.open[tid] = !TR.open[tid]; var tc = $('trc'); if (tc && S.cur) { tc.outerHTML = trCard(S.cur); bindTr(); } return; }
     var ppt = t.closest('[data-ppart]'); if (ppt && P.legs) { P.step = null; P.stepEnd = null; vseek(P.legs[+ppt.getAttribute('data-ppart')].offset, true); paintPlayer(); return; }
     if (t.closest('[data-pplay]')) { if (AU.paused) { P.step = null; P.stepEnd = null; if (AU.ended && (!P.legs || (P.li || 0) === P.legs.length - 1)) vseek(0); AU.play().catch(function () {}); } else AU.pause(); return; }
     if (t.closest('[data-pfull]')) { P.step = null; P.stepEnd = null; AU.play().catch(function () {}); paintPlayer(); return; }
