@@ -9,6 +9,7 @@
 //   - Opsis admins/QA staff at /opsis-qa (admin preview — they act as an account admin)
 // The CSR scorecards page mounts the existing <CsrScorecard> inside the new shell.
 // Coaching Hub (2026-10-21): actions starting with "hub" go to the edge function opsis-coaching-hub.
+// Calibration (2026-10-22): actions starting with "calib" go to the edge function opsis-qa-calibration.
 // csrSelf = a CSR login: the portal shows only their own Coaching Hub (Home / Ask my coach / My wins).
 import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -18,7 +19,7 @@ import { mountOpsisQA } from './opsisQaApp'
 
 async function invoke(body) {
   // Reporting (call export + scorecard reports) is served by its own read-only function.
-  const fn = String(body?.action || '').startsWith('hub') ? 'opsis-coaching-hub' : ['export', 'scorecards', 'money', 'excused', 'billing', 'jobvalues', 'invoices', 'bucketcalls', 'callchat', 'scorereq', 'xfercalls', 'factcalls', 'rubric', 'teaminvite', 'calledit', 'callmetrics'].includes(body?.action) ? 'opsis-qa-reports' : 'opsis-qa-portal'
+  const fn = String(body?.action || '').startsWith('calib') ? 'opsis-qa-calibration' : String(body?.action || '').startsWith('hub') ? 'opsis-coaching-hub' : ['export', 'scorecards', 'money', 'excused', 'billing', 'jobvalues', 'invoices', 'bucketcalls', 'callchat', 'scorereq', 'xfercalls', 'factcalls', 'rubric', 'teaminvite', 'calledit', 'callmetrics'].includes(body?.action) ? 'opsis-qa-reports' : 'opsis-qa-portal'
   const { data, error } = await supabase.functions.invoke(fn, { body })
   if (error) {
     let msg = 'Something went wrong loading that.'
