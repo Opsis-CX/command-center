@@ -34,21 +34,327 @@ import { mentionSuggestion } from './mentionSuggestion'
 
 const TOOLBARS = {
   // Chat: compact. No headings — they look absurd in a message bubble.
-  chat: ['bold', 'italic', 'strike', 'code', '|', 'bullet', 'ordered', '|', 'link', 'color', 'highlight'],
+  chat: ['bold', 'italic', 'strike', 'code', '|', 'bullet', 'ordered', '|', 'link', 'color', 'highlight', '|', 'spell'],
   // Certification / documents: the lot.
   full: ['bold', 'italic', 'strike', 'code', '|', 'h1', 'h2', 'h3', '|',
-         'bullet', 'ordered', 'quote', '|', 'link', 'color', 'highlight', '|', 'table'],
+         'bullet', 'ordered', 'quote', '|', 'link', 'color', 'highlight', '|', 'table', '|', 'spell'],
 }
 
 const SWATCHES = ['#0d1518', '#c0392b', '#d97706', '#1f8a53', '#0077b6', '#7c3aed', '#db2777']
 const HIGHLIGHTS = ['#fff3a3', '#c6f6d5', '#bee3f8', '#fed7d7', '#e9d8fd']
+
+// ============================================================
+// SPELL CHECK
+//
+// Our own checker, so it works even when the browser's right-click menu is
+// blocked. The dictionary + checker load from the jsDelivr CDN the FIRST time
+// someone right-clicks or presses ✓ — nothing extra in the app bundle and no
+// package.json change. Cached for the rest of the session.
+//
+//  • Right-click a misspelled word in any editor → suggestions menu.
+//    Right-click anything else → the normal browser menu (copy/paste).
+//  • ✓ on the toolbar → lists every misspelling with one-click fixes.
+//  • "Add to dictionary" is saved per person in this browser.
+// ============================================================
+
+const NSPELL_URL = 'https://cdn.jsdelivr.net/npm/nspell@2.1.5/+esm'
+const DICT_BASE = 'https://cdn.jsdelivr.net/npm/dictionary-en@4.0.0/'
+
+// Words the dictionary doesn't know but we use every day. Lowercase.
+const TEAM_WORDS = [
+  'opsis', 'opsiscx', 'garageco', 'turritopsis', 'turri', 'five9', 'callqa', 'opsisqa',
+  'pdq', 'csr', 'csrs', 'asc', 'ascs', 'qa', 'lsa', 'lsas', 'kpi', 'kpis', 'wfm',
+  'ok', 'okay', 'cheney', 'cunningham', 'supabase', 'hubspot', 'rippling', 'broccoli',
+  'dispo', 'dispos', 'upsell', 'upsells', 'callback', 'callbacks', 'voicemails',
+  'onboarding', 'offboarding', 'scorecard', 'scorecards', 'recap', 'recaps',
+]
+
+// Common slips a dictionary alone ranks badly.
+const QUICK_FIXES = {
+  dont: "don't", cant: "can't", wont: "won't", didnt: "didn't", doesnt: "doesn't",
+  isnt: "isn't", wasnt: "wasn't", arent: "aren't", werent: "weren't", couldnt: "couldn't",
+  shouldnt: "shouldn't", wouldnt: "wouldn't", havent: "haven't", hasnt: "hasn't",
+  im: "I'm", ive: "I've", youre: "you're", theyre: "they're", thats: "that's",
+  whats: "what's", lets: "let's", alot: 'a lot', teh: 'the', thier: 'their',
+}
+
+const LS_KEY = 'cc:spellWords'
+function loadPersonalWords() {
+  try { return new Set(JSON.parse(localStorage.getItem(LS_KEY) || '[]')) } catch { return new Set() }
+}
+const personalWords = loadPersonalWords()
+const ignoredWords = new Set()   // "Ignore" — this session only
+function addPersonalWord(w) {
+  personalWords.add(w.toLowerCase())
+  try { localStorage.setItem(LS_KEY, JSON.stringify([...personalWords])) } catch { /* ignore */ }
+}
+
+let _speller = null
+let _spellerPromise = null
+function loadSpeller() {
+  if (_speller) return Promise.resolve(_speller)
+  if (!_spellerPromise) {
+    _spellerPromise = (async () => {
+      const get = (f) => fetch(DICT_BASE + f).then(r => { if (!r.ok) throw new Error('dictionary ' + r.status); return r.text() })
+      const [mod, aff, dic] = await Promise.all([import(/* @vite-ignore */ NSPELL_URL), get('index.aff'), get('index.dic')])
+      const nspell = mod.default || mod
+      const sp = nspell(aff, dic)
+      // Stems, bucketed by length, for a fallback suggester: nspell gives up on
+      // words two letters off (questionairre → nothing).
+      const byLen = new Map()
+      dic.split('\n').slice(1).forEach(line => {
+        const w = line.split('/')[0].trim()
+        if (!w || /[^a-z']/i.test(w)) return
+        const lw = w.toLowerCase()
+        if (!byLen.has(lw.length)) byLen.set(lw.length, [])
+        byLen.get(lw.length).push(w)
+      })
+      _speller = { sp, byLen, cache: new Map() }
+      return _speller
+    })().catch(e => { _spellerPromise = null; throw e })
+  }
+  return _spellerPromise
+}
+
+// Damerau-Levenshtein (adjacent swaps count as 1), capped for speed.
+function editDistance(a, b, cap = 3) {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1
+  const d = []
+  for (let i = 0; i <= a.length; i++) { d[i] = [i] }
+  for (let j = 0; j <= b.length; j++) d[0][j] = j
+  for (let i = 1; i <= a.length; i++) {
+    let rowMin = Infinity
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost)
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1)
+      rowMin = Math.min(rowMin, d[i][j])
+    }
+    if (rowMin > cap) return cap + 1
+  }
+  return d[a.length][b.length]
+}
+
+function matchCase(src, s) {
+  if (src === src.toUpperCase() && src.length > 1) return s.toUpperCase()
+  if (src[0] === src[0].toUpperCase()) return s[0].toUpperCase() + s.slice(1)
+  return s
+}
+
+const norm = (w) => w.replace(/[’‘]/g, "'").replace(/^'+|'+$/g, '')
+
+// Should this word be skipped entirely?
+function skipWord(w, extraWords) {
+  if (w.length < 2) return true
+  if (/\d/.test(w)) return true
+  if (w.length > 1 && w === w.toUpperCase()) return true      // acronyms: PDQ, ASAP
+  if (/[a-z][A-Z]/.test(w)) return true                         // CamelCase: GarageCo, VanEpps
+  const lw = w.toLowerCase()
+  return personalWords.has(lw) || ignoredWords.has(lw) || extraWords.has(lw)
+}
+
+function isMisspelled(speller, raw, extraWords) {
+  const w = norm(raw)
+  if (!w || skipWord(w, extraWords)) return false
+  const key = w
+  if (speller.cache.has(key)) return speller.cache.get(key)
+  let bad = !speller.sp.correct(w)
+  // "agents'" / "Becky's" — accept when the base word is fine.
+  if (bad && /'s?$/i.test(w)) bad = !speller.sp.correct(w.replace(/'s?$/i, ''))
+  speller.cache.set(key, bad)
+  return bad
+}
+
+function suggestFor(speller, raw) {
+  const w = norm(raw)
+  const lw = w.toLowerCase()
+  const out = []
+  if (QUICK_FIXES[lw]) out.push(QUICK_FIXES[lw] === "I'm" || QUICK_FIXES[lw] === "I've" ? QUICK_FIXES[lw] : matchCase(w, QUICK_FIXES[lw]))
+  const ns = speller.sp.suggest(w).slice(0, 8)
+  const fallback = []
+  for (let len = lw.length - 2; len <= lw.length + 2; len++) {
+    for (const cand of speller.byLen.get(len) || []) {
+      const lc = cand.toLowerCase()
+      if (lc[0] !== lw[0]) continue
+      const dist = editDistance(lw, lc, 2)
+      if (dist <= 2) fallback.push({ s: cand, dist })
+    }
+  }
+  const scored = [
+    ...ns.map((s, i) => ({ s, dist: editDistance(lw, s.toLowerCase(), 3), rank: i })),
+    ...fallback.map(f => ({ ...f, rank: 50 })),
+  ].sort((a, b) => a.dist - b.dist || a.rank - b.rank)
+  for (const { s } of scored) {
+    const fixed = s === s.toLowerCase() ? matchCase(w, s) : s
+    if (!out.some(o => o.toLowerCase() === fixed.toLowerCase())) out.push(fixed)
+    if (out.length >= 5) break
+  }
+  return out
+}
+
+const WORD_RE = /[A-Za-z][A-Za-z'’]*[A-Za-z]|[A-Za-z]/g
+
+// Part of a link, email, @mention or file name? (www.site.com, a@b.com, notes.pdf)
+function inTechToken(text, start, end) {
+  let a = start, b = end
+  while (a > 0 && !/\s/.test(text[a - 1])) a--
+  while (b < text.length && !/\s/.test(text[b])) b++
+  const tok = text.slice(a, b).replace(/[.,;:!?)"'’]+$/, '')
+  return /[@/\\:_]|\w\.\w/.test(tok)
+}
+
+// Every misspelled word in the document, with its exact position.
+function findMisspellings(speller, doc, extraWords) {
+  const found = []
+  doc.descendants((node, pos) => {
+    if (!node.isText) return
+    if (node.marks.some(m => m.type.name === 'link' || m.type.name === 'code')) return
+    const text = node.text
+    let m
+    WORD_RE.lastIndex = 0
+    while ((m = WORD_RE.exec(text))) {
+      if (inTechToken(text, m.index, m.index + m[0].length)) continue
+      if (isMisspelled(speller, m[0], extraWords)) found.push({ word: m[0], from: pos + m.index, to: pos + m.index + m[0].length })
+    }
+  })
+  return found
+}
+
+// The word under a document position (for right-click).
+function wordAt(doc, pos) {
+  const $pos = doc.resolve(pos)
+  const parent = $pos.parent
+  if (!parent.isTextblock) return null
+  let hit = null
+  parent.forEach((child, offset) => {
+    if (hit || !child.isText) return
+    const start = $pos.start() + offset
+    if (pos < start || pos > start + child.text.length) return
+    if (child.marks.some(m => m.type.name === 'link' || m.type.name === 'code')) return
+    let m
+    WORD_RE.lastIndex = 0
+    while ((m = WORD_RE.exec(child.text))) {
+      const from = start + m.index, to = from + m[0].length
+      if (pos >= from && pos <= to) {
+        if (inTechToken(child.text, m.index, m.index + m[0].length)) return
+        hit = { word: m[0], from, to }
+        return
+      }
+    }
+  })
+  return hit
+}
+
+// Team members' names never count as typos.
+function namesSet(profiles) {
+  const s = new Set(TEAM_WORDS)
+  ;(profiles || []).forEach(p => String(p?.full_name || '').split(/[\s-]+/).forEach(part => {
+    const w = part.replace(/[^A-Za-z']/g, '').toLowerCase()
+    if (w) s.add(w)
+  }))
+  return s
+}
+
+// ---- Spell check popups ----------------------------------------------------
+// Fixed-position so they work inside modals, thread panels and the composer at
+// the bottom of the screen. Opens upward when there isn't room below.
+function SpellPopup({ at, width = 240, children, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  const left = Math.max(8, Math.min(at.x, window.innerWidth - width - 8))
+  const roomBelow = window.innerHeight - at.bottom
+  const pos = roomBelow < 280 ? { bottom: window.innerHeight - at.top + 4 } : { top: at.bottom + 4 }
+  return (
+    <>
+      <div onMouseDown={e => { e.preventDefault(); onClose() }}
+        onContextMenu={e => { e.preventDefault(); onClose() }}
+        style={{ position: 'fixed', inset: 0, zIndex: 5000 }} />
+      <div onMouseDown={e => e.preventDefault()}
+        style={{ position: 'fixed', left, ...pos, width, maxHeight: 340, overflowY: 'auto', zIndex: 5001,
+          background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 10,
+          boxShadow: '0 10px 30px rgba(0,0,0,.18)', padding: '4px 0', fontSize: 13 }}>
+        {children}
+      </div>
+    </>
+  )
+}
+
+const spellItem = { display: 'block', width: '100%', textAlign: 'left', border: 0, background: 'transparent',
+  padding: '7px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }
+const hoverOn = e => { e.currentTarget.style.background = 'var(--canvas)' }
+const hoverOff = e => { e.currentTarget.style.background = 'transparent' }
+
+function SpellMenu({ ui, onPick, onAdd, onIgnore, onClose }) {
+  return (
+    <SpellPopup at={ui.at} width={220} onClose={onClose}>
+      {ui.loading && <div style={{ padding: '8px 12px', color: 'var(--ink-soft)' }}>Checking spelling…</div>}
+      {ui.error && <div style={{ padding: '8px 12px', color: 'var(--failed, #DC2626)' }}>{ui.error}</div>}
+      {ui.correct && <div style={{ padding: '8px 12px', color: 'var(--ink-soft)' }}>✓ “{ui.word}” is spelled correctly</div>}
+      {ui.suggestions && (<>
+        {ui.suggestions.length === 0 && <div style={{ padding: '8px 12px', color: 'var(--ink-soft)' }}>No suggestions for “{ui.word}”</div>}
+        {ui.suggestions.map((s, i) => (
+          <button key={s} type="button" style={{ ...spellItem, fontWeight: i === 0 ? 700 : 500 }}
+            onMouseEnter={hoverOn} onMouseLeave={hoverOff}
+            onMouseDown={e => { e.preventDefault(); onPick(s) }}>{s}</button>
+        ))}
+        <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />
+        <button type="button" style={{ ...spellItem, color: 'var(--ink-soft)' }} onMouseEnter={hoverOn} onMouseLeave={hoverOff}
+          onMouseDown={e => { e.preventDefault(); onAdd(ui.word) }}>＋ Add “{ui.word}” to dictionary</button>
+        <button type="button" style={{ ...spellItem, color: 'var(--ink-soft)' }} onMouseEnter={hoverOn} onMouseLeave={hoverOff}
+          onMouseDown={e => { e.preventDefault(); onIgnore(ui.word) }}>Ignore</button>
+      </>)}
+    </SpellPopup>
+  )
+}
+
+function SpellPanel({ ui, onFix, onAdd, onIgnore, onClose }) {
+  return (
+    <SpellPopup at={ui.at} width={320} onClose={onClose}>
+      <div style={{ display: 'flex', alignItems: 'center', padding: '6px 12px 8px', borderBottom: '1px solid var(--line)' }}>
+        <b style={{ fontSize: 13, flex: 1 }}>Spelling</b>
+        <button type="button" onMouseDown={e => { e.preventDefault(); onClose() }}
+          style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 15, lineHeight: 1 }}>✕</button>
+      </div>
+      {ui.loading && <div style={{ padding: '10px 12px', color: 'var(--ink-soft)' }}>Checking spelling…</div>}
+      {ui.error && <div style={{ padding: '10px 12px', color: 'var(--failed, #DC2626)' }}>{ui.error}</div>}
+      {ui.items && ui.items.length === 0 && (
+        <div style={{ padding: '12px', color: 'var(--passed, #16A34A)', fontWeight: 600 }}>✓ No spelling mistakes found</div>
+      )}
+      {ui.items && ui.items.map(it => (
+        <div key={it.word} style={{ padding: '8px 12px', borderBottom: '1px solid var(--line)' }}>
+          <div style={{ marginBottom: 6 }}>
+            <span style={{ textDecoration: 'underline wavy #DC2626', textUnderlineOffset: 3, fontWeight: 600 }}>{it.word}</span>
+            {it.count > 1 && <span style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}> · {it.count} times</span>}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+            {it.suggestions.map(s => (
+              <button key={s} type="button" onMouseDown={e => { e.preventDefault(); onFix(it.word, s) }}
+                style={{ border: '1px solid var(--accent, #0077B6)', background: 'var(--accent-bg, #e6f2f8)', color: 'var(--accent, #0077B6)',
+                  borderRadius: 999, padding: '2px 10px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{s}</button>
+            ))}
+            {it.suggestions.length === 0 && <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>No suggestions</span>}
+          </div>
+          <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
+            <button type="button" onMouseDown={e => { e.preventDefault(); onAdd(it.word) }}
+              style={{ border: 0, background: 'transparent', padding: 0, fontSize: 11.5, color: 'var(--ink-soft)', cursor: 'pointer', fontFamily: 'inherit' }}>＋ Add to dictionary</button>
+            <button type="button" onMouseDown={e => { e.preventDefault(); onIgnore(it.word) }}
+              style={{ border: 0, background: 'transparent', padding: 0, fontSize: 11.5, color: 'var(--ink-soft)', cursor: 'pointer', fontFamily: 'inherit' }}>Ignore</button>
+          </div>
+        </div>
+      ))}
+    </SpellPopup>
+  )
+}
 
 function Btn({ active, disabled, onClick, title, children, width }) {
   return (
     <button type="button" title={title} disabled={disabled}
       // onMouseDown/preventDefault: clicking the toolbar must not blur the
       // editor, or the selection is lost and the command applies to nothing.
-      onMouseDown={e => { e.preventDefault(); if (!disabled) onClick() }}
+      onMouseDown={e => { e.preventDefault(); if (!disabled) onClick(e) }}
       className={'re-btn' + (active ? ' on' : '')}
       style={width ? { width } : undefined}>
       {children}
@@ -124,7 +430,7 @@ function TableMenu({ editor }) {
   )
 }
 
-function Toolbar({ editor, items }) {
+function Toolbar({ editor, items, onSpellCheck }) {
   if (!editor) return null
   const c = () => editor.chain().focus()
 
@@ -156,6 +462,11 @@ function Toolbar({ editor, items }) {
       case 'color':    return <ColorMenu key={i} editor={editor} kind="color" />
       case 'highlight':return <ColorMenu key={i} editor={editor} kind="highlight" />
       case 'table':    return <TableMenu key={i} editor={editor} />
+      case 'spell':    return onSpellCheck
+        ? <Btn key={i} title="Check spelling" width={44} onClick={(e) => onSpellCheck(e.currentTarget.getBoundingClientRect())}>
+            <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '-.02em' }}>ABC✓</span>
+          </Btn>
+        : null
       default:         return null
     }
   }
@@ -185,6 +496,13 @@ export function RichEditor({
   // Passing the array directly would freeze it at whatever loaded first.
   const profilesRef = useRef(profiles)
   useEffect(() => { profilesRef.current = profiles }, [profiles])
+
+  // Spell check: team names never count as typos. Read through a ref for the
+  // same reason as profilesRef.
+  const extraWordsRef = useRef(namesSet(profiles))
+  useEffect(() => { extraWordsRef.current = namesSet(profiles) }, [profiles])
+  // { kind: 'menu' | 'panel', at, ... } or null
+  const [spellUi, setSpellUi] = React.useState(null)
 
   const editor = useEditor({
     editable: !disabled,
@@ -217,8 +535,40 @@ export function RichEditor({
       })] : []),
     ],
     content: value || '',
+    // Fetch the dictionary the first time someone clicks into an editor, so
+    // it's ready by the time they right-click. Errors surface later, in the menu.
+    onFocus() { loadSpeller().catch(() => {}) },
     editorProps: {
-      attributes: { class: 're-content', style: `min-height:${minHeight}px; max-height:${maxHeight}px` },
+      attributes: { class: 're-content', spellcheck: 'true', style: `min-height:${minHeight}px; max-height:${maxHeight}px` },
+      handleDOMEvents: {
+        // Right-click. On a misspelled word → our suggestions menu. Anywhere
+        // else → the normal browser menu. stopPropagation keeps any page-wide
+        // "no right-click" handler from swallowing the browser menu in here.
+        contextmenu(view, event) {
+          event.stopPropagation()
+          const hit = view.posAtCoords({ left: event.clientX, top: event.clientY })
+          const w = hit && wordAt(view.state.doc, hit.pos)
+          if (!w) return false
+          const at = { x: event.clientX, top: event.clientY, bottom: event.clientY }
+          const show = (sp) => {
+            if (!isMisspelled(sp, w.word, extraWordsRef.current)) return false
+            setSpellUi({ kind: 'menu', at, ...w, suggestions: suggestFor(sp, w.word) })
+            return true
+          }
+          if (_speller) {
+            if (!show(_speller)) return false
+            event.preventDefault()
+            return true
+          }
+          // Dictionary still loading (first use) — show the menu while it arrives.
+          event.preventDefault()
+          setSpellUi({ kind: 'menu', at, ...w, loading: true })
+          loadSpeller()
+            .then(sp => { if (!show(sp)) setSpellUi({ kind: 'menu', at, ...w, correct: true }) })
+            .catch(() => setSpellUi({ kind: 'menu', at, ...w, error: "Couldn't load the spell checker. Check your connection and try again." }))
+          return true
+        },
+      },
       handleKeyDown(view, event) {
         if (!submitOnEnter) return false
         if (event.key !== 'Enter' || event.shiftKey) return false
@@ -269,6 +619,43 @@ export function RichEditor({
     },
   }, [variant, disabled])
 
+  // ---- spell check actions ----
+  // Build the ✓ panel's list: one row per misspelled word, with suggestions.
+  function buildItems(sp) {
+    const groups = new Map()
+    for (const f of findMisspellings(sp, editor.state.doc, extraWordsRef.current)) {
+      const g = groups.get(f.word)
+      if (g) g.count++
+      else groups.set(f.word, { word: f.word, count: 1 })
+    }
+    return [...groups.values()].map(g => ({ ...g, suggestions: suggestFor(sp, g.word) }))
+  }
+  function openSpellPanel(rect) {
+    if (!editor) return
+    const at = { x: rect.left, top: rect.top, bottom: rect.bottom }
+    if (_speller) { setSpellUi({ kind: 'panel', at, items: buildItems(_speller) }); return }
+    setSpellUi({ kind: 'panel', at, loading: true })
+    loadSpeller()
+      .then(sp => setSpellUi(cur => cur?.kind === 'panel' ? { kind: 'panel', at, items: buildItems(sp) } : cur))
+      .catch(() => setSpellUi(cur => cur?.kind === 'panel' ? { kind: 'panel', at, error: "Couldn't load the spell checker. Check your connection and try again." } : cur))
+  }
+  // Swap every copy of `word` for `replacement`. Back to front, so earlier
+  // positions stay valid while we edit.
+  function replaceWord(word, replacement) {
+    if (!editor || !_speller) return
+    const hits = findMisspellings(_speller, editor.state.doc, extraWordsRef.current).filter(f => f.word === word)
+    if (!hits.length) return
+    let tr = editor.state.tr
+    for (const h of hits.slice().reverse()) tr = tr.insertText(replacement, h.from, h.to)
+    editor.view.dispatch(tr)
+  }
+  // After Add / Ignore, refresh whichever popup is open.
+  function afterWordAccepted() {
+    setSpellUi(cur => (cur?.kind === 'panel' && _speller) ? { ...cur, items: buildItems(_speller) } : null)
+    editor?.commands.focus()
+  }
+  const closeSpell = React.useCallback(() => setSpellUi(null), [])
+
   // On phones the chat composer's formatting toolbar (10 icons) is clutter —
   // collapse it behind a single "Aa" toggle.
   const [narrow, setNarrow] = React.useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)
@@ -298,6 +685,7 @@ export function RichEditor({
   if (!editor) return null
 
   const collapsibleToolbar = narrow && variant === 'chat'
+  const toolbar = <Toolbar editor={editor} items={TOOLBARS[variant] || TOOLBARS.full} onSpellCheck={disabled ? null : openSpellPanel} />
   return (
     <div className={'re-wrap' + (disabled ? ' disabled' : '')}>
       {collapsibleToolbar ? (
@@ -306,12 +694,30 @@ export function RichEditor({
             <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => setFmtOpen(o => !o)} title="Formatting"
               style={{ border: '1px solid var(--line)', background: fmtOpen ? 'var(--canvas)' : 'transparent', borderRadius: 6, fontSize: 12, fontWeight: 700, padding: '2px 9px', cursor: 'pointer', color: 'var(--ink-soft)' }}>Aa</button>
           </div>
-          {fmtOpen && <Toolbar editor={editor} items={TOOLBARS[variant] || TOOLBARS.full} />}
+          {fmtOpen && toolbar}
         </>
-      ) : (
-        <Toolbar editor={editor} items={TOOLBARS[variant] || TOOLBARS.full} />
-      )}
+      ) : toolbar}
       <EditorContent editor={editor} />
+
+      {spellUi?.kind === 'menu' && (
+        <SpellMenu ui={spellUi} onClose={closeSpell}
+          onPick={(s) => {
+            const { state, view } = editor
+            // Only replace if the word is still where we found it.
+            if (state.doc.textBetween(spellUi.from, spellUi.to) === spellUi.word) {
+              view.dispatch(state.tr.insertText(s, spellUi.from, spellUi.to))
+            }
+            setSpellUi(null); editor.commands.focus()
+          }}
+          onAdd={(w) => { addPersonalWord(norm(w)); afterWordAccepted() }}
+          onIgnore={(w) => { ignoredWords.add(norm(w).toLowerCase()); afterWordAccepted() }} />
+      )}
+      {spellUi?.kind === 'panel' && (
+        <SpellPanel ui={spellUi} onClose={closeSpell}
+          onFix={(word, s) => { replaceWord(word, s); setSpellUi(cur => cur ? { ...cur, items: buildItems(_speller) } : cur) }}
+          onAdd={(w) => { addPersonalWord(norm(w)); afterWordAccepted() }}
+          onIgnore={(w) => { ignoredWords.add(norm(w).toLowerCase()); afterWordAccepted() }} />
+      )}
     </div>
   )
 }
