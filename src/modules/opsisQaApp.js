@@ -1977,22 +1977,48 @@ export function mountOpsisQA(ROOT, cfg) {
   var TR = { open: {} };
   function trWho(s) { s = String(s || ''); return /^agent$/i.test(s) ? 'CSR' : (/^caller$/i.test(s) ? 'Caller' : (s.replace(/^Speaker\s*/i, 'Speaker ') || '')); }
   function trText(t) { return esc(String(t || '').replace(/\[(CREDIT_CARD|CVV|CARD|BANK|ACCOUNT|ROUTING|SSN|EXPIRATION)[A-Z_]*\d*\]/g, '[card details removed]')); }
+  // Names instead of "Speaker 0/1" (2026-10-23). The automatic labels only number the voices, and the phone
+  // system's recorded greeting often shares a number with a person. Per recording part: lines before the CSR's
+  // live greeting are the phone system; the voice that greets ("this is Tara", "how may I help") is the CSR;
+  // any other voice is the customer.
+  var IVR_RX = /(monitored or recorded|recorded for (training|quality)|stay on the line|be with you shortly|press \d|para espa|routine maintenance|manufacturer recommends|your call is important|all of our|currently assisting|please hold|thank you for calling[^.]{0,60}(number one|#1|dealer|leader))/i;
+  var GREET_RX = /(this is [a-z]+|my name is|[a-z]+ speaking|how (may|can) i (help|assist)|thank(s| you) for (holding|waiting|your patience))/i;
+  function trNames(c, L) {
+    var out = [], first = function (n) { return String(n || '').split(' ')[0] || n; };
+    var csr = { from: (c.xfer_from && c.xfer_from.agent) || 'CSR', self: c.agent || 'CSR', hold: c.agent || 'CSR', to: (c.xfer_to && c.xfer_to.agent) || 'CSR' };
+    var i = 0;
+    while (i < L.length) {
+      var kind = L[i][1], j = i; while (j < L.length && L[j][1] === kind) j++;
+      var g = -1; for (var k = i; k < j && k < i + 40; k++) { if (GREET_RX.test(String(L[k][3] || '')) && !IVR_RX.test(String(L[k][3] || ''))) { g = k; break; } }
+      var csrVoice = g >= 0 ? L[g][2] : null;
+      if (csrVoice == null) { var cnt = {}; for (var k2 = i; k2 < j; k2++) if (!IVR_RX.test(String(L[k2][3] || ''))) cnt[L[k2][2]] = (cnt[L[k2][2]] || 0) + 1; var ks = Object.keys(cnt); csrVoice = ks.length ? null : null; }
+      for (var k3 = i; k3 < j; k3++) {
+        var txt = String(L[k3][3] || '');
+        if ((g >= 0 && k3 < g) || (g < 0 && k3 - i < 6 && IVR_RX.test(txt))) out[k3] = { name: 'Phone system', csr: false, sys: true };
+        else if (csrVoice != null && String(L[k3][2]) === String(csrVoice)) out[k3] = { name: first(csr[kind]), csr: true };
+        else if (csrVoice != null) out[k3] = { name: 'Customer', csr: false };
+        else out[k3] = { name: trWho(L[k3][2]), csr: /^agent$/i.test(L[k3][2]) };
+      }
+      i = j;
+    }
+    return out;
+  }
   function trCard(c) {
     var L = c.transcript || []; if (!L.length) return '';
     var open = !!TR.open[c.id], q = (TR.q && TR.q.id === c.id) ? TR.q.s : '', ql = q.toLowerCase();
     var who = { from: (c.xfer_from && c.xfer_from.agent) || 'First CSR', self: c.agent || 'CSR', hold: c.agent || 'CSR', to: (c.xfer_to && c.xfer_to.agent) || 'Next CSR' };
     var head = { from: 'Before the transfer: ' + who.from, self: (c.xfer_from ? 'After the transfer: ' : '') + who.self, hold: 'Back from hold', to: 'After the transfer: ' + who.to };
-    var rows = [], last = null, shown = 0, max = open || ql ? 1e9 : 8;
+    var rows = [], last = null, shown = 0, max = open || ql ? 1e9 : 8, NM = trNames(c, L);
     for (var i = 0; i < L.length && shown < max; i++) {
       var l = L[i], t = +l[0], kind = l[1];
       if (ql && String(l[3] || '').toLowerCase().indexOf(ql) < 0) continue;
       if (kind !== last && (last !== null || kind !== 'self' || c.xfer_from)) rows.push('<div class="cap" style="margin:12px 0 4px;color:#3A4380">' + esc(head[kind] || '') + '</div>');
       last = kind; shown++;
-      rows.push('<div class="trl" data-trt="' + t + '" data-seek="' + t + '" role="button" tabindex="0" style="display:grid;grid-template-columns:44px 64px 1fr;gap:8px;padding:5px 6px;border-radius:8px;cursor:pointer;font-size:13px;line-height:1.5"><span class="num mut" style="font-size:11.5px;padding-top:2px">' + clock(t) + '</span><b style="font-weight:600;font-size:12px;padding-top:1px;color:' + (/^agent$/i.test(l[2]) ? '#1F5A41' : '#5F6763') + '">' + esc(trWho(l[2])) + '</b><span>' + trText(l[3]) + '</span></div>');
+      rows.push('<div class="trl" data-trt="' + t + '" data-seek="' + t + '" role="button" tabindex="0" style="display:grid;grid-template-columns:44px 64px 1fr;gap:8px;padding:5px 6px;border-radius:8px;cursor:pointer;font-size:13px;line-height:1.5"><span class="num mut" style="font-size:11.5px;padding-top:2px">' + clock(t) + '</span><b style="font-weight:600;font-size:12px;padding-top:1px;color:' + (NM[i].csr ? '#1F5A41' : NM[i].sys ? '#9AA19D' : '#2B3A67') + '">' + esc(NM[i].name) + '</b><span>' + trText(l[3]) + '</span></div>');
     }
     return '<div class="oq-card" id="trc"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><b>Transcript</b>' +
       '<label class="sr" for="trq">Search the transcript</label><input id="trq" class="oq-field" data-trq="' + esc(c.id) + '" placeholder="Search the transcript" value="' + esc(q) + '" style="max-width:220px;padding:6px 10px;font-size:13px"></div>' +
-      '<div class="mut" style="font-size:11.5px;margin-top:4px">Click a line to play from there. Speaker labels are automatic and can be wrong. Card details are removed.</div>' +
+      '<div class="mut" style="font-size:11.5px;margin-top:4px">Click a line to play from there. Names are matched from the CSR’s greeting and can occasionally be off. Card details are removed.</div>' +
       '<div id="trl" style="margin-top:6px">' + (rows.length ? rows.join('') : '<p class="mut" style="margin:8px 0">No lines match.</p>') + '</div>' +
       (!ql && L.length > 8 ? '<button class="more" data-trall="' + esc(c.id) + '" style="margin-top:6px">' + (open ? 'Show less' : 'Show full transcript (' + L.length + ' lines)') + '</button>' : '') + '</div>';
   }
