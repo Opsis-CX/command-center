@@ -185,6 +185,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div id="kpis" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">' + skel(118, 1).repeat(5) + '</div>' +
       '<div class="oq-card" id="needscard">' + skel(60, 1) + '</div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 460px" id="fcrcard">' + skel(24, 6) + '</div><div class="oq-card" style="flex:1 1 360px" id="sentcard">' + skel(24, 6) + '</div></div>' +
+      '<div class="oq-card" id="tempcard">' + skel(24, 4) + '</div>' +
       '<div class="row"><div class="oq-card" style="flex:999 1 520px" id="brandcard">' + skel(30, 8) + '</div><div class="oq-card" style="flex:1 1 320px" id="coachcard">' + skel(40, 5) + '</div></div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 420px" id="stepcard">' + skel(18, 9) + '</div><div class="oq-card" style="flex:1 1 360px;max-height:470px;overflow-y:auto" id="reviewcard">' + skel(50, 4) + '</div></div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 520px" id="trendcard">' + skel(200, 1) + '</div><div class="ai" style="flex:1 1 360px" id="insightcard">' + skel(30, 4) + '</div></div>');
@@ -199,7 +200,7 @@ export function mountOpsisQA(ROOT, cfg) {
     loadFocus(null, null).then(function (f) { if (tok === T) stepCard(f, 'stepcard', null, null); fitReview(); }).catch(function () {});
     api(Object.assign({ action: 'calls' }, win({ winnable: true, score_max: 40, limit: 5 }))).then(function (c) { if (tok === T) reviewCard(c); }).catch(function () {});
     needsCard(tok);
-    api(Object.assign({ action: 'qaextras' }, win())).then(function (x) { if (tok === T) { EXTRAS = x || {}; drawFcr(); drawSent(); kpiLate(); if (LASTBR) brandTable(LASTBR[0], LASTBR[1], 'brandcard', 8); } }).catch(function () { var a = $('fcrcard'), b = $('sentcard'); if (a) a.innerHTML = '<div class="mut">First contact resolution couldn\u2019t load.</div>'; if (b) b.innerHTML = '<div class="mut">Sentiment couldn\u2019t load.</div>'; });
+    api(Object.assign({ action: 'qaextras' }, win())).then(function (x) { if (tok === T) { EXTRAS = x || {}; drawFcr(); drawSent(); drawTemper(); kpiLate(); if (LASTBR) brandTable(LASTBR[0], LASTBR[1], 'brandcard', 8); } }).catch(function () { var a = $('fcrcard'), b = $('sentcard'); if (a) a.innerHTML = '<div class="mut">First contact resolution couldn\u2019t load.</div>'; if (b) b.innerHTML = '<div class="mut">Sentiment couldn\u2019t load.</div>'; var c = $('tempcard'); if (c) c.innerHTML = '<div class="mut">Temper shift couldn\u2019t load.</div>'; });
   }
 
   var BKEY = 'oqBrands:' + CLIENT;
@@ -2626,9 +2627,9 @@ export function mountOpsisQA(ROOT, cfg) {
   on(document, 'change', function (e) { if (e.target && e.target.id === 'calout' && CAL.form) { CAL.form.outcome = e.target.value; calSync(); drawCalForm(); } });
 
   // ---------- First contact resolution + sentiment (Overview, 2026-10-22) ----------
-  var EXTRAS = null, SENT = { tab: 'brands', all: false };
+  var EXTRAS = null, SENT = { tab: 'brands', all: false }, TMP = { tab: 'brands', all: false };
   // 2026-10-23 (Rob): ask rate on NON-booked opportunities, one category per call, sentiment drills
-  var XKINDS = { category: 1, sentiment: 1, asknb: 1, jobtype: 1 };
+  var XKINDS = { category: 1, sentiment: 1, asknb: 1, jobtype: 1, temper: 1 };
   function loadExtras() { return api(Object.assign({ action: 'qaextras' }, win())).then(function (x) { EXTRAS = x || {}; return EXTRAS; }); }
   function askNb(list, brand, agent) { var r = (list || []).filter(function (x) { return (!brand || x.brand === brand) && (!agent || x.agent === agent); }); var nb = 0, a = 0; r.forEach(function (x) { nb += +x.nb || 0; a += +x.asked || 0; }); return nb ? { pct: 100 * a / nb, nb: nb, asked: a } : null; }
   function pctOf(n, d) { return d ? (100 * n / d) : null; }
@@ -2663,6 +2664,31 @@ export function mountOpsisQA(ROOT, cfg) {
         return '<button class="click" data-ffk="sentiment" data-ffv="' + (r.neg ? 'neg' : 'pos') + '"' + dk + ' title="' + (r.neg ? 'Hear the ' + r.neg + ' calls where the customer left upset' : 'Hear the calls where the customer left happy') + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line2)"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(nm || '—') + (SENT.tab === 'csrs' && !LOCK ? ' <span class="mut" style="font-size:12px">· ' + esc(short(r.brand)) + '</span>' : '') + '</span>' + tempBar(r.avg) + tempPill(r.avg) + '<span class="mut num" style="font-size:12px;width:64px;text-align:right">' + (r.neg ? '<span style="color:#A8441A">' + r.neg + ' upset</span>' : fmt(r.n)) + '</span></button>'; }).join('') : '<div class="mut" style="padding:8px 0;font-size:13px">Not enough calls yet.</div>') +
       (rows.length > 8 ? '<button class="more" data-oqsent="more">' + (SENT.all ? 'Show less' : 'Show all ' + rows.length) + '</button>' : '');
   }
+  // Temper shift (2026-10-23, going forward only): customer temperature in the first 30 seconds vs at the end.
+  var TMP_TIP = { upset_in: 'Calls where the customer sounded angry or frustrated (1-2 on the 1-5 scale) in the first 30 seconds.',
+    calmed: 'Came in upset (1-2) and left happy (4-5). % is of the calls where the customer came in upset.',
+    settled: 'Came in upset (1-2) and left calm (3). % is of the calls where the customer came in upset.',
+    stayed: 'Came in upset (1-2) and still upset at the end (1-2). % is of the calls where the customer came in upset.',
+    escalated: 'Came in calm or happy (3-5) and left upset (1-2): the call made things worse. % is of the calls where the customer came in calm or happy.' };
+  function drawTemper() {
+    var el = $('tempcard'); if (!el || !EXTRAS) return; var tp = EXTRAS.temper || {}, o = tp.overall || {};
+    var tipi = function (k) { return '<span aria-hidden="true" data-tip="' + esc(TMP_TIP[k]) + '" style="margin-left:6px;cursor:help;width:16px;height:16px;border-radius:99px;border:1px solid #CFCAC0;color:#8A918D;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle">i</span>'; };
+    var head = '<h2 class="ttl">Temper shift</h2><p class="sub">How the customer sounded in the first 30 seconds compared with how they sounded at the end, so you can see who calmed an upset caller down and which calls got worse. Tracked on calls scored from Oct 23, 2026 on.</p>';
+    if (!o.n) { el.innerHTML = head + '<div class="mut" style="margin-top:10px;font-size:13px">No calls with a start and end temper in this range yet. It fills in as new calls are scored.</div>'; return; }
+    var ok = (o.n || 0) - (o.upset_in || 0);
+    var tile = function (k, cap, n, d, col) { return '<button class="click" data-ffk="temper" data-ffv="' + k + '" title="Hear these calls" style="all:unset;cursor:pointer;min-width:96px"><div class="cap" style="display:flex;align-items:center">' + cap + tipi(k) + '</div><div class="num" style="font-size:22px;font-weight:600;color:' + col + ';text-decoration:underline dotted">' + (d == null ? fmt(n) : pctTxt(n, d)) + '</div><div class="mut num" style="font-size:11.5px">' + (d == null ? 'of ' + fmt(o.n) + ' calls' : fmt(n) + ' of ' + fmt(d)) + '</div></button>'; };
+    var csr = TMP.tab === 'csrs' || LOCK, rows = csr ? (tp.by_agent || []).filter(function (r) { return r.upset_in || r.escalated; }) : (tp.by_brand || []);
+    rows = rows.slice().sort(function (a, b) { return (b.upset_in + b.escalated) - (a.upset_in + a.escalated) || b.n - a.n; });
+    var shown = TMP.all ? rows : rows.slice(0, 8);
+    var lnk = function (r, k, n, col, word) { if (!n) return '<span class="mut">0 ' + word + '</span>'; return '<button class="more" data-ffk="temper" data-ffv="' + k + '"' + (csr ? ' data-ffagent="' + esc(r.agent || '') + '"' : '') + ' data-ffbrand="' + esc(r.brand || '') + '" title="Hear these calls" style="font-size:12.5px;color:' + col + '">' + n + ' ' + word + '</button>'; };
+    el.innerHTML = head + '<div style="display:flex;gap:20px;align-items:flex-start;margin-top:10px;flex-wrap:wrap">' +
+      tile('upset_in', 'Came in upset', o.upset_in, null, '#A8441A') + tile('calmed', 'Calmed down', o.calmed, o.upset_in, '#1F5A41') + tile('settled', 'Settled', o.settled, o.upset_in, '#8C7A1E') + tile('stayed', 'Stayed upset', o.stayed, o.upset_in, '#A61B1B') + tile('escalated', 'Escalated', o.escalated, ok, '#A61B1B') + '</div>' +
+      '<div class="seg" style="margin-top:14px">' + (LOCK ? '' : '<button data-oqtmp="brands" class="' + (!csr ? 'on' : '') + '">Brands</button>') + '<button data-oqtmp="csrs" class="' + (csr ? 'on' : '') + '">CSRs</button></div>' +
+      (shown.length ? '<div style="overflow-x:auto"><table class="tbl" style="margin-top:8px"><thead><tr><th>' + (csr ? 'CSR' : 'Brand') + '</th><th style="text-align:right">Calls</th><th style="text-align:right">Came in upset</th><th>Calmed or settled</th><th>Stayed upset</th><th>Escalated</th></tr></thead><tbody>' +
+        shown.map(function (r) { return '<tr><td>' + (csr ? esc(r.agent || '—') + (LOCK ? '' : ' <span class="mut" style="font-size:12px">· ' + esc(short(r.brand)) + '</span>') : '<span style="display:inline-flex;gap:8px;align-items:center">' + bbadge(r.brand) + esc(short(r.brand)) + '</span>') + '</td><td class="num" style="text-align:right">' + fmt(r.n) + '</td><td class="num" style="text-align:right">' + fmt(r.upset_in) + '</td><td class="num">' + (r.upset_in ? lnk(r, 'calmed', r.calmed, '#1F5A41', 'calmed') + (r.settled ? ' · ' + lnk(r, 'settled', r.settled, '#8C7A1E', 'settled') : '') : '<span class="mut">—</span>') + '</td><td class="num">' + (r.upset_in ? lnk(r, 'stayed', r.stayed, '#A61B1B', 'upset') : '<span class="mut">—</span>') + '</td><td class="num">' + lnk(r, 'escalated', r.escalated, '#A61B1B', 'escalated') + '</td></tr>'; }).join('') + '</tbody></table></div>'
+        : '<div class="mut" style="padding:8px 0;font-size:13px">' + (csr ? 'No CSR has had an upset or escalated call in this range yet.' : 'Not enough calls yet.') + '</div>') +
+      (rows.length > 8 ? '<button class="more" data-oqtmp="more">' + (TMP.all ? 'Show less' : 'Show all ' + rows.length) + '</button>' : '');
+  }
   // ---------- Back button: every page change is remembered so people can step back ----------
   var HIST = [], LASTH = null, BACKING = false;
   function trackHist() {
@@ -2679,6 +2705,7 @@ export function mountOpsisQA(ROOT, cfg) {
     S.pop = null; readHash(); window.scrollTo(0, 0); render();
   }
   on(document, 'click', function (e) {
+    var tb = e.target.closest('[data-oqtmp]'); if (tb && $('oqa') && $('oqa').contains(tb)) { var tv = tb.getAttribute('data-oqtmp'); if (tv === 'more') TMP.all = !TMP.all; else { TMP.tab = tv; TMP.all = false; } drawTemper(); return; }
     var b = e.target.closest('[data-oqback],[data-oqsent]'); if (!b || !$('oqa') || !$('oqa').contains(b)) return;
     e.preventDefault();
     if (b.hasAttribute('data-oqback')) { goBack(); return; }
@@ -2727,8 +2754,8 @@ export function mountOpsisQA(ROOT, cfg) {
       .then(function (r) { XWHY[k] = { answer: r.answer }; paint(); }).catch(function (e) { XWHY[k] = { err: e.message || 'Couldn’t read the calls.' }; paint(); }); }
     setTimeout(paint, 0);
   }
-  var FFL = { reason: 'Didn’t book: ', objection: 'Objection: ', topic: 'Wanted: ', priority: 'Missed: ', strength: 'Did well: ', outcome: 'Ended: ', hour: 'Hour: ', seg: '', category: 'Call type: ', jobtype: 'Job type: ', sentiment: 'Customer: ', asknb: 'Not booked: ' };
-  var FFV = { sentiment: { neg: 'left upset (1–2)', pos: 'left happy (4–5)' }, asknb: { asked: 'CSR asked for the booking', notasked: 'CSR didn’t ask for the booking' } };
+  var FFL = { reason: 'Didn’t book: ', objection: 'Objection: ', topic: 'Wanted: ', priority: 'Missed: ', strength: 'Did well: ', outcome: 'Ended: ', hour: 'Hour: ', seg: '', category: 'Call type: ', jobtype: 'Job type: ', sentiment: 'Customer: ', temper: 'Temper: ', asknb: 'Not booked: ' };
+  var FFV = { temper: { upset_in: 'came in upset', calmed: 'came in upset, left happy', settled: 'came in upset, left calm', stayed: 'came in upset, left upset', escalated: 'came in calm, left upset' }, sentiment: { neg: 'left upset (1–2)', pos: 'left happy (4–5)' }, asknb: { asked: 'CSR asked for the booking', notasked: 'CSR didn’t ask for the booking' } };
   var SEGL = { open: 'Open hours (Mon–Fri 8a–6p)', early: 'Before 8am (weekdays)', evening: 'After 6pm (weekdays)', weekend: 'Weekends' };
   function openCalls(filters, agent) { S.calls = Object.assign({ outcome: null, step: null, scoreMax: null, scoreMin: null, winnable: null, q: '', offset: 0, nocard: false }, filters || {}); S.callsAgent = agent || null; if (S.ask.open) closeLayer(); go('calls'); }
   function closeLayer() { stopAudio(); P.id = null; S.callId = null; S.fromAsk = false; S.ask.open = false; $('layer').innerHTML = ''; }
