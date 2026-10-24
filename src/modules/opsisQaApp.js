@@ -205,13 +205,15 @@ export function mountOpsisQA(ROOT, cfg) {
 
   var BKEY = 'oqBrands:' + CLIENT;
   try { var bc = JSON.parse(localStorage.getItem(BKEY) || '[]'); if (Array.isArray(bc)) KNOWN.brands = bc.filter(function (x) { return typeof x === 'string'; }); } catch (x) {}
-  function setKnownBrands(list) { if (!list.length) return; BRDONE = true; var same = list.join('|') === KNOWN.brands.join('|'); KNOWN.brands = list; try { localStorage.setItem(BKEY, JSON.stringify(list)); } catch (x) {} if (!same && S.pop === 'brands') render(); }
+  function setKnownBrands(list, full) { if (!list.length) return; if (full) BRDONE = true; else list = list.concat(KNOWN.brands).filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(); var same = list.join('|') === KNOWN.brands.join('|'); KNOWN.brands = list; try { localStorage.setItem(BKEY, JSON.stringify(list)); } catch (x) {} if (!same && S.pop === 'brands') render(); }
   var BRLOAD = null, BRDONE = false;
   function ensureBrands() {
     if (BRLOAD || BRDONE || LOCK) return;
-    BRLOAD = api(Object.assign({ action: 'report' }, win({ brands: null }))).then(function (rep) { setKnownBrands((rep.brands || []).map(function (b) { return b.brand; }).filter(function (b) { return b && b !== '—'; }).sort()); BRDONE = true; }).catch(function () {}).then(function () { BRLOAD = null; });
+    BRLOAD = api(Object.assign({ action: 'report' }, win({ brands: null, start: addDays(todayET(), -45), end: todayET() }))).then(function (rep) { setKnownBrands((rep.brands || []).map(function (b) { return b.brand; }).filter(function (b) { return b && b !== '—'; }).sort(), true); BRDONE = true; }).catch(function () {}).then(function () { BRLOAD = null; });
   }
-  setTimeout(function () { if (!KNOWN.brands.length) ensureBrands(); }, 1200);
+  // The brand picker always lists every brand with calls in the last 45 days, whatever range is on screen
+  // (a quiet day used to shrink the list to the few brands that had calls that day).
+  setTimeout(ensureBrands, 1200);
   function noteKnown(rep) {
     if (!S.brands.length) setKnownBrands((rep.brands || []).map(function (b) { return b.brand; }).filter(function (b) { return b && b !== '—'; }).sort());
     (rep.agents || []).forEach(function (a) { if (a.scored >= 40 && KNOWN.agents.indexOf(a.name) < 0) KNOWN.agents.push(a.name); });
@@ -475,11 +477,16 @@ export function mountOpsisQA(ROOT, cfg) {
   function focusMovers(f) {
     var rows = (f.agents || []).filter(function (a) { return a.n >= 30; }).map(function (a) { a.d = a.pavg != null && a.pn >= 15 ? a.avg - a.pavg : null; return a; });
     rows.sort(function (a, b) { return (b.n) - (a.n); });
-    var h = '<div><h2 class="ttl">CSRs behind the trend</h2><p class="sub">Score now vs before for CSRs with 30+ calls · click a CSR for their profile</p></div><div style="overflow-x:auto;margin-top:10px"><table class="tbl"><thead><tr><th>CSR</th><th>Calls</th><th>Score</th><th>Change</th><th>Booking</th><th>Ask rate</th><th></th></tr></thead><tbody>';
+    var h = '<div><h2 class="ttl">CSRs behind the trend</h2><p class="sub">Score now vs before for CSRs with 30+ calls · click a CSR for their profile</p></div><div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>CSR</th><th>Calls</th><th>Score</th><th>Change</th><th>Booking</th><th>Ask rate</th><th><span style="display:inline-flex;align-items:center;gap:4px">Card ask<span aria-hidden="true" data-tip="Share of the CSR’s booked residential service calls where they asked for a card. Commercial customers, PDQ and Dan’s Doors are left out." style="cursor:help;width:14px;height:14px;border-radius:99px;border:1px solid #CFCAC0;color:#8A918D;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center">i</span></span></th><th></th></tr></thead><tbody>';
     rows.slice(0, 14).forEach(function (a) {
-      h += '<tr class="click" data-agent="' + esc(a.name) + '" tabindex="0"><td><div style="display:flex;align-items:center;gap:10px">' + avatar(a.name, 30) + '<b style="font-weight:600">' + esc(a.name) + '</b></div></td><td class="num">' + fmt(a.n) + '</td><td class="num">' + (a.avg != null ? a.avg.toFixed(1) : '—') + '</td><td>' + (a.d == null ? '<span class="mut" style="font-size:11.5px">new</span>' : delta(a.avg, a.pavg, '')) + '</td><td class="num">' + p1(pct(a.booked, a.decided)) + '</td><td class="num">' + p1(pct(a.asked, a.opps)) + '</td><td class="mut" aria-hidden="true">›</td></tr>';
+      h += '<tr class="click" data-agent="' + esc(a.name) + '" tabindex="0"><td><div style="display:flex;align-items:center;gap:10px">' + avatar(a.name, 26) + '<b style="font-weight:600;white-space:nowrap">' + esc(a.name) + '</b></div></td><td class="num">' + fmt(a.n) + '</td><td class="num">' + (a.avg != null ? a.avg.toFixed(1) : '—') + '</td><td>' + (a.d == null ? '<span class="mut" style="font-size:11.5px">new</span>' : delta(a.avg, a.pavg, '')) + '</td><td class="num">' + p1(pct(a.booked, a.decided)) + '</td><td class="num">' + p1(pct(a.asked, a.opps)) + '</td><td class="num" data-mvcard="' + esc(String(a.name || '').toLowerCase()) + '"><span class="mut">…</span></td><td class="mut" aria-hidden="true">›</td></tr>';
     });
     $('fmovers').innerHTML = h + '</tbody></table></div>';
+    var tk = T;
+    api(Object.assign({ action: 'cardcap' }, win())).then(function (cc) { if (tk !== T || !$('fmovers')) return; var m = {};
+      (cc && cc.by_agent || []).forEach(function (x) { if (CARD_SKIP.indexOf(x.brand) >= 0) return; var k = String(x.agent || '').toLowerCase(); m[k] = m[k] || { b: 0, a: 0 }; m[k].b += +x.booked || 0; m[k].a += +x.asked_cc || 0; });
+      [].forEach.call($('fmovers').querySelectorAll('[data-mvcard]'), function (td) { var v = m[td.getAttribute('data-mvcard')]; td.innerHTML = v && v.b ? '<span title="' + fmt(v.a) + ' of ' + fmt(v.b) + ' booked service calls">' + (100 * v.a / v.b).toFixed(1) + '%</span>' : '<span class="mut">—</span>'; });
+    }).catch(function () { [].forEach.call(($('fmovers') || document).querySelectorAll('[data-mvcard]'), function (td) { td.innerHTML = '<span class="mut">—</span>'; }); });
   }
   function focusMix(f, brand, agent) {
     var tabs = [['reasons', 'Why calls didn’t book'], ['objections', 'Objections'], ['topics', 'What callers wanted'], ['hours', 'Time of day']];
