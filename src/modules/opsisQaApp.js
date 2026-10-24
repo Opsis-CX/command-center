@@ -240,7 +240,7 @@ export function mountOpsisQA(ROOT, cfg) {
     $('kpis').innerHTML = h; kpiLate();
   }
   var CARD_SKIP = ['PDQ', 'Dan\u2019s Doors', "Dan's Doors"];
-  var CARD_DEF = '<b>Card asked</b><br><b>Booked service calls only</b> (repairs, springs, openers, tune-ups; not new doors or installs) where the CSR asked for a credit or debit card to hold the appointment. It counts as asked even if the customer said no. Paying an invoice or a deposit on finished work doesn’t count.<br><br>PDQ and Dan’s Doors are left out (they don’t take a card at booking). Same numbers as the Card capture page.<br><br>Click to compare brands and hear the booked service calls with no card ask.';
+  var CARD_DEF = '<b>Card asked</b><br><b>Booked residential service calls only</b> (repairs, springs, openers, tune-ups; not new doors, installs or commercial customers) where the CSR asked for a credit or debit card to hold the appointment. It counts as asked even if the customer said no. Paying an invoice or a deposit on finished work doesn’t count.<br><br>PDQ and Dan’s Doors are left out (they don’t take a card at booking). Same numbers as the Card capture page.<br><br>Click to compare brands and hear the booked service calls with no card ask.';
   function cardTot(cc) { var b = 0, a = 0, k = 0; ((cc || {}).by_brand || []).forEach(function (x) { if (CARD_SKIP.indexOf(x.brand) >= 0) return; b += +x.booked || 0; a += +x.asked_cc || 0; k += +x.captured_cc || 0; }); return { booked: b, asked: a, captured: k }; }
   function kpiLate() {
     var set = function (id, v, sub) { var e = $(id); if (e) e.innerHTML = v; var su = $('kpisub-' + (id === 'kpiaov' ? 'aov' : 'asknb')); if (su && sub != null) su.innerHTML = sub; };
@@ -565,7 +565,7 @@ export function mountOpsisQA(ROOT, cfg) {
       api(Object.assign({ action: 'cardcap' }, win())).then(function (cc) { if (tok !== T) return;
         var t = cardTot(cc), ov = t.booked ? 100 * t.asked / t.booked : null;
         var rows = (cc.by_brand || []).filter(function (x) { return CARD_SKIP.indexOf(x.brand) < 0 && x.booked; }).map(function (x) { return { brand: x.brand, v: 100 * x.asked_cc / x.booked, sub: x.asked_cc + ' of ' + x.booked }; });
-        $('kpibrands').innerHTML = head(ov, t.booked ? fmt(t.asked) + ' of ' + fmt(t.booked) + ' booked service calls' : '') + (one ? '' : kpiBars(rows, d, ov)) + '<p class="mut" style="font-size:11.5px;margin-top:10px">Booked service calls only (repairs, springs, openers, tune-ups). PDQ and Dan’s Doors are left out: they don’t take a card at booking.</p>';
+        $('kpibrands').innerHTML = head(ov, t.booked ? fmt(t.asked) + ' of ' + fmt(t.booked) + ' booked service calls' : '') + (one ? '' : kpiBars(rows, d, ov)) + '<p class="mut" style="font-size:11.5px;margin-top:10px">Booked residential service calls only (repairs, springs, openers, tune-ups; commercial customers left out). PDQ and Dan’s Doors are left out: they don’t take a card at booking.</p>';
         var miss = (cc.calls || []).filter(function (c) { return !c.asked_for_cc && CARD_SKIP.indexOf(c.brand) < 0; }).sort(function (a, b) { return String(b.call_started_at || b.call_date).localeCompare(String(a.call_started_at || a.call_date)); })
           .map(function (c) { var h = c.call_started_at ? new Date(c.call_started_at).getHours() : null; return { id: c.review_id, agent: c.agent, brand: c.brand, date: c.call_date, hour: h, secs: null, score: c.score_pct == null ? '—' : Math.round(c.score_pct), topic: 'Booked · no card ask', summary: '' }; });
         S.kpiRows = miss; S.kpiShown = 50; drawList(miss.slice(0, 50), miss.length);
@@ -1910,10 +1910,12 @@ export function mountOpsisQA(ROOT, cfg) {
     });
   }
   function legsNote(c) {
-    if (c.leg_of && c.leg_of.id) return '<div class="oq-card" style="background:#F3F8F5;border-color:#BFDCCB;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap"><div style="font-size:13px;line-height:1.5"><b>This is part ' + (c.leg_of.n || 2) + ' of a longer call.</b> The phone system started a new recording when the caller came back from hold. The score is on the full call.</div><button class="sel btnd" data-call="' + esc(c.leg_of.id) + '">Open the full call</button></div>';
+    if (c.leg_of && c.leg_of.id) return '<div class="oq-card" style="background:#F3F8F5;border-color:#BFDCCB;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap"><div style="font-size:13px;line-height:1.5"><b>This is part ' + (c.leg_of.n || 2) + ' of a longer conversation.</b> ' + (c.leg_of.kind === 'callback' ? 'The customer called the same CSR back a few minutes after the first call, so both calls are scored together as one conversation.' : 'The phone system started a new recording when the caller came back from hold. The score is on the full call.') + '</div><button class="sel btnd" data-call="' + esc(c.leg_of.id) + '">Open the full call</button></div>';
     var bits = [];
     if (c.xfer_from && c.xfer_from.id) bits.push('starts with <b>' + esc(c.xfer_from.agent || 'the first CSR') + '</b>’s part before the transfer');
-    if (c.legs && c.legs.length) bits.push('includes ' + c.legs.length + ' more recording' + (c.legs.length > 1 ? 's' : '') + ' after a hold');
+    var nh = (c.legs || []).filter(function (l) { return l.kind !== 'callback'; }).length, nc = (c.legs || []).length - nh;
+    if (nh) bits.push('includes ' + nh + ' more recording' + (nh > 1 ? 's' : '') + ' after a hold');
+    if (nc) bits.push('includes the customer’s callback ' + (nc > 1 ? '(' + nc + ' calls) ' : '') + 'a few minutes later to the same CSR');
     if (c.xfer_to && c.xfer_to.id) bits.push('continues into <b>' + esc(c.xfer_to.agent || 'the next CSR') + '</b>’s part after the transfer');
     if (!bits.length) return '';
     return '<div class="mut" style="font-size:12.5px;line-height:1.5;margin-top:-4px">The player ' + bits.join(', ') + '. ' + ((c.xfer_from && c.xfer_from.id) || (c.xfer_to && c.xfer_to.id) ? 'Each CSR is scored only on their own part.' : 'The score covers the whole call.') + '</div>';
@@ -1985,7 +1987,7 @@ export function mountOpsisQA(ROOT, cfg) {
   var GREET_RX = /(this is [a-z]+|my name is|[a-z]+ speaking|how (may|can) i (help|assist)|thank(s| you) for (holding|waiting|your patience))/i;
   function trNames(c, L) {
     var out = [], first = function (n) { return String(n || '').split(' ')[0] || n; };
-    var csr = { from: (c.xfer_from && c.xfer_from.agent) || 'CSR', self: c.agent || 'CSR', hold: c.agent || 'CSR', to: (c.xfer_to && c.xfer_to.agent) || 'CSR' };
+    var csr = { from: (c.xfer_from && c.xfer_from.agent) || 'CSR', self: c.agent || 'CSR', hold: c.agent || 'CSR', callback: c.agent || 'CSR', to: (c.xfer_to && c.xfer_to.agent) || 'CSR' };
     var i = 0;
     while (i < L.length) {
       var kind = L[i][1], j = i; while (j < L.length && L[j][1] === kind) j++;
@@ -2007,7 +2009,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var L = c.transcript || []; if (!L.length) return '';
     var open = !!TR.open[c.id], q = (TR.q && TR.q.id === c.id) ? TR.q.s : '', ql = q.toLowerCase();
     var who = { from: (c.xfer_from && c.xfer_from.agent) || 'First CSR', self: c.agent || 'CSR', hold: c.agent || 'CSR', to: (c.xfer_to && c.xfer_to.agent) || 'Next CSR' };
-    var head = { from: 'Before the transfer: ' + who.from, self: (c.xfer_from ? 'After the transfer: ' : '') + who.self, hold: 'Back from hold', to: 'After the transfer: ' + who.to };
+    var head = { from: 'Before the transfer: ' + who.from, self: (c.xfer_from ? 'After the transfer: ' : '') + who.self, hold: 'Back from hold', callback: 'The customer called back', to: 'After the transfer: ' + who.to };
     var rows = [], last = null, shown = 0, max = open || ql ? 1e9 : 8, NM = trNames(c, L);
     for (var i = 0; i < L.length && shown < max; i++) {
       var l = L[i], t = +l[0], kind = l[1];
