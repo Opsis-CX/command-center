@@ -2634,7 +2634,7 @@ export function mountOpsisQA(ROOT, cfg) {
   on(document, 'change', function (e) { if (e.target && e.target.id === 'calout' && CAL.form) { CAL.form.outcome = e.target.value; calSync(); drawCalForm(); } });
 
   // ---------- First contact resolution + sentiment (Overview, 2026-10-22) ----------
-  var EXTRAS = null, SENT = { tab: 'brands', all: false }, TMP = { tab: 'brands', all: false };
+  var EXTRAS = null, SENT = { tab: 'brands', all: false }, TMP = { tab: 'brands', all: false }, FCRS = { k: 'contacts', dir: -1 };
   // 2026-10-23 (Rob): ask rate on NON-booked opportunities, one category per call, sentiment drills
   var XKINDS = { category: 1, sentiment: 1, asknb: 1, jobtype: 1, temper: 1 };
   function loadExtras() { return api(Object.assign({ action: 'qaextras' }, win())).then(function (x) { EXTRAS = x || {}; return EXTRAS; }); }
@@ -2647,13 +2647,16 @@ export function mountOpsisQA(ROOT, cfg) {
   function tempPill(v) { var t = tempOf(v); return t ? '<span class="pill num" style="background:' + t.col + '1A;color:' + t.col + ';min-width:92px;justify-content:center;text-align:center">' + (+v).toFixed(1) + ' · ' + t.label + '</span>' : '<span class="mut">—</span>'; }
   function tempBar(v) { var w = v == null ? 0 : Math.max(0, Math.min(100, (+v - 1) / 4 * 100)), t = tempOf(v); return '<div class="track" style="width:90px;display:inline-block;vertical-align:middle"><div style="width:' + w.toFixed(0) + '%;background:' + (t ? t.col : '#ccc') + '"></div></div>'; }
   function drawFcr() {
-    var el = $('fcrcard'); if (!el || !EXTRAS) return; var f = EXTRAS.fcr || {}, o = f.overall || {}, rows = f.by_brand || [];
+    var el = $('fcrcard'); if (!el || !EXTRAS) return; var f = EXTRAS.fcr || {}, o = f.overall || {}, rows = (f.by_brand || []).slice();
+    var fv = function (r) { var k = FCRS.k; if (k === 'brand') return short(r.brand).toLowerCase(); if (k === 'contacts') return +r.contacts || 0; return r.contacts ? (+r[k] || 0) / r.contacts : -1; };
+    rows.sort(function (a, b) { var x = fv(a), y = fv(b); return (x < y ? -1 : x > y ? 1 : 0) * FCRS.dir || (b.contacts - a.contacts); });
+    var th = function (k, lbl, al) { var on = FCRS.k === k; return '<th data-oqfcr="' + k + '" role="button" tabindex="0" title="Sort" style="cursor:pointer;user-select:none;white-space:nowrap' + (al ? ';text-align:right' : '') + (on ? ';color:var(--ink)' : '') + '">' + lbl + ' <span style="font-size:9px;opacity:' + (on ? 1 : .35) + '">' + (on && FCRS.dir > 0 ? '▲' : '▼') + '</span></th>'; };
     var pc0 = function (a, b) { return b ? Math.round(100 * a / b) + '%' : '—'; };
     var bar = function (a, b, col) { var w = b ? 100 * a / b : 0; return '<div class="track" style="width:72px;display:inline-block;vertical-align:middle;margin-right:8px"><div style="width:' + w.toFixed(0) + '%;background:' + col + '"></div></div>'; };
     var recent = S.end >= addDays(todayET(), -6);
     el.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start"><div><h2 class="ttl">First contact resolution</h2><p class="sub">Resolved the first time the customer called: booked or handled (including after a transfer), with no call back from the same number within 7 days. <b>First person</b> is the part of FCR solved by whoever answered, with no transfer, so it is always the same or lower than FCR (the gap is calls resolved after a transfer).</p></div>' +
       '<div style="display:flex;gap:18px"><div><div class="cap">FCR</div><div class="num" style="font-size:26px;font-weight:600;color:#1F5A41">' + pc0(o.fcr, o.contacts) + '</div></div><div><div class="cap">First person</div><div class="num" style="font-size:26px;font-weight:600;color:#2B3A67">' + pc0(o.fcpr, o.contacts) + '</div></div><div><div class="cap">Transferred</div><div class="num" style="font-size:26px;font-weight:600">' + pc0(o.transferred, o.contacts) + '</div></div></div></div>' +
-      (rows.length ? '<div style="overflow-x:auto"><table class="tbl" style="margin-top:12px"><thead><tr><th>' + (LOCK ? 'Brand' : 'Brand') + '</th><th style="text-align:right">Customer contacts</th><th>FCR</th><th>First person</th><th style="text-align:right">Transferred</th></tr></thead><tbody>' +
+      (rows.length ? '<div style="overflow-x:auto"><table class="tbl" style="margin-top:12px"><thead><tr>' + th('brand', 'Brand') + th('contacts', 'Customer contacts', 1) + th('fcr', 'FCR') + th('fcpr', 'First person') + th('transferred', 'Transferred', 1) + '</tr></thead><tbody>' +
         rows.map(function (r) { return '<tr class="click" tabindex="0" data-brand="' + esc(r.brand) + '"><td><span style="display:inline-flex;gap:8px;align-items:center">' + bbadge(r.brand) + esc(short(r.brand)) + '</span></td><td class="num" style="text-align:right">' + fmt(r.contacts) + '</td><td class="num">' + bar(r.fcr, r.contacts, '#2F7D5B') + pc0(r.fcr, r.contacts) + '</td><td class="num">' + bar(r.fcpr, r.contacts, '#3A4380') + pc0(r.fcpr, r.contacts) + '</td><td class="num" style="text-align:right">' + pc0(r.transferred, r.contacts) + '</td></tr>'; }).join('') +
         '<tr style="font-weight:600;border-top:2px solid var(--line)"><td>' + (LOCK ? 'Total' : 'All brands') + '</td><td class="num" style="text-align:right">' + fmt(o.contacts) + '</td><td class="num">' + pc0(o.fcr, o.contacts) + '</td><td class="num">' + pc0(o.fcpr, o.contacts) + '</td><td class="num" style="text-align:right">' + pc0(o.transferred, o.contacts) + '</td></tr></tbody></table></div>' : '<div class="mut" style="margin-top:10px">No customer conversations in this period.</div>') +
       (recent ? '<p class="mut" style="font-size:11.5px;margin:8px 0 0">Calls from the last 7 days can still drop out of FCR if the customer calls back.</p>' : '');
@@ -2712,6 +2715,7 @@ export function mountOpsisQA(ROOT, cfg) {
     S.pop = null; readHash(); window.scrollTo(0, 0); render();
   }
   on(document, 'click', function (e) {
+    var fs = e.target.closest('[data-oqfcr]'); if (fs && $('oqa') && $('oqa').contains(fs)) { var fk2 = fs.getAttribute('data-oqfcr'); if (FCRS.k === fk2) FCRS.dir = -FCRS.dir; else { FCRS.k = fk2; FCRS.dir = fk2 === 'brand' ? 1 : -1; } drawFcr(); return; }
     var tb = e.target.closest('[data-oqtmp]'); if (tb && $('oqa') && $('oqa').contains(tb)) { var tv = tb.getAttribute('data-oqtmp'); if (tv === 'more') TMP.all = !TMP.all; else { TMP.tab = tv; TMP.all = false; } drawTemper(); return; }
     var b = e.target.closest('[data-oqback],[data-oqsent]'); if (!b || !$('oqa') || !$('oqa').contains(b)) return;
     e.preventDefault();
