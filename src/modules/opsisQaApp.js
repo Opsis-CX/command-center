@@ -216,7 +216,7 @@ export function mountOpsisQA(ROOT, cfg) {
     (rep.agents || []).forEach(function (a) { if (a.scored >= 40 && KNOWN.agents.indexOf(a.name) < 0) KNOWN.agents.push(a.name); });
   }
 
-  function kpiGo(k) { if (k === 'asknb') { openCalls({ ff: { kind: 'asknb', value: 'notasked', label: FFL.asknb + FFV.asknb.notasked } }); return true; } if (k === 'aov') { go('money'); return true; } if (k === 'allcalls') { openCalls({}); return true; } return false; }
+  function kpiGo(k) { if (k === 'aov') { go('money'); return true; } if (KPID[k]) { S.kpi = k; S.kpiOff = 0; go('kpi'); return true; } return false; }
   function kpiCards(rep) {
     var k = rep.kpis || {}, p = rep.prev || {}, d = rep.daily || [];
     var daily = d.filter(function (x) { return x.calls >= 100; });
@@ -225,12 +225,12 @@ export function mountOpsisQA(ROOT, cfg) {
       ['Avg QA score', k.avg != null ? k.avg.toFixed(1) : '—', delta(k.avg, p.avg, ''), G, 'M12 3l2.6 5.6 6 .7-4.5 4.1 1.3 6L12 16.4 6.6 19.4l1.3-6L3.4 9.3l6-.7z', daily.map(function (x) { return x.avg; }), '<b>Avg QA score</b><br>Average call-flow score (0–100) of the inbound calls handled. Each step the CSR did earns its points; a step that didn’t apply to the call counts as done.<br><br>Change = points vs the previous period. Click to see the lowest-scoring calls.', 'lowscore'],
       ['Booking rate', p1(k.booking_rate), delta(k.booking_rate, p.booking_rate, ' pts'), G, 'M5 5h14v15H5zM5 9h14M9 3v4M15 3v4M9 14l2 2 4-4', daily.map(function (x) { return x.decided ? x.booked / x.decided * 100 : null; }), '<b>Booking rate</b><br>Customers who booked ÷ customers who had a booking decision (booked or didn’t book). Each customer counts once, so a transfer or a callback isn’t counted twice. Calls with no booking opportunity are left out.<br><br>Change = points vs the previous period. Click to see calls that didn’t book.', 'notbooked'],
       ['Ask rate · not booked', '<span id="kpiasknb">…</span>', '', O, 'M21 12a9 9 0 1 1-4.2-7.6M21 4v5h-5', [], '<b>Ask rate · not booked</b><br>Of the booking opportunities that did NOT book, the share where the CSR still directly asked to put the customer on the schedule. Low = customers leaving without being asked.<br><br>Click to hear the ones where the CSR didn’t ask.', 'asknb'],
-      ['Card asked', p1(k.cc_ask_rate), delta(k.cc_ask_rate, p.cc_ask_rate, ' pts'), (k.cc_ask_rate || 0) >= (p.cc_ask_rate || 0) ? G : O, 'M3 6h18v12H3zM3 10h18M7 15h3', daily.map(function (x) { return x.booked ? (x.cc_asked || 0) / x.booked * 100 : null; }), '<b>Card asked</b><br>Booked calls where the CSR asked for a credit or debit card to hold the appointment (it counts as asked even if the customer said no) ÷ all booked calls. Paying an invoice or a deposit on finished work doesn’t count.<br><br>Change = points vs the previous period. Click to hear booked calls where no card was asked for.', 'nocard'],
-      ['Avg order value', '<span id="kpiaov">…</span>', '', G, 'M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6', [], '<b>Avg order value</b><br>Average value of a booked job: the Acumatica invoice amount where an invoice matches the call, otherwise the job-value estimate for that brand and job type (shown on the Revenue page).<br><br>Click for the Revenue page.', 'aov']
+      ['Card asked', '<span id="kpicard">…</span>', '', O, 'M3 6h18v12H3zM3 10h18M7 15h3', [], CARD_DEF, 'nocard'],
+      ['Avg order value', '<span id="kpiaov">…</span>', '', G, 'M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6', [], '<b>Avg order value</b><br>Average value of a booked job: the Acumatica invoice amount where an invoice matches the call, otherwise the job-value estimate for that brand and job type (set on the Revenue page).<br><br>Until invoices are loaded this is the estimate, not a real average; it shows <b>est.</b> next to the number.<br><br>Click for the Revenue page.', 'aov']
     ];
     var h = defs.map(function (x) {
       var s = series(x[5], 200, 34, 3), bg = x[3] === G ? '#E6F0EA' : '#FCEBDD';
-      return '<button class="oq-card click" data-kpi="' + x[7] + '" data-tip="' + esc(x[6]) + '" aria-label="' + esc(x[0] + '. ' + String(x[6]).replace(/<[^>]+>/g, ' ')) + '" style="padding:16px 18px 12px;text-align:left;font:inherit;color:inherit"><div style="display:flex;align-items:center;gap:12px"><div style="width:34px;height:34px;border-radius:9px;background:' + bg + ';display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="' + x[3] + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + x[4] + '"/></svg></div><span class="cap">' + x[0] + '</span><span aria-hidden="true" style="margin-left:auto;width:18px;height:18px;border-radius:99px;border:1px solid #CFCAC0;color:#8A918D;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">i</span></div>' +
+      return '<button class="oq-card click" data-kpi="' + x[7] + '" aria-label="' + esc(x[0] + '. ' + String(x[6]).replace(/<[^>]+>/g, ' ')) + '" style="padding:16px 18px 12px;text-align:left;font:inherit;color:inherit"><div style="display:flex;align-items:center;gap:12px"><div style="width:34px;height:34px;border-radius:9px;background:' + bg + ';display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="' + x[3] + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + x[4] + '"/></svg></div><span class="cap">' + x[0] + '</span><span aria-hidden="true" data-tip="' + esc(x[6]) + '" title="" style="margin-left:auto;cursor:help;width:18px;height:18px;border-radius:99px;border:1px solid #CFCAC0;color:#8A918D;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">i</span></div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:14px"><span class="num" style="font-size:34px;font-weight:600;letter-spacing:-0.03em;line-height:1">' + x[1] + '</span>' + x[2] + '</div>' +
         (x[5].length ? '<svg width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none" style="display:block;margin-top:8px" aria-hidden="true"><path d="' + s.area + '" fill="' + x[3] + '" fill-opacity=".1"/><path d="' + s.line + '" fill="none" stroke="' + x[3] + '" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>' : '<div id="kpisub-' + x[7] + '" class="mut" style="font-size:12px;margin-top:12px;min-height:30px"></div>') + '<div class="mut" style="font-size:11px;margin-top:4px">' + (x[5].length ? 'vs previous ' + daysBetween(S.start, S.end) + ' days · ' : '') + 'click for ' + (x[7] === 'aov' ? 'revenue' : 'calls') + '</div></button>';
     }).join('');
@@ -239,13 +239,17 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div style="position:relative;width:70px;height:70px;flex-shrink:0"><svg width="70" height="70" viewBox="0 0 72 72" role="img" aria-label="' + ratio + ' percent were real conversations"><circle cx="36" cy="36" r="30" fill="none" stroke="#EEEBE4" stroke-width="7"/><circle cx="36" cy="36" r="30" fill="none" stroke="#14302A" stroke-width="7" stroke-linecap="round" stroke-dasharray="' + dash + ' 188.5" transform="rotate(-90 36 36)"/></svg><span class="num" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600">' + ratio + '%</span></div></div><div class="mut" style="font-size:11px;margin-top:8px">The rest were voicemail, internal, IVR or wrong numbers.</div></div>';
     $('kpis').innerHTML = h; kpiLate();
   }
+  var CARD_SKIP = ['PDQ', 'Dan\u2019s Doors', "Dan's Doors"];
+  var CARD_DEF = '<b>Card asked</b><br><b>Booked service calls only</b> (repairs, springs, openers, tune-ups; not new doors or installs) where the CSR asked for a credit or debit card to hold the appointment. It counts as asked even if the customer said no. Paying an invoice or a deposit on finished work doesn’t count.<br><br>PDQ and Dan’s Doors are left out (they don’t take a card at booking). Same numbers as the Card capture page.<br><br>Click to compare brands and hear the booked service calls with no card ask.';
+  function cardTot(cc) { var b = 0, a = 0, k = 0; ((cc || {}).by_brand || []).forEach(function (x) { if (CARD_SKIP.indexOf(x.brand) >= 0) return; b += +x.booked || 0; a += +x.asked_cc || 0; k += +x.captured_cc || 0; }); return { booked: b, asked: a, captured: k }; }
   function kpiLate() {
     var set = function (id, v, sub) { var e = $(id); if (e) e.innerHTML = v; var su = $('kpisub-' + (id === 'kpiaov' ? 'aov' : 'asknb')); if (su && sub != null) su.innerHTML = sub; };
     var fill = function () { var a = askNb(((EXTRAS || {}).asknb || {}).by_brand); if (!a && EXTRAS && EXTRAS.asknb) a = (function (o) { return o && o.nb ? { pct: 100 * o.asked / o.nb, nb: o.nb, asked: o.asked } : null; })(EXTRAS.asknb.overall);
       set('kpiasknb', a ? a.pct.toFixed(1) + '%' : '—', a ? fmt(a.asked) + ' of ' + fmt(a.nb) + ' not-booked opportunities had a direct ask' : 'No not-booked opportunities in this range'); };
     if (EXTRAS && EXTRAS.asknb) fill(); else loadExtras().then(fill).catch(function () { set('kpiasknb', '—', ''); });
+    api(Object.assign({ action: 'cardcap' }, win())).then(function (cc) { var t = cardTot(cc), e = $('kpicard'), su = $('kpisub-nocard'); if (e) e.innerHTML = t.booked ? (100 * t.asked / t.booked).toFixed(1) + '%' : '—'; if (su) su.innerHTML = t.booked ? fmt(t.asked) + ' of ' + fmt(t.booked) + ' booked service calls had a card ask' : 'No booked service calls in this range'; }).catch(function () { var e = $('kpicard'); if (e) e.innerHTML = '—'; });
     api(Object.assign({ action: 'money' }, { start: S.start, end: S.end, brands: S.brands.length ? S.brands : null })).then(function (m) { var t = (m || {}).totals || {}, n = (+t.booked || 0) - (+t.booked_unvalued || 0);
-      set('kpiaov', n > 0 && +t.booked_value ? '$' + Math.round(t.booked_value / n).toLocaleString() : '—', n > 0 ? fmt(n) + ' booked jobs · ' + (+t.booked_actual_n ? fmt(t.booked_actual_n) + ' with invoices' : 'estimated job values') : 'Add job values on the Revenue page'); }).catch(function () { set('kpiaov', '—', ''); });
+      set('kpiaov', n > 0 && +t.booked_value ? '$' + Math.round(t.booked_value / n).toLocaleString() + (+t.booked_actual_n ? '' : '<span style="font-size:13px;font-weight:600;color:#8A5A00;margin-left:6px">est.</span>') : '—', n > 0 ? (+t.booked_actual_n ? fmt(t.booked_actual_n) + ' of ' + fmt(n) + ' booked jobs matched to invoices' : 'Estimate only: no invoices loaded yet, so every job uses the job value set on the Revenue page') : 'Add job values on the Revenue page'); }).catch(function () { set('kpiaov', '—', ''); });
   }
 
   var LASTBR = null;
@@ -319,8 +323,9 @@ export function mountOpsisQA(ROOT, cfg) {
       el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Needs attention</h2><p class="sub">The same lists as the 8am daily summary, for the dates and brands picked above. One row per customer conversation.</p></div></div>' +
         '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:12px">' +
         NEEDS.map(function (n) { var v = got[n[0]];
-          return '<button class="click" data-needs="' + n[0] + '" data-tip="' + esc(NEEDS_TIP[n[0]] + '<br><br>Front-line CSRs, inbound calls. A transfer or a quick callback from the same number counts once, in the first list it fits.') + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:12px;background:' + n[4] + ';border:1px solid transparent">' +
-            '<span style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:' + n[3] + '"><span aria-hidden="true" style="width:8px;height:8px;border-radius:999px;background:' + n[3] + '"></span>' + n[1] + '</span>' +
+          var ntip = esc(NEEDS_TIP[n[0]] + '<br><br>Front-line CSRs, inbound calls. A transfer or a quick callback from the same number counts once, in the first list it fits.');
+          return '<button class="click" data-needs="' + n[0] + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:12px;background:' + n[4] + ';border:1px solid transparent">' +
+            '<span style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:' + n[3] + '"><span aria-hidden="true" style="width:8px;height:8px;border-radius:999px;background:' + n[3] + '"></span>' + n[1] + '<span aria-hidden="true" data-tip="' + ntip + '" style="margin-left:auto;cursor:help;width:18px;height:18px;border-radius:99px;border:1px solid #CFCAC0;color:#8A918D;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">i</span></span>' +
             '<span class="num" style="font-size:26px;font-weight:700;color:#1C2421">' + (v == null ? '<span class="dots"><span></span><span></span><span></span></span>' : (v < 0 ? '<span style="font-size:13px;font-weight:600;color:#A8441A">Didn’t load. Click to open the list.</span>' : fmt(v))) + '</span>' +
             '<span class="mut" style="font-size:11.5px">' + n[2] + '</span></button>'; }).join('') + '</div>';
     }
@@ -534,6 +539,54 @@ export function mountOpsisQA(ROOT, cfg) {
 
   // ---------- Calls ----------
   var OUTCOMES = [['', 'Any outcome'], ['Booked', 'Booked'], ['Not Booked', 'Not booked'], ['Transferred', 'Transferred'], ['No Opportunity', 'No opportunity']];
+  // KPI drill (2026-10-23): click a top tile -> every brand side by side, then the calls behind the number.
+  var KPID = {
+    allcalls: { t: 'Inbound calls handled', bar: 'Inbound calls handled', unit: '', list: 'All inbound calls handled', hi: true },
+    lowscore: { t: 'Avg QA score', bar: 'Avg QA score', unit: '', list: 'Lowest-scoring calls (40 or under)', hi: true },
+    notbooked: { t: 'Booking rate', bar: 'Booking rate', unit: '%', list: 'Calls that didn’t book', hi: true },
+    asknb: { t: 'Ask rate · not booked', bar: 'Asked for the booking on not-booked opportunities', unit: '%', list: 'Not booked and the CSR didn’t ask for the booking', hi: true },
+    nocard: { t: 'Card asked', bar: 'Card asked on booked service calls', unit: '%', list: 'Booked service calls with no card ask', hi: true }
+  };
+  function kpiBars(rows, d, overall) {
+    var vals = rows.filter(function (r) { return r.v != null; }), max = Math.max.apply(null, vals.map(function (r) { return r.v; }).concat([d.unit === '%' ? 100 : 1]));
+    return vals.sort(function (a, b) { return b.v - a.v; }).map(function (r) { var w = Math.max(1, r.v / max * 100), below = overall != null && r.v < overall;
+      return '<button class="click" data-kpibrand="' + esc(r.brand) + '" title="Show ' + esc(short(r.brand)) + ' only" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:grid;grid-template-columns:150px minmax(0,1fr) 120px;gap:12px;align-items:center;padding:7px 2px;border-top:1px solid var(--line2)"><span style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px">' + bbadge(r.brand) + esc(short(r.brand)) + '</span>' +
+        '<span style="position:relative;height:14px;background:#F3F1EC;border-radius:7px;overflow:visible">' + '<span style="position:absolute;left:0;top:0;bottom:0;width:' + w.toFixed(1) + '%;border-radius:7px;background:' + (below ? O : G) + '"></span>' + (overall != null ? '<span title="Overall" style="position:absolute;top:-4px;bottom:-4px;width:2px;background:#14302A;left:' + Math.min(100, overall / max * 100).toFixed(1) + '%"></span>' : '') + '</span>' +
+        '<span class="num" style="text-align:right;font-size:13px"><b>' + (d.unit === '%' ? r.v.toFixed(1) + '%' : (r.v % 1 ? r.v.toFixed(1) : fmt(r.v))) + '</b>' + (r.sub ? ' <span class="mut" style="font-size:11.5px">' + r.sub + '</span>' : '') + '</span></button>'; }).join('');
+  }
+  function vKpi(tok) {
+    var k = KPID[S.kpi] ? S.kpi : 'nocard', d = KPID[k], one = S.brands.length === 1 || LOCK;
+    setMain(crumb([['Overview', 'overview'], [d.t]]) + '<div class="oq-card" id="kpibrands">' + skel(26, 8) + '</div><div class="oq-card"><h2 class="ttl">' + esc(d.list) + '</h2><p class="sub" id="kpitot">Loading…</p><div id="kpilist" style="margin-top:8px">' + skel(54, 6) + '</div><div id="kpimore" style="margin-top:10px"></div></div>');
+    var head = function (overall, sub) { return '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2 class="ttl">' + esc(d.bar) + (one ? '' : ' · by brand') + '</h2><p class="sub">' + esc(rangeLabel()) + ' · ' + (one ? esc(short(LOCK || S.brands[0])) : 'click a brand to see only its calls') + '</p></div><div style="text-align:right"><div class="cap">Overall</div><div class="num" style="font-size:28px;font-weight:600">' + (overall == null ? '—' : d.unit === '%' ? overall.toFixed(1) + '%' : (overall % 1 ? overall.toFixed(1) : fmt(overall))) + '</div>' + (sub ? '<div class="mut" style="font-size:12px">' + sub + '</div>' : '') + '</div></div>' + (one ? '' : '<div style="display:flex;gap:14px;font-size:11.5px;margin:10px 0 4px" class="mut"><span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:' + G + '"></span> At or above overall</span><span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:' + O + '"></span> Below overall</span><span><span style="display:inline-block;width:2px;height:10px;background:#14302A"></span> Overall</span></div>'); };
+    var drawList = function (rows, total) { if (tok !== T) return; var el = $('kpilist'); if (!el) return; $('kpitot').textContent = fmt(total) + ' calls · newest first · press ▶ to listen, click a call for the full review'; el.innerHTML = rows.map(callRow).join('') || '<p class="mut">No calls.</p>';
+      $('kpimore').innerHTML = rows.length < total ? '<button class="sel" data-kpimore="1">Show more (' + fmt(Math.min(50, total - rows.length)) + ')</button>' : ''; };
+    S.kpiRows = []; var more;
+    if (k === 'nocard') {
+      api(Object.assign({ action: 'cardcap' }, win())).then(function (cc) { if (tok !== T) return;
+        var t = cardTot(cc), ov = t.booked ? 100 * t.asked / t.booked : null;
+        var rows = (cc.by_brand || []).filter(function (x) { return CARD_SKIP.indexOf(x.brand) < 0 && x.booked; }).map(function (x) { return { brand: x.brand, v: 100 * x.asked_cc / x.booked, sub: x.asked_cc + ' of ' + x.booked }; });
+        $('kpibrands').innerHTML = head(ov, t.booked ? fmt(t.asked) + ' of ' + fmt(t.booked) + ' booked service calls' : '') + (one ? '' : kpiBars(rows, d, ov)) + '<p class="mut" style="font-size:11.5px;margin-top:10px">Booked service calls only (repairs, springs, openers, tune-ups). PDQ and Dan’s Doors are left out: they don’t take a card at booking.</p>';
+        var miss = (cc.calls || []).filter(function (c) { return !c.asked_for_cc && CARD_SKIP.indexOf(c.brand) < 0; }).sort(function (a, b) { return String(b.call_started_at || b.call_date).localeCompare(String(a.call_started_at || a.call_date)); })
+          .map(function (c) { var h = c.call_started_at ? new Date(c.call_started_at).getHours() : null; return { id: c.review_id, agent: c.agent, brand: c.brand, date: c.call_date, hour: h, secs: null, score: c.score_pct == null ? '—' : Math.round(c.score_pct), topic: 'Booked · no card ask', summary: '' }; });
+        S.kpiRows = miss; S.kpiShown = 50; drawList(miss.slice(0, 50), miss.length);
+        more = function () { S.kpiShown += 50; drawList(miss.slice(0, S.kpiShown), miss.length); }; S.kpiMore = more;
+      }).catch(function (e) { if (tok === T) $('kpibrands').innerHTML = errBox(e); });
+      return;
+    }
+    Promise.all([loadReport(), loadExtras().catch(function () { return {}; })]).then(function (r) { if (tok !== T) return;
+      var rep = r[0] || {}, X = r[1] || {}, kp = rep.kpis || {}, rows, ov, sub = '';
+      var bs = (rep.brands || []).filter(function (b) { return b.brand && b.brand !== '—'; });
+      if (k === 'allcalls') { rows = bs.map(function (b) { return { brand: b.brand, v: +b.calls || 0 }; }); ov = (rep.funnel || {}).conversations || 0; }
+      else if (k === 'lowscore') { rows = bs.map(function (b) { return { brand: b.brand, v: b.avg == null ? null : +b.avg }; }); ov = kp.avg; }
+      else if (k === 'notbooked') { rows = bs.map(function (b) { return { brand: b.brand, v: b.decided ? 100 * b.booked / b.decided : null, sub: b.booked + ' of ' + b.decided }; }); ov = kp.booking_rate; }
+      else { rows = ((X.asknb || {}).by_brand || []).map(function (b) { return { brand: b.brand, v: b.nb ? 100 * b.asked / b.nb : null, sub: b.asked + ' of ' + b.nb }; }); var o = (X.asknb || {}).overall || {}; ov = o.nb ? 100 * o.asked / o.nb : null; sub = o.nb ? fmt(o.asked) + ' of ' + fmt(o.nb) + ' not-booked opportunities' : ''; }
+      $('kpibrands').innerHTML = head(ov, sub) + (one ? '' : kpiBars(rows, d, k === 'allcalls' ? null : ov));
+    }).catch(function (e) { if (tok === T) $('kpibrands').innerHTML = errBox(e); });
+    var body = function (off) { return k === 'asknb' ? Object.assign({ action: 'qaextras', view: 'list', kind: 'asknb', value: 'notasked' }, win({ limit: 50, offset: off })) : Object.assign({ action: 'calls' }, win({ outcome: k === 'notbooked' ? 'Not Booked' : null, score_max: k === 'lowscore' ? 40 : null, limit: 50, offset: off })); };
+    var acc = [];
+    var pull = function () { api(body(acc.length)).then(function (res) { acc = acc.concat(res.rows || []); drawList(acc, res.total || acc.length); }).catch(function (e) { if (tok === T) $('kpilist').innerHTML = errBox(e); }); };
+    S.kpiMore = pull; pull();
+  }
   function vCalls(tok) {
     var c = S.calls, chips = [];
     var BUCKETNAMES = { upset: 'Upset customers', low: 'Low scores (40 or under)', ctrl: 'Controllable misses (not booked)', other: 'Other not booked' };
@@ -2562,7 +2615,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var pc0 = function (a, b) { return b ? Math.round(100 * a / b) + '%' : '—'; };
     var bar = function (a, b, col) { var w = b ? 100 * a / b : 0; return '<div class="track" style="width:72px;display:inline-block;vertical-align:middle;margin-right:8px"><div style="width:' + w.toFixed(0) + '%;background:' + col + '"></div></div>'; };
     var recent = S.end >= addDays(todayET(), -6);
-    el.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start"><div><h2 class="ttl">First contact resolution</h2><p class="sub">Resolved the first time the customer called: booked or handled (including after a transfer), with no call back from the same number within 7 days. <b>First person</b> = solved by whoever answered, with no transfer.</p></div>' +
+    el.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start"><div><h2 class="ttl">First contact resolution</h2><p class="sub">Resolved the first time the customer called: booked or handled (including after a transfer), with no call back from the same number within 7 days. <b>First person</b> is the part of FCR solved by whoever answered, with no transfer, so it is always the same or lower than FCR (the gap is calls resolved after a transfer).</p></div>' +
       '<div style="display:flex;gap:18px"><div><div class="cap">FCR</div><div class="num" style="font-size:26px;font-weight:600;color:#1F5A41">' + pc0(o.fcr, o.contacts) + '</div></div><div><div class="cap">First person</div><div class="num" style="font-size:26px;font-weight:600;color:#2B3A67">' + pc0(o.fcpr, o.contacts) + '</div></div><div><div class="cap">Transferred</div><div class="num" style="font-size:26px;font-weight:600">' + pc0(o.transferred, o.contacts) + '</div></div></div></div>' +
       (rows.length ? '<div style="overflow-x:auto"><table class="tbl" style="margin-top:12px"><thead><tr><th>' + (LOCK ? 'Brand' : 'Brand') + '</th><th style="text-align:right">Customer contacts</th><th>FCR</th><th>First person</th><th style="text-align:right">Transferred</th></tr></thead><tbody>' +
         rows.map(function (r) { return '<tr class="click" tabindex="0" data-brand="' + esc(r.brand) + '"><td><span style="display:inline-flex;gap:8px;align-items:center">' + bbadge(r.brand) + esc(short(r.brand)) + '</span></td><td class="num" style="text-align:right">' + fmt(r.contacts) + '</td><td class="num">' + bar(r.fcr, r.contacts, '#2F7D5B') + pc0(r.fcr, r.contacts) + '</td><td class="num">' + bar(r.fcpr, r.contacts, '#3A4380') + pc0(r.fcpr, r.contacts) + '</td><td class="num" style="text-align:right">' + pc0(r.transferred, r.contacts) + '</td></tr>'; }).join('') +
@@ -2607,7 +2660,7 @@ export function mountOpsisQA(ROOT, cfg) {
   // ---------- routing ----------
   var T = 0;
   function writeHash() {
-    var o = { v: S.view, r: S.range };
+    var o = { v: S.view, r: S.range }; if (S.view === 'kpi' && S.kpi) o.k = S.kpi;
     if (S.range === 'custom') { o.s = S.start; o.e = S.end; }
     if (S.brands.length) o.b = S.brands.join('|');
     if (S.view === 'calls' && S.calls.bucket) o.bucket = S.calls.bucket;
@@ -2619,7 +2672,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function readHash() {
     var q = {}; location.hash.replace(/^#/, '').split('&').forEach(function (p) { var kv = p.split('='); if (kv[0]) q[kv[0]] = decodeURIComponent(kv[1] || ''); });
-    if (q.v) S.view = q.v; if (q.r) S.range = q.r; if (q.s && q.e) { S.start = q.s; S.end = q.e; }
+    if (q.v) S.view = q.v; if (q.k) S.kpi = q.k; if (q.r) S.range = q.r; if (q.s && q.e) { S.start = q.s; S.end = q.e; }
     if (q.bucket && /^(upset|low|ctrl|other)$/.test(q.bucket)) { S.calls.bucket = q.bucket; S.calls.offset = 0; }
     if (q.v === 'calls' && !q.bucket) { if (q.q) S.calls.q = q.q.slice(0, 120); if (q.out && OUTCOMES.some(function (o) { return o[0] === q.out; })) S.calls.outcome = q.out; if (q.step && STEPNAMES[q.step]) S.calls.step = q.step; S.calls.offset = 0; }
     if (q.csr && /^[0-9a-f-]{36}$/i.test(q.csr)) S.hubCsr = q.csr; if (q.t && /^(home|ask|wins)$/.test(q.t)) HUB.tab = q.t;
@@ -2629,7 +2682,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function render() {
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash(); trackHist();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, cardcap: vCard, calib: vCalib, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, cardcap: vCard, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
     var cq = $('csrq'); if (cq) cq.addEventListener('input', function () { S.csrQ = cq.value; S.csrFocus = true; clearTimeout(cq.t); cq.t = setTimeout(render, 250); });
@@ -2702,6 +2755,8 @@ export function mountOpsisQA(ROOT, cfg) {
     if (pst) { playStep(+pst.getAttribute('data-pstep')); return; }
     var psk = t.closest('[data-seek]');
     if (psk && P.info && P.info.url) { P.step = null; P.stepEnd = null; vseek(Math.max(0, +psk.getAttribute('data-seek') - 0.4) + (P.base || 0), true); return; }
+    var kb0 = t.closest('[data-kpibrand]'); if (kb0 && !LOCK) { S.brands = [kb0.getAttribute('data-kpibrand')]; render(); return; }
+    if (t.closest('[data-kpimore]')) { if (S.kpiMore) S.kpiMore(); return; }
     var ffb = t.closest('[data-ffk]');
     if (ffb) { var fk = ffb.getAttribute('data-ffk'), fv = ffb.getAttribute('data-ffv'), fl = (FFL[fk] || '') + (fk === 'hour' ? fhour(+fv) : fk === 'seg' ? (SEGL[fv] || fv) + (ffb.getAttribute('data-ffnb') ? ' · not booked' : '') : ((FFV[fk] || {})[fv] || fv));
       var ffbr = ffb.getAttribute('data-ffbrand'), ffag = ffb.getAttribute('data-ffagent');
