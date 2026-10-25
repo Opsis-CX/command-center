@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { RichEditor, sanitizeHtml, htmlToText, isEmptyHtml } from '../lib/RichEditor'
-import { notifyChatMessage } from '../lib/notify'
 
 // Hourly production dashboards, rebuilt natively from Five9 call_log (BigQuery).
 // Reporting → Hourly. Two tabs: Affiliate Hourly Report + Open Invoices Report.
@@ -948,21 +947,8 @@ function WebLeadsView({ mode }) {
     setPosting(false)
     if (error) { setErr(error.message); return }
     setPosted(true); setTimeout(() => setPosted(false), 3000)
-    // Fire @mention notifications for anyone tagged in the Day Summary / Tomorrow's
-    // Focus notes -- posting goes through a raw RPC insert, not Chat.jsx's send path,
-    // so nothing else does this automatically.
-    if (me) {
-      const mentionedIds = extractMentions(`${daySummaryText} ${tomorrowFocusText}`, profiles).filter(id => id !== me.id)
-      if (mentionedIds.length) {
-        try {
-          await notifyChatMessage({
-            channelId: '62d067df-f051-4eb9-a342-9c9dfaf58d63', channelName: 'GarageCo Reporting', isDm: false,
-            actorId: me.id, actorName: me.full_name, isHere: false, requiresAck: false,
-            body: `${daySummaryText} ${tomorrowFocusText}`, mentionedIds, messageId: msgId || null,
-          })
-        } catch (e) { console.error('mention notification failed', e) }
-      }
-    }
+    // @mentions in the Day Summary / Tomorrow's Focus are notified by the database
+    // when the report message is saved (trg_notify_on_chat_message).
   }
   const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 
