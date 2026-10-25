@@ -318,7 +318,7 @@ export function mountOpsisQA(ROOT, cfg) {
   var NEEDS = [['upset', 'Upset customers', 'Upset, angry or complaint signs on the call', '#B42318', '#FDECEA'],
     ['low', 'Low scores', 'Real opportunities scored 40 or under', '#C2551F', '#FFF4E8'],
     ['ctrl', 'Controllable misses', 'Not booked for a reason the CSR could fix', '#8A5A00', '#FBF3DF'],
-    ['other', 'Other not booked', 'Not booked, reason outside the CSR’s control', '#3B4541', '#F3F1EC']];
+    ['other', 'Not booked: outside CSR control', 'Not booked for a reason the CSR couldn’t control', '#3B4541', '#F3F1EC']];
   function needsCard(tok) {
     var got = {}, left = NEEDS.length;
     function draw() {
@@ -499,7 +499,7 @@ export function mountOpsisQA(ROOT, cfg) {
       var rows = f[cur] || [], mx2 = Math.max.apply(null, rows.map(function (x) { return Math.max(x.n, x.pn); }).concat([1]));
       rows.forEach(function (r) {
         var dd = r.pn ? Math.round((r.n - r.pn) / r.pn * 100) : null;
-        h += '<button class="click" data-ffk="' + ({ reasons: 'reason', objections: 'objection', topics: 'topic' }[cur]) + '" data-ffv="' + esc(r.k) + '" title="Hear these calls" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:7px 0;font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>' + esc(r.k) + ' <span class="mut" aria-hidden="true">›</span></span><span class="num mut">' + fmt(r.n) + ' <span style="font-size:11px">(' + (dd == null ? 'new' : (dd >= 0 ? '+' : '') + dd + '%') + ')</span></span></div>' +
+        h += '<button class="click" data-ffk="' + ({ reasons: 'reason', objections: 'objection', topics: 'category' }[cur]) + '" data-ffv="' + esc(r.k) + '" title="Hear these calls" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:7px 0;font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>' + esc(r.k) + ' <span class="mut" aria-hidden="true">›</span></span><span class="num mut">' + fmt(r.n) + ' <span style="font-size:11px">(' + (dd == null ? 'new' : (dd >= 0 ? '+' : '') + dd + '%') + ')</span></span></div>' +
           '<div style="display:flex;flex-direction:column;gap:2px;margin-top:4px"><div class="track"><div style="background:' + (cur === 'reasons' ? O : G) + ';width:' + (r.n / mx2 * 100) + '%"></div></div><div class="track" style="height:4px"><div style="background:#C9C3B8;width:' + (r.pn / mx2 * 100) + '%"></div></div></div></button>';
       });
       h += '<p class="mut" style="font-size:11.5px">Top bar = now · grey bar = before</p>';
@@ -597,7 +597,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function vCalls(tok) {
     var c = S.calls, chips = [];
-    var BUCKETNAMES = { upset: 'Upset customers', low: 'Low scores (40 or under)', ctrl: 'Controllable misses (not booked)', other: 'Other not booked' };
+    var BUCKETNAMES = { upset: 'Upset customers', low: 'Low scores (40 or under)', ctrl: 'Controllable misses (not booked)', other: 'Not booked: outside CSR control' };
     if (c.bucket) chips.push([BUCKETNAMES[c.bucket] || c.bucket, 'bucket']);
     if (S.callsAgent) chips.push(['CSR: ' + S.callsAgent, 'agent']);
     if (c.outcome) chips.push(['Outcome: ' + c.outcome, 'outcome']);
@@ -631,6 +631,22 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   // ---------- Insights ----------
+  // Every customer call identified by product, residential / commercial, sales / service / warranty, plus the yes / no checks (2026-10-24)
+  var FLAGN = { booked: ['Booked', 'Not booked', 'of booking opportunities'], askbook: ['Asked for the booking', 'Didn’t ask', 'of opportunities that ended booked or not booked'], askcc: ['Asked for a card', 'Didn’t ask', 'of booked residential service calls (PDQ and Dan’s Doors left out)'], gotcc: ['Card collected', 'Not collected', 'of calls where the CSR asked for a card'] };
+  function dimsCard(D) {
+    if (!D || !D.total) return '';
+    var col = function (title, rows, color) {
+      var tot = rows.reduce(function (a, r) { return a + (+r.n || 0); }, 0) || 1;
+      return '<div style="flex:1 1 220px;min-width:0"><div class="cap" style="margin-bottom:6px">' + title + '</div>' + rows.map(function (r) {
+        var br = r.decided ? Math.round(100 * r.booked / r.decided) + '% booked' : '';
+        return '<button class="click" data-ffk="' + r.d + '" data-ffv="' + esc(r.k) + '" title="Hear these calls" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:grid;grid-template-columns:minmax(0,1fr) 56px 44px;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line2);font-size:13px"><span style="white-space:normal;min-width:0">' + esc(r.k) + '<span class="mut" style="display:block;font-size:11.5px">' + fmt(r.n) + ' calls' + (br ? ' · ' + br : '') + '</span></span><span class="track" style="height:7px"><span style="display:block;height:100%;width:' + Math.round(100 * r.n / tot) + '%;background:' + color + '"></span></span><span class="num" style="text-align:right">' + pctTxt(r.n, tot) + '</span></button>'; }).join('') + '</div>'; };
+    var tag = function (list, d) { return (list || []).map(function (r) { return Object.assign({ d: d }, r); }); };
+    var flags = (D.flags || []).filter(function (f) { return f && FLAGN[f.k]; }).map(function (f) { var L = FLAGN[f.k], t = (+f.yes || 0) + (+f.no || 0);
+      return '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;padding:6px 0;border-top:1px solid var(--line2);font-size:13px"><button class="click" data-ffk="flag" data-ffv="' + f.k + ':yes" title="Hear these calls" style="all:unset;cursor:pointer"><b style="font-weight:600;color:#1F5A41">' + pctTxt(f.yes, t) + '</b> ' + L[0] + '<span class="mut" style="display:block;font-size:11.5px">' + fmt(f.yes) + ' of ' + fmt(t) + '</span></button><button class="click" data-ffk="flag" data-ffv="' + f.k + ':no" title="Hear these calls" style="all:unset;cursor:pointer"><b style="font-weight:600;color:#A8441A">' + pctTxt(f.no, t) + '</b> ' + L[1] + '<span class="mut" style="display:block;font-size:11.5px">' + fmt(f.no) + ' ' + L[2] + '</span></button></div>'; }).join('');
+    return '<div class="oq-card" style="grid-column:1/-1"><h2 class="ttl">Every call, identified</h2><p class="sub">Each customer conversation sorted by product, residential or commercial, and sales, service or warranty, plus the four yes / no checks. Click any row to hear those calls.</p>' +
+      '<div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:12px">' + col('Product', tag(D.product, 'product'), '#3A4380') + col('Residential or commercial', tag(D.segment, 'segment'), '#2F5E4E') + col('Sales, service or warranty', tag(D.line, 'line'), '#C9662A') +
+      (flags ? '<div style="flex:1.3 1 300px;min-width:0"><div class="cap" style="margin-bottom:6px">Yes / no checks</div>' + flags + '</div>' : '') + '</div></div>';
+  }
   function vInsights(tok) {
     setMain(crumb([['Insights']]) + '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(420px,1fr));align-items:start" id="ins">' + ('<div class="oq-card">' + skel(20, 8) + '</div>').repeat(4) + '</div>');
     Promise.all([loadReport(), loadFocus(null, null), loadExtras().catch(function () { return {}; })]).then(function (r) {
@@ -638,7 +654,7 @@ export function mountOpsisQA(ROOT, cfg) {
       var NO_OTHER = function (L) { return (L || []).filter(function (x) { return x.k && !/^(other|general inquiry|unspecified)$/i.test(x.k); }); };
       var outs = NO_OTHER(rep.outcomes), outTot = outs.reduce(function (t, x) { return t + (+x.n || 0); }, 0);
       var notBooked = B.not_booked || ((rep.outcomes || []).filter(function (x) { return x.k === 'Not Booked'; })[0] || {}).n || 0;
-      var cats = (X.categories || []).filter(function (x) { return x.k !== 'Internal / staff call' && x.k !== 'No conversation'; });
+      var cats = (X.categories || []).filter(function (x) { return ['Internal / staff call', 'No conversation', 'Dropped call / no caller response', 'Wrong number', 'Vendor / solicitation'].indexOf(x.k) < 0; });
       var catTot = cats.reduce(function (t, x) { return t + (+x.n || 0); }, 0);
       // [title, sub, rows, colour, -, drill kind, denominator, denominator words]
       var cust = [
@@ -659,7 +675,7 @@ export function mountOpsisQA(ROOT, cfg) {
         }).join('') : '<p class="mut" style="font-size:13px">Nothing in this range.</p>') + '</div></div>';
       };
       var cohort = '<div class="oq-card" style="grid-column:1/-1;padding:14px 18px;display:flex;gap:22px;flex-wrap:wrap;align-items:baseline"><span><span class="cap">Cohort</span> <b>' + esc(rangeLabel()) + '</b> · ' + esc(S.brands.length ? (S.brands.length === 1 ? short(S.brands[0]) : S.brands.length + ' brands') : (LOCK ? short(LOCK) : 'All brands')) + '</span><span><b class="num">' + fmt(B.calls || 0) + '</b> <span class="mut">calls</span></span><span><b class="num">' + fmt(B.conversations || 0) + '</b> <span class="mut">customer conversations</span></span><span><b class="num">' + fmt(B.opps || 0) + '</b> <span class="mut">booking opportunities</span></span><span><b class="num">' + fmt(B.booked || 0) + '</b> <span class="mut">booked</span></span><span class="mut" style="font-size:12px">Percents use these totals; the small number is the count of calls.</span></div>';
-      var h = cohort + '<div style="display:flex;flex-direction:column;gap:16px"><div class="cap" style="padding:0 4px">What the customer did or said</div>' + cust.map(card).join('') + '</div>' +
+      var h = cohort + dimsCard(X.dims) + '<div style="display:flex;flex-direction:column;gap:16px"><div class="cap" style="padding:0 4px">What the customer did or said</div>' + cust.map(card).join('') + '</div>' +
         '<div style="display:flex;flex-direction:column;gap:16px"><div class="cap" style="padding:0 4px">What the CSR did</div>' + csr.map(card).join('') + '</div>';
       h += '<div class="oq-card" id="repcard">' + skel(30, 6) + '</div><div class="oq-card" id="aicard">' + skel(30, 6) + '</div>';
       $('ins').innerHTML = h; repeatCard(); aiCard();
@@ -679,7 +695,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function drawKb() {
     var w = $('kbwrap'); if (!w || !KBS.list) return;
-    var L = KBS.list, ed = KBS.edit != null ? L[KBS.edit] : null, cats = ['Pricing', 'Policy', 'Coverage', 'Troubleshooting', 'Scheduling', 'Other'];
+    var L = KBS.list, ed = KBS.edit != null ? L[KBS.edit] : null, cats = ['Pricing', 'Policy', 'Coverage', 'Troubleshooting', 'Scheduling', 'Products', 'Staff & routing'];
     var list = '<div class="oq-card" style="flex:999 1 520px"><h2 class="ttl">What the AI should know about your business</h2><p class="sub">The AI reads these when it scores new calls (for example, to check a CSR quoted the right fee). ' + (IS_ADMIN ? 'Every change is logged with who made it.' : 'Only account admins can edit them.') + '</p>' +
       (L.length ? L.map(function (a, i) { var on = KBS.edit === i;
         return '<div style="padding:14px 12px;border-top:1px solid var(--line2);margin:8px -12px 0;border-radius:10px;' + (on ? 'background:#EEF4EF' : '') + '"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><b>' + esc(a.title) + '</b><div style="display:flex;gap:6px;align-items:center">' + (a.category ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(a.category) + '</span>' : '') +
@@ -1162,7 +1178,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var brands = '<div class="oq-card" style="flex:1 1 460px"><h2 class="ttl">By brand</h2><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th>Brand</th><th>Booking rate</th><th>Booked</th><th>Controllable</th><th>Controllable $</th><th>Not controllable</th></tr></thead><tbody>' +
       (d.by_brand || []).map(function (b) { return '<tr><td><b style="font-weight:600">' + esc(short(b.brand)) + '</b></td><td class="num">' + pc(b.rate) + '</td><td class="num">' + n0(b.booked) + '</td><td class="num">' + n0(b.ctrl_n) + '</td><td class="num" style="color:#A8441A">' + (+b.ctrl_value ? usd(b.ctrl_value) : '<span class="mut">needs values</span>') + '</td><td class="num">' + n0(b.nc_n) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
     var jobs = '<div class="oq-card" style="flex:1 1 460px"><h2 class="ttl">By job type</h2><p class="sub">Click a job type to hear those calls.</p><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th>Job type</th><th>Residential</th><th>Commercial</th><th>Booking rate</th><th>Controllable</th><th>Controllable $</th></tr></thead><tbody>' +
-      (d.by_job || []).map(function (j) { return '<tr class="click" tabindex="0" data-ffk="jobtype" data-ffv="' + esc(j.job_type) + '" title="Hear these calls"><td><b style="font-weight:600">' + esc(j.job_type === 'Other' ? 'Service follow-up / question' : j.job_type) + '</b></td><td class="num">' + n0(j.residential) + '</td><td class="num">' + n0(j.commercial) + '</td><td class="num">' + pc(j.rate) + '</td><td class="num">' + n0(j.ctrl_n) + '</td><td class="num" style="color:#A8441A">' + (j.ctrl_n && !+j.ctrl_value ? '<span class="mut">needs value</span>' : usd(j.ctrl_value)) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
+      (d.by_job || []).map(function (j) { return '<tr class="click" tabindex="0" data-ffk="jobtype" data-ffv="' + esc(j.job_type) + '" title="Hear these calls"><td><b style="font-weight:600">' + esc(j.job_type) + '</b></td><td class="num">' + n0(j.residential) + '</td><td class="num">' + n0(j.commercial) + '</td><td class="num">' + pc(j.rate) + '</td><td class="num">' + n0(j.ctrl_n) + '</td><td class="num" style="color:#A8441A">' + (j.ctrl_n && !+j.ctrl_value ? '<span class="mut">needs value</span>' : usd(j.ctrl_value)) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
     var top = '<div class="oq-card" style="flex:1 1 460px"><h2 class="ttl">Biggest controllable misses</h2><p class="sub">Click a call to listen and see what the CSR could have done.</p>' +
       ((d.top || []).length ? (d.top || []).map(function (c) {
         return '<button class="click" data-call="' + c.id + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--line2)"><span style="flex:1;min-width:0"><b style="font-weight:600">' + esc(c.agent || 'Unknown CSR') + '</b> <span class="mut" style="font-size:12px">· ' + esc(short(c.brand)) + ' · ' + fdate(c.date) + '</span><span class="mut" style="display:block;font-size:12px">' + esc(c.job_type) + (c.segment === 'Commercial' ? ' · Commercial' : '') + ' · ' + esc(c.why) + '</span></span><span class="num" style="font-weight:600;color:#A8441A">' + (c.value != null ? usd(c.value) : '') + '</span><span class="pill num" style="' + chipScore(c.score) + ';font-size:12.5px">' + (c.score == null ? '—' : c.score) + '</span></button>'; }).join('') : '<div class="mut" style="padding:14px 0">No controllable misses in this range.</div>') + '</div>';
@@ -1193,7 +1209,7 @@ export function mountOpsisQA(ROOT, cfg) {
       var src = inv.length ? (B ? 'Your invoices (' + n0(inv[0].n) + ')' : 'Invoices for ' + inv.length + ' brand' + (inv.length > 1 ? 's' : ''))
         : n ? n0(n) + ' invoices matched so far' : (v && v.est_value != null ? 'Your estimate' : (d && d.est_value != null ? 'All-brands default' : '—'));
       var shown = v && v.est_value != null ? usd(v.est_value) : (d && d.est_value != null ? '<span class="mut">' + usd(d.est_value) + ' (default)</span>' : '<span class="mut">Not set</span>');
-      return '<tr><td><b style="font-weight:600">' + esc(jt) + '</b></td>' +
+      return '<tr><td><b style="font-weight:600">' + esc(jt === 'Other' ? 'Follow-ups, warranty & windows / gates / entry doors' : jt) + '</b></td>' +
         '<td class="num">' + (on ? '<label class="sr" for="jvv">Value</label><input id="jvv" class="oq-field" type="number" min="0" step="1" style="width:110px" value="' + (v && v.est_value != null ? v.est_value : '') + '">' : shown) + '</td>' +
         '<td class="mut" style="font-size:12px">' + src + '</td>' +
         '<td style="text-align:right">' + (!IS_ADMIN ? '' : on ? '<button class="sel btnd" data-act="jvsave" data-jt="' + esc(jt) + '" style="padding:5px 10px;font-size:12px"' + (MN.busy ? ' disabled' : '') + '>Save</button> <button class="sel" data-act="jvcancel" style="padding:5px 10px;font-size:12px">Cancel</button>'
@@ -1411,7 +1427,7 @@ export function mountOpsisQA(ROOT, cfg) {
       ((d.kudos || []).length ? d.kudos.slice(0, 3).map(function (k) { return '<div style="background:#FAF9F6;border:1px solid #EEEBE4;border-radius:12px;padding:12px 14px">' + (k.tag ? '<span class="pill" style="background:#FCEBDD;color:#8A3D0C;margin-bottom:6px">' + esc(k.tag) + '</span>' : '') + (k.body ? '<div style="font-size:13.5px;line-height:1.5">“' + esc(k.body) + '”</div>' : '') + '<div class="mut" style="font-size:12px;margin-top:6px">' + esc(k.from || '') + ' · ' + fwhen(k.at) + '</div></div>'; }).join('')
         : '<p class="mut" style="font-size:13px;margin:0">' + (SELF ? 'When your manager spots a great call, their kudos show up here.' : 'No kudos yet. ') + '</p>' + (mg ? '<button class="sel" data-hubact="kudos" style="align-self:flex-start">♥ Send ' + esc(first) + ' kudos</button>' : '')) + '</section></div>';
     if (mg && (d.questions || []).length) h += '<section class="oq-card" aria-label="Questions" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h2 class="ttl" style="font-size:16px">What ' + esc(first) + ' asked the coach</h2><button class="more" data-hubqcsr="' + d.csr.id + '">See all →</button></div>' +
-      d.questions.map(function (q) { return '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line2)"><span class="pill" style="background:' + (q.mode === 'brand' ? '#EEF2FB;color:#2B3A67' : '#F3F1EC;color:#3B4541') + ';flex-shrink:0">' + esc(q.topic || 'Other') + '</span><span style="flex:1;font-size:13.5px;line-height:1.45">' + esc(q.question) + (q.by_manager ? ' <span class="mut" style="font-size:12px">(asked by a manager)</span>' : '') + '</span><span class="mut" style="font-size:12px;white-space:nowrap">' + fwhen(q.at) + '</span></div>'; }).join('') + '</section>';
+      d.questions.map(function (q) { return '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line2)"><span class="pill" style="background:' + (q.mode === 'brand' ? '#EEF2FB;color:#2B3A67' : '#F3F1EC;color:#3B4541') + ';flex-shrink:0">' + esc(q.topic && q.topic !== 'Other' ? q.topic : 'How-to & process') + '</span><span style="flex:1;font-size:13.5px;line-height:1.45">' + esc(q.question) + (q.by_manager ? ' <span class="mut" style="font-size:12px">(asked by a manager)</span>' : '') + '</span><span class="mut" style="font-size:12px;white-space:nowrap">' + fwhen(q.at) + '</span></div>'; }).join('') + '</section>';
     el.innerHTML = h;
   }
   function improvedCard(list, brand) {
@@ -1450,7 +1466,7 @@ export function mountOpsisQA(ROOT, cfg) {
 
   // ----- What CSRs are asking (managers) -----
   var HQ = { days: 30, brand: LOCK || '', topic: null, csr: null, data: null, themes: {}, key: '' };
-  var TOPIC_COL = { 'Pricing & fees': ['#FFF1E6', '#8A3D0C'], 'Card & payment': ['#E8F3EC', '#1F5A41'], 'Warranty': ['#EEF2FB', '#2B3A67'], 'Scheduling': ['#F1ECFB', '#52308F'], 'Objections': ['#FDECEC', '#A61B1B'], 'Commercial': ['#EAF4F6', '#1E5F6B'], 'Products & repairs': ['#F6F1E3', '#6B5410'], 'My score': ['#F3F1EC', '#3B4541'], 'Other': ['#F3F1EC', '#56605B'] };
+  var TOPIC_COL = { 'Pricing & fees': ['#FFF1E6', '#8A3D0C'], 'Card & payment': ['#E8F3EC', '#1F5A41'], 'Warranty': ['#EEF2FB', '#2B3A67'], 'Scheduling': ['#F1ECFB', '#52308F'], 'Objections': ['#FDECEC', '#A61B1B'], 'Commercial': ['#EAF4F6', '#1E5F6B'], 'Products & repairs': ['#F6F1E3', '#6B5410'], 'My score': ['#F3F1EC', '#3B4541'], 'How-to & process': ['#F3F1EC', '#56605B'], 'Other': ['#F3F1EC', '#56605B'] };
   function tpill(t) { var c = TOPIC_COL[t] || TOPIC_COL.Other; return '<span class="pill" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(t) + '</span>'; }
   function vHubQs(tok) {
     if (SELF) { S.view = 'hub'; return vHub(tok); }
@@ -1495,7 +1511,7 @@ export function mountOpsisQA(ROOT, cfg) {
     HUB.modal = { kind: 'kbadd', flag: flag.id };
     hubModal('Add to the knowledge base', '<p class="sub" style="margin:0">' + esc(flag.csr || 'A CSR') + ' asked: “' + esc(flag.why) + '”. Write the answer the way you’d explain it to a new CSR. The coach uses it right away, and so does call scoring.</p>' +
       '<div><label class="l" for="hubkt">Title</label><input id="hubkt" class="oq-field" maxlength="200" value="' + esc(String(flag.why).slice(0, 80)) + '"></div>' +
-      '<div><label class="l" for="hubkc">Category</label><select id="hubkc" class="oq-field">' + ['Pricing', 'Policy', 'Coverage', 'Troubleshooting', 'Scheduling', 'Other'].map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select></div>' +
+      '<div><label class="l" for="hubkc">Category</label><select id="hubkc" class="oq-field">' + ['Pricing', 'Policy', 'Coverage', 'Troubleshooting', 'Scheduling', 'Products', 'Staff & routing'].map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select></div>' +
       '<div><label class="l" for="hubkbody">Answer</label><textarea id="hubkbody" class="oq-field" maxlength="8000" style="min-height:140px" placeholder="e.g. Warranty calls within 1 year of install have no trip charge…"></textarea></div>', 'Add to knowledge base');
   }
 
@@ -2088,7 +2104,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var h = '' + (S.fromAsk ? '<button class="sel" data-backask="1" style="align-self:flex-start;min-height:34px;padding:4px 12px;font-size:12.5px">← Back to AI answer</button>' : '') + '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><div class="cap">Call review</div><div style="font-size:22px;font-weight:600;letter-spacing:-0.025em;margin-top:4px">' + esc(c.agent || 'Unknown CSR') + ' · ' + esc(short(c.brand)) + '</div><div class="mut" style="font-size:12.5px">' + fdate(c.date) + ' · ' + esc(c.direction || '') + ' · ' + fsecs(c.secs) + (c.phone ? ' · ' + esc(c.phone) : '') + '</div></div><button class="sel" data-close="1" aria-label="Close" style="width:44px;justify-content:center">✕</button></div>' +
       '<div class="oq-card" id="plr" style="position:sticky;top:-22px;z-index:3;padding:12px 14px;box-shadow:0 4px 14px rgba(20,48,42,.08)">' + playerInner() + '</div>' +
       '<div class="oq-card" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:96px;height:96px;flex-shrink:0"><svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="Score ' + sc + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + (sc / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span class="num" style="font-size:24px;font-weight:600">' + sc + '</span><span class="mut" style="font-size:9.5px">brand avg ' + (c.brand_avg || '—') + '</span></div></div>' +
-      '<div style="flex:1;min-width:220px"><div class="row" style="gap:6px"><span class="pill" style="' + chipOut(c.outcome) + '">' + esc(c.outcome || '—') + '</span>' + (c.winnable ? '<span class="pill" style="background:#FFF4E8;color:#9A4A0B">Winnable</span>' : '') + (c.reason ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(c.reason) + '</span>' : '') + (c.topics || []).slice(0, 3).map(function (t) { return '<span class="pill" style="background:#E6F0EA;color:#1F5A41">' + esc(t) + '</span>'; }).join('') + '</div>' +
+      '<div style="flex:1;min-width:220px"><div class="row" style="gap:6px"><span class="pill" style="' + chipOut(c.outcome) + '">' + esc(c.outcome || '—') + '</span>' + (c.winnable ? '<span class="pill" style="background:#FFF4E8;color:#9A4A0B">Winnable</span>' : '') + (c.reason ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(c.reason) + '</span>' : '') + (c.category ? [c.category] : (c.topics || []).filter(function (t) { return t !== 'General Inquiry'; }).slice(0, 3).map(tLab)).map(function (t) { return '<span class="pill" style="background:#E6F0EA;color:#1F5A41">' + esc(t) + '</span>'; }).join('') + '</div>' +
       (c.caller_wanted ? '<div style="margin-top:10px"><div class="cap">Caller wanted</div><div style="margin-top:3px;line-height:1.45">' + esc(c.caller_wanted) + '</div></div>' : '') + '</div>' +
       (changed ? '<div style="flex-basis:100%;background:#FFF8E8;border:1px solid #F0DDB0;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#6B4E12">Score updated' + (who.length ? ' by <b>' + who.map(esc).join(', ') + '</b>' : '') + '.</div>' : '') + '</div>';
     h += factsBar(c);
@@ -2279,9 +2295,11 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   // ---------- call record corrections (admins change directly; others request) ----------
-  var TOPIC_LIST = ['New Door / Installation Quote', 'Repair - Spring', 'Repair - Opener', 'Repair - Cable', 'Repair - Panel/Section', 'Repair - Off Track', 'Repair - Other', 'Maintenance / Tune-up', 'Warranty', 'Reschedule / Cancel', 'Appointment Status', 'Parts Status', 'Billing / Invoice', 'Emergency', 'Wrong Number', 'Solicitation / Vendor', 'General Inquiry'];
+  // display names for the AI topic tags: no catch-alls on screen (2026-10-24)
+  function tLab(t) { return t === 'Repair - Door (General)' || t === 'Repair - Other' ? 'Repair - Door' : t === 'General Inquiry' ? 'Question' : t; }
+  var TOPIC_LIST = ['New Door / Installation Quote', 'Repair - Spring', 'Repair - Opener', 'Repair - Cable', 'Repair - Panel/Section', 'Repair - Off Track', 'Repair - Door (General)', 'Maintenance / Tune-up', 'Warranty', 'Job Follow-up', 'Commercial Follow-up', 'Windows / Gates / Entry Doors', 'Reschedule / Cancel', 'Appointment Status', 'Parts Status', 'Billing / Invoice', 'Emergency', 'Asked for a Person / Message', 'Service Area / Routing', 'Price / Product Question', 'Wrong Number', 'Solicitation / Vendor'];
   var CLASSN = { conversation: 'Conversation', internal: 'Internal / staff call', voicemail: 'Voicemail', ivr_only: 'Phone menu / hold only', no_agent: 'No CSR on the call', wrong_number: 'Wrong number', spam: 'Spam / solicitation' };
-  var REASON_LIST = ['Price', 'Follow up needed by customer', 'Follow up is needed by different department', 'Needs to speak to homeowner', 'Scheduling/timing conflict', 'Shopping around / multiple quotes', 'Wants to think about it', 'Quote Request', 'Knowledge Gap', 'Sales Team', 'Gates Team', 'Policy', 'Reschedule', 'Canceling Appointment', 'Check Status Of Tech', 'Check Status of Parts', 'Invoice Request', 'Other'];
+  var REASON_LIST = ['Customer will call back', "We'll call them back (no appt set)", 'Sent to another team', 'Price', 'Needs to speak to homeowner', 'Scheduling/timing conflict', 'Shopping around / multiple quotes', 'Wants to think about it', 'Quote Request', 'Knowledge Gap', 'Sales Team', 'Gates Team', 'Policy', 'Reschedule', 'Canceling Appointment', 'Check Status Of Tech', 'Check Status of Parts', 'Invoice Request', 'Call ended before booking (hold / cut off)', "CSR didn't offer an appointment", 'Customer declined after the ask', 'Just wanted information', 'Solved over the phone', 'Referred to manufacturer / self-help', 'Outside service area'];
   var CE = {};
   function isCom(c) { return c.segment ? c.segment === 'Commercial' : (c.topics || []).some(function (t) { return /^commercial/i.test(t); }); }
   function ceText(ch) {
@@ -2293,7 +2311,8 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function factsBar(c) {
     var rq = (CE[c.id] || [])[0];
-    var chips = [isCom(c) ? 'Commercial' : 'Residential', CLASSN[c.call_class || 'conversation'] || c.call_class, c.opportunity ? 'Booking opportunity' : 'Not an opportunity'].concat((c.topics || []).filter(function (t) { return !/^commercial/i.test(t); }).slice(0, 3));
+    // what the call was: product · residential / commercial · sales / service / warranty, then the call type (2026-10-24)
+    var chips = [c.segment || (isCom(c) ? 'Commercial' : 'Residential')].concat(c.product ? [c.product] : [], c.line ? [c.line] : [], [CLASSN[c.call_class || 'conversation'] || c.call_class, c.opportunity ? 'Booking opportunity' : 'Not an opportunity']);
     var jn = c.journey || null, tp = tempOf(c.sentiment_score);
     var xtra = (tp ? '<span class="pill" title="Customer sentiment (never affects the score)" style="background:' + tp.col + '1A;color:' + tp.col + '">Temperature ' + c.sentiment_score + '/5 · ' + tp.label + '</span>' : '') +
       (jn && jn.legs > 1 ? '<span class="pill" style="background:#E8EAF4;color:#3A4380">Leg ' + jn.leg_no + ' of ' + jn.legs + '</span>' : '') +
@@ -2316,10 +2335,10 @@ export function mountOpsisQA(ROOT, cfg) {
     L.innerHTML = '<div class="overlay" id="ced" style="justify-content:center;align-items:center;z-index:70"><div class="oq-card" role="dialog" aria-modal="true" aria-label="Edit call details" style="width:560px;max-width:calc(100% - 32px);max-height:calc(100vh - 40px);overflow:auto;padding:22px;display:flex;flex-direction:column;gap:12px">' +
       '<div class="cap">' + (IS_ADMIN ? 'Edit call details' : 'Suggest a correction') + '</div>' +
       '<div><div class="l">Residential or commercial</div><div class="seg"><button class="' + (!com ? 'on' : '') + '" data-ceseg="Residential">Residential</button><button class="' + (com ? 'on' : '') + '" data-ceseg="Commercial">Commercial</button></div></div>' +
-      '<div class="row" style="gap:10px"><div style="flex:1 1 200px"><label class="l" for="ceo">Outcome</label><select id="ceo" class="oq-field">' + opts(['Booked', 'Not Booked', 'Transferred', 'No Opportunity', 'Other'], c.outcome) + '</select></div><div style="flex:1 1 200px"><label class="l" for="cer">Why it didn’t book</label><select id="cer" class="oq-field"><option value="">—</option>' + opts(REASON_LIST, c.reason) + '</select></div></div>' +
+      '<div class="row" style="gap:10px"><div style="flex:1 1 200px"><label class="l" for="ceo">Outcome</label><select id="ceo" class="oq-field">' + opts(['Booked', 'Not Booked', 'Transferred', 'No Opportunity'], c.outcome) + '</select></div><div style="flex:1 1 200px"><label class="l" for="cer">Why it didn’t book</label><select id="cer" class="oq-field"><option value="">—</option>' + opts(REASON_LIST, c.reason) + '</select></div></div>' +
       '<div class="row" style="gap:10px"><div style="flex:1 1 200px"><label class="l" for="cec">Call type</label><select id="cec" class="oq-field">' + opts(Object.keys(CLASSN), c.call_class || 'conversation', CLASSN) + '</select></div><div style="flex:1 1 200px"><label class="l" for="cea">CSR</label><input id="cea" class="oq-field" value="' + esc(c.agent || '') + '"></div></div>' +
       '<label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="ceop"' + (c.opportunity ? ' checked' : '') + '> This was a booking opportunity</label>' +
-      '<div><div class="l">What the call was about</div><div style="display:flex;flex-wrap:wrap;gap:6px">' + TOPIC_LIST.map(function (t) { return '<label class="chip' + (tp.indexOf(t) >= 0 ? ' on' : '') + '" style="cursor:pointer"><input type="checkbox" data-cetopic="' + esc(t) + '"' + (tp.indexOf(t) >= 0 ? ' checked' : '') + ' style="position:absolute;opacity:0;width:1px;height:1px">' + esc(t) + '</label>'; }).join('') + '</div></div>' +
+      '<div><div class="l">What the call was about</div><div style="display:flex;flex-wrap:wrap;gap:6px">' + TOPIC_LIST.map(function (t) { return '<label class="chip' + (tp.indexOf(t) >= 0 ? ' on' : '') + '" style="cursor:pointer"><input type="checkbox" data-cetopic="' + esc(t) + '"' + (tp.indexOf(t) >= 0 ? ' checked' : '') + ' style="position:absolute;opacity:0;width:1px;height:1px">' + esc(tLab(t)) + '</label>'; }).join('') + '</div></div>' +
       '<div><label class="l" for="cew">Why are you changing it?' + (IS_ADMIN ? ' (optional)' : ' (required)') + '</label><textarea id="cew" class="oq-field" style="min-height:60px" maxlength="1000" placeholder="e.g. The caller is Land Rover of Austin, so this is a commercial call."></textarea></div>' +
       '<div class="mut" style="font-size:12px">' + (IS_ADMIN ? 'Saves right away. Every change is logged with who made it.' : 'Goes to your account admin to approve.') + '</div>' +
       '<div class="row" style="justify-content:flex-end"><button class="sel" data-act="cecancel">Cancel</button><button class="sel btnd" data-act="cesave">' + (IS_ADMIN ? 'Save' : 'Send to my admin') + '</button></div></div></div>';
@@ -2636,7 +2655,7 @@ export function mountOpsisQA(ROOT, cfg) {
   // ---------- First contact resolution + sentiment (Overview, 2026-10-22) ----------
   var EXTRAS = null, SENT = { tab: 'brands', all: false, k: 'avg', dir: -1 }, TMP = { tab: 'brands', all: false }, FCRS = { k: 'contacts', dir: -1 };
   // 2026-10-23 (Rob): ask rate on NON-booked opportunities, one category per call, sentiment drills
-  var XKINDS = { category: 1, sentiment: 1, asknb: 1, jobtype: 1, temper: 1 };
+  var XKINDS = { category: 1, sentiment: 1, asknb: 1, jobtype: 1, temper: 1, product: 1, segment: 1, line: 1, flag: 1 };
   function loadExtras() { return api(Object.assign({ action: 'qaextras' }, win())).then(function (x) { EXTRAS = x || {}; return EXTRAS; }); }
   function askNb(list, brand, agent) { var r = (list || []).filter(function (x) { return (!brand || x.brand === brand) && (!agent || x.agent === agent); }); var nb = 0, a = 0; r.forEach(function (x) { nb += +x.nb || 0; a += +x.asked || 0; }); return nb ? { pct: 100 * a / nb, nb: nb, asked: a } : null; }
   function pctOf(n, d) { return d ? (100 * n / d) : null; }
@@ -2772,8 +2791,8 @@ export function mountOpsisQA(ROOT, cfg) {
       .then(function (r) { XWHY[k] = { answer: r.answer }; paint(); }).catch(function (e) { XWHY[k] = { err: e.message || 'Couldn’t read the calls.' }; paint(); }); }
     setTimeout(paint, 0);
   }
-  var FFL = { reason: 'Didn’t book: ', objection: 'Objection: ', topic: 'Wanted: ', priority: 'Missed: ', strength: 'Did well: ', outcome: 'Ended: ', hour: 'Hour: ', seg: '', category: 'Call type: ', jobtype: 'Job type: ', sentiment: 'Customer: ', temper: 'Temper: ', asknb: 'Not booked: ' };
-  var FFV = { temper: { upset_in: 'came in upset', calmed: 'came in upset, left happy', settled: 'came in upset, left calm', stayed: 'came in upset, left upset', escalated: 'came in calm, left upset' }, sentiment: { neg: 'left upset (1–2)', pos: 'left happy (4–5)' }, asknb: { asked: 'CSR asked for the booking', notasked: 'CSR didn’t ask for the booking' } };
+  var FFL = { reason: 'Didn’t book: ', objection: 'Objection: ', topic: 'Wanted: ', priority: 'Missed: ', strength: 'Did well: ', outcome: 'Ended: ', hour: 'Hour: ', seg: '', category: 'Call type: ', jobtype: 'Job type: ', sentiment: 'Customer: ', temper: 'Temper: ', product: 'Product: ', segment: '', line: '', flag: '', asknb: 'Not booked: ' };
+  var FFV = { flag: { 'booked:yes': 'Booked', 'booked:no': 'Not booked', 'askbook:yes': 'Asked for the booking', 'askbook:no': 'Didn’t ask for the booking', 'askcc:yes': 'Asked for a card', 'askcc:no': 'Didn’t ask for a card', 'gotcc:yes': 'Card collected', 'gotcc:no': 'Card not collected' }, temper: { upset_in: 'came in upset', calmed: 'came in upset, left happy', settled: 'came in upset, left calm', stayed: 'came in upset, left upset', escalated: 'came in calm, left upset' }, sentiment: { neg: 'left upset (1–2)', pos: 'left happy (4–5)' }, asknb: { asked: 'CSR asked for the booking', notasked: 'CSR didn’t ask for the booking' } };
   var SEGL = { open: 'Open hours (Mon–Fri 8a–6p)', early: 'Before 8am (weekdays)', evening: 'After 6pm (weekdays)', weekend: 'Weekends' };
   function openCalls(filters, agent) { S.calls = Object.assign({ outcome: null, step: null, scoreMax: null, scoreMin: null, winnable: null, q: '', offset: 0, nocard: false }, filters || {}); S.callsAgent = agent || null; if (S.ask.open) closeLayer(); go('calls'); }
   function closeLayer() { stopAudio(); P.id = null; S.callId = null; S.fromAsk = false; S.ask.open = false; $('layer').innerHTML = ''; }
