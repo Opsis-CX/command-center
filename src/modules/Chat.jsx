@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
-import { notifyChatMessage, notifyAckNudge, notifyChannelAdded, notifyIncomingCall } from '../lib/notify'
+import { notifyAckNudge, notifyChannelAdded, notifyIncomingCall } from '../lib/notify'
 import { useUnread } from '../lib/unread'
 import EmojiPicker from 'emoji-picker-react'
 import { RichEditor, RichContent, sanitizeHtml, htmlToText } from '../lib/RichEditor'
@@ -1860,24 +1860,14 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
 
     setMessages(prev => prev.filter(m => m.id !== temp.id && m.id !== data.id).concat(data))
 
-    // Auto-add mentioned non-members to the channel first, so they exist in
-    // channel_members by the time notifyChatMessage reads preferences.
+    // Notifications for this message were already created by the database when
+    // it was saved (trg_notify_on_chat_message). Here we only add any @mentioned
+    // non-members to the channel so they can open it.
     try {
       await addMentionedMembers(mentionedIds)
-
-      // Wait for notification creation. The message remains sent if notification
-      // creation fails, but the failure is now visible and logged.
-      await notifyChatMessage({
-        channelId, channelName: channel?.name, isDm: channel?.is_dm,
-        actorId: me.id, actorName: me.full_name,
-        isHere, requiresAck: willRequireAck,
-        body: plain,
-        mentionedIds,
-        messageId: data.id,
-      })
-    } catch (notificationError) {
-      console.error('Message sent, but notification creation failed', notificationError)
-      setErr(`Message sent, but notification failed: ${notificationError.message || 'Unknown error'}`)
+    } catch (memberError) {
+      console.error('Message sent, but adding mentioned people failed', memberError)
+      setErr(`Message sent, but couldn't add mentioned people to the channel: ${memberError.message || 'Unknown error'}`)
     }
   }
 
@@ -3237,26 +3227,8 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
       }
     }
 
-    // Everyone already in the thread (parent author + earlier repliers) gets a
-    // reply-specific notification, so replies stop getting lost.
-    const threadParticipantIds = [...new Set([parent?.sender_id, ...replies.map(r => r.sender_id)])]
-      .filter(id => id && id !== me.id)
-
-    try {
-      await notifyChatMessage({
-        channelId, channelName: channel?.name, isDm: channel?.is_dm,
-        actorId: me.id, actorName: me.full_name,
-        isHere: false, requiresAck: false,
-        body: plain || (filesToSend.length ? `📎 ${filesToSend[0].name}` : ''),
-        mentionedIds,
-        messageId: data.id,
-        replyToIds: threadParticipantIds,
-        parentAuthorId: parent?.sender_id || null,
-      })
-    } catch (notificationError) {
-      console.error('Reply sent, but notification creation failed', notificationError)
-      window.alert(`Reply sent, but notification failed: ${notificationError.message || 'Unknown error'}`)
-    }
+    // Reply notifications (parent author, earlier repliers, @mentions, channel
+    // members) are created by the database when the reply is saved.
   }
 
   async function toggleThreadReaction(messageId, emoji) {
