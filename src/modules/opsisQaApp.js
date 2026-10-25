@@ -2021,22 +2021,41 @@ export function mountOpsisQA(ROOT, cfg) {
   // system's recorded greeting often shares a number with a person. Per recording part: lines before the CSR's
   // live greeting are the phone system; the voice that greets ("this is Tara", "how may I help") is the CSR;
   // any other voice is the customer.
-  var IVR_RX = /(monitored or recorded|recorded for (training|quality)|stay on the line|be with you shortly|press \d|para espa|routine maintenance|manufacturer recommends|your call is important|all of our|currently assisting|please hold|thank you for calling[^.]{0,60}(number one|#1|dealer|leader))/i;
+  var IVR_RX = /(monitored or recorded|recorded for (training|quality)|stay on the line|be with you shortly|press \d|para espa|routine maintenance|manufacturer recommends|your call is important|all of our|currently assisting|please hold|thank you for calling[^.]{0,60}(number one|#1|dealer|leader)|for more than [a-z0-9]+ years|have trusted|number one rated|largest [a-z ]{0,20}specialist|award[- ]winning|rated [a-z ]{0,20}(specialist|company)|with more than [0-9,]+)/i;
   var GREET_RX = /(this is [a-z]+|my name is|[a-z]+ speaking|how (may|can) i (help|assist)|thank(s| you) for (holding|waiting|your patience))/i;
   function trNames(c, L) {
+    // Speaker labels from the transcription are often swapped or merged, so each line is checked on its own words too (2026-10-25):
+    // the CSR's greeting (their own first name, the brand, "how can I help") marks the CSR voice; a line that greets the CSR by name,
+    // or gives a different name ("my name is Bob", "this is Bill"), is the customer whatever voice it was filed under.
     var out = [], first = function (n) { return String(n || '').split(' ')[0] || n; };
     var csr = { from: (c.xfer_from && c.xfer_from.agent) || 'CSR', self: c.agent || 'CSR', hold: c.agent || 'CSR', callback: c.agent || 'CSR', to: (c.xfer_to && c.xfer_to.agent) || 'CSR' };
+    var brandW = String(c.brand || '').toLowerCase().split(/[^a-z]+/).filter(function (w) { return w.length > 3 && ['door', 'doors', 'overhead', 'garage'].indexOf(w) < 0; })[0] || '';
+    var nm = function (a, b) { a = String(a || '').toLowerCase(); b = String(b || '').toLowerCase(); return a.length >= 3 && b.length >= 3 && a.slice(0, 3) === b.slice(0, 3); };
     var i = 0;
     while (i < L.length) {
       var kind = L[i][1], j = i; while (j < L.length && L[j][1] === kind) j++;
-      var g = -1; for (var k = i; k < j && k < i + 40; k++) { if (GREET_RX.test(String(L[k][3] || '')) && !IVR_RX.test(String(L[k][3] || ''))) { g = k; break; } }
+      var ag = first(csr[kind]), agL = String(ag || '').toLowerCase();
+      var isIvr = function (t) { return IVR_RX.test(t); };
+      var isGreet = function (t) { if (isIvr(t)) return false; var x = t.toLowerCase(), m;
+        if ((m = x.match(/(?:this is|it's|it is|my name is|name's) ([a-z]+)/)) && nm(m[1], agL)) return true;
+        if ((m = x.match(/([a-z]+) speaking/)) && nm(m[1], agL)) return true;
+        if (/how (may|can) i (help|assist)|can i help you/.test(x)) return true;
+        if (brandW && x.indexOf(brandW) >= 0 && (/(help|assist|this is|speaking)/.test(x) || x.split(/\s+/).length <= 8)) return true;
+        return false; };
+      var isCust = function (t) { var x = t.toLowerCase(), m;
+        if ((m = x.match(/^(?:hey|hi|hello|yes|yeah)[,.]? ([a-z]+)/)) && nm(m[1], agL)) return true;
+        if ((m = x.match(/my name is ([a-z]+)/)) && !nm(m[1], agL)) return true;
+        if ((m = x.match(/^(?:hi,? |hello,? |yeah,? )?this is ([a-z]+)/)) && !nm(m[1], agL) && !(brandW && x.indexOf(brandW) >= 0)) return true;
+        return false; };
+      var g = -1; for (var k = i; k < j && k < i + 40; k++) { if (isGreet(String(L[k][3] || ''))) { g = k; break; } }
       var csrVoice = g >= 0 ? L[g][2] : null;
-      if (csrVoice == null) { var cnt = {}; for (var k2 = i; k2 < j; k2++) if (!IVR_RX.test(String(L[k2][3] || ''))) cnt[L[k2][2]] = (cnt[L[k2][2]] || 0) + 1; var ks = Object.keys(cnt); csrVoice = ks.length ? null : null; }
       for (var k3 = i; k3 < j; k3++) {
-        var txt = String(L[k3][3] || '');
-        if ((g >= 0 && k3 < g) || (g < 0 && k3 - i < 6 && IVR_RX.test(txt))) out[k3] = { name: 'Phone system', csr: false, sys: true };
-        else if (csrVoice != null && String(L[k3][2]) === String(csrVoice)) out[k3] = { name: first(csr[kind]), csr: true };
-        else if (csrVoice != null) out[k3] = { name: 'Customer', csr: false };
+        var txt = String(L[k3][3] || ''), sp = String(L[k3][2]);
+        if (isIvr(txt) && (g < 0 || k3 <= g || k3 - i < 6)) out[k3] = { name: 'Phone system', csr: false, sys: true };
+        else if (g >= 0 && k3 < g) out[k3] = { name: 'Phone system', csr: false, sys: true };
+        else if (k3 === g) out[k3] = { name: first(csr[kind]), csr: true };
+        else if (isCust(txt)) out[k3] = { name: 'Customer', csr: false };
+        else if (csrVoice != null) out[k3] = sp === String(csrVoice) ? { name: first(csr[kind]), csr: true } : { name: 'Customer', csr: false };
         else out[k3] = { name: trWho(L[k3][2]), csr: /^agent$/i.test(L[k3][2]) };
       }
       i = j;
