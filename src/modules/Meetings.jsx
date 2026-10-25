@@ -51,6 +51,20 @@ async function copyText(text) {
   }
 }
 
+// ---------- Send the notetaker (recall-schedule edge fn) ----------
+// action 'bot_for_url'     → paste any Zoom/Teams/Meet/Webex link (impromptu)
+// action 'bot_for_meeting' → (re)send to an existing meeting row (retry)
+async function callNotetaker(body) {
+  const { data, error } = await supabase.functions.invoke('recall-schedule', { body })
+  if (error) {
+    let msg = error.message || 'Something went wrong.'
+    try { const j = await error.context?.json?.(); if (j?.error) msg = j.error } catch { /* keep generic */ }
+    throw new Error(msg)
+  }
+  if (data?.error) throw new Error(data.error)
+  return data
+}
+
 function StatusBadge({ status }) {
   const s = STATUS_STYLE[status] || STATUS_STYLE.new
   return <span className="badge" style={{ background: s.bg, color: s.fg, fontWeight: 700, fontSize: 12 }}>{s.label}</span>
@@ -97,8 +111,10 @@ export default function Meetings() {
   const [selId, setSelId] = useState(null)
   const [detail, setDetail] = useState(null)      // { meeting, items }
   const [showNew, setShowNew] = useState(false)
+  const [showBot, setShowBot] = useState(false)
   const [busy, setBusy] = useState('')            // '' | 'processing' | 'tasks' | 'saving'
   const [err, setErr] = useState('')
+  const [note, setNote] = useState('')
 
   const load = useCallback(async () => {
     const [{ data: m }, { data: c }] = await Promise.all([
@@ -109,6 +125,14 @@ export default function Meetings() {
     setClients(c || [])
   }, [])
   useEffect(() => { load() }, [load])
+
+  // First name for the bot label ("Becky's Notetaker")
+  const [myFirstName, setMyFirstName] = useState('')
+  useEffect(() => {
+    if (!user?.id) return
+    supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle()
+      .then(({ data }) => setMyFirstName(String(data?.full_name || '').trim().split(/\s+/)[0] || ''))
+  }, [user?.id])
 
   const loadDetail = useCallback(async (id) => {
     if (!id) { setDetail(null); return }
@@ -127,12 +151,25 @@ export default function Meetings() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
         <div>
           <h1 className="page-title">Meetings</h1>
-          <p className="page-sub">Upload a recording or paste a transcript — get a summary, decisions, and action items you can turn into tasks. Auto-tagged to the client by attendee email. Every captured meeting gets a 🔗 shareable recording link.</p>
+          <p className="page-sub">The notetaker joins your calendar meetings automatically. For an impromptu call, click 🎙️ Add notetaker and paste the link. You can also upload a recording or paste a transcript. Every meeting gets a summary, decisions, action items and a 🔗 shareable recording link.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => { setShowNew(true); setErr('') }}>+ New meeting</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={() => { setShowBot(true); setShowNew(false); setErr(''); setNote('') }}>🎙️ Add notetaker</button>
+          <button className="btn btn-ghost" onClick={() => { setShowNew(true); setShowBot(false); setErr(''); setNote('') }}>+ Upload / paste</button>
+        </div>
       </div>
 
       {err && <div className="card" style={{ padding: 12, marginBottom: 12, color: 'var(--failed, #b42318)' }}>{err}</div>}
+      {note && <div className="card" style={{ padding: 12, marginBottom: 12, background: 'var(--ok-bg, #f0fdf4)', color: 'var(--ok, #166534)' }}>{note}</div>}
+
+      {showBot && (
+        <AddNotetaker
+          myFirstName={myFirstName}
+          onCancel={() => setShowBot(false)}
+          onError={(m) => { setErr(m); if (m) setNote('') }}
+          onDone={async (id, msg) => { setShowBot(false); setErr(''); setNote(msg); await load(); if (id) setSelId(id) }}
+        />
+      )}
 
       {showNew && (
         <NewMeeting
@@ -184,6 +221,76 @@ export default function Meetings() {
             />
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------- Add notetaker to any link (impromptu meetings) ----------
+function AddNotetaker({ myFirstName, onCancel, onDone, onError }) {
+  const [link, setLink] = useState('')
+  const [title, setTitle] = useState('')
+  const [later, setLater] = useState(false)
+  const [when, setWhen] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const inp = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--bg, #fff)', width: '100%' }
+  const lbl = { fontSize: 12, fontWeight: 600, color: 'var(--muted, #64748b)', marginBottom: 4, display: 'block' }
+  const botName = myFirstName ? `${myFirstName}'s Notetaker` : 'the notetaker'
+
+  async function send() {
+    onError('')
+    if (!link.trim()) { onError('Paste the meeting link first.'); return }
+    if (later && !when) { onError('Pick a time, or switch back to "Join now".'); return }
+    setSending(true)
+    try {
+      const body = { action: 'bot_for_url', meeting_url: link.trim(), title: title.trim() || undefined }
+      if (later && when) body.join_at = new Date(when).toISOString()
+      const d = await callNotetaker(body)
+      const msg = d.already
+        ? '🎙️ A notetaker is already booked for this link today — no need to send another.'
+        : later
+          ? `🎙️ Booked — ${botName} will join at ${new Date(when).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`
+          : `🎙️ ${botName} is joining now (usually within 30 seconds). If the meeting has a waiting room, admit it.`
+      await onDone(d.meeting_id, msg)
+    } catch (e) {
+      onError(String(e.message || e))
+    } finally { setSending(false) }
+  }
+
+  return (
+    <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <strong>🎙️ Add notetaker to a meeting</strong>
+        <button className="btn btn-ghost" onClick={onCancel} disabled={sending}>Cancel</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={lbl}>Meeting link (Zoom, Teams, Google Meet or Webex)</label>
+          <input style={inp} value={link} autoFocus onChange={e => setLink(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') send() }}
+            placeholder="https://zoom.us/j/…  ·  https://teams.microsoft.com/l/meetup-join/…  ·  https://meet.google.com/…" />
+        </div>
+        <div>
+          <label style={lbl}>Title (optional)</label>
+          <input style={inp} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Quick call with Rob" />
+        </div>
+        <div>
+          <label style={lbl}>When</label>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn" onClick={() => setLater(false)} style={{ border: '1px solid var(--line)', background: !later ? 'var(--accent, #2563eb)' : 'transparent', color: !later ? '#fff' : 'inherit', borderRadius: 8 }}>Join now</button>
+            <button className="btn" onClick={() => setLater(true)} style={{ border: '1px solid var(--line)', background: later ? 'var(--accent, #2563eb)' : 'transparent', color: later ? '#fff' : 'inherit', borderRadius: 8 }}>Later</button>
+            {later && <input type="datetime-local" style={{ ...inp, width: 'auto' }} value={when} onChange={e => setWhen(e.target.value)} />}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span className="page-sub" style={{ fontSize: 12 }}>
+          It joins as “{botName}”. If there’s a waiting room or the host must admit guests, let it in — it waits up to 30 minutes.
+        </span>
+        <button className="btn btn-primary" onClick={send} disabled={sending}>
+          {sending ? 'Sending…' : later ? 'Book notetaker' : 'Send notetaker now'}
+        </button>
       </div>
     </div>
   )
@@ -356,9 +463,20 @@ function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted })
     } catch (e) { onError(String(e.message || e)) } finally { setBusy('') }
   }
 
+  async function sendNotetaker() {
+    onError(''); setBusy('sending')
+    try {
+      await callNotetaker({ action: 'bot_for_meeting', meeting_id: meeting.id })
+      await onRefresh()
+    } catch (e) { onError(String(e.message || e)) } finally { setBusy('') }
+  }
+
   const chip = { display: 'inline-block', padding: '2px 10px', borderRadius: 999, background: 'var(--canvas, #f1f5f9)', border: '1px solid var(--line)', fontSize: 12, marginRight: 6, marginBottom: 6 }
-  const working = busy === 'processing' || busy === 'tasks' || busy === 'cancelling'
+  const working = busy === 'processing' || busy === 'tasks' || busy === 'cancelling' || busy === 'sending'
   const canRemoveBot = meeting.source === 'recall' && meeting.recall_bot_id && ['new', 'transcribing'].includes(meeting.status)
+  // Retry / send: any meeting with a video link whose bot failed, was removed, or never got one.
+  const canSendBot = !!meeting.meeting_url && !meeting.transcript &&
+    (['error', 'cancelled'].includes(meeting.status) || (meeting.status === 'new' && !meeting.recall_bot_id))
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -380,6 +498,11 @@ function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted })
             <button className="btn btn-ghost" onClick={reprocess} disabled={working} title="Re-run summary + action items">
               {busy === 'processing' ? 'Working…' : '↻ Re-summarize'}
             </button>
+            {canSendBot && (
+              <button className="btn btn-primary" onClick={sendNotetaker} disabled={working} title="Send the notetaker into this meeting now (or at its start time if it hasn't started)">
+                {busy === 'sending' ? 'Sending…' : meeting.status === 'new' ? '🎙️ Send notetaker' : '↻ Retry notetaker'}
+              </button>
+            )}
             {canRemoveBot && (
               <button className="btn btn-ghost" onClick={removeNotetaker} disabled={working} title="Cancel the notetaker for this meeting">
                 {busy === 'cancelling' ? 'Removing…' : '✖ Remove notetaker'}
