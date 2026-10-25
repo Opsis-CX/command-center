@@ -210,7 +210,7 @@ export default function App() {
   if (appRole === 'csr') return <CsrPortal session={session} />
   // Opsis QA portal v2 preview for Opsis QA staff — exactly what a client account admin sees
   // (GarageCo by default). Full-screen, outside the Command Center shell. Changes made here are real.
-  const isQaStaff = isAdmin || ['owner', 'admin', 'asc', 'certification', 'quality', 'marketing'].includes(String(appRole || '').toLowerCase())
+const isQaStaff = isAdmin || ['owner', 'admin', 'asc', 'certification', 'quality', 'marketing', 'support'].includes(String(appRole || '').toLowerCase())
   if (location.pathname === '/opsis-qa' && isQaStaff && !inTraining) {
     return <OpsisQAPortal staff logo={GARAGECO_PORTAL_LOGO} hasCsrs={canAny(appRole, 'quality_audit.call_reviews')} csrMode="staff"
       onClassic={() => { window.location.href = '/call-qa' }} onSignOut={() => signOut()} />
