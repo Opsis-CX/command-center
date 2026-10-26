@@ -6,7 +6,87 @@ import { NOTIF_CATEGORIES } from '../lib/notify'
 import { loadNotifPrefs, saveNotifPref } from '../lib/notif_prefs'
 import { pushSupported, pushPermission, enablePush, disablePush, isPushEnabled } from '../lib/push'
 import { isStaffProfile, isAgentProfile } from './Chat'
+import { SOUNDS, DEFAULT_SOUND_PREFS, loadSoundPrefs, saveSoundPrefs, playSound, primeAudio } from '../lib/sounds'
 
+
+// ---- Notification sounds (Slack-style picker) ----
+function SoundPicker({ value, onChange, volume }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 6 }}>
+      {SOUNDS.map(snd => {
+        const on = value === snd.key
+        return (
+          <div key={snd.key} onClick={() => { onChange(snd.key); primeAudio(); playSound(snd.key, volume) }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+              border: on ? '2px solid var(--accent)' : '1px solid var(--line)', background: on ? 'var(--accent-bg)' : 'var(--surface)' }}>
+            <span style={{ width: 16, flex: 'none', color: 'var(--accent)' }}>{on ? '●' : '○'}</span>
+            <span style={{ flex: 1, fontSize: 13.5, fontWeight: on ? 600 : 500 }}>{snd.label}</span>
+            {snd.key !== 'none' && (
+              <button title={`Play ${snd.label}`} onClick={(e) => { e.stopPropagation(); primeAudio(); playSound(snd.key, volume) }}
+                style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 999, width: 26, height: 26, cursor: 'pointer', fontSize: 10, color: 'var(--ink-soft)', flex: 'none' }}>▶</button>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function SoundCard({ userId }) {
+  const [p, setP] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => { if (userId) loadSoundPrefs(userId).then(v => setP({ ...v })) }, [userId])
+  if (!p) return null
+
+  async function save(next) {
+    const merged = { ...p, ...next }
+    setP(merged); setErr('')
+    try { await saveSoundPrefs(userId, next) } catch (e) { setErr(e.message) }
+  }
+
+  return (
+    <div className="card" style={{ padding: 20, marginTop: 16 }}>
+      <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Notification sound</div>
+      <p className="page-sub" style={{ marginTop: 0, fontSize: 13, marginBottom: 14 }}>
+        Plays whenever Command Center is open — even minimized or in another tab. If Command Center is fully closed,
+        pop-ups use your computer's notification sound. Turn sounds on or off per type in the Notifications table above.
+      </p>
+
+      <SoundPicker value={p.sound} volume={p.volume} onChange={(k) => save({ sound: k })} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, width: 60 }}>Volume</span>
+        <span>🔈</span>
+        <input type="range" min={0} max={100} step={5} value={p.volume}
+          onChange={e => setP({ ...p, volume: Number(e.target.value) })}
+          onMouseUp={e => { save({ volume: Number(e.target.value) }); playSound(p.sound === 'none' ? 'chime' : p.sound, Number(e.target.value)) }}
+          onTouchEnd={e => { save({ volume: Number(e.target.value) }); playSound(p.sound === 'none' ? 'chime' : p.sound, Number(e.target.value)) }}
+          onKeyUp={e => save({ volume: Number(e.target.value) })}
+          style={{ flex: 1, maxWidth: 280 }} />
+        <span>🔊</span>
+        <span className="page-sub" style={{ fontSize: 12, width: 34 }}>{p.volume}%</span>
+      </div>
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 18, cursor: 'pointer', fontSize: 14 }}>
+        <input type="checkbox" checked={!!p.direct_sound} style={{ width: 18, height: 18 }}
+          onChange={e => save({ direct_sound: e.target.checked ? (p.sound === 'ding' ? 'knock' : 'ding') : null })} />
+        <span><b>Use a different sound for DMs &amp; @mentions</b>
+          <span className="page-sub" style={{ display: 'block', fontSize: 12.5 }}>Also replies to you, @here, @update, and tasks assigned to you.</span></span>
+      </label>
+      {p.direct_sound && (
+        <div style={{ marginTop: 10, marginLeft: 28 }}>
+          <SoundPicker value={p.direct_sound} volume={p.volume} onChange={(k) => save({ direct_sound: k })} />
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+        <button className="btn btn-ghost" style={{ fontSize: 12.5 }}
+          onClick={() => save({ ...DEFAULT_SOUND_PREFS })}>Reset to default</button>
+      </div>
+      {err && <div style={{ color: '#DC2626', fontSize: 12.5, marginTop: 8 }}>{err}</div>}
+    </div>
+  )
+}
 
 // ---- Direct messages from agents (internal staff only) ----
 // Main switch + per-agent exceptions. The database enforces it: a blocked agent
@@ -374,6 +454,8 @@ export default function Settings() {
       </div>
 
       <NotificationPrefsCard userId={user?.id} />
+
+      <SoundCard userId={user?.id} />
 
       {isStaffProfile({ role: appRole, is_admin: isAdmin }) && <AgentDmCard userId={user?.id} />}
     </div>
