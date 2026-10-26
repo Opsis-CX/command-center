@@ -84,6 +84,25 @@ self.addEventListener('fetch', (e) => {
 // Payload from the send-push edge function:
 //   { title, body, url, tag, notification_id }   (tag = the notification's id)
 // ============================================================
+// Ask open Command Center windows to play the person's chosen sound.
+// Resolves true if any window confirms it played (or the sound is turned off).
+function askPagesToPlay(wins, id, type) {
+  if (!wins.length) return Promise.resolve(false)
+  return new Promise((resolve) => {
+    let pending = wins.length, done = false
+    const finish = (v) => { if (!done) { done = true; resolve(v) } }
+    setTimeout(() => finish(false), 1500)
+    for (const w of wins) {
+      const ch = new MessageChannel()
+      ch.port1.onmessage = (e) => {
+        if (e.data && e.data.played) finish(true)
+        else if (--pending === 0) finish(false)
+      }
+      try { w.postMessage({ kind: 'cc-push-sound', id, type }, [ch.port2]) } catch { if (--pending === 0) finish(false) }
+    }
+  })
+}
+
 self.addEventListener('push', (event) => {
   let p = {}
   try { p = event.data ? event.data.json() : {} } catch { p = { body: event.data ? event.data.text() : '' } }
@@ -91,20 +110,29 @@ self.addEventListener('push', (event) => {
   const title = p.title || 'Command Center'
   const url = p.url || p.link || '/'
   const id = p.notification_id || p.tag || String(Date.now())
+  const type = p.type || null
 
   event.waitUntil((async () => {
-    // If Command Center is open and in front of you, the app's own chime plays —
-    // show the pop-up quietly so you don't hear two sounds.
-    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    const appInFront = wins.some(w => w.visibilityState === 'visible' && w.focused)
+    const wins = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+      .filter(w => new URL(w.url).origin === self.location.origin)
 
+    // 1) Command Center open and in front of you → sound only, no pop-up.
+    if (wins.some(w => w.visibilityState === 'visible' && w.focused)) {
+      await askPagesToPlay(wins, id, type)
+      return
+    }
+
+    // 2) Open in the background → the app plays YOUR sound and the pop-up stays
+    //    quiet. 3) Closed (or the tab can't play audio) → the pop-up uses the
+    //    computer's notification sound so it's never silent.
+    const played = await askPagesToPlay(wins, id, type)
     await self.registration.showNotification(title, {
       body: p.body || '',
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      tag: id,             // unique per notification → each one shows and sounds
+      tag: id,             // unique per notification → each one shows
       renotify: false,
-      silent: appInFront,
+      silent: played,
       data: { url, notificationId: p.notification_id || null },
     })
   })())
