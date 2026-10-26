@@ -11,7 +11,7 @@ import { Modal } from './FinanceInvoices'
 // ============================================================
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-const KIND_LABEL = { invoice_date: 'Invoice date', invoice_overdue: 'Overdue invoice', pay_run: 'Pay period', custom: 'Your own' }
+const KIND_LABEL = { invoice_date: 'Invoice date', invoice_overdue: 'Overdue invoice', pay_run: 'Pay period', document_expiry: 'Document expires', custom: 'Your own' }
 const plural = (n, w) => `${n} ${w}${Number(n) === 1 ? '' : 's'}`
 const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]) }
 
@@ -31,6 +31,7 @@ export function describeReminder(r, entities = [], types = [], clients = []) {
   if (r.kind === 'invoice_overdue') return `${plural(r.lead_days, 'day')} after the due date, while a balance remains: ${scope}`
   if (r.kind === 'pay_run') return `${r.lead_days === 0 ? 'On the day' : `${plural(r.lead_days, 'day')} after`} a pay period ends (the 15th and the end of the month), if no pay run covers it`
   const c = r.client_id ? clients.find(x => x.id === r.client_id) : null
+  if (r.kind === 'document_expiry') return `${r.lead_days === 0 ? 'On the day' : `${plural(r.lead_days, 'day')} before`} a contract or document expires: ${c ? c.name : 'every client'}`
   return `${scheduleText(r)}${c ? `, about ${c.name}` : ''}`
 }
 
@@ -162,7 +163,7 @@ export function ReminderModal({ reminder, defaults = {}, entities, types, client
   const entityTypes = types.filter(t => t.entity_id === f.entity_id && t.active !== false)
   const set = (k, v) => setF(x => ({ ...x, [k]: v }))
   const toggleP = (id) => setF(x => ({ ...x, recipients: x.recipients.includes(id) ? x.recipients.filter(i => i !== id) : [...x.recipients, id] }))
-  const leadLabel = f.kind === 'invoice_date' ? 'Days before the invoice date (0 = on the day)' : f.kind === 'invoice_overdue' ? 'Days after the due date' : 'Days after the pay period ends (1 = the day after)'
+  const leadLabel = f.kind === 'invoice_date' ? 'Days before the invoice date (0 = on the day)' : f.kind === 'invoice_overdue' ? 'Days after the due date' : f.kind === 'document_expiry' ? 'Days before it expires (0 = on the day)' : 'Days after the pay period ends (1 = the day after)'
 
   async function save() {
     setErr('')
@@ -176,7 +177,7 @@ export function ReminderModal({ reminder, defaults = {}, entities, types, client
     setBusy(true)
     const custom = f.kind === 'custom'
     const { error } = await supabase.rpc('finance_reminder_save', saveArgs({ ...f, id: reminder ? reminder.id : null, recipients: who === 'all' ? [] : f.recipients, lead_days: finance ? Number(f.lead_days) || 0 : 0,
-      client_id: custom ? f.client_id : null, schedule: custom ? f.schedule : null, run_on: custom && f.schedule === 'once' ? f.run_on : null, weekday: custom && f.schedule === 'weekly' ? Number(f.weekday) : null,
+      client_id: custom || f.kind === 'document_expiry' ? f.client_id : null, schedule: custom ? f.schedule : null, run_on: custom && f.schedule === 'once' ? f.run_on : null, weekday: custom && f.schedule === 'weekly' ? Number(f.weekday) : null,
       month_day: custom && f.schedule === 'monthly' ? Number(f.month_day) : null, every_days: custom && f.schedule === 'every_n_days' ? Number(f.every_days) : null, anchor: custom && f.schedule === 'every_n_days' ? f.anchor : null }))
     setBusy(false)
     if (error) return setErr(error.message)
@@ -187,7 +188,7 @@ export function ReminderModal({ reminder, defaults = {}, entities, types, client
       {err && <div className="login-err" role="alert">{err}</div>}
       {isNew && <div className="field"><label htmlFor="rm-kind">What is it for?</label>
         <select id="rm-kind" value={f.kind} onChange={e => set('kind', e.target.value)}>
-          <option value="custom">Something of my own</option><option value="invoice_date">Before or on an invoice date</option><option value="invoice_overdue">An invoice that is overdue</option><option value="pay_run">When a pay period ends</option></select></div>}
+          <option value="custom">Something of my own</option><option value="invoice_date">Before or on an invoice date</option><option value="invoice_overdue">An invoice that is overdue</option><option value="pay_run">When a pay period ends</option><option value="document_expiry">Before a contract or document expires</option></select></div>}
       <div className="field"><label htmlFor="rm-name">Name</label><input id="rm-name" value={f.name} onChange={e => set('name', e.target.value)} maxLength={80} placeholder="e.g. Check in with GarageCo" /></div>
 
       {(f.kind === 'invoice_date' || f.kind === 'invoice_overdue') && (<>
@@ -196,6 +197,8 @@ export function ReminderModal({ reminder, defaults = {}, entities, types, client
         {f.entity_id && <div className="field"><label htmlFor="rm-type">Which invoice</label>
           <select id="rm-type" value={f.invoice_type_id || ''} onChange={e => set('invoice_type_id', e.target.value || null)}><option value="">All of its invoices</option>{entityTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>}
       </>)}
+      {f.kind === 'document_expiry' && <div className="field"><label htmlFor="rm-docclient">Which client</label>
+        <select id="rm-docclient" value={f.client_id || ''} onChange={e => set('client_id', e.target.value || null)}><option value="">Every client</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
       {finance && <div className="field" style={{ maxWidth: 260 }}><label htmlFor="rm-lead">{leadLabel}</label><input id="rm-lead" inputMode="numeric" value={f.lead_days} onChange={e => set('lead_days', e.target.value)} /></div>}
 
       {f.kind === 'custom' && (<>
