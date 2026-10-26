@@ -69,7 +69,7 @@ function SoundCard({ userId }) {
 
       <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 18, cursor: 'pointer', fontSize: 14 }}>
         <input type="checkbox" checked={!!p.direct_sound} style={{ width: 18, height: 18 }}
-          onChange={e => save({ direct_sound: e.target.checked ? (p.sound === 'ding' ? 'knock' : 'ding') : null })} />
+          onChange={e => save({ direct_sound: e.target.checked ? (p.sound === 'doorbell' ? 'kalimba' : 'doorbell') : null })} />
         <span><b>Use a different sound for DMs &amp; @mentions</b>
           <span className="page-sub" style={{ display: 'block', fontSize: 12.5 }}>Also replies to you, @here, @update, and tasks assigned to you.</span></span>
       </label>
