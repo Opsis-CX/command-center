@@ -71,34 +71,46 @@ function tone(c, out, { freq, start, dur = 0.35, type = 'sine', peak = 1, attack
   osc.start(start); osc.stop(start + dur + 0.05)
 }
 
+// Pitches are kept above ~400 Hz so laptop speakers actually reproduce them.
 const SYNTHS = {
   chime: (c, o, t) => { tone(c, o, { freq: 880, start: t }); tone(c, o, { freq: 1174.66, start: t + 0.11 }) },
   ding: (c, o, t) => {
     tone(c, o, { freq: 1318.5, start: t, dur: 0.9, peak: 0.9 })
     tone(c, o, { freq: 2637, start: t, dur: 0.5, peak: 0.25 })
   },
-  pop: (c, o, t) => tone(c, o, { freq: 600, bend: 180, start: t, dur: 0.12, attack: 0.004 }),
+  pop: (c, o, t) => {
+    tone(c, o, { freq: 1100, bend: 420, start: t, dur: 0.16, attack: 0.003 })
+    tone(c, o, { freq: 2200, bend: 900, start: t, dur: 0.06, attack: 0.002, peak: 0.35 })
+  },
   bubble: (c, o, t) => {
-    tone(c, o, { freq: 400, bend: 900, start: t, dur: 0.14, attack: 0.005 })
-    tone(c, o, { freq: 500, bend: 1100, start: t + 0.12, dur: 0.14, attack: 0.005, peak: 0.8 })
+    tone(c, o, { freq: 700, bend: 1500, start: t, dur: 0.16, attack: 0.004 })
+    tone(c, o, { freq: 850, bend: 1800, start: t + 0.13, dur: 0.18, attack: 0.004, peak: 0.9 })
   },
   marimba: (c, o, t) => {
     ;[523.25, 659.25, 783.99].forEach((f, i) => {
-      tone(c, o, { freq: f, start: t + i * 0.09, dur: 0.28, attack: 0.003 })
+      tone(c, o, { freq: f, start: t + i * 0.09, dur: 0.3, attack: 0.003 })
       tone(c, o, { freq: f * 4, start: t + i * 0.09, dur: 0.08, attack: 0.002, peak: 0.15 })
     })
   },
   knock: (c, o, t) => {
-    ;[0, 0.16].forEach(d => tone(c, o, { freq: 180, bend: 90, start: t + d, dur: 0.09, type: 'triangle', attack: 0.002, peak: 1.4 }))
+    ;[0, 0.17].forEach(d => {
+      tone(c, o, { freq: 420, bend: 230, start: t + d, dur: 0.1, type: 'triangle', attack: 0.002 })
+      tone(c, o, { freq: 1400, bend: 700, start: t + d, dur: 0.025, type: 'square', attack: 0.001, peak: 0.25 })
+    })
   },
   pluck: (c, o, t) => {
     tone(c, o, { freq: 659.25, start: t, dur: 0.45, type: 'triangle', attack: 0.002 })
     tone(c, o, { freq: 987.77, start: t + 0.07, dur: 0.5, type: 'triangle', attack: 0.002, peak: 0.7 })
   },
   twinkle: (c, o, t) => {
-    ;[1567.98, 2093, 2637.02, 3135.96].forEach((f, i) => tone(c, o, { freq: f, start: t + i * 0.06, dur: 0.25, peak: 0.45 }))
+    ;[1567.98, 2093, 2637.02, 3135.96].forEach((f, i) => tone(c, o, { freq: f, start: t + i * 0.06, dur: 0.28, peak: 0.6 }))
   },
 }
+
+// Loudness matching: measured (A-weighted, laptop-speaker roll-off) against
+// Chime so every sound plays at about the same perceived volume. Even the
+// largest boost stays below clipping at 100% volume.
+const LEVEL = { chime: 1, ding: 0.91, pop: 2.05, bubble: 1.69, marimba: 1.17, knock: 4.35, pluck: 1.48, twinkle: 1.1 }
 
 // Play a sound by key at a volume 0–100. Returns true if it could play.
 export async function playSound(key, volume = 70) {
@@ -106,7 +118,7 @@ export async function playSound(key, volume = 70) {
   if (!(await audioReady())) return false
   const c = getCtx()
   const out = c.createGain()
-  out.gain.value = Math.max(0, Math.min(100, volume)) / 100 * 0.18
+  out.gain.value = Math.max(0, Math.min(100, volume)) / 100 * 0.18 * (LEVEL[key] || 1)
   out.connect(c.destination)
   SYNTHS[key](c, out, c.currentTime + 0.01)
   return true
