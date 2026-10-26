@@ -73,3 +73,58 @@ self.addEventListener('fetch', (e) => {
 
   // Everything else (icons, manifest, etc.) goes straight to the network.
 })
+
+// ============================================================
+// Push notifications.
+// These handlers were accidentally dropped on 2026-08-03 when this file was
+// replaced with a caching-only version. Without a 'push' handler the browser
+// receives every push but has nothing to show, so Chrome displays its own
+// generic notice at most once and silently swallows the rest ("only one ding").
+//
+// Payload from the send-push edge function:
+//   { title, body, url, tag, notification_id }   (tag = the notification's id)
+// ============================================================
+self.addEventListener('push', (event) => {
+  let p = {}
+  try { p = event.data ? event.data.json() : {} } catch { p = { body: event.data ? event.data.text() : '' } }
+
+  const title = p.title || 'Command Center'
+  const url = p.url || p.link || '/'
+  const id = p.notification_id || p.tag || String(Date.now())
+
+  event.waitUntil((async () => {
+    // If Command Center is open and in front of you, the app's own chime plays —
+    // show the pop-up quietly so you don't hear two sounds.
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    const appInFront = wins.some(w => w.visibilityState === 'visible' && w.focused)
+
+    await self.registration.showNotification(title, {
+      body: p.body || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: id,             // unique per notification → each one shows and sounds
+      renotify: false,
+      silent: appInFront,
+      data: { url, notificationId: p.notification_id || null },
+    })
+  })())
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const target = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    for (const w of wins) {
+      if (new URL(w.url).origin !== self.location.origin) continue
+      try { if ('navigate' in w) await w.navigate(target) } catch { /* fall through to focus */ }
+      return w.focus()
+    }
+    return self.clients.openWindow(target)
+  })())
+})
+
+self.addEventListener('pushsubscriptionchange', () => {
+  // The browser rotated the subscription; the app re-registers it on its next load.
+  console.warn('Push subscription changed; the app will re-register it.')
+})
