@@ -254,7 +254,7 @@ function StatusPicker({ me, uid, onClose, onSaved }) {
                     <div onClick={() => setEmojiOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1100 }} />
                     <div style={{ position: 'fixed', top, left, zIndex: 1101 }}>
                       <EmojiPicker onEmojiClick={(ev) => { setEmoji(ev.emoji); if (type !== 'ooo') setType('custom'); setEmojiOpen(false) }}
-                        width={320} height={380} previewConfig={{ showPreview: false }} searchDisabled={false} />
+                        width={320} height={430} previewConfig={{ showPreview: true, defaultCaption: 'Hover an emoji to see its name', defaultEmoji: '1f642' }} searchDisabled={false} />
                     </div>
                   </>
                 )
