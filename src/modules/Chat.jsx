@@ -2255,7 +2255,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             <div onMouseDown={e => e.preventDefault()}
               style={{ position: 'absolute', bottom: 52, left: 0, zIndex: 50 }}>
               <EmojiPicker onEmojiClick={(e) => { composerRef.current?.insertText(e.emoji); setShowPicker(false) }}
-                width={isMobile ? 280 : 320} height={isMobile ? 320 : 380} previewConfig={{ showPreview: false }} />
+                width={isMobile ? 280 : 320} height={isMobile ? 370 : 430} previewConfig={{ showPreview: true, defaultCaption: 'Hover an emoji to see its name', defaultEmoji: '1f642' }} />
             </div>
           )}
 
@@ -2940,7 +2940,7 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
   // it's fully visible without scrolling.
   const barRef = useRef(null)
   const openUp = pickerOpen && barRef.current
-    ? (window.innerHeight - barRef.current.getBoundingClientRect().bottom) < 380
+    ? (window.innerHeight - barRef.current.getBoundingClientRect().bottom) < 480
     : false
 
   // group by emoji: count, whether I reacted, and WHO reacted
@@ -3032,11 +3032,11 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
       {pickerOpen && (
         <>
           <div onClick={onClosePicker} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', ...(openUp ? { bottom: 26 } : { top: 26 }), left: 0, zIndex: 41 }}>
+          <div style={{ position: 'absolute', ...(openUp ? { bottom: 32 } : { top: 32 }), left: 0, zIndex: 41 }}>
             <div style={{ background: 'var(--surface)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.14)' }}>
               <EmojiPicker onEmojiClick={(e) => onToggle(messageId, pickedEmoji(e))}
                 customEmojis={pickerCustomEmojis(custom)}
-                width={300} height={360} previewConfig={{ showPreview: false }} reactionsDefaultOpen={true} />
+                width={300} height={410} previewConfig={{ showPreview: true, defaultCaption: 'Hover an emoji to see its name', defaultEmoji: '1f642' }} reactionsDefaultOpen={true} />
               <button onClick={() => { onClosePicker(); setManageEmoji(true) }}
                 style={{ display: 'block', width: '100%', border: 0, borderTop: '1px solid var(--line)', background: 'transparent', padding: '7px 10px', fontSize: 12, color: 'var(--accent)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
                 ＋ Custom emoji
