@@ -127,7 +127,7 @@ export function ClientList({ clients, profiles, entities, links, types, retainer
   )
 }
 
-export function ClientPage({ client, profile, entities, links, types, contacts, retainers, terms, caps = [], reminders = [], rates = [], deals = [], allClients = [], profiles = [], onBack, onOpenBill, onOpenClient, reload, flash }) {
+export function ClientPage({ client, profile, entities, links, types, contacts, retainers, terms, caps = [], reminders = [], documents = [], rates = [], deals = [], allClients = [], profiles = [], onBack, onOpenBill, onOpenClient, reload, flash }) {
   const p = profile || { billing_kind: 'not_set', hours_mode: 'decide', status: 'active', in_invoicing: true }
   const inv = p.in_invoicing !== false
   const profOf = (id) => profiles.find(x => x.client_id === id) || {}
@@ -326,6 +326,8 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
       <CapsSection client={client} caps={caps} reload={reload} flash={flash} />
 
       <RemindersSection client={client} bill={isChild ? null : savedBill} billTypes={isChild ? [] : savedTypes} reminders={reminders} entities={entities} types={types} allClients={allClients} reload={reload} flash={flash} />
+
+      <DocumentsSection client={client} documents={documents} reload={reload} flash={flash} />
 
       <Contacts client={client} contacts={contacts} reload={reload} flash={flash} />
     </div>
@@ -587,7 +589,7 @@ function RemindersSection({ client, bill, billTypes, reminders, entities, types,
       .then(rows => { if (alive) setNext(Object.fromEntries(rows)) })
     return () => { alive = false }
   }, [key])   // eslint-disable-line
-  const mine = reminders.filter(r => (bill && r.entity_id === bill.id && (r.kind === 'invoice_date' || r.kind === 'invoice_overdue')) || (r.kind === 'custom' && r.client_id === client.id))
+  const mine = reminders.filter(r => (bill && r.entity_id === bill.id && (r.kind === 'invoice_date' || r.kind === 'invoice_overdue')) || ((r.kind === 'custom' || r.kind === 'document_expiry') && r.client_id === client.id))
   async function toggle(r) {
     const { error } = await supabase.rpc('finance_reminder_save', saveArgs(r, { active: !r.active }))
     if (error) return setErr(error.message)
@@ -660,5 +662,164 @@ function WhatClientPays({ bill, billTypes, rates, deals, retainers, terms, onOpe
           ⚠ Not on any invoice, so never billed: {orphans.map(r => `${r.product_name} (${rateMoney(r.rate)} ${UNIT_TEXT[r.unit]})`).join(', ')}. Open the bill, go to Rate card, press Edit, and choose the invoice.
         </div>)}
     </div>
+  )
+}
+
+
+// ---------- documents and contracts (Admins and Owners only; files live in a private area) ----------
+const DOC_KINDS = [['contract', 'Contract'], ['amendment', 'Amendment'], ['nda', 'NDA'], ['w9', 'W-9'], ['insurance', 'Insurance certificate'], ['proposal', 'Proposal'], ['other', 'Other']]
+const DOC_KIND_LABEL = Object.fromEntries(DOC_KINDS)
+const DOC_EXT_MIME = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', txt: 'text/plain' }
+const MAX_DOC_BYTES = 25 * 1024 * 1024
+const fileSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
+const dayDiff = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000)
+export function expiryInfo(d, today) {
+  if (!d.expires_on) return { text: 'No expiry date', tone: 'none' }
+  const n = dayDiff(today, d.expires_on)
+  if (n < 0) return { text: `Expired ${fmtDate(d.expires_on)}`, tone: 'expired' }
+  if (n === 0) return { text: 'Expires today', tone: 'soon' }
+  if (n <= 60) return { text: `Expires ${fmtDate(d.expires_on)} (in ${n} ${n === 1 ? 'day' : 'days'})`, tone: 'soon' }
+  return { text: `Expires ${fmtDate(d.expires_on)}`, tone: 'ok' }
+}
+const TONE = { expired: '#b91c1c', soon: '#b45309', ok: 'inherit', none: 'inherit' }
+
+function DocumentsSection({ client, documents, reload, flash }) {
+  const [modal, setModal] = useState(null)       // { mode: 'new' | 'replace' | 'edit' | 'archive', doc? }
+  const [showArchived, setShowArchived] = useState(false)
+  const [err, setErr] = useState('')
+  const today = todayET()
+  const active = documents.filter(d => d.status === 'active').sort((a, b) => (a.expires_on || '9999') < (b.expires_on || '9999') ? -1 : 1)
+  const archived = documents.filter(d => d.status === 'archived').sort((a, b) => (a.archived_at || '') < (b.archived_at || '') ? 1 : -1)
+  async function open(d) {
+    setErr('')
+    const { data, error } = await supabase.storage.from('client-documents').createSignedUrl(d.storage_path, 60)
+    if (error || !data) return setErr(error ? error.message : 'Could not open the file.')
+    supabase.rpc('finance_log_export', { p_table: 'finance_client_documents', p_row: d.id, p_note: 'Opened or downloaded' })
+    window.open(data.signedUrl, '_blank', 'noopener')
+  }
+  async function restore(d) {
+    const { error } = await supabase.rpc('finance_client_document_restore', { p_id: d.id })
+    if (error) return setErr(error.message)
+    setErr(''); flash(`${d.title} is active again.`); await reload()
+  }
+  const Row = ({ d }) => {
+    const ex = expiryInfo(d, today)
+    return (
+      <div data-document={d.title} style={{ borderTop: '1px solid var(--line)', padding: '9px 0', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', opacity: d.status === 'archived' ? 0.75 : 1 }}>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <div style={{ fontWeight: 600 }}>{d.title} <span className="badge" style={{ marginLeft: 6 }}>{DOC_KIND_LABEL[d.kind]}</span>{d.status === 'archived' && <span className="badge failed" style={{ marginLeft: 6 }}>Archived</span>}</div>
+          <div className="page-sub" style={{ margin: '2px 0 0' }} data-file>{d.file_name} · {fileSize(d.file_size)}{d.signed_on ? ` · signed ${fmtDate(d.signed_on)}` : ''}{d.effective_from ? ` · effective ${fmtDate(d.effective_from)}` : ''}</div>
+          {d.status === 'active' && <div className="page-sub" style={{ margin: '2px 0 0', color: TONE[ex.tone], fontWeight: ex.tone === 'expired' || ex.tone === 'soon' ? 600 : 400 }} data-expiry>{ex.text}{d.auto_renews && d.expires_on ? ' · renews automatically' : ''}</div>}
+          {d.status === 'archived' && <div className="page-sub" style={{ margin: '2px 0 0' }} data-archived-why>Archived: {d.archived_reason}</div>}
+          {d.notes && <div className="page-sub" style={{ margin: '2px 0 0' }}>{d.notes}</div>}
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => open(d)} aria-label={`Open ${d.title}`}>Open</button>
+          {d.status === 'active' ? (<>
+            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => { setErr(''); setModal({ mode: 'replace', doc: d }) }} aria-label={`Upload a newer version of ${d.title}`}>Newer version</button>
+            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => { setErr(''); setModal({ mode: 'edit', doc: d }) }} aria-label={`Edit details of ${d.title}`}>Edit details</button>
+            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => { setErr(''); setModal({ mode: 'archive', doc: d }) }} aria-label={`Archive ${d.title}`}>Archive</button>
+          </>) : <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => restore(d)} aria-label={`Restore ${d.title}`}>Restore</button>}
+        </div>
+      </div>)
+  }
+  return (
+    <div style={{ ...panel, marginBottom: 14 }} data-documents>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <h3 style={{ margin: 0, fontSize: 16 }}>Documents and contracts</h3>
+        <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={() => { setErr(''); setModal({ mode: 'new' }) }}>+ Upload a document</button>
+      </div>
+      <p className="page-sub" style={{ margin: '2px 0 4px' }}>Only Admins and Owners can see these. Files are kept privately and cannot be overwritten or deleted. A newer version archives the old one.</p>
+      {err && <div className="login-err" role="alert">{err}</div>}
+      {active.length === 0 && <p className="page-sub" style={{ margin: '6px 0 0' }}>No documents yet. Upload the contract, any amendments, the W-9 or the insurance certificate.</p>}
+      {active.map(d => <Row key={d.id} d={d} />)}
+      {archived.length > 0 && <button className="btn btn-ghost" style={{ fontSize: 12.5, marginTop: 8 }} onClick={() => setShowArchived(!showArchived)} aria-expanded={showArchived}>{showArchived ? 'Hide' : 'Show'} archived ({archived.length})</button>}
+      {showArchived && archived.map(d => <Row key={d.id} d={d} />)}
+      {modal && modal.mode !== 'archive' && <DocumentModal client={client} mode={modal.mode} doc={modal.doc} onClose={() => setModal(null)} onSaved={async (msg) => { setModal(null); flash(msg); await reload() }} />}
+      {modal && modal.mode === 'archive' && <ArchiveDocModal doc={modal.doc} onClose={() => setModal(null)} onSaved={async (msg) => { setModal(null); flash(msg); await reload() }} />}
+    </div>
+  )
+}
+
+function ArchiveDocModal({ doc, onClose, onSaved }) {
+  const [why, setWhy] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  async function go() {
+    if (why.trim().length < 3) return setErr('Say why this document is being archived.')
+    setBusy(true)
+    const { error } = await supabase.rpc('finance_client_document_archive', { p_id: doc.id, p_reason: why.trim() })
+    setBusy(false)
+    if (error) return setErr(error.message)
+    onSaved(`${doc.title} archived.`)
+  }
+  return (
+    <Modal title={`Archive: ${doc.title}`} onClose={onClose} width={460}>
+      {err && <div className="login-err" role="alert">{err}</div>}
+      <p className="page-sub" style={{ marginTop: 0 }}>The file is kept, and you can restore it later. It stops showing as current and stops triggering expiry reminders.</p>
+      <div className="field"><label htmlFor="da-why">Why is it being archived? *</label><input id="da-why" value={why} onChange={e => setWhy(e.target.value)} /></div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}><button className="btn btn-primary" onClick={go} disabled={busy}>Archive it</button><button className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button></div>
+    </Modal>
+  )
+}
+
+function DocumentModal({ client, mode, doc, onClose, onSaved }) {
+  const edit = mode === 'edit'
+  const [f, setF] = useState({ kind: doc ? doc.kind : 'contract', title: doc ? doc.title : '', signed_on: doc && doc.signed_on || '', effective_from: doc && doc.effective_from || '', expires_on: doc && doc.expires_on || '', auto_renews: !!(doc && doc.auto_renews), notes: doc && doc.notes || '' })
+  const [file, setFile] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const set = (k, v) => setF(x => ({ ...x, [k]: v }))
+  function chooseFile(e) {
+    const fl = e.target.files && e.target.files[0]
+    setFile(fl || null)
+    if (fl && !f.title.trim()) set('title', fl.name.replace(/\.[^.]+$/, ''))
+  }
+  async function save() {
+    setErr('')
+    if (!f.title.trim()) return setErr('Give the document a title.')
+    if (f.expires_on && f.effective_from && f.expires_on < f.effective_from) return setErr('The document cannot expire before it takes effect.')
+    if (edit) {
+      setBusy(true)
+      const { error } = await supabase.rpc('finance_client_document_update', { p_id: doc.id, p_kind: f.kind, p_title: f.title, p_signed_on: f.signed_on || null, p_effective_from: f.effective_from || null, p_expires_on: f.expires_on || null, p_auto_renews: f.auto_renews, p_notes: f.notes || null })
+      setBusy(false)
+      if (error) return setErr(error.message)
+      return onSaved('Details saved.')
+    }
+    if (!file) return setErr('Choose the file to upload.')
+    const ext = (file.name.split('.').pop() || '').toLowerCase()
+    const mime = file.type || DOC_EXT_MIME[ext]
+    if (!DOC_EXT_MIME[ext] || !mime) return setErr('That kind of file is not accepted. Use PDF, Word, Excel, an image or a text file.')
+    if (file.size > MAX_DOC_BYTES) return setErr('That file is larger than 25 MB.')
+    setBusy(true)
+    const path = `${client.id}/${(window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : String(Date.now()))}-${file.name.replace(/[^A-Za-z0-9._-]+/g, '_')}`
+    const up = await supabase.storage.from('client-documents').upload(path, file, { contentType: mime, upsert: false })
+    if (up.error) { setBusy(false); return setErr(up.error.message) }
+    const { error } = await supabase.rpc('finance_client_document_add', { p_client: client.id, p_kind: f.kind, p_title: f.title, p_path: path, p_name: file.name, p_size: file.size, p_mime: mime,
+      p_signed_on: f.signed_on || null, p_effective_from: f.effective_from || null, p_expires_on: f.expires_on || null, p_auto_renews: f.auto_renews, p_notes: f.notes || null, p_replaces: mode === 'replace' ? doc.id : null })
+    if (error) { await supabase.storage.from('client-documents').remove([path]); setBusy(false); return setErr(error.message) }
+    setBusy(false)
+    onSaved(mode === 'replace' ? `New version saved. The earlier version is archived.` : `${f.title.trim()} uploaded.`)
+  }
+  return (
+    <Modal title={edit ? `Edit details: ${doc.title}` : mode === 'replace' ? `Newer version of ${doc.title}` : 'Upload a document'} onClose={onClose} width={560}>
+      {err && <div className="login-err" role="alert">{err}</div>}
+      {mode === 'replace' && <p className="page-sub" style={{ marginTop: 0 }}>The earlier version is archived and stays available. Check the dates below, since they usually change.</p>}
+      <div className="field"><label htmlFor="dc-kind">What kind of document is it?</label><select id="dc-kind" value={f.kind} onChange={e => set('kind', e.target.value)}>{DOC_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
+      {!edit && <div className="field"><label htmlFor="dc-file">File</label><input id="dc-file" type="file" accept=".pdf,.doc,.docx,.xlsx,.png,.jpg,.jpeg,.webp,.txt" onChange={chooseFile} /><div className="hint">PDF, Word, Excel, an image or a text file, up to 25 MB.</div></div>}
+      <div className="field"><label htmlFor="dc-title">Title</label><input id="dc-title" value={f.title} onChange={e => set('title', e.target.value)} maxLength={120} placeholder="e.g. Master services agreement" /></div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+        <div className="field"><label htmlFor="dc-signed">Signed on</label><input id="dc-signed" type="date" value={f.signed_on} onChange={e => set('signed_on', e.target.value)} /></div>
+        <div className="field"><label htmlFor="dc-eff">Takes effect</label><input id="dc-eff" type="date" value={f.effective_from} onChange={e => set('effective_from', e.target.value)} /></div>
+        <div className="field"><label htmlFor="dc-exp">Expires</label><input id="dc-exp" type="date" value={f.expires_on} onChange={e => set('expires_on', e.target.value)} /></div>
+      </div>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0 6px' }}><input id="dc-renew" type="checkbox" checked={f.auto_renews} onChange={e => set('auto_renews', e.target.checked)} /> It renews automatically</label>
+      <div className="hint" style={{ marginTop: -2 }}>With an expiry date, you get reminders 30 and 7 days before (change them on the Reminders tab).</div>
+      <div className="field" style={{ marginTop: 6 }}><label htmlFor="dc-notes">Notes (optional)</label><input id="dc-notes" value={f.notes} onChange={e => set('notes', e.target.value)} maxLength={2000} /></div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : edit ? 'Save the changes' : 'Upload and save'}</button>
+        <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
+      </div>
+    </Modal>
   )
 }
