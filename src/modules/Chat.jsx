@@ -2899,8 +2899,40 @@ function CustomEmojiModal({ onClose }) {
   )
 }
 
+// ---- Emoji names for the reaction hover card ----
+// Official Unicode names (src/lib/emojiNames.js, ~16 KB) load the first time
+// someone hovers a reaction, so they never slow down opening Chat.
+let _emojiNames = null
+let _emojiNamesLoading = null
+function loadEmojiNames() {
+  if (_emojiNames) return Promise.resolve(_emojiNames)
+  if (!_emojiNamesLoading) _emojiNamesLoading = import('../lib/emojiNames').then(m => (_emojiNames = m.default))
+  return _emojiNamesLoading
+}
+// ":thumbs_up:" style label, Slack-like. Custom emoji are already ":name:".
+function emojiLabel(emoji) {
+  if (CUSTOM_RE.test(emoji || '')) return emoji
+  if (!_emojiNames) return null
+  const key = (emoji || '').replace(/\uFE0F/g, '')
+  const base = key.replace(/[\u{1F3FB}-\u{1F3FF}]/gu, '')
+  const name = _emojiNames[key] || _emojiNames[base]
+  return name ? `:${name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')}:` : null
+}
+
 function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, pickerOpen, onOpenPicker, onClosePicker, reactorsFor, setReactorsFor }) {
   const custom = useCustomEmojis()
+  // Slack-style hover card: big emoji, its name, and who reacted.
+  const [hover, setHover] = useState(null) // { emoji, x, y }
+  const [, setNamesReady] = useState(!!_emojiNames)
+  const hoverTimer = useRef(null)
+  function showHover(e, emoji) {
+    const r = e.currentTarget.getBoundingClientRect()
+    clearTimeout(hoverTimer.current)
+    hoverTimer.current = setTimeout(() => setHover({ emoji, x: r.left + r.width / 2, y: r.top }), 250)
+    if (!_emojiNames) loadEmojiNames().then(() => setNamesReady(true)).catch(() => {})
+  }
+  function hideHover() { clearTimeout(hoverTimer.current); setHover(null) }
+  useEffect(() => () => clearTimeout(hoverTimer.current), [])
   const [manageEmoji, setManageEmoji] = useState(false)
   const mine = reactions.filter(r => r.message_id === messageId)
   // If there isn't ~380px of room below the bar (i.e. the message sits low on
@@ -2930,7 +2962,7 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
     const list = names.length === 1 ? names[0]
       : names.length === 2 ? `${names[0]} and ${names[1]}`
       : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-    return `${list} reacted with ${emoji}`
+    return `${list} reacted with ${emojiLabel(emoji) || emoji}`
   }
 
   const open = reactorsFor && reactorsFor.messageId === messageId ? reactorsFor.emoji : null
@@ -2939,26 +2971,48 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
     <div ref={barRef} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4, position: 'relative' }}>
       {entries.map(([emoji, g]) => (
         <button key={emoji}
-          title={titleFor(g, emoji)}
-          onClick={() => onToggle(messageId, emoji)}
-          onContextMenu={(e) => { e.preventDefault(); setReactorsFor(open === emoji ? null : { messageId, emoji }) }}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+          aria-label={titleFor(g, emoji)}
+          onMouseEnter={(e) => showHover(e, emoji)} onMouseLeave={hideHover} onFocus={(e) => showHover(e, emoji)} onBlur={hideHover}
+          onClick={() => { hideHover(); onToggle(messageId, emoji) }}
+          onContextMenu={(e) => { e.preventDefault(); hideHover(); setReactorsFor(open === emoji ? null : { messageId, emoji }) }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 14, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.3,
             border: '1px solid ' + (g.byMe ? 'var(--accent)' : 'var(--line)'),
             background: g.byMe ? 'var(--accent-bg)' : 'var(--surface)', color: g.byMe ? 'var(--accent)' : 'var(--ink)' }}>
-          <EmojiGlyph emoji={emoji} size={16} custom={custom} /> {g.count}
+          <EmojiGlyph emoji={emoji} size={20} custom={custom} /> {g.count}
         </button>
       ))}
       <button onClick={onOpenPicker} title="Add reaction"
-        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 12, cursor: 'pointer', fontSize: 12, padding: '2px 7px', color: 'var(--ink-soft)', lineHeight: 1.4 }}>
+        style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 14, cursor: 'pointer', fontSize: 14, padding: '3px 9px', color: 'var(--ink-soft)', lineHeight: 1.4 }}>
         ☺+
       </button>
+
+      {hover && groups[hover.emoji] && (
+        <div role="tooltip" style={{ position: 'fixed', left: Math.max(8, Math.min(hover.x, window.innerWidth - 8)), top: hover.y - 8, transform: 'translate(-50%, -100%)',
+          zIndex: 70, pointerEvents: 'none', background: '#1d1d1f', color: '#fff', borderRadius: 10, padding: '10px 12px', maxWidth: 240, textAlign: 'center', boxShadow: '0 8px 24px rgba(0,0,0,.25)' }}>
+          <div style={{ display: 'grid', placeItems: 'center', marginBottom: 6, background: '#fff', borderRadius: 8, width: 52, height: 52, marginLeft: 'auto', marginRight: 'auto' }}>
+            <EmojiGlyph emoji={hover.emoji} size={36} custom={custom} />
+          </div>
+          <div style={{ fontSize: 12.5, lineHeight: 1.4 }}>
+            {(() => {
+              const g = groups[hover.emoji]
+              const names = g.who.map(nameOf)
+              const list = names.length === 1 ? names[0]
+                : names.length === 2 ? `${names[0]} and ${names[1]}`
+                : names.length <= 6 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+                : `${names.slice(0, 5).join(', ')} and ${names.length - 5} others`
+              const label = emojiLabel(hover.emoji)
+              return <>{list} reacted with {label ? <b>{label}</b> : 'this'}</>
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Right-click / long-press a pill for the full list. The hover tooltip
           covers the common case; this covers touch, where hover doesn't exist. */}
       {open && (
         <>
           <div onClick={() => setReactorsFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', top: 26, left: 0, zIndex: 41, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', boxShadow: '0 6px 20px rgba(0,0,0,.14)', padding: '8px 10px', minWidth: 170 }}>
+          <div style={{ position: 'absolute', top: 32, left: 0, zIndex: 41, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', boxShadow: '0 6px 20px rgba(0,0,0,.14)', padding: '8px 10px', minWidth: 170 }}>
             <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 5 }}>
               <EmojiGlyph emoji={open} size={16} custom={custom} /> · {groups[open].count}
             </div>
