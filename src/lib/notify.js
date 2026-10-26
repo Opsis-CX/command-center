@@ -388,7 +388,7 @@ export const NOTIF_CATEGORIES = [
 const TYPE_TO_CATEGORY = {
   // chat
   chat_message: 'chat', chat_mention: 'chat', chat_here: 'chat',
-  chat_dm: 'chat', chat_update: 'chat', ack_nudge: 'chat', channel_added: 'chat',
+  chat_dm: 'chat', chat_update: 'chat', chat_reply: 'chat', ack_nudge: 'chat', channel_added: 'chat',
   // schedule
   interval_released: 'schedule', no_show: 'schedule',
   // projects
