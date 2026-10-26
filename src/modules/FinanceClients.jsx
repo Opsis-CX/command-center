@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { todayET, fmtDate, panel } from './financeBits'
 import { ReminderModal, describeReminder, saveArgs } from './FinanceReminders'
+import ContractsSection from './FinanceContracts'
 
 // ============================================================
 // CLIENTS (Admins and Owners)
@@ -127,7 +128,7 @@ export function ClientList({ clients, profiles, entities, links, types, retainer
   )
 }
 
-export function ClientPage({ client, profile, entities, links, types, contacts, retainers, terms, caps = [], reminders = [], documents = [], rates = [], deals = [], allClients = [], profiles = [], onBack, onOpenBill, onOpenClient, reload, flash }) {
+export function ClientPage({ client, profile, entities, links, types, contacts, retainers, terms, caps = [], reminders = [], documents = [], contracts = [], contractTemplates = [], rates = [], deals = [], allClients = [], profiles = [], onBack, onOpenBill, onOpenClient, reload, flash }) {
   const p = profile || { billing_kind: 'not_set', hours_mode: 'decide', status: 'active', in_invoicing: true }
   const inv = p.in_invoicing !== false
   const profOf = (id) => profiles.find(x => x.client_id === id) || {}
@@ -327,7 +328,7 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
 
       <RemindersSection client={client} bill={isChild ? null : savedBill} billTypes={isChild ? [] : savedTypes} reminders={reminders} entities={entities} types={types} allClients={allClients} reload={reload} flash={flash} />
 
-      <DocumentsSection client={client} documents={documents} reload={reload} flash={flash} />
+      <DocumentsSection client={client} documents={documents} contracts={contracts} templates={contractTemplates} reload={reload} flash={flash} />
 
       <Contacts client={client} contacts={contacts} reload={reload} flash={flash} />
     </div>
@@ -683,7 +684,7 @@ export function expiryInfo(d, today) {
 }
 const TONE = { expired: '#b91c1c', soon: '#b45309', ok: 'inherit', none: 'inherit' }
 
-function DocumentsSection({ client, documents, reload, flash }) {
+function DocumentsSection({ client, documents, contracts = [], templates = [], reload, flash }) {
   const [modal, setModal] = useState(null)       // { mode: 'new' | 'replace' | 'edit' | 'archive', doc? }
   const [showArchived, setShowArchived] = useState(false)
   const [err, setErr] = useState('')
@@ -733,9 +734,10 @@ function DocumentsSection({ client, documents, reload, flash }) {
       {err && <div className="login-err" role="alert">{err}</div>}
       {active.length === 0 && <p className="page-sub" style={{ margin: '6px 0 0' }}>No documents yet. Upload the contract, any amendments, the W-9 or the insurance certificate.</p>}
       {active.map(d => <Row key={d.id} d={d} />)}
+      <ContractsSection client={client} contracts={contracts} templates={templates} documents={documents} reload={reload} flash={flash} onUploadSigned={(c) => { setErr(''); setModal({ mode: 'new', contract: c }) }} />
       {archived.length > 0 && <button className="btn btn-ghost" style={{ fontSize: 12.5, marginTop: 8 }} onClick={() => setShowArchived(!showArchived)} aria-expanded={showArchived}>{showArchived ? 'Hide' : 'Show'} archived ({archived.length})</button>}
       {showArchived && archived.map(d => <Row key={d.id} d={d} />)}
-      {modal && modal.mode !== 'archive' && <DocumentModal client={client} mode={modal.mode} doc={modal.doc} onClose={() => setModal(null)} onSaved={async (msg) => { setModal(null); flash(msg); await reload() }} />}
+      {modal && modal.mode !== 'archive' && <DocumentModal client={client} mode={modal.mode} doc={modal.doc} contract={modal.contract} onClose={() => setModal(null)} onSaved={async (msg) => { setModal(null); flash(msg); await reload() }} />}
       {modal && modal.mode === 'archive' && <ArchiveDocModal doc={modal.doc} onClose={() => setModal(null)} onSaved={async (msg) => { setModal(null); flash(msg); await reload() }} />}
     </div>
   )
@@ -763,9 +765,9 @@ function ArchiveDocModal({ doc, onClose, onSaved }) {
   )
 }
 
-function DocumentModal({ client, mode, doc, onClose, onSaved }) {
+function DocumentModal({ client, mode, doc, contract, onClose, onSaved }) {
   const edit = mode === 'edit'
-  const [f, setF] = useState({ kind: doc ? doc.kind : 'contract', title: doc ? doc.title : '', signed_on: doc && doc.signed_on || '', effective_from: doc && doc.effective_from || '', expires_on: doc && doc.expires_on || '', auto_renews: !!(doc && doc.auto_renews), notes: doc && doc.notes || '' })
+  const [f, setF] = useState({ kind: doc ? doc.kind : 'contract', title: doc ? doc.title : contract ? contract.title : '', signed_on: doc && doc.signed_on || '', effective_from: doc && doc.effective_from || '', expires_on: doc && doc.expires_on || '', auto_renews: !!(doc && doc.auto_renews), notes: doc && doc.notes || '' })
   const [file, setFile] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -795,14 +797,18 @@ function DocumentModal({ client, mode, doc, onClose, onSaved }) {
     const path = `${client.id}/${(window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : String(Date.now()))}-${file.name.replace(/[^A-Za-z0-9._-]+/g, '_')}`
     const up = await supabase.storage.from('client-documents').upload(path, file, { contentType: mime, upsert: false })
     if (up.error) { setBusy(false); return setErr(up.error.message) }
-    const { error } = await supabase.rpc('finance_client_document_add', { p_client: client.id, p_kind: f.kind, p_title: f.title, p_path: path, p_name: file.name, p_size: file.size, p_mime: mime,
+    const { data: newId, error } = await supabase.rpc('finance_client_document_add', { p_client: client.id, p_kind: f.kind, p_title: f.title, p_path: path, p_name: file.name, p_size: file.size, p_mime: mime,
       p_signed_on: f.signed_on || null, p_effective_from: f.effective_from || null, p_expires_on: f.expires_on || null, p_auto_renews: f.auto_renews, p_notes: f.notes || null, p_replaces: mode === 'replace' ? doc.id : null })
     if (error) { await supabase.storage.from('client-documents').remove([path]); setBusy(false); return setErr(error.message) }
+    if (contract) {
+      const att = await supabase.rpc('finance_contract_attach', { p_id: contract.id, p_document: newId })
+      if (att.error) { setBusy(false); return setErr(`The file was saved as a document, but linking it to the contract failed: ${att.error.message}`) }
+    }
     setBusy(false)
-    onSaved(mode === 'replace' ? `New version saved. The earlier version is archived.` : `${f.title.trim()} uploaded.`)
+    onSaved(contract ? 'Signed copy saved. The contract is now marked signed.' : mode === 'replace' ? `New version saved. The earlier version is archived.` : `${f.title.trim()} uploaded.`)
   }
   return (
-    <Modal title={edit ? `Edit details: ${doc.title}` : mode === 'replace' ? `Newer version of ${doc.title}` : 'Upload a document'} onClose={onClose} width={560}>
+    <Modal title={edit ? `Edit details: ${doc.title}` : mode === 'replace' ? `Newer version of ${doc.title}` : contract ? `Signed copy of ${contract.title}` : 'Upload a document'} onClose={onClose} width={560}>
       {err && <div className="login-err" role="alert">{err}</div>}
       {mode === 'replace' && <p className="page-sub" style={{ marginTop: 0 }}>The earlier version is archived and stays available. Check the dates below, since they usually change.</p>}
       <div className="field"><label htmlFor="dc-kind">What kind of document is it?</label><select id="dc-kind" value={f.kind} onChange={e => set('kind', e.target.value)}>{DOC_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
