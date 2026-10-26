@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { categoryForType } from '../lib/notify'
 import { loadNotifPrefs, allowsSound } from '../lib/notif_prefs'
+import { primeAudio, loadSoundPrefs, playForNotification } from '../lib/sounds'
 
 // ============================================================
 // NOTIFICATION BELL — unread badge, dropdown, realtime,
@@ -18,38 +19,6 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-// Soft two-note chime via Web Audio (no file needed).
-function makeChime() {
-  let ctx = null
-  function prime() {
-    if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)() } catch (e) { ctx = null } }
-    if (ctx && ctx.state === 'suspended') ctx.resume()
-  }
-  function play(retried = false) {
-    if (!ctx) prime()
-    if (!ctx) return
-    // Browsers suspend audio in background tabs; wake it once before playing.
-    if (ctx.state === 'suspended') {
-      if (!retried) ctx.resume().then(() => play(true)).catch(() => {})
-      return
-    }
-    const now = ctx.currentTime
-    const notes = [ [880, 0], [1174.66, 0.11] ] // A5 then D6
-    notes.forEach(([freq, offset]) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = 'sine'; osc.frequency.value = freq
-      osc.connect(gain); gain.connect(ctx.destination)
-      const t = now + offset
-      gain.gain.setValueAtTime(0, t)
-      gain.gain.linearRampToValueAtTime(0.14, t + 0.02)
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.35)
-      osc.start(t); osc.stop(t + 0.4)
-    })
-  }
-  return { prime, play }
-}
-
 export default function NotificationBell() {
   const [items, setItems] = useState([])
   const [open, setOpen] = useState(false)
@@ -57,16 +26,14 @@ export default function NotificationBell() {
   const [prefs, setPrefs] = useState(null)
   const prefsRef = useRef(null)   // always holds latest prefs for the realtime chime
   const wrapRef = useRef(null)
-  const chimeRef = useRef(null)
   const navigate = useNavigate()
-
-  if (!chimeRef.current) chimeRef.current = makeChime()
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     setMeId(user.id)
     loadNotifPrefs(user.id).then(p => { setPrefs(p); prefsRef.current = p })
+    loadSoundPrefs(user.id)
     const { data } = await supabase.from('notifications')
       .select('*').eq('recipient_id', user.id)
       .order('created_at', { ascending: false }).limit(50)
@@ -83,17 +50,37 @@ export default function NotificationBell() {
       if (!user) return
       const p = await loadNotifPrefs(user.id)
       setPrefs(p); prefsRef.current = p
+      loadSoundPrefs(user.id)
     }
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
   }, [])
 
-  // prime audio on first user interaction anywhere (browsers require this)
+  // Unlock audio on user interaction (browsers only allow sound after a gesture).
   useEffect(() => {
-    const prime = () => { chimeRef.current?.prime() }
-    window.addEventListener('click', prime, { once: true })
-    window.addEventListener('keydown', prime, { once: true })
-    return () => { window.removeEventListener('click', prime); window.removeEventListener('keydown', prime) }
+    window.addEventListener('pointerdown', primeAudio, { passive: true })
+    window.addEventListener('keydown', primeAudio)
+    return () => { window.removeEventListener('pointerdown', primeAudio); window.removeEventListener('keydown', primeAudio) }
+  }, [])
+
+  // The service worker asks this page to play the sound for a push (so a
+  // background pop-up can stay silent and you hear YOUR sound, once).
+  // We answer { played } — if we couldn't play, the pop-up uses the system sound.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+    async function onMsg(e) {
+      const d = e.data
+      if (!d || d.kind !== 'cc-push-sound') return
+      let played = false
+      if (allowsSound(prefsRef.current, categoryForType(d.type))) {
+        played = await playForNotification(d.id, d.type)
+      } else {
+        played = true // sound is off for this category — keep the pop-up quiet too
+      }
+      try { e.ports && e.ports[0] && e.ports[0].postMessage({ played }) } catch { /* ignore */ }
+    }
+    navigator.serviceWorker.addEventListener('message', onMsg)
+    return () => navigator.serviceWorker.removeEventListener('message', onMsg)
   }, [])
 
   // realtime: new notifications for me → add + chime
@@ -105,7 +92,7 @@ export default function NotificationBell() {
         (payload) => {
           setItems(prev => {
             if (prev.some(x => x.id === payload.new.id)) return prev
-            if (allowsSound(prefsRef.current, categoryForType(payload.new.type))) chimeRef.current?.play()
+            if (allowsSound(prefsRef.current, categoryForType(payload.new.type))) playForNotification(payload.new.id, payload.new.type)
             return [payload.new, ...prev]
           })
         })
