@@ -25,9 +25,14 @@ function makeChime() {
     if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)() } catch (e) { ctx = null } }
     if (ctx && ctx.state === 'suspended') ctx.resume()
   }
-  function play() {
+  function play(retried = false) {
     if (!ctx) prime()
     if (!ctx) return
+    // Browsers suspend audio in background tabs; wake it once before playing.
+    if (ctx.state === 'suspended') {
+      if (!retried) ctx.resume().then(() => play(true)).catch(() => {})
+      return
+    }
     const now = ctx.currentTime
     const notes = [ [880, 0], [1174.66, 0.11] ] // A5 then D6
     notes.forEach(([freq, offset]) => {
