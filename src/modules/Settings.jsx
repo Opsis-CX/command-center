@@ -238,11 +238,12 @@ function PushCard({ userId }) {
     if (d.key === hereKey) setEnabled(false)
     loadDevices()
   }
-  async function test() {
+  async function test(d) {
     setBusy(true); setMsg('')
-    const { data, error } = await supabase.rpc('send_test_push')
+    const { data, error } = await supabase.rpc('send_test_push', d ? { p_table: d.table, p_id: d.id } : {})
     setBusy(false)
     if (error) return flash(error.message)
+    if (d) return flash(`Test sent to ${d.name}. It should arrive in a few seconds.`)
     flash(data ? `Test sent to ${data} device${data === 1 ? '' : 's'}. It should arrive in a few seconds.` : 'No devices are turned on yet. Turn this device on first.')
   }
   const btn = (on) => ({ border: '1px solid var(--line)', background: on ? 'var(--accent-bg)' : 'var(--surface)', color: on ? 'var(--accent)' : 'var(--ink)',
@@ -269,7 +270,7 @@ function PushCard({ userId }) {
             {denied ? '🚫 Blocked in this browser\u2019s settings' : enabled ? '🔔 On for this device — turn off' : `🔕 Turn on for this device${isNativeApp() ? ' (app)' : ''}`}
           </button>
         )}
-        <button onClick={test} disabled={busy} style={btn(false)}>Send a test to all my devices</button>
+        <button onClick={() => test()} disabled={busy} style={btn(false)}>Send a test to all my devices</button>
       </div>
       {denied && <p className="page-sub" style={{ margin: '0 0 10px', fontSize: 12.5 }}>To unblock: click the 🔒 lock icon left of the web address → <b>Notifications</b> → <b>Allow</b>, then reload.</p>}
       {msg && <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 10 }}>{msg}</div>}
@@ -287,6 +288,7 @@ function PushCard({ userId }) {
                   <div style={{ fontSize: 13.5, fontWeight: 600 }}>{d.name}{d.key === hereKey && <span className="badge" style={{ marginLeft: 8, fontSize: 11 }}>This device</span>}</div>
                   <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>On since {new Date(d.since).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
                 </div>
+                <button onClick={() => test(d)} disabled={busy} style={{ ...btn(false), padding: '4px 10px', fontSize: 12 }}>Test</button>
                 <button onClick={() => remove(d)} style={{ ...btn(false), padding: '4px 10px', fontSize: 12, color: 'var(--ink-soft)' }}>Remove</button>
               </div>
             ))}
@@ -294,6 +296,7 @@ function PushCard({ userId }) {
         )}
       <p className="page-sub" style={{ margin: '8px 0 0', fontSize: 12 }}>
         Tip: the desktop app installed from Chrome or Edge shares that browser's setting — if it's on in that browser, the app gets alerts too.
+        On iPhone, also check Settings → Notifications → Command Center: Allow Notifications, Sounds, and Banners should be on, and Focus / Do Not Disturb can hide them.
       </p>
     </div>
   )
