@@ -151,12 +151,12 @@ export default function TeamFavorites() {
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {empty.map(p => (
-              <a key={p.id} href={p.id === user?.id ? '/profile' : `/profile/${p.id}`} className="badge" style={{ textDecoration: 'none',
+              <span key={p.id} className="badge" style={{
                 background: 'var(--canvas)', color: 'var(--ink-soft)',
                 border: '1px solid var(--line)', padding: '4px 10px', borderRadius: 999, fontSize: 13,
               }}>
                 {p.full_name || 'Unnamed'}{p.id === user?.id ? ' (you)' : ''}
-              </a>
+              </span>
             ))}
           </div>
         </div>
@@ -237,10 +237,9 @@ export function FavoritesDetails({ fav }) {
 function PersonCard({ person, fav, isMe }) {
   const color = person.color || hueFor(person.full_name || person.id)
   const initial = ((person.full_name || 'U').trim()[0] || 'U').toUpperCase()
-  const href = isMe ? '/profile' : `/profile/${person.id}`
   return (
     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <a href={href} title={`Open ${person.full_name || 'their'} profile`} style={{ display: 'flex', alignItems: 'center', gap: 12, textDecoration: 'none', color: 'inherit' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         {person.avatar_url
           ? <img src={person.avatar_url} alt="" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
           : <div style={{
@@ -257,7 +256,7 @@ function PersonCard({ person, fav, isMe }) {
             {(person.role || '').replace(/,/g, ', ') || '—'}
           </div>
         </div>
-      </a>
+      </div>
       <FavoritesDetails fav={fav} />
     </div>
   )
