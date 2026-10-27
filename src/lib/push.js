@@ -166,19 +166,22 @@ async function enableNativePush(profileId) {
     console.error('Could not save device push token', error)
     throw new Error(`Could not save device push token: ${error.message}`)
   }
+  try { localStorage.setItem(NATIVE_TOKEN_KEY, token) } catch (_) { /* ignore */ }
 
   return true
 }
+// This phone's own FCM token (multi-device: on/off and status are per phone).
+const NATIVE_TOKEN_KEY = 'cc.push.fcmToken'
+function myNativeToken() { try { return localStorage.getItem(NATIVE_TOKEN_KEY) } catch (_) { return null } }
 
 async function disableNativePush(profileId) {
-  // Best-effort: remove this profile's device tokens. (Most users have a
-  // single device; multi-device per-token removal can come later.)
+  // Remove only THIS phone's token, so your other phones keep getting alerts.
+  // (Older installs that never saved their token fall back to removing all.)
   if (!profileId) return true
-  const { error } = await supabase
-    .from('device_push_tokens')
-    .delete()
-    .eq('profile_id', profileId)
-    .eq('provider', 'fcm')
+  const mine = myNativeToken()
+  let q = supabase.from('device_push_tokens').delete().eq('profile_id', profileId).eq('provider', 'fcm')
+  if (mine) q = q.eq('token', mine)
+  const { error } = await q
   if (error) {
     console.error('Could not remove device push token', error)
     throw new Error(`Could not remove device push token: ${error.message}`)
@@ -196,13 +199,11 @@ async function getNativePushStatus(profileId) {
     if (!profileId) {
       return { enabled: false, reason: 'no-profile', native: true }
     }
-    const { data, error } = await supabase
-      .from('device_push_tokens')
-      .select('id')
-      .eq('profile_id', profileId)
-      .eq('provider', 'fcm')
-      .limit(1)
-      .maybeSingle()
+    // Is THIS phone registered? (falls back to "any phone" for older installs)
+    const mine = myNativeToken()
+    let q = supabase.from('device_push_tokens').select('id').eq('profile_id', profileId).eq('provider', 'fcm')
+    if (mine) q = q.eq('token', mine)
+    const { data, error } = await q.limit(1).maybeSingle()
     if (error) {
       return { enabled: false, reason: 'database-error', native: true, error }
     }
@@ -603,4 +604,35 @@ export async function isPushEnabled(
     await getPushStatus(profileId)
 
   return status.enabled
+}
+
+
+// ---------- Your devices (Settings → Notifications) ----------
+// Which registration belongs to the device you're on right now.
+export async function currentDeviceKey() {
+  if (isNativePlatform()) { const t = myNativeToken(); return t ? 'fcm:' + t : null }
+  try {
+    if (!('serviceWorker' in navigator)) return null
+    const reg = await navigator.serviceWorker.getRegistration()
+    const sub = reg && await reg.pushManager.getSubscription()
+    return sub ? 'web:' + sub.endpoint : null
+  } catch (_) { return null }
+}
+export function isNativeApp() { return isNativePlatform() }
+// iPhone/iPad Safari only allows web push once the site is added to the Home Screen.
+export function needsIosHomeScreen() {
+  try {
+    const ua = navigator.userAgent || ''
+    const ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    const standalone = window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true
+    return ios && !standalone && !isNativePlatform()
+  } catch (_) { return false }
+}
+// Friendly name from a user agent ("Chrome on Windows", "Android app", "Safari on iPhone"...).
+export function describeDevice(ua, kind) {
+  const u = ua || ''
+  if (kind === 'native') return /iPhone|iPad/.test(u) ? 'iPhone app' : 'Android app'
+  const os = /iPhone/.test(u) ? 'iPhone' : /iPad/.test(u) ? 'iPad' : /Android/.test(u) ? 'Android' : /Windows/.test(u) ? 'Windows' : /Mac OS X|Macintosh/.test(u) ? 'Mac' : /Linux/.test(u) ? 'Linux' : 'device'
+  const br = /Edg\//.test(u) ? 'Edge' : /OPR\//.test(u) ? 'Opera' : /Firefox\//.test(u) ? 'Firefox' : /Chrome\//.test(u) ? 'Chrome' : /Safari\//.test(u) ? 'Safari' : 'Browser'
+  return `${br} on ${os}`
 }
