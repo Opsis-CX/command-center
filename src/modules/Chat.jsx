@@ -10,7 +10,7 @@ import { RichEditor, RichContent, sanitizeHtml, htmlToText } from '../lib/RichEd
 import { needsTranscode, transcodeToMp3 } from '../lib/audioTranscode'
 import TradeBoardChannel from './TradeBoardChannel'
 import LsaTracker from './LsaTracker'
-import { PresenceDot, effStatus } from '../components/Presence'
+import { PresenceDot, effStatus, isOnline } from '../components/Presence'
 import TaskModal from './TaskModal'
 import { ProjectsDataProvider } from './projectsData'
 
@@ -62,16 +62,104 @@ function registerPhotos(rows) {
     else _photoByName.delete(r.full_name)
   }
 }
-function Av({ name, size = 24, radius = '50%', fontSize, bg }) {
+// Your own messages are labelled "You"; this points "You" at your real name
+// so your photo and hover card work there too.
+let _myName = null
+function setMyPhoto(fullName, url) {
+  _myName = fullName || _myName
+  if (url) _photoByName.set('You', url); else _photoByName.delete('You')
+  if (fullName) { if (url) _photoByName.set(fullName, url); else _photoByName.delete(fullName) }
+}
+const realName = (name) => (name === 'You' && _myName) ? _myName : name
+
+// ---- person hover card (one shared card; any <Av> can open it) ----
+const _cardListeners = new Set()
+let _cardTimer = null
+function openPersonCard(name, el) {
+  clearTimeout(_cardTimer)
+  const r = el.getBoundingClientRect()
+  _cardTimer = setTimeout(() => _cardListeners.forEach(fn => fn({ name: realName(name), rect: { left: r.left, top: r.top, bottom: r.bottom, right: r.right } })), 350)
+}
+function closePersonCard(delay = 180) {
+  clearTimeout(_cardTimer)
+  _cardTimer = setTimeout(() => _cardListeners.forEach(fn => fn(null)), delay)
+}
+function keepPersonCard() { clearTimeout(_cardTimer) }
+
+function Av({ name, size = 24, radius = '50%', fontSize, bg, hover = true }) {
   const url = _photoByName.get(name)
   const [broken, setBroken] = useState(false)
+  const hoverProps = hover && name && name !== 'Someone'
+    ? { onMouseEnter: (e) => openPersonCard(name, e.currentTarget), onMouseLeave: () => closePersonCard() }
+    : {}
   if (url && !broken) {
-    return <img src={url} alt="" onError={() => setBroken(true)} draggable={false}
-      style={{ width: size, height: size, borderRadius: radius, objectFit: 'cover', flex: 'none', display: 'block' }} />
+    return <img src={url} alt="" onError={() => setBroken(true)} draggable={false} {...hoverProps}
+      style={{ width: size, height: size, borderRadius: radius, objectFit: 'cover', flex: 'none', display: 'block', cursor: hoverProps.onMouseEnter ? 'pointer' : undefined }} />
   }
   return (
-    <span style={{ width: size, height: size, borderRadius: radius, background: bg || avatarColor(name), color: '#fff', display: 'grid', placeItems: 'center',
-      fontSize: fontSize || Math.max(9, Math.round(size * 0.4)), fontWeight: 700, flex: 'none' }}>{initials(name)}</span>
+    <span {...hoverProps} style={{ width: size, height: size, borderRadius: radius, background: bg || avatarColor(name), color: '#fff', display: 'grid', placeItems: 'center',
+      fontSize: fontSize || Math.max(9, Math.round(size * 0.4)), fontWeight: 700, flex: 'none', cursor: hoverProps.onMouseEnter ? 'pointer' : undefined }}>{initials(name)}</span>
+  )
+}
+
+function localTimeIn(tz) {
+  try {
+    const t = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz || 'America/New_York' })
+    const mine = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    return t === mine ? `${t} local time` : `${t} their time`
+  } catch { return null }
+}
+function lastSeenText(p) {
+  if (!p?.last_seen_at) return 'Offline'
+  const m = Math.floor((Date.now() - new Date(p.last_seen_at).getTime()) / 60000)
+  if (m < 60) return `Away · active ${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `Away · active ${h}h ago`
+  const d = Math.floor(h / 24)
+  return d === 1 ? 'Offline · active yesterday' : `Offline · active ${d}d ago`
+}
+
+function PersonHoverCard({ profiles, me }) {
+  const [card, setCard] = useState(null)
+  useEffect(() => { _cardListeners.add(setCard); return () => { _cardListeners.delete(setCard) } }, [])
+  if (!card) return null
+  const p = profiles.find(x => x.full_name === card.name) || (me && me.full_name === card.name ? me : null)
+  const name = card.name
+  const photo = _photoByName.get(name)
+  const st = effStatus(p)
+  const online = isOnline(p)
+  const ooo = st?.type === 'ooo'
+  const W = 264
+  const left = Math.max(8, Math.min(card.rect.left, window.innerWidth - W - 8))
+  const below = card.rect.top < 330
+  const pos = below ? { top: card.rect.bottom + 8 } : { bottom: window.innerHeight - card.rect.top + 8 }
+  const until = st?.until ? new Date(st.until).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null
+  return (
+    <div role="dialog" aria-label={name} onMouseEnter={keepPersonCard} onMouseLeave={() => closePersonCard(120)}
+      style={{ position: 'fixed', left, ...pos, width: W, zIndex: 80, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14, boxShadow: '0 16px 40px rgba(0,0,0,.22)', overflow: 'hidden' }}>
+      <div style={{ height: 150, background: photo ? '#000' : avatarColor(name), display: 'grid', placeItems: 'center', position: 'relative' }}>
+        {photo
+          ? <img src={photo} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          : <span style={{ color: '#fff', fontSize: 56, fontWeight: 800 }}>{initials(name)}</span>}
+      </div>
+      <div style={{ padding: '12px 14px 14px' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.25 }}>
+          {name}{p?.pronouns && <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink-soft)', marginLeft: 6 }}>({p.pronouns})</span>}
+        </div>
+        {p?.job_title && <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 1 }}>{p.job_title}</div>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, marginTop: 8 }}>
+          <span style={{ width: 9, height: 9, borderRadius: '50%', flex: 'none', background: ooo ? '#a855f7' : online ? '#22c55e' : '#cbd5e1' }} />
+          <span>{ooo ? 'Out of office' : online ? 'Active now' : lastSeenText(p)}</span>
+        </div>
+        {st && (st.emoji || st.text) && (
+          <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: 13, marginTop: 6, padding: '7px 9px', background: 'var(--canvas)', borderRadius: 8 }}>
+            {st.emoji && <span style={{ fontSize: 15, lineHeight: 1.2 }}>{st.emoji}</span>}
+            <span style={{ minWidth: 0 }}>{st.text || ''}{until && <span className="page-sub" style={{ display: 'block', margin: 0, fontSize: 11.5 }}>Until {until}</span>}</span>
+          </div>
+        )}
+        {p && <div className="page-sub" style={{ margin: '8px 0 0', fontSize: 12 }}>🕒 {localTimeIn(p.timezone)}</div>}
+      </div>
+    </div>
   )
 }
 
@@ -652,6 +740,17 @@ export default function Chat() {
   const [nameModal, setNameModal] = useState(null) // { title, initial, onSave }
   // Staff only: DMs from agents turned off (main switch + per-agent exceptions).
   const [agentDm, setAgentDm] = useState({ blockAll: false, overrides: {} })
+  // A new profile photo (uploaded in Profile or Settings) shows in Chat right away.
+  const [, setPhotoTick] = useState(0)
+  useEffect(() => {
+    const onPhoto = (e) => {
+      setMyPhoto(_myName, e.detail || null)
+      setProfiles(prev => prev.map(p => p.full_name === _myName ? { ...p, avatar_url: e.detail || null } : p))
+      setPhotoTick(t => t + 1)
+    }
+    window.addEventListener('cc:avatar-updated', onPhoto)
+    return () => window.removeEventListener('cc:avatar-updated', onPhoto)
+  }, [])
   const [builtinCollapsed, setBuiltinCollapsed] = useState(() => {
     try { return JSON.parse(localStorage.getItem('chat.sidebarCollapsed') || '{}') } catch { return {} }
   })
@@ -670,16 +769,17 @@ export default function Chat() {
       const myChannelIds = (myMem || []).map(m => m.channel_id)
 
       const [meRes, chRes, profRes] = await Promise.all([
-        supabase.from('profiles').select('id, full_name, role, is_admin').eq('id', user.id).single(),
+        supabase.from('profiles').select('id, full_name, role, is_admin, avatar_url, job_title, pronouns, timezone, last_seen_at, status_emoji, status_text, status_type, status_until').eq('id', user.id).single(),
         myChannelIds.length
           ? supabase.from('channels').select('*').in('id', myChannelIds).order('name')
           : Promise.resolve({ data: [], error: null }),
-        supabase.from('profiles').select('id, full_name, avatar_url, role, is_admin, is_active, last_seen_at, status_emoji, status_text, status_type, status_until').eq('is_active', true).order('full_name'),
+        supabase.from('profiles').select('id, full_name, avatar_url, job_title, pronouns, timezone, role, is_admin, is_active, last_seen_at, status_emoji, status_text, status_type, status_until').eq('is_active', true).order('full_name'),
       ])
       if (chRes.error) throw chRes.error
       setMe(meRes.data)
       setChannels(chRes.data || [])
       registerPhotos(profRes.data)
+      if (meRes.data) setMyPhoto(meRes.data.full_name, meRes.data.avatar_url)
       setProfiles(profRes.data || [])
 
       const [prefRes, secRes] = await Promise.all([
@@ -1124,6 +1224,7 @@ export default function Chat() {
 
   return (
     <div ref={shellRef} style={{ display: isMobile ? 'block' : 'grid', gridTemplateColumns: '240px 1fr', gap: 0, height: chatH || 'calc(100dvh - 150px)', maxHeight: chatH || 'calc(100dvh - 150px)', minHeight: 380, border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
+      <PersonHoverCard profiles={profiles} me={me} />
       {showList && (
         <div style={{ borderRight: isMobile ? 'none' : '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--canvas)', minHeight: 0, height: isMobile ? '100%' : 'auto' }}>
           <style>{SIDEBAR_CSS}</style>
