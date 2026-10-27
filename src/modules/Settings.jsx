@@ -306,6 +306,63 @@ function PushCard({ userId }) {
   )
 }
 
+// Do Not Disturb — a daily quiet-hours window (table notification_dnd; enforced on the
+// server by notif_gate → notif_in_dnd, in the person's own time zone). The server side has
+// been live since July; this panel was never committed, so nobody could turn it on. (2026-10-27)
+function DndCard({ userId, tz }) {
+  const [row, setRow] = React.useState(null)
+  const [saving, setSaving] = React.useState(false)
+  const [msg, setMsg] = React.useState('')
+  React.useEffect(() => {
+    if (!userId) return
+    supabase.from('notification_dnd').select('enabled, start_time, end_time').eq('profile_id', userId).maybeSingle()
+      .then(({ data }) => setRow(data || { enabled: false, start_time: '22:00', end_time: '07:00' }))
+  }, [userId])
+  async function save(patch) {
+    const next = { ...row, ...patch }
+    setRow(next); setSaving(true); setMsg('')
+    const { error } = await supabase.from('notification_dnd').upsert({
+      profile_id: userId, enabled: !!next.enabled,
+      start_time: String(next.start_time).slice(0, 5), end_time: String(next.end_time).slice(0, 5),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'profile_id' })
+    setSaving(false)
+    setMsg(error ? error.message : 'Saved')
+    setTimeout(() => setMsg(''), 2500)
+  }
+  if (!row) return null
+  const fmt = (t) => { const [h, m] = String(t).split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}` }
+  const same = String(row.start_time).slice(0, 5) === String(row.end_time).slice(0, 5)
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, flex: 1 }}>🌙 Do Not Disturb schedule</div>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+          <input type="checkbox" checked={!!row.enabled} onChange={e => save({ enabled: e.target.checked })} style={{ width: 18, height: 18, accentColor: 'var(--accent)' }} />
+          {row.enabled ? 'On' : 'Off'}
+        </label>
+      </div>
+      <p className="page-sub" style={{ marginTop: 0, fontSize: 13, marginBottom: 12 }}>
+        Quiet hours every day, on all your devices. During this time you get no notifications, pop-ups or sounds.
+      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', opacity: row.enabled ? 1 : 0.55 }}>
+        <label style={{ fontSize: 13 }}>From <input type="time" value={String(row.start_time).slice(0, 5)} onChange={e => e.target.value && save({ start_time: e.target.value })}
+          style={{ marginLeft: 6, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit' }} /></label>
+        <label style={{ fontSize: 13 }}>To <input type="time" value={String(row.end_time).slice(0, 5)} onChange={e => e.target.value && save({ end_time: e.target.value })}
+          style={{ marginLeft: 6, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit' }} /></label>
+        <span style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>{saving ? 'Saving…' : msg || `Your time zone: ${(tz || 'America/New_York').replace(/_/g, ' ')}`}</span>
+      </div>
+      {row.enabled && !same && (
+        <div style={{ fontSize: 12.5, marginTop: 8 }}>Quiet every day from <b>{fmt(row.start_time)}</b> to <b>{fmt(row.end_time)}</b>.</div>
+      )}
+      {row.enabled && same && <div style={{ fontSize: 12.5, marginTop: 8, color: 'var(--failed)' }}>Start and end are the same time, so quiet hours won't apply. Pick different times.</div>}
+      <p className="page-sub" style={{ margin: '10px 0 0', fontSize: 12 }}>
+        Urgent things still come through: direct messages, "please confirm" updates, incoming calls, no-show alerts, and website chats waiting.
+      </p>
+    </div>
+  )
+}
+
 function NotificationPrefsCard({ userId }) {
   const [prefs, setPrefs] = React.useState(null)
   const [savingKey, setSavingKey] = React.useState(null)
@@ -529,6 +586,7 @@ export default function Settings() {
       </div>
 
       <NotificationPrefsCard userId={user?.id} />
+      <DndCard userId={user?.id} tz={tz} />
 
       <SoundCard userId={user?.id} />
 
