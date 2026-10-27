@@ -31,15 +31,15 @@ export default function Profile({ profileId }) {
   const ownPage = !profileId || profileId === user?.id
   const refreshBadges = useCallback(async () => {
     if (!ownPage || !user?.id) return
-    const [rem, ann, reads] = await Promise.all([
-      reminderBadgeCount().catch(() => 0),
-      supabase.from('announcements').select('id').is('deleted_at', null),
-      supabase.from('announcement_reads').select('announcement_id').eq('profile_id', user.id),
-    ])
-    const read = new Set((reads.data || []).map(r => r.announcement_id))
-    setBadges({ reminders: rem, updates: ann.error ? 0 : (ann.data || []).filter(a => !read.has(a.id)).length })
+    // Updates badge = updates meant for me (everyone / my teams) that I haven't marked read.
+    const [rem, upd] = await Promise.all([reminderBadgeCount().catch(() => 0), supabase.rpc('my_unread_updates')])
+    setBadges({ reminders: rem, updates: upd.error ? 0 : (upd.data || []).length })
   }, [ownPage, user?.id])
-  useEffect(() => { refreshBadges() }, [refreshBadges])
+  useEffect(() => {
+    refreshBadges()
+    window.addEventListener('cc:updates-read', refreshBadges)
+    return () => window.removeEventListener('cc:updates-read', refreshBadges)
+  }, [refreshBadges])
   // Reminder notifications link to /profile#reminders → open the Reminders panel.
   useEffect(() => {
     if (!ownPage) return
