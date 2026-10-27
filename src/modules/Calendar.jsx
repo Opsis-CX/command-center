@@ -515,7 +515,7 @@ const QUOTES = [
   ["Energy and persistence conquer all things.", "Benjamin Franklin"],
   ["Discipline equals freedom.", "Jocko Willink"],
 ]
-function quoteFor(d) {
+export function quoteFor(d) {
   const dayNum = Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000)
   return QUOTES[((dayNum % QUOTES.length) + QUOTES.length) % QUOTES.length]
 }
