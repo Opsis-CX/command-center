@@ -95,6 +95,7 @@ export default function Profile({ profileId }) {
     </div>
     <aside className="profile-aside">
       <NeedHelp />
+      <AskTurri />
       <div className="profile-picks"><Inspiration /><TipOfDay /></div>
     </aside>
     </div>
@@ -157,6 +158,116 @@ function NeedHelp() {
         <a style={helpLink} href="/chat">💬 Ask in Chat</a>
         <a style={helpLink} href="/schedule">🗓️ My Schedule</a>
       </div>
+    </div>
+  )
+}
+
+// ---------- Ask Turri ----------
+// Same brain as Turri in chat (Knowledge Base, Brand Information Sheet,
+// leadership playbook) via the ask-turri edge function. Nothing is posted to
+// chat; the conversation lives on this page.
+const TURRI_SUGGESTIONS = ['How many days out do we book Genson?', "What's Cheney's dispatch fee?", 'How do I give away an interval?']
+
+function TurriText({ text }) {
+  const lines = String(text || '').split(/\n+/).filter(Boolean)
+  return lines.map((l, i) => /^[-•]\s+/.test(l)
+    ? <div key={i} style={{ display: 'flex', gap: 6 }}><span>•</span><span>{l.replace(/^[-•]\s+/, '')}</span></div>
+    : <div key={i} style={{ marginTop: i ? 4 : 0 }}>{l}</div>)
+}
+
+function AskTurri() {
+  const [turriName, setTurriName] = useState('Turri 🪼')
+  const [msgs, setMsgs] = useState([])   // { role: 'user'|'assistant', content, sources?, covered?, error? }
+  const [q, setQ] = useState('')
+  const [busy, setBusy] = useState(false)
+  const listRef = useRef(null)
+
+  useEffect(() => {
+    supabase.rpc('service_account_id').then(async ({ data: id }) => {
+      if (!id) return
+      const { data } = await supabase.from('profiles').select('full_name').eq('id', id).maybeSingle()
+      if (data?.full_name) setTurriName(data.full_name)
+    })
+  }, [])
+  useEffect(() => { if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight }, [msgs, busy])
+
+  async function ask(text) {
+    const question = (text ?? q).trim()
+    if (!question || busy) return
+    const history = msgs.filter(m => !m.error).slice(-6).map(m => ({ role: m.role, content: m.content }))
+    setMsgs(m => [...m, { role: 'user', content: question }]); setQ(''); setBusy(true)
+    const { data, error } = await supabase.functions.invoke('ask-turri', { body: { question, history } })
+    let err = data?.error
+    if (error) { err = error.message; try { const j = await error.context?.json?.(); if (j?.error) err = j.error } catch { /* ignore */ } }
+    setBusy(false)
+    if (err) { setMsgs(m => [...m, { role: 'assistant', content: err, error: true }]); return }
+    setMsgs(m => [...m, { role: 'assistant', content: data.answer, sources: data.sources || [], covered: data.covered }])
+  }
+
+  const firstName = turriName.split(' ')[0]
+  const emoji = turriName.split(' ').find(w => /\p{Extended_Pictographic}/u.test(w)) || '🪼'
+  const bubble = (mine) => ({ maxWidth: '88%', padding: '9px 12px', borderRadius: 12, fontSize: 13.5, lineHeight: 1.5,
+    background: mine ? 'var(--accent)' : 'var(--canvas)', color: mine ? '#fff' : 'var(--ink)',
+    borderBottomRightRadius: mine ? 4 : 12, borderBottomLeftRadius: mine ? 12 : 4, overflowWrap: 'anywhere' })
+
+  return (
+    <div style={{ ...panel, background: 'linear-gradient(160deg, color-mix(in srgb, #0891B2 9%, var(--surface)), var(--surface) 75%)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ width: 34, height: 34, borderRadius: '50%', background: '#0891B2', display: 'grid', placeItems: 'center', fontSize: 19, flex: 'none' }}>{emoji}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h2 style={{ ...sectionTitle, margin: 0 }}>Ask {firstName}</h2>
+          <div className="page-sub" style={{ margin: 0, fontSize: 12 }}>Brands, booking, processes — answers come from the Knowledge Base.</div>
+        </div>
+        {msgs.length > 0 && <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => setMsgs([])} disabled={busy}>Clear</button>}
+      </div>
+
+      {msgs.length === 0 ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+          {TURRI_SUGGESTIONS.map(sg => (
+            <button key={sg} onClick={() => ask(sg)} disabled={busy}
+              style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 999, padding: '5px 11px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}>{sg}</button>
+          ))}
+        </div>
+      ) : (
+        <div ref={listRef} style={{ marginTop: 12, maxHeight: 340, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingRight: 2 }}>
+          {msgs.map((m, i) => m.role === 'user' ? (
+            <div key={i} style={{ alignSelf: 'flex-end', ...bubble(true) }}>{m.content}</div>
+          ) : (
+            <div key={i} style={{ alignSelf: 'flex-start', display: 'flex', gap: 7, alignItems: 'flex-end', maxWidth: '100%' }}>
+              <span style={{ fontSize: 16, flex: 'none' }}>{emoji}</span>
+              <div style={{ ...bubble(false), ...(m.error ? { background: '#fde8e8', color: '#b42318' } : {}) }}>
+                <TurriText text={m.content} />
+                {m.sources?.length > 0 && (
+                  <div style={{ marginTop: 7, fontSize: 12, color: 'var(--ink-soft)' }}>
+                    📘 {m.sources.map((sr, j) => <span key={sr.id}>{j > 0 && ' · '}<a href={`/knowledge?id=${sr.id}`}>{sr.title}</a></span>)}
+                  </div>
+                )}
+                {m.covered === false && !m.error && (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                    <a href="/help" style={{ ...helpLink, padding: '5px 10px', fontSize: 12 }}>🎫 Help Center</a>
+                    <a href="/chat" style={{ ...helpLink, padding: '5px 10px', fontSize: 12 }}>💬 Ask in Chat</a>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {busy && (
+            <div style={{ alignSelf: 'flex-start', display: 'flex', gap: 7, alignItems: 'center' }}>
+              <span style={{ fontSize: 16 }}>{emoji}</span>
+              <div style={{ ...bubble(false), color: 'var(--ink-soft)', fontStyle: 'italic' }}>{firstName} is looking that up…</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <input value={q} onChange={e => setQ(e.target.value)} maxLength={2000} disabled={busy}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask() } }}
+          placeholder={`Ask ${firstName} a question…`} aria-label={`Ask ${firstName} a question`}
+          style={{ flex: 1, minWidth: 0, padding: '9px 12px', border: '1px solid var(--line)', borderRadius: 10, fontFamily: 'inherit', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)' }} />
+        <button className="btn btn-primary" onClick={() => ask()} disabled={busy || !q.trim()} style={{ fontSize: 13, padding: '8px 16px' }}>{busy ? '…' : 'Ask'}</button>
+      </div>
+      <div className="page-sub" style={{ margin: '6px 0 0', fontSize: 11 }}>🤖 AI answers can be wrong — if something doesn't match what you're seeing, ask the Opsis CX Support team.</div>
     </div>
   )
 }
