@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth'
 import { US_ZONES, detectedTZ, tzAbbrev, COMPANY_TZ } from '../lib/tz'
 import { NOTIF_CATEGORIES } from '../lib/notify'
 import { loadNotifPrefs, saveNotifPref } from '../lib/notif_prefs'
-import { pushSupported, pushPermission, enablePush, disablePush, isPushEnabled } from '../lib/push'
+import { pushSupported, pushPermission, enablePush, disablePush, isPushEnabled, currentDeviceKey, isNativeApp, needsIosHomeScreen, describeDevice } from '../lib/push'
 import { isStaffProfile, isAgentProfile } from './Chat'
 import { SOUNDS, DEFAULT_SOUND_PREFS, loadSoundPrefs, saveSoundPrefs, playSound, primeAudio } from '../lib/sounds'
 
@@ -187,46 +187,114 @@ function AgentDmCard({ userId }) {
   )
 }
 
+// Push on every device you use (web, desktop app, phone) — 2026-10-27, Brittney.
+// Each browser / phone registers itself; this lists all of yours, lets you turn on the one
+// you're using, remove old ones, and send a test that rings all of them.
 function PushCard({ userId }) {
   const [enabled, setEnabled] = React.useState(false)
   const [perm, setPerm] = React.useState('default')
   const [busy, setBusy] = React.useState(false)
   const [msg, setMsg] = React.useState('')
+  const [devices, setDevices] = React.useState(null)
+  const [hereKey, setHereKey] = React.useState(null)
+  const supported = pushSupported()
+  const iosNeedsInstall = needsIosHomeScreen()
 
-  React.useEffect(() => {
-    if (!pushSupported()) return
-    setPerm(pushPermission())
-    isPushEnabled(userId).then(setEnabled)
+  const loadDevices = React.useCallback(async () => {
+    if (!userId) return
+    const [w, n, key] = await Promise.all([
+      supabase.from('push_subscriptions').select('id, endpoint, user_agent, created_at').eq('profile_id', userId).order('created_at', { ascending: false }),
+      supabase.from('device_push_tokens').select('id, token, platform, user_agent, updated_at, created_at').eq('profile_id', userId).order('updated_at', { ascending: false }),
+      currentDeviceKey(),
+    ])
+    setHereKey(key)
+    setDevices([
+      ...(w.data || []).map(d => ({ id: d.id, table: 'push_subscriptions', key: 'web:' + d.endpoint, name: describeDevice(d.user_agent, 'web'), since: d.created_at })),
+      ...(n.data || []).map(d => ({ id: d.id, table: 'device_push_tokens', key: 'fcm:' + d.token, name: describeDevice(d.user_agent, 'native') + (d.platform === 'ios' ? '' : ''), since: d.updated_at || d.created_at })),
+    ])
   }, [userId])
 
-  if (!pushSupported()) return null
+  React.useEffect(() => {
+    if (supported) { setPerm(pushPermission()); isPushEnabled(userId).then(setEnabled) }
+    loadDevices()
+  }, [userId, supported, loadDevices])
+
+  const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 5000) }
   const denied = perm === 'denied'
 
   async function toggle() {
     setBusy(true); setMsg('')
     try {
-      if (enabled) { await disablePush(userId); setEnabled(false); setMsg('Push turned off for this device') }
-      else { await enablePush(userId); setEnabled(true); setPerm('granted'); setMsg('Push turned on for this device') }
-    } catch (e) { setMsg(e.message) }
-    finally { setBusy(false); setTimeout(() => setMsg(''), 3500) }
+      if (enabled) { await disablePush(userId); setEnabled(false); flash('Turned off for this device. Your other devices still get alerts.') }
+      else { await enablePush(userId); setEnabled(true); setPerm('granted'); flash('Turned on for this device ✓') }
+      await loadDevices()
+    } catch (e) { flash(e.message) }
+    finally { setBusy(false) }
   }
+  async function remove(d) {
+    if (!window.confirm(`Stop sending notifications to "${d.name}"?`)) return
+    const { error } = await supabase.from(d.table).delete().eq('id', d.id)
+    if (error) return flash(error.message)
+    if (d.key === hereKey) setEnabled(false)
+    loadDevices()
+  }
+  async function test() {
+    setBusy(true); setMsg('')
+    const { data, error } = await supabase.rpc('send_test_push')
+    setBusy(false)
+    if (error) return flash(error.message)
+    flash(data ? `Test sent to ${data} device${data === 1 ? '' : 's'}. It should arrive in a few seconds.` : 'No devices are turned on yet. Turn this device on first.')
+  }
+  const btn = (on) => ({ border: '1px solid var(--line)', background: on ? 'var(--accent-bg)' : 'var(--surface)', color: on ? 'var(--accent)' : 'var(--ink)',
+    borderRadius: 8, padding: '7px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' })
+  const icon = (n) => /app/.test(n) ? '📱' : /iPhone|Android|iPad/.test(n) ? '📱' : '💻'
 
   return (
     <div style={{ marginTop: 18, paddingTop: 18, borderTop: '1px solid var(--line-soft)' }}>
-      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Push notifications on this device</div>
+      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Push notifications on your devices</div>
       <p className="page-sub" style={{ marginTop: 0, fontSize: 13, marginBottom: 12 }}>
-        Get browser notifications on this device even when Command Center isn't open.
-        This is per-device; enable it on each computer or phone you use.
+        Turn this on once on <b>each</b> device you use (the website, the desktop app, your phone). Every device that's on gets alerts, even when Command Center isn't open.
       </p>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button onClick={toggle} disabled={busy || denied}
-          style={{ border: '1px solid var(--line)', background: enabled ? 'var(--accent-bg)' : 'var(--surface)',
-            color: enabled ? 'var(--accent)' : 'var(--ink-soft)', borderRadius: 8, padding: '7px 12px',
-            fontSize: 13, fontWeight: 600, cursor: denied ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-          {denied ? 'Blocked in browser settings' : enabled ? '🔔 Push is on — turn off' : '🔕 Enable push on this device'}
-        </button>
-        {msg && <span style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>{msg}</span>}
+
+      {/* this device */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        {iosNeedsInstall ? (
+          <div className="card" style={{ padding: '10px 12px', fontSize: 13 }}>
+            📱 <b>On iPhone:</b> tap <b>Share</b> → <b>Add to Home Screen</b>, open Command Center from that new icon, then come back here to turn notifications on. (Apple only allows notifications for apps added to the Home Screen.)
+          </div>
+        ) : !supported ? (
+          <span className="page-sub" style={{ margin: 0, fontSize: 13 }}>This browser doesn't support notifications. Try Chrome, Edge, or the Command Center app.</span>
+        ) : (
+          <button onClick={toggle} disabled={busy || denied} style={{ ...btn(enabled), cursor: denied ? 'not-allowed' : 'pointer' }}>
+            {denied ? '🚫 Blocked in this browser\u2019s settings' : enabled ? '🔔 On for this device — turn off' : `🔕 Turn on for this device${isNativeApp() ? ' (app)' : ''}`}
+          </button>
+        )}
+        <button onClick={test} disabled={busy} style={btn(false)}>Send a test to all my devices</button>
       </div>
+      {denied && <p className="page-sub" style={{ margin: '0 0 10px', fontSize: 12.5 }}>To unblock: click the 🔒 lock icon left of the web address → <b>Notifications</b> → <b>Allow</b>, then reload.</p>}
+      {msg && <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 10 }}>{msg}</div>}
+
+      {/* all devices */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em', margin: '6px 0 6px' }}>Your devices</div>
+      {!devices ? <p className="page-sub" style={{ margin: 0, fontSize: 13 }}>Loading…</p>
+        : devices.length === 0 ? <p className="page-sub" style={{ margin: 0, fontSize: 13 }}>No devices are getting notifications yet.</p>
+        : (
+          <div style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
+            {devices.map((d, i) => (
+              <div key={d.table + d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderTop: i ? '1px solid var(--line-soft)' : 0 }}>
+                <span aria-hidden="true">{icon(d.name)}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>{d.name}{d.key === hereKey && <span className="badge" style={{ marginLeft: 8, fontSize: 11 }}>This device</span>}</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>On since {new Date(d.since).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                </div>
+                <button onClick={() => remove(d)} style={{ ...btn(false), padding: '4px 10px', fontSize: 12, color: 'var(--ink-soft)' }}>Remove</button>
+              </div>
+            ))}
+          </div>
+        )}
+      <p className="page-sub" style={{ margin: '8px 0 0', fontSize: 12 }}>
+        Tip: the desktop app installed from Chrome or Edge shares that browser's setting — if it's on in that browser, the app gets alerts too.
+      </p>
     </div>
   )
 }
