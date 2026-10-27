@@ -121,7 +121,7 @@ export default function LiveStatus() {
       const { data: { user } } = await supabase.auth.getUser()
       setUserId(user?.id || null)
       const [profRes, blkRes, clmRes, runRes, taskRes, projRes, brkRes] = await Promise.all([
-        supabase.from('profiles').select('id, full_name'),
+        supabase.from('profiles').select('id, full_name, avatar_url'),
         fetchAllRows(() => supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role, schedule_id').order('id')),
         fetchAllRows(() => supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at').order('id')),
         // a running timer = started but not ended
@@ -283,7 +283,7 @@ export default function LiveStatus() {
     // scheduled-now-but-absent (so an admin can check them in from here).
     const adjClaimId = checkedIn?.claim?.id || scheduledNow?.claim?.id || null
     const checkedInAt = checkedIn?.claim?.checked_in_at || scheduledNow?.claim?.checked_in_at || null
-    return { pid, name: profile?.full_name || 'Unknown', state, detail, interval, claimId, adjClaimId, checkedInAt }
+    return { pid, name: profile?.full_name || 'Unknown', photo: profile?.avatar_url || null, state, detail, interval, claimId, adjClaimId, checkedInAt }
   })
 
   // Agents (and coordinators without floor-oversight) only see themselves.
@@ -376,9 +376,11 @@ function StatusRow({ row, last, canManage, onCheckOut, onAdjustCheckIn, onNudge,
 
       {/* avatar + name */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, width: 190 }}>
-        <div style={{ width: 26, height: 26, borderRadius: '50%', background: avatarColor(row.name), color: '#fff', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-          {initials(row.name)}
-        </div>
+        {row.photo
+          ? <img src={row.photo} alt="" style={{ width: 26, height: 26, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+          : <div style={{ width: 26, height: 26, borderRadius: '50%', background: avatarColor(row.name), color: '#fff', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+              {initials(row.name)}
+            </div>}
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</div>
           {row.interval && (
