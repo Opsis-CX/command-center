@@ -114,6 +114,87 @@ const COLORS = {
   priority: '#B91C1C',
   team: '#7C3AED',
 }
+// Personal colors (🎨 Colors, saved on profiles.calendar_colors) — 2026-10-27, Brittney.
+// Kinds a person can recolor, with the built-in defaults.
+const CAL_COLOR_KINDS = [
+  ['interval', 'My intervals (shifts)', '#16A34A'],
+  ['event', 'My events', '#0077B6'],
+  ['team', 'Team events', '#7C3AED'],
+  ['coaching', 'Coaching sessions', '#DB2777'],
+  ['mock', 'Mock calls', '#7C3AED'],
+]
+const CAL_SWATCHES = ['#0077B6', '#0891B2', '#14B8A6', '#16A34A', '#65A30D', '#D97706', '#EA580C', '#DC2626', '#DB2777', '#9333EA', '#7C3AED', '#4F46E5', '#475569', '#94A3B8']
+let CAL_STYLE = 'solid'   // set by <Calendar> each render; read by the views when drawing blocks
+// Solid = filled block with white text. Soft = light tint, colored left edge, dark text.
+function blockStyle(color) {
+  if (CAL_STYLE === 'soft') return {
+    background: `color-mix(in srgb, ${color} 18%, var(--cal-paper, #fff))`,
+    color: `color-mix(in srgb, ${color} 70%, #111)`,
+    borderLeft: `3px solid ${color}`,
+  }
+  return { background: color, color: '#fff' }
+}
+// 🎨 Colors — pick a color per kind of calendar item, and Solid vs Soft blocks.
+function CalendarColors({ value, onChange, onClose }) {
+  const v = value || {}
+  const soft = v.style === 'soft'
+  const set = (k, c) => onChange({ ...v, [k]: c })
+  useEffect(() => { const k = (e) => { if (e.key === 'Escape') onClose() }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k) }, [onClose])
+  const styleBtn = (key, label) => (
+    <button onClick={() => onChange({ ...v, style: key })}
+      style={{ flex: 1, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
+        border: '1.5px solid ' + ((v.style || 'solid') === key ? 'var(--accent)' : 'var(--line)'),
+        background: (v.style || 'solid') === key ? 'var(--accent-bg)' : 'transparent', color: 'var(--ink)' }}>{label}</button>
+  )
+  return (
+    <div onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+      style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,.35)', display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div role="dialog" aria-label="Calendar colors" className="card" style={{ width: 'min(520px, 100%)', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+          <h3 style={{ margin: 0, fontSize: 17, flex: 1 }}>🎨 Calendar colors</h3>
+          <button className="btn btn-ghost" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <p className="page-sub" style={{ margin: '0 0 14px', fontSize: 12.5 }}>Only changes how your calendar looks to you. Events you colored one by one keep their color. Google and subscribed calendars are colored under Connected calendars.</p>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 6 }}>Block style</div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          {styleBtn('solid', 'Solid blocks')}{styleBtn('soft', 'Soft (light tint)')}
+        </div>
+        {CAL_COLOR_KINDS.map(([k, label, def]) => {
+          const cur = v[k] || def
+          const prev = soft
+            ? { background: `color-mix(in srgb, ${cur} 18%, #fff)`, color: `color-mix(in srgb, ${cur} 70%, #111)`, borderLeft: `3px solid ${cur}` }
+            : { background: cur, color: '#fff' }
+          return (
+            <div key={k} style={{ padding: '10px 0', borderTop: '1px solid var(--line)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <span style={{ fontWeight: 600, fontSize: 13.5, flex: 1 }}>{label}</span>
+                <span style={{ ...prev, fontSize: 11, padding: '3px 10px', borderRadius: 4 }}>8a–4p · Preview</span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                {CAL_SWATCHES.map(c => {
+                  const on = cur.toLowerCase() === c.toLowerCase()
+                  return <button key={c} onClick={() => set(k, c)} aria-label={`${label}: ${c}`} title={c}
+                    style={{ width: 24, height: 24, borderRadius: '50%', background: c, cursor: 'pointer', padding: 0,
+                      border: on ? '2px solid var(--ink)' : '2px solid transparent', boxShadow: on ? '0 0 0 2px var(--surface) inset' : 'none' }} />
+                })}
+                <label title="Custom color" style={{ width: 24, height: 24, borderRadius: '50%', overflow: 'hidden', position: 'relative', cursor: 'pointer', background: 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }}>
+                  <input type="color" value={/^#[0-9a-f]{6}$/i.test(cur) ? cur : def} onChange={e => set(k, e.target.value)} aria-label={`${label}: custom color`}
+                    style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
+                </label>
+                {v[k] && <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '2px 8px', marginLeft: 4 }} onClick={() => { const n = { ...v }; delete n[k]; onChange(n) }}>Reset</button>}
+              </div>
+            </div>
+          )
+        })}
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14 }}>
+          <button className="btn btn-ghost" onClick={() => onChange({})}>Reset all to defaults</button>
+          <button className="btn btn-primary" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Optional props (used by My Profile's calendar panel; the /calendar page passes none):
 //   openEventId — open this Command Center event's editor once loaded
 //   startNew    — open the "new event" editor once loaded
@@ -137,6 +218,18 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
   const [subs, setSubs] = useState([])
   const [feedEvents, setFeedEvents] = useState([])
   const [showSubs, setShowSubs] = useState(false)
+  const [showColors, setShowColors] = useState(false)
+  const [calColors, setCalColors] = useState({})
+  CAL_STYLE = calColors.style === 'soft' ? 'soft' : 'solid'
+  useEffect(() => {
+    if (!userId) return
+    supabase.from('profiles').select('calendar_colors').eq('id', userId).maybeSingle()
+      .then(({ data }) => { if (data?.calendar_colors) setCalColors(data.calendar_colors) })
+  }, [userId])
+  const saveCalColors = useCallback(async (next) => {
+    setCalColors(next)
+    if (userId) await supabase.from('profiles').update({ calendar_colors: next }).eq('id', userId)
+  }, [userId])
   const [gcalConn, setGcalConn] = useState(null)
   const [gcalAccounts, setGcalAccounts] = useState([])
   const [gcalEvents, setGcalEvents] = useState([])
@@ -264,7 +357,7 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
       kind: 'event', id: e.id, title: e.title, allDay: e.all_day,
       start: e.all_day ? e.start_time : toViewerHHMM(e.event_date, e.start_time, e.tz || COMPANY_TZ, viewerTZ),
       end: e.all_day ? e.end_time : toViewerHHMM(e.event_date, e.end_time, e.tz || COMPANY_TZ, viewerTZ),
-      color: e.color || (e.scope === 'team' ? COLORS.team : COLORS.event), scope: e.scope, raw: e,
+      color: e.color || (e.scope === 'team' ? (calColors.team || COLORS.team) : (calColors.event || COLORS.event)), scope: e.scope, raw: e,
     }))
     const ivs = myClaims.map(c => ({ c, b: blocks.find(b => b.id === c.shift_block_id) }))
       .filter(x => x.b && x.b.block_date === ds)
@@ -272,7 +365,7 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
         kind: 'interval', id: c.id, title: `${b.role || 'Interval'}`, allDay: false,
         start: toViewerHHMM(b.block_date, b.start_time, COMPANY_TZ, viewerTZ),
         end: toViewerHHMM(b.block_date, b.end_time, COMPANY_TZ, viewerTZ),
-        color: COLORS.interval,
+        color: calColors.interval || COLORS.interval,
       }))
     const feeds = feedEvents.filter(f => f.event_date === ds).map(f => {
       const sub = subs.find(s => s.id === f.subscription_id)
@@ -332,7 +425,7 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
         kind: 'coaching', id: 'co-' + s.id, title, allDay: false,
         start: toViewerHHMM(s.session_date, s.start_time, COMPANY_TZ, viewerTZ),
         end: toViewerHHMM(s.session_date, s.end_time, COMPANY_TZ, viewerTZ),
-        color: isMock ? '#7C3AED' : '#DB2777', hangoutLink: s.meeting_url || undefined,
+        color: isMock ? (calColors.mock || '#7C3AED') : (calColors.coaching || '#DB2777'), hangoutLink: s.meeting_url || undefined,
       }
     })
     return [...evs, ...ivs, ...feeds, ...gcal, ...sharedEvs, ...sharedGcal, ...sharedIvs, ...coachIvs].sort((a, b) => {
@@ -340,7 +433,7 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
       if (!a.allDay && b.allDay) return 1
       return (a.start || '').localeCompare(b.start || '')
     })
-  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn, events, claims, coaching, sharedWithMe, hiddenShares, profiles, userId, viewerTZ])
+  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn, events, claims, coaching, sharedWithMe, hiddenShares, profiles, userId, viewerTZ, calColors])
   const tasksOn = useCallback((ds) => {
     const due = myTasks.filter(t => t.due_date === ds)
     return {
@@ -360,6 +453,7 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
+        <button className="btn btn-ghost" onClick={() => setShowColors(true)} style={{ fontSize: 13 }}>🎨 Colors</button>
         <button className="btn btn-ghost" onClick={() => setShowShares(true)} style={{ fontSize: 13 }}>👥 Shared calendars</button>
         <button className="btn btn-ghost" onClick={() => setShowSubs(true)} style={{ fontSize: 13 }}>⚙ Connected calendars</button>
       </div>
@@ -373,6 +467,7 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
           hiddenShares={hiddenShares} setHiddenShares={setHiddenShares}
           onClose={() => setShowShares(false)} onChanged={() => load()} />
       )}
+      {showColors && <CalendarColors value={calColors} onChange={saveCalColors} onClose={() => setShowColors(false)} />}
       {showSubs && (
         <SubscriptionsModal subs={subs} userId={userId} gcalConn={gcalConn} setGcalConn={setGcalConn} gcalAccounts={gcalAccounts} setSubs={setSubs}
           onClose={() => setShowSubs(false)}
@@ -750,7 +845,7 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
                 style={{
                   position: 'absolute', top: clippedTop, height: clippedH,
                   left: `calc(${col * widthPct}% + 1px)`, width: `calc(${widthPct}% - 2px)`,
-                  background: i.color, color: '#fff',
+                  ...blockStyle(i.color),
                   fontSize: narrow ? 8.5 : 10, lineHeight: 1.15, padding: narrow ? '1px 2px' : '2px 4px',
                   borderRadius: 3, overflow: 'hidden', cursor: 'pointer',
                   boxShadow: overlapped ? 'inset 2px 0 0 rgba(255,255,255,.9)' : 'none',
@@ -834,7 +929,7 @@ function WeekView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEvent
                 {allDayByDay[wi].map(i => (
                   <div key={i.kind + i.id} onClick={(e) => openItem(i, e)} title={i.title}
                     style={{
-                      background: i.color, color: '#fff', fontSize: narrow ? 8.5 : 10, lineHeight: 1.25,
+                      ...blockStyle(i.color), fontSize: narrow ? 8.5 : 10, lineHeight: 1.25,
                       borderRadius: 2, padding: '1px 3px', margin: '1px 0', cursor: 'pointer',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>{i.title}</div>
@@ -912,7 +1007,7 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
           </div>
         </div>
         {allDay.map(i => (
-          <div key={i.id} onClick={(e) => openItem(i, e)} style={{ background: i.color, color: '#fff', fontSize: 11, padding: '3px 6px', borderRadius: 3, marginBottom: 4, cursor: 'pointer' }}>{i.title}</div>
+          <div key={i.id} onClick={(e) => openItem(i, e)} style={{ ...blockStyle(i.color), fontSize: 11, padding: '3px 6px', borderRadius: 3, marginBottom: 4, cursor: 'pointer' }}>{i.title}</div>
         ))}
         <div style={{ position: 'relative', height: 24 * ROW }}>
           {/* hour gutter + gridlines */}
@@ -936,7 +1031,7 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
                   style={{
                     position: 'absolute', top, height,
                     left: `${col * widthPct}%`, width: `calc(${widthPct}% - 3px)`,
-                    background: i.color, color: '#fff', fontSize: 11, lineHeight: 1.2,
+                    ...blockStyle(i.color), fontSize: 11, lineHeight: 1.2,
                     padding: '2px 6px', borderRadius: 3, overflow: 'hidden', cursor: 'pointer',
                     // Overlap indicator: a bright inset rail + ring so a shared slot
                     // reads as shared even when the columns are narrow on a phone.
