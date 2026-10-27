@@ -689,8 +689,8 @@ export function mountOpsisQA(ROOT, cfg) {
         }).join('') : '<p class="mut" style="font-size:13px">Nothing in this range.</p>') + '</div></div>';
       };
       var cohort = '<div class="oq-card" style="grid-column:1/-1;padding:14px 18px;display:flex;gap:22px;flex-wrap:wrap;align-items:baseline"><span><span class="cap">Cohort</span> <b>' + esc(rangeLabel()) + '</b> · ' + esc(S.brands.length ? (S.brands.length === 1 ? short(S.brands[0]) : S.brands.length + ' brands') : (LOCK ? short(LOCK) : 'All brands')) + '</span><span><b class="num">' + fmt(B.calls || 0) + '</b> <span class="mut">calls</span></span><span><b class="num">' + fmt(B.conversations || 0) + '</b> <span class="mut">customer conversations</span></span><span><b class="num">' + fmt(B.opps || 0) + '</b> <span class="mut">booking opportunities</span> <span class="mut" style="font-size:12px">= <b class="num" style="color:#1F5A41">' + fmt(B.booked || 0) + '</b> booked + <b class="num" style="color:#A8441A">' + fmt(B.not_booked || 0) + '</b> not booked + <b class="num">' + fmt(Math.max(0, (B.opps || 0) - (B.booked || 0) - (B.not_booked || 0))) + '</b> transferred</span></span><span><b class="num">' + ((B.booked || 0) + (B.not_booked || 0) ? (100 * (B.booked || 0) / ((B.booked || 0) + (B.not_booked || 0))).toFixed(1) + '%' : '—') + '</b> <span class="mut">booking rate</span></span><span class="mut" style="font-size:12px">Percents use these totals; the small number is the count of calls.</span></div>';
-      var h = cohort + dimsCard(X.dims) + '<div style="display:flex;flex-direction:column;gap:16px"><div class="cap" style="padding:0 4px">What the customer did or said</div>' + cust.map(card).join('') + '</div>' +
-        '<div style="display:flex;flex-direction:column;gap:16px"><div class="cap" style="padding:0 4px">What the CSR did</div>' + csr.map(card).join('') + '</div>';
+      var h = cohort + dimsCard(X.dims) + '<div style="display:flex;flex-direction:column;gap:16px"><div style="background:#14302A;color:#fff;border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:700;letter-spacing:-0.01em">What the Customer Did or Said</span><span style="font-size:12px;opacity:.8">Why they called, what they asked for, and how they felt</span></div>' + cust.map(card).join('') + '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:16px"><div style="background:#2F7D5B;color:#fff;border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:700;letter-spacing:-0.01em">What the CSR Did</span><span style="font-size:12px;opacity:.8">How each call was handled, step by step</span></div>' + csr.map(card).join('') + '</div>';
       h += '<div class="oq-card" id="repcard">' + skel(30, 6) + '</div><div class="oq-card" id="aicard">' + skel(30, 6) + '</div>';
       $('ins').innerHTML = h; repeatCard(); aiCard();
     }).catch(function (e) { if (tok === T) $('ins').innerHTML = errBox(e); });
@@ -701,7 +701,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function ago(ts) { if (!ts) return '—'; var d = String(ts).slice(0, 10); return fdate(d) + (d.slice(0, 4) !== todayET().slice(0, 4) ? ', ' + d.slice(0, 4) : ''); }
 
   // Knowledge base
-  var KBS = { list: null, edit: null, del: null, busy: false };
+  var KBS = { list: null, edit: null, del: null, busy: false, q: '', cat: '' };
   function vKb(tok) {
     setMain(crumb([['Knowledge base']]) + '<div id="kbwrap"><div class="oq-card">' + skel(40, 5) + '</div></div>');
     api({ action: 'kb' }).then(function (r) { if (tok !== T) return; KBS.list = r.articles || []; drawKb(); })
@@ -711,8 +711,9 @@ export function mountOpsisQA(ROOT, cfg) {
     var w = $('kbwrap'); if (!w || !KBS.list) return;
     var L = KBS.list, ed = KBS.edit != null ? L[KBS.edit] : null, cats = ['Pricing', 'Policy', 'Coverage', 'Troubleshooting', 'Scheduling', 'Products', 'Staff & routing'];
     var list = '<div class="oq-card" style="flex:999 1 520px"><h2 class="ttl">What the AI should know about your business</h2><p class="sub">The AI reads these when it scores new calls (for example, to check a CSR quoted the right fee). ' + (IS_ADMIN ? 'Every change is logged with who made it.' : 'Only account admins can edit them.') + '</p>' +
+      (L.length ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center"><label class="sr" for="kbq">Search the knowledge base</label><input id="kbq" type="search" class="oq-field" style="flex:1 1 240px" placeholder="Search titles and text, e.g. trip fee, hours, warranty…" value="' + esc(KBS.q) + '" autocomplete="off"><label class="sr" for="kbcat">Category</label><select id="kbcat" class="oq-field" style="width:auto"><option value="">All categories</option>' + cats.concat(L.map(function (a) { return a.category; })).filter(function (c, i, A) { return c && A.indexOf(c) === i; }).map(function (c) { return '<option' + (KBS.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select><span id="kbn" class="mut" style="font-size:12.5px"></span></div><div id="kbnone" class="mut" style="padding:16px 0;display:none">No articles match. <button class="lnk" data-act="kbclear">Clear search</button></div>' : '') +
       (L.length ? L.map(function (a, i) { var on = KBS.edit === i;
-        return '<div style="padding:14px 12px;border-top:1px solid var(--line2);margin:8px -12px 0;border-radius:10px;' + (on ? 'background:#EEF4EF' : '') + '"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><b>' + esc(a.title) + '</b><div style="display:flex;gap:6px;align-items:center">' + (a.category ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(a.category) + '</span>' : '') +
+        return '<div data-kbi="' + i + '" data-kbcat="' + esc(a.category || '') + '" data-kbtext="' + esc(((a.title || '') + ' ' + (a.body || '') + ' ' + (a.category || '')).toLowerCase()) + '" style="padding:14px 12px;border-top:1px solid var(--line2);margin:8px -12px 0;border-radius:10px;' + (on ? 'background:#EEF4EF' : '') + '"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><b>' + esc(a.title) + '</b><div style="display:flex;gap:6px;align-items:center">' + (a.category ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(a.category) + '</span>' : '') +
           (!IS_ADMIN ? '' : KBS.del === i ? '<span class="mut" style="font-size:12px">Remove this article?</span><button class="sel" data-act="kbdelyes" data-i="' + i + '" style="padding:5px 10px;font-size:12px;color:#B4461F"' + (KBS.busy ? ' disabled' : '') + '>Remove</button><button class="sel" data-act="kbdelno" style="padding:5px 10px;font-size:12px">Keep</button>'
             : '<button class="sel" data-act="kbedit" data-i="' + i + '" style="padding:5px 10px;font-size:12px" aria-label="Edit ' + esc(a.title) + '">' + (on ? 'Editing…' : 'Edit') + '</button><button class="sel" data-act="kbdel" data-i="' + i + '" style="padding:5px 10px;font-size:12px" aria-label="Remove ' + esc(a.title) + '">Remove</button>') +
           '</div></div><div style="font-size:13px;line-height:1.55;margin-top:6px;color:#3B4541;white-space:pre-wrap">' + esc(a.body) + '</div><div class="mut" style="font-size:11.5px;margin-top:6px">Updated ' + ago(a.updated_at) + (a.updated_by_name ? ' by ' + esc(a.updated_by_name) : '') + '</div></div>'; }).join('')
@@ -720,7 +721,17 @@ export function mountOpsisQA(ROOT, cfg) {
     var form = IS_ADMIN ? '<div class="oq-card" style="flex:1 1 320px;align-self:flex-start"><h2 class="ttl">' + (ed ? 'Edit article' : 'Add knowledge') + '</h2><p class="sub">Used when scoring new calls once saved.</p><div style="display:flex;flex-direction:column;gap:12px;margin-top:14px"><div><label class="l" for="kbt">Title</label><input id="kbt" class="oq-field" placeholder="e.g. Holiday hours" maxlength="200" value="' + (ed ? esc(ed.title) : '') + '"></div><div><label class="l" for="kbc">Category</label><select id="kbc" class="oq-field">' + cats.map(function (c) { return '<option' + (ed && ed.category === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></div><div><label class="l" for="kbb">What should the AI know?</label><textarea id="kbb" class="oq-field" style="min-height:160px;resize:vertical" maxlength="8000" placeholder="Write it the way you’d explain it to a new CSR…">' + (ed ? esc(ed.body) : '') + '</textarea></div>' +
       (ed ? '<div style="display:flex;gap:8px"><button class="sel btnd" data-act="kbsave" style="flex:1"' + (KBS.busy ? ' disabled' : '') + '>' + (KBS.busy ? 'Saving…' : 'Save changes') + '</button><button class="sel" data-act="kbcancel">Cancel</button></div>' : '<button class="sel btnd" data-act="kbadd"' + (KBS.busy ? ' disabled' : '') + '>' + (KBS.busy ? 'Saving…' : 'Add to knowledge base') + '</button>') + '</div></div>' : '';
     w.innerHTML = '<div class="row" style="align-items:flex-start">' + list + form + '</div>';
+    kbFilter();
+    var kq = $('kbq'); if (kq) kq.addEventListener('input', function () { KBS.q = kq.value; kbFilter(); });
+    var kc = $('kbcat'); if (kc) kc.addEventListener('change', function () { KBS.cat = kc.value; kbFilter(); });
     if (ed) { var t = $('kbt'); if (t) t.focus(); }
+  }
+  // Search (2026-10-26): every word must appear in the title, text or category; category narrows further.
+  function kbFilter() {
+    var words = String(KBS.q || '').toLowerCase().split(/\s+/).filter(Boolean), shown = 0, all = document.querySelectorAll('#kbwrap [data-kbi]');
+    all.forEach(function (el) { var t = el.getAttribute('data-kbtext') || '', ok = (!KBS.cat || el.getAttribute('data-kbcat') === KBS.cat) && words.every(function (w) { return t.indexOf(w) >= 0; }); el.style.display = ok ? '' : 'none'; if (ok) shown++; });
+    var n = $('kbn'); if (n) n.textContent = (words.length || KBS.cat) ? shown + ' of ' + all.length + ' articles' : all.length + ' articles';
+    var none = $('kbnone'); if (none) none.style.display = all.length && !shown ? '' : 'none';
   }
   function busyBtn(btn, on) { if (!btn) return; if (on) { btn.dataset.t = btn.textContent; btn.disabled = true; btn.textContent = 'Saving…'; } else { btn.disabled = false; if (btn.dataset.t) btn.textContent = btn.dataset.t; } }
   function kbWrite(body, done, btn) {
@@ -3016,6 +3027,7 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'classic') { if (CFG.onClassic) CFG.onClassic(); }
       else if (a === 'pdf') { printCall(); }
       else if (a === 'qshmore') { QSHN += 25; drawQs(); }
+      else if (a === 'kbclear') { KBS.q = ''; KBS.cat = ''; drawKb(); var q2 = $('kbq'); if (q2) q2.focus(); }
       else if (a === 'ceopen') { ceModal(); }
       else if (a === 'cereqok' || a === 'cereqno') { ceDecide(d.r, a === 'cereqok', el); }
       else if (a === 'reqok' || a === 'reqno') { decideReq(d.r, a === 'reqok', el); }
