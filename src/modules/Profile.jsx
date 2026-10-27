@@ -5,7 +5,7 @@ import { canAny } from '../lib/permissions'
 import { fmtDate, panel } from './financeBits'
 import { quoteFor } from './Calendar'
 import { FavoritesEditor, FavoritesDetails } from './TeamFavorites'
-import { PD_CSS, ProfileHeader, Drawer, CalendarPanel, NotesPanel, UpdatesPanel, RemindersPanel, reminderBadgeCount, MyWeek, MyMeetings, Section, openSection } from './ProfileDashboard'
+import { PD_CSS, ProfileHeader, Drawer, CalendarPanel, NotesPanel, UpdatesPanel, WeeklySyncPanel, EodPanel, RemindersPanel, reminderBadgeCount, MyWeek, MyMeetings, Section, openSection } from './ProfileDashboard'
 
 // ============================================================
 // PROFILE
@@ -22,9 +22,15 @@ const sectionTitle = { fontSize: 15, fontWeight: 700, margin: '0 0 8px' }
 const row = { display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 0', borderTop: '1px solid var(--line)', fontSize: 14 }
 
 export default function Profile({ profileId }) {
-  const { user, appRole } = useAuth()
+  const { user, appRole, isAdmin } = useAuth()
   // Projects / Tasks / Task hours only for people who can open Project Management (not agents).
   const canProjects = canAny(appRole, 'project_management')
+  // Weekly Sync / EOD Report buttons: internal team only, same rules as those features today.
+  // Weekly Sync = the weekly_sync permission (ASC, support, certification, quality, marketing, admin).
+  // EOD = everyone internal except agents (clients and CSRs never reach this page).
+  const roleKey = String(appRole || '').trim().toLowerCase()
+  const canWeeklySync = canAny(appRole, 'weekly_sync')
+  const canEod = !!isAdmin || (!!roleKey && !['agent', 'client', 'csr', 'service', 'trainee'].includes(roleKey))
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
@@ -104,7 +110,8 @@ export default function Profile({ profileId }) {
         onPhotoChanged={(url) => patchPerson({ avatar_url: url })}
         onEditProfile={() => openSection('about')}
         badges={badges} onOpen={setPanel}
-        weekStats={weekStats} bg={bg} onBgChange={setBg} canProjects={canProjects} />
+        weekStats={weekStats} bg={bg} onBgChange={setBg} canProjects={canProjects}
+        canWeeklySync={canWeeklySync} canEod={canEod} />
 
       <div className="pd-grid">
         <div className="pd-main">
@@ -155,6 +162,17 @@ export default function Profile({ profileId }) {
         <Drawer title="My Notes" closeDelay={900} onClose={() => setPanel(null)}
           footer={<a href="/notes" className="btn btn-ghost" style={{ fontSize: 13, textDecoration: 'none' }}>Open My Notes</a>}>
           <NotesPanel />
+        </Drawer>
+      )}
+      {openPanel === 'weeklysync' && canWeeklySync && (
+        <Drawer title="Weekly Sync" width={1200} guardUnsaved onClose={() => setPanel(null)}
+          footer={<a href="/weekly-sync" className="btn btn-ghost" style={{ fontSize: 13, textDecoration: 'none' }}>Open Weekly Sync</a>}>
+          <WeeklySyncPanel />
+        </Drawer>
+      )}
+      {openPanel === 'eod' && canEod && (
+        <Drawer title="EOD Report" width={isAdmin ? 1200 : 820} guardUnsaved onClose={() => setPanel(null)}>
+          <EodPanel />
         </Drawer>
       )}
       {openPanel === 'updates' && (
