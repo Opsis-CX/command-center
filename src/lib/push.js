@@ -296,6 +296,11 @@ export function pushPermission() {
   return Notification.permission
 }
 
+// Someone turned notifications OFF on this device on purpose (Settings toggle). The
+// auto-enroll banner respects that and never re-asks or auto-enables here. (2026-10-27)
+const OPTOUT_KEY = 'cc.push.optedOut'
+export function pushOptedOut() { try { return localStorage.getItem(OPTOUT_KEY) === '1' } catch (_) { return false } }
+
 export async function enablePush(profileId) {
   // Never register this device to a test account an admin is viewing as —
   // the device would stop getting the admin's own notifications.
@@ -307,6 +312,7 @@ export async function enablePush(profileId) {
       'A profile ID is required to enable push.'
     )
   }
+  try { localStorage.removeItem(OPTOUT_KEY) } catch (_) { /* ignore */ }
 
   // Inside the native Android app, register with FCM instead of Web Push.
   if (isNativePlatform()) {
@@ -442,6 +448,7 @@ export async function enablePush(profileId) {
 export async function disablePush(
   profileId = null
 ) {
+  try { localStorage.setItem(OPTOUT_KEY, '1') } catch (_) { /* ignore */ }
   if (isNativePlatform()) {
     return disableNativePush(profileId)
   }
