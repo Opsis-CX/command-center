@@ -1,131 +1,80 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+
+import React, { useEffect, useState, useCallback } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
 
 // ============================================================
-// LSA FOLLOW-UP REMINDER — a full-screen alert you can't scroll past.
-//
-// Driven by unread `lsa_followup` rows in `notifications`, which
-// public.fire_lsa_followups() inserts (one per LSA channel member) each time
-// an open lead crosses its next follow-up interval (15m, 30m, 3h, 24h, 72h,
-// 120h, 168h). Mirrors MeetingReminder: polls, catches up on tab focus, and
-// shows one alert at a time.
-//
-// Dismiss and Open both mark the notification read (read_at), so it won't fire
-// again on the next poll or a refresh. Open also routes to the LSA channel.
+// REMINDER POP-UP (2026-10-26, Brittney)
+// Shows on screen when a reminder warning fires (30 and 10 minutes before, from the
+// reminder-warnings job) or when an admin sets a reminder for you. Push alerts only
+// appear when the app is in the background, so this covers "app open and in front".
+// Live via realtime on your own notifications; on load it also shows any warning from
+// the last 15 minutes you haven't seen. ✕ or "Open reminders" marks that notification read.
 // ============================================================
 
-const POLL_MS = 30_000
+const TYPES = ['reminder_due', 'reminder_assigned']
+const KEY = 'cc.reminderPopup.seen'
+const seen = () => { try { return new Set(JSON.parse(localStorage.getItem(KEY) || '[]')) } catch { return new Set() } }
+const remember = (ids) => { try { localStorage.setItem(KEY, JSON.stringify([...seen(), ...ids].slice(-200))) } catch { /* ignore */ } }
 
-export default function LsaReminderPopup() {
-  const [due, setDue] = useState(null)          // a notifications row
+export default function ReminderPopup() {
+  const { user } = useAuth()
+  const uid = user?.id
   const navigate = useNavigate()
-  const busyRef = useRef(false)
+  const { pathname } = useLocation()
+  const [queue, setQueue] = useState([])
 
-  const check = useCallback(async () => {
-    // Don't stack a new alert on top of one still on screen.
-    if (due) return
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const { data, error } = await supabase.from('notifications')
-      .select('id, title, body, link, created_at')
-      .eq('recipient_id', user.id)
-      .eq('type', 'lsa_followup')
-      .is('read_at', null)
-      .is('dismissed_at', null)
-      .order('created_at', { ascending: true })
-      .limit(1)
-    if (error || !Array.isArray(data) || data.length === 0) return
-    setDue(data[0])
-  }, [due])
+  const add = useCallback((rows) => {
+    const s = seen()
+    setQueue(q => {
+      const have = new Set(q.map(x => x.id))
+      return [...rows.filter(r => TYPES.includes(r.type) && !s.has(r.id) && !r.read_at && !have.has(r.id)), ...q]
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+    })
+  }, [])
 
   useEffect(() => {
-    check()
-    const id = setInterval(check, POLL_MS)
-    // catch up immediately when the laptop wakes or the tab comes back
-    const onVis = () => { if (document.visibilityState === 'visible') check() }
-    document.addEventListener('visibilitychange', onVis)
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis) }
-  }, [check])
+    if (!uid) return
+    supabase.from('notifications').select('id, type, title, body, created_at, read_at')
+      .eq('recipient_id', uid).in('type', TYPES).is('read_at', null)
+      .gte('created_at', new Date(Date.now() - 15 * 60000).toISOString())
+      .order('created_at', { ascending: false }).limit(5)
+      .then(({ data }) => add(data || []))
+    const ch = supabase.channel('reminder-popup-' + uid)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${uid}` },
+        (payload) => add([payload.new]))
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [uid, add])
 
-  // Mark the current notification read so it won't fire again, then clear it.
-  const resolve = useCallback(async () => {
-    if (!due || busyRef.current) return null
-    busyRef.current = true
-    const link = due.link
-    try {
-      await supabase.from('notifications')
-        .update({ read_at: new Date().toISOString() })
-        .eq('id', due.id)
-    } catch { /* best-effort; never trap the user behind the modal */ }
-    setDue(null)
-    busyRef.current = false
-    return link
-  }, [due])
-
-  async function dismiss() { await resolve() }
-
-  async function open() {
-    const link = await resolve()
-    navigate(link || '/chat')
+  if (!queue.length) return null
+  const top = queue[0]
+  const close = (all) => {
+    const ids = all ? queue.map(q => q.id) : [top.id]
+    remember(ids)
+    setQueue(q => q.filter(x => !ids.includes(x.id)))
+    supabase.from('notifications').update({ read_at: new Date().toISOString() }).in('id', ids).then(() => {})
+  }
+  const open = () => {
+    close(true)
+    if (pathname === '/profile') window.dispatchEvent(new Event('cc:open-reminders'))
+    else navigate('/profile#reminders')
   }
 
-  // Esc closes it — it's a big modal, not a hostage situation.
-  useEffect(() => {
-    if (!due) return
-    const onKey = (e) => { if (e.key === 'Escape') dismiss() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [due]) // eslint-disable-line
-
-  if (!due) return null
-  const accent = '#DC2626'
-
   return (
-    <div
-      role="alertdialog"
-      aria-modal="true"
-      aria-label="LSA lead needs follow-up"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 100000,
-        background: 'rgba(15,23,42,.75)', backdropFilter: 'blur(3px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-      }}
-    >
-      <div style={{
-        width: 'min(560px, 100%)', background: 'var(--surface, #fff)', color: 'var(--ink, #0f172a)',
-        borderRadius: 18, borderTop: `8px solid ${accent}`,
-        boxShadow: '0 24px 64px rgba(0,0,0,.35)', padding: '30px 32px 26px', textAlign: 'center',
-      }}>
-        <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: .8, textTransform: 'uppercase', color: accent }}>
-          💬 LSA follow-up due
-        </div>
-
-        <div style={{ fontSize: 23, fontWeight: 800, margin: '18px 0 6px', lineHeight: 1.25 }}>
-          {due.title || 'An LSA lead needs a follow-up'}
-        </div>
-        {due.body && (
-          <div style={{ fontSize: 15, color: 'var(--ink-soft, #64748b)', marginBottom: 26, whiteSpace: 'pre-wrap' }}>
-            {due.body}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: due.body ? 0 : 20 }}>
-          <button onClick={open} style={{
-            background: accent, color: '#fff', border: 'none', fontWeight: 800,
-            padding: '14px 30px', borderRadius: 10, fontSize: 16, cursor: 'pointer',
-          }}>
-            Open the LSA channel
-          </button>
-          <button onClick={dismiss} style={{
-            background: 'transparent', color: 'var(--ink-soft, #64748b)',
-            border: '1px solid var(--line, #e2e8f0)', fontWeight: 700,
-            padding: '14px 26px', borderRadius: 10, fontSize: 15, cursor: 'pointer',
-          }}>
-            Dismiss
-          </button>
-        </div>
+    <div role="alertdialog" aria-labelledby="rem-pop-t" aria-describedby="rem-pop-d"
+      style={{ position: 'fixed', top: 76, right: 20, zIndex: 95, width: 'min(340px, calc(100vw - 32px))', background: 'var(--surface)',
+        border: '1px solid var(--line)', borderLeft: '4px solid #F59E0B', borderRadius: 14, boxShadow: '0 18px 44px rgba(0,0,0,.22)', padding: '14px 16px', animation: 'remPopIn .25s ease' }}>
+      <style>{'@keyframes remPopIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}'}</style>
+      <button onClick={() => close(false)} aria-label="Dismiss reminder" title="Dismiss"
+        style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, border: 0, borderRadius: 8, background: 'transparent', color: 'var(--ink-soft)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+      <div style={{ paddingRight: 22 }}>
+        <div id="rem-pop-t" style={{ fontWeight: 700, fontSize: 15 }}>{top.title}</div>
+        <div id="rem-pop-d" style={{ fontSize: 13.5, marginTop: 4, overflowWrap: 'anywhere' }}>{top.body}</div>
+        {queue.length > 1 && <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>+{queue.length - 1} more reminder{queue.length > 2 ? 's' : ''}</div>}
       </div>
+      <button className="btn btn-primary" onClick={open} style={{ width: '100%', marginTop: 12 }}>Open reminders</button>
     </div>
   )
 }
