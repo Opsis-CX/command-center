@@ -36,7 +36,9 @@ export default function Profile({ profileId }) {
 
   if (loading) return <p className="page-sub">Loading…</p>
   if (err) return <div className="login-err" role="alert">{err}</div>
-  const { person, job_roles: roles, tokens, projects, tasks, open_task_count: openCount, is_self: isSelf } = data
+  const { person, job_roles: roles, tokens, projects, tasks, open_task_count: openCount, is_self: isSelf, hub, has_favorites: hasFavs } = data
+  const patchPerson = (fields) => setData(d => ({ ...d, person: { ...d.person, ...fields } }))
+  const showHub = hub && (person.is_agent || hub.week?.length || hub.certs?.length || hub.scorecard)
 
   return (
     <div style={{ maxWidth: 900 }}>
@@ -50,10 +52,21 @@ export default function Profile({ profileId }) {
         <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
           <PhotoBlock person={person} editable={isSelf} userId={user?.id} onChanged={(url) => setData(d => ({ ...d, person: { ...d.person, avatar_url: url } }))} />
           <div style={{ flex: 1, minWidth: 220 }}>
-            <h1 className="page-title" style={{ margin: 0 }}>{person.full_name}</h1>
+            <h1 className="page-title" style={{ margin: 0, display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+              {person.full_name}
+              {person.pronouns && <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink-soft)' }}>({person.pronouns})</span>}
+            </h1>
             <div style={{ fontSize: 15, marginTop: 2 }}>
               {person.job_title || <span style={{ color: 'var(--ink-soft)' }}>{isSelf ? 'No job title yet. An Admin sets this.' : 'No job title yet'}</span>}
             </div>
+            {(person.team || person.manager_name) && (
+              <div style={{ fontSize: 13.5, color: 'var(--ink-soft)', marginTop: 3 }}>
+                {person.team && <span>{person.team}</span>}
+                {person.team && person.manager_name && <span> · </span>}
+                {person.manager_name && <span>Reports to <b style={{ color: 'var(--ink)' }}>{person.manager_name}</b></span>}
+              </div>
+            )}
+            <Anniversary startDate={person.start_date} firstName={(person.full_name || '').split(' ')[0]} isSelf={isSelf} />
             {(person.status_text || person.status_emoji) && <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 2 }}>{person.status_emoji} {person.status_text}</div>}
             <div style={{ marginTop: 10 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 4 }}>Job roles</div>
@@ -66,8 +79,12 @@ export default function Profile({ profileId }) {
         </div>
       </div>
 
+      {isSelf && <Checklist person={person} hasFavs={hasFavs} />}
+
+      {showHub && <Hub hub={hub} isSelf={isSelf} firstName={(person.full_name || '').split(' ')[0]} />}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 16, marginBottom: 16 }}>
-        <About person={person} isSelf={isSelf} onSaved={(phone) => setData(d => ({ ...d, person: { ...d.person, phone } }))} />
+        <About person={person} isSelf={isSelf} onPatch={patchPerson} />
         <Tokens tokens={tokens} isSelf={isSelf} />
       </div>
       <Projects projects={projects} tasks={tasks} openCount={openCount} isSelf={isSelf} />
@@ -130,39 +147,303 @@ function PhotoBlock({ person, editable, userId, onChanged }) {
 }
 
 // ---------- details ----------
-function About({ person, isSelf, onSaved }) {
+const COMMON_LANGUAGES = ['English', 'Spanish', 'Portuguese', 'French', 'Tagalog', 'Haitian Creole', 'Vietnamese', 'Mandarin', 'Arabic', 'ASL']
+const inputSt = { padding: '6px 9px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', fontFamily: 'inherit', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)' }
+
+function About({ person, isSelf, onPatch }) {
+  const { isAdmin } = useAuth()
+  const canAdminEdit = isAdmin && !isSelf
   const [phone, setPhone] = useState(person.phone || '')
+  const [pronouns, setPronouns] = useState(person.pronouns || '')
+  const [langs, setLangs] = useState(person.languages || [])
+  const [langInput, setLangInput] = useState('')
+  const [title, setTitle] = useState(person.job_title || '')
+  const [team, setTeam] = useState(person.team || '')
+  const [managerId, setManagerId] = useState(person.manager_id || '')
+  const [people, setPeople] = useState([])
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
-  const changed = phone.trim() !== (person.phone || '')
-  async function save() {
+
+  useEffect(() => {
+    if (!canAdminEdit) return
+    supabase.from('profiles').select('id, full_name').eq('is_active', true).is('client_id', null).eq('is_service_account', false)
+      .order('full_name').then(({ data }) => setPeople((data || []).filter(x => x.id !== person.id)))
+  }, [canAdminEdit, person.id])
+
+  const selfChanged = phone.trim() !== (person.phone || '') || pronouns.trim() !== (person.pronouns || '')
+    || JSON.stringify(langs) !== JSON.stringify(person.languages || [])
+  const adminChanged = title.trim() !== (person.job_title || '') || team.trim() !== (person.team || '') || (managerId || null) !== (person.manager_id || null)
+
+  function addLang(v) {
+    const t = (v || '').trim()
+    if (!t || langs.some(l => l.toLowerCase() === t.toLowerCase()) || langs.length >= 8) return
+    setLangs([...langs, t.slice(0, 30)]); setLangInput('')
+  }
+  function flash(t) { setMsg(t); setTimeout(() => setMsg(''), 3500) }
+
+  async function saveSelf() {
     setErr(''); setMsg('')
     const v = phone.trim()
-    if (v.length > 30 || !/^[0-9 +().-]*$/.test(v)) return setErr('Use digits, spaces and + - ( ) only, up to 30 characters.')
+    if (v.length > 30 || !/^[0-9 +().-]*$/.test(v)) return setErr('Phone: use digits, spaces and + - ( ) only, up to 30 characters.')
+    if (pronouns.trim().length > 30) return setErr('Pronouns: up to 30 characters.')
     setBusy(true)
-    const { error } = await supabase.from('profiles').update({ phone: v || null }).eq('id', person.id)
+    const fields = { phone: v || null, pronouns: pronouns.trim() || null, languages: langs }
+    const { error } = await supabase.from('profiles').update(fields).eq('id', person.id)
     setBusy(false)
     if (error) return setErr(error.message)
-    onSaved(v || null); setMsg('Phone number saved.'); setTimeout(() => setMsg(''), 3500)
+    onPatch(fields); flash('Saved.')
   }
+  async function saveAdmin() {
+    setErr(''); setMsg(''); setBusy(true)
+    const fields = { job_title: title.trim() || null, team: team.trim() || null, manager_id: managerId || null }
+    const { error } = await supabase.from('profiles').update(fields).eq('id', person.id)
+    setBusy(false)
+    if (error) return setErr(error.message)
+    const m = people.find(x => x.id === managerId)
+    onPatch({ ...fields, manager_name: m?.full_name || null }); flash('Saved.')
+  }
+
   return (
     <div style={panel}>
       <h2 style={sectionTitle}>About</h2>
       <div style={row}><span style={{ color: 'var(--ink-soft)' }}>Email</span><span>{person.email || 'Not set'}</span></div>
       <div style={{ ...row, alignItems: 'center' }}>
         <label htmlFor="pf-phone" style={{ color: 'var(--ink-soft)' }}>Phone</label>
-        {isSelf ? (
-          <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input id="pf-phone" value={phone} onChange={e => setPhone(e.target.value)} style={{ width: 170, padding: '6px 9px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)' }} placeholder="Not set" />
-            <button className="btn btn-primary" style={{ fontSize: 12.5, padding: '5px 12px' }} onClick={save} disabled={busy || !changed}>{busy ? 'Saving…' : 'Save'}</button>
-          </span>
-        ) : <span id="pf-phone">{person.phone || 'Not set'}</span>}
+        {isSelf ? <input id="pf-phone" value={phone} onChange={e => setPhone(e.target.value)} style={{ ...inputSt, width: 190 }} placeholder="Not set" />
+          : <span id="pf-phone">{person.phone || 'Not set'}</span>}
       </div>
+      <div style={{ ...row, alignItems: 'center' }}>
+        <label htmlFor="pf-pronouns" style={{ color: 'var(--ink-soft)' }}>Pronouns</label>
+        {isSelf ? (
+          <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input id="pf-pronouns" value={pronouns} maxLength={30} onChange={e => setPronouns(e.target.value)} list="pf-pronoun-list" style={{ ...inputSt, width: 190 }} placeholder="Optional" />
+            <datalist id="pf-pronoun-list"><option value="she/her" /><option value="he/him" /><option value="they/them" /><option value="she/they" /><option value="he/they" /></datalist>
+          </span>
+        ) : <span>{person.pronouns || 'Not set'}</span>}
+      </div>
+      <div style={{ ...row, alignItems: 'flex-start' }}>
+        <span style={{ color: 'var(--ink-soft)', paddingTop: 4 }}>Languages</span>
+        <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, maxWidth: 300 }}>
+          <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {langs.length === 0 && <span className="page-sub" style={{ margin: 0 }}>Not set</span>}
+            {langs.map(l => (
+              <span key={l} className="badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                🗣️ {l}
+                {isSelf && <button onClick={() => setLangs(langs.filter(x => x !== l))} aria-label={`Remove ${l}`} style={{ border: 0, background: 'transparent', cursor: 'pointer', padding: 0, color: 'var(--ink-soft)' }}>✕</button>}
+              </span>
+            ))}
+          </span>
+          {isSelf && (
+            <span style={{ display: 'flex', gap: 6 }}>
+              <input value={langInput} onChange={e => setLangInput(e.target.value)} list="pf-lang-list" placeholder="Add a language"
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLang(langInput) } }} style={{ ...inputSt, width: 150 }} />
+              <datalist id="pf-lang-list">{COMMON_LANGUAGES.map(l => <option key={l} value={l} />)}</datalist>
+              <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '4px 10px' }} onClick={() => addLang(langInput)} disabled={!langInput.trim()}>Add</button>
+            </span>
+          )}
+        </span>
+      </div>
+      {isSelf && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 8 }}>
+          <button className="btn btn-primary" style={{ fontSize: 12.5, padding: '5px 14px' }} onClick={saveSelf} disabled={busy || !selfChanged}>{busy ? 'Saving…' : 'Save'}</button>
+        </div>
+      )}
+
+      {canAdminEdit ? (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', margin: '14px 0 2px' }}>Set by admins</div>
+          <div style={{ ...row, alignItems: 'center' }}><label htmlFor="pf-title" style={{ color: 'var(--ink-soft)' }}>Job title</label>
+            <input id="pf-title" value={title} maxLength={80} onChange={e => setTitle(e.target.value)} style={{ ...inputSt, width: 220 }} placeholder="Not set" /></div>
+          <div style={{ ...row, alignItems: 'center' }}><label htmlFor="pf-team" style={{ color: 'var(--ink-soft)' }}>Team</label>
+            <input id="pf-team" value={team} maxLength={60} onChange={e => setTeam(e.target.value)} style={{ ...inputSt, width: 220 }} placeholder="e.g. GarageCo, Support" /></div>
+          <div style={{ ...row, alignItems: 'center' }}><label htmlFor="pf-mgr" style={{ color: 'var(--ink-soft)' }}>Manager</label>
+            <select id="pf-mgr" value={managerId} onChange={e => setManagerId(e.target.value)} style={{ ...inputSt, width: 220 }}>
+              <option value="">No manager</option>
+              {people.map(x => <option key={x.id} value={x.id}>{x.full_name}</option>)}
+            </select></div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 8 }}>
+            <button className="btn btn-primary" style={{ fontSize: 12.5, padding: '5px 14px' }} onClick={saveAdmin} disabled={busy || !adminChanged}>{busy ? 'Saving…' : 'Save'}</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={row}><span style={{ color: 'var(--ink-soft)' }}>Team</span><span>{person.team || 'Not set'}</span></div>
+          <div style={row}><span style={{ color: 'var(--ink-soft)' }}>Manager</span><span>{person.manager_name || 'Not set'}</span></div>
+        </>
+      )}
+
       {err && <div role="alert" className="login-err" style={{ marginTop: 6 }}>{err}</div>}
       {msg && <div role="status" style={{ fontSize: 13, color: 'var(--passed)', marginTop: 6 }}>{msg}</div>}
       <div style={row}><span style={{ color: 'var(--ink-soft)' }}>Time zone</span><span>{person.timezone || 'Company time (Eastern)'}{isSelf && <> · <a href="/settings">Change in Settings</a></>}</span></div>
       <div style={row}><span style={{ color: 'var(--ink-soft)' }}>Start date</span><span>{person.start_date ? fmtDate(person.start_date) : 'Not set'}</span></div>
+    </div>
+  )
+}
+
+// ---------- work anniversary ----------
+function Anniversary({ startDate, firstName, isSelf }) {
+  if (!startDate) return null
+  const start = new Date(startDate + 'T12:00:00')
+  const now = new Date()
+  let years = now.getFullYear() - start.getFullYear()
+  const thisYear = new Date(now.getFullYear(), start.getMonth(), start.getDate(), 12)
+  if (thisYear > now) years -= 1
+  const next = thisYear > now ? thisYear : new Date(now.getFullYear() + 1, start.getMonth(), start.getDate(), 12)
+  const daysToNext = Math.round((next - now) / 86400000)
+  const isToday = thisYear.toDateString() === now.toDateString() && years >= 1
+  const month = start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  let text
+  if (isToday) text = `🎉 ${years} year${years === 1 ? '' : 's'} with Opsis today!`
+  else if (daysToNext <= 14 && years + 1 >= 1) text = `🎉 ${years + 1}-year anniversary in ${daysToNext} day${daysToNext === 1 ? '' : 's'}`
+  else if (years >= 1) text = `${years} year${years === 1 ? '' : 's'} with Opsis · since ${month}`
+  else text = `With Opsis since ${month}`
+  return <div style={{ fontSize: 13, color: isToday ? 'var(--accent)' : 'var(--ink-soft)', fontWeight: isToday ? 700 : 400, marginTop: 3 }}>{text}</div>
+}
+
+// ---------- "complete your profile" ----------
+function Checklist({ person, hasFavs }) {
+  const items = [
+    { done: !!person.avatar_url, label: 'Add a photo', hint: 'Use "Add photo" under your picture above.' },
+    { done: !!person.phone, label: 'Add your phone number', hint: 'In About, below.' },
+    { done: (person.languages || []).length > 0, label: 'Add the languages you speak', hint: 'In About, below — helps route bilingual calls.' },
+    { done: !!person.pronouns, label: 'Add your pronouns (optional)', hint: 'In About, below.', optional: true },
+    { done: !!hasFavs, label: 'Fill out your Get to Know You card', href: '/get-to-know-you' },
+  ]
+  const required = items.filter(i => !i.optional)
+  const doneCount = required.filter(i => i.done).length
+  if (doneCount === required.length) return null
+  const pct = Math.round(doneCount / required.length * 100)
+  return (
+    <div style={{ ...panel, marginBottom: 16, borderLeft: '4px solid var(--accent)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <h2 style={{ ...sectionTitle, margin: 0 }}>Complete your profile</h2>
+        <span className="page-sub" style={{ margin: 0, fontSize: 12.5 }}>{doneCount} of {required.length} done</span>
+      </div>
+      <div style={{ height: 6, background: 'var(--line)', borderRadius: 999, margin: '10px 0 8px', overflow: 'hidden' }}>
+        <div style={{ width: pct + '%', height: '100%', background: 'var(--accent)', borderRadius: 999, transition: 'width .3s' }} />
+      </div>
+      {items.map(i => (
+        <div key={i.label} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '5px 0', fontSize: 13.5 }}>
+          <span style={{ width: 18, flex: 'none', color: i.done ? 'var(--passed)' : 'var(--ink-soft)' }}>{i.done ? '✓' : '○'}</span>
+          <span style={{ textDecoration: i.done ? 'line-through' : 'none', color: i.done ? 'var(--ink-soft)' : 'var(--ink)' }}>
+            {i.href && !i.done ? <a href={i.href}>{i.label}</a> : i.label}
+            {!i.done && i.hint && <span className="page-sub" style={{ margin: '0 0 0 6px', fontSize: 12 }}>{i.hint}</span>}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ---------- personal hub: this week, performance, certifications ----------
+const fmtT = (t) => { const [h, m] = String(t).split(':').map(Number); const ap = h >= 12 ? 'PM' : 'AM'; return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${ap}` }
+const pctOrDash = (v) => v == null ? '—' : `${Math.round(Number(v) * (Number(v) <= 1.5 ? 100 : 1))}%`
+
+function mergeShifts(blocks) {
+  // Back-to-back interval blocks on the same day → one shift.
+  const byDay = {}
+  for (const b of blocks) (byDay[b.date] = byDay[b.date] || []).push(b)
+  return Object.keys(byDay).sort().map(day => {
+    const list = byDay[day].slice().sort((x, y) => String(x.start).localeCompare(String(y.start)))
+    const shifts = []
+    for (const b of list) {
+      const last = shifts[shifts.length - 1]
+      if (last && String(b.start).slice(0, 5) <= String(last.end).slice(0, 5)) {
+        if (String(b.end) > String(last.end)) last.end = b.end
+        last.blocks.push(b)
+      } else shifts.push({ start: b.start, end: b.end, blocks: [b] })
+    }
+    for (const sh of shifts) {
+      const roles = [...new Set(sh.blocks.map(x => x.role).filter(Boolean))]
+      sh.role = roles.join(', ')
+      sh.noShow = sh.blocks.some(x => x.status === 'no_show')
+      sh.worked = sh.blocks.some(x => x.checked_in_at)
+    }
+    return { day, shifts }
+  })
+}
+
+function Hub({ hub, isSelf, firstName }) {
+  const days = mergeShifts(hub.week || [])
+  const sc = hub.scorecard
+  const certs = hub.certs || []
+  const passed = certs.filter(c => c.status === 'passed')
+  const todo = certs.filter(c => c.status !== 'passed')
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+  const stat = (label, value, sub) => (
+    <div style={{ padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', minWidth: 0 }}>
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em' }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2, marginTop: 2 }}>{value}</div>
+      {sub && <div className="page-sub" style={{ margin: 0, fontSize: 12 }}>{sub}</div>}
+    </div>
+  )
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, marginBottom: 16 }}>
+      <div style={panel}>
+        <h2 style={sectionTitle}>{isSelf ? 'My week' : `${firstName}'s week`}</h2>
+        {days.length === 0 ? <p className="page-sub" style={{ margin: 0 }}>No shifts this week.{isSelf && <> <a href="/schedule">Pick up intervals</a></>}</p> : days.map(d => {
+          const dt = new Date(d.day + 'T12:00:00')
+          const isToday = d.day === today
+          return (
+            <div key={d.day} style={{ ...row, alignItems: 'flex-start', fontWeight: isToday ? 700 : 400 }}>
+              <span style={{ color: isToday ? 'var(--accent)' : 'var(--ink-soft)', width: 86, flex: 'none' }}>
+                {isToday ? 'Today' : dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+              </span>
+              <span style={{ textAlign: 'right' }}>
+                {d.shifts.map((sh, i) => (
+                  <div key={i}>
+                    {fmtT(sh.start)} – {fmtT(sh.end)}
+                    {sh.role && <span className="page-sub" style={{ margin: '0 0 0 6px', fontSize: 12 }}>{sh.role}</span>}
+                    {sh.noShow && <span className="badge failed" style={{ marginLeft: 6 }}>No-show</span>}
+                  </div>
+                ))}
+              </span>
+            </div>
+          )
+        })}
+        {isSelf && <div style={{ marginTop: 10 }}><a href="/schedule">Open Schedule</a></div>}
+      </div>
+
+      <div style={panel}>
+        <h2 style={sectionTitle}>Performance</h2>
+        {!sc ? <p className="page-sub" style={{ margin: 0 }}>No scorecard data yet.</p> : (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+              {stat('Hours (14 days)', sc.hours_14d != null ? Number(sc.hours_14d).toFixed(1) : '—', sc.scheduled_hours_14d != null ? `of ${Number(sc.scheduled_hours_14d).toFixed(1)} scheduled` : null)}
+              {stat('QA score (30 days)', pctOrDash(sc.qa_score_30d), sc.qa_reviews_30d != null ? `${sc.qa_reviews_30d} review${Number(sc.qa_reviews_30d) === 1 ? '' : 's'}` : null)}
+              {stat('Adherence (14 days)', pctOrDash(sc.adherence_14d))}
+              {stat('Calls (30 days)', sc.calls_30d != null ? Number(sc.calls_30d).toLocaleString('en-US') : '—', sc.conversion_30d != null ? `${pctOrDash(sc.conversion_30d)} booked` : null)}
+            </div>
+            {sc.tier && <div style={{ marginTop: 10, fontSize: 13 }}>Tier: <b>{sc.tier}</b>{sc.hold_reason && <span className="page-sub" style={{ margin: '0 0 0 6px', fontSize: 12 }}>{sc.hold_reason}</span>}</div>}
+            {isSelf && <div style={{ marginTop: 10 }}><a href="/scorecard">Open my scorecard</a></div>}
+          </>
+        )}
+      </div>
+
+      <div style={panel}>
+        <h2 style={sectionTitle}>Certifications</h2>
+        {certs.length === 0 ? <p className="page-sub" style={{ margin: 0 }}>No certifications yet.</p> : (
+          <>
+            {passed.map(c => (
+              <div key={c.name} style={row}>
+                <span>✅ {c.name}</span>
+                <span className="page-sub" style={{ margin: 0, fontSize: 12.5 }}>
+                  {c.best_score_pct != null && `${c.best_score_pct}% · `}{c.passed_at ? when(c.passed_at) : 'Passed'}
+                  {c.expires_at && <> · expires {when(c.expires_at)}</>}
+                </span>
+              </div>
+            ))}
+            {todo.map(c => (
+              <div key={c.name} style={row}>
+                <span>{c.status === 'failed' ? '🔁' : '⏳'} {c.name}</span>
+                <span className="badge" style={{ fontSize: 11.5 }}>{c.status === 'failed' ? 'Retake needed' : 'To do'}</span>
+              </div>
+            ))}
+          </>
+        )}
+        {isSelf && <div style={{ marginTop: 10 }}><a href="/my-certifications">Open My certifications</a></div>}
+      </div>
     </div>
   )
 }
