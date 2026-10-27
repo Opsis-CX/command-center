@@ -130,7 +130,8 @@ async function uploadAvatar(file, userId) {
 // ============================================================
 // HEADER
 // ============================================================
-export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks, onPhotoChanged, onEditProfile, badges = {}, onOpen }) {
+export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks, onPhotoChanged, onEditProfile, badges = {}, onOpen, weekStats, bg = {}, onBgChange }) {
+  const [bgOpen, setBgOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [photoMenu, setPhotoMenu] = useState(false)
@@ -161,7 +162,13 @@ export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks,
     ['updates', 'Updates', I.mega, badges.updates],
   ]
   return (
-    <header className="pd-hdr" aria-label="Profile">
+    <div style={{ position: 'relative' }}>
+    {bgOpen && <BackgroundPicker bg={bg} userId={userId} onChange={onBgChange} onClose={() => setBgOpen(false)} />}
+    <header className="pd-hdr" aria-label="Profile" style={headerBgStyle(bg)}>
+      {isSelf && (
+        <button onClick={() => setBgOpen(v => !v)} aria-label="Change header background" title="Change background" aria-expanded={bgOpen}
+          style={{ position: 'absolute', bottom: 8, right: 10, zIndex: 3, width: 28, height: 28, borderRadius: 8, border: '1px solid rgba(255,255,255,.22)', background: 'rgba(0,0,0,.22)', color: '#fff', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>🎨</button>
+      )}
       <div style={{ position: 'relative', flex: 'none' }}>
         {person.avatar_url
           ? <img src={person.avatar_url} alt={person.full_name} style={{ width: 104, height: 104, borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 0 3px rgba(255,255,255,.85)' }} />
@@ -196,6 +203,20 @@ export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks,
         {err && <div role="alert" style={{ marginTop: 6, fontSize: 12.5, color: '#FCA5A5' }}>{err}</div>}
       </div>
 
+      {weekStats && (
+        <div aria-label="This week, Monday to Sunday" style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 'none' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: '#9FD8D3', paddingLeft: 14 }}>This week · Mon–Sun</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <a className="pd-stat" href="/time" title="Time tracked on tasks this week" aria-label={`${hrs(weekStats.task_minutes)} task hours this week`}>
+              <b style={{ fontSize: 22, lineHeight: 1 }}>{hrs(weekStats.task_minutes)}</b><span style={{ fontSize: 12, color: '#CFE7EA' }}>Task hours</span>
+            </a>
+            <a className="pd-stat" href="/schedule" title="Hours on your schedule this week" aria-label={`${hrs(weekStats.scheduled_minutes)} scheduled hours this week`}>
+              <b style={{ fontSize: 22, lineHeight: 1 }}>{hrs(weekStats.scheduled_minutes)}</b><span style={{ fontSize: 12, color: '#CFE7EA' }}>Scheduled hrs</span>
+            </a>
+          </div>
+        </div>
+      )}
+
       {isSelf && (
         <div style={{ display: 'flex', alignItems: 'stretch', gap: 6, paddingLeft: 18, borderLeft: '1px solid rgba(255,255,255,.18)' }}>
           <a className="pd-stat" href="/projects" aria-label={`${projectCount} projects. Open Project Management`}>
@@ -220,6 +241,97 @@ export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks,
         </div>
       )}
     </header>
+    </div>
+  )
+}
+
+const hrs = (m) => { const h = (Number(m) || 0) / 60; return h % 1 === 0 ? String(h) : h.toFixed(1) }
+
+// Background: an uploaded image (darkened so the white text stays readable) or a color.
+// Light colors get a soft dark tint for the same reason. Nothing set = the default teal.
+function luminance(hex) {
+  const n = parseInt(hex.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 })
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+}
+function headerBgStyle(bg) {
+  if (bg?.image) return { background: `linear-gradient(90deg, rgba(5,18,26,.78) 0%, rgba(5,18,26,.55) 55%, rgba(5,18,26,.45) 100%), url("${bg.image}") center / cover no-repeat` }
+  if (bg?.color && /^#[0-9a-f]{6}$/i.test(bg.color)) {
+    const a = Math.min(0.55, Math.max(0, (luminance(bg.color) - 0.18) * 0.9))
+    return { background: `linear-gradient(rgba(0,0,0,${a.toFixed(2)}), rgba(0,0,0,${a.toFixed(2)})), linear-gradient(120deg, ${bg.color}, ${bg.color}dd)` }
+  }
+  return undefined
+}
+const BG_PRESETS = [
+  ['Default teal', null], ['Navy', '#1E3A8A'], ['Ocean', '#0E7490'], ['Forest', '#166534'], ['Plum', '#6B21A8'],
+  ['Berry', '#9D174D'], ['Sunset', '#C2410C'], ['Charcoal', '#1F2937'], ['Slate', '#475569'], ['Gold', '#A16207'],
+]
+async function shrinkImage(file, maxW = 2400) {
+  const url = URL.createObjectURL(file)
+  try {
+    const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = url })
+    const scale = Math.min(1, maxW / img.width)
+    const c = document.createElement('canvas'); c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale)
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
+    return await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.85))
+  } finally { URL.revokeObjectURL(url) }
+}
+function BackgroundPicker({ bg, userId, onChange, onClose }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const fileRef = useRef(null)
+  const boxRef = useRef(null)
+  useEffect(() => {
+    const k = (e) => { if (e.key === 'Escape') onClose() }
+    const out = (e) => { if (boxRef.current && !boxRef.current.contains(e.target) && !e.target.closest('[aria-label="Change header background"]')) onClose() }
+    document.addEventListener('keydown', k); document.addEventListener('mousedown', out)
+    return () => { document.removeEventListener('keydown', k); document.removeEventListener('mousedown', out) }
+  }, [onClose])
+  async function save(fields) {
+    setBusy(true); setErr('')
+    const { error } = await supabase.from('profiles').update(fields).eq('id', userId)
+    setBusy(false)
+    if (error) setErr(error.message); else onChange({ color: 'header_bg_color' in fields ? fields.header_bg_color : bg.color, image: 'header_bg_image' in fields ? fields.header_bg_image : bg.image })
+  }
+  async function onPick(e) {
+    const file = e.target.files?.[0]; if (fileRef.current) fileRef.current.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) return setErr('Please choose an image file.')
+    if (file.size > 15 * 1024 * 1024) return setErr('Please choose an image under 15 MB.')
+    setBusy(true); setErr('')
+    try {
+      const blob = await shrinkImage(file)
+      const path = `${userId}/header-${Date.now()}.jpg`
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
+      if (upErr) throw upErr
+      const url = supabase.storage.from('avatars').getPublicUrl(path)?.data?.publicUrl
+      await save({ header_bg_image: url })
+    } catch (e2) { setBusy(false); setErr(e2?.message || 'Upload failed. Please try again.') }
+  }
+  const sw = (on) => ({ width: 34, height: 34, borderRadius: 9, cursor: 'pointer', border: on ? '2px solid var(--ink)' : '1px solid var(--line)', boxShadow: on ? '0 0 0 2px var(--surface) inset' : 'none', padding: 0 })
+  return (
+    <div ref={boxRef} role="dialog" aria-label="Header background" className="pd-card"
+      style={{ position: 'absolute', top: 'calc(100% - 4px)', right: 8, zIndex: 40, width: 'min(320px, calc(100% - 24px))', color: 'var(--ink)', boxShadow: '0 18px 40px rgba(0,0,0,.28)' }}>
+      <div style={{ fontWeight: 700, marginBottom: 10 }}>Header background</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 6 }}>Color</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {BG_PRESETS.map(([name, c]) => (
+          <button key={name} title={name} aria-label={name} disabled={busy} onClick={() => save({ header_bg_color: c, ...(c === null ? { header_bg_image: null } : {}) })}
+            style={{ ...sw(!bg.image && (bg.color || null) === c), background: c || 'linear-gradient(120deg, #0B2533, #0F4C57)' }} />
+        ))}
+        <label title="Custom color" style={{ ...sw(false), position: 'relative', overflow: 'hidden', background: 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)', display: 'block' }}>
+          <input type="color" aria-label="Custom color" value={bg.color || '#0E3A48'} disabled={busy}
+            onChange={e => save({ header_bg_color: e.target.value })} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
+        </label>
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', margin: '14px 0 6px' }}>Image</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button className="btn btn-ghost" style={{ fontSize: 13, padding: '6px 12px' }} disabled={busy} onClick={() => fileRef.current?.click()}>{busy ? 'Saving…' : bg.image ? 'Change image' : 'Upload image'}</button>
+        {bg.image && <button className="btn btn-ghost" style={{ fontSize: 13, padding: '6px 12px' }} disabled={busy} onClick={() => save({ header_bg_image: null })}>Remove image</button>}
+        <input ref={fileRef} type="file" accept="image/*" onChange={onPick} style={{ display: 'none' }} aria-label="Choose a background image" />
+      </div>
+      <p className="page-sub" style={{ margin: '10px 0 0', fontSize: 12 }}>Images are darkened a little so your name stays easy to read. A wide photo (landscape) works best. An image shows instead of the color.</p>
+      {err && <div role="alert" className="login-err" style={{ marginTop: 8 }}>{err}</div>}
+    </div>
   )
 }
 
