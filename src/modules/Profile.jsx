@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { canAny } from '../lib/permissions'
 import { fmtDate, panel } from './financeBits'
 import { quoteFor } from './Calendar'
 import { FavoritesEditor, FavoritesDetails } from './TeamFavorites'
@@ -21,7 +22,9 @@ const sectionTitle = { fontSize: 15, fontWeight: 700, margin: '0 0 8px' }
 const row = { display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 0', borderTop: '1px solid var(--line)', fontSize: 14 }
 
 export default function Profile({ profileId }) {
-  const { user } = useAuth()
+  const { user, appRole } = useAuth()
+  // Projects / Tasks / Task hours only for people who can open Project Management (not agents).
+  const canProjects = canAny(appRole, 'project_management')
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
@@ -101,7 +104,7 @@ export default function Profile({ profileId }) {
         onPhotoChanged={(url) => patchPerson({ avatar_url: url })}
         onEditProfile={() => openSection('about')}
         badges={badges} onOpen={setPanel}
-        weekStats={weekStats} bg={bg} onBgChange={setBg} />
+        weekStats={weekStats} bg={bg} onBgChange={setBg} canProjects={canProjects} />
 
       <div className="pd-grid">
         <div className="pd-main">
