@@ -106,6 +106,7 @@ export default function Updates() {
     if (!user?.id || readByMe(a)) return
     setReads(cur => ({ ...cur, [a.id]: [...(cur[a.id] || []), { profile_id: user.id, read_at: new Date().toISOString() }] }))
     await supabase.from('announcement_reads').insert({ announcement_id: a.id, profile_id: user.id })
+    window.dispatchEvent(new Event('cc:updates-read'))
   }
   async function toggleReaders(a) {
     if (openReaders === a.id) { setOpenReaders(null); return }
@@ -138,6 +139,18 @@ export default function Updates() {
   const teamName = (id) => teams.find(t => t.id === id)?.name || 'team'
   const audienceLabel = (a) => (!a.audience_tags || a.audience_tags.length === 0) ? 'Everyone' : a.audience_tags.map(teamName).join(', ')
   const visible = (items || []).filter(a => filter === 'all' || a.category === filter)
+  const [unreadForMe, setUnreadForMe] = useState(0)
+  const [marking, setMarking] = useState(false)
+  useEffect(() => {
+    supabase.rpc('my_unread_updates').then(({ data }) => setUnreadForMe((data || []).length))
+  }, [items, reads])
+  async function markAllRead() {
+    if (!window.confirm(`Mark all ${unreadForMe} update${unreadForMe === 1 ? '' : 's'} as read? This confirms you've read ${unreadForMe === 1 ? 'it' : 'them'}.`)) return
+    setMarking(true)
+    const { error } = await supabase.rpc('mark_my_updates_read')
+    setMarking(false)
+    if (error) setErr(error.message); else { setUnreadForMe(0); load(); window.dispatchEvent(new Event('cc:updates-read')) }
+  }
 
   return (
     <div>
@@ -146,7 +159,10 @@ export default function Updates() {
           <h1 className="page-title">Updates</h1>
           <p className="page-sub">Command Center changes, client updates, and anything from your shift others should know. Post reaches Everyone — or just the team it concerns.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setEditing(e => e ? null : 'new')}>{editing ? 'Close' : '＋ New update'}</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {unreadForMe > 0 && <button className="btn btn-ghost" onClick={markAllRead} disabled={marking}>{marking ? 'Marking…' : `✓ Mark all as read (${unreadForMe})`}</button>}
+          <button className="btn btn-primary" onClick={() => setEditing(e => e ? null : 'new')}>{editing ? 'Close' : '＋ New update'}</button>
+        </div>
       </div>
 
       {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 12 }}>{err}</div>}
