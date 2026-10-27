@@ -721,6 +721,11 @@ export default function Chat() {
   const [me, setMe] = useState(null)
   const [channels, setChannels] = useState([])
   const [activeId, setActiveId] = useState(null)
+  // Lets the notification bell skip its pop-up for the conversation you're looking at.
+  useEffect(() => {
+    window.__ccOpenChannel = activeId || null
+    return () => { if (window.__ccOpenChannel === activeId) window.__ccOpenChannel = null }
+  }, [activeId])
   const [profiles, setProfiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
