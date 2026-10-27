@@ -3153,6 +3153,201 @@ function emojiLabel(emoji) {
   return name ? `:${name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')}:` : null
 }
 
+// ============================================================
+// REACTION PICKER (2026-10-27, Brittney's mockup)
+// Compact quick bar (6 favourites + a smiley+ button) that opens a "Choose a reaction"
+// panel: search, category tabs, tile grid, an Animated section, Custom emojis, and a
+// footer with the hovered emoji's name + "Add custom emoji". Emoji data and names come
+// from src/lib/emojiNames.js (Unicode order), loaded when the panel opens.
+// ============================================================
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '🙏', '😍', '💙']
+const RECENT_KEY = 'cc.emoji.recent'
+const DEFAULT_RECENT = ['❤️', '🥺', '👍', '👀', '😂', '🔥', '🙏', '💚', '✨', '💯', '🥰', '😎', '🎉', '😊']
+// Popular emoji that have Google's animated versions (any without one just show normally).
+const ANIMATED_SET = ['😀', '😂', '🤣', '😊', '😍', '🥰', '😘', '😎', '🤩', '🥳', '😇', '🤗', '🤔', '🫡', '🙄', '😴', '🤯', '😱', '😭', '🥺',
+  '😤', '😡', '🤬', '🤡', '👻', '💀', '💩', '🤖', '👀', '👋', '👍', '👎', '👏', '🙌', '🫶', '🙏', '💪', '✌️', '🤞', '🫰',
+  '❤️', '🧡', '💛', '💚', '💙', '💜', '💔', '❤️‍🔥', '💯', '🔥', '✨', '🎉', '🎊', '🎂', '🎁', '⭐', '🌈', '⚡', '🚀', '🪼']
+// first emoji of each Unicode group, in emojiNames.js order
+const EMOJI_GROUPS = [
+  ['smileys', 'Smileys', '😀'], ['people', 'People', '👋'], ['animals', 'Animals', '🐵'], ['food', 'Food', '🍇'],
+  ['travel', 'Travel', '🌍'], ['activities', 'Activities', '🎃'], ['objects', 'Objects', '👓'], ['symbols', 'Symbols', '🏧'], ['flags', 'Flags', '🏁'],
+]
+// Names drop U+FE0F; put it back after single-width characters so they draw as emoji (❤ → ❤️, #⃣ → #️⃣).
+function withVS(e) {
+  let out = ''
+  for (const ch of Array.from(e)) {
+    out += ch
+    const cp = ch.codePointAt(0)
+    if (cp < 0x10000 && cp !== 0x200D && cp !== 0xFE0F && cp !== 0x20E3) out += '\uFE0F'
+  }
+  return out
+}
+function readRecent() {
+  try { const v = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); if (Array.isArray(v) && v.length) return v } catch { /* ignore */ }
+  return DEFAULT_RECENT
+}
+function pushRecent(e) {
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify([e, ...readRecent().filter(x => x !== e)].slice(0, 28))) } catch { /* ignore */ }
+}
+const RP_ICON = {
+  recent: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
+  animated: 'M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4zM19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8zM5 15l.6 1.4 1.4.6-1.4.6L5 19l-.6-1.4L3 17l1.4-.6z',
+  smileys: 'M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
+  people: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+  animals: 'M5 11c-1.5-1-2-3-1-5 2 0 3.5 1 4 2.5M19 11c1.5-1 2-3 1-5-2 0-3.5 1-4 2.5M12 21c-4 0-7-2.5-7-6.5S8 8 12 8s7 2.5 7 6.5S16 21 12 21zM10 14h.01M14 14h.01',
+  food: 'M3 11h18M5 11a7 7 0 0 1 14 0M4 15h16M5 15v1a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-1',
+  travel: 'M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z',
+  activities: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 3v18M3 12h18M5.6 5.6c3.5 3.5 3.5 9.3 0 12.8M18.4 5.6c-3.5 3.5-3.5 9.3 0 12.8',
+  objects: 'M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z',
+  symbols: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z',
+  flags: 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7',
+  custom: 'M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z',
+  search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35',
+  close: 'M18 6L6 18M6 6l12 12',
+  smileplus: 'M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01M20 12.5A8.5 8.5 0 1 1 11.5 4M19 2v6M16 5h6',
+}
+const RpIcon = ({ d, size = 18 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
+const RP_CSS = `
+.rp-quick { display: inline-flex; align-items: center; gap: 2px; padding: 5px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+.rp-q { width: 40px; height: 40px; border: 0; border-radius: 12px; background: transparent; cursor: pointer; display: grid; place-items: center; transition: transform .12s, background .12s; }
+.rp-q:hover, .rp-q:focus-visible { background: var(--accent-bg); transform: scale(1.12); outline: none; }
+.rp-q.more { color: var(--accent); background: var(--accent-bg); margin-left: 4px; }
+.rp-panel { width: 440px; max-width: calc(100vw - 24px); height: 480px; max-height: 70vh; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 18px 44px rgba(0,0,0,.18); overflow: hidden; margin-top: 8px; }
+.rp-head { display: flex; align-items: center; padding: 16px 18px 10px; }
+.rp-head h3 { margin: 0; font-size: 17px; font-weight: 700; flex: 1; }
+.rp-x { border: 0; background: transparent; cursor: pointer; color: var(--ink-soft); width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; }
+.rp-x:hover { background: var(--canvas); }
+.rp-search { margin: 0 18px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; color: var(--ink-soft); }
+.rp-search:focus-within { border-color: var(--accent); }
+.rp-search input { flex: 1; border: 0; outline: none; background: transparent; padding: 10px 0; font: inherit; font-size: 14px; color: var(--ink); }
+.rp-tabs { display: flex; gap: 2px; padding: 10px 14px 6px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line-soft, var(--line)); }
+.rp-tabs::-webkit-scrollbar { display: none; }
+.rp-tab { flex: none; border: 0; background: transparent; cursor: pointer; border-radius: 10px; padding: 6px 8px; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--ink-soft); font: inherit; font-size: 11px; min-width: 56px; }
+.rp-tab:hover { background: var(--canvas); color: var(--ink); }
+.rp-tab.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+.rp-body { flex: 1; overflow-y: auto; padding: 4px 18px 10px; position: relative; }
+.rp-sec-h { display: flex; align-items: baseline; justify-content: space-between; margin: 12px 0 8px; }
+.rp-sec-h b { font-size: 14px; }
+.rp-more { border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.rp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.rp-tile { aspect-ratio: 1; border: 1px solid var(--line-soft, var(--line)); background: var(--canvas); border-radius: 12px; cursor: pointer; display: grid; place-items: center; padding: 0; transition: transform .1s, border-color .1s, background .1s; }
+.rp-tile:hover, .rp-tile:focus-visible { border-color: var(--accent); background: var(--accent-bg); transform: scale(1.06); outline: none; }
+.rp-foot { display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-top: 1px solid var(--line-soft, var(--line)); min-height: 44px; }
+.rp-foot .name { flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-add { border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+`
+function ReactionPicker({ custom, onPick, onClose, onAddCustom }) {
+  const [full, setFull] = useState(false)
+  const [names, setNames] = useState(_emojiNames)
+  const [q, setQ] = useState('')
+  const [tab, setTab] = useState('recent')
+  const [hover, setHover] = useState(null)        // { e, label }
+  const [more, setMore] = useState({})
+  const bodyRef = useRef(null)
+  const recent = useMemo(() => readRecent(), [])
+  useEffect(() => { if (full && !names) loadEmojiNames().then(setNames).catch(() => {}) }, [full, names])
+  useEffect(() => { const k = (ev) => { if (ev.key === 'Escape') onClose() }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k) }, [onClose])
+
+  const pick = (e) => { if (!CUSTOM_RE.test(e)) pushRecent(e); onPick(e) }
+  const label = (e) => {
+    if (CUSTOM_RE.test(e)) return e
+    const n = names && (names[e.replace(/\uFE0F/g, '')] || names[e.replace(/\uFE0F/g, '').replace(/[\u{1F3FB}-\u{1F3FF}]/gu, '')])
+    return n ? `:${n.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')}:` : e
+  }
+  const groups = useMemo(() => {
+    if (!names) return []
+    const out = EMOJI_GROUPS.map(([key, title]) => ({ key, title, list: [] }))
+    let gi = 0
+    for (const raw of Object.keys(names)) {
+      if (gi + 1 < EMOJI_GROUPS.length && raw === EMOJI_GROUPS[gi + 1][2]) gi++
+      out[gi].list.push(withVS(raw))
+    }
+    return out
+  }, [names])
+  const results = useMemo(() => {
+    const t = q.trim().toLowerCase()
+    if (!t) return null
+    const cust = custom.filter(c => c.shortcode.includes(t.replace(/:/g, ''))).map(c => `:${c.shortcode}:`)
+    const nat = names ? Object.entries(names).filter(([, n]) => n.toLowerCase().includes(t)).slice(0, 140).map(([k]) => withVS(k)) : []
+    return [...cust, ...nat]
+  }, [q, names, custom])
+
+  const sections = [
+    { key: 'recent', title: 'Frequently Used', list: recent, limit: 14 },
+    { key: 'animated', title: 'Animated', list: ANIMATED_SET, animate: true, limit: 21 },
+    ...(custom.length ? [{ key: 'custom', title: 'Custom Emojis', list: custom.map(c => `:${c.shortcode}:`), limit: 14 }] : []),
+    ...groups,
+  ]
+  const tabs = [['recent', 'Recent'], ['animated', 'Animated'], ...(custom.length ? [['custom', 'Custom']] : []), ...EMOJI_GROUPS.map(([k, t]) => [k, t])]
+  const goTab = (k) => {
+    setTab(k); setQ('')
+    requestAnimationFrame(() => { const el = bodyRef.current?.querySelector(`[data-sec="${k}"]`); if (el) bodyRef.current.scrollTo({ top: el.offsetTop - 4, behavior: 'smooth' }) })
+  }
+  const onScroll = () => {
+    const b = bodyRef.current; if (!b || q) return
+    let cur = 'recent'
+    b.querySelectorAll('[data-sec]').forEach(el => { if (el.offsetTop - 24 <= b.scrollTop) cur = el.dataset.sec })
+    if (cur !== tab) setTab(cur)
+  }
+  const tile = (e, i, animate) => (
+    <button key={e + i} className="rp-tile" onClick={() => pick(e)} aria-label={label(e)} title={label(e)}
+      onMouseEnter={() => setHover({ e })} onFocus={() => setHover({ e })}>
+      <EmojiGlyph emoji={e} size={28} custom={custom} animate={animate || hover?.e === e} />
+    </button>
+  )
+
+  return (
+    <div>
+      <style>{RP_CSS}</style>
+      <div className="rp-quick" role="toolbar" aria-label="Quick reactions">
+        {QUICK_REACTIONS.map(e => (
+          <button key={e} className="rp-q" onClick={() => pick(e)} aria-label={label(e)} title={label(e)}><EmojiGlyph emoji={e} size={26} custom={custom} /></button>
+        ))}
+        <button className="rp-q more" onClick={() => setFull(f => !f)} aria-label="All emoji" aria-expanded={full} title="All emoji"><RpIcon d={RP_ICON.smileplus} size={22} /></button>
+      </div>
+      {full && (
+        <div className="rp-panel" role="dialog" aria-label="Choose a reaction">
+          <div className="rp-head"><h3>Choose a reaction</h3><button className="rp-x" onClick={onClose} aria-label="Close"><RpIcon d={RP_ICON.close} /></button></div>
+          <label className="rp-search"><RpIcon d={RP_ICON.search} size={16} /><input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search emojis…" aria-label="Search emojis" /></label>
+          {!q && (
+            <div className="rp-tabs" role="tablist">
+              {tabs.map(([k, t]) => (
+                <button key={k} role="tab" aria-selected={tab === k} className={'rp-tab' + (tab === k ? ' on' : '')} onClick={() => goTab(k)}>
+                  <RpIcon d={RP_ICON[k]} size={19} />{t}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="rp-body" ref={bodyRef} onScroll={onScroll}>
+            {results ? (
+              <>
+                <div className="rp-sec-h"><b>{results.length ? 'Results' : 'No matches'}</b></div>
+                <div className="rp-grid">{results.map((e, i) => tile(e, i))}</div>
+              </>
+            ) : !names && full ? <p className="page-sub" style={{ padding: 12 }}>Loading emoji…</p> : sections.map(sec => {
+              const showAll = !sec.limit || more[sec.key] || sec.list.length <= sec.limit
+              const list = showAll ? sec.list : sec.list.slice(0, sec.limit)
+              return (
+                <div key={sec.key} data-sec={sec.key}>
+                  <div className="rp-sec-h"><b>{sec.title}</b>
+                    {sec.limit && sec.list.length > sec.limit && <button className="rp-more" onClick={() => setMore(m => ({ ...m, [sec.key]: !m[sec.key] }))}>{more[sec.key] ? 'See less' : 'See more'}</button>}
+                  </div>
+                  <div className="rp-grid">{list.map((e, i) => tile(e, i, sec.animate))}</div>
+                </div>
+              )
+            })}
+          </div>
+          <div className="rp-foot">
+            {hover ? <><EmojiGlyph emoji={hover.e} size={24} custom={custom} animate /><span className="name">{label(hover.e)}</span></>
+              : <><RpIcon d={RP_ICON.smileys} size={20} /><span className="name">Hover over an emoji to see its name</span></>}
+            <button className="rp-add" onClick={onAddCustom}>＋ Add custom emoji</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, pickerOpen, onOpenPicker, onClosePicker, reactorsFor, setReactorsFor }) {
   const custom = useCustomEmojis()
   // Slack-style hover card: big emoji, its name, and who reacted.
@@ -3282,15 +3477,10 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
         <>
           <div onClick={onClosePicker} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
           <div style={{ position: 'absolute', ...(openUp ? { bottom: 32 } : { top: 32 }), left: 0, zIndex: 41 }}>
-            <div style={{ background: 'var(--surface)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.14)' }}>
-              <EmojiPicker onEmojiClick={(e) => onToggle(messageId, pickedEmoji(e))}
-                customEmojis={pickerCustomEmojis(custom)}
-                width={300} height={410} previewConfig={{ showPreview: true, defaultCaption: 'Hover an emoji to see its name', defaultEmoji: '1f642' }} reactionsDefaultOpen={true} />
-              <button onClick={() => { onClosePicker(); setManageEmoji(true) }}
-                style={{ display: 'block', width: '100%', border: 0, borderTop: '1px solid var(--line)', background: 'transparent', padding: '7px 10px', fontSize: 12, color: 'var(--accent)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
-                ＋ Custom emoji
-              </button>
-            </div>
+            <ReactionPicker custom={custom}
+              onPick={(e) => { onToggle(messageId, e); onClosePicker() }}
+              onClose={onClosePicker}
+              onAddCustom={() => { onClosePicker(); setManageEmoji(true) }} />
           </div>
         </>
       )}
