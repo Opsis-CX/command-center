@@ -63,9 +63,9 @@ export default function ReminderPopup() {
 
   return (
     <div role="alertdialog" aria-labelledby="rem-pop-t" aria-describedby="rem-pop-d"
-      style={{ position: 'fixed', top: 76, right: 20, zIndex: 95, width: 'min(340px, calc(100vw - 32px))', background: 'var(--surface)',
+      style={{ position: 'fixed', top: 76, left: '50%', transform: 'translateX(-50%)', zIndex: 95, width: 'min(380px, calc(100vw - 32px))', background: 'var(--surface)',
         border: '1px solid var(--line)', borderLeft: '4px solid #F59E0B', borderRadius: 14, boxShadow: '0 18px 44px rgba(0,0,0,.22)', padding: '14px 16px', animation: 'remPopIn .25s ease' }}>
-      <style>{'@keyframes remPopIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}'}</style>
+      <style>{'@keyframes remPopIn{from{opacity:0;margin-top:-10px}to{opacity:1;margin-top:0}}'}</style>
       <button onClick={() => close(false)} aria-label="Dismiss reminder" title="Dismiss"
         style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, border: 0, borderRadius: 8, background: 'transparent', color: 'var(--ink-soft)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
       <div style={{ paddingRight: 22 }}>
