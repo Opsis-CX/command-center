@@ -122,6 +122,8 @@ const CAL_COLOR_KINDS = [
   ['team', 'Team events', '#7C3AED'],
   ['coaching', 'Coaching sessions', '#DB2777'],
   ['mock', 'Mock calls', '#7C3AED'],
+  ['birthday', 'Birthdays (Team calendar)', '#EC4899'],
+  ['anniversary', 'Work anniversaries (Team calendar)', '#D97706'],
 ]
 const CAL_SWATCHES = ['#0077B6', '#0891B2', '#14B8A6', '#16A34A', '#65A30D', '#D97706', '#EA580C', '#DC2626', '#DB2777', '#9333EA', '#7C3AED', '#4F46E5', '#475569', '#94A3B8']
 let CAL_STYLE = 'solid'   // set by <Calendar> each render; read by the views when drawing blocks
@@ -219,6 +221,14 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
   const [feedEvents, setFeedEvents] = useState([])
   const [showSubs, setShowSubs] = useState(false)
   const [showColors, setShowColors] = useState(false)
+  // My calendar vs 🎉 Team calendar (team events + birthdays + work anniversaries, same for everyone)
+  const [calMode, setCalMode] = useState(() => { try { return localStorage.getItem('cc.cal.mode') === 'team' ? 'team' : 'mine' } catch { return 'mine' } })
+  const [teamPeople, setTeamPeople] = useState(null)
+  useEffect(() => { try { localStorage.setItem('cc.cal.mode', calMode) } catch { /* ignore */ } }, [calMode])
+  useEffect(() => {
+    if (calMode !== 'team' || teamPeople) return
+    supabase.rpc('team_calendar_people').then(({ data }) => setTeamPeople(data || []))
+  }, [calMode, teamPeople])
   const [calColors, setCalColors] = useState({})
   CAL_STYLE = calColors.style === 'soft' ? 'soft' : 'solid'
   useEffect(() => {
@@ -428,12 +438,24 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
         color: isMock ? (calColors.mock || '#7C3AED') : (calColors.coaching || '#DB2777'), hangoutLink: s.meeting_url || undefined,
       }
     })
-    return [...evs, ...ivs, ...feeds, ...gcal, ...sharedEvs, ...sharedGcal, ...sharedIvs, ...coachIvs].sort((a, b) => {
+    const order = (a, b) => {
       if (a.allDay && !b.allDay) return -1
       if (!a.allDay && b.allDay) return 1
       return (a.start || '').localeCompare(b.start || '')
-    })
-  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn, events, claims, coaching, sharedWithMe, hiddenShares, profiles, userId, viewerTZ, calColors])
+    }
+    if (calMode === 'team') {
+      // Team calendar: the same for everyone — team events, birthdays, work anniversaries.
+      const [y, mo, d] = ds.split('-').map(Number)
+      const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0
+      const people = teamPeople || []
+      const bdays = people.filter(p => p.birthday_month === mo && (p.birthday_day === d || (!leap && mo === 2 && d === 28 && p.birthday_day === 29)))
+        .map(p => ({ kind: 'birthday', id: 'bd-' + p.profile_id, title: `🎂 ${p.full_name}'s birthday`, allDay: true, color: calColors.birthday || '#EC4899' }))
+      const annis = people.filter(p => p.start_date && +p.start_date.slice(5, 7) === mo && +p.start_date.slice(8, 10) === d && +p.start_date.slice(0, 4) < y)
+        .map(p => { const n = y - +p.start_date.slice(0, 4); return { kind: 'anniversary', id: 'an-' + p.profile_id, title: `🎉 ${p.full_name} · ${n} year${n === 1 ? '' : 's'} at Opsis`, allDay: true, color: calColors.anniversary || '#D97706' } })
+      return [...bdays, ...annis, ...evs.filter(e => e.scope === 'team')].sort(order)
+    }
+    return [...evs, ...ivs, ...feeds, ...gcal, ...sharedEvs, ...sharedGcal, ...sharedIvs, ...coachIvs].sort(order)
+  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn, events, claims, coaching, sharedWithMe, hiddenShares, profiles, userId, viewerTZ, calColors, calMode, teamPeople])
   const tasksOn = useCallback((ds) => {
     const due = myTasks.filter(t => t.due_date === ds)
     return {
@@ -449,10 +471,17 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
     else if (startNew) setEditEvent({ event_date: isoDate(etNow()) })
   }, [loading, openEventId, startNew, events])
   if (loading) return <div className="page-sub" style={{ padding: 30 }}>Loading calendar…</div>
-  const shared = { cursor, setCursor, itemsOn, tasksOn, userId, allTasks: myTasks, onAddEvent: (d) => setEditEvent({ event_date: isoDate(d || cursor) }), onEditEvent: setEditEvent, onShowDetail: setDetailItem, onToggleTaskDone: toggleTaskDone, onToggleTaskTimer: toggleTaskTimer, runningEntry, timeEntries }
+  const shared = { cursor, setCursor, itemsOn, tasksOn, userId, allTasks: myTasks, onAddEvent: (d) => setEditEvent({ event_date: isoDate(d || cursor), ...(calMode === 'team' && isAdmin ? { scope: 'team' } : {}) }), onEditEvent: setEditEvent, onShowDetail: setDetailItem, onToggleTaskDone: toggleTaskDone, onToggleTaskTimer: toggleTaskTimer, runningEntry, timeEntries }
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <div role="tablist" aria-label="Which calendar" style={{ display: 'inline-flex', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10, padding: 3, marginRight: 'auto' }}>
+          {[['mine', '📅 My calendar'], ['team', '🎉 Team calendar']].map(([k, l]) => (
+            <button key={k} role="tab" aria-selected={calMode === k} onClick={() => setCalMode(k)}
+              style={{ border: 0, borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                background: calMode === k ? 'var(--accent)' : 'transparent', color: calMode === k ? '#fff' : 'var(--ink)' }}>{l}</button>
+          ))}
+        </div>
         <button className="btn btn-ghost" onClick={() => setShowColors(true)} style={{ fontSize: 13 }}>🎨 Colors</button>
         <button className="btn btn-ghost" onClick={() => setShowShares(true)} style={{ fontSize: 13 }}>👥 Shared calendars</button>
         <button className="btn btn-ghost" onClick={() => setShowSubs(true)} style={{ fontSize: 13 }}>⚙ Connected calendars</button>
