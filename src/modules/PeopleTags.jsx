@@ -1,3 +1,4 @@
+import ProfileDetailsBulk from '../components/ProfileDetailsBulk'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
@@ -22,7 +23,7 @@ async function sendHiringEmail(kind, to, data) {
 const DEACTIVATION_REASONS = ['Resigned', 'Terminated', 'Attendance / No-show', 'Performance', 'Contract ended', 'Ghosted / Abandoned', 'Other']
 
 export default function PeopleTags() {
-  const { appRole, user } = useAuth()
+  const { appRole, user, isAdmin } = useAuth()
   const canEdit = can(appRole, 'people_and_tags.edit')
   const canDelete = can(appRole, 'people_and_tags.delete')   // admin only
   const [tags, setTags] = useState([])
@@ -234,10 +235,10 @@ export default function PeopleTags() {
     if (!five9User.trim() || !five9Pass.trim()) { setFive9Msg('Enter both a username and a temporary password.'); return }
     setFive9Busy(true); setFive9Msg('')
     try {
-      // store username + temp password briefly
+      // Save the username only. The temporary password goes straight into the
+      // email below and is never stored.
       await supabase.from('profiles').update({
         five9_username: five9User.trim(),
-        five9_temp_password: five9Pass.trim(),
         five9_sent_at: new Date().toISOString(),
       }).eq('id', person.id)
 
@@ -256,9 +257,6 @@ export default function PeopleTags() {
         tempPassword: five9Pass.trim(),
         scheduleLink,
       })
-
-      // clear the temp password now that it's been sent (single-use)
-      await supabase.from('profiles').update({ five9_temp_password: null }).eq('id', person.id)
 
       // advance their hiring record to mock-call requested
       if (app) {
@@ -335,6 +333,7 @@ export default function PeopleTags() {
       )}
       {loading ? <p className="page-sub">Loading…</p> : (
         <>
+          {isAdmin && <ProfileDetailsBulk />}
           <div className="card" style={{ marginBottom: 20 }}>
             <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600 }}>Tags</h3>
             <p className="page-sub" style={{ marginBottom: 14 }}>
