@@ -235,7 +235,11 @@ function PushCard({ userId }) {
     if (!window.confirm(`Stop sending notifications to "${d.name}"?`)) return
     const { error } = await supabase.from(d.table).delete().eq('id', d.id)
     if (error) return flash(error.message)
-    if (d.key === hereKey) setEnabled(false)
+    if (d.key === hereKey) {
+      setEnabled(false)
+      // removing the device you're on = "off here" — don't auto-turn it back on
+      try { localStorage.setItem('cc.push.optedOut', '1') } catch { /* ignore */ }
+    }
     loadDevices()
   }
   async function test(d) {
