@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { categoryForType } from '../lib/notify'
-import { loadNotifPrefs, allowsSound } from '../lib/notif_prefs'
+import { loadNotifPrefs, allowsSound, allowsInApp } from '../lib/notif_prefs'
 import { primeAudio, loadSoundPrefs, playForNotification } from '../lib/sounds'
 
 // ============================================================
@@ -19,6 +19,19 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+// Which new notifications get a pop-up box under the bell.
+// Skipped: types that already have their own pop-up (reminders, LSA follow-ups, calls),
+// categories the person turned off in-app, and messages in the chat they're looking at right now.
+const OWN_POPUP_TYPES = new Set(['reminder_due', 'reminder_assigned', 'lsa_followup', 'incoming_call', 'meeting_reminder'])
+function shouldToast(n, prefs) {
+  if (!n || OWN_POPUP_TYPES.has(n.type)) return false
+  if (!allowsInApp(prefs, categoryForType(n.type))) return false
+  const ch = /[?&]channel=([0-9a-f-]{36})/i.exec(n.link || '')?.[1]
+  if (ch && document.visibilityState === 'visible' && window.location.pathname === '/chat'
+      && window.__ccOpenChannel === ch) return false
+  return true
+}
+
 export default function NotificationBell() {
   const [items, setItems] = useState([])
   const [open, setOpen] = useState(false)
@@ -27,6 +40,19 @@ export default function NotificationBell() {
   const prefsRef = useRef(null)   // always holds latest prefs for the realtime chime
   const wrapRef = useRef(null)
   const navigate = useNavigate()
+  // Pop-up box under the bell for each new notification (Brittney, 2026-10-27), so a new
+  // notification is noticed even when the badge number change isn't.
+  const [toasts, setToasts] = useState([])
+  const toastTimers = useRef({})
+  const dismissToast = useCallback((id) => {
+    clearTimeout(toastTimers.current[id]); delete toastTimers.current[id]
+    setToasts(t => t.filter(x => x.id !== id))
+  }, [])
+  const armToast = useCallback((id, ms = 7000) => {
+    clearTimeout(toastTimers.current[id])
+    toastTimers.current[id] = setTimeout(() => dismissToast(id), ms)
+  }, [dismissToast])
+  useEffect(() => () => Object.values(toastTimers.current).forEach(clearTimeout), [])
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -93,12 +119,16 @@ export default function NotificationBell() {
           setItems(prev => {
             if (prev.some(x => x.id === payload.new.id)) return prev
             if (allowsSound(prefsRef.current, categoryForType(payload.new.type))) playForNotification(payload.new.id, payload.new.type)
+            if (shouldToast(payload.new, prefsRef.current)) {
+              setToasts(t => [payload.new, ...t.filter(x => x.id !== payload.new.id)].slice(0, 3))
+              armToast(payload.new.id)
+            }
             return [payload.new, ...prev]
           })
         })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [meId])
+  }, [meId, armToast])
 
   useEffect(() => {
     function onDoc(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
@@ -138,6 +168,26 @@ export default function NotificationBell() {
         🔔
         {unread > 0 && <span style={{ position: 'absolute', top: 0, right: 0, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: 'var(--failed)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center', lineHeight: 1 }}>{unread > 9 ? '9+' : unread}</span>}
       </button>
+
+      {!open && toasts.length > 0 && (
+        <div aria-live="polite" style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, width: 340, maxWidth: 'calc(100vw - 24px)', zIndex: 2900, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <style>{'@keyframes ccToastIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}'}</style>
+          {toasts.map(n => (
+            <div key={n.id} role="status"
+              onMouseEnter={() => clearTimeout(toastTimers.current[n.id])}
+              onMouseLeave={() => armToast(n.id, 4000)}
+              style={{ position: 'relative', background: 'var(--surface)', border: '1px solid var(--line)', borderLeft: '4px solid var(--accent)', borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,.18)', animation: 'ccToastIn .2s ease' }}>
+              <button onClick={() => { dismissToast(n.id); openItem(n) }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', border: 0, background: 'transparent', padding: '11px 34px 11px 14px', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{n.title}</div>
+                {n.body && <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginTop: 2, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{n.body}</div>}
+              </button>
+              <button onClick={() => dismissToast(n.id)} aria-label="Dismiss" title="Dismiss"
+                style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, border: 0, borderRadius: 6, background: 'transparent', color: 'var(--ink-soft)', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {open && (
         <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, width: 340, maxHeight: 440, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,.15)', zIndex: 3000, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
