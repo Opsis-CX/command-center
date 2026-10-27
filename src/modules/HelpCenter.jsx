@@ -109,7 +109,9 @@ export default function HelpCenter() {
   // NOTE: appRole can be a comma-separated list of roles (e.g. "asc,marketing"),
   // so match each role individually — a plain includes() on the whole string
   // wrongly treated multi-role coordinators (like an asc,marketing) as agents.
-  const isStaff = isAdmin || String(appRole || '').toLowerCase().split(',').map(s => s.trim()).some(r => r === 'asc' || r === 'admin')
+  // Staff view (all tickets, assign, reply, internal notes, resolve). Keep in sync with
+  // public.is_help_staff() in the database: ASC, admin, certification (added 2026-10-27).
+  const isStaff = isAdmin || String(appRole || '').toLowerCase().split(',').map(s => s.trim()).some(r => r === 'asc' || r === 'admin' || r === 'certification')
   const [tab, setTab] = useState('tickets')
 
   return (
