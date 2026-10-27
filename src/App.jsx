@@ -70,6 +70,7 @@ import { ViewAsMenu } from './components/RolePreview'
 import MeetingReminder from './components/MeetingReminder'
 import LsaReminderPopup from './components/LsaReminderPopup'
 import PhotoNudge from './components/PhotoNudge'
+import UpdatePopup from './components/UpdatePopup'
 import TaskAssignedPopup from './components/TaskAssignedPopup'
 import { UnreadProvider } from './lib/unread'
 // --- hiring pipeline ---
@@ -466,6 +467,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
       <MeetingReminder />
       <LsaReminderPopup />
       <PhotoNudge />
+      <UpdatePopup />
       <TaskAssignedPopup />
       <div className="app">
         <Sidebar open={navOpen} onNavigate={() => setNavOpen(false)} />
