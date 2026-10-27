@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
@@ -6,8 +7,8 @@ import { useAuth } from '../lib/auth'
 // MY PROFILE — dashboard pieces (2026-10-26 redesign)
 //   ProfileHeader  full-width header: photo, name, status, project/task counts, 4 action buttons
 //   Drawer         slide-over panel used by the header buttons (Escape / backdrop closes)
-//   RemindersPanel personal reminders (table personal_reminders, owner-only RLS). In-app only:
-//                  no email / push delivery, no recurrence.
+//   RemindersPanel personal reminders (table personal_reminders). Admins can set them for others.
+//                  Warnings 30 and 10 minutes before (DB cron reminder-warnings). No email, no recurrence.
 //   MyWeek         the person's scheduled shifts only (RPC profile_week_shifts), with week paging
 //   MyMeetings     upcoming meetings from the existing calendar sources: Command Center events,
 //                  synced Google events and coaching sessions. Editing reuses the Calendar editor.
@@ -329,7 +330,7 @@ export function RemindersPanel() {
       </div>
       <p className="page-sub" style={{ margin: '0 0 12px', fontSize: 12.5 }}>
         {tab === 'others' ? 'Reminders you set for teammates. They see them in their own Reminders and can check them off; only you can change or delete them.'
-          : 'Private to you. Reminders show here and as a count on the Reminders button; they don’t send emails or phone alerts. Times are in your computer’s time zone.'}
+          : 'Private to you. You’ll get a notification 30 minutes and 10 minutes before each reminder (in Command Center and as a push alert if you have them on). Times are in your computer’s time zone.'}
       </p>
       {err && <div className="login-err" role="alert" style={{ marginBottom: 10 }}>{err}</div>}
       {edit && <ReminderForm r={edit} me={me} isAdmin={isAdmin} onCancel={() => setEdit(null)} onSaved={(forOther) => { setEdit(null); if (forOther) setTab('others'); load() }} />}
