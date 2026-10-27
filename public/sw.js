@@ -103,6 +103,11 @@ function askPagesToPlay(wins, id, type) {
   })
 }
 
+// iPhone/iPad: pages can't play sounds on their own, and iOS expects every push to show a
+// visible notification (it may switch push off for apps that don't). So on iOS we always
+// show it, with the phone's own sound. (2026-10-27)
+const IS_IOS = /iPhone|iPad|iPod/.test((self.navigator && self.navigator.userAgent) || '')
+
 self.addEventListener('push', (event) => {
   let p = {}
   try { p = event.data ? event.data.json() : {} } catch { p = { body: event.data ? event.data.text() : '' } }
@@ -116,8 +121,8 @@ self.addEventListener('push', (event) => {
     const wins = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
       .filter(w => new URL(w.url).origin === self.location.origin)
 
-    // 1) Command Center open and in front of you → sound only, no pop-up.
-    if (wins.some(w => w.visibilityState === 'visible' && w.focused)) {
+    // 1) Command Center open and in front of you → sound only, no pop-up (computers only).
+    if (!IS_IOS && wins.some(w => w.visibilityState === 'visible' && w.focused)) {
       await askPagesToPlay(wins, id, type)
       return
     }
@@ -125,7 +130,7 @@ self.addEventListener('push', (event) => {
     // 2) Open in the background → the app plays YOUR sound and the pop-up stays
     //    quiet. 3) Closed (or the tab can't play audio) → the pop-up uses the
     //    computer's notification sound so it's never silent.
-    const played = await askPagesToPlay(wins, id, type)
+    const played = IS_IOS ? false : await askPagesToPlay(wins, id, type)
     await self.registration.showNotification(title, {
       body: p.body || '',
       icon: '/icon-192.png',
