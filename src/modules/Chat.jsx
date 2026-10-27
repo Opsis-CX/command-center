@@ -183,7 +183,11 @@ function useIsMobile(breakpoint = 700) {
 }
 
 // Ephemeral typing indicator over Supabase Realtime broadcast.
-function useTyping(topic, meId, meName) {
+function useTyping(topic, meId, meName, inbox = null) {
+  // inbox = { channelId, recipients: [profile ids] } for DMs: also tells each recipient's
+  // sidebar that I'm typing (topic typing-inbox:<their id>; sent without joining).
+  const inboxRef = useRef(inbox)
+  inboxRef.current = inbox
   const [typers, setTypers] = useState({})   // id -> { name, at }
   const chanRef = useRef(null)
   const lastSent = useRef(0)
@@ -216,12 +220,27 @@ function useTyping(topic, meId, meName) {
     if (now - lastSent.current < 1500) return   // throttle broadcasts
     lastSent.current = now
     chanRef.current?.send({ type: 'broadcast', event: 'typing', payload: { id: meId, name: meName } })
-  }, [meId, meName])
+    sendInbox('typing')
+  }, [meId, meName]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stopTyping = useCallback(() => {
     lastSent.current = 0
     chanRef.current?.send({ type: 'broadcast', event: 'stop', payload: { id: meId } })
-  }, [meId])
+    sendInbox('stop')
+  }, [meId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function sendInbox(event) {
+    const ib = inboxRef.current
+    if (!ib?.channelId || !ib.recipients?.length) return
+    for (const rid of ib.recipients) {
+      if (!rid || rid === meId) continue
+      try {
+        supabase.channel(`typing-inbox:${rid}`)
+          .send({ type: 'broadcast', event, payload: { id: meId, name: meName, channel_id: ib.channelId } })
+          .catch(() => {})
+      } catch { /* typing hints are best-effort */ }
+    }
+  }
 
   const names = Object.values(typers).map(t => t.name)
   return { typerNames: names, notifyTyping, stopTyping }
@@ -574,6 +593,11 @@ function NameModal({ title, initial, initialIcon = null, withIcon = false, onSav
 // Sidebar styling (hover-only ⋯ on desktop, compact rows). Kept here so Chat.jsx
 // stays a single drop-in file.
 const SIDEBAR_CSS = `
+.chat-typing-dots { display: inline-flex; align-items: center; gap: 3px; padding: 4px 7px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); flex: none; }
+.chat-typing-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--ink-soft); animation: chatTypingDot 1.2s infinite ease-in-out; }
+.chat-typing-dots i:nth-child(2) { animation-delay: .15s; }
+.chat-typing-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes chatTypingDot { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-3px); opacity: 1; } }
 .chat-side-row { display: flex; align-items: center; border-radius: 6px; margin: 0 2px 1px; }
 .chat-side-row:hover { background: var(--surface); }
 .chat-side-row.is-active { background: var(--accent-bg); }
@@ -733,6 +757,36 @@ export default function Chat() {
   const [showDM, setShowDM] = useState(false)
   const [dmNames, setDmNames] = useState({}) // channelId -> other person's name
   const [dmPeers, setDmPeers] = useState({}) // channelId -> the other person's profile_id (1:1 DMs only)
+  // Who's typing in which DM right now (for the ••• in the sidebar). channelId -> { profileId: lastSeenMs }
+  const [dmTyping, setDmTyping] = useState({})
+  useEffect(() => {
+    if (!me?.id) return
+    const ch = supabase.channel(`typing-inbox:${me.id}`, { config: { broadcast: { self: false } } })
+    ch.on('broadcast', { event: 'typing' }, ({ payload }) => {
+      if (!payload?.channel_id || !payload.id || payload.id === me.id) return
+      setDmTyping(prev => ({ ...prev, [payload.channel_id]: { ...(prev[payload.channel_id] || {}), [payload.id]: Date.now() } }))
+    }).on('broadcast', { event: 'stop' }, ({ payload }) => {
+      if (!payload?.channel_id || !payload.id) return
+      setDmTyping(prev => {
+        if (!prev[payload.channel_id]?.[payload.id]) return prev
+        const inner = { ...prev[payload.channel_id] }; delete inner[payload.id]
+        return { ...prev, [payload.channel_id]: inner }
+      })
+    }).subscribe()
+    // drop anyone who hasn't sent a typing ping for 4s (a missed "stop", closed tab…)
+    const sweep = setInterval(() => {
+      setDmTyping(prev => {
+        const now = Date.now(); let changed = false; const next = {}
+        for (const [cid, who] of Object.entries(prev)) {
+          const keep = {}
+          for (const [pid, at] of Object.entries(who)) { if (now - at < 4000) keep[pid] = at; else changed = true }
+          if (Object.keys(keep).length) next[cid] = keep; else if (Object.keys(who).length) changed = true
+        }
+        return changed ? next : prev
+      })
+    }, 1000)
+    return () => { clearInterval(sweep); supabase.removeChannel(ch) }
+  }, [me?.id])
   const [mobileView, setMobileView] = useState('list') // 'list' | 'convo' (mobile only)
 
   // ---- Sidebar organization — per person (favorites, pins, groups, hide, delete DM) ----
@@ -1105,6 +1159,7 @@ export default function Chat() {
   )
 
   const renderRow = (c, { dim = false } = {}) => {
+    const typingHere = c.is_dm && Object.keys(dmTyping[c.id] || {}).length > 0
     const active = c.id === activeId && !isMobile
     const unread = unreadCounts[c.id] || 0
     const pinnedHere = !!prefs[c.id]?.pinned_at
@@ -1134,6 +1189,7 @@ export default function Chat() {
             {pinnedHere && <span title="Pinned" style={{ fontSize: 10, flex: 'none' }}>📌</span>}
             {amStaff && peer && isAgentProfile(peer) && agentBlocked(peer.id) && <span title="Messages from this agent are turned off" style={{ fontSize: 10.5, flex: 'none' }}>🔕</span>}
           </span>
+          {typingHere && <span className="chat-typing-dots" title={`${label} ${label.includes(',') ? 'are' : 'is'} typing…`} aria-label="typing"><i /><i /><i /></span>}
           {unreadBadge(unread)}
         </button>
         <button onClick={(e) => openMenu(e, 'item', c.id)} title="Options" aria-label="Options"
@@ -1453,7 +1509,8 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   const sendersRef = useRef(senders)
   useEffect(() => { sendersRef.current = senders }, [senders])
 
-  const { typerNames, notifyTyping, stopTyping } = useTyping(`typing:${channelId}`, me.id, me.full_name)
+  const { typerNames, notifyTyping, stopTyping } = useTyping(`typing:${channelId}`, me.id, me.full_name,
+    channel?.is_dm ? { channelId, recipients: (members || []).filter(id => id !== me.id) } : null)
 
   useEffect(() => {
     let active = true
