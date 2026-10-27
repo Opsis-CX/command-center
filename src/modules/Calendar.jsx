@@ -156,12 +156,20 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
       const { data: prof } = await supabase.from('profiles').select('timezone').eq('id', uid).maybeSingle()
       setViewerTZ(prof?.timezone || COMPANY_TZ)
     }
-    const [evRes, taskRes, taRes, clmRes, blkRes, profRes, invRes, subRes, feedRes, gtRes, geRes, timeRes, shareInRes, shareOutRes, coachRes] = await Promise.all([
+    // Speed (2026-10-26): load only what this calendar shows — my tasks, my running timer,
+    // and intervals for me + people who share their calendar with me — instead of every
+    // task, assignment, interval and time entry in the company (~22k rows for admins).
+    const chunked = async (ids, size, fn) => {
+      const out = []
+      for (let i = 0; i < ids.length; i += size) { const { data } = await fn(ids.slice(i, i + size)); if (data) out.push(...data) }
+      return { data: out }
+    }
+    const shareInPre = uid ? await supabase.from('calendar_shares').select('*').eq('viewer_id', uid) : { data: [] }
+    const intervalPeople = [uid, ...(shareInPre.data || []).map(sh => sh.owner_id)].filter(Boolean)
+    const [evRes, taRes, clmRes, profRes, invRes, subRes, feedRes, gtRes, geRes, timeRes, shareOutRes, coachRes] = await Promise.all([
       supabase.from('calendar_events').select('*'),
-      fetchAllRows(() => supabase.from('tasks').select('id, name, due_date, priority, status, project_id').is('deleted_at', null).order('id')),
-      fetchAllRows(() => supabase.from('task_assignees').select('task_id, profile_id').order('id')),
-      fetchAllRows(() => supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at').order('id')),
-      fetchAllRows(() => supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role').order('id')),
+      uid ? fetchAllRows(() => supabase.from('task_assignees').select('task_id, profile_id').eq('profile_id', uid).order('id')) : { data: [] },
+      intervalPeople.length ? fetchAllRows(() => supabase.from('shift_claims').select('id, shift_block_id, profile_id, status, checked_in_at').in('profile_id', intervalPeople).order('id')) : { data: [] },
       supabase.from('profiles').select('id, full_name'),
       // Invitee picker: active staff only — agents, clients and deactivated accounts are
       // excluded by the view (2026-09-02, Becky). `profiles` above stays unfiltered so
@@ -171,14 +179,21 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
       supabase.from('calendar_feed_events').select('*'),
       supabase.from('calendar_accounts').select('id, provider, account_email, color, is_default, target_calendar_name, last_synced_at, last_error, sync_enabled, connected_at').eq('provider', 'google'),
       fetchAllRows(() => supabase.from('google_calendar_events').select('*').order('id')),
-      fetchAllRows(() => supabase.from('time_entries').select('id, task_id, user_id, started_at, ended_at, duration_minutes').order('id')),
-      supabase.from('calendar_shares').select('*').eq('viewer_id', uid),
+      // only the timer that's running right now matters here (start/stop + "running" badge)
+      uid ? supabase.from('time_entries').select('id, task_id, user_id, started_at, ended_at, duration_minutes').eq('user_id', uid).is('ended_at', null) : { data: [] },
       supabase.from('calendar_shares').select('*').eq('owner_id', uid),
       // Only sessions the viewer is actually on (as coach/ASC or as agent). Admins can read every
       // session via RLS, so without this filter every mock call / coaching session in the company
       // would land on an admin's personal calendar.
       supabase.from('coaching_sessions').select('id, kind, asc_id, agent_id, applicant_name, session_date, start_time, end_time, status, topic, meeting_url').eq('status', 'booked').or(`asc_id.eq.${uid},agent_id.eq.${uid}`),
     ])
+    const myTaskIdList = [...new Set((taRes.data || []).map(a => a.task_id))]
+    const blockIdList = [...new Set((clmRes.data || []).map(c => c.shift_block_id).filter(Boolean))]
+    const [taskRes, blkRes] = await Promise.all([
+      chunked(myTaskIdList, 200, (ids) => supabase.from('tasks').select('id, name, due_date, priority, status, project_id').is('deleted_at', null).in('id', ids)),
+      chunked(blockIdList, 300, (ids) => supabase.from('shift_blocks').select('id, block_date, start_time, end_time, role').in('id', ids)),
+    ])
+    const shareInRes = shareInPre
     setEvents(evRes.data || [])
     setTasks(taskRes.data || [])
     setAssignees(taRes.data || [])
