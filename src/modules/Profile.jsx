@@ -28,6 +28,17 @@ export default function Profile({ profileId }) {
   const [openPanel, setPanel] = useState(null)            // 'reminders' | 'calendar' | 'notes' | 'updates' | {kind:'calendar',…}
   const [badges, setBadges] = useState({})
   const [meetKey, setMeetKey] = useState(0)
+  const [weekStats, setWeekStats] = useState(null)
+  const [bg, setBg] = useState({})
+  const loadExtras = useCallback(async () => {
+    const [ws, pb] = await Promise.all([
+      supabase.rpc('profile_week_stats', { p_profile: profileId || null }),
+      supabase.from('profiles').select('header_bg_color, header_bg_image').eq('id', profileId || user?.id).maybeSingle(),
+    ])
+    if (!ws.error) setWeekStats(ws.data)
+    if (pb.data) setBg({ color: pb.data.header_bg_color, image: pb.data.header_bg_image })
+  }, [profileId, user?.id])
+  useEffect(() => { if (user?.id) loadExtras() }, [loadExtras, user?.id])
   const ownPage = !profileId || profileId === user?.id
   const refreshBadges = useCallback(async () => {
     if (!ownPage || !user?.id) return
@@ -62,6 +73,7 @@ export default function Profile({ profileId }) {
       const { data: d } = await supabase.rpc('profile_page_data', { p_profile: profileId || null })
       if (d) setData(cur => cur ? { ...cur, projects: d.projects, open_task_count: d.open_task_count, tokens: d.tokens, hub: d.hub } : cur)
       refreshBadges()
+      supabase.rpc('profile_week_stats', { p_profile: profileId || null }).then(({ data: w }) => { if (w) setWeekStats(w) })
     }
     window.addEventListener('focus', onFocus); return () => window.removeEventListener('focus', onFocus)
   }, [profileId, refreshBadges])
@@ -88,7 +100,8 @@ export default function Profile({ profileId }) {
         projectCount={(projects || []).length} openTasks={openCount || 0}
         onPhotoChanged={(url) => patchPerson({ avatar_url: url })}
         onEditProfile={() => openSection('about')}
-        badges={badges} onOpen={setPanel} />
+        badges={badges} onOpen={setPanel}
+        weekStats={weekStats} bg={bg} onBgChange={setBg} />
 
       <div className="pd-grid">
         <div className="pd-main">
