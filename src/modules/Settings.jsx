@@ -286,7 +286,7 @@ function PushCard({ userId }) {
                 <span aria-hidden="true">{icon(d.name)}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600 }}>{d.name}{d.key === hereKey && <span className="badge" style={{ marginLeft: 8, fontSize: 11 }}>This device</span>}</div>
-                  <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>On since {new Date(d.since).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>On since {new Date(d.since).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
                 </div>
                 <button onClick={() => test(d)} disabled={busy} style={{ ...btn(false), padding: '4px 10px', fontSize: 12 }}>Test</button>
                 <button onClick={() => remove(d)} style={{ ...btn(false), padding: '4px 10px', fontSize: 12, color: 'var(--ink-soft)' }}>Remove</button>
