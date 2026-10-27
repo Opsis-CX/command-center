@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { fmtDate, panel } from './financeBits'
+import { quoteFor } from './Calendar'
 
 // ============================================================
 // PROFILE
@@ -41,7 +42,10 @@ export default function Profile({ profileId }) {
   const showHub = hub && (person.is_agent || hub.week?.length || hub.certs?.length || hub.scorecard)
 
   return (
-    <div style={{ maxWidth: 900 }}>
+    <div className="profile-wrap">
+    <style>{PROFILE_LAYOUT_CSS}</style>
+    <div className="profile-layout">
+    <div className="profile-main">
       {!isSelf && (
         <div className="card" style={{ marginBottom: 14 }} role="note">
           You are viewing <b>{person.full_name}</b>'s profile as an Admin or Owner. Only they can change their own photo and phone number.
@@ -88,6 +92,54 @@ export default function Profile({ profileId }) {
         <Tokens tokens={tokens} isSelf={isSelf} />
       </div>
       <Projects projects={projects} tasks={tasks} openCount={openCount} isSelf={isSelf} />
+    </div>
+    <aside className="profile-aside"><Inspiration /></aside>
+    </div>
+    </div>
+  )
+}
+
+// Profile column keeps its full width (900px). The Daily Inspiration card only
+// takes the empty space to the right when there's room for it; on narrower
+// screens it drops below the profile instead of squeezing it.
+const PROFILE_LAYOUT_CSS = `
+.profile-wrap { container-type: inline-size; }
+.profile-layout { display: grid; grid-template-columns: minmax(0, 900px); gap: 16px; align-items: start; }
+.profile-main { min-width: 0; }
+.profile-aside { min-width: 0; max-width: 900px; }
+@container (min-width: 1176px) {
+  .profile-layout { grid-template-columns: 900px minmax(260px, 360px); }
+  .profile-aside { position: sticky; top: 16px; }
+}
+`
+
+// ---------- Daily Inspiration (same pick as the Home Base card) ----------
+function Inspiration() {
+  const [q, setQ] = useState(null)
+  useEffect(() => {
+    let alive = true
+    supabase.from('weekly_picks').select('body, author').eq('kind', 'quote').eq('active', true)
+      .order('updated_at', { ascending: false }).limit(1)
+      .then(({ data }) => {
+        if (!alive) return
+        const pick = data && data[0]
+        if (pick?.body) setQ({ body: pick.body, author: pick.author })
+        else { const [body, author] = quoteFor(new Date()); setQ({ body, author }) }   // fallback: Calendar's daily rotation
+      })
+    return () => { alive = false }
+  }, [])
+  if (!q) return null
+  return (
+    <div style={{ ...panel, position: 'relative', overflow: 'hidden', background: 'linear-gradient(160deg, color-mix(in srgb, var(--accent) 10%, var(--surface)), var(--surface) 70%)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <span style={{ fontSize: 18 }}>🌟</span>
+        <h2 style={{ ...sectionTitle, margin: 0 }}>Daily Inspiration</h2>
+      </div>
+      <div aria-hidden="true" style={{ position: 'absolute', right: 14, top: 4, fontSize: 90, lineHeight: 1, color: 'var(--accent)', opacity: 0.12, fontFamily: 'Georgia, serif' }}>”</div>
+      <blockquote style={{ margin: 0, fontSize: 16.5, lineHeight: 1.55, fontStyle: 'italic', position: 'relative' }}>
+        “{q.body}”
+      </blockquote>
+      {q.author && <div style={{ marginTop: 12, fontSize: 13, fontWeight: 600, color: 'var(--ink-soft)' }}>— {q.author}</div>}
     </div>
   )
 }
