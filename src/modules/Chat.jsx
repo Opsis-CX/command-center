@@ -158,7 +158,6 @@ function PersonHoverCard({ profiles, me }) {
           </div>
         )}
         {p && <div className="page-sub" style={{ margin: '8px 0 0', fontSize: 12 }}>🕒 {localTimeIn(p.timezone)}</div>}
-        {p?.id && <a href={me && p.id === me.id ? '/profile' : `/profile/${p.id}`} style={{ display: 'inline-block', marginTop: 10, fontSize: 12.5, fontWeight: 600 }}>View profile →</a>}
       </div>
     </div>
   )
