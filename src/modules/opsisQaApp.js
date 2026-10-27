@@ -1088,11 +1088,11 @@ export function mountOpsisQA(ROOT, cfg) {
       '<button class="sel btnd" data-act="rpexport" style="margin-top:14px;width:100%;justify-content:center"' + (RP.busy ? ' disabled' : '') + '>' + (RP.busy === 'export' ? 'Preparing… ' + RP.n.toLocaleString() + ' calls' : 'Download CSV') + '</button>' +
       '<div class="mut" style="font-size:12px;margin-top:8px">' + esc(rpFilterText()) + '</div></div>';
     var reps = '<div class="oq-card" style="flex:999 1 480px;align-self:flex-start"><h2 class="ttl">Scorecard Reports</h2><p class="sub">Download as PDF, Excel or CSV. ' + esc(rpFilterText()) + '.</p><div style="margin-top:8px">' +
-      row(LOCK ? 'Brand scorecard' : 'Executive scorecard', 'Calls scored, average QA, booking rate and card capture' + (LOCK ? '' : ' for every brand') + ', plus the top coaching focus.', '', 'exec') +
-      (brands.length ? row('Brand one-pager', 'Executive scorecard for one brand on one page: the headline numbers, AI insights on what’s driving them, a roll-up by CSR, the call flow step by step, what callers wanted and why calls didn’t book.', brands.length > 1 ? '<select class="oq-field" data-rpteam aria-label="Brand" style="margin-top:8px;max-width:280px">' + brands.map(function (b) { return '<option' + (RP.team === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select>' : '', 'team') : '') +
+      row(LOCK ? 'Executive summary' : 'Executive summary', 'One page: the headline, booking rate, QA score, controllable misses and upset customers vs the period before, why opportunities didn’t book, the CSRs leading and lagging, and the one thing to coach' + (LOCK ? '' : ', plus every brand side by side') + '.', '', 'exec') +
+      (brands.length ? row('Brand one-pager', 'The executive summary for one brand, plus its call flow step by step and what callers wanted.', brands.length > 1 ? '<select class="oq-field" data-rpteam aria-label="Brand" style="margin-top:8px;max-width:280px">' + brands.map(function (b) { return '<option' + (RP.team === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select>' : '', 'team') : '') +
       (agents.length ? row('CSR scorecard', 'One CSR’s roll-up: headline numbers, the call flow step by step and what to coach. Excel and CSV also list every call.', '<select class="oq-field" data-rpcsr aria-label="CSR" style="margin-top:8px;max-width:280px">' + agents.map(function (a) { var k = a.name + '|||' + a.brand; return '<option value="' + esc(k) + '"' + (RP.csr === k ? ' selected' : '') + '>' + esc(a.name) + (LOCK ? '' : ' — ' + esc(a.brand)) + '</option>'; }).join('') + '</select>', 'csr') : '') +
       row('Human vs AI receptionists', 'Your CSRs next to the AI receptionists, by brand.', '', 'hai') +
-      '<div style="padding:14px 0;border-top:1px solid var(--line2)"><b>Weekly call-flow scorecard</b><div class="mut" style="font-size:12.5px;margin-top:2px">The growing scorecard for brand leaders: week 1 is the greeting only and each week adds the next step, by CSR, against the 30 days before training. Card on file isn’t measured here. Leaders get it by email every Monday once the program starts.</div>' +
+      '<div style="padding:14px 0;border-top:1px solid var(--line2)"><b>Weekly call-flow scorecard</b><div class="mut" style="font-size:12.5px;margin-top:2px">Every CSR on every call-flow step for one week, colour-coded, with the change vs the week before. Pick the Monday the week starts.</div>' +
       '<div class="row" style="gap:8px;margin-top:8px;align-items:center"><label class="sr" for="rpwk">Week starting</label><input id="rpwk" type="date" class="oq-field" style="max-width:170px" value="' + esc(RP.week || lastMon()) + '">' + (brands.length > 1 ? '<select class="oq-field" id="rpwkb" aria-label="Brand" style="max-width:240px"><option value="">Every brand</option>' + brands.map(function (b) { return '<option' + (RP.wkb === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select>' : '') + '<button class="sel" data-act="rpweek"' + (RP.busy ? ' disabled' : '') + '>Preview PDF</button></div></div>' +
       '<div class="mut" style="font-size:12.5px;padding-top:14px;border-top:1px solid var(--line2)">Need one call? Open it in Call reviews and choose <b>Print / save PDF</b>.</div></div></div>';
     var bc = null; // billing statement removed from the client portal (Becky, 2026-10-26)
@@ -1118,6 +1118,93 @@ export function mountOpsisQA(ROOT, cfg) {
     var q = agent ? 'Give a short coaching summary for ' + agent + ' at ' + brand + ' for this period: 3 bullets on what is driving their numbers (call flow steps, booking, asks on calls that did not book, transfers) with the key figures, then one line starting "Coach:" with the single most useful thing to coach this week.'
       : 'Write the executive summary for ' + brand + ' for this period: 4 short bullets on what is driving the numbers (booking rate, asks on calls that did not book, the call flow steps that moved, which CSRs are pulling the brand up or down, call mix) with the key figures, then one line starting "Focus:" with the one thing leadership should push this week.';
     return api({ action: 'ask', question: q, start: S.start, end: S.end, brands: [brand] }).then(function (r) { return r.answer || ''; }).catch(function () { return ''; });
+  }
+  // Executive summary / brand one-pager (2026-10-26, Becky): answer first, then the four numbers vs the period before,
+  // where the money went, who is pulling up / down, and the one thing to coach. Same layout for one brand or many.
+  var EX_CSS = '<style>.hl{background:#14302A;color:#fff;border-radius:12px;padding:14px 18px;margin:10px 0 12px;font-size:14px;line-height:1.5}.hl b{color:#BFE3D2}' +
+    '.t4{display:flex;gap:8px;margin:0 0 12px}.t4>div{flex:1;border:1px solid #E2DDD2;border-radius:10px;padding:9px 12px}.t4>div>span{display:block;font-size:9.5px;color:#56605B;text-transform:uppercase;letter-spacing:.07em;font-weight:700}' +
+    '.t4 b{display:block;font-size:24px;margin:3px 0 1px;color:#14302A}.t4 i{font-style:normal;font-size:10.5px;color:#6B726E}.up{color:#1F5A41;font-weight:700}.dn{color:#B4461F;font-weight:700}.fl{color:#6B726E}' +
+    '.two{display:flex;gap:14px}.two>div{flex:1;min-width:0}h2{font-size:13px;margin:14px 0 6px;color:#14302A}' +
+    'table.x{width:100%;border-collapse:collapse}table.x th{background:#14302A;color:#fff;font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:6px 8px;text-align:center}table.x th:first-child{text-align:left;border-radius:6px 0 0 0}table.x th:last-child{border-radius:0 6px 0 0}' +
+    'table.x td{padding:5px 8px;border-top:1px solid #ECE8E0;text-align:center}table.x td:first-child{text-align:left}table.x tr.tot td{background:#EEF4EF;font-weight:700;border-top:2px solid #14302A}' +
+    '.pill{display:inline-block;font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:99px}.pc{background:#FBEDE6;color:#A8441A}.pn{background:#EEEBE4;color:#56605B}' +
+    '.rec{border-left:4px solid #2F7D5B;background:#F3F8F5;border-radius:0 10px 10px 0;padding:10px 14px;margin:14px 0 4px;font-size:12.5px;line-height:1.5}.note{font-size:10px;color:#8A918D;margin-top:10px}</style>';
+  function exStep(l) { return String(l || '').replace(/^Step\s+\w+\s+/, '').split(':')[0]; }
+  function exDelta(cur, prev, unit, goodUp, dec) {
+    if (cur == null || prev == null) return '<span class="fl">no prior data</span>';
+    var d = cur - prev, r = Math.abs(d).toFixed(dec == null ? 1 : dec);
+    if (Math.abs(d) < Math.pow(10, -(dec == null ? 1 : dec)) / 2) return '<span class="fl">no change</span>';
+    var good = goodUp ? d > 0 : d < 0;
+    return '<span class="' + (good ? 'up' : 'dn') + '">' + (d > 0 ? '▲ ' : '▼ ') + r + unit + '</span>';
+  }
+  function opExec(w, brands, onePager) {
+    var one = brands && brands.length === 1 ? brands[0] : null, p = prevWin();
+    var cw = { start: S.start, end: S.end, brands: brands }, pw = { start: p.start, end: p.end, brands: brands };
+    var cnt = function (b, x) { return api(Object.assign({ action: 'bucketcalls', bucket: 'upset', limit: 1, offset: 0 }, x)).then(function (r) { return r.total || 0; }).catch(function () { return null; }); };
+    return Promise.all([
+      api(Object.assign({ action: 'report' }, cw)).then(perCall),
+      api(Object.assign({ action: 'money' }, cw)).catch(function () { return {}; }),
+      api(Object.assign({ action: 'money' }, pw)).catch(function () { return {}; }),
+      cnt('upset', cw), cnt('upset', pw),
+      api({ action: 'focus', start: S.start, end: S.end, brand: one }).catch(function () { return {}; }),
+      onePager ? api(Object.assign({ action: 'qaextras' }, cw)).catch(function () { return {}; }) : Promise.resolve({})
+    ]).then(function (r) {
+      var rep = r[0] || {}, M = r[1] || {}, MP = r[2] || {}, up = r[3], upP = r[4], F = r[5] || {}, X = r[6] || {};
+      var k = rep.kpis || {}, kp = rep.prev || {}, T = M.totals || {}, TP = MP.totals || {}, name = one ? short(one) : (brands && brands.length ? brands.length + ' brands' : 'All brands');
+      var days = daysBetween(S.start, S.end), per = 'vs the ' + days + ' days before';
+      var br = k.booking_rate, brP = kp.booking_rate, cv = +T.ctrl_value || 0, cn = +T.ctrl_n || 0;
+      var whys = (M.by_why || []).slice().sort(function (a, b) { return (a.kind === 'controllable' ? 0 : 1) - (b.kind === 'controllable' ? 0 : 1) || b.n - a.n; });
+      var topC = whys.filter(function (x) { return x.kind === 'controllable'; })[0];
+      // the step to coach: most points lost (missed × points) among steps that applied to 20+ calls
+      var steps = (F.steps || []).filter(function (s) { return s.applies >= 20; }), focus = steps.slice().sort(function (a, b) { return b.missed * b.points - a.missed * a.points; })[0];
+      // headline
+      var hl = '<b>' + esc(name) + '</b> booked <b>' + p1(br) + '</b> of decided opportunities' + (br != null && brP != null ? ', ' + (Math.abs(br - brP) < 0.05 ? 'flat' : (br > brP ? 'up ' : 'down ') + Math.abs(br - brP).toFixed(1) + ' pts') + ' ' + per : '') + '.' +
+        (cn ? ' <b>' + fmt(cn) + ' controllable misses</b>' + (cv ? ' left about <b>' + usd(cv) + '</b> on the table' : ' could have been saved') + (topC ? ', most often “' + esc(topC.why) + '” (' + fmt(topC.n) + ')' : '') + '.' : ' No controllable misses.') +
+        (focus ? ' Coaching focus: <b>' + esc(exStep(focus.label)) + '</b>, done on ' + focus.rate + '% of calls.' : '');
+      var tile = function (l, v, d, s) { return '<div><span>' + l + '</span><b>' + v + '</b><i>' + d + (s ? ' · ' + s : '') + '</i></div>'; };
+      var tiles = '<div class="t4">' +
+        tile('Booking rate', p1(br), exDelta(br, brP, ' pts', true), fmt(k.booked_calls || 0) + ' of ' + fmt(k.decided_calls || 0)) +
+        tile('Avg QA score', k.avg != null ? (+k.avg).toFixed(1) : '—', exDelta(k.avg, kp.avg, '', true), 'out of 100') +
+        tile('Controllable misses', fmt(cn), exDelta(cn, TP.ctrl_n != null ? +TP.ctrl_n : null, '', false, 0), cv ? usd(cv) : '') +
+        tile('Upset customers', up == null ? '—' : fmt(up), exDelta(up, upP, '', false, 0), '') + '</div>';
+      // where the money went
+      var nb = whys.reduce(function (t, x) { return t + (+x.n || 0); }, 0);
+      var money = '<h2>Why opportunities didn’t book</h2><table class="x"><thead><tr><th>Reason</th><th>Type</th><th>Calls</th><th>Share</th><th>Value</th></tr></thead><tbody>' +
+        (whys.length ? whys.slice(0, 6).map(function (x) { return '<tr><td>' + esc(x.why) + '</td><td><span class="pill ' + (x.kind === 'controllable' ? 'pc">Controllable' : 'pn">Not controllable') + '</span></td><td>' + fmt(x.n) + '</td><td>' + pctTxt(x.n, nb) + '</td><td>' + (+x.value ? usd(x.value) : '—') + '</td></tr>'; }).join('') +
+          '<tr class="tot"><td>Total not booked</td><td></td><td>' + fmt(nb) + '</td><td>100%</td><td>' + (cv + (+T.nc_value || 0) ? usd(cv + (+T.nc_value || 0)) : '—') + '</td></tr>' : '<tr><td colspan="5">No unbooked opportunities in this range.</td></tr>') + '</tbody></table>';
+      // CSRs: top and bottom 3 by booking rate (10+ decided), with the step each misses most
+      var AIS = ['Dane', 'Sophia', 'Jason'];
+      var csrs = (rep.agents || []).filter(function (a) { return a.decided >= 10 && AIS.indexOf(a.name) < 0; }).map(function (a) { return { name: a.name, brand: a.brand, rate: 100 * a.booked / a.decided, dec: a.decided, avg: a.avg }; }).sort(function (a, b) { return b.rate - a.rate; });
+      var top3 = csrs.slice(0, 3), bot3 = csrs.slice(Math.max(3, csrs.length - 3)).reverse();
+      var pick = top3.concat(bot3);
+      return Promise.all(pick.map(function (a) { return api({ action: 'focus', start: S.start, end: S.end, brand: a.brand, agent: a.name }).then(function (f2) { var s2 = (f2.steps || []).filter(function (s) { return s.applies >= 3 && s.missed > 0; }).sort(function (x, y) { return y.missed * y.points - x.missed * x.points; })[0]; a.miss = s2 ? exStep(s2.label) + ' (' + s2.rate + '%)' : '—'; }).catch(function () { a.miss = '—'; }); })).then(function () {
+        var ct = function (title, L) { return '<h2>' + title + '</h2><table class="x"><thead><tr><th>CSR</th><th>Booking rate</th><th>Avg QA</th><th>Most-missed step</th></tr></thead><tbody>' + (L.length ? L.map(function (a) { return '<tr><td><b>' + esc(a.name) + '</b>' + (one ? '' : '<br><span class="fl">' + esc(short(a.brand)) + '</span>') + '</td><td>' + Math.round(a.rate) + '% <span class="fl">(' + a.dec + ')</span></td><td>' + (a.avg != null ? (+a.avg).toFixed(1) : '—') + '</td><td>' + esc(a.miss) + '</td></tr>'; }).join('') : '<tr><td colspan="4">Not enough calls yet (10+ decided opportunities).</td></tr>') + '</tbody></table>'; };
+        var csrT = '<div class="two"><div>' + ct('Leading the way', top3) + '</div><div>' + ct('Needs the most help', bot3) + '</div></div>';
+        var rec = focus ? '<div class="rec"><b>Next week, coach ' + esc(exStep(focus.label)) + '.</b> It was done on ' + focus.rate + '% of the calls it applied to' + (focus.prev_rate != null ? ' (' + focus.prev_rate + '% the period before)' : '') + ' and missed on ' + fmt(focus.missed) + ' calls, the most points lost of any step. ' + esc(String(focus.label || '').split(':').slice(1).join(':').trim()) + '.</div>' : '';
+        // by brand (only when more than one brand)
+        var bt = '';
+        var BR = (rep.brands || []).filter(function (b) { return b.calls; });
+        if (!one && BR.length > 1) {
+          var mb = {}; (M.by_brand || []).forEach(function (b) { mb[b.brand] = b; });
+          var rows = BR.map(function (b) { var dc = b.decided_calls != null ? b.decided_calls : b.decided, bc = b.booked_calls != null ? b.booked_calls : b.booked; return { b: b.brand, calls: b.calls, avg: b.avg, rate: dc ? 100 * bc / dc : null, ctrl: (mb[b.brand] || {}).ctrl_n || 0, val: +(mb[b.brand] || {}).ctrl_value || 0 }; }).sort(function (a, b) { return (b.rate || -1) - (a.rate || -1); });
+          bt = '<h2>By Brand</h2><table class="x"><thead><tr><th>Brand</th><th>Calls</th><th>Avg QA</th><th>Booking rate</th><th>Controllable misses</th><th>Value</th></tr></thead><tbody>' +
+            rows.map(function (x) { return '<tr><td><b>' + esc(short(x.b)) + '</b></td><td>' + fmt(x.calls) + '</td><td>' + (x.avg != null ? (+x.avg).toFixed(1) : '—') + '</td><td>' + (x.rate != null ? x.rate.toFixed(1) + '%' : '—') + '</td><td>' + fmt(x.ctrl) + '</td><td>' + (x.val ? usd(x.val) : '—') + '</td></tr>'; }).join('') +
+            '<tr class="tot"><td>All brands</td><td>' + fmt(rows.reduce(function (t, x) { return t + x.calls; }, 0)) + '</td><td>' + (k.avg != null ? (+k.avg).toFixed(1) : '—') + '</td><td>' + p1(br) + '</td><td>' + fmt(cn) + '</td><td>' + (cv ? usd(cv) : '—') + '</td></tr></tbody></table>';
+        }
+        // brand one-pager extras: the call flow and what callers wanted
+        var extra = '';
+        if (onePager) {
+          var stT = '<h2>Call flow, step by step</h2><table class="x"><thead><tr><th>Step</th><th>Done</th><th>Change</th></tr></thead><tbody>' + steps.map(function (s) { return '<tr><td>' + esc(exStep(s.label)) + '</td><td><b>' + s.rate + '%</b></td><td>' + exDelta(s.rate, s.prev_rate, ' pts', true, 0) + '</td></tr>'; }).join('') + '</tbody></table>';
+          var cats = (X.categories || []).filter(function (c) { return c.k !== 'Internal / staff call' && c.k !== 'No conversation'; }), tot = cats.reduce(function (t, c) { return t + c.n; }, 0);
+          var caT = '<h2>What callers wanted</h2><table class="x"><thead><tr><th>Call type</th><th>Calls</th><th>Share</th></tr></thead><tbody>' + cats.slice(0, 8).map(function (c) { return '<tr><td>' + esc(c.k) + '</td><td>' + fmt(c.n) + '</td><td>' + pctTxt(c.n, tot) + '</td></tr>'; }).join('') + '</tbody></table>';
+          extra = '<div class="two"><div>' + stT + '</div><div>' + caT + '</div></div>';
+        }
+        var title = onePager ? name + ' — Brand One-Pager' : (one ? name + ' — Executive Summary' : 'Executive Summary');
+        pdfShell(w, title, (S.range === 'custom' ? rangeLabel() : rangeLabel() + ' (' + fdate(S.start) + ' – ' + fdate(S.end) + ')') + ' · ' + (one || (brands && brands.length ? brands.map(short).join(', ') : 'All brands')),
+          EX_CSS + '<div class="hl">' + hl + '</div>' + tiles + money + csrT + rec + bt + extra +
+          '<p class="note">Changes compare with the ' + days + ' days before (' + fdate(p.start) + ' – ' + fdate(p.end) + '). Booking rate = booked ÷ opportunities that reached a decision. Controllable miss = an opportunity the CSR could have saved. Dollar values use invoices where uploaded, otherwise each brand’s average ticket.</p>');
+      });
+    });
   }
   function opOnePager(w, brand) {
     var bw = { start: S.start, end: S.end, brands: [brand] };
@@ -1152,15 +1239,36 @@ export function mountOpsisQA(ROOT, cfg) {
       pdfShell(w, name + ' — CSR scorecard', rangeLabel() + ' · ' + brand, OP_CSS + tiles + (why ? '<div class="ai"><b>Coaching summary</b>' + md(why) + '</div>' : '') + '<div class="two"><div>' + stepT + '</div><div>' + priT + '</div></div>' + lowT);
     });
   }
+  // Weekly call-flow scorecard (rebuilt 2026-10-26): every step, every CSR, this week vs the week before, as a colour-coded grid.
   function opWeek(w, week, brand) {
-    return api({ action: 'qaextras', view: 'focus', week: week, brand: brand || null }).then(function (R0) {
-      var steps = R0.steps || [], lbl = function (st) { return String(st.label || st.key).replace(/^Step\s+\w+\s+/, '').split(':')[0]; };
-      var cell = function (o) { if (!o || !o.cur_n) return '<td style="color:#9AA19D">—</td>'; var c = Math.round(100 * o.cur_y / o.cur_n), b = o.base_n ? Math.round(100 * o.base_y / o.base_n) : null, d = b == null ? null : c - b; return '<td><b>' + c + '%</b>' + (d == null ? '' : ' <span class="' + (d >= 0 ? 'up' : 'dn') + '">' + (d >= 0 ? '▲' : '▼') + Math.abs(d) + '</span>') + '<div style="font-size:10px;color:#8A918D">' + o.cur_y + ' of ' + o.cur_n + '</div></td>'; };
-      var body = (R0.brands || []).map(function (B0) { return '<h2>' + esc(short(B0.brand)) + '</h2><table><thead><tr><th>CSR</th><th>Calls</th>' + steps.map(function (st) { return '<th>' + esc(lbl(st)) + '</th>'; }).join('') + '</tr></thead><tbody>' +
-        (B0.csrs || []).map(function (c) { return '<tr><td><b>' + esc(c.agent) + '</b></td><td>' + c.calls + '</td>' + steps.map(function (st) { return cell((c.steps || {})[st.key]); }).join('') + '</tr>'; }).join('') +
-        '<tr style="background:#F3F1EC"><td><b>Total</b></td><td><b>' + B0.calls + '</b></td>' + steps.map(function (st) { return cell((B0.steps || {})[st.key]); }).join('') + '</tr></tbody></table>'; }).join('') || '<p>No scored calls that week.</p>';
-      pdfShell(w, 'Call-flow scorecard — week ' + R0.week_no, fdate(R0.week_start) + ' – ' + fdate(R0.week_end) + ' · compared with ' + fdate(R0.baseline.start) + ' – ' + fdate(R0.baseline.end) + (R0.enabled ? '' : ' · preview (weekly emails are off until the program starts ' + fdate(R0.program_start) + ')'),
-        OP_CSS + '<p style="font-size:11.5px;color:#56605B">Share of scored calls where the CSR did each step that week, and the change in points (▲/▼) vs the 30 days before training. Each week adds the next step of the call flow. Card on file is not measured here.</p>' + body);
+    return api({ action: 'qaextras', view: 'week', week: week, brand: brand || null }).then(function (R0) {
+      var steps = R0.steps || [], BR = (R0.brands || []).filter(function (b) { return b.calls; });
+      var SHORT = { introduce: 'Introduce', listen: 'Listen', collect_info: 'Collect info', sell_offer: 'Offer the booking', sell_ask: 'Ask for the booking', sell_card: 'Card on file', sell_objection: 'Handle objection', sell_expert: 'Tech is the expert', confirm_thank: 'Confirm & thank' };
+      var nm = function (st) { return SHORT[st.key] || exStep(st.label); };
+      var pc = function (o) { return o && o.n ? Math.round(100 * o.y / o.n) : null; }, ppc = function (o) { return o && o.pn >= 10 ? Math.round(100 * o.py / o.pn) : null; };
+      var col = function (v) { return v == null ? '' : v >= 80 ? 'g' : v >= 60 ? 'a' : 'r'; };
+      var cell = function (o) {
+        if (!o || !o.n) return '<td class="na">—</td>';
+        var v = pc(o), pv = ppc(o), d = pv == null ? null : v - pv, thin = o.n < 3;
+        return '<td class="' + (thin ? 'thin' : col(v)) + '"><b>' + v + '%</b>' + (d == null || thin ? '' : '<i class="' + (d >= 0 ? 'up' : 'dn') + '">' + (d === 0 ? '±0' : (d > 0 ? '▲' : '▼') + Math.abs(d)) + '</i>') + '<s>' + o.y + '/' + o.n + '</s></td>';
+      };
+      var avgD = function (a, p) { return a == null || p == null ? '' : '<i class="' + (a - p >= 0 ? 'up' : 'dn') + '">' + (a - p >= 0 ? '▲' : '▼') + Math.abs(a - p).toFixed(1) + '</i>'; };
+      var css = '<style>@page{size:landscape;margin:10mm}.bh{background:#14302A;color:#fff;border-radius:10px;padding:9px 14px;margin:16px 0 6px;display:flex;justify-content:space-between;align-items:baseline;gap:10px;page-break-after:avoid}.bh b{font-size:14px}.bh span{font-size:11px;color:#CFE5DF}' +
+        'table.g{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:3px;font-size:11px;page-break-inside:auto}table.g th:nth-child(1){width:13%}table.g th:nth-child(2),table.g th:nth-child(3){width:5.5%}table.g th{background:#EEF4EF;color:#14302A;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;padding:6px 4px;border-radius:5px;text-align:center}table.g th:first-child{text-align:left}' +
+        'table.g td{padding:5px 4px;border-radius:5px;text-align:center;border:none;line-height:1.15}table.g td:first-child{text-align:left;font-weight:600}table.g td b{font-size:12px}table.g td i{display:block;font-style:normal;font-size:9.5px;font-weight:700}table.g td s{display:block;text-decoration:none;font-size:8.5px;color:#6B726E}' +
+        'td.g{background:#E3F1E8}td.a{background:#FDF1D8}td.r{background:#FBE1D8}td.thin{background:#F5F3EE;color:#8A918D}td.na{color:#B5B9B6}.up{color:#1F5A41}.dn{color:#B4461F}tr.tot td{background:#14302A!important;color:#fff}tr.tot td s,tr.tot td i{color:#CFE5DF}' +
+        '.lg{display:flex;gap:14px;font-size:10px;color:#56605B;margin:10px 0 0;flex-wrap:wrap}.lg span{display:inline-flex;align-items:center;gap:5px}.lg em{display:inline-block;width:12px;height:12px;border-radius:3px}</style>';
+      var head = '<tr><th>CSR</th><th>Calls</th><th>Avg QA</th>' + steps.map(function (st) { return '<th>' + esc(nm(st)) + '<br><span style="font-weight:400;text-transform:none">' + st.points + ' pts</span></th>'; }).join('') + '</tr>';
+      var body = BR.map(function (B0) {
+        var weak = steps.map(function (st) { return { st: st, v: pc((B0.steps || {})[st.key]), n: ((B0.steps || {})[st.key] || {}).n || 0 }; }).filter(function (x) { return x.v != null && x.n >= 10; }).sort(function (a, b) { return a.v - b.v; })[0];
+        var hl = fmt(B0.calls) + ' calls · Avg QA ' + (B0.avg != null ? (+B0.avg).toFixed(1) : '—') + (B0.pavg != null && B0.avg != null ? ' (' + (B0.avg - B0.pavg >= 0 ? '▲' : '▼') + Math.abs(B0.avg - B0.pavg).toFixed(1) + ')' : '') + (weak ? ' · Weakest step: ' + esc(nm(weak.st)) + ' ' + weak.v + '%' : '');
+        return '<div class="bh"><b>' + esc(short(B0.brand)) + '</b><span>' + hl + '</span></div><table class="g"><thead>' + head + '</thead><tbody>' +
+          (B0.csrs || []).map(function (c) { return '<tr><td>' + esc(c.agent) + '</td><td>' + c.calls + '</td><td><b>' + (c.avg != null ? (+c.avg).toFixed(1) : '—') + '</b>' + avgD(c.avg, c.pcalls >= 10 ? c.pavg : null) + '</td>' + steps.map(function (st) { return cell((c.steps || {})[st.key]); }).join('') + '</tr>'; }).join('') +
+          '<tr class="tot"><td>' + esc(short(B0.brand)) + ' total</td><td>' + fmt(B0.calls) + '</td><td><b>' + (B0.avg != null ? (+B0.avg).toFixed(1) : '—') + '</b>' + avgD(B0.avg, B0.pavg) + '</td>' + steps.map(function (st) { var o = (B0.steps || {})[st.key]; return o && o.n ? '<td><b>' + pc(o) + '%</b>' + (ppc(o) == null ? '' : '<i>' + (pc(o) - ppc(o) >= 0 ? '▲' : '▼') + Math.abs(pc(o) - ppc(o)) + '</i>') + '<s>' + o.y + '/' + o.n + '</s></td>' : '<td>—</td>'; }).join('') + '</tr></tbody></table>';
+      }).join('') || '<p>No scored calls that week.</p>';
+      pdfShell(w, 'Weekly Call-Flow Scorecard', 'Week of ' + fdate(R0.week_start) + ' – ' + fdate(R0.week_end) + ' · compared with ' + fdate(R0.prev_start) + ' – ' + fdate(R0.prev_end) + (brand ? ' · ' + short(brand) : ''),
+        css + '<p style="font-size:11px;color:#56605B;margin:4px 0 0">Each cell is the share of that CSR’s calls where they did the step, out of the calls where the step applied (done / applied). ▲/▼ is the change in points vs the week before, shown once the week before had 10 or more of those calls. CSRs are sorted by average QA score.</p>' + body +
+        '<div class="lg"><span><em style="background:#E3F1E8"></em>80% or more</span><span><em style="background:#FDF1D8"></em>60–79%</span><span><em style="background:#FBE1D8"></em>Under 60%</span><span><em style="background:#F5F3EE"></em>Fewer than 3 calls (too few to judge)</span><span>— step didn’t apply</span></div>');
     });
   }
   function rpDownload(id, fmt) {
@@ -1170,9 +1278,9 @@ export function mountOpsisQA(ROOT, cfg) {
     var w = fmt === 'pdf' ? pdfWin() : null; if (fmt === 'pdf' && !w) return;
     var go = function (sheets) { if (fmt === 'pdf') sheetsPdf(w, title, sub, sheets); else if (fmt === 'csv') sheetsCsv(file, sheets); else return sheetsXlsx(file, sheets); };
     var fail = function (e) { if (w) try { w.close(); } catch (x) {} RP.busy = ''; drawReporting(); toast(e.message || 'Couldn’t build that report.'); };
-    if (fmt === 'pdf' && (id === 'team' || id === 'csr')) {
+    if (fmt === 'pdf' && (id === 'team' || id === 'csr' || id === 'exec')) {
       RP.busy = id; drawReporting();
-      var pq = id === 'team' ? opOnePager(w, RP.team) : opCsr(w, RP.csr.split('|||')[0], RP.csr.split('|||')[1]);
+      var pq = id === 'exec' ? opExec(w, S.brands.length ? S.brands : (LOCK ? [LOCK] : null), false) : id === 'team' ? opExec(w, [RP.team], true) : opCsr(w, RP.csr.split('|||')[0], RP.csr.split('|||')[1]);
       pq.then(function () { RP.busy = ''; drawReporting(); }).catch(fail);
       return;
     }
