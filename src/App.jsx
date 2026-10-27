@@ -67,6 +67,7 @@ import CsrScorecard from './modules/CsrScorecard'
 import LiveStatus from './modules/LiveStatus'
 import { usePresenceHeartbeat, MyStatusButton, TeamStatus } from './components/Presence'
 import { ViewAsMenu } from './components/RolePreview'
+import PortalMenu, { StaffPortal } from './components/PortalMenu'
 import MeetingReminder from './components/MeetingReminder'
 import LsaReminderPopup from './components/LsaReminderPopup'
 import PhotoNudge from './components/PhotoNudge'
@@ -215,8 +216,8 @@ export default function App() {
   // (GarageCo by default). Full-screen, outside the Command Center shell. Changes made here are real.
 const isQaStaff = isAdmin || ['owner', 'admin', 'asc', 'certification', 'quality', 'marketing', 'support'].includes(String(appRole || '').toLowerCase())
   if (location.pathname === '/opsis-qa' && isQaStaff && !inTraining) {
-    return <OpsisQAPortal staff logo={GARAGECO_PORTAL_LOGO} hasCsrs={canAny(appRole, 'quality_audit.call_reviews')} csrMode="staff"
-      onClassic={() => { window.location.href = '/call-qa' }} onSignOut={() => signOut()} />
+    // ?client=<id> picks the portal (Portals ▾ menu); no param = GarageCo, as before.
+    return <StaffPortal OpsisQAPortal={OpsisQAPortal} defaultLogo={GARAGECO_PORTAL_LOGO} hasCsrs={canAny(appRole, 'quality_audit.call_reviews')} onSignOut={() => signOut()} />
   }
   // External client-portal login: a branded, single-purpose shell that shows ONLY
   // Call QA (their own data, RLS-enforced — CallRail/LightSpeed only, never Five9)
@@ -483,6 +484,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <ViewAsMenu />
+              <PortalMenu />
               <MyStatusButton />
               <HeaderTaskBar />
               <NotificationBell />
