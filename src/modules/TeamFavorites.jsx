@@ -11,13 +11,13 @@ import { useAuth } from '../lib/auth'
 // Birthday is month + day only — no year, by design.
 // ============================================================
 
-const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+export const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
 
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL']
 
 // Text fields shown on the card, in order. (Sizes + birthday render specially.)
-const CARD_FIELDS = [
+export const CARD_FIELDS = [
   ['favorite_colors', 'Favorite color(s)', '🎨'],
   ['favorite_drinks', 'Favorite drink(s)', '🥤'],
   ['favorite_food', 'Favorite food', '🍽️'],
@@ -51,15 +51,12 @@ export default function TeamFavorites() {
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState({})
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
     const [{ data: profs }, { data: rows }] = await Promise.all([
       supabase.from('profiles')
-        .select('id, full_name, role, color, is_active')
+        .select('id, full_name, role, color, avatar_url, is_active')
         .eq('is_active', true).neq('role', 'client')
         .order('full_name'),
       supabase.from('team_favorites').select('*'),
@@ -79,60 +76,7 @@ export default function TeamFavorites() {
     [people, user?.id]
   )
 
-  function startEdit() {
-    setErr('')
-    setForm({
-      favorite_colors: myRow?.favorite_colors || '',
-      favorite_drinks: myRow?.favorite_drinks || '',
-      favorite_food: myRow?.favorite_food || '',
-      favorite_restaurant: myRow?.favorite_restaurant || '',
-      favorite_ice_cream: myRow?.favorite_ice_cream || '',
-      favorite_candy: myRow?.favorite_candy || '',
-      favorite_snack: myRow?.favorite_snack || '',
-      favorite_scent: myRow?.favorite_scent || '',
-      coffee_order: myRow?.coffee_order || '',
-      hobbies: myRow?.hobbies || '',
-      allergies_dietary: myRow?.allergies_dietary || '',
-      fun_fact: myRow?.fun_fact || '',
-      tshirt_size: myRow?.tshirt_size || '',
-      hoodie_size: myRow?.hoodie_size || '',
-      birthday_month: myRow?.birthday_month || '',
-      birthday_day: myRow?.birthday_day || '',
-    })
-    setEditing(true)
-  }
-
-  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
-
-  async function save() {
-    if (!user?.id) return
-    setSaving(true); setErr('')
-    const payload = {
-      profile_id: user.id,
-      favorite_colors: clean(form.favorite_colors),
-      favorite_drinks: clean(form.favorite_drinks),
-      favorite_food: clean(form.favorite_food),
-      favorite_restaurant: clean(form.favorite_restaurant),
-      favorite_ice_cream: clean(form.favorite_ice_cream),
-      favorite_candy: clean(form.favorite_candy),
-      favorite_snack: clean(form.favorite_snack),
-      favorite_scent: clean(form.favorite_scent),
-      coffee_order: clean(form.coffee_order),
-      hobbies: clean(form.hobbies),
-      allergies_dietary: clean(form.allergies_dietary),
-      fun_fact: clean(form.fun_fact),
-      tshirt_size: clean(form.tshirt_size),
-      hoodie_size: clean(form.hoodie_size),
-      birthday_month: form.birthday_month ? Number(form.birthday_month) : null,
-      birthday_day: form.birthday_day ? Number(form.birthday_day) : null,
-    }
-    const { data, error } = await supabase.from('team_favorites')
-      .upsert(payload, { onConflict: 'profile_id' }).select().single()
-    setSaving(false)
-    if (error) { setErr(error.message || 'Could not save. Please try again.'); return }
-    setFavs(prev => ({ ...prev, [user.id]: data }))
-    setEditing(false)
-  }
+  function startEdit() { setEditing(true) }
 
   // Split people into "filled out" and "not yet", with an optional name filter.
   const nameMatch = (p) => {
@@ -207,43 +151,103 @@ export default function TeamFavorites() {
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {empty.map(p => (
-              <span key={p.id} className="badge" style={{
+              <a key={p.id} href={p.id === user?.id ? '/profile' : `/profile/${p.id}`} className="badge" style={{ textDecoration: 'none',
                 background: 'var(--canvas)', color: 'var(--ink-soft)',
                 border: '1px solid var(--line)', padding: '4px 10px', borderRadius: 999, fontSize: 13,
               }}>
                 {p.full_name || 'Unnamed'}{p.id === user?.id ? ' (you)' : ''}
-              </span>
+              </a>
             ))}
           </div>
         </div>
       )}
 
-      {editing && (
-        <EditModal
-          form={form} set={set} saving={saving} err={err}
-          onClose={() => setEditing(false)} onSave={save}
+      {editing && user?.id && (
+        <FavoritesEditor
+          userId={user.id} row={myRow}
+          onClose={() => setEditing(false)}
+          onSaved={(row) => { setFavs(prev => ({ ...prev, [user.id]: row })); setEditing(false) }}
         />
       )}
     </div>
   )
 }
 
+// The "My favorites" form + save, shared with the profile page.
+export function FavoritesEditor({ userId, row, onClose, onSaved }) {
+  const [form, setForm] = useState(() => ({
+    favorite_colors: row?.favorite_colors || '', favorite_drinks: row?.favorite_drinks || '',
+    favorite_food: row?.favorite_food || '', favorite_restaurant: row?.favorite_restaurant || '',
+    favorite_ice_cream: row?.favorite_ice_cream || '', favorite_candy: row?.favorite_candy || '',
+    favorite_snack: row?.favorite_snack || '', favorite_scent: row?.favorite_scent || '',
+    coffee_order: row?.coffee_order || '', hobbies: row?.hobbies || '',
+    allergies_dietary: row?.allergies_dietary || '', fun_fact: row?.fun_fact || '',
+    tshirt_size: row?.tshirt_size || '', hoodie_size: row?.hoodie_size || '',
+    birthday_month: row?.birthday_month || '', birthday_day: row?.birthday_day || '',
+  }))
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+  async function save() {
+    if (!userId) return
+    setSaving(true); setErr('')
+    const payload = { profile_id: userId }
+    ;['favorite_colors', 'favorite_drinks', 'favorite_food', 'favorite_restaurant', 'favorite_ice_cream', 'favorite_candy',
+      'favorite_snack', 'favorite_scent', 'coffee_order', 'hobbies', 'allergies_dietary', 'fun_fact', 'tshirt_size', 'hoodie_size']
+      .forEach(k => { payload[k] = clean(form[k]) })
+    payload.birthday_month = form.birthday_month ? Number(form.birthday_month) : null
+    payload.birthday_day = form.birthday_day ? Number(form.birthday_day) : null
+    const { data, error } = await supabase.from('team_favorites')
+      .upsert(payload, { onConflict: 'profile_id' }).select().single()
+    setSaving(false)
+    if (error) { setErr(error.message || 'Could not save. Please try again.'); return }
+    onSaved && onSaved(data)
+  }
+  return <EditModal form={form} set={set} saving={saving} err={err} onClose={onClose} onSave={save} />
+}
+
+// Birthday / sizes pills + the favorites list, shared with the profile page.
+export function FavoritesDetails({ fav }) {
+  const bday = fav.birthday_month ? `${MONTHS[fav.birthday_month]} ${fav.birthday_day || ''}`.trim() : null
+  const rows = CARD_FIELDS.filter(([k]) => fav[k])
+  return (
+    <>
+      {(bday || fav.tshirt_size || fav.hoodie_size) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {bday && <Pill>🎂 {bday}</Pill>}
+          {fav.tshirt_size && <Pill>👕 Tee {fav.tshirt_size}</Pill>}
+          {fav.hoodie_size && <Pill>🧥 Hoodie {fav.hoodie_size}</Pill>}
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {rows.map(([k, label, ic]) => (
+          <div key={k} style={{ display: 'flex', gap: 8, fontSize: 13.5, lineHeight: 1.35 }}>
+            <span style={{ flexShrink: 0 }}>{ic}</span>
+            <span>
+              <span style={{ color: 'var(--ink-soft)' }}>{label}: </span>
+              <span style={{ fontWeight: 500, overflowWrap: 'anywhere' }}>{fav[k]}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
 function PersonCard({ person, fav, isMe }) {
   const color = person.color || hueFor(person.full_name || person.id)
   const initial = ((person.full_name || 'U').trim()[0] || 'U').toUpperCase()
-  const bday = fav.birthday_month
-    ? `${MONTHS[fav.birthday_month]} ${fav.birthday_day || ''}`.trim()
-    : null
-  const rows = CARD_FIELDS.filter(([k]) => fav[k])
-
+  const href = isMe ? '/profile' : `/profile/${person.id}`
   return (
     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{
-          width: 44, height: 44, borderRadius: '50%', background: color, color: '#fff',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontWeight: 700, fontSize: 18, flexShrink: 0,
-        }}>{initial}</div>
+      <a href={href} title={`Open ${person.full_name || 'their'} profile`} style={{ display: 'flex', alignItems: 'center', gap: 12, textDecoration: 'none', color: 'inherit' }}>
+        {person.avatar_url
+          ? <img src={person.avatar_url} alt="" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+          : <div style={{
+              width: 44, height: 44, borderRadius: '50%', background: color, color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 700, fontSize: 18, flexShrink: 0,
+            }}>{initial}</div>}
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 6 }}>
             {person.full_name || 'Unnamed'}
@@ -253,27 +257,8 @@ function PersonCard({ person, fav, isMe }) {
             {(person.role || '').replace(/,/g, ', ') || '—'}
           </div>
         </div>
-      </div>
-
-      {(bday || fav.tshirt_size || fav.hoodie_size) && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {bday && <Pill>🎂 {bday}</Pill>}
-          {fav.tshirt_size && <Pill>👕 Tee {fav.tshirt_size}</Pill>}
-          {fav.hoodie_size && <Pill>🧥 Hoodie {fav.hoodie_size}</Pill>}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-        {rows.map(([k, label, ic]) => (
-          <div key={k} style={{ display: 'flex', gap: 8, fontSize: 13.5, lineHeight: 1.35 }}>
-            <span style={{ flexShrink: 0 }}>{ic}</span>
-            <span>
-              <span style={{ color: 'var(--ink-soft)' }}>{label}: </span>
-              <span style={{ fontWeight: 500 }}>{fav[k]}</span>
-            </span>
-          </div>
-        ))}
-      </div>
+      </a>
+      <FavoritesDetails fav={fav} />
     </div>
   )
 }
