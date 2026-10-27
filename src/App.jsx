@@ -68,6 +68,7 @@ import LiveStatus from './modules/LiveStatus'
 import { usePresenceHeartbeat, MyStatusButton, TeamStatus } from './components/Presence'
 import { ViewAsMenu } from './components/RolePreview'
 import PortalMenu, { StaffPortal } from './components/PortalMenu'
+import PushEnrollmentBanner from './components/PushEnrollmentBanner'
 import MeetingReminder from './components/MeetingReminder'
 import LsaReminderPopup from './components/LsaReminderPopup'
 import PhotoNudge from './components/PhotoNudge'
@@ -494,6 +495,9 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             {/* Nudge for anyone who hasn't answered the SMS opt-in yet. Never opts
                 anyone in by itself — it links to the real consent form. */}
             <SmsConsentBanner userId={session.user.id} />
+            {/* Per-device notifications: turns on quietly where already allowed, otherwise
+                a one-tap banner. Never shows on a device where they turned it off. */}
+            <PushEnrollmentBanner profileId={session.user.id} />
             <Routes>
               <Route path="/" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <OpsisWeekly />} />
               <Route path="/calendar" element={<Calendar />} />
