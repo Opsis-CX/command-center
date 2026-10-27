@@ -52,6 +52,29 @@ function avatarColor(name) {
   return colors[h % colors.length]
 }
 
+// ---- Profile photos in chat ----
+// Every profile query in Chat also fetches avatar_url and registers it here,
+// so any avatar can show the person's photo (and falls back to initials).
+const _photoByName = new Map()
+function registerPhotos(rows) {
+  for (const r of rows || []) if (r && r.full_name) {
+    if (r.avatar_url) _photoByName.set(r.full_name, r.avatar_url)
+    else _photoByName.delete(r.full_name)
+  }
+}
+function Av({ name, size = 24, radius = '50%', fontSize, bg }) {
+  const url = _photoByName.get(name)
+  const [broken, setBroken] = useState(false)
+  if (url && !broken) {
+    return <img src={url} alt="" onError={() => setBroken(true)} draggable={false}
+      style={{ width: size, height: size, borderRadius: radius, objectFit: 'cover', flex: 'none', display: 'block' }} />
+  }
+  return (
+    <span style={{ width: size, height: size, borderRadius: radius, background: bg || avatarColor(name), color: '#fff', display: 'grid', placeItems: 'center',
+      fontSize: fontSize || Math.max(9, Math.round(size * 0.4)), fontWeight: 700, flex: 'none' }}>{initials(name)}</span>
+  )
+}
+
 function timeLabel(iso) {
   const d = new Date(iso); const now = new Date()
   const sameDay = d.toDateString() === now.toDateString()
@@ -356,7 +379,7 @@ function MentionTextarea({ value, onChange, onEnter, profiles, placeholder, rows
           {matches.map((p, i) => (
             <button key={p.id} type="button" onMouseDown={(ev) => { ev.preventDefault(); pick(p) }}
               style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', border: 0, cursor: 'pointer', padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', background: i === hi ? 'var(--accent-bg)' : 'transparent', color: 'var(--ink)' }}>
-              <span style={{ width: 22, height: 22, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 700 }}>{initials(p.full_name)}</span>
+              <Av name={p.full_name} size={22} fontSize={10} />
               {p.full_name}
             </button>
           ))}
@@ -651,11 +674,12 @@ export default function Chat() {
         myChannelIds.length
           ? supabase.from('channels').select('*').in('id', myChannelIds).order('name')
           : Promise.resolve({ data: [], error: null }),
-        supabase.from('profiles').select('id, full_name, role, is_admin, is_active, last_seen_at, status_emoji, status_text, status_type, status_until').eq('is_active', true).order('full_name'),
+        supabase.from('profiles').select('id, full_name, avatar_url, role, is_admin, is_active, last_seen_at, status_emoji, status_text, status_type, status_until').eq('is_active', true).order('full_name'),
       ])
       if (chRes.error) throw chRes.error
       setMe(meRes.data)
       setChannels(chRes.data || [])
+      registerPhotos(profRes.data)
       setProfiles(profRes.data || [])
 
       const [prefRes, secRes] = await Promise.all([
@@ -703,7 +727,7 @@ export default function Chat() {
         })
         const ids = [...new Set(Object.values(othersByChannel).flat())]
         if (ids.length) {
-          const { data: profs } = await supabase.from('profiles').select('id, full_name').in('id', ids)
+          const { data: profs } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', ids); registerPhotos(profs)
           const nameById = {}; (profs || []).forEach(p => nameById[p.id] = p.full_name)
           const map = {}
           const peers = {}
@@ -989,9 +1013,11 @@ export default function Chat() {
           style={{ color: active ? 'var(--accent)' : unread ? 'var(--ink)' : 'var(--ink-soft)', fontWeight: unread ? 700 : 500, padding: isMobile ? '9px 10px' : '4px 8px', fontSize: isMobile ? 15 : 13.5 }}>
           {c.is_dm ? (
             <span style={{ position: 'relative', width: 20, height: 20, flex: 'none' }}>
-              <span style={{ width: 20, height: 20, borderRadius: 5, background: isGroupDm ? 'var(--line)' : avatarColor(label), color: isGroupDm ? 'var(--ink-soft)' : '#fff', fontSize: 9, fontWeight: 700, display: 'grid', placeItems: 'center' }}>
-                {isGroupDm ? (label.split(',').length) : initials(label)}
-              </span>
+              {isGroupDm ? (
+                <span style={{ width: 20, height: 20, borderRadius: 5, background: 'var(--line)', color: 'var(--ink-soft)', fontSize: 9, fontWeight: 700, display: 'grid', placeItems: 'center' }}>
+                  {label.split(',').length}
+                </span>
+              ) : <Av name={label} size={20} radius={5} fontSize={9} />}
               {peer && <span style={{ position: 'absolute', right: -3, bottom: -3 }}><PresenceDot profile={peer} size={8} ring="var(--canvas)" /></span>}
             </span>
           ) : (
@@ -1468,7 +1494,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     const ids = [...new Set(msgs.map(m => m.sender_id).filter(Boolean))]
     const missing = ids.filter(id => !(id in sendersRef.current))
     if (!missing.length) return
-    const { data } = await supabase.from('profiles').select('id, full_name').in('id', missing)
+    const { data } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', missing); registerPhotos(data)
     if (data) setSenders(prev => { const n = { ...prev }; data.forEach(p => n[p.id] = p.full_name); return n })
   }
 
@@ -1611,7 +1637,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
           // I'm looking at this channel, so keep it marked read
           if (m.sender_id !== me.id) markRead?.(channelId)
           if (m.sender_id && !(m.sender_id in sendersRef.current)) {
-            const { data } = await supabase.from('profiles').select('id, full_name').eq('id', m.sender_id).single()
+            const { data } = await supabase.from('profiles').select('id, full_name, avatar_url').eq('id', m.sender_id).single(); registerPhotos(data ? [data] : [])
             if (data) setSenders(prev => ({ ...prev, [data.id]: data.full_name }))
           }
         })
@@ -2067,7 +2093,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                   transition: 'background .6s ease, outline-color .6s ease' }}>
                 <div style={{ width: 32, flex: 'none' }}>
                   {!grouped && <div style={{ position: 'relative', width: 32, height: 32 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: avatarColor(name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>{initials(name)}</div>
+                    <Av name={name} size={32} fontSize={12} />
                     {authorP && <span style={{ position: 'absolute', right: -1, bottom: -1 }}><PresenceDot profile={authorP} size={10} /></span>}
                   </div>}
                 </div>
@@ -2499,7 +2525,7 @@ notify_keywords: [],
                 {others.map(p => (
                   <button key={p.id} type="button" onClick={() => { togglePerson(p.id); setPersonSearch('') }}
                     style={NP.listBtn}>
-                    <span style={{ width: 24, height: 24, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 700, flex: 'none' }}>{initials(p.full_name)}</span>
+                    <Av name={p.full_name} size={24} fontSize={10} />
                     <span style={{ flex: 1, fontSize: 13.5 }}>{p.full_name}</span>
                     {prefs.notify_from.includes(p.id) && <span style={{ color: 'var(--accent)', fontWeight: 700 }}>✓</span>}
                   </button>
@@ -2618,7 +2644,7 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
             {members.map(p => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0' }}>
                 <span style={{ position: 'relative', width: 30, height: 30, flex: 'none' }}>
-                  <span style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>{initials(p.full_name)}</span>
+                  <Av name={p.full_name} size={30} fontSize={12} />
                   <span style={{ position: 'absolute', right: -1, bottom: -1 }}><PresenceDot profile={p} size={10} /></span>
                 </span>
                 <span style={{ flex: 1, fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
@@ -2645,7 +2671,7 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
                       {nonMembers.map(p => (
                         <button key={p.id} onClick={() => addMember(p.id)}
                           style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', border: 0, background: 'transparent', cursor: 'pointer', padding: '7px 6px', fontFamily: 'inherit' }}>
-                          <span style={{ width: 26, height: 26, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>{initials(p.full_name)}</span>
+                          <Av name={p.full_name} size={26} fontSize={11} />
                           <span style={{ fontSize: 13.5, flex: 1 }}>{p.full_name}</span>
                           <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>Add</span>
                         </button>
@@ -2705,7 +2731,7 @@ function ReadByPanel({ names, unread, onClose }) {
         </div>
         {names.map(n => (
           <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '2px 0', fontSize: 12.5 }}>
-            <span style={{ width: 20, height: 20, borderRadius: '50%', background: avatarColor(n), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 700, flex: 'none' }}>{initials(n)}</span>
+            <Av name={n} size={20} fontSize={9} />
             {n}
           </div>
         ))}
@@ -2716,7 +2742,7 @@ function ReadByPanel({ names, unread, onClose }) {
             </div>
             {unread.map(n => (
               <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '2px 0', fontSize: 12.5, opacity: .6 }}>
-                <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--ink-soft)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 700, flex: 'none' }}>{initials(n)}</span>
+                <Av name={n} size={20} fontSize={9} bg="var(--ink-soft)" />
                 {n}
               </div>
             ))}
@@ -3020,7 +3046,7 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
               const n = nameOf(pid)
               return (
                 <div key={pid} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '2px 0', fontSize: 12.5 }}>
-                  <span style={{ width: 20, height: 20, borderRadius: '50%', background: avatarColor(n), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 700, flex: 'none' }}>{initials(n)}</span>
+                  <Av name={n} size={20} fontSize={9} />
                   {n}
                 </div>
               )
@@ -3161,7 +3187,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
       const ids = [...new Set([pRes.data?.sender_id, ...(rRes.data || []).map(r => r.sender_id)].filter(Boolean))]
       const miss = ids.filter(id => !(id in names))
       if (miss.length) {
-        const { data } = await supabase.from('profiles').select('id, full_name').in('id', miss)
+        const { data } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', miss); registerPhotos(data)
         if (data) setNames(prev => { const n = { ...prev }; data.forEach(p => n[p.id] = p.full_name); return n })
       }
       // Attachments + reactions for the parent and every reply.
@@ -3351,7 +3377,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
                     background: flash ? 'var(--accent-bg)' : 'transparent',
                     outline: flash ? '2px solid var(--accent)' : 'none',
                     borderRadius: flash ? 8 : 0, padding: flash ? '5px 6px' : 0 }}>
-                  <span style={{ width: 28, height: 28, borderRadius: '50%', background: avatarColor(nameFor(r.sender_id)), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>{initials(nameFor(r.sender_id))}</span>
+                  <Av name={nameFor(r.sender_id)} size={28} fontSize={11} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}><b style={{ fontSize: 12.5 }}>{nameFor(r.sender_id)}</b><span style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>{timeLabel(r.created_at)}</span>{r.edited_at && <span style={{ fontSize: 10, color: 'var(--ink-soft)', fontStyle: 'italic' }}>(edited)</span>}</div>
                     <RichContent html={r.body} highlightMentions style={{ fontSize: 13.5 }} />
@@ -3462,7 +3488,7 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
             </div>
             {pending.map(p => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
-                <span style={{ width: 26, height: 26, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 10.5, fontWeight: 700, flex: 'none' }}>{initials(p.full_name)}</span>
+                <Av name={p.full_name} size={26} fontSize={10.5} />
                 <span style={{ fontSize: 13, flex: 1 }}>{p.full_name}</span>
                 <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '3px 10px' }}
                   disabled={nudged[p.id] === 'sending' || nudged[p.id] === 'sent'}
@@ -3479,7 +3505,7 @@ function TrackPanel({ messageId, me, members, profiles, acks, onClose }) {
             <b style={{ fontSize: 13, color: 'var(--passed)' }}>Confirmed ({confirmed.length})</b>
             {confirmed.map(p => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
-                <span style={{ width: 26, height: 26, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 10.5, fontWeight: 700, flex: 'none' }}>{initials(p.full_name)}</span>
+                <Av name={p.full_name} size={26} fontSize={10.5} />
                 <span style={{ fontSize: 13, flex: 1 }}>{p.full_name}</span>
                 <span style={{ fontSize: 12, color: 'var(--passed)' }}>✓</span>
               </div>
@@ -3591,7 +3617,7 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
             return (
               <button key={p.id} type="button" disabled={saving} onClick={() => toggle(p.id)}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', border: 0, borderBottom: '1px solid var(--line-soft)', background: isPicked ? 'var(--accent-bg)' : 'transparent', cursor: 'pointer', padding: '10px 12px', fontFamily: 'inherit' }}>
-                <span style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(p.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flex: 'none' }}>{initials(p.full_name)}</span>
+                <Av name={p.full_name} size={30} fontSize={12} />
                 <span style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>{p.full_name}</span>
                 {isPicked && <span style={{ color: 'var(--accent)', fontWeight: 700 }}>✓</span>}
               </button>
