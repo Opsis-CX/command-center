@@ -94,9 +94,9 @@ export default function Profile({ profileId }) {
       <Projects projects={projects} tasks={tasks} openCount={openCount} isSelf={isSelf} />
     </div>
     <aside className="profile-aside">
+      <div className="profile-picks"><Inspiration /><TipOfDay /></div>
       <NeedHelp />
       <AskTurri />
-      <div className="profile-picks"><Inspiration /><TipOfDay /></div>
     </aside>
     </div>
     </div>
