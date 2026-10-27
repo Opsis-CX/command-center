@@ -93,48 +93,97 @@ export default function Profile({ profileId }) {
       </div>
       <Projects projects={projects} tasks={tasks} openCount={openCount} isSelf={isSelf} />
     </div>
-    <aside className="profile-aside"><Inspiration /></aside>
+    <aside className="profile-aside">
+      <NeedHelp />
+      <div className="profile-picks"><Inspiration /><TipOfDay /></div>
+    </aside>
     </div>
     </div>
   )
 }
 
-// Profile column keeps its full width (900px). The Daily Inspiration card only
-// takes the empty space to the right when there's room for it; on narrower
-// screens it drops below the profile instead of squeezing it.
+// Profile column keeps its full width (900px). The right-hand column (Need
+// Help, Daily Inspiration, Tip of the Day) only takes the empty space when
+// there's room; on narrower screens it drops below instead of squeezing the
+// profile. Inspiration + Tip sit side by side once the right column is wide
+// enough, and stack otherwise.
 const PROFILE_LAYOUT_CSS = `
 .profile-wrap { container-type: inline-size; }
 .profile-layout { display: grid; grid-template-columns: minmax(0, 900px); gap: 16px; align-items: start; }
 .profile-main { min-width: 0; }
-.profile-aside { min-width: 0; max-width: 900px; }
+.profile-aside { min-width: 0; max-width: 900px; display: flex; flex-direction: column; gap: 16px; container-type: inline-size; }
+.profile-picks { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: stretch; }
+@container (min-width: 520px) {
+  .profile-picks { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
 @container (min-width: 1176px) {
-  .profile-layout { grid-template-columns: 900px minmax(260px, 360px); }
+  .profile-layout { grid-template-columns: 900px minmax(260px, 760px); }
   .profile-aside { position: sticky; top: 16px; }
 }
 `
 
+// ---------- Home Base picks (same ones Opsis Weekly shows) ----------
+let _picksPromise = null
+function loadPicks() {
+  if (!_picksPromise) {
+    _picksPromise = supabase.from('weekly_picks').select('kind, body, author, updated_at')
+      .in('kind', ['quote', 'tip']).eq('active', true).order('updated_at', { ascending: false })
+      .then(({ data }) => ({ quote: (data || []).find(p => p.kind === 'quote') || null, tip: (data || []).find(p => p.kind === 'tip') || null }))
+      .finally(() => setTimeout(() => { _picksPromise = null }, 60000))
+  }
+  return _picksPromise
+}
+function usePicks() {
+  const [picks, setPicks] = useState(null)
+  useEffect(() => { let alive = true; loadPicks().then(p => { if (alive) setPicks(p) }); return () => { alive = false } }, [])
+  return picks
+}
+const cardHead = (ico, title) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+    <span style={{ fontSize: 18 }}>{ico}</span>
+    <h2 style={{ ...sectionTitle, margin: 0 }}>{title}</h2>
+  </div>
+)
+
+// ---------- Need Help? (same links as Opsis Weekly) ----------
+const helpLink = { display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-bg)', borderRadius: 9, padding: '9px 13px', textDecoration: 'none' }
+function NeedHelp() {
+  return (
+    <div style={panel}>
+      {cardHead('🛟', 'Need Help?')}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9 }}>
+        <a style={helpLink} href="/knowledge">📚 Knowledge Base</a>
+        <a style={helpLink} href="/help">🎫 Help Center</a>
+        <a style={helpLink} href="/chat">💬 Ask in Chat</a>
+        <a style={helpLink} href="/schedule">🗓️ My Schedule</a>
+      </div>
+    </div>
+  )
+}
+
+// ---------- Tip of the Day ----------
+function TipOfDay() {
+  const picks = usePicks()
+  if (!picks?.tip?.body) return null
+  return (
+    <div style={{ ...panel, background: 'linear-gradient(160deg, color-mix(in srgb, #F59E0B 10%, var(--surface)), var(--surface) 70%)' }}>
+      {cardHead('💡', 'Tip of the Day')}
+      <div style={{ fontSize: 14, lineHeight: 1.55, whiteSpace: 'pre-line' }}>{picks.tip.body}</div>
+    </div>
+  )
+}
+
 // ---------- Daily Inspiration (same pick as the Home Base card) ----------
 function Inspiration() {
-  const [q, setQ] = useState(null)
-  useEffect(() => {
-    let alive = true
-    supabase.from('weekly_picks').select('body, author').eq('kind', 'quote').eq('active', true)
-      .order('updated_at', { ascending: false }).limit(1)
-      .then(({ data }) => {
-        if (!alive) return
-        const pick = data && data[0]
-        if (pick?.body) setQ({ body: pick.body, author: pick.author })
-        else { const [body, author] = quoteFor(new Date()); setQ({ body, author }) }   // fallback: Calendar's daily rotation
-      })
-    return () => { alive = false }
-  }, [])
+  const picks = usePicks()
+  // Fallback when no quote is picked: Calendar's daily rotating quote.
+  const q = !picks ? null : picks.quote?.body
+    ? { body: picks.quote.body, author: picks.quote.author }
+    : (() => { const [body, author] = quoteFor(new Date()); return { body, author } })()
   if (!q) return null
   return (
     <div style={{ ...panel, position: 'relative', overflow: 'hidden', background: 'linear-gradient(160deg, color-mix(in srgb, var(--accent) 10%, var(--surface)), var(--surface) 70%)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <span style={{ fontSize: 18 }}>🌟</span>
-        <h2 style={{ ...sectionTitle, margin: 0 }}>Daily Inspiration</h2>
-      </div>
+      {cardHead('🌟', 'Daily Inspiration')}
       <div aria-hidden="true" style={{ position: 'absolute', right: 14, top: 4, fontSize: 90, lineHeight: 1, color: 'var(--accent)', opacity: 0.12, fontFamily: 'Georgia, serif' }}>”</div>
       <blockquote style={{ margin: 0, fontSize: 16.5, lineHeight: 1.55, fontStyle: 'italic', position: 'relative' }}>
         “{q.body}”
