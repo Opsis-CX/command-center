@@ -44,7 +44,9 @@ export default function Profile({ profileId }) {
   useEffect(() => {
     if (!ownPage) return
     const check = () => { if (window.location.hash === '#reminders') { setPanel('reminders'); history.replaceState(null, '', window.location.pathname) } }
-    check(); window.addEventListener('hashchange', check); return () => window.removeEventListener('hashchange', check)
+    const openNow = () => setPanel('reminders')
+    check(); window.addEventListener('hashchange', check); window.addEventListener('cc:open-reminders', openNow)
+    return () => { window.removeEventListener('hashchange', check); window.removeEventListener('cc:open-reminders', openNow) }
   }, [ownPage])
 
   const load = useCallback(async () => {
