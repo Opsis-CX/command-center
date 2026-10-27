@@ -1176,11 +1176,12 @@ export function mountOpsisQA(ROOT, cfg) {
       var AIS = ['Dane', 'Sophia', 'Jason'];
       var csrs = (rep.agents || []).filter(function (a) { return a.decided >= 10 && AIS.indexOf(a.name) < 0; }).map(function (a) { return { name: a.name, brand: a.brand, rate: 100 * a.booked / a.decided, dec: a.decided, avg: a.avg }; }).sort(function (a, b) { return b.rate - a.rate; });
       var top3 = csrs.slice(0, 3), bot3 = csrs.slice(Math.max(3, csrs.length - 3)).reverse();
+      if (!one) { top3 = []; bot3 = []; } // leadership view: brands only; CSR detail lives on the brand reports (Becky, 2026-10-27)
       var pick = top3.concat(bot3);
       return Promise.all(pick.map(function (a) { return api({ action: 'focus', start: S.start, end: S.end, brand: a.brand, agent: a.name }).then(function (f2) { var s2 = (f2.steps || []).filter(function (s) { return s.applies >= 3 && s.missed > 0; }).sort(function (x, y) { return y.missed * y.points - x.missed * x.points; })[0]; a.miss = s2 ? exStep(s2.label) + ' (' + s2.rate + '%)' : '—'; }).catch(function () { a.miss = '—'; }); })).then(function () {
         var ct = function (title, L) { return '<h2>' + title + '</h2><table class="x"><thead><tr><th>CSR</th><th>Booking rate</th><th>Avg QA</th><th>Most-missed step</th></tr></thead><tbody>' + (L.length ? L.map(function (a) { return '<tr><td><b>' + esc(a.name) + '</b>' + (one ? '' : '<br><span class="fl">' + esc(short(a.brand)) + '</span>') + '</td><td>' + Math.round(a.rate) + '% <span class="fl">(' + a.dec + ')</span></td><td>' + (a.avg != null ? (+a.avg).toFixed(1) : '—') + '</td><td>' + esc(a.miss) + '</td></tr>'; }).join('') : '<tr><td colspan="4">Not enough calls yet (10+ decided opportunities).</td></tr>') + '</tbody></table>'; };
-        var csrT = '<div class="two"><div>' + ct('Leading the way', top3) + '</div><div>' + ct('Needs the most help', bot3) + '</div></div>';
-        var rec = focus ? '<div class="rec"><b>Next week, coach ' + esc(exStep(focus.label)) + '.</b> It was done on ' + focus.rate + '% of the calls it applied to' + (focus.prev_rate != null ? ' (' + focus.prev_rate + '% the period before)' : '') + ' and missed on ' + fmt(focus.missed) + ' calls, the most points lost of any step. ' + esc(String(focus.label || '').split(':').slice(1).join(':').trim()) + '.</div>' : '';
+        var csrT = one ? '<div class="two"><div>' + ct('Leading the way', top3) + '</div><div>' + ct('Needs the most help', bot3) + '</div></div>' : '';
+        var rec = focus ? '<div class="rec"><b>Next week, coach ' + esc(exStep(focus.label)) + '.</b> It was done on ' + focus.rate + '% of the calls it applied to' + (focus.prev_rate != null ? ' (' + focus.prev_rate + '% the period before)' : '') + ' and missed on ' + fmt(focus.missed) + ' calls, the most points lost of any step.' + (function () { var t = String(focus.label || '').split(':').slice(1).join(':').trim(); return t ? ' What good looks like: ' + esc(t.charAt(0).toUpperCase() + t.slice(1)) + '.' : ''; })() + '</div>' : '';
         // by brand (only when more than one brand)
         var bt = '';
         var BR = (rep.brands || []).filter(function (b) { return b.calls; });
@@ -1201,7 +1202,7 @@ export function mountOpsisQA(ROOT, cfg) {
         }
         var title = onePager ? name + ' — Brand One-Pager' : (one ? name + ' — Executive Summary' : 'Executive Summary');
         pdfShell(w, title, (S.range === 'custom' ? rangeLabel() : rangeLabel() + ' (' + fdate(S.start) + ' – ' + fdate(S.end) + ')') + ' · ' + (one || (brands && brands.length ? brands.map(short).join(', ') : 'All brands')),
-          EX_CSS + '<div class="hl">' + hl + '</div>' + tiles + money + csrT + rec + bt + extra +
+          EX_CSS + '<div class="hl">' + hl + '</div>' + tiles + bt + money + csrT + rec + extra +
           '<p class="note">Changes compare with the ' + days + ' days before (' + fdate(p.start) + ' – ' + fdate(p.end) + '). Booking rate = booked ÷ opportunities that reached a decision. Controllable miss = an opportunity the CSR could have saved. Dollar values use invoices where uploaded, otherwise each brand’s average ticket.</p>');
       });
     });
