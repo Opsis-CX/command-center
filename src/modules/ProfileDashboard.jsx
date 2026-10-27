@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
 
 // ============================================================
 // MY PROFILE — dashboard pieces (2026-10-26 redesign)
@@ -245,7 +246,7 @@ export function Drawer({ title, onClose, children, width = 1100, closeDelay = 0,
     <div onMouseDown={(e) => { if (e.target === e.currentTarget) close() }}
       style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(6,18,24,.45)', display: 'flex', justifyContent: 'flex-end' }}>
       <div role="dialog" aria-modal="true" aria-label={title}
-        style={{ width: `min(${width}px, 100%)`, height: '100%', background: 'var(--canvas, var(--surface))', boxShadow: '-12px 0 40px rgba(0,0,0,.25)', display: 'flex', flexDirection: 'column' }}>
+        style={{ width: width > 1400 ? '96vw' : `min(${width}px, 100%)`, maxWidth: '100%', height: '100%', background: 'var(--canvas, var(--surface))', boxShadow: '-12px 0 40px rgba(0,0,0,.25)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 20px', borderBottom: '1px solid var(--line)', background: 'var(--surface)' }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, flex: 1 }}>{title}</h2>
           {footer}
@@ -268,73 +269,97 @@ export const UpdatesPanel = () => <Updates />
 // ============================================================
 export async function reminderBadgeCount() {
   const end = new Date(); end.setHours(23, 59, 59, 999)
+  const { data: { user } = {} } = await supabase.auth.getUser()
+  if (!user?.id) return 0
   const { count } = await supabase.from('personal_reminders').select('id', { count: 'exact', head: true })
-    .is('done_at', null).lte('remind_at', end.toISOString())
+    .eq('owner_id', user.id).is('done_at', null).lte('remind_at', end.toISOString())
   return count || 0
 }
 const toLocalInput = (iso) => { const d = iso ? new Date(iso) : new Date(Date.now() + 3600e3); d.setSeconds(0, 0); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}` }
 const fmtWhen = (iso) => new Date(iso).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 
 export function RemindersPanel() {
+  const { user, isAdmin } = useAuth()
+  const me = user?.id
   const [list, setList] = useState(null)
+  const [names, setNames] = useState({})
   const [tab, setTab] = useState('upcoming')
   const [edit, setEdit] = useState(null)        // {} new, or a reminder
   const [err, setErr] = useState('')
   const load = useCallback(async () => {
     const { data, error } = await supabase.from('personal_reminders').select('*').order('remind_at')
-    if (error) setErr(error.message); else setList(data || [])
-  }, [])
+    if (error) { setErr(error.message); return }
+    setList(data || [])
+    const ids = [...new Set((data || []).flatMap(r => [r.owner_id, r.created_by]).filter(x => x && x !== me))]
+    if (ids.length) { const { data: p } = await supabase.from('profiles').select('id, full_name').in('id', ids); const m = {}; (p || []).forEach(x => { m[x.id] = x.full_name }); setNames(m) }
+  }, [me])
   useEffect(() => { load() }, [load])
   const now = Date.now()
   const groups = useMemo(() => {
     const L = list || []
+    const mine = L.filter(r => r.owner_id === me)
     return {
-      upcoming: L.filter(r => !r.done_at && new Date(r.remind_at).getTime() >= now),
-      overdue: L.filter(r => !r.done_at && new Date(r.remind_at).getTime() < now),
-      completed: L.filter(r => r.done_at).sort((a, b) => b.done_at.localeCompare(a.done_at)),
+      upcoming: mine.filter(r => !r.done_at && new Date(r.remind_at).getTime() >= now),
+      overdue: mine.filter(r => !r.done_at && new Date(r.remind_at).getTime() < now),
+      completed: mine.filter(r => r.done_at).sort((a, b) => b.done_at.localeCompare(a.done_at)),
+      others: L.filter(r => r.owner_id !== me && r.created_by === me),
     }
-  }, [list, now])
+  }, [list, now, me])
   async function toggle(r) {
     const { error } = await supabase.from('personal_reminders').update({ done_at: r.done_at ? null : new Date().toISOString() }).eq('id', r.id)
     if (error) setErr(error.message); else load()
   }
   async function del(r) {
-    if (!window.confirm(`Delete the reminder "${r.title}"? This can't be undone.`)) return
+    const forWho = r.owner_id !== me ? ` for ${names[r.owner_id] || 'them'}` : ''
+    if (!window.confirm(`Delete the reminder "${r.title}"${forWho}? This can't be undone.`)) return
     const { error } = await supabase.from('personal_reminders').delete().eq('id', r.id)
     if (error) setErr(error.message); else load()
   }
+  const tabs = [['upcoming', 'Upcoming'], ['overdue', 'Overdue'], ['completed', 'Completed']].concat(isAdmin || groups.others.length ? [['others', 'Set for others']] : [])
   const rows = groups[tab] || []
   return (
-    <div style={{ maxWidth: 720 }}>
+    <div style={{ maxWidth: 760 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         <div className="pd-tabs" role="tablist" aria-label="Reminders">
-          {[['upcoming', 'Upcoming'], ['overdue', 'Overdue'], ['completed', 'Completed']].map(([k, l]) => (
+          {tabs.map(([k, l]) => (
             <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l} <span style={{ opacity: .7 }}>{list ? groups[k].length : ''}</span></button>
           ))}
         </div>
         <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setEdit({})}>+ Add reminder</button>
       </div>
-      <p className="page-sub" style={{ margin: '0 0 12px', fontSize: 12.5 }}>Private to you. Reminders show here and as a count on the Reminders button; they don't send emails or phone alerts. Times are in your computer's time zone.</p>
+      <p className="page-sub" style={{ margin: '0 0 12px', fontSize: 12.5 }}>
+        {tab === 'others' ? 'Reminders you set for teammates. They see them in their own Reminders and can check them off; only you can change or delete them.'
+          : 'Private to you. Reminders show here and as a count on the Reminders button; they don’t send emails or phone alerts. Times are in your computer’s time zone.'}
+      </p>
       {err && <div className="login-err" role="alert" style={{ marginBottom: 10 }}>{err}</div>}
-      {edit && <ReminderForm r={edit} onCancel={() => setEdit(null)} onSaved={() => { setEdit(null); load() }} />}
+      {edit && <ReminderForm r={edit} me={me} isAdmin={isAdmin} onCancel={() => setEdit(null)} onSaved={(forOther) => { setEdit(null); if (forOther) setTab('others'); load() }} />}
       {!list ? <p className="page-sub">Loading…</p> : rows.length === 0 ? (
         <div className="pd-card" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>
-          {tab === 'upcoming' ? 'No upcoming reminders. Add one to stay on top of things.' : tab === 'overdue' ? 'Nothing overdue. 🎉' : 'No completed reminders yet.'}
+          {tab === 'upcoming' ? 'No upcoming reminders. Add one to stay on top of things.' : tab === 'overdue' ? 'Nothing overdue. 🎉' : tab === 'others' ? 'You haven’t set any reminders for teammates.' : 'No completed reminders yet.'}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {rows.map(r => {
             const over = !r.done_at && new Date(r.remind_at).getTime() < now
+            const setByAdmin = r.owner_id === me && r.created_by && r.created_by !== me
+            const forOther = r.owner_id !== me
+            const canChange = !setByAdmin
             return (
               <div key={r.id} className="pd-card" style={{ padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                <input type="checkbox" checked={!!r.done_at} onChange={() => toggle(r)} aria-label={r.done_at ? `Mark "${r.title}" not done` : `Mark "${r.title}" done`} style={{ width: 18, height: 18, marginTop: 2, accentColor: 'var(--accent)' }} />
+                {forOther
+                  ? <span title={r.done_at ? 'Completed' : 'Not done yet'} style={{ width: 18, height: 18, marginTop: 2, borderRadius: 5, display: 'grid', placeItems: 'center', fontSize: 12, background: r.done_at ? 'var(--passed, #16A34A)' : 'transparent', border: r.done_at ? 0 : '1.5px solid var(--line)', color: '#fff', flex: 'none' }}>{r.done_at ? '✓' : ''}</span>
+                  : <input type="checkbox" checked={!!r.done_at} onChange={() => toggle(r)} aria-label={r.done_at ? `Mark "${r.title}" not done` : `Mark "${r.title}" done`} style={{ width: 18, height: 18, marginTop: 2, accentColor: 'var(--accent)' }} />}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, textDecoration: r.done_at ? 'line-through' : 'none', color: r.done_at ? 'var(--ink-soft)' : 'var(--ink)', overflowWrap: 'anywhere' }}>{r.title}</div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 600, textDecoration: r.done_at ? 'line-through' : 'none', color: r.done_at ? 'var(--ink-soft)' : 'var(--ink)', overflowWrap: 'anywhere' }}>{r.title}</span>
+                    {setByAdmin && <span className="badge" style={{ fontSize: 11 }}>Set by {names[r.created_by] || 'an admin'}</span>}
+                    {forOther && <span className="badge" style={{ fontSize: 11 }}>For {names[r.owner_id] || 'a teammate'}{r.done_at ? ' · done' : ''}</span>}
+                  </div>
                   <div style={{ fontSize: 12.5, marginTop: 2, color: over ? 'var(--failed, #DC2626)' : 'var(--ink-soft)', fontWeight: over ? 600 : 400 }}>{over ? 'Overdue · ' : ''}{fmtWhen(r.remind_at)}</div>
                   {r.notes && <div style={{ fontSize: 13, marginTop: 6, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{r.notes}</div>}
                 </div>
-                <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '4px 10px' }} onClick={() => setEdit(r)}>Edit</button>
-                <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '4px 10px', color: 'var(--failed, #DC2626)' }} onClick={() => del(r)}>Delete</button>
+                {canChange && <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '4px 10px' }} onClick={() => setEdit(r)}>Edit</button>}
+                {canChange && <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '4px 10px', color: 'var(--failed, #DC2626)' }} onClick={() => del(r)}>Delete</button>}
               </div>
             )
           })}
@@ -343,32 +368,48 @@ export function RemindersPanel() {
     </div>
   )
 }
-function ReminderForm({ r, onCancel, onSaved }) {
+function ReminderForm({ r, me, isAdmin, onCancel, onSaved }) {
   const [title, setTitle] = useState(r.title || '')
   const [when, setWhen] = useState(toLocalInput(r.remind_at))
   const [notes, setNotes] = useState(r.notes || '')
+  const [owner, setOwner] = useState(r.owner_id || me)
+  const [people, setPeople] = useState([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  useEffect(() => {
+    if (!isAdmin || r.id) return
+    supabase.from('profiles').select('id, full_name').eq('is_active', true).is('client_id', null).order('full_name')
+      .then(({ data }) => setPeople((data || []).filter(p => p.id !== me && !/\btest$/i.test((p.full_name || '').trim()))))
+  }, [isAdmin, r.id, me])
   async function save() {
     if (!title.trim()) return setErr('Add a title.')
     if (!when) return setErr('Pick a date and time.')
     setBusy(true); setErr('')
     const row = { title: title.trim(), notes: notes.trim() || null, remind_at: new Date(when).toISOString() }
-    const q = r.id ? supabase.from('personal_reminders').update(row).eq('id', r.id) : supabase.from('personal_reminders').insert(row)
+    const q = r.id ? supabase.from('personal_reminders').update(row).eq('id', r.id) : supabase.from('personal_reminders').insert({ ...row, owner_id: owner })
     const { error } = await q
     setBusy(false)
-    if (error) setErr(error.message); else onSaved()
+    if (error) setErr(error.message); else onSaved(!r.id && owner !== me)
   }
   return (
     <div className="pd-card" style={{ marginBottom: 14, borderColor: 'var(--accent)' }}>
       <div style={{ fontWeight: 700, marginBottom: 10 }}>{r.id ? 'Edit reminder' : 'New reminder'}</div>
+      {isAdmin && !r.id && (
+        <div className="field"><label htmlFor="rm-o">For</label>
+          <select id="rm-o" value={owner} onChange={e => setOwner(e.target.value)}>
+            <option value={me}>Me</option>
+            {people.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+          </select>
+          {owner !== me && <div className="hint" style={{ marginTop: 4 }}>They’ll get a notification and see it in their Reminders. They can check it off; only you can change or delete it.</div>}
+        </div>
+      )}
       <div className="field"><label htmlFor="rm-t">Title</label><input id="rm-t" autoFocus maxLength={200} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Send the weekly report" /></div>
       <div className="field"><label htmlFor="rm-w">Date and time</label><input id="rm-w" type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} /></div>
       <div className="field"><label htmlFor="rm-n">Details (optional)</label><textarea id="rm-n" maxLength={4000} value={notes} onChange={e => setNotes(e.target.value)} /></div>
       {err && <div className="login-err" role="alert" style={{ marginBottom: 8 }}>{err}</div>}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button className="btn btn-ghost" onClick={onCancel} disabled={busy}>Cancel</button>
-        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save reminder'}</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : owner !== me && !r.id ? 'Set reminder' : 'Save reminder'}</button>
       </div>
     </div>
   )
