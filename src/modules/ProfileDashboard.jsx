@@ -54,7 +54,7 @@ export const PD_CSS = `
 .pd { container-type: inline-size; width: 100%; }
 .pd-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 16px; }
 .pd-main, .pd-aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-@container (min-width: 1000px) { .pd-grid { grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); } .pd-aside { position: sticky; top: 16px; } }
+@container (min-width: 1000px) { .pd-grid { grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); } .pd-aside { position: sticky; top: 16px; } }
 .pd-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
 .pd-hdr { background: linear-gradient(120deg, #0B2533 0%, #0E3A48 55%, #0F4C57 100%); color: #fff; border-radius: 16px; padding: 22px 24px;
   display: flex; flex-wrap: wrap; gap: 18px 26px; align-items: center; position: relative; overflow: hidden; box-shadow: 0 10px 30px -18px rgba(8,30,40,.7); }
@@ -135,6 +135,11 @@ export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks,
   const [err, setErr] = useState('')
   const [photoMenu, setPhotoMenu] = useState(false)
   const fileRef = useRef(null)
+  useEffect(() => {
+    if (!isSelf) return
+    const t = setTimeout(() => { import('./Calendar'); import('./Notes'); import('./Updates') }, 1200)
+    return () => clearTimeout(t)
+  }, [isSelf])
   const initials = (person.full_name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
   async function onPick(e) {
     const file = e.target.files?.[0]; if (fileRef.current) fileRef.current.value = ''
