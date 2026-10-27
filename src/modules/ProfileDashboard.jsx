@@ -20,6 +20,8 @@ import { useAuth } from '../lib/auth'
 const Calendar = lazy(() => import('./Calendar'))
 const Notes = lazy(() => import('./Notes'))
 const Updates = lazy(() => import('./Updates'))
+const WeeklySync = lazy(() => import('./WeeklySync'))
+const EodReport = lazy(() => import('./EodReports'))
 
 const COMPANY_TZ = 'America/New_York'
 export const viewerTZ = (pref) => pref || Intl.DateTimeFormat().resolvedOptions().timeZone || COMPANY_TZ
@@ -62,8 +64,8 @@ export const PD_CSS = `
 .pd-hdr a { color: #9FF3F0; }
 .pd-stat { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 14px; border-radius: 12px; text-decoration: none; color: #fff !important; min-width: 82px; }
 .pd-stat:hover, .pd-stat:focus-visible { background: rgba(255,255,255,.08); outline: none; }
-.pd-act { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 104px; height: 82px;
-  border-radius: 12px; border: 1.5px solid rgba(94,234,212,.55); background: rgba(255,255,255,.03); color: #fff; font: 600 13px/1 inherit; cursor: pointer; transition: background .15s, border-color .15s, transform .12s; }
+.pd-act { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 96px; height: 80px;
+  border-radius: 12px; border: 1.5px solid rgba(94,234,212,.55); background: rgba(255,255,255,.03); color: #fff; font: 600 13px/1 inherit; white-space: nowrap; padding: 0 6px; cursor: pointer; transition: background .15s, border-color .15s, transform .12s; }
 .pd-act:hover { background: rgba(94,234,212,.12); border-color: #5EEAD4; }
 .pd-act:focus-visible { outline: 2px solid #5EEAD4; outline-offset: 2px; }
 .pd-badge { position: absolute; top: -7px; right: -7px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: #EF4444; color: #fff; font: 700 11px/20px inherit; text-align: center; box-shadow: 0 0 0 2px #0E3A48; }
@@ -107,6 +109,8 @@ const I = {
   users: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
   video: 'M23 7l-7 5 7 5zM14 5H3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z',
   plus: 'M12 5v14M5 12h14', x: 'M18 6L6 18M6 6l12 12',
+  sync: 'M21 12a9 9 0 0 1-15.5 6.3L3 16M3 12a9 9 0 0 1 15.5-6.3L21 8M21 3v5h-5M3 21v-5h5',
+  eod: 'M17 18a5 5 0 0 0-10 0M12 2v7M4.2 10.2l1.4 1.4M1 18h2M21 18h2M18.4 11.6l1.4-1.4M23 22H1M8 6l4-4 4 4',
 }
 export const Icon = ({ d, size = 20, color = 'currentColor', sw = 1.8 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
@@ -130,7 +134,7 @@ async function uploadAvatar(file, userId) {
 // ============================================================
 // HEADER
 // ============================================================
-export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks, onPhotoChanged, onEditProfile, badges = {}, onOpen, weekStats, bg = {}, onBgChange, canProjects = true }) {
+export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks, onPhotoChanged, onEditProfile, badges = {}, onOpen, weekStats, bg = {}, onBgChange, canProjects = true, canWeeklySync = false, canEod = false }) {
   const [bgOpen, setBgOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -138,9 +142,9 @@ export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks,
   const fileRef = useRef(null)
   useEffect(() => {
     if (!isSelf) return
-    const t = setTimeout(() => { import('./Calendar'); import('./Notes'); import('./Updates') }, 1200)
+    const t = setTimeout(() => { import('./Calendar'); import('./Notes'); import('./Updates'); if (canWeeklySync) import('./WeeklySync'); if (canEod) import('./EodReports') }, 1200)
     return () => clearTimeout(t)
-  }, [isSelf])
+  }, [isSelf, canWeeklySync, canEod])
   const initials = (person.full_name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
   async function onPick(e) {
     const file = e.target.files?.[0]; if (fileRef.current) fileRef.current.value = ''
@@ -160,15 +164,13 @@ export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks,
     ['calendar', 'Calendar', I.cal],
     ['notes', 'Notes', I.note],
     ['updates', 'Updates', I.mega, badges.updates],
+    ...(canWeeklySync ? [['weeklysync', 'Weekly Sync', I.sync]] : []),
+    ...(canEod ? [['eod', 'EOD Report', I.eod]] : []),
   ]
   return (
     <div style={{ position: 'relative' }}>
     {bgOpen && <BackgroundPicker bg={bg} userId={userId} onChange={onBgChange} onClose={() => setBgOpen(false)} />}
     <header className="pd-hdr" aria-label="Profile" style={headerBgStyle(bg)}>
-      {isSelf && (
-        <button onClick={() => setBgOpen(v => !v)} aria-label="Change header background" title="Change background" aria-expanded={bgOpen}
-          style={{ position: 'absolute', bottom: 8, right: 10, zIndex: 3, width: 28, height: 28, borderRadius: 8, border: '1px solid rgba(255,255,255,.22)', background: 'rgba(0,0,0,.22)', color: '#fff', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>🎨</button>
-      )}
       <div style={{ position: 'relative', flex: 'none' }}>
         {person.avatar_url
           ? <img src={person.avatar_url} alt={person.full_name} style={{ width: 104, height: 104, borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 0 3px rgba(255,255,255,.85)' }} />
@@ -199,6 +201,7 @@ export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks,
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginTop: 8, fontSize: 13.5, color: '#CFE7EA' }}>
           {(person.status_emoji || person.status_text) && <span>{person.status_emoji} {person.status_text}</span>}
           {isSelf && <button onClick={onEditProfile} style={{ all: 'unset', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, color: '#9FF3F0', textDecoration: 'underline', textUnderlineOffset: 3 }}><Icon d={I.pen} size={14} />Edit profile</button>}
+          {isSelf && <button onClick={() => setBgOpen(v => !v)} aria-label="Change header background" aria-expanded={bgOpen} style={{ all: 'unset', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, color: '#9FF3F0', textDecoration: 'underline', textUnderlineOffset: 3 }}>🎨 Background</button>}
         </div>
         {err && <div role="alert" style={{ marginTop: 6, fontSize: 12.5, color: '#FCA5A5' }}>{err}</div>}
       </div>
@@ -310,7 +313,7 @@ function BackgroundPicker({ bg, userId, onChange, onClose }) {
   const sw = (on) => ({ width: 34, height: 34, borderRadius: 9, cursor: 'pointer', border: on ? '2px solid var(--ink)' : '1px solid var(--line)', boxShadow: on ? '0 0 0 2px var(--surface) inset' : 'none', padding: 0 })
   return (
     <div ref={boxRef} role="dialog" aria-label="Header background" className="pd-card"
-      style={{ position: 'absolute', top: 'calc(100% - 4px)', right: 8, zIndex: 40, width: 'min(320px, calc(100% - 24px))', color: 'var(--ink)', boxShadow: '0 18px 40px rgba(0,0,0,.28)' }}>
+      style={{ position: 'absolute', top: 'calc(100% - 4px)', left: 'min(150px, 4vw)', zIndex: 40, width: 'min(320px, calc(100% - 24px))', color: 'var(--ink)', boxShadow: '0 18px 40px rgba(0,0,0,.28)' }}>
       <div style={{ fontWeight: 700, marginBottom: 10 }}>Header background</div>
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 6 }}>Color</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -338,14 +341,17 @@ function BackgroundPicker({ bg, userId, onChange, onClose }) {
 // ============================================================
 // DRAWER — slide-over panel (Escape / backdrop / ✕ closes)
 // ============================================================
-export function Drawer({ title, onClose, children, width = 1100, closeDelay = 0, footer }) {
+export function Drawer({ title, onClose, children, width = 1100, closeDelay = 0, footer, guardUnsaved = false }) {
+  const dirty = useRef(false)
   const closeRef = useRef(null)
   const bodyRef = useRef(null)
   const [closing, setClosing] = useState(false)
   const close = useCallback(() => {
+    // Forms that only save on a button click (Weekly Sync, EOD): don't lose typed text by accident.
+    if (guardUnsaved && dirty.current && !window.confirm('You have changes that aren’t saved yet. Close anyway?')) return
     if (!closeDelay) return onClose()
     setClosing(true); setTimeout(onClose, closeDelay)        // lets autosaving editors finish
-  }, [onClose, closeDelay])
+  }, [onClose, closeDelay, guardUnsaved])
   useEffect(() => {
     const prev = document.activeElement
     closeRef.current?.focus()
@@ -371,7 +377,9 @@ export function Drawer({ title, onClose, children, width = 1100, closeDelay = 0,
           {closing && <span className="page-sub" style={{ margin: 0, fontSize: 12.5 }}>Saving…</span>}
           <button ref={closeRef} className="pd-iconbtn" onClick={close} aria-label={`Close ${title}`}><Icon d={I.x} /></button>
         </div>
-        <div ref={bodyRef} style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+        <div ref={bodyRef} style={{ flex: 1, overflowY: 'auto', padding: 20 }}
+          onInput={guardUnsaved ? () => { dirty.current = true } : undefined}
+          onClickCapture={guardUnsaved ? (e) => { const b = e.target.closest('button'); if (b && /save|submit/i.test(b.textContent || '')) setTimeout(() => { dirty.current = false }, 0) } : undefined}>
           <Suspense fallback={<p className="page-sub">Loading…</p>}>{children}</Suspense>
         </div>
       </div>
@@ -381,6 +389,8 @@ export function Drawer({ title, onClose, children, width = 1100, closeDelay = 0,
 export const CalendarPanel = (props) => <Calendar {...props} />
 export const NotesPanel = () => <Notes />
 export const UpdatesPanel = () => <Updates />
+export const WeeklySyncPanel = () => <WeeklySync />
+export const EodPanel = () => <EodReport />
 
 // ============================================================
 // REMINDERS
