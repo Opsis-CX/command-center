@@ -130,7 +130,7 @@ async function uploadAvatar(file, userId) {
 // ============================================================
 // HEADER
 // ============================================================
-export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks, onPhotoChanged, onEditProfile, badges = {}, onOpen, weekStats, bg = {}, onBgChange }) {
+export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks, onPhotoChanged, onEditProfile, badges = {}, onOpen, weekStats, bg = {}, onBgChange, canProjects = true }) {
   const [bgOpen, setBgOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -207,9 +207,9 @@ export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks,
         <div aria-label="This week, Monday to Sunday" style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 'none' }}>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: '#9FD8D3', paddingLeft: 14 }}>This week · Mon–Sun</div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <a className="pd-stat" href="/time" title="Time tracked on tasks this week" aria-label={`${hrs(weekStats.task_minutes)} task hours this week`}>
+            {canProjects && <a className="pd-stat" href="/time" title="Time tracked on tasks this week" aria-label={`${hrs(weekStats.task_minutes)} task hours this week`}>
               <b style={{ fontSize: 22, lineHeight: 1 }}>{hrs(weekStats.task_minutes)}</b><span style={{ fontSize: 12, color: '#CFE7EA' }}>Task hours</span>
-            </a>
+            </a>}
             <a className="pd-stat" href="/schedule" title="Hours on your schedule this week" aria-label={`${hrs(weekStats.scheduled_minutes)} scheduled hours this week`}>
               <b style={{ fontSize: 22, lineHeight: 1 }}>{hrs(weekStats.scheduled_minutes)}</b><span style={{ fontSize: 12, color: '#CFE7EA' }}>Scheduled hrs</span>
             </a>
@@ -217,7 +217,7 @@ export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks,
         </div>
       )}
 
-      {isSelf && (
+      {isSelf && canProjects && (
         <div style={{ display: 'flex', alignItems: 'stretch', gap: 6, paddingLeft: 18, borderLeft: '1px solid rgba(255,255,255,.18)' }}>
           <a className="pd-stat" href="/projects" aria-label={`${projectCount} projects. Open Project Management`}>
             <span style={{ width: 34, height: 34, borderRadius: 9, background: 'rgba(94,234,212,.14)', display: 'grid', placeItems: 'center', color: '#5EEAD4' }}><Icon d={I.folder} size={18} /></span>
