@@ -40,6 +40,12 @@ export default function Profile({ profileId }) {
     setBadges({ reminders: rem, updates: ann.error ? 0 : (ann.data || []).filter(a => !read.has(a.id)).length })
   }, [ownPage, user?.id])
   useEffect(() => { refreshBadges() }, [refreshBadges])
+  // Reminder notifications link to /profile#reminders → open the Reminders panel.
+  useEffect(() => {
+    if (!ownPage) return
+    const check = () => { if (window.location.hash === '#reminders') { setPanel('reminders'); history.replaceState(null, '', window.location.pathname) } }
+    check(); window.addEventListener('hashchange', check); return () => window.removeEventListener('hashchange', check)
+  }, [ownPage])
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
