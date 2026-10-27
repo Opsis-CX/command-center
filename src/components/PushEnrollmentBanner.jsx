@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { pushSupported, pushPermission, enablePush, isPushEnabled } from '../lib/push'
+import React, { useState, useEffect } from 'react'
+import { pushSupported, pushPermission, enablePush, isPushEnabled, pushOptedOut } from '../lib/push'
 import { isPreviewing } from '../lib/rolePreview'
 
 // ============================================================
@@ -30,7 +30,7 @@ function isStandalone() {
   return window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true
 }
 
-export default function PushEnrollmentBanner({ profileId }) {
+function PushEnrollmentBannerInner({ profileId }) {
   const [show, setShow] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -46,6 +46,14 @@ export default function PushEnrollmentBanner({ profileId }) {
       // Someone who actively said "no" at the browser prompt should not be nagged;
       // they have to undo that in browser settings, which a banner cannot do.
       if (pushPermission() === 'denied') return
+      // They turned notifications off on this device in Settings — respect it. (2026-10-27)
+      if (pushOptedOut()) return
+      // Already allowed on this device (e.g. the desktop app sharing Chrome's permission)
+      // but not registered yet → turn it on quietly, no banner needed.
+      if (pushPermission() === 'granted') {
+        try { if (!(await isPushEnabled(profileId))) await enablePush(profileId) } catch { /* fall back to the banner below */ }
+        try { if (!cancelled && await isPushEnabled(profileId)) return } catch { /* fall through */ }
+      }
       try {
         const until = Number(localStorage.getItem(SNOOZE_KEY) || 0)
         if (until && Date.now() < until) return
@@ -128,4 +136,17 @@ export default function PushEnrollmentBanner({ profileId }) {
       )}
     </div>
   )
+}
+
+// Re-mounted 2026-10-27 (it was dropped from App.jsx in an earlier refactor). Has its own
+// error boundary: if anything in here ever fails, the banner just hides — it can never
+// take the rest of the page down with it.
+class BannerBoundary extends React.Component {
+  constructor(p) { super(p); this.state = { failed: false } }
+  static getDerivedStateFromError() { return { failed: true } }
+  componentDidCatch(e) { console.warn('Push banner hidden after an error:', e) }
+  render() { return this.state.failed ? null : this.props.children }
+}
+export default function PushEnrollmentBanner(props) {
+  return <BannerBoundary><PushEnrollmentBannerInner {...props} /></BannerBoundary>
 }
