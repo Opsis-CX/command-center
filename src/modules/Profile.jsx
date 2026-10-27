@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { fmtDate, panel } from './financeBits'
 import { quoteFor } from './Calendar'
+import { FavoritesEditor, FavoritesDetails } from './TeamFavorites'
 
 // ============================================================
 // PROFILE
@@ -23,20 +24,27 @@ const row = { display: 'flex', justifyContent: 'space-between', gap: 12, padding
 export default function Profile({ profileId }) {
   const { user } = useAuth()
   const [data, setData] = useState(null)
+  const [card, setCard] = useState(null)   // team-wide profile card (no full-profile access)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
-    setLoading(true); setErr('')
+    setLoading(true); setErr(''); setCard(null)
     const { data: d, error } = await supabase.rpc('profile_page_data', { p_profile: profileId || null })
-    if (error) setErr(/not allowed/i.test(error.message) ? "You don't have access to this profile." : error.message)
-    else setData(d)
+    if (!error) setData(d)
+    else if (/not allowed/i.test(error.message) && profileId) {
+      // Not an Admin/Owner: show the profile card everyone on the team can see.
+      const { data: c, error: e2 } = await supabase.rpc('profile_card_data', { p_profile: profileId })
+      if (e2) setErr(/not allowed/i.test(e2.message) ? "You don't have access to this profile." : e2.message)
+      else setCard(c)
+    } else setErr(/not allowed/i.test(error.message) ? "You don't have access to this profile." : error.message)
     setLoading(false)
   }, [profileId])
   useEffect(() => { load() }, [load])
 
   if (loading) return <p className="page-sub">Loading…</p>
   if (err) return <div className="login-err" role="alert">{err}</div>
+  if (card) return <ProfileCard card={card} />
   const { person, job_roles: roles, tokens, projects, tasks, open_task_count: openCount, is_self: isSelf, hub, has_favorites: hasFavs } = data
   const patchPerson = (fields) => setData(d => ({ ...d, person: { ...d.person, ...fields } }))
   const showHub = hub && (person.is_agent || hub.week?.length || hub.certs?.length || hub.scorecard)
@@ -88,7 +96,7 @@ export default function Profile({ profileId }) {
       {showHub && <Hub hub={hub} isSelf={isSelf} isAgent={!!person.is_agent} firstName={(person.full_name || '').split(' ')[0]} />}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 16, marginBottom: 16 }}>
-        <About person={person} isSelf={isSelf} onPatch={patchPerson} />
+        <About person={person} isSelf={isSelf} onPatch={patchPerson} onFavsSaved={() => setData(d => ({ ...d, has_favorites: true }))} />
         <Tokens tokens={tokens} isSelf={isSelf} />
       </div>
       <Projects projects={projects} tasks={tasks} openCount={openCount} isSelf={isSelf} />
@@ -362,7 +370,7 @@ function PhotoBlock({ person, editable, userId, onChanged }) {
 const COMMON_LANGUAGES = ['English', 'Spanish', 'Portuguese', 'French', 'Tagalog', 'Haitian Creole', 'Vietnamese', 'Mandarin', 'Arabic', 'ASL']
 const inputSt = { padding: '6px 9px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', fontFamily: 'inherit', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)' }
 
-function About({ person, isSelf, onPatch }) {
+function About({ person, isSelf, onPatch, onFavsSaved }) {
   const { isAdmin } = useAuth()
   const canAdminEdit = isAdmin && !isSelf
   const [phone, setPhone] = useState(person.phone || '')
@@ -489,6 +497,94 @@ function About({ person, isSelf, onPatch }) {
       {msg && <div role="status" style={{ fontSize: 13, color: 'var(--passed)', marginTop: 6 }}>{msg}</div>}
       <div style={row}><span style={{ color: 'var(--ink-soft)' }}>Time zone</span><span>{person.timezone || 'Company time (Eastern)'}{isSelf && <> · <a href="/settings">Change in Settings</a></>}</span></div>
       <div style={row}><span style={{ color: 'var(--ink-soft)' }}>Start date</span><span>{person.start_date ? fmtDate(person.start_date) : 'Not set'}</span></div>
+      <GetToKnow personId={person.id} firstName={(person.full_name || '').split(' ')[0]} isSelf={isSelf} onSaved={onFavsSaved} />
+    </div>
+  )
+}
+
+// ---------- Get to Know You (inside About) ----------
+// Same card and form as the Get to Know You page. Everyone on the team can read
+// these; only the person can edit their own (the database enforces both).
+function GetToKnow({ personId, firstName, isSelf, onSaved, initial, loaded, bare }) {
+  const { user } = useAuth()
+  const [fav, setFav] = useState(loaded ? (initial || null) : undefined)
+  const [editing, setEditing] = useState(false)
+  useEffect(() => {
+    if (loaded) return
+    let alive = true
+    supabase.from('team_favorites').select('*').eq('profile_id', personId).maybeSingle()
+      .then(({ data }) => { if (alive) setFav(data || null) })
+    return () => { alive = false }
+  }, [personId, loaded])
+  const has = fav && Object.keys(fav).some(k => !['profile_id', 'updated_at'].includes(k) && fav[k] != null && fav[k] !== '')
+  useEffect(() => {
+    if (fav === undefined || !isSelf || window.location.hash !== '#get-to-know-you') return
+    const el = document.getElementById('get-to-know-you'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [fav, isSelf])
+  return (
+    <div id="get-to-know-you" style={bare ? { scrollMarginTop: 80 } : { marginTop: 18, paddingTop: 14, borderTop: '2px solid var(--line)', scrollMarginTop: 80 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 17 }}>🎉</span>
+        <h3 style={{ ...sectionTitle, margin: 0 }}>Get to Know {isSelf ? 'Me' : firstName || 'Them'}</h3>
+        {isSelf && fav !== undefined && (
+          <button className="btn btn-ghost" style={{ marginLeft: 'auto', fontSize: 12.5, padding: '4px 12px' }} onClick={() => setEditing(true)}>
+            {has ? 'Edit' : 'Fill out'}
+          </button>
+        )}
+      </div>
+      {fav === undefined ? <p className="page-sub" style={{ margin: 0 }}>Loading…</p>
+        : has ? <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}><FavoritesDetails fav={fav} /></div>
+        : <p className="page-sub" style={{ margin: 0 }}>
+            {isSelf ? 'Share a few favorites so the team can celebrate your birthday, order the right swag and get to know you.' : `${firstName || 'They'} hasn’t filled out their card yet.`}
+          </p>}
+      {isSelf && <div className="hint" style={{ marginTop: 8 }}>Everyone on the team can see this card. <a href="/get-to-know-you">See everyone’s cards</a></div>}
+      {editing && user?.id && (
+        <FavoritesEditor userId={user.id} row={fav}
+          onClose={() => setEditing(false)}
+          onSaved={(r) => { setFav(r); setEditing(false); onSaved && onSaved() }} />
+      )}
+    </div>
+  )
+}
+
+// ---------- Profile card (what everyone on the team can see) ----------
+// For people without full-profile access: name, photo, title, team, status, languages,
+// work anniversary and their Get to Know You card. Nothing private.
+function ProfileCard({ card }) {
+  const { person, favorites } = card
+  const first = (person.full_name || '').split(' ')[0]
+  const langs = person.languages || []
+  return (
+    <div style={{ maxWidth: 900 }}>
+      <div style={{ ...panel, marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+          <PhotoBlock person={person} editable={false} />
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <h1 className="page-title" style={{ margin: 0, display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+              {person.full_name}
+              {person.pronouns && <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink-soft)' }}>({person.pronouns})</span>}
+            </h1>
+            {person.job_title && <div style={{ fontSize: 15, marginTop: 2 }}>{person.job_title}</div>}
+            {(person.team || person.manager_name) && (
+              <div style={{ fontSize: 13.5, color: 'var(--ink-soft)', marginTop: 3 }}>
+                {person.team && <span>{person.team}</span>}
+                {person.team && person.manager_name && <span> · </span>}
+                {person.manager_name && <span>Reports to <b style={{ color: 'var(--ink)' }}>{person.manager_name}</b></span>}
+              </div>
+            )}
+            <Anniversary startDate={person.start_date} firstName={first} isSelf={false} />
+            {(person.status_text || person.status_emoji) && <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 2 }}>{person.status_emoji} {person.status_text}</div>}
+            {langs.length > 0 && (
+              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
+                {langs.map(l => <span key={l} className="badge">🗣️ {l}</span>)}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      <div style={panel}>
+        <GetToKnow personId={person.id} firstName={first} isSelf={false} initial={favorites} loaded bare />
+      </div>
     </div>
   )
 }
@@ -520,7 +616,7 @@ function Checklist({ person, hasFavs }) {
     { done: !!person.phone, label: 'Add your phone number', hint: 'In About, below.' },
     { done: (person.languages || []).length > 0, label: 'Add the languages you speak', hint: 'In About, below — helps route bilingual calls.' },
     { done: !!person.pronouns, label: 'Add your pronouns (optional)', hint: 'In About, below.', optional: true },
-    { done: !!hasFavs, label: 'Fill out your Get to Know You card', href: '/get-to-know-you' },
+    { done: !!hasFavs, label: 'Fill out your Get to Know You card', href: '#get-to-know-you' },
   ]
   const required = items.filter(i => !i.optional)
   const doneCount = required.filter(i => i.done).length
