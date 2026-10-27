@@ -38,6 +38,10 @@ const TOOLBARS = {
   // Certification / documents: the lot.
   full: ['bold', 'italic', 'strike', 'code', '|', 'h1', 'h2', 'h3', '|',
          'bullet', 'ordered', 'quote', '|', 'link', 'color', 'highlight', '|', 'table', '|', 'spell'],
+  // My Notes (2026-10-27): the full set plus undo/redo, paragraph style, underline, image,
+  // code block and divider. Other editors keep their toolbars unchanged.
+  notes: ['undo', 'redo', '|', 'para', '|', 'bold', 'italic', 'underline', 'strike', '|', 'h1', 'h2', 'h3', '|',
+          'bullet', 'ordered', 'quote', '|', 'image', 'table', 'codeblock', 'hr', '|', 'link', 'color', 'highlight', '|', 'spell'],
 }
 
 const SWATCHES = ['#0d1518', '#c0392b', '#d97706', '#1f8a53', '#0077b6', '#7c3aed', '#db2777']
@@ -448,6 +452,22 @@ function Toolbar({ editor, items, onSpellCheck }) {
   const render = (key, i) => {
     switch (key) {
       case '|':        return <Sep key={i} />
+      case 'undo':     return <Btn key={i} title="Undo (Ctrl+Z)" onClick={() => c().undo().run()}>↶</Btn>
+      case 'redo':     return <Btn key={i} title="Redo (Ctrl+Y)" onClick={() => c().redo().run()}>↷</Btn>
+      case 'underline':return <Btn key={i} title="Underline (Ctrl+U)" active={editor.isActive('underline')} onClick={() => c().toggleUnderline().run()}><u>U</u></Btn>
+      case 'codeblock':return <Btn key={i} title="Code block" active={editor.isActive('codeBlock')} onClick={() => c().toggleCodeBlock().run()}>{'{ }'}</Btn>
+      case 'hr':       return <Btn key={i} title="Divider line" onClick={() => c().setHorizontalRule().run()}>―</Btn>
+      case 'image':    return <Btn key={i} title="Insert image (or paste one)" onClick={() => {
+          const url = window.prompt('Image web address (https://…). Tip: you can also paste or drag an image in.')
+          if (url && /^https?:\/\//i.test(url)) c().setImage({ src: url }).run()
+        }}>🖼</Btn>
+      case 'para':     return (
+          <select key={i} title="Text style" aria-label="Text style"
+            value={editor.isActive('heading', { level: 1 }) ? 'h1' : editor.isActive('heading', { level: 2 }) ? 'h2' : editor.isActive('heading', { level: 3 }) ? 'h3' : 'p'}
+            onChange={(e) => { const v = e.target.value; if (v === 'p') c().setParagraph().run(); else c().setHeading({ level: Number(v[1]) }).run() }}
+            style={{ height: 28, border: '1px solid var(--line)', borderRadius: 6, background: 'var(--surface)', color: 'var(--ink)', fontSize: 12.5, fontFamily: 'inherit', padding: '0 4px' }}>
+            <option value="p">Normal text</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option>
+          </select>)
       case 'bold':     return <Btn key={i} title="Bold (Ctrl+B)"   active={editor.isActive('bold')}   onClick={() => c().toggleBold().run()}><b>B</b></Btn>
       case 'italic':   return <Btn key={i} title="Italic (Ctrl+I)" active={editor.isActive('italic')} onClick={() => c().toggleItalic().run()}><i>I</i></Btn>
       case 'strike':   return <Btn key={i} title="Strikethrough"   active={editor.isActive('strike')} onClick={() => c().toggleStrike().run()}><s>S</s></Btn>
