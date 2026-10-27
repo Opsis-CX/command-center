@@ -91,7 +91,12 @@ export default function KnowledgeBase() {
           <h1 className="page-title">Knowledge Base</h1>
           <p className="page-sub">Guides, processes, and files — organized in folders.</p>
         </div>
+        {canAuthor && view !== 'trash' && <button className="btn btn-ghost" onClick={() => go({ view: 'trash' })}>🗑 Trash</button>}
       </div>
+
+      {view === 'trash' && canAuthor && <TrashView onBack={() => go({ view: 'browse' })}
+        onOpenArticle={(aid, fid) => go({ view: 'article', id: aid, ...(fid ? { folder: fid } : {}) })}
+        onOpenFolder={(fid) => go(fid ? { view: 'browse', folder: fid } : { view: 'browse' })} />}
 
       {view === 'browse' && <Browse folderId={folderId} canAuthor={canAuthor}
         onOpenFolder={(fid) => go(fid ? { view: 'browse', folder: fid } : { view: 'browse' })}
@@ -105,6 +110,90 @@ export default function KnowledgeBase() {
       {(view === 'edit' || view === 'new') && <ArticleEditor id={view === 'edit' ? articleId : null} folderId={folderId}
         onDone={(aid) => go(aid ? { view: 'article', id: aid, ...(folderId ? { folder: folderId } : {}) } : { view: 'browse' })}
         onCancel={() => go(articleId ? { view: 'article', id: articleId } : (folderId ? { view: 'browse', folder: folderId } : { view: 'browse' }))} />}
+    </div>
+  )
+}
+
+// ---------- Trash (editors only) ----------
+// Deleted articles and files land here (database triggers on kb_articles / kb_files).
+// Restore puts them back where they were (or in "Recovered files" if that folder is gone).
+// Anything older than 60 days is deleted for good by the nightly kb-trash-purge job.
+function TrashView({ onBack, onOpenArticle, onOpenFolder }) {
+  const [rows, setRows] = useState(null)
+  const [names, setNames] = useState({})
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(null)
+  const load = useCallback(async () => {
+    setErr('')
+    const { data, error } = await supabase.from('kb_trash')
+      .select('id, kind, item_id, title, parent_article_id, folder_id, deleted_by, deleted_at, purge_after')
+      .order('deleted_at', { ascending: false })
+    if (error) { setErr(error.message); return }
+    // an article's attachments show under the article, not as separate rows
+    const articleIds = new Set((data || []).filter(r => r.kind === 'article').map(r => r.item_id))
+    const list = (data || []).filter(r => !(r.kind === 'file' && r.parent_article_id && articleIds.has(r.parent_article_id)))
+    list.forEach(r => { r.attachments = (data || []).filter(x => x.kind === 'file' && x.parent_article_id === r.item_id && r.kind === 'article').length })
+    setRows(list)
+    const ids = [...new Set((data || []).map(r => r.deleted_by).filter(Boolean))]
+    if (ids.length) {
+      const { data: p } = await supabase.from('profiles').select('id, full_name').in('id', ids)
+      const m = {}; (p || []).forEach(x => { m[x.id] = x.full_name }); setNames(m)
+    }
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  async function restore(r) {
+    setBusy(r.id); setErr('')
+    const { data, error } = await supabase.rpc('kb_trash_restore', { p_id: r.id })
+    setBusy(null)
+    if (error) { setErr(error.message); return }
+    await load()
+    if (data?.kind === 'article') onOpenArticle(data.id, data.folder_id)
+  }
+  async function forget(r) {
+    const what = r.kind === 'article' ? `the article "${r.title}"${r.attachments ? ` and its ${r.attachments} attached file${r.attachments === 1 ? '' : 's'}` : ''}` : `"${r.title}"`
+    if (!window.confirm(`Permanently delete ${what}?\n\nThis can't be undone.`)) return
+    setBusy(r.id); setErr('')
+    const { data: paths, error } = await supabase.rpc('kb_trash_forget', { p_id: r.id })
+    if (!error && paths?.length) await supabase.storage.from('kb-files').remove(paths)
+    setBusy(null)
+    if (error) setErr(error.message); else load()
+  }
+  const daysLeft = (d) => Math.max(0, Math.ceil((new Date(d) - Date.now()) / 864e5))
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+        <button className="btn btn-ghost" onClick={onBack}>← Back to folders</button>
+        <h2 style={{ margin: 0, fontSize: 18 }}>🗑 Trash</h2>
+      </div>
+      <p className="page-sub" style={{ margin: '0 0 14px' }}>Deleted articles and files stay here for 60 days, then they're deleted for good. Only Knowledge Base editors can see Trash.</p>
+      {err && <div className="login-err" role="alert" style={{ marginBottom: 12 }}>{err}</div>}
+      {!rows ? <p className="page-sub">Loading…</p> : rows.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>Trash is empty.</div>
+      ) : (
+        <div className="card" style={{ padding: 0 }}>
+          {rows.map(r => {
+            const left = daysLeft(r.purge_after)
+            return (
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--line-soft)', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 18 }} aria-hidden="true">{r.kind === 'article' ? '📄' : '📎'}</span>
+                <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{r.title || '(untitled)'}</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>
+                    {r.kind === 'article' ? 'Article' : 'File'}{r.attachments ? ` · ${r.attachments} attached file${r.attachments === 1 ? '' : 's'}` : ''}
+                    {' · '}deleted {new Date(r.deleted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    {r.deleted_by ? ` by ${names[r.deleted_by] || 'someone'}` : ''}
+                    {' · '}<span style={{ color: left <= 7 ? 'var(--failed)' : 'inherit' }}>deleted for good in {left} day{left === 1 ? '' : 's'}</span>
+                  </div>
+                </div>
+                <button className="btn btn-primary" style={{ fontSize: 12.5 }} disabled={busy === r.id} onClick={() => restore(r)}>{busy === r.id ? '…' : 'Restore'}</button>
+                <button className="btn btn-ghost" style={{ fontSize: 12.5, color: 'var(--failed)' }} disabled={busy === r.id} onClick={() => forget(r)}>Delete forever</button>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -126,8 +215,14 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
   const [allFolders, setAllFolders] = useState([])       // full list for the move picker
   const [moving, setMoving] = useState(null)             // { kind:'article'|'file', item } being moved
 
+  // Only the newest load may update the screen. Clicking folders quickly used to let an
+  // older, slower response land last and show the wrong (or an empty) folder. (2026-10-27)
+  const loadSeq = useRef(0)
+  const [loadErr, setLoadErr] = useState('')
   const load = useCallback(async () => {
-    setLoading(true)
+    const seq = ++loadSeq.current
+    const stale = () => seq !== loadSeq.current
+    setLoading(true); setLoadErr('')
     let chain = []
     let cur = null
     if (folderId) {
@@ -136,12 +231,14 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
       let walkId = f?.parent_id
       const seen = new Set()
       while (walkId && !seen.has(walkId)) {
+        if (stale()) return
         seen.add(walkId)
         const { data: p } = await supabase.from('kb_folders').select('id, name, parent_id').eq('id', walkId).maybeSingle()
         if (!p) break
         chain.unshift(p); walkId = p.parent_id
       }
     }
+    if (stale()) return
     setFolder(cur); setCrumbs(chain)
 
     const [sfRes, aRes, fRes] = await Promise.all([
@@ -155,6 +252,14 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
         ? supabase.from('kb_files').select('*').is('article_id', null).eq('folder_id', folderId).order('created_at', { ascending: false })
         : supabase.from('kb_files').select('*').is('article_id', null).is('folder_id', null).order('created_at', { ascending: false }),
     ])
+    if (stale()) return
+    // A failed request used to look like an empty folder. Say so instead, and keep what's on screen.
+    const failed = sfRes.error || aRes.error || fRes.error
+    if (failed) {
+      setLoadErr('Couldn’t load this folder (' + (failed.message || 'network error') + '). Nothing has been deleted. Try again in a moment.')
+      setLoading(false)
+      return
+    }
     setSubfolders(sfRes.data || [])
     setArticles(aRes.data || [])
     setFiles(fRes.data || [])
@@ -187,24 +292,39 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
     } catch (err) { setBusyMsg('Upload failed: ' + err.message) }
     finally { setUploading(false) }
   }
+  // Deleting moves things to Trash (kept 60 days, restorable by editors). The stored file stays
+  // until Trash is emptied, so it is NOT removed from storage here. (2026-10-27)
   async function removeFile(f) {
-    if (!window.confirm('Remove ' + f.name + '?')) return
-    await supabase.storage.from('kb-files').remove([f.storage_path])
-    await supabase.from('kb_files').delete().eq('id', f.id)
+    if (!window.confirm('Move "' + f.name + '" to Trash?\n\nEditors can restore it from 🗑 Trash for 60 days.')) return
+    const { error } = await supabase.from('kb_files').delete().eq('id', f.id)
+    if (error) window.alert('Couldn’t remove the file: ' + error.message)
     load()
   }
+  // Only empty folders can be deleted. Deleting a folder used to delete its subfolders but drop
+  // its articles and files at the top level with no folder, where only editors could see them,
+  // so to everyone else they "disappeared". (2026-10-27)
   async function deleteFolder(f) {
-    if (!window.confirm('Delete folder "' + f.name + '" and everything inside it? This cannot be undone.')) return
-    await supabase.from('kb_folders').delete().eq('id', f.id)
+    const [sub, arts, fls] = await Promise.all([
+      supabase.from('kb_folders').select('id', { count: 'exact', head: true }).eq('parent_id', f.id),
+      supabase.from('kb_articles').select('id', { count: 'exact', head: true }).eq('folder_id', f.id),
+      supabase.from('kb_files').select('id', { count: 'exact', head: true }).eq('folder_id', f.id),
+    ])
+    const parts = [[sub.count, 'folder'], [arts.count, 'article'], [fls.count, 'file']]
+      .filter(([n]) => n > 0).map(([n, w]) => `${n} ${w}${n === 1 ? '' : 's'}`)
+    if (sub.error || arts.error || fls.error) { window.alert('Couldn’t check what’s in this folder. Please try again.'); return }
+    if (parts.length) {
+      window.alert(`"${f.name}" still has ${parts.join(', ')} in it.\n\nMove or delete what’s inside first, then delete the folder.`)
+      return
+    }
+    if (!window.confirm('Delete the empty folder "' + f.name + '"?')) return
+    const { error } = await supabase.from('kb_folders').delete().eq('id', f.id)
+    if (error) window.alert('Couldn’t delete the folder: ' + error.message)
     load()
   }
   async function deleteArticle(a) {
-    if (!window.confirm('Delete "' + a.title + '"? This cannot be undone.')) return
-    // remove any attached files from storage first, then the article (cascades tags/files rows)
-    const { data: att } = await supabase.from('kb_files').select('storage_path').eq('article_id', a.id)
-    const paths = (att || []).map(x => x.storage_path).filter(Boolean)
-    if (paths.length) await supabase.storage.from('kb-files').remove(paths)
-    await supabase.from('kb_articles').delete().eq('id', a.id)
+    if (!window.confirm('Move "' + a.title + '" to Trash?\n\nIts attached files go with it. Editors can restore it from 🗑 Trash for 60 days.')) return
+    const { error } = await supabase.from('kb_articles').delete().eq('id', a.id)
+    if (error) window.alert('Couldn’t delete the article: ' + error.message)
     load()
   }
   async function doMove(destFolderId) {
@@ -255,6 +375,12 @@ function Browse({ folderId, canAuthor, onOpenFolder, onOpenArticle, onNewArticle
         </div>
       )}
       {busyMsg && <div style={{ color: 'var(--failed)', fontSize: 13, marginBottom: 12 }}>{busyMsg}</div>}
+      {loadErr && (
+        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', color: 'var(--failed)', fontSize: 13, marginBottom: 12 }}>
+          <span>{loadErr}</span>
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={load}>Try again</button>
+        </div>
+      )}
       {editingFolder && (
         <FolderEditor folder={editingFolder === 'new' ? null : editingFolder} parentId={folderId}
           onDone={() => { setEditingFolder(null); load() }} onCancel={() => setEditingFolder(null)} />
@@ -606,7 +732,7 @@ function ArticleEditor({ id, folderId, onDone, onCancel }) {
   }
   async function removeFile(f) {
     setFiles(prev => prev.filter(x => x.id !== f.id))
-    await supabase.storage.from('kb-files').remove([f.storage_path])
+    // goes to Trash (restorable for 60 days); the stored file is kept until Trash is emptied
     await supabase.from('kb_files').delete().eq('id', f.id)
   }
 
@@ -716,13 +842,12 @@ function ArticleEditor({ id, folderId, onDone, onCancel }) {
         <button className="btn btn-ghost" onClick={() => save(false)} disabled={busy}>{busy ? 'Saving…' : 'Save draft'}</button>
         <button className="btn btn-primary" onClick={() => save(true)} disabled={busy}>Publish</button>
         {id && <button className="btn btn-ghost" style={{ marginLeft: 'auto', color: 'var(--failed)' }} disabled={busy} onClick={async () => {
-          if (!window.confirm('Delete this article? This cannot be undone.')) return
+          if (!window.confirm('Move this article to Trash?\n\nIts attached files go with it. Editors can restore it from 🗑 Trash for 60 days.')) return
           setBusy(true)
-          const { data: att } = await supabase.from('kb_files').select('storage_path').eq('article_id', id)
-          const paths = (att || []).map(x => x.storage_path).filter(Boolean)
-          if (paths.length) await supabase.storage.from('kb-files').remove(paths)
-          await supabase.from('kb_articles').delete().eq('id', id)
-          setBusy(false); onDone()
+          const { error } = await supabase.from('kb_articles').delete().eq('id', id)
+          setBusy(false)
+          if (error) { window.alert('Couldn’t delete the article: ' + error.message); return }
+          onDone()
         }}>Delete article</button>}
       </div>
     </div>
