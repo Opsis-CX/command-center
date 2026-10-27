@@ -183,6 +183,15 @@ function useIsMobile(breakpoint = 700) {
 }
 
 // Ephemeral typing indicator over Supabase Realtime broadcast.
+// Express push (2026-10-27): right after a message is saved, ask push-now to send its
+// notifications immediately instead of waiting in the shared database request queue.
+// Fire-and-forget: the database trigger still sends as a backup, and the senders claim
+// each notification so it never dings twice.
+function expressPush(messageId) {
+  if (!messageId) return
+  try { supabase.functions.invoke('push-now', { body: { message_id: messageId } }).catch(() => {}) } catch { /* backup path covers it */ }
+}
+
 function useTyping(topic, meId, meName, inbox = null) {
   // inbox = { channelId, recipients: [profile ids] } for DMs: also tells each recipient's
   // sidebar that I'm typing (topic typing-inbox:<their id>; sent without joining).
@@ -2024,6 +2033,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     const { data, error } = await supabase.from('messages')
       .insert({ channel_id: channelId, sender_id: me.id, body: body || '', requires_ack: willRequireAck, is_here: isHere })
       .select().single()
+    if (!error) expressPush(data?.id)
 
     if (error) {
       setErr(error.message)
@@ -3678,6 +3688,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
     setReplies(prev => [...prev, temp])
 
     const { data, error } = await supabase.from('messages').insert({ channel_id: channelId, sender_id: me.id, body: body || '', parent_id: parentId }).select().single()
+    if (!error) expressPush(data?.id)
     if (error) { setReplies(prev => prev.filter(m => m.id !== temp.id)); setPending(filesToSend); setUploading(false); setUploadErr('Could not send: ' + error.message); return }
 
     // Only clear the editor once the reply actually landed.
