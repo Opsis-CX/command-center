@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth'
 import { fmtDate, panel } from './financeBits'
 import { quoteFor } from './Calendar'
 import { FavoritesEditor, FavoritesDetails } from './TeamFavorites'
+import { PD_CSS, ProfileHeader, Drawer, CalendarPanel, NotesPanel, UpdatesPanel, RemindersPanel, reminderBadgeCount, MyWeek, MyMeetings, Section, openSection } from './ProfileDashboard'
 
 // ============================================================
 // PROFILE
@@ -15,8 +16,6 @@ import { FavoritesEditor, FavoritesDetails } from './TeamFavorites'
 // The photo uses the same storage and update as Settings, so a new photo changes everywhere at once.
 // ============================================================
 
-const STATUS = { todo: 'To do', inprogress: 'In progress', blocked: 'Blocked' }
-const initialsFrom = (name) => (name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
 const when = (ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })
 const sectionTitle = { fontSize: 15, fontWeight: 700, margin: '0 0 8px' }
 const row = { display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 0', borderTop: '1px solid var(--line)', fontSize: 14 }
@@ -26,6 +25,21 @@ export default function Profile({ profileId }) {
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
+  const [openPanel, setPanel] = useState(null)            // 'reminders' | 'calendar' | 'notes' | 'updates' | {kind:'calendar',…}
+  const [badges, setBadges] = useState({})
+  const [meetKey, setMeetKey] = useState(0)
+  const ownPage = !profileId || profileId === user?.id
+  const refreshBadges = useCallback(async () => {
+    if (!ownPage || !user?.id) return
+    const [rem, ann, reads] = await Promise.all([
+      reminderBadgeCount().catch(() => 0),
+      supabase.from('announcements').select('id').is('deleted_at', null),
+      supabase.from('announcement_reads').select('announcement_id').eq('profile_id', user.id),
+    ])
+    const read = new Set((reads.data || []).map(r => r.announcement_id))
+    setBadges({ reminders: rem, updates: ann.error ? 0 : (ann.data || []).filter(a => !read.has(a.id)).length })
+  }, [ownPage, user?.id])
+  useEffect(() => { refreshBadges() }, [refreshBadges])
 
   const load = useCallback(async () => {
     setLoading(true); setErr('')
@@ -35,94 +49,100 @@ export default function Profile({ profileId }) {
     setLoading(false)
   }, [profileId])
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const onFocus = async () => {
+      const { data: d } = await supabase.rpc('profile_page_data', { p_profile: profileId || null })
+      if (d) setData(cur => cur ? { ...cur, projects: d.projects, open_task_count: d.open_task_count, tokens: d.tokens, hub: d.hub } : cur)
+      refreshBadges()
+    }
+    window.addEventListener('focus', onFocus); return () => window.removeEventListener('focus', onFocus)
+  }, [profileId, refreshBadges])
 
   if (loading) return <p className="page-sub">Loading…</p>
   if (err) return <div className="login-err" role="alert">{err}</div>
-  const { person, job_roles: roles, tokens, projects, tasks, open_task_count: openCount, is_self: isSelf, hub, has_favorites: hasFavs } = data
+  const { person, job_roles: roles, tokens, projects, open_task_count: openCount, is_self: isSelf, hub, has_favorites: hasFavs } = data
   const patchPerson = (fields) => setData(d => ({ ...d, person: { ...d.person, ...fields } }))
-  const showHub = hub && (person.is_agent || hub.week?.length || hub.certs?.length || hub.scorecard)
+  const first = (person.full_name || '').split(' ')[0]
+  const certs = hub?.certs || []
+  const passed = certs.filter(c => c.status === 'passed').length
+  const todo = certs.length - passed
+  const w = tokens?.wallet
 
   return (
-    <div className="profile-wrap">
-    <style>{PROFILE_LAYOUT_CSS}</style>
-    <div className="profile-layout">
-    <div className="profile-main">
+    <div className="pd">
+      <style>{PD_CSS}</style>
       {!isSelf && (
         <div className="card" style={{ marginBottom: 14 }} role="note">
           You are viewing <b>{person.full_name}</b>'s profile as an Admin or Owner. Only they can change their own photo and phone number.
         </div>
       )}
+      <ProfileHeader person={person} isSelf={isSelf} userId={user?.id}
+        projectCount={(projects || []).length} openTasks={openCount || 0}
+        onPhotoChanged={(url) => patchPerson({ avatar_url: url })}
+        onEditProfile={() => openSection('about')}
+        badges={badges} onOpen={setPanel} />
 
-      <div style={{ ...panel, marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
-          <PhotoBlock person={person} editable={isSelf} userId={user?.id} onChanged={(url) => setData(d => ({ ...d, person: { ...d.person, avatar_url: url } }))} />
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <h1 className="page-title" style={{ margin: 0, display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-              {person.full_name}
-              {person.pronouns && <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink-soft)' }}>({person.pronouns})</span>}
-            </h1>
-            <div style={{ fontSize: 15, marginTop: 2 }}>
-              {person.job_title || <span style={{ color: 'var(--ink-soft)' }}>{isSelf ? 'No job title yet. An Admin sets this.' : 'No job title yet'}</span>}
-            </div>
-            {(person.team || person.manager_name) && (
-              <div style={{ fontSize: 13.5, color: 'var(--ink-soft)', marginTop: 3 }}>
-                {person.team && <span>{person.team}</span>}
-                {person.team && person.manager_name && <span> · </span>}
-                {person.manager_name && <span>Reports to <b style={{ color: 'var(--ink)' }}>{person.manager_name}</b></span>}
-              </div>
-            )}
-            <Anniversary startDate={person.start_date} firstName={(person.full_name || '').split(' ')[0]} isSelf={isSelf} />
-            {(person.status_text || person.status_emoji) && <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 2 }}>{person.status_emoji} {person.status_text}</div>}
-            <div style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 4 }}>Job roles</div>
-              {roles.length === 0
-                ? <span className="page-sub" style={{ margin: 0 }}>No shifts worked in the last 90 days, so there are no roles to show.</span>
-                : <div className="tag-picker">{roles.map(r => <span key={r} className="tag-opt on" style={{ cursor: 'default' }}>{r}</span>)}</div>}
-              {roles.length > 0 && <div className="hint" style={{ marginTop: 4 }}>From the shifts worked in the last 90 days.</div>}
-            </div>
-          </div>
+      <div className="pd-grid">
+        <div className="pd-main">
+          {isSelf && <Checklist person={person} hasFavs={hasFavs} />}
+          <MyWeek profileId={isSelf ? null : person.id} isSelf={isSelf} firstName={first} tz={isSelf ? person.timezone : null} />
+          {isSelf && <MyMeetings userId={user?.id} tz={person.timezone} refreshKey={meetKey} onOpenCalendar={(opts) => setPanel({ kind: 'calendar', ...opts })} />}
+
+          {person.is_agent && hub?.scorecard !== undefined && (
+            <Section id="performance" icon="📈" title="Performance" summary={hub?.scorecard?.tier ? `Tier ${hub.scorecard.tier}` : null}>
+              <PerformanceBody sc={hub?.scorecard} isSelf={isSelf} />
+            </Section>
+          )}
+          <Section id="certs" icon="✅" title="Certifications"
+            summary={certs.length ? [passed && `${passed} passed`, todo && `${todo} to do`].filter(Boolean).join(' · ') : 'None yet'}>
+            <CertsBody certs={certs} isSelf={isSelf} />
+          </Section>
+          <Section id="about" icon="👤" title={isSelf ? 'About Me' : `About ${first}`} summary={[person.job_title, person.team].filter(Boolean).join(' · ') || person.full_name}>
+            <About person={person} roles={roles} isSelf={isSelf} onPatch={patchPerson} />
+          </Section>
+          <Section id="gtky" icon="💗" iconColor="#EC4899" title={isSelf ? 'Get to Know Me' : `Get to Know ${first}`} summary="Favorites, fun facts and more">
+            <GetToKnow personId={person.id} firstName={first} isSelf={isSelf} bare onSaved={() => setData(d => ({ ...d, has_favorites: true }))} />
+          </Section>
+          <Section id="tokens" icon="⭐" title="Tokens" summary={w ? <b style={{ color: 'var(--ink)', fontSize: 15 }}>{Number(w.balance).toLocaleString('en-US')}</b> : 'None yet'}>
+            <TokensBody tokens={tokens} isSelf={isSelf} />
+          </Section>
         </div>
+        <aside className="pd-aside">
+          <Inspiration />
+          <TipOfDay />
+          <NeedHelp />
+          <AskTurri />
+        </aside>
       </div>
 
-      {isSelf && <Checklist person={person} hasFavs={hasFavs} />}
-
-      {showHub && <Hub hub={hub} isSelf={isSelf} isAgent={!!person.is_agent} firstName={(person.full_name || '').split(' ')[0]} />}
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 16, marginBottom: 16 }}>
-        <About person={person} isSelf={isSelf} onPatch={patchPerson} onFavsSaved={() => setData(d => ({ ...d, has_favorites: true }))} />
-        <Tokens tokens={tokens} isSelf={isSelf} />
-      </div>
-      <Projects projects={projects} tasks={tasks} openCount={openCount} isSelf={isSelf} />
-    </div>
-    <aside className="profile-aside">
-      <div className="profile-picks"><Inspiration /><TipOfDay /></div>
-      <NeedHelp />
-      <AskTurri />
-    </aside>
-    </div>
+      {openPanel === 'reminders' && <Drawer title="Reminders" width={760} onClose={() => { setPanel(null); refreshBadges() }}><RemindersPanel /></Drawer>}
+      {openPanel?.kind === 'calendar' && (
+        <Drawer title="My Calendar" onClose={() => { setPanel(null); setMeetKey(k => k + 1) }}
+          footer={<a href="/calendar" className="btn btn-ghost" style={{ fontSize: 13, textDecoration: 'none' }}>Open full Calendar</a>}>
+          <CalendarPanel openEventId={openPanel.openEventId || null} startNew={!!openPanel.startNew} onChanged={() => setMeetKey(k => k + 1)} />
+        </Drawer>
+      )}
+      {openPanel === 'calendar' && (
+        <Drawer title="My Calendar" onClose={() => { setPanel(null); setMeetKey(k => k + 1) }}
+          footer={<a href="/calendar" className="btn btn-ghost" style={{ fontSize: 13, textDecoration: 'none' }}>Open full Calendar</a>}>
+          <CalendarPanel onChanged={() => setMeetKey(k => k + 1)} />
+        </Drawer>
+      )}
+      {openPanel === 'notes' && (
+        <Drawer title="My Notes" closeDelay={900} onClose={() => setPanel(null)}
+          footer={<a href="/notes" className="btn btn-ghost" style={{ fontSize: 13, textDecoration: 'none' }}>Open My Notes</a>}>
+          <NotesPanel />
+        </Drawer>
+      )}
+      {openPanel === 'updates' && (
+        <Drawer title="Updates" width={900} onClose={() => { setPanel(null); refreshBadges() }}
+          footer={<a href="/updates" className="btn btn-ghost" style={{ fontSize: 13, textDecoration: 'none' }}>Open Updates</a>}>
+          <UpdatesPanel />
+        </Drawer>
+      )}
     </div>
   )
 }
-
-// Profile column keeps its full width (900px). The right-hand column (Need
-// Help, Daily Inspiration, Tip of the Day) only takes the empty space when
-// there's room; on narrower screens it drops below instead of squeezing the
-// profile. Inspiration + Tip sit side by side once the right column is wide
-// enough, and stack otherwise.
-const PROFILE_LAYOUT_CSS = `
-.profile-wrap { container-type: inline-size; }
-.profile-layout { display: grid; grid-template-columns: minmax(0, 900px); gap: 16px; align-items: start; }
-.profile-main { min-width: 0; }
-.profile-aside { min-width: 0; max-width: 900px; display: flex; flex-direction: column; gap: 16px; container-type: inline-size; }
-.profile-picks { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: stretch; }
-@container (min-width: 520px) {
-  .profile-picks { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-}
-@container (min-width: 1176px) {
-  .profile-layout { grid-template-columns: 900px minmax(260px, 760px); }
-  .profile-aside { position: sticky; top: 16px; }
-}
-`
 
 // ---------- Home Base picks (same ones Opsis Weekly shows) ----------
 let _picksPromise = null
@@ -305,65 +325,10 @@ function Inspiration() {
   )
 }
 
-// ---------- photo (same storage and event as Settings) ----------
-function PhotoBlock({ person, editable, userId, onChanged }) {
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const fileRef = useRef(null)
-  const color = person.color || '#2563EB'
-
-  async function onPick(e) {
-    const file = e.target.files?.[0]
-    if (fileRef.current) fileRef.current.value = ''
-    if (!file) return
-    setErr('')
-    if (!file.type.startsWith('image/')) return setErr('Please choose an image file.')
-    if (file.size > 5 * 1024 * 1024) return setErr('Please choose an image under 5 MB.')
-    setBusy(true)
-    try {
-      const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png'
-      const path = `${userId}/avatar-${Date.now()}.${ext}`     // a fresh name each time, so the old photo is never cached
-      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type })
-      if (upErr) throw upErr
-      const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path)
-      const url = pub?.publicUrl
-      const { error: dbErr } = await supabase.from('profiles').update({ avatar_url: url }).eq('id', userId)
-      if (dbErr) throw dbErr
-      onChanged(url)
-      window.dispatchEvent(new CustomEvent('cc:avatar-updated', { detail: url }))
-    } catch (e2) { setErr(e2?.message || 'Upload failed. Please try again.') } finally { setBusy(false) }
-  }
-  async function onRemove() {
-    setBusy(true); setErr('')
-    try {
-      const { error } = await supabase.from('profiles').update({ avatar_url: null }).eq('id', userId)
-      if (error) throw error
-      onChanged(null)
-      window.dispatchEvent(new CustomEvent('cc:avatar-updated', { detail: null }))
-    } catch (e2) { setErr(e2?.message || 'Could not remove the photo.') } finally { setBusy(false) }
-  }
-  return (
-    <div style={{ textAlign: 'center' }}>
-      {person.avatar_url
-        ? <img src={person.avatar_url} alt={person.full_name} style={{ width: 96, height: 96, borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 0 2px var(--line)' }} />
-        : <span aria-label={`${person.full_name} (no photo)`} style={{ width: 96, height: 96, borderRadius: '50%', background: color + '22', color, fontSize: 34, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{initialsFrom(person.full_name)}</span>}
-      {editable && (
-        <div style={{ marginTop: 8, display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} disabled={busy} onClick={() => fileRef.current?.click()}>{busy ? 'Uploading…' : person.avatar_url ? 'Change photo' : 'Add photo'}</button>
-          {person.avatar_url && <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} disabled={busy} onClick={onRemove}>Remove</button>}
-          <input ref={fileRef} type="file" accept="image/*" aria-label="Choose a photo" onChange={onPick} style={{ display: 'none' }} />
-        </div>
-      )}
-      {err && <div role="alert" style={{ marginTop: 8, fontSize: 12.5, color: 'var(--failed, #c0392b)', maxWidth: 180 }}>{err}</div>}
-    </div>
-  )
-}
-
-// ---------- details ----------
 const COMMON_LANGUAGES = ['English', 'Spanish', 'Portuguese', 'French', 'Tagalog', 'Haitian Creole', 'Vietnamese', 'Mandarin', 'Arabic', 'ASL']
 const inputSt = { padding: '6px 9px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', fontFamily: 'inherit', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)' }
 
-function About({ person, isSelf, onPatch, onFavsSaved }) {
+function About({ person, roles = [], isSelf, onPatch }) {
   const { isAdmin } = useAuth()
   const canAdminEdit = isAdmin && !isSelf
   const [phone, setPhone] = useState(person.phone || '')
@@ -418,8 +383,8 @@ function About({ person, isSelf, onPatch, onFavsSaved }) {
   }
 
   return (
-    <div style={panel}>
-      <h2 style={sectionTitle}>About</h2>
+    <div>
+      <Anniversary startDate={person.start_date} firstName={(person.full_name || '').split(' ')[0]} isSelf={isSelf} />
       <div style={row}><span style={{ color: 'var(--ink-soft)' }}>Email</span><span>{person.email || 'Not set'}</span></div>
       <div style={{ ...row, alignItems: 'center' }}>
         <label htmlFor="pf-phone" style={{ color: 'var(--ink-soft)' }}>Phone</label>
@@ -490,7 +455,9 @@ function About({ person, isSelf, onPatch, onFavsSaved }) {
       {msg && <div role="status" style={{ fontSize: 13, color: 'var(--passed)', marginTop: 6 }}>{msg}</div>}
       <div style={row}><span style={{ color: 'var(--ink-soft)' }}>Time zone</span><span>{person.timezone || 'Company time (Eastern)'}{isSelf && <> · <a href="/settings">Change in Settings</a></>}</span></div>
       <div style={row}><span style={{ color: 'var(--ink-soft)' }}>Start date</span><span>{person.start_date ? fmtDate(person.start_date) : 'Not set'}</span></div>
-      <GetToKnow personId={person.id} firstName={(person.full_name || '').split(' ')[0]} isSelf={isSelf} onSaved={onFavsSaved} />
+      <div style={{ ...row, alignItems: 'flex-start' }}><span style={{ color: 'var(--ink-soft)' }}>Job roles</span>
+        <span style={{ textAlign: 'right' }}>{roles.length === 0 ? <span className="page-sub" style={{ margin: 0 }}>No shifts in the last 90 days</span>
+          : <span className="tag-picker" style={{ justifyContent: 'flex-end' }}>{roles.map(r => <span key={r} className="tag-opt on" style={{ cursor: 'default' }}>{r}</span>)}</span>}</span></div>
     </div>
   )
 }
@@ -517,8 +484,8 @@ function GetToKnow({ personId, firstName, isSelf, onSaved, initial, loaded, bare
   return (
     <div id="get-to-know-you" style={bare ? { scrollMarginTop: 80 } : { marginTop: 18, paddingTop: 14, borderTop: '2px solid var(--line)', scrollMarginTop: 80 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <span style={{ fontSize: 17 }}>🎉</span>
-        <h3 style={{ ...sectionTitle, margin: 0 }}>Get to Know {isSelf ? 'Me' : firstName || 'Them'}</h3>
+        {!bare && <><span style={{ fontSize: 17 }}>🎉</span>
+        <h3 style={{ ...sectionTitle, margin: 0 }}>Get to Know {isSelf ? 'Me' : firstName || 'Them'}</h3></>}
         {isSelf && fav !== undefined && (
           <button className="btn btn-ghost" style={{ marginLeft: 'auto', fontSize: 12.5, padding: '4px 12px' }} onClick={() => setEditing(true)}>
             {has ? 'Edit' : 'Fill out'}
@@ -564,7 +531,7 @@ function Anniversary({ startDate, firstName, isSelf }) {
 // ---------- "complete your profile" ----------
 function Checklist({ person, hasFavs }) {
   const items = [
-    { done: !!person.avatar_url, label: 'Add a photo', hint: 'Use "Add photo" under your picture above.' },
+    { done: !!person.avatar_url, label: 'Add a photo', hint: 'Use the camera button on your picture.' },
     { done: !!person.phone, label: 'Add your phone number', hint: 'In About, below.' },
     { done: (person.languages || []).length > 0, label: 'Add the languages you speak', hint: 'In About, below — helps route bilingual calls.' },
     { done: !!person.pronouns, label: 'Add your pronouns (optional)', hint: 'In About, below.', optional: true },
@@ -605,62 +572,10 @@ function ActionLink({ href, children }) {
     </a>
   )
 }
-// Open/closed is remembered per section on this device.
-function useCollapsed(key, initial) {
-  const k = 'cc.profile.collapsed.' + key
-  const [collapsed, setCollapsed] = useState(() => {
-    try { const v = localStorage.getItem(k); return v === null ? initial : v === '1' } catch { return initial }
-  })
-  const toggle = () => setCollapsed(c => { try { localStorage.setItem(k, c ? '0' : '1') } catch { /* ignore */ } return !c })
-  return [collapsed, toggle]
-}
-function CollapsibleHeader({ title, summary, collapsed, onToggle }) {
-  return (
-    <button onClick={onToggle} aria-expanded={!collapsed}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: 'var(--ink)' }}>
-      <span style={{ fontSize: 12, width: 12, color: 'var(--ink-soft)' }}>{collapsed ? '▸' : '▾'}</span>
-      <h2 style={{ ...sectionTitle, margin: 0 }}>{title}</h2>
-      {summary && <span className="page-sub" style={{ margin: 0, fontSize: 12.5, marginLeft: 'auto' }}>{summary}</span>}
-    </button>
-  )
-}
-
 // ---------- personal hub: this week, performance, certifications ----------
-const fmtT = (t) => { const [h, m] = String(t).split(':').map(Number); const ap = h >= 12 ? 'PM' : 'AM'; return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${ap}` }
 const pctOrDash = (v) => v == null ? '—' : `${Math.round(Number(v) * (Number(v) <= 1.5 ? 100 : 1))}%`
 
-function mergeShifts(blocks) {
-  // Back-to-back interval blocks on the same day → one shift.
-  const byDay = {}
-  for (const b of blocks) (byDay[b.date] = byDay[b.date] || []).push(b)
-  return Object.keys(byDay).sort().map(day => {
-    const list = byDay[day].slice().sort((x, y) => String(x.start).localeCompare(String(y.start)))
-    const shifts = []
-    for (const b of list) {
-      const last = shifts[shifts.length - 1]
-      if (last && String(b.start).slice(0, 5) <= String(last.end).slice(0, 5)) {
-        if (String(b.end) > String(last.end)) last.end = b.end
-        last.blocks.push(b)
-      } else shifts.push({ start: b.start, end: b.end, blocks: [b] })
-    }
-    for (const sh of shifts) {
-      const roles = [...new Set(sh.blocks.map(x => x.role).filter(Boolean))]
-      sh.role = roles.join(', ')
-      sh.noShow = sh.blocks.some(x => x.status === 'no_show')
-      sh.worked = sh.blocks.some(x => x.checked_in_at)
-    }
-    return { day, shifts }
-  })
-}
-
-function Hub({ hub, isSelf, firstName, isAgent }) {
-  const [certsCollapsed, toggleCerts] = useCollapsed('certs', true)
-  const days = mergeShifts(hub.week || [])
-  const sc = hub.scorecard
-  const certs = hub.certs || []
-  const passed = certs.filter(c => c.status === 'passed')
-  const todo = certs.filter(c => c.status !== 'passed')
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+function PerformanceBody({ sc, isSelf }) {
   const stat = (label, value, sub) => (
     <div style={{ padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', minWidth: 0 }}>
       <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.03em' }}>{label}</div>
@@ -668,139 +583,69 @@ function Hub({ hub, isSelf, firstName, isAgent }) {
       {sub && <div className="page-sub" style={{ margin: 0, fontSize: 12 }}>{sub}</div>}
     </div>
   )
+  if (!sc) return <p className="page-sub" style={{ margin: 0 }}>No scorecard data yet.</p>
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, marginBottom: 16 }}>
-      <div style={panel}>
-        <h2 style={sectionTitle}>{isSelf ? 'My week' : `${firstName}'s week`}</h2>
-        {days.length === 0 ? <p className="page-sub" style={{ margin: 0 }}>No shifts this week.{isSelf && <> <a href="/schedule">Pick up intervals</a></>}</p> : days.map(d => {
-          const dt = new Date(d.day + 'T12:00:00')
-          const isToday = d.day === today
-          return (
-            <div key={d.day} style={{ ...row, alignItems: 'flex-start', fontWeight: isToday ? 700 : 400 }}>
-              <span style={{ color: isToday ? 'var(--accent)' : 'var(--ink-soft)', width: 86, flex: 'none' }}>
-                {isToday ? 'Today' : dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-              </span>
-              <span style={{ textAlign: 'right' }}>
-                {d.shifts.map((sh, i) => (
-                  <div key={i}>
-                    {fmtT(sh.start)} – {fmtT(sh.end)}
-                    {sh.role && <span className="page-sub" style={{ margin: '0 0 0 6px', fontSize: 12 }}>{sh.role}</span>}
-                    {sh.noShow && <span className="badge failed" style={{ marginLeft: 6 }}>No-show</span>}
-                  </div>
-                ))}
-              </span>
-            </div>
-          )
-        })}
-        {isSelf && <ActionLink href="/schedule">Open Schedule</ActionLink>}
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+        {stat('Hours (14 days)', sc.hours_14d != null ? Number(sc.hours_14d).toFixed(1) : '—', sc.scheduled_hours_14d != null ? `of ${Number(sc.scheduled_hours_14d).toFixed(1)} scheduled` : null)}
+        {stat('QA score (30 days)', pctOrDash(sc.qa_score_30d), sc.qa_reviews_30d != null ? `${sc.qa_reviews_30d} review${Number(sc.qa_reviews_30d) === 1 ? '' : 's'}` : null)}
+        {stat('Adherence (14 days)', pctOrDash(sc.adherence_14d))}
+        {stat('Calls (30 days)', sc.calls_30d != null ? Number(sc.calls_30d).toLocaleString('en-US') : '—', sc.conversion_30d != null ? `${pctOrDash(sc.conversion_30d)} booked` : null)}
       </div>
-
-      {isAgent && <div style={panel}>
-        <h2 style={sectionTitle}>Performance</h2>
-        {!sc ? <p className="page-sub" style={{ margin: 0 }}>No scorecard data yet.</p> : (
-          <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-              {stat('Hours (14 days)', sc.hours_14d != null ? Number(sc.hours_14d).toFixed(1) : '—', sc.scheduled_hours_14d != null ? `of ${Number(sc.scheduled_hours_14d).toFixed(1)} scheduled` : null)}
-              {stat('QA score (30 days)', pctOrDash(sc.qa_score_30d), sc.qa_reviews_30d != null ? `${sc.qa_reviews_30d} review${Number(sc.qa_reviews_30d) === 1 ? '' : 's'}` : null)}
-              {stat('Adherence (14 days)', pctOrDash(sc.adherence_14d))}
-              {stat('Calls (30 days)', sc.calls_30d != null ? Number(sc.calls_30d).toLocaleString('en-US') : '—', sc.conversion_30d != null ? `${pctOrDash(sc.conversion_30d)} booked` : null)}
-            </div>
-            {sc.tier && <div style={{ marginTop: 10, fontSize: 13 }}>Tier: <b>{sc.tier}</b>{sc.hold_reason && <span className="page-sub" style={{ margin: '0 0 0 6px', fontSize: 12 }}>{sc.hold_reason}</span>}</div>}
-            {isSelf && <ActionLink href="/scorecard">Open my scorecard</ActionLink>}
-          </>
-        )}
-      </div>}
-
-      <div style={panel}>
-        <CollapsibleHeader title="Certifications" collapsed={certsCollapsed} onToggle={toggleCerts}
-          summary={certs.length === 0 ? null : [passed.length && `${passed.length} passed`, todo.length && `${todo.length} to do`].filter(Boolean).join(' · ')} />
-        {certs.length === 0 ? <p className="page-sub" style={{ margin: '8px 0 0' }}>No certifications yet.</p> : !certsCollapsed && (
-          <div style={{ marginTop: 8, maxHeight: 360, overflowY: 'auto' }}>
-            {passed.map(c => (
-              <div key={c.name} style={row}>
-                <span>✅ {c.name}</span>
-                <span className="page-sub" style={{ margin: 0, fontSize: 12.5 }}>
-                  {c.best_score_pct != null && `${c.best_score_pct}% · `}{c.passed_at ? when(c.passed_at) : 'Passed'}
-                  {c.expires_at && <> · expires {when(c.expires_at)}</>}
-                </span>
-              </div>
-            ))}
-            {todo.map(c => (
-              <div key={c.name} style={row}>
-                <span>{c.status === 'failed' ? '🔁' : '⏳'} {c.name}</span>
-                <span className="badge" style={{ fontSize: 11.5 }}>{c.status === 'failed' ? 'Retake needed' : 'To do'}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {isSelf && <div><ActionLink href="/my-certifications">Open My certifications</ActionLink></div>}
-      </div>
-    </div>
+      {sc.tier && <div style={{ marginTop: 10, fontSize: 13 }}>Tier: <b>{sc.tier}</b>{sc.hold_reason && <span className="page-sub" style={{ margin: '0 0 0 6px', fontSize: 12 }}>{sc.hold_reason}</span>}</div>}
+      {isSelf && <ActionLink href="/scorecard">Open my scorecard</ActionLink>}
+    </>
   )
 }
 
-// ---------- tokens ----------
-function Tokens({ tokens, isSelf }) {
-  const w = tokens.wallet
+function CertsBody({ certs, isSelf }) {
+  const passed = certs.filter(c => c.status === 'passed')
+  const todo = certs.filter(c => c.status !== 'passed')
   return (
-    <div style={panel}>
-      <h2 style={sectionTitle}>Tokens</h2>
+    <>
+      {certs.length === 0 ? <p className="page-sub" style={{ margin: 0 }}>No certifications yet.</p> : (
+        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+          {passed.map(c => (
+            <div key={c.name} style={row}>
+              <span>✅ {c.name}</span>
+              <span className="page-sub" style={{ margin: 0, fontSize: 12.5, textAlign: 'right' }}>
+                {c.best_score_pct != null && `${c.best_score_pct}% · `}{c.passed_at ? when(c.passed_at) : 'Passed'}
+                {c.expires_at && <> · expires {when(c.expires_at)}</>}
+              </span>
+            </div>
+          ))}
+          {todo.map(c => (
+            <div key={c.name} style={row}>
+              <span>{c.status === 'failed' ? '🔁' : '⏳'} {c.name}</span>
+              <span className="badge" style={{ fontSize: 11.5 }}>{c.status === 'failed' ? 'Retake needed' : 'To do'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {isSelf && <div><ActionLink href="/my-certifications">View Certifications</ActionLink></div>}
+    </>
+  )
+}
+
+function TokensBody({ tokens, isSelf }) {
+  const w = tokens?.wallet
+  const recent = tokens?.recent || []
+  return (
+    <div>
       {!w ? <p className="page-sub" style={{ margin: 0 }}>No tokens yet.</p> : (
         <>
           <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.1 }} aria-label="Token balance">{Number(w.balance).toLocaleString('en-US')}</div>
           <div className="page-sub" style={{ margin: '2px 0 8px' }}>{Number(w.lifetime_earned).toLocaleString('en-US')} earned · {Number(w.lifetime_redeemed).toLocaleString('en-US')} redeemed</div>
         </>
       )}
-      {tokens.recent.length > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', marginTop: 6 }}>Recent activity</div>}
-      {tokens.recent.map((t, i) => (
+      {recent.length > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', marginTop: 6 }}>Recent activity</div>}
+      {recent.map((t, i) => (
         <div key={i} style={row}>
           <span>{t.reason || t.note || (t.kind === 'redeem' ? 'Redeemed' : 'Earned')}<span style={{ display: 'block', fontSize: 12, color: 'var(--ink-soft)' }}>{when(t.created_at)}</span></span>
           <span style={{ fontWeight: 700, color: t.delta >= 0 ? 'var(--passed)' : 'var(--ink)' }}>{t.delta >= 0 ? '+' : ''}{t.delta}</span>
         </div>
       ))}
-      {isSelf && <ActionLink href="/tokens">Open Tokens</ActionLink>}
-    </div>
-  )
-}
-
-// ---------- projects and tasks ----------
-function Projects({ projects, tasks, openCount, isSelf }) {
-  const [collapsed, toggle] = useCollapsed('projects', false)
-  const summary = [projects.length && `${projects.length} project${projects.length === 1 ? '' : 's'}`, `${openCount} open task${openCount === 1 ? '' : 's'}`].filter(Boolean).join(' · ')
-  return (
-    <div style={panel}>
-      <CollapsibleHeader title="Projects and open tasks" summary={summary} collapsed={collapsed} onToggle={toggle} />
-      {collapsed ? null : <div style={{ marginTop: 10 }}>
-      {projects.length === 0 && tasks.length === 0 ? <p className="page-sub" style={{ margin: 0 }}>Not on any projects, and no open tasks.</p> : (
-        <>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-            {projects.map(p => (
-              <span key={p.id} className="badge" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color || 'var(--ink-soft)' }} />{p.name}
-                {p.open_tasks > 0 && <span style={{ color: 'var(--ink-soft)' }}>· {p.open_tasks} open</span>}
-              </span>))}
-          </div>
-          {tasks.length === 0 ? <p className="page-sub" style={{ margin: 0 }}>No open tasks.</p> : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
-                <thead><tr>{['Task', 'Project', 'Due', 'Status'].map(h => <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', borderBottom: '2px solid var(--line)' }}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {tasks.map(t => (
-                    <tr key={t.id}>
-                      <td style={{ padding: '7px 8px', borderBottom: '1px solid var(--line)', fontSize: 13.5 }}>{t.name}</td>
-                      <td style={{ padding: '7px 8px', borderBottom: '1px solid var(--line)', fontSize: 13.5, color: 'var(--ink-soft)' }}>{t.project_name || ''}</td>
-                      <td style={{ padding: '7px 8px', borderBottom: '1px solid var(--line)', fontSize: 13.5, whiteSpace: 'nowrap' }}>{t.due_date ? fmtDate(t.due_date) : ''}</td>
-                      <td style={{ padding: '7px 8px', borderBottom: '1px solid var(--line)', fontSize: 13.5 }}><span className={'badge' + (t.status === 'blocked' ? ' failed' : '')}>{STATUS[t.status] || t.status}</span></td>
-                    </tr>))}
-                </tbody>
-              </table>
-              {openCount > tasks.length && <p className="page-sub" style={{ margin: '8px 0 0' }}>Showing {tasks.length} of {openCount} open tasks, soonest due first.</p>}
-            </div>
-          )}
-        </>
-      )}
-      </div>}
-      {isSelf && <div><ActionLink href="/projects">Open Project Management</ActionLink></div>}
+      {isSelf && <ActionLink href="/tokens">View Tokens</ActionLink>}
     </div>
   )
 }
