@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { COMPANY_TZ, companyTimeToInstant, formatInTZ, detectedTZ, wallTimeToViewerHHMM } from '../lib/tz'
@@ -114,7 +114,11 @@ const COLORS = {
   priority: '#B91C1C',
   team: '#7C3AED',
 }
-export default function Calendar() {
+// Optional props (used by My Profile's calendar panel; the /calendar page passes none):
+//   openEventId — open this Command Center event's editor once loaded
+//   startNew    — open the "new event" editor once loaded
+//   onChanged   — called after an event is saved or deleted
+export default function Calendar({ openEventId = null, startNew = false, onChanged } = {}) {
   const { isAdmin } = useAuth()
   const [view, setView] = useState('day')             // month | week | day (default to Day)
   const [cursor, setCursor] = useState(etNow())      // anchor date
@@ -329,6 +333,13 @@ export default function Calendar() {
       other: due.filter(t => t.priority !== 'high'),
     }
   }, [myTasks])
+  const openedRef = useRef(false)
+  useEffect(() => {
+    if (loading || openedRef.current) return
+    openedRef.current = true
+    if (openEventId) { const ev = events.find(e => e.id === openEventId); if (ev) setEditEvent(ev) }
+    else if (startNew) setEditEvent({ event_date: isoDate(etNow()) })
+  }, [loading, openEventId, startNew, events])
   if (loading) return <div className="page-sub" style={{ padding: 30 }}>Loading calendar…</div>
   const shared = { cursor, setCursor, itemsOn, tasksOn, userId, allTasks: myTasks, onAddEvent: (d) => setEditEvent({ event_date: isoDate(d || cursor) }), onEditEvent: setEditEvent, onShowDetail: setDetailItem, onToggleTaskDone: toggleTaskDone, onToggleTaskTimer: toggleTaskTimer, runningEntry, timeEntries }
   return (
@@ -357,7 +368,7 @@ export default function Calendar() {
       {editEvent && (
         <EventModal event={editEvent} userId={userId} isAdmin={isAdmin} gcalConn={gcalConn} profiles={profiles} invitable={invitable}
           onClose={() => setEditEvent(null)}
-          onSaved={() => { setEditEvent(null); load() }} />
+          onSaved={() => { setEditEvent(null); load(); onChanged && onChanged() }} />
       )}
     </div>
   )
