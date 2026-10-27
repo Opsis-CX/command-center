@@ -127,8 +127,22 @@ const CAL_COLOR_KINDS = [
 ]
 const CAL_SWATCHES = ['#0077B6', '#0891B2', '#14B8A6', '#16A34A', '#65A30D', '#D97706', '#EA580C', '#DC2626', '#DB2777', '#9333EA', '#7C3AED', '#4F46E5', '#475569', '#94A3B8']
 let CAL_STYLE = 'solid'   // set by <Calendar> each render; read by the views when drawing blocks
+// 🌈 'rainbow' can be picked as a color for any kind.
+const RAINBOW = 'rainbow'
+const RAINBOW_GRAD = 'linear-gradient(90deg, #ef4444, #f97316, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899)'
+const RAINBOW_SOFT = 'linear-gradient(90deg, #fee2e2, #ffedd5, #fef9c3, #dcfce7, #cffafe, #dbeafe, #ede9fe, #fce7f3)'
+// Anything that paints a background (blocks, dots, swatches) can use this.
+const paint = (color) => color === RAINBOW ? RAINBOW_GRAD : color
+// For text drawn in the item's color (Month view times): rainbow becomes gradient text.
+function textColor(color) {
+  if (color === RAINBOW) return { backgroundImage: RAINBOW_GRAD, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', fontWeight: 600 }
+  return { color }
+}
 // Solid = filled block with white text. Soft = light tint, colored left edge, dark text.
 function blockStyle(color) {
+  if (color === RAINBOW) return CAL_STYLE === 'soft'
+    ? { background: RAINBOW_SOFT, color: '#3b2a5a', borderLeft: '3px solid #8b5cf6' }
+    : { background: RAINBOW_GRAD, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.45)' }
   if (CAL_STYLE === 'soft') return {
     background: `color-mix(in srgb, ${color} 18%, var(--cal-paper, #fff))`,
     color: `color-mix(in srgb, ${color} 70%, #111)`,
@@ -163,9 +177,11 @@ function CalendarColors({ value, onChange, onClose }) {
         </div>
         {CAL_COLOR_KINDS.map(([k, label, def]) => {
           const cur = v[k] || def
-          const prev = soft
-            ? { background: `color-mix(in srgb, ${cur} 18%, #fff)`, color: `color-mix(in srgb, ${cur} 70%, #111)`, borderLeft: `3px solid ${cur}` }
-            : { background: cur, color: '#fff' }
+          const prev = cur === RAINBOW
+            ? (soft ? { background: RAINBOW_SOFT, color: '#3b2a5a', borderLeft: '3px solid #8b5cf6' } : { background: RAINBOW_GRAD, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.45)' })
+            : soft
+              ? { background: `color-mix(in srgb, ${cur} 18%, #fff)`, color: `color-mix(in srgb, ${cur} 70%, #111)`, borderLeft: `3px solid ${cur}` }
+              : { background: cur, color: '#fff' }
           return (
             <div key={k} style={{ padding: '10px 0', borderTop: '1px solid var(--line)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
@@ -179,7 +195,11 @@ function CalendarColors({ value, onChange, onClose }) {
                     style={{ width: 24, height: 24, borderRadius: '50%', background: c, cursor: 'pointer', padding: 0,
                       border: on ? '2px solid var(--ink)' : '2px solid transparent', boxShadow: on ? '0 0 0 2px var(--surface) inset' : 'none' }} />
                 })}
-                <label title="Custom color" style={{ width: 24, height: 24, borderRadius: '50%', overflow: 'hidden', position: 'relative', cursor: 'pointer', background: 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }}>
+                <button onClick={() => set(k, RAINBOW)} aria-label={`${label}: rainbow`} title="🌈 Rainbow"
+                  style={{ width: 24, height: 24, borderRadius: '50%', background: RAINBOW_GRAD, cursor: 'pointer', padding: 0,
+                    border: cur === RAINBOW ? '2px solid var(--ink)' : '2px solid transparent', boxShadow: cur === RAINBOW ? '0 0 0 2px var(--surface) inset' : 'none' }} />
+                <label title="Pick any color" style={{ width: 24, height: 24, borderRadius: '50%', overflow: 'hidden', position: 'relative', cursor: 'pointer', border: '1.5px dashed var(--ink-soft)', display: 'grid', placeItems: 'center', color: 'var(--ink-soft)', fontSize: 14, lineHeight: 1 }}>
+                  ＋
                   <input type="color" value={/^#[0-9a-f]{6}$/i.test(cur) ? cur : def} onChange={e => set(k, e.target.value)} aria-label={`${label}: custom color`}
                     style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
                 </label>
@@ -746,7 +766,7 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
               title={i.title}
               style={{
                 fontSize: 10.5, lineHeight: 1.15, margin: '2px 0', padding: i.allDay ? '2px 4px' : '1px 2px', borderRadius: 2,
-                background: i.allDay ? i.color : 'transparent', color: i.allDay ? '#fff' : i.color,
+                ...(i.allDay ? blockStyle(i.color) : { background: 'transparent', ...textColor(i.color) }),
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
               {!i.allDay && i.start ? fmtTime(i.start) + ' ' : ''}{i.title}
@@ -792,7 +812,7 @@ function MonthView({ cursor, setCursor, itemsOn, tasksOn, onAddEvent, onEditEven
             {dayPopup.items.map(i => (
               <div key={i.kind + i.id} onClick={(e) => { setDayPopup(null); openItem(i, e) }}
                 style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '7px 4px', borderBottom: '1px solid var(--line-soft)', cursor: 'pointer', fontSize: 13 }}>
-                <span style={{ width: 9, height: 9, borderRadius: '50%', background: i.color, marginTop: 4, flexShrink: 0 }} />
+                <span style={{ width: 9, height: 9, borderRadius: '50%', background: paint(i.color), marginTop: 4, flexShrink: 0 }} />
                 <div>
                   <div style={{ color: 'var(--ink)' }}>{i.title}</div>
                   <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{i.allDay ? 'All day' : (i.start ? fmtTime(i.start) : '')}</div>
@@ -1538,7 +1558,7 @@ function EventDetailModal({ item, onClose, onEdit }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3100 }} onClick={onClose}>
       <div className="card" style={{ width: 440, maxWidth: '92vw', maxHeight: '85vh', overflowY: 'auto', padding: 22 }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: item.color, marginTop: 5, flexShrink: 0 }} />
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: paint(item.color), marginTop: 5, flexShrink: 0 }} />
           <h3 style={{ margin: 0, fontSize: 18, lineHeight: 1.3 }}>{item.title}</h3>
         </div>
         <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginBottom: 14 }}>
