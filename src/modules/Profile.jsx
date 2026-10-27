@@ -24,27 +24,20 @@ const row = { display: 'flex', justifyContent: 'space-between', gap: 12, padding
 export default function Profile({ profileId }) {
   const { user } = useAuth()
   const [data, setData] = useState(null)
-  const [card, setCard] = useState(null)   // team-wide profile card (no full-profile access)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
-    setLoading(true); setErr(''); setCard(null)
+    setLoading(true); setErr('')
     const { data: d, error } = await supabase.rpc('profile_page_data', { p_profile: profileId || null })
-    if (!error) setData(d)
-    else if (/not allowed/i.test(error.message) && profileId) {
-      // Not an Admin/Owner: show the profile card everyone on the team can see.
-      const { data: c, error: e2 } = await supabase.rpc('profile_card_data', { p_profile: profileId })
-      if (e2) setErr(/not allowed/i.test(e2.message) ? "You don't have access to this profile." : e2.message)
-      else setCard(c)
-    } else setErr(/not allowed/i.test(error.message) ? "You don't have access to this profile." : error.message)
+    if (error) setErr(/not allowed/i.test(error.message) ? "You don't have access to this profile." : error.message)
+    else setData(d)
     setLoading(false)
   }, [profileId])
   useEffect(() => { load() }, [load])
 
   if (loading) return <p className="page-sub">Loading…</p>
   if (err) return <div className="login-err" role="alert">{err}</div>
-  if (card) return <ProfileCard card={card} />
   const { person, job_roles: roles, tokens, projects, tasks, open_task_count: openCount, is_self: isSelf, hub, has_favorites: hasFavs } = data
   const patchPerson = (fields) => setData(d => ({ ...d, person: { ...d.person, ...fields } }))
   const showHub = hub && (person.is_agent || hub.week?.length || hub.certs?.length || hub.scorecard)
@@ -547,47 +540,6 @@ function GetToKnow({ personId, firstName, isSelf, onSaved, initial, loaded, bare
   )
 }
 
-// ---------- Profile card (what everyone on the team can see) ----------
-// For people without full-profile access: name, photo, title, team, status, languages,
-// work anniversary and their Get to Know You card. Nothing private.
-function ProfileCard({ card }) {
-  const { person, favorites } = card
-  const first = (person.full_name || '').split(' ')[0]
-  const langs = person.languages || []
-  return (
-    <div style={{ maxWidth: 900 }}>
-      <div style={{ ...panel, marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
-          <PhotoBlock person={person} editable={false} />
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <h1 className="page-title" style={{ margin: 0, display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-              {person.full_name}
-              {person.pronouns && <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink-soft)' }}>({person.pronouns})</span>}
-            </h1>
-            {person.job_title && <div style={{ fontSize: 15, marginTop: 2 }}>{person.job_title}</div>}
-            {(person.team || person.manager_name) && (
-              <div style={{ fontSize: 13.5, color: 'var(--ink-soft)', marginTop: 3 }}>
-                {person.team && <span>{person.team}</span>}
-                {person.team && person.manager_name && <span> · </span>}
-                {person.manager_name && <span>Reports to <b style={{ color: 'var(--ink)' }}>{person.manager_name}</b></span>}
-              </div>
-            )}
-            <Anniversary startDate={person.start_date} firstName={first} isSelf={false} />
-            {(person.status_text || person.status_emoji) && <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 2 }}>{person.status_emoji} {person.status_text}</div>}
-            {langs.length > 0 && (
-              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
-                {langs.map(l => <span key={l} className="badge">🗣️ {l}</span>)}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-      <div style={panel}>
-        <GetToKnow personId={person.id} firstName={first} isSelf={false} initial={favorites} loaded bare />
-      </div>
-    </div>
-  )
-}
 
 // ---------- work anniversary ----------
 function Anniversary({ startDate, firstName, isSelf }) {
