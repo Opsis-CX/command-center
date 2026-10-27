@@ -68,7 +68,7 @@ export function RolePreviewPill() {
   }
 
   return (
-    <div role="status" style={{ position: 'fixed', top: 10, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 'calc(100vw - 24px)', background: '#7C3AED', color: '#fff', padding: '6px 8px 6px 14px', borderRadius: 999, boxShadow: '0 8px 24px rgba(0,0,0,.25)', fontSize: 13, fontFamily: 'inherit' }}>
+    <div role="status" style={{ position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 'calc(100vw - 24px)', background: '#7C3AED', color: '#fff', padding: '6px 8px 6px 14px', borderRadius: 999, boxShadow: '0 8px 24px rgba(0,0,0,.25)', fontSize: 13, fontFamily: 'inherit' }}>
       <span>👁 Viewing as <b>{p.label}</b> <span style={{ opacity: .8 }}>({p.name})</span></span>
       {Array.isArray(p.accounts) && p.accounts.length > 1 && (
         <select disabled={busy} value={p.roleKey} onChange={e => switchTo(e.target.value)}
