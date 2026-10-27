@@ -81,7 +81,7 @@ export default function Profile({ profileId }) {
 
       {isSelf && <Checklist person={person} hasFavs={hasFavs} />}
 
-      {showHub && <Hub hub={hub} isSelf={isSelf} firstName={(person.full_name || '').split(' ')[0]} />}
+      {showHub && <Hub hub={hub} isSelf={isSelf} isAgent={!!person.is_agent} firstName={(person.full_name || '').split(' ')[0]} />}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 16, marginBottom: 16 }}>
         <About person={person} isSelf={isSelf} onPatch={patchPerson} />
@@ -336,6 +336,35 @@ function Checklist({ person, hasFavs }) {
   )
 }
 
+// ---------- shared bits: button links + collapsible sections ----------
+function ActionLink({ href, children }) {
+  return (
+    <a href={href} className="btn btn-ghost"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none', fontSize: 13, padding: '6px 14px', marginTop: 12 }}>
+      {children} <span aria-hidden="true">→</span>
+    </a>
+  )
+}
+// Open/closed is remembered per section on this device.
+function useCollapsed(key, initial) {
+  const k = 'cc.profile.collapsed.' + key
+  const [collapsed, setCollapsed] = useState(() => {
+    try { const v = localStorage.getItem(k); return v === null ? initial : v === '1' } catch { return initial }
+  })
+  const toggle = () => setCollapsed(c => { try { localStorage.setItem(k, c ? '0' : '1') } catch { /* ignore */ } return !c })
+  return [collapsed, toggle]
+}
+function CollapsibleHeader({ title, summary, collapsed, onToggle }) {
+  return (
+    <button onClick={onToggle} aria-expanded={!collapsed}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: 'var(--ink)' }}>
+      <span style={{ fontSize: 12, width: 12, color: 'var(--ink-soft)' }}>{collapsed ? '▸' : '▾'}</span>
+      <h2 style={{ ...sectionTitle, margin: 0 }}>{title}</h2>
+      {summary && <span className="page-sub" style={{ margin: 0, fontSize: 12.5, marginLeft: 'auto' }}>{summary}</span>}
+    </button>
+  )
+}
+
 // ---------- personal hub: this week, performance, certifications ----------
 const fmtT = (t) => { const [h, m] = String(t).split(':').map(Number); const ap = h >= 12 ? 'PM' : 'AM'; return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${ap}` }
 const pctOrDash = (v) => v == null ? '—' : `${Math.round(Number(v) * (Number(v) <= 1.5 ? 100 : 1))}%`
@@ -364,7 +393,8 @@ function mergeShifts(blocks) {
   })
 }
 
-function Hub({ hub, isSelf, firstName }) {
+function Hub({ hub, isSelf, firstName, isAgent }) {
+  const [certsCollapsed, toggleCerts] = useCollapsed('certs', true)
   const days = mergeShifts(hub.week || [])
   const sc = hub.scorecard
   const certs = hub.certs || []
@@ -402,10 +432,10 @@ function Hub({ hub, isSelf, firstName }) {
             </div>
           )
         })}
-        {isSelf && <div style={{ marginTop: 10 }}><a href="/schedule">Open Schedule</a></div>}
+        {isSelf && <ActionLink href="/schedule">Open Schedule</ActionLink>}
       </div>
 
-      <div style={panel}>
+      {isAgent && <div style={panel}>
         <h2 style={sectionTitle}>Performance</h2>
         {!sc ? <p className="page-sub" style={{ margin: 0 }}>No scorecard data yet.</p> : (
           <>
@@ -416,15 +446,16 @@ function Hub({ hub, isSelf, firstName }) {
               {stat('Calls (30 days)', sc.calls_30d != null ? Number(sc.calls_30d).toLocaleString('en-US') : '—', sc.conversion_30d != null ? `${pctOrDash(sc.conversion_30d)} booked` : null)}
             </div>
             {sc.tier && <div style={{ marginTop: 10, fontSize: 13 }}>Tier: <b>{sc.tier}</b>{sc.hold_reason && <span className="page-sub" style={{ margin: '0 0 0 6px', fontSize: 12 }}>{sc.hold_reason}</span>}</div>}
-            {isSelf && <div style={{ marginTop: 10 }}><a href="/scorecard">Open my scorecard</a></div>}
+            {isSelf && <ActionLink href="/scorecard">Open my scorecard</ActionLink>}
           </>
         )}
-      </div>
+      </div>}
 
       <div style={panel}>
-        <h2 style={sectionTitle}>Certifications</h2>
-        {certs.length === 0 ? <p className="page-sub" style={{ margin: 0 }}>No certifications yet.</p> : (
-          <>
+        <CollapsibleHeader title="Certifications" collapsed={certsCollapsed} onToggle={toggleCerts}
+          summary={certs.length === 0 ? null : [passed.length && `${passed.length} passed`, todo.length && `${todo.length} to do`].filter(Boolean).join(' · ')} />
+        {certs.length === 0 ? <p className="page-sub" style={{ margin: '8px 0 0' }}>No certifications yet.</p> : !certsCollapsed && (
+          <div style={{ marginTop: 8, maxHeight: 360, overflowY: 'auto' }}>
             {passed.map(c => (
               <div key={c.name} style={row}>
                 <span>✅ {c.name}</span>
@@ -440,9 +471,9 @@ function Hub({ hub, isSelf, firstName }) {
                 <span className="badge" style={{ fontSize: 11.5 }}>{c.status === 'failed' ? 'Retake needed' : 'To do'}</span>
               </div>
             ))}
-          </>
+          </div>
         )}
-        {isSelf && <div style={{ marginTop: 10 }}><a href="/my-certifications">Open My certifications</a></div>}
+        {isSelf && <div><ActionLink href="/my-certifications">Open My certifications</ActionLink></div>}
       </div>
     </div>
   )
@@ -467,16 +498,19 @@ function Tokens({ tokens, isSelf }) {
           <span style={{ fontWeight: 700, color: t.delta >= 0 ? 'var(--passed)' : 'var(--ink)' }}>{t.delta >= 0 ? '+' : ''}{t.delta}</span>
         </div>
       ))}
-      {isSelf && <div style={{ marginTop: 10 }}><a href="/tokens">Open Tokens</a></div>}
+      {isSelf && <ActionLink href="/tokens">Open Tokens</ActionLink>}
     </div>
   )
 }
 
 // ---------- projects and tasks ----------
 function Projects({ projects, tasks, openCount, isSelf }) {
+  const [collapsed, toggle] = useCollapsed('projects', false)
+  const summary = [projects.length && `${projects.length} project${projects.length === 1 ? '' : 's'}`, `${openCount} open task${openCount === 1 ? '' : 's'}`].filter(Boolean).join(' · ')
   return (
     <div style={panel}>
-      <h2 style={sectionTitle}>Projects and open tasks</h2>
+      <CollapsibleHeader title="Projects and open tasks" summary={summary} collapsed={collapsed} onToggle={toggle} />
+      {collapsed ? null : <div style={{ marginTop: 10 }}>
       {projects.length === 0 && tasks.length === 0 ? <p className="page-sub" style={{ margin: 0 }}>Not on any projects, and no open tasks.</p> : (
         <>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -505,7 +539,8 @@ function Projects({ projects, tasks, openCount, isSelf }) {
           )}
         </>
       )}
-      {isSelf && <div style={{ marginTop: 10 }}><a href="/projects">Open Project Management</a></div>}
+      </div>}
+      {isSelf && <div><ActionLink href="/projects">Open Project Management</ActionLink></div>}
     </div>
   )
 }
