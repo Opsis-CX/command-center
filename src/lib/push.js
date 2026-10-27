@@ -415,6 +415,16 @@ export async function enablePush(profileId) {
       }
     )
 
+  // Re-installing (e.g. deleting and re-adding the iPhone Home Screen app) creates a new
+  // registration and leaves the old one behind. Remove this person's older registrations
+  // from the same browser on the same device so the device list stays clean. (2026-10-27)
+  if (!error) {
+    try {
+      await supabase.from('push_subscriptions').delete()
+        .eq('profile_id', profileId).eq('user_agent', navigator.userAgent).neq('endpoint', subscription.endpoint)
+    } catch (_) { /* best effort */ }
+  }
+
   if (error) {
     console.error(
       'Could not save push subscription',
