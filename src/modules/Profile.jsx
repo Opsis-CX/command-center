@@ -109,7 +109,6 @@ export default function Profile({ profileId }) {
         </div>
         <aside className="pd-aside">
           <Inspiration />
-          <TipOfDay />
           <NeedHelp />
           <AskTurri />
         </aside>
@@ -117,13 +116,13 @@ export default function Profile({ profileId }) {
 
       {openPanel === 'reminders' && <Drawer title="Reminders" width={760} onClose={() => { setPanel(null); refreshBadges() }}><RemindersPanel /></Drawer>}
       {openPanel?.kind === 'calendar' && (
-        <Drawer title="My Calendar" onClose={() => { setPanel(null); setMeetKey(k => k + 1) }}
+        <Drawer title="My Calendar" width={1680} onClose={() => { setPanel(null); setMeetKey(k => k + 1) }}
           footer={<a href="/calendar" className="btn btn-ghost" style={{ fontSize: 13, textDecoration: 'none' }}>Open full Calendar</a>}>
           <CalendarPanel openEventId={openPanel.openEventId || null} startNew={!!openPanel.startNew} onChanged={() => setMeetKey(k => k + 1)} />
         </Drawer>
       )}
       {openPanel === 'calendar' && (
-        <Drawer title="My Calendar" onClose={() => { setPanel(null); setMeetKey(k => k + 1) }}
+        <Drawer title="My Calendar" width={1680} onClose={() => { setPanel(null); setMeetKey(k => k + 1) }}
           footer={<a href="/calendar" className="btn btn-ghost" style={{ fontSize: 13, textDecoration: 'none' }}>Open full Calendar</a>}>
           <CalendarPanel onChanged={() => setMeetKey(k => k + 1)} />
         </Drawer>
