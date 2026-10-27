@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
@@ -2285,7 +2285,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
                       </div>
                     </div>
                   ) : (
-                    <RichContent html={m.body} highlightMentions />
+                    <MessageBody html={m.body} />
                   )}
 
                   {attachments.filter(a => a.message_id === m.id).map(a => (
@@ -2948,10 +2948,55 @@ function useCustomEmojis() {
 }
 const CUSTOM_RE = /^:([a-z0-9_]{2,32}):$/
 // Renders a reaction: a normal emoji as text, ":shortcode:" as its image.
-function EmojiGlyph({ emoji, size = 16, custom }) {
+// ---- Animated emoji (Google Noto Animated Emoji, free to use) — 2026-10-27, Brittney ----
+// The animated file lives at fonts.gstatic.com/s/e/notoemoji/latest/<codepoints>/512.webp.
+// Not every emoji has one, so we try the likely file names and fall back to the normal
+// emoji if none loads. Results are remembered so a missing one is only tried once.
+const NOTO_BASE = 'https://fonts.gstatic.com/s/e/notoemoji/latest/'
+const _notoOk = new Map()   // emoji -> working url | false
+function notoCandidates(emoji) {
+  const cps = Array.from(emoji || '').map(ch => ch.codePointAt(0).toString(16))
+  if (!cps.length) return []
+  const full = cps.join('_')
+  const noVs = cps.filter(c => c !== 'fe0f').join('_')
+  return [...new Set([full, noVs].filter(Boolean))].map(k => `${NOTO_BASE}${k}/512.webp`)
+}
+function AnimatedEmoji({ emoji, size = 20 }) {
+  const known = _notoOk.get(emoji)
+  const cands = useMemo(() => known ? [known] : notoCandidates(emoji), [emoji, known])
+  const [i, setI] = useState(0)
+  if (known === false || i >= cands.length) return <span className="chat-emoji" style={{ fontSize: size - 2 }}>{emoji}</span>
+  return (
+    <img src={cands[i]} alt={emoji} width={size} height={size} draggable={false}
+      onLoad={() => _notoOk.set(emoji, cands[i])}
+      onError={() => { if (i + 1 >= cands.length) _notoOk.set(emoji, false); setI(i + 1) }}
+      style={{ width: size, height: size, verticalAlign: 'middle', objectFit: 'contain' }} />
+  )
+}
+// A message that is only 1–3 emoji shows them big and animated (like Teams).
+const EMOJI_ONLY_RE = /^(?:\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*\s*){1,3}$/u
+function emojiOnlyList(html) {
+  if (!html || /<img|<a\s/i.test(html)) return null
+  const txt = html.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim()
+  if (!txt || !EMOJI_ONLY_RE.test(txt)) return null
+  const list = txt.match(/\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*/gu)
+  return list && list.length <= 3 ? list : null
+}
+function MessageBody({ html, style }) {
+  const big = emojiOnlyList(html)
+  if (big) return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '2px 0', ...(style || {}) }} aria-label={big.join(' ')}>
+      {big.map((e, k) => <AnimatedEmoji key={k} emoji={e} size={48} />)}
+    </div>
+  )
+  return <RichContent html={html} highlightMentions style={style} />
+}
+
+function EmojiGlyph({ emoji, size = 16, custom, animate = false }) {
   const m = CUSTOM_RE.exec(emoji || '')
   const c = m && custom.find(x => x.shortcode === m[1])
   if (c) return <img src={c.image_url} alt={emoji} title={emoji} style={{ width: size, height: size, objectFit: 'contain', verticalAlign: 'middle' }} />
+  if (animate) return <AnimatedEmoji emoji={emoji} size={size} />
   return <span className="chat-emoji" style={{ fontSize: size - 2 }}>{emoji}</span>
 }
 const pickerCustomEmojis = (list) => list.map(c => ({ id: `:${c.shortcode}:`, names: [c.shortcode], imgUrl: c.image_url }))
@@ -3141,6 +3186,21 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
     groups[r.emoji].who.push(r.profile_id)
   })
   const entries = Object.entries(groups)
+  // Play the animation briefly whenever a reaction is added (by anyone), and while hovered.
+  const [burst, setBurst] = useState({})       // emoji -> true while playing
+  const [hoverChip, setHoverChip] = useState(null)
+  const prevCounts = useRef(null)
+  useEffect(() => {
+    const now = Object.fromEntries(entries.map(([e, g]) => [e, g.count]))
+    const before = prevCounts.current
+    prevCounts.current = now
+    if (!before) return
+    const grew = Object.keys(now).filter(e => now[e] > (before[e] || 0))
+    if (!grew.length) return
+    setBurst(b => ({ ...b, ...Object.fromEntries(grew.map(e => [e, true])) }))
+    const t = setTimeout(() => setBurst(b => { const n = { ...b }; grew.forEach(e => delete n[e]); return n }), 3000)
+    return () => clearTimeout(t)
+  }, [entries.map(([e, g]) => e + g.count).join('|')]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const nameOf = (pid) =>
     pid === meId ? 'You' : (senders?.[pid] || profiles?.find(p => p.id === pid)?.full_name || 'Someone')
@@ -3161,13 +3221,13 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
       {entries.map(([emoji, g]) => (
         <button key={emoji}
           aria-label={titleFor(g, emoji)}
-          onMouseEnter={(e) => showHover(e, emoji)} onMouseLeave={hideHover} onFocus={(e) => showHover(e, emoji)} onBlur={hideHover}
+          onMouseEnter={(e) => { showHover(e, emoji); setHoverChip(emoji) }} onMouseLeave={() => { hideHover(); setHoverChip(null) }} onFocus={(e) => showHover(e, emoji)} onBlur={hideHover}
           onClick={() => { hideHover(); onToggle(messageId, emoji) }}
           onContextMenu={(e) => { e.preventDefault(); hideHover(); setReactorsFor(open === emoji ? null : { messageId, emoji }) }}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 14, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.3,
             border: '1px solid ' + (g.byMe ? 'var(--accent)' : 'var(--line)'),
             background: g.byMe ? 'var(--accent-bg)' : 'var(--surface)', color: g.byMe ? 'var(--accent)' : 'var(--ink)' }}>
-          <EmojiGlyph emoji={emoji} size={20} custom={custom} /> {g.count}
+          <EmojiGlyph emoji={emoji} size={20} custom={custom} animate={hoverChip === emoji || !!burst[emoji]} /> {g.count}
         </button>
       ))}
       <button onClick={onOpenPicker} title="Add reaction"
@@ -3179,7 +3239,7 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
         <div role="tooltip" style={{ position: 'fixed', left: Math.max(8, Math.min(hover.x, window.innerWidth - 8)), top: hover.y - 8, transform: 'translate(-50%, -100%)',
           zIndex: 70, pointerEvents: 'none', background: '#1d1d1f', color: '#fff', borderRadius: 10, padding: '10px 12px', maxWidth: 240, textAlign: 'center', boxShadow: '0 8px 24px rgba(0,0,0,.25)' }}>
           <div style={{ display: 'grid', placeItems: 'center', marginBottom: 6, background: '#fff', borderRadius: 8, width: 52, height: 52, marginLeft: 'auto', marginRight: 'auto' }}>
-            <EmojiGlyph emoji={hover.emoji} size={36} custom={custom} />
+            <EmojiGlyph emoji={hover.emoji} size={36} custom={custom} animate />
           </div>
           <div style={{ fontSize: 12.5, lineHeight: 1.4 }}>
             {(() => {
@@ -3543,7 +3603,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
                   <Av name={nameFor(r.sender_id)} size={28} fontSize={11} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}><b style={{ fontSize: 12.5 }}>{nameFor(r.sender_id)}</b><span style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>{timeLabel(r.created_at)}</span>{r.edited_at && <span style={{ fontSize: 10, color: 'var(--ink-soft)', fontStyle: 'italic' }}>(edited)</span>}</div>
-                    <RichContent html={r.body} highlightMentions style={{ fontSize: 13.5 }} />
+                    <MessageBody html={r.body} style={{ fontSize: 13.5 }} />
                     {attsFor(r.id).map(a => (
                       <AttachmentView key={a.id} att={a} onOpenImage={openImage(r.id)} />
                     ))}
