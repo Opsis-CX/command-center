@@ -137,9 +137,9 @@ function PersonHoverCard({ profiles, me }) {
   return (
     <div role="dialog" aria-label={name} onMouseEnter={keepPersonCard} onMouseLeave={() => closePersonCard(120)}
       style={{ position: 'fixed', left, ...pos, width: W, zIndex: 80, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14, boxShadow: '0 16px 40px rgba(0,0,0,.22)', overflow: 'hidden' }}>
-      <div style={{ height: 150, background: photo ? '#000' : avatarColor(name), display: 'grid', placeItems: 'center', position: 'relative' }}>
+      <div style={{ height: 170, background: photo ? '#000' : avatarColor(name), display: 'grid', placeItems: 'center', position: 'relative', overflow: 'hidden', flex: 'none' }}>
         {photo
-          ? <img src={photo} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ? <img src={photo} alt={name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 30%', display: 'block' }} />
           : <span style={{ color: '#fff', fontSize: 56, fontWeight: 800 }}>{initials(name)}</span>}
       </div>
       <div style={{ padding: '12px 14px 14px' }}>
@@ -158,6 +158,7 @@ function PersonHoverCard({ profiles, me }) {
           </div>
         )}
         {p && <div className="page-sub" style={{ margin: '8px 0 0', fontSize: 12 }}>🕒 {localTimeIn(p.timezone)}</div>}
+        {p?.id && <a href={me && p.id === me.id ? '/profile' : `/profile/${p.id}`} style={{ display: 'inline-block', marginTop: 10, fontSize: 12.5, fontWeight: 600 }}>View profile →</a>}
       </div>
     </div>
   )
