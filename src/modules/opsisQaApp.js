@@ -146,7 +146,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function askEx() { var b = askBrand(); return b ? 'Who is the top performer at ' + b + '?' : 'Which brand has the best booking rate?'; }
   function topbar() {
     var bl = S.view === 'brand' && S.brand ? short(S.brand) : S.brands.length ? (S.brands.length === 1 ? short(S.brands[0]) : S.brands.length + ' brands') : 'All brands';
-    return '<div class="row" style="align-items:center;position:relative">' + (HIST.length ? '<button class="sel" data-oqback="1" aria-label="Back to the previous page" title="Back to the previous page" style="min-height:46px">\u2190 Back</button>' : '') +
+    return '<div class="row" style="align-items:center;position:relative">' + ((HIST.length || (typeof CAL !== 'undefined' && CAL.item && S.view === 'calib')) ? '<button class="sel" data-oqback="1" aria-label="Back to the previous page" title="Back to the previous page" style="min-height:46px">\u2190 Back</button>' : '') +
       '<form id="askform" style="flex:1 1 360px;max-width:620px;display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #CFE3D8;border-radius:12px;padding:0 6px 0 14px;min-height:46px">' +
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>' +
       '<label for="askq" class="sr">Ask anything about your calls</label><input id="askq" autocomplete="off" placeholder="Ask anything — “' + esc(askEx()) + '”" style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-size:14px">' +
@@ -2736,7 +2736,7 @@ export function mountOpsisQA(ROOT, cfg) {
       mnTile('Left to do', String(Math.max(target - done.length, 0)), skipped.length ? skipped.length + ' skipped and replaced' : 'About 6 minutes per call', Math.max(target - done.length, 0) ? '#A8441A' : '') + '</div>';
     var hist = (d.days || []).slice(-10);
     var picker = '<label class="sr" for="calday">Pick a day</label><input type="date" id="calday" class="oq-field" style="width:auto;padding:4px 8px;min-height:30px;font-size:12.5px" max="' + esc(d.today || '') + '" value="' + esc(d.day || '') + '" title="Pick any day">';
-    var dayChips = hist.length ? '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="cap" style="margin-right:4px">Day</span>' + picker + hist.map(function (h) {
+    var dayChips = false ? '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="cap" style="margin-right:4px">Day</span>' + picker + hist.map(function (h) {
       var full = h.done >= h.total - h.skipped && h.total; return '<button class="chip' + (h.day === d.day ? ' on' : '') + '" data-cal="day" data-v="' + h.day + '" style="min-height:30px;padding:4px 10px;font-size:12px">' + esc(fday(h.day)) + ' <span class="num" style="opacity:.75">' + h.done + '/' + (h.total - h.skipped) + (full ? ' ✓' : '') + '</span></button>'; }).join('') + '</div>' : '<div style="display:flex;gap:6px;align-items:center"><span class="cap">Day</span>' + picker + '</div>';
     var cfg = d.can_config ? '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label class="l" for="calper" style="margin:0">Calls per weekday</label><select id="calper" class="oq-field" style="width:auto;padding:6px 10px">' + [5, 8, 10, 12, 15, 20].concat([d.per_day]).filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(function (a, b) { return a - b; }).map(function (n) { return '<option value="' + n + '"' + (n === d.per_day ? ' selected' : '') + '>' + n + (n === 10 ? ' (suggested)' : '') + '</option>'; }).join('') + '</select><button class="sel" data-cal="saveper" style="min-height:34px;padding:5px 12px">Save</button><span class="mut" style="font-size:12px">Starts with the next day’s set.</span></div>' : '';
     var list;
@@ -3019,6 +3019,7 @@ export function mountOpsisQA(ROOT, cfg) {
     LASTH = h; BACKING = false;
   }
   function goBack() {
+    if (typeof CAL !== 'undefined' && CAL.item && S.view === 'calib') { calLeave(); EXT = null; S.pop = null; window.scrollTo(0, 0); render(); return; }
     var h = HIST.pop(); saveHist(); if (!h) return;
     if ($('layer') && $('layer').innerHTML) closeLayer();
     BACKING = true; history.replaceState(null, '', h);
