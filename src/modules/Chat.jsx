@@ -655,6 +655,10 @@ function NameModal({ title, initial, initialIcon = null, withIcon = false, onSav
 // Sidebar styling (hover-only ⋯ on desktop, compact rows). Kept here so Chat.jsx
 // stays a single drop-in file.
 const SIDEBAR_CSS = `
+/* Big channels (e.g. GarageCo Reporting's report tables): the browser skips layout/paint
+   for messages that are off screen. Turned off on the message you're hovering or using,
+   so pickers and menus are never clipped. (2026-10-28) */
+.chat-msg-row:not(:hover):not(:focus-within) { content-visibility: auto; contain-intrinsic-size: auto 140px; }
 .chat-typing-dots { display: inline-flex; align-items: center; gap: 3px; padding: 4px 7px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); flex: none; }
 .chat-typing-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--ink-soft); animation: chatTypingDot 1.2s infinite ease-in-out; }
 .chat-typing-dots i:nth-child(2) { animation-delay: .15s; }
