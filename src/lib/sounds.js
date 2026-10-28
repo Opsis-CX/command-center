@@ -66,11 +66,53 @@ if (typeof window !== 'undefined') {
   ;['pointerdown', 'keydown', 'touchstart'].forEach(ev => window.addEventListener(ev, unlock, { capture: true, passive: true }))
 }
 
+const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+// Never wait forever: Chrome's resume() can hang (not fail) when the audio engine went to
+// sleep and there's no fresh click — give it a moment, then report honestly. (2026-10-28)
 export async function audioReady() {
   const c = getCtx()
   if (!c) return false
-  if (c.state === 'suspended') { try { await c.resume() } catch { /* ignore */ } }
+  if (c.state !== 'running') { try { await Promise.race([c.resume(), sleep(250)]) } catch { /* ignore */ } }
   return c.state === 'running'
+}
+
+// ---------- backup player ----------
+// The same sound pre-recorded to a little WAV and played with an <audio> element. Chrome
+// lets a page that's been clicked before play media like this even when the Web Audio
+// engine has gone to sleep, so it's a second chance before going silent.
+const _wavCache = new Map()   // key|volume -> object URL
+function encodeWav(buf) {
+  const ch = buf.getChannelData(0), n = ch.length, out = new DataView(new ArrayBuffer(44 + n * 2))
+  const w = (o, str) => { for (let i = 0; i < str.length; i++) out.setUint8(o + i, str.charCodeAt(i)) }
+  w(0, 'RIFF'); out.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt ')
+  out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, 1, true)
+  out.setUint32(24, buf.sampleRate, true); out.setUint32(28, buf.sampleRate * 2, true); out.setUint16(32, 2, true); out.setUint16(34, 16, true)
+  w(36, 'data'); out.setUint32(40, n * 2, true)
+  for (let i = 0; i < n; i++) { const v = Math.max(-1, Math.min(1, ch[i])); out.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true) }
+  return new Blob([out], { type: 'audio/wav' })
+}
+async function renderedUrl(key, volume) {
+  const id = key + '|' + volume
+  if (_wavCache.has(id)) return _wavCache.get(id)
+  const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext
+  if (!OAC) return null
+  const rate = 44100, off = new OAC(1, Math.round(rate * 1.6), rate)
+  const g = off.createGain()
+  g.gain.value = Math.max(0, Math.min(100, volume)) / 100 * 0.18 * (LEVEL[key] || 1) * BOOST
+  g.connect(off.destination)
+  SYNTHS[key](off, g, 0.01)
+  const url = URL.createObjectURL(encodeWav(await off.startRendering()))
+  _wavCache.set(id, url)
+  return url
+}
+async function playViaAudioElement(key, volume) {
+  try {
+    const url = await renderedUrl(key, volume)
+    if (!url) return false
+    const a = new Audio(url)
+    await Promise.race([a.play(), sleep(500).then(() => { throw new Error('timeout') })])
+    return true
+  } catch { return false }
 }
 
 // ---------- synth helpers ----------
@@ -141,7 +183,7 @@ const LEVEL = { chime: 1, bubble: 1.69, marimba: 1.17, pluck: 1.48, twinkle: 1.1
 export async function playSound(key, volume = 70) {
   key = resolveKey(key)
   if (!key || key === 'none' || !SYNTHS[key]) return false
-  if (!(await audioReady())) return false
+  if (!(await audioReady())) return playViaAudioElement(key, volume)   // engine asleep → backup player
   const c = getCtx()
   const out = c.createGain()
   out.gain.value = Math.max(0, Math.min(100, volume)) / 100 * 0.18 * (LEVEL[key] || 1) * BOOST
@@ -161,6 +203,7 @@ export async function loadSoundPrefs(profileId) {
   _prefs = { ...DEFAULT_SOUND_PREFS, ...(data || {}) }
   _prefs.sound = resolveKey(_prefs.sound)
   if (_prefs.direct_sound) _prefs.direct_sound = resolveKey(_prefs.direct_sound)
+  try { renderedUrl(_prefs.sound, _prefs.volume).catch(() => {}); if (_prefs.direct_sound) renderedUrl(_prefs.direct_sound, _prefs.volume).catch(() => {}) } catch { /* ignore */ }
   return _prefs
 }
 
@@ -185,11 +228,21 @@ export function soundKeyForType(prefs, type) {
 // Both the realtime listener and the service worker may ask for the same
 // notification; the second caller gets the first one's result.
 const _played = new Map() // notification id -> { ts, result: Promise<boolean> }
+// What happened to the most recent notification sound (shown in Settings → Sounds).
+function noteResult(how) { try { localStorage.setItem('cc.sound.last', JSON.stringify({ at: Date.now(), how })) } catch { /* ignore */ } }
+export function lastSoundResult() { try { return JSON.parse(localStorage.getItem('cc.sound.last') || 'null') } catch { return null } }
 export function playForNotification(id, type) {
   const now = Date.now()
   for (const [k, v] of _played) if (now - v.ts > 120000) _played.delete(k)
   if (id && _played.has(id)) return _played.get(id).result
-  const result = playSound(soundKeyForType(_prefs, type), _prefs.volume)
+  const key = soundKeyForType(_prefs, type)
+  const result = (async () => {
+    const engineOk = await audioReady()
+    if (engineOk) { const ok = await playSound(key, _prefs.volume); noteResult(ok ? 'played' : 'blocked'); return ok }
+    const ok = await playViaAudioElement(resolveKey(key), _prefs.volume)
+    noteResult(ok ? 'backup' : 'blocked')
+    return ok
+  })()
   if (id) _played.set(id, { ts: now, result })
   return result
 }
