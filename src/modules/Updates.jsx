@@ -115,14 +115,9 @@ export default function Updates() {
     if (openReaders === a.id) { setOpenReaders(null); return }
     setOpenReaders(a.id)
     if (roster[a.id]) return
-    let people = []
-    if (a.audience_tags && a.audience_tags.length) {
-      const { data: tg } = await supabase.from('taggables').select('entity_id').eq('entity_type', 'profile').in('tag_id', a.audience_tags)
-      const ids = [...new Set((tg || []).map(x => x.entity_id))]
-      if (ids.length) { const { data: profs } = await supabase.from('profiles').select('id, full_name').in('id', ids).eq('is_active', true); people = profs || [] }
-    } else {
-      const { data: profs } = await supabase.from('profiles').select('id, full_name').eq('is_active', true); people = profs || []
-    }
+    // everyone this update is meant for, using the same rule as the database
+    const { data: aud } = await supabase.rpc('update_audience', { p_id: a.id })
+    const people = aud || []
     setRoster(cur => ({ ...cur, [a.id]: people }))
   }
 
@@ -140,7 +135,19 @@ export default function Updates() {
   }
 
   const teamName = (id) => teams.find(t => t.id === id)?.name || 'team'
-  const audienceLabel = (a) => (!a.audience_tags || a.audience_tags.length === 0) ? 'Everyone' : a.audience_tags.map(teamName).join(', ')
+  const [projNames, setProjNames] = useState({})
+  useEffect(() => { supabase.from('projects').select('id, name').then(({ data }) => setProjNames(Object.fromEntries((data || []).map(p => [p.id, p.name])))) }, [])
+  const audienceLabel = (a) => {
+    const k = a.audience_kind || ((a.audience_tags || []).length ? 'custom' : 'everyone')
+    if (k === 'everyone') return 'Internal + Agents'
+    if (k === 'internal') return 'Internal only'
+    if (k === 'agents') return 'Agents'
+    const parts = []
+    if (a.audience_project) parts.push('Project: ' + (projNames[a.audience_project] || 'a project'))
+    if ((a.audience_tags || []).length) parts.push(a.audience_tags.map(teamName).join(', '))
+    if ((a.audience_people || []).length) parts.push(`${a.audience_people.length} ${a.audience_people.length === 1 ? 'person' : 'people'}`)
+    return parts.join(' · ') || 'Specific people'
+  }
   // NEW! = meant for me and not marked read. Read ones move to This Week (last 7 days) and
   // their category. Archived = 30+ days old (only people who can post see them); removed 9 days later.
   const [unreadIds, setUnreadIds] = useState(null)
@@ -171,7 +178,7 @@ export default function Updates() {
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
           <h1 className="page-title">Updates</h1>
-          <p className="page-sub">Command Center changes, client updates, and anything from your shift others should know. Post reaches Everyone — or just the team it concerns.</p>
+          <p className="page-sub">Command Center changes, client updates, and anything from your shift others should know. Send to the internal team only, or to the internal team and agents.</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {unreadForMe > 0 && <button className="btn btn-ghost" onClick={markAllRead} disabled={marking}>{marking ? 'Marking…' : `✓ Mark all as read (${unreadForMe})`}</button>}
@@ -189,8 +196,17 @@ export default function Updates() {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 16px' }}>
         <span style={{ ...chip(tab === 'new', '#DC2626'), fontWeight: 800, ...(tab !== 'new' && unreadForMe ? { color: '#DC2626', borderColor: '#FCA5A5' } : {}) }} onClick={() => setFilter('new')}>NEW!{unreadForMe ? ` (${unreadForMe})` : ''}</span>
         <span style={chip(tab === 'week')} onClick={() => setFilter('week')}>This Week</span>
-        <span style={chip(tab === 'all')} onClick={() => setFilter('all')}>All</span>
-        {CATS.map(c => <span key={c.key} style={chip(tab === c.key, c.color)} onClick={() => setFilter(c.key)}>{c.label}</span>)}
+        {(() => {
+          const onFilter = tab === 'all' || CATS.some(c => c.key === tab)
+          return (
+            <select value={onFilter ? tab : ''} onChange={e => setFilter(e.target.value || 'all')} aria-label="Filter updates"
+              style={{ ...chip(onFilter), padding: '4px 10px', appearance: 'auto', fontFamily: 'inherit', outline: 'none' }}>
+              {!onFilter && <option value="">Filter ▾</option>}
+              <option value="all">All updates</option>
+              {CATS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+            </select>
+          )
+        })()}
         {canPost && <span style={{ ...chip(tab === 'archived', '#64748B'), marginLeft: 'auto' }} onClick={() => setFilter('archived')}>🗄 Archived</span>}
       </div>
       {tab === 'archived' && <p className="page-sub" style={{ margin: '-6px 0 12px', fontSize: 12.5 }}>Updates move here after 30 days (pinned ones stay active) and are removed 9 days later. Only people who can post updates see this.</p>}
@@ -204,7 +220,6 @@ export default function Updates() {
               {visible.map(a => {
                 const cm = catMeta(a.category)
                 const mine = a.author_id === user?.id
-                const targeted = a.audience_tags && a.audience_tags.length > 0
                 return (
                   <div key={a.id} className="card" style={{ borderLeft: '3px solid ' + cm.color }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
@@ -224,7 +239,7 @@ export default function Updates() {
                       <span>·</span>
                       <span>{when(a.created_at)}</span>
                       <span>·</span>
-                      <span title="Who can see this">{targeted ? '📣 ' + audienceLabel(a) : '📣 Everyone'}</span>
+                      <span title="Who can see this">📣 {audienceLabel(a)}</span>
                       {a.archived_at && <span style={{ color: '#B45309', fontWeight: 600 }}>· 🗄 Archived — removed {new Date(new Date(a.archived_at).getTime() + 9 * 864e5).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (pin it to keep it)</span>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 10, flexWrap: 'wrap', borderTop: '1px solid var(--line-soft)', paddingTop: 8 }}>
@@ -285,7 +300,9 @@ function Composer({ user, teams, editItem, onPosted, onCancel }) {
   const isEdit = !!editItem
   const [title, setTitle] = useState(editItem?.title || '')
   const [category, setCategory] = useState(editItem?.category || 'general')
-  const [audience, setAudience] = useState(editItem?.audience_tags || [])   // team tag ids; empty = Everyone
+  const [audience, setAudience] = useState(editItem?.audience_tags || [])   // team tag ids (Specific people)
+  const [kind, setKind] = useState(editItem?.audience_kind || ((editItem?.audience_tags || []).length ? 'custom' : 'everyone'))
+
   const [media, setMedia] = useState(Array.isArray(editItem?.media) ? editItem.media : [])
   const [uploading, setUploading] = useState('')
   const [busy, setBusy] = useState(false)
@@ -325,7 +342,13 @@ function Composer({ user, teams, editItem, onPosted, onCancel }) {
     if (!title.trim()) { setErr('Give it a title.'); return }
     const body = sanitizeHtml(htmlRef.current || '')
     setBusy(true)
-    const payload = { title: title.trim(), body: isEmptyHtml(body) ? null : body, category, audience_tags: audience, media }
+    // Internal only / Internal + Agents. (An older update sent to specific teams keeps that
+    // audience unless you pick one of the two options.)
+    const payload = { title: title.trim(), body: isEmptyHtml(body) ? null : body, category, media,
+      audience_kind: kind,
+      audience_tags: kind === 'custom' ? audience : [],
+      audience_people: kind === 'custom' ? (editItem?.audience_people || []) : [],
+      audience_project: kind === 'custom' ? (editItem?.audience_project || null) : null }
     const { error } = isEdit
       ? await supabase.from('announcements').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editItem.id)
       : await supabase.from('announcements').insert({ author_id: user?.id, ...payload })
@@ -347,14 +370,18 @@ function Composer({ user, teams, editItem, onPosted, onCancel }) {
         </div>
 
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', marginBottom: 6 }}>
-            Which team(s) should see this? <span style={{ fontWeight: 400, textTransform: 'none' }}>— none selected = Everyone</span>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', marginBottom: 6 }}>Who should see this?</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
+            {[['internal', '🏢', 'Internal only', 'Everyone except agents'], ['everyone', '🌎', 'Internal + Agents', 'Everyone']].map(([k, ic, l, d]) => (
+              <button key={k} type="button" onClick={() => setKind(k)}
+                style={{ textAlign: 'left', borderRadius: 10, padding: '9px 11px', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)',
+                  border: '1.5px solid ' + (kind === k ? 'var(--accent)' : 'var(--line)'), background: kind === k ? 'var(--accent-bg)' : 'var(--surface)' }}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{ic} {l}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>{d}</div>
+              </button>
+            ))}
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <span style={chip(audience.length === 0)} onClick={() => setAudience([])}>Everyone</span>
-            {teams.map(t => <span key={t.id} style={chip(audience.includes(t.id))} onClick={() => toggleTag(t.id)}>{t.name}</span>)}
-          </div>
-          {teams.length === 0 && <p className="page-sub" style={{ fontSize: 11.5, marginTop: 6 }}>No teams set up yet — posts go to Everyone. Create team tags in People &amp; tags to target specific teams.</p>}
+          {(kind === 'custom' || kind === 'agents') && <p className="page-sub" style={{ fontSize: 11.5, margin: '6px 0 0' }}>This update was sent to {kind === 'agents' ? 'agents only' : 'specific teams'} — pick an option above to change who sees it.</p>}
         </div>
 
         <div>
