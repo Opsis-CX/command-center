@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { seasonalHat, celebrate } from '../components/Seasonal'
+import { celebrate, SeasonHeaderDecor } from '../components/Seasonal'
 
 // ============================================================
 // MY PROFILE — dashboard pieces (2026-10-26 redesign)
@@ -172,9 +172,7 @@ export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks,
     <div style={{ position: 'relative' }}>
     {bgOpen && <BackgroundPicker bg={bg} userId={userId} onChange={onBgChange} onClose={() => setBgOpen(false)} />}
     <header className="pd-hdr" aria-label="Profile" style={headerBgStyle(bg)}>
-      {seasonalHat() === 'witch' && (
-        <div aria-hidden="true" style={{ position: 'absolute', right: 16, top: 6, fontSize: 18, letterSpacing: 6, opacity: .9, pointerEvents: 'none', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,.25))' }}>🦇 🎃 👻 🍬</div>
-      )}
+      <SeasonHeaderDecor />
       <div style={{ position: 'relative', flex: 'none' }}>
         {person.avatar_url
           ? <img src={person.avatar_url} alt={person.full_name} style={{ width: 104, height: 104, borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 0 3px rgba(255,255,255,.85)' }} />
