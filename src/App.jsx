@@ -69,6 +69,7 @@ import { usePresenceHeartbeat, MyStatusButton, TeamStatus } from './components/P
 import { ViewAsMenu } from './components/RolePreview'
 import PortalMenu, { StaffPortal } from './components/PortalMenu'
 import PushEnrollmentBanner from './components/PushEnrollmentBanner'
+import Seasonal from './components/Seasonal'
 import MeetingReminder from './components/MeetingReminder'
 import LsaReminderPopup from './components/LsaReminderPopup'
 import PhotoNudge from './components/PhotoNudge'
@@ -471,6 +472,8 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
       <LsaReminderPopup />
       <PhotoNudge />
       <UpdatePopup />
+      {/* holiday decorations (date-based; each person can turn off in Settings) */}
+      <Seasonal />
       <ReminderPopup />
       <TaskAssignedPopup />
       <div className="app">
