@@ -72,6 +72,51 @@ function setMyPhoto(fullName, url) {
 }
 const realName = (name) => (name === 'You' && _myName) ? _myName : name
 
+// ---- 🎉 Birthday party hats (2026-10-27, Brittney) ----
+// On someone's birthday (from their Get to Know You card) their chat avatars wear a little
+// party hat. Month/day only; Feb 29 birthdays celebrate on Feb 28 in other years.
+const _birthdayNames = new Set()
+async function loadBirthdays(people, me) {
+  _birthdayNames.clear()
+  const ids = (people || []).map(p => p.id).filter(Boolean)
+  if (!ids.length) return
+  const { data } = await supabase.from('team_favorites').select('profile_id, birthday_month, birthday_day').in('profile_id', ids).not('birthday_month', 'is', null)
+  const now = new Date(), m = now.getMonth() + 1, d = now.getDate(), y = now.getFullYear()
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0
+  const nameById = Object.fromEntries((people || []).map(p => [p.id, p.full_name]))
+  for (const f of data || []) {
+    const isToday = f.birthday_month === m && (f.birthday_day === d || (!leap && m === 2 && d === 28 && f.birthday_day === 29))
+    if (!isToday || !nameById[f.profile_id]) continue
+    _birthdayNames.add(nameById[f.profile_id])
+    if (me && me.id === f.profile_id) _birthdayNames.add('You')
+  }
+}
+const isBirthday = (name) => !!name && _birthdayNames.has(name)
+function PartyHat({ size }) {
+  const w = Math.max(10, Math.round(size * 0.62))
+  return (
+    <svg aria-hidden="true" width={w} height={w * 1.15} viewBox="0 0 40 46"
+      style={{ position: 'absolute', left: -Math.round(size * 0.12), top: -Math.round(size * 0.5), transform: 'rotate(-22deg)', pointerEvents: 'none', overflow: 'visible', zIndex: 1 }}>
+      {/* confetti */}
+      <rect x="-4" y="20" width="4" height="7" rx="1.5" fill="#F59E0B" transform="rotate(-30 -2 23)" />
+      <rect x="35" y="16" width="4" height="7" rx="1.5" fill="#22D3EE" transform="rotate(25 37 19)" />
+      <circle cx="2" cy="8" r="2" fill="#EC4899" />
+      {/* cone with stripes */}
+      <defs><clipPath id="hatClip"><path d="M20 4 L35 44 L5 44 Z" /></clipPath></defs>
+      <path d="M20 4 L35 44 L5 44 Z" fill="#EC4899" />
+      <g clipPath="url(#hatClip)" fill="#FFFFFF" opacity=".95">
+        <rect x="0" y="12" width="40" height="5" transform="rotate(-18 20 14)" />
+        <rect x="0" y="24" width="40" height="5" transform="rotate(-18 20 26)" />
+        <rect x="0" y="36" width="40" height="5" transform="rotate(-18 20 38)" />
+      </g>
+      <path d="M4 44 Q20 49 36 44" stroke="#BE185D" strokeWidth="3" fill="none" strokeLinecap="round" />
+      {/* pom-pom */}
+      <circle cx="20" cy="4" r="4.5" fill="#FBBF24" />
+      <circle cx="18.5" cy="2.5" r="1.4" fill="#FEF3C7" />
+    </svg>
+  )
+}
+
 // ---- person hover card (one shared card; any <Av> can open it) ----
 const _cardListeners = new Set()
 let _cardTimer = null
@@ -92,13 +137,16 @@ function Av({ name, size = 24, radius = '50%', fontSize, bg, hover = true }) {
   const hoverProps = hover && name && name !== 'Someone'
     ? { onMouseEnter: (e) => openPersonCard(name, e.currentTarget), onMouseLeave: () => closePersonCard() }
     : {}
-  if (url && !broken) {
-    return <img src={url} alt="" onError={() => setBroken(true)} draggable={false} {...hoverProps}
-      style={{ width: size, height: size, borderRadius: radius, objectFit: 'cover', flex: 'none', display: 'block', cursor: hoverProps.onMouseEnter ? 'pointer' : undefined }} />
-  }
+  const pic = (url && !broken)
+    ? <img src={url} alt="" onError={() => setBroken(true)} draggable={false} {...hoverProps}
+        style={{ width: size, height: size, borderRadius: radius, objectFit: 'cover', flex: 'none', display: 'block', cursor: hoverProps.onMouseEnter ? 'pointer' : undefined }} />
+    : <span {...hoverProps} style={{ width: size, height: size, borderRadius: radius, background: bg || avatarColor(name), color: '#fff', display: 'grid', placeItems: 'center',
+        fontSize: fontSize || Math.max(9, Math.round(size * 0.4)), fontWeight: 700, flex: 'none', cursor: hoverProps.onMouseEnter ? 'pointer' : undefined }}>{initials(name)}</span>
+  if (!isBirthday(name) || size < 16) return pic
   return (
-    <span {...hoverProps} style={{ width: size, height: size, borderRadius: radius, background: bg || avatarColor(name), color: '#fff', display: 'grid', placeItems: 'center',
-      fontSize: fontSize || Math.max(9, Math.round(size * 0.4)), fontWeight: 700, flex: 'none', cursor: hoverProps.onMouseEnter ? 'pointer' : undefined }}>{initials(name)}</span>
+    <span style={{ position: 'relative', display: 'inline-block', width: size, height: size, flex: 'none' }} title="🎂 It’s their birthday!">
+      {pic}<PartyHat size={size} />
+    </span>
   )
 }
 
@@ -127,6 +175,7 @@ function PersonHoverCard({ profiles, me }) {
   const name = card.name
   const photo = _photoByName.get(name)
   const st = effStatus(p)
+  const bday = isBirthday(name)
   const online = isOnline(p)
   const ooo = st?.type === 'ooo'
   const W = 264
@@ -157,6 +206,7 @@ function PersonHoverCard({ profiles, me }) {
             <span style={{ minWidth: 0 }}>{st.text || ''}{until && <span className="page-sub" style={{ display: 'block', margin: 0, fontSize: 11.5 }}>Until {until}</span>}</span>
           </div>
         )}
+        {bday && <div style={{ margin: '8px 0 0', fontSize: 13, fontWeight: 700, color: '#DB2777' }}>🎂 Happy birthday{name === 'You' ? ' to you' : ''}! 🎉</div>}
         {p && <div className="page-sub" style={{ margin: '8px 0 0', fontSize: 12 }}>🕒 {localTimeIn(p.timezone)}</div>}
       </div>
     </div>
@@ -768,6 +818,7 @@ export default function Chat() {
   const [dmPeers, setDmPeers] = useState({}) // channelId -> the other person's profile_id (1:1 DMs only)
   // Who's typing in which DM right now (for the ••• in the sidebar). channelId -> { profileId: lastSeenMs }
   const [dmTyping, setDmTyping] = useState({})
+  const [, setBdayTick] = useState(0)   // re-render once today's birthdays are known (party hats)
   useEffect(() => {
     if (!me?.id) return
     const ch = supabase.channel(`typing-inbox:${me.id}`, { config: { broadcast: { self: false } } })
@@ -849,6 +900,7 @@ export default function Chat() {
       registerPhotos(profRes.data)
       if (meRes.data) setMyPhoto(meRes.data.full_name, meRes.data.avatar_url)
       setProfiles(profRes.data || [])
+      loadBirthdays(profRes.data, meRes.data).then(() => setBdayTick(t => t + 1)).catch(() => {})
 
       const [prefRes, secRes] = await Promise.all([
         myChannelIds.length
