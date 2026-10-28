@@ -49,12 +49,6 @@ const BUILT_IN_TEMPLATES = [
     body: '<h2>Notes</h2><ul><li></li></ul><h3>Key Takeaways:</h3><ul><li></li></ul><h3>Next Meeting:</h3><ul><li></li></ul>',
     page_style: { paper: 'lined', bg: '#FFFBEA', margin: true, spacing: 'normal' }, tasks: 3 },
   { id: 'blank', name: 'Blank Note', description: 'Start with a clean page', icon: '📄', layout: 'single', body: '', page_style: {}, tasks: 0 },
-  { id: 'planning', name: 'Project Planning', description: 'Goals, tasks and next steps', icon: '🗂️', layout: 'two_col',
-    body: '<h2>Goals</h2><ul><li></li></ul><h3>Scope</h3><ul><li></li></ul><h3>Next Steps</h3><ul><li></li></ul>', page_style: { paper: 'grid' }, tasks: 3 },
-  { id: 'coaching', name: 'Coaching Session', description: 'Discussion points and action items', icon: '🎯', layout: 'two_col', meeting: true,
-    body: '<h2>Discussion Points</h2><ul><li></li></ul><h3>Wins</h3><ul><li></li></ul><h3>Focus Areas</h3><ul><li></li></ul>', page_style: { paper: 'lined', bg: '#F3EEFF' }, tasks: 2 },
-  { id: 'callreview', name: 'Call Review', description: 'Take notes and track follow ups', icon: '📞', layout: 'two_col',
-    body: '<h2>Call Details</h2><ul><li>Caller:</li><li>Brand:</li><li>Date/time:</li></ul><h3>What went well</h3><ul><li></li></ul><h3>Coaching notes</h3><ul><li></li></ul>', page_style: { paper: 'lined', bg: '#EAF5FF' }, tasks: 2 },
 ]
 
 const NP_CSS = `
@@ -117,6 +111,7 @@ const NP_CSS = `
 .np-push { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 12px; padding: 11px 18px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
   background: linear-gradient(120deg, #CFFAFE, #A7F3D0); color: #065F46; box-shadow: 0 6px 18px -8px rgba(16,185,129,.6); }
 .np-push:disabled { opacity: .6; cursor: default; }
+@media (max-width: 860px) { .np-tb-grid { grid-template-columns: 1fr !important; } }
 `
 
 // paper look from a page_style object → CSS variables (layers + matching sizes)
@@ -309,16 +304,24 @@ export default function Notes() {
     setNotes(ns => ns.map(n => n.folder_id === f.id ? { ...n, folder_id: null } : n))
     setFolders(fs => fs.filter(x => x.id !== f.id)); setOpenSec('all')
   }
-  async function saveAsTemplate(n) {
-    const name = window.prompt('Template name', n?.title || 'My template')
-    if (!name?.trim()) return
-    const description = window.prompt('Short description (optional)', '') || null
-    const { data, error } = await supabase.from('note_templates').insert({
-      owner_id: me, name: name.trim(), description, icon: '⭐', layout: n?.layout || 'single', body: n?.body || '',
-      page_style: n?.page_style || {}, meeting_tasks: (n?.meeting_tasks || []).map(t => ({ key: newKey(), title: t.title || '', due: '', project_id: t.project_id || '', client_id: t.client_id || '' })),
-    }).select().single()
-    if (error) return flash(error.message)
-    setMyTemplates(t => [...t, data]); flash(`Template "${name.trim()}" saved`)
+  // Template builder (2026-10-27): create / edit templates with layout, tasks, page style and content.
+  const [builder, setBuilder] = useState(null)   // null | { id?, name, description, icon, layout, body, page_style, tasks: [titles] }
+  function saveAsTemplate(n) {
+    setBuilder({ name: n?.title?.trim() || '', description: '', icon: '⭐', layout: n?.layout || 'single', body: n?.body || '',
+      page_style: n?.page_style || {}, tasks: (n?.meeting_tasks || []).map(t => t.title || '') })
+  }
+  function newTemplate() { setBuilder({ name: '', description: '', icon: '📝', layout: 'two_col', body: '<h2>Notes</h2><ul><li></li></ul>', page_style: { paper: 'lined' }, tasks: ['', '', ''] }) }
+  function editTemplate(t) { setBuilder({ id: t.id, name: t.name, description: t.description || '', icon: t.icon || '⭐', layout: t.layout || 'single', body: t.body || '', page_style: t.page_style || {}, tasks: (t.meeting_tasks || []).map(x => x.title || '') }) }
+  async function saveTemplate(b) {
+    if (!b.name.trim()) return 'Give your template a name.'
+    const row = { owner_id: me, name: b.name.trim(), description: b.description.trim() || null, icon: b.icon || '⭐', layout: b.layout, body: b.body || '',
+      page_style: b.page_style || {}, meeting_tasks: b.layout === 'two_col' ? b.tasks.map(title => ({ key: newKey(), title, due: '', project_id: '', client_id: '' })) : [] }
+    const res = b.id ? await supabase.from('note_templates').update(row).eq('id', b.id).select().single()
+      : await supabase.from('note_templates').insert(row).select().single()
+    if (res.error) return res.error.message
+    setMyTemplates(ts => b.id ? ts.map(x => x.id === b.id ? res.data : x) : [...ts, res.data])
+    setBuilder(null); flash(`Template "${row.name}" ${b.id ? 'updated' : 'saved'} ✓ — find it under 📋 Templates`)
+    return null
   }
   async function deleteTemplate(t) {
     if (!window.confirm(`Delete the template "${t.name}"? Notes made from it are not affected.`)) return
@@ -388,6 +391,7 @@ export default function Notes() {
       </div>
       {msg && <div className="card" style={{ marginBottom: 10, padding: '8px 12px', fontSize: 13 }}>{msg}</div>}
 
+      {builder && <TemplateBuilder value={builder} onCancel={() => setBuilder(null)} onSave={saveTemplate} />}
       <div className="np-grid">
         {/* ---------- sidebar: each item is a dropdown of its notes ---------- */}
         <div className="np-card np-nav np-a-nav">
@@ -469,7 +473,7 @@ export default function Notes() {
                 newDraft(t)
               }} onDeleteTemplate={deleteTemplate}
               onDuplicate={() => duplicate(current)} onTrash={() => current.isDraft ? (okToLeaveDraft() && setDraft(makeDraft(BUILT_IN_TEMPLATES[1]))) : trash(current)}
-              onSaveTemplate={() => saveAsTemplate(current)} flash={flash} reload={load} />
+              onSaveTemplate={() => saveAsTemplate(current)} onCreateTemplate={newTemplate} onEditTemplate={editTemplate} flash={flash} reload={load} />
           )}
         </div>
       </div>
@@ -480,7 +484,7 @@ export default function Notes() {
 // ============================================================
 // ONE NOTE
 // ============================================================
-function NoteEditor({ note, isDraft, me, people, nameOf, teams, folders, projects, clients, saving, patch, onSaveDraft, templates = [], onUseTemplate, onDeleteTemplate, onDuplicate, onTrash, onSaveTemplate, flash, reload }) {
+function NoteEditor({ note, isDraft, me, people, nameOf, teams, folders, projects, clients, saving, patch, onSaveDraft, templates = [], onUseTemplate, onDeleteTemplate, onCreateTemplate, onEditTemplate, onDuplicate, onTrash, onSaveTemplate, flash, reload }) {
   const isOwner = note.owner_id === me
   const canEdit = isOwner || (note.shared_editors || []).includes(me)
   const ps = note.page_style || {}
@@ -590,11 +594,13 @@ function NoteEditor({ note, isDraft, me, people, nameOf, teams, folders, project
                       <span style={{ marginRight: 6 }}>{t.icon || '⭐'}</span><b style={{ fontWeight: 600 }}>{t.name}</b>
                       {t.description && <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-soft)', marginLeft: 22 }}>{t.description}</span>}
                     </button>
+                    {t.mine && <button style={{ width: 'auto', flex: 'none', fontSize: 12 }} title="Edit template" onClick={() => { setPop(null); onEditTemplate(t) }}>✎</button>}
                     {t.mine && <button style={{ width: 'auto', flex: 'none', fontSize: 12 }} title="Delete template" onClick={() => onDeleteTemplate(t)}>✕</button>}
                   </div>
                 ))}
                 <div style={{ borderTop: '1px solid var(--line)', margin: '6px 0' }} />
-                <button style={{ color: 'var(--accent)', fontWeight: 600 }} onClick={() => { setPop(null); onSaveTemplate() }}>＋ Save this note as a template</button>
+                <button style={{ color: 'var(--accent)', fontWeight: 600 }} onClick={() => { setPop(null); onCreateTemplate() }}>＋ Create a new template</button>
+                <button style={{ color: 'var(--accent)' }} onClick={() => { setPop(null); onSaveTemplate() }}>⭐ Save this note as a template</button>
               </div>
             )}
           </span>
@@ -699,14 +705,14 @@ function PeoplePicker({ people, onPick, style }) {
   )
 }
 
-function PageStylePanel({ ps, onChange, onClose }) {
+function PageStylePanel({ ps, onChange, onClose, inline = false }) {
   const set = (k, v) => onChange({ ...ps, [k]: v })
   const box = (on) => ({ border: '1.5px solid ' + (on ? 'var(--accent)' : 'var(--line)'), background: on ? 'var(--accent-bg)' : 'var(--surface)', borderRadius: 8, cursor: 'pointer', padding: 6, fontFamily: 'inherit', fontSize: 11.5, color: 'var(--ink)' })
   const thumb = (paper) => { const ls = paperLayers(paper, 10); return { width: 46, height: 40, borderRadius: 4, border: '1px solid var(--line)', backgroundColor: '#fff',
     backgroundImage: ls.length ? ls.map(l => l[0]).join(', ') : 'none', backgroundSize: ls.length ? ls.map(l => l[1]).join(', ') : 'auto' } }
   return (
-    <div className="np-pop" style={{ right: 0, top: 'calc(100% + 6px)', width: 330, maxHeight: '75vh', overflowY: 'auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}><b style={{ flex: 1 }}>Page Style</b><button className="np-plus" style={{ fontSize: 14 }} onClick={onClose} aria-label="Close">✕</button></div>
+    <div className={inline ? '' : 'np-pop'} style={inline ? {} : { right: 0, top: 'calc(100% + 6px)', width: 330, maxHeight: '75vh', overflowY: 'auto' }}>
+      {!inline && <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}><b style={{ flex: 1 }}>Page Style</b><button className="np-plus" style={{ fontSize: 14 }} onClick={onClose} aria-label="Close">✕</button></div>}
       <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>Background Color</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 7, marginBottom: 12 }}>
         {PAGE_BGS.map(b => <button key={b.key || 'w'} title={b.label} aria-label={`Background ${b.label}`} onClick={() => set('bg', b.key)}
@@ -803,6 +809,104 @@ function SharePanel({ note, people, nameOf, teams, patch, flash, onClose }) {
         <button className="np-plus" style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600 }}
           onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/notes?note=${note.id}`); flash('Link copied — only people you share with can open it.') }}>🔗 Copy link</button>
         <div className="page-sub" style={{ fontSize: 11.5 }}>Only people you share with can access this note.</div>
+      </div>
+    </div>
+  )
+}
+
+
+// ============================================================
+// TEMPLATE BUILDER — name, icon, layout (single / Notes | Tasks), starting tasks,
+// page style and starting content, with a live preview of the page.
+// ============================================================
+const TEMPLATE_ICONS = ['📝', '📋', '🗂️', '🎯', '📞', '💡', '📅', '✅', '⭐', '🧠', '📊', '🤝', '🚀', '🪼', '📣', '🧾']
+function TemplateBuilder({ value, onCancel, onSave }) {
+  const [b, setB] = useState(value)
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const set = (k, v) => setB(cur => ({ ...cur, [k]: v }))
+  useHandFont(b.page_style?.font === 'hand')
+  useEffect(() => { const k = (e) => { if (e.key === 'Escape' && !document.querySelector('.np-pop')) onCancel() }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k) }, [onCancel])
+  async function save() { setBusy(true); setErr(''); const e = await onSave(b); setBusy(false); if (e) setErr(e) }
+  const card = (on) => ({ flex: 1, textAlign: 'left', border: '1.5px solid ' + (on ? 'var(--accent)' : 'var(--line)'), background: on ? 'var(--accent-bg)' : 'var(--surface)', borderRadius: 12, padding: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' })
+  const label = { fontSize: 12.5, fontWeight: 700, margin: '14px 0 6px' }
+  return (
+    <div onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel() }}
+      style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(6,18,24,.45)', display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div role="dialog" aria-label="Template builder" className="np-card" style={{ width: 'min(1100px, 100%)', maxHeight: '92vh', overflowY: 'auto', padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+          <h2 style={{ margin: 0, fontSize: 20, flex: 1 }}>{b.id ? 'Edit template' : 'Create a template'}</h2>
+          <button className="np-plus" onClick={onCancel} aria-label="Close">✕</button>
+        </div>
+        <p className="page-sub" style={{ margin: '0 0 8px', fontSize: 13 }}>Set it up once — every new note made from it starts exactly like this.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 340px) minmax(0, 1fr)', gap: 20 }} className="np-tb-grid">
+          <div>
+            <div style={label}>Name</div>
+            <input value={b.name} onChange={e => set('name', e.target.value)} placeholder="e.g. 1:1 with Manager" maxLength={80} autoFocus
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 14 }} />
+            <div style={label}>Short description <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}>(optional)</span></div>
+            <input value={b.description} onChange={e => set('description', e.target.value)} placeholder="Shown under the name in the Templates menu"
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13 }} />
+            <div style={label}>Icon</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {TEMPLATE_ICONS.map(ic => <button key={ic} onClick={() => set('icon', ic)} aria-label={`Icon ${ic}`}
+                style={{ width: 34, height: 34, borderRadius: 8, fontSize: 18, cursor: 'pointer', border: b.icon === ic ? '2px solid var(--accent)' : '1px solid var(--line)', background: b.icon === ic ? 'var(--accent-bg)' : 'var(--surface)' }}>{ic}</button>)}
+            </div>
+            <div style={label}>Layout</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button style={card(b.layout === 'single')} onClick={() => set('layout', 'single')}>
+                <div style={{ fontSize: 20 }}>📄</div><b style={{ fontSize: 13 }}>Single page</b>
+                <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>One full page for writing</div>
+              </button>
+              <button style={card(b.layout === 'two_col')} onClick={() => { set('layout', 'two_col'); if (!b.tasks.length) set('tasks', ['', '', '']) }}>
+                <div style={{ fontSize: 20 }}>▥</div><b style={{ fontSize: 13 }}>Split page</b>
+                <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>Notes on the left, Tasks on the right</div>
+              </button>
+            </div>
+            {b.layout === 'two_col' && <>
+              <div style={label}>Starting tasks <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}>(leave titles blank for empty lines)</span></div>
+              {b.tasks.map((t, i) => (
+                <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                  <span style={{ width: 18, textAlign: 'center', color: 'var(--ink-soft)', paddingTop: 7 }}>☐</span>
+                  <input value={t} onChange={e => set('tasks', b.tasks.map((x, j) => j === i ? e.target.value : x))} placeholder={`Task ${i + 1} (optional title)`}
+                    style={{ flex: 1, padding: '6px 9px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13 }} />
+                  <button className="np-plus" onClick={() => set('tasks', b.tasks.filter((_, j) => j !== i))} aria-label="Remove task">✕</button>
+                </div>
+              ))}
+              {b.tasks.length < 12 && <button className="np-plus" style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600 }} onClick={() => set('tasks', [...b.tasks, ''])}>＋ Add a starting task</button>}
+            </>}
+            <div style={label}>Page style</div>
+            <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 12 }}>
+              <PageStylePanel inline ps={b.page_style || {}} onChange={(next) => set('page_style', next)} />
+            </div>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ ...label, marginTop: 14 }}>Starting content <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}>— headings, bullet lists, prompts… whatever every note should begin with</span></div>
+            <div className="np-paper" style={paperVars(b.page_style || {})}>
+              <div className={b.layout === 'two_col' ? 'np-two' : ''}>
+                <div style={{ minWidth: 0 }}>
+                  <RichEditor variant="notes" value={b.body || ''} onChange={(html) => set('body', sanitizeHtml(html))} placeholder="Type the starting content…" minHeight={380} maxHeight={100000} />
+                </div>
+                {b.layout === 'two_col' && (
+                  <div className="np-tasks">
+                    <div className="np-tasks-head"><span style={{ fontSize: 26, fontWeight: 700, fontFamily: 'var(--paper-font, inherit)' }}>Tasks</span></div>
+                    {b.tasks.map((t, i) => (
+                      <div key={i} className="np-task">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}><input type="checkbox" disabled style={{ width: 17, height: 17 }} /><span className="ttl" style={{ opacity: t ? 1 : .5 }}>{t || 'Task title'}</span></div>
+                        <div className="meta"><span className="fld"><span className="lbl">📅 Due By: ____</span></span><span className="fld"><span className="lbl">📁 Project: ____</span></span><span className="fld"><span className="lbl">👤 Client: ____</span></span></div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+        {err && <div className="login-err" role="alert" style={{ marginTop: 12 }}>{err}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+          <button className="btn btn-ghost" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : b.id ? 'Save changes' : 'Create template'}</button>
+        </div>
       </div>
     </div>
   )
