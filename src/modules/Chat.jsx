@@ -2305,7 +2305,8 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
             const authorP = profiles.find(p => p.id === m.sender_id)
             const authorStatus = effStatus(authorP)
             const canDelete = !m._optimistic && (m.sender_id === me.id || canModerate)
-            const canEdit = !m._optimistic && m.sender_id === me.id && !m.requires_ack
+            // @update posts can be edited too (2026-10-28). Confirmations are kept and the post shows "(edited)".
+            const canEdit = !m._optimistic && m.sender_id === me.id
             const canPin = !m._optimistic && canModerate
             const readerIds = m._optimistic ? [] : readersOf(m, readState, members, me.id)
             const readerNames = readerIds.map(pid => senders[pid] || profiles.find(p => p.id === pid)?.full_name).filter(Boolean)
