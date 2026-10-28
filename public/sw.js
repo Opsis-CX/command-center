@@ -122,9 +122,10 @@ self.addEventListener('push', (event) => {
       .filter(w => new URL(w.url).origin === self.location.origin)
 
     // 1) Command Center open and in front of you → sound only, no pop-up (computers only).
+    //    If the page couldn't play (e.g. the browser hasn't unlocked sound yet), fall
+    //    through and show the pop-up WITH the computer's sound, so it's never silent.
     if (!IS_IOS && wins.some(w => w.visibilityState === 'visible' && w.focused)) {
-      await askPagesToPlay(wins, id, type)
-      return
+      if (await askPagesToPlay(wins, id, type)) return
     }
 
     // 2) Open in the background → the app plays YOUR sound and the pop-up stays
