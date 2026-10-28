@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { seasonalHat, WitchHat, celebrate } from '../components/Seasonal'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
 import { notifyAckNudge, notifyChannelAdded, notifyIncomingCall } from '../lib/notify'
@@ -142,10 +143,12 @@ function Av({ name, size = 24, radius = '50%', fontSize, bg, hover = true }) {
         style={{ width: size, height: size, borderRadius: radius, objectFit: 'cover', flex: 'none', display: 'block', cursor: hoverProps.onMouseEnter ? 'pointer' : undefined }} />
     : <span {...hoverProps} style={{ width: size, height: size, borderRadius: radius, background: bg || avatarColor(name), color: '#fff', display: 'grid', placeItems: 'center',
         fontSize: fontSize || Math.max(9, Math.round(size * 0.4)), fontWeight: 700, flex: 'none', cursor: hoverProps.onMouseEnter ? 'pointer' : undefined }}>{initials(name)}</span>
-  if (!isBirthday(name) || size < 16) return pic
+  const bday = isBirthday(name)
+  const seasonHat = !bday && size >= 20 && name && name !== 'Someone' ? seasonalHat() : null
+  if ((!bday && !seasonHat) || size < 16) return pic
   return (
-    <span style={{ position: 'relative', display: 'inline-block', width: size, height: size, flex: 'none' }} title="🎂 It’s their birthday!">
-      {pic}<PartyHat size={size} />
+    <span style={{ position: 'relative', display: 'inline-block', width: size, height: size, flex: 'none' }} title={bday ? '🎂 It’s their birthday!' : undefined}>
+      {pic}{bday ? <PartyHat size={size} /> : <WitchHat size={size} />}
     </span>
   )
 }
@@ -2085,7 +2088,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     const { data, error } = await supabase.from('messages')
       .insert({ channel_id: channelId, sender_id: me.id, body: body || '', requires_ack: willRequireAck, is_here: isHere })
       .select().single()
-    if (!error) expressPush(data?.id)
+    if (!error) { expressPush(data?.id); celebrate() }
 
     if (error) {
       setErr(error.message)
@@ -3740,7 +3743,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
     setReplies(prev => [...prev, temp])
 
     const { data, error } = await supabase.from('messages').insert({ channel_id: channelId, sender_id: me.id, body: body || '', parent_id: parentId }).select().single()
-    if (!error) expressPush(data?.id)
+    if (!error) { expressPush(data?.id); celebrate() }
     if (error) { setReplies(prev => prev.filter(m => m.id !== temp.id)); setPending(filesToSend); setUploading(false); setUploadErr('Could not send: ' + error.message); return }
 
     // Only clear the editor once the reply actually landed.
