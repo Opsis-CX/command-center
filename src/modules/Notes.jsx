@@ -29,6 +29,8 @@ const PAGE_BGS = [
 ]
 const LINE_H = { narrow: 26, normal: 32, wide: 40 }
 const FOLDER_COLORS = ['#F59E0B', '#3B82F6', '#6366F1', '#0EA5E9', '#EC4899', '#22C55E', '#8B5CF6', '#14B8A6', '#EF4444']
+// choices in the folder color picker (click a folder's square)
+const FOLDER_SWATCHES = ['#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16', '#22C55E', '#14B8A6', '#0EA5E9', '#3B82F6', '#6366F1', '#8B5CF6', '#EC4899', '#64748B', '#1F2937']
 const newKey = () => Math.random().toString(36).slice(2, 10)
 const blankTasks = (n) => Array.from({ length: n }, () => ({ key: newKey(), title: '', due: '', project_id: '', client_id: '' }))
 const todayISO = () => new Date().toLocaleDateString('en-CA')
@@ -49,9 +51,11 @@ const BUILT_IN_TEMPLATES = [
 const NP_CSS = `
 .np { container-type: inline-size; }
 .np-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
-.np-grid { display: grid; grid-template-columns: 230px 270px minmax(0, 1fr); gap: 14px; align-items: start; }
-@container (max-width: 1050px) { .np-grid { grid-template-columns: 210px minmax(0, 1fr); } .np-list { grid-column: 2; } .np-editor { grid-column: 1 / -1; } }
-@container (max-width: 700px) { .np-grid { grid-template-columns: 1fr; } .np-list, .np-editor { grid-column: auto; } }
+.np-grid { display: grid; grid-template-columns: 230px 270px minmax(0, 1fr); grid-template-areas: "nav list editor" "tpl list editor"; gap: 14px; align-items: start; }
+.np-a-nav { grid-area: nav; } .np-a-tpl { grid-area: tpl; } .np-list { grid-area: list; } .np-editor { grid-area: editor; }
+/* narrower (e.g. the panel on My Profile): sidebar + note list on the left, the note beside them */
+@container (max-width: 1180px) { .np-grid { grid-template-columns: 250px minmax(0, 1fr); grid-template-areas: "nav editor" "list editor" "tpl editor"; } .np-list { max-height: 340px !important; } }
+@container (max-width: 700px) { .np-grid { grid-template-columns: 1fr; grid-template-areas: "nav" "list" "editor" "tpl"; } }
 .np-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
 .np-nav { padding: 10px; display: flex; flex-direction: column; gap: 2px; }
 .np-nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 9px; border: 0; background: transparent; cursor: pointer; font: inherit; font-size: 13.5px; color: var(--ink); text-align: left; width: 100%; }
@@ -74,20 +78,29 @@ const NP_CSS = `
 .np-menu button:hover { background: var(--canvas); }
 .np-paper { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper-bg, var(--surface)); }
 .np-paper .re-wrap { background: transparent !important; border: 0 !important; border-radius: 0 !important; }
-.np-paper .re-toolbar { background: var(--surface); border-bottom: 1px solid var(--line); }
+.np-tbrow { display: flex; align-items: flex-start; gap: 8px; margin: 14px 0 10px; flex-wrap: wrap; }
+.np-tb { flex: 1 1 420px; min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.np-tb:empty { display: none; }
+.np-tb .re-toolbar { border: 0 !important; background: transparent !important; }
 .np-paper .re-content { background-color: transparent !important; line-height: var(--lh) !important; font-size: 15px; padding-top: 6px !important; padding-left: var(--pad-l, 18px) !important;
   background-image: var(--pimg, none); background-size: var(--psize, auto); background-position: 0 6px; background-attachment: local; font-family: var(--paper-font, inherit); }
 .np-paper .re-content p, .np-paper .re-content li { margin: 0; }
-.np-paper .re-content ul, .np-paper .re-content ol { margin: 0; }
+.np-paper .re-content ul, .np-paper .re-content ol { margin: 0; padding-left: 24px; }
 .np-paper .re-content h1, .np-paper .re-content h2, .np-paper .re-content h3 { margin: 0; line-height: var(--lh); }
 .np-two { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
 @container (max-width: 900px) { .np-two { grid-template-columns: 1fr; } }
 .np-tasks { border-left: 1px dashed var(--line); padding: 14px 16px; background-image: var(--pimg-t, none); background-size: var(--psize-t, auto); background-position: 0 6px; }
-.np-task { padding: 8px 0 10px; border-bottom: 1px solid rgba(0,0,0,.06); }
-.np-task input[type=text], .np-task input:not([type]) { border: 0; background: transparent; font: inherit; font-size: 15px; font-weight: 600; color: var(--ink); outline: none; width: 100%; }
-.np-task .meta { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 4px; font-size: 12px; color: var(--ink-soft); }
-.np-task .meta label { display: inline-flex; align-items: center; gap: 4px; }
-.np-task .meta input, .np-task .meta select { border: 0; border-bottom: 1px solid var(--line); background: transparent; font: inherit; font-size: 12px; color: var(--ink); padding: 1px 2px; max-width: 140px; }
+.np-task { background: rgba(255,255,255,.82); border: 1px solid rgba(15,23,42,.08); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(15,23,42,.05); }
+.np-task:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.np-task.done { opacity: .65; }
+.np-task .ttl { border: 0; background: transparent; font: inherit; font-size: 15px; font-weight: 700; color: var(--ink); outline: none; width: 100%; padding: 2px 0; }
+.np-task .ttl::placeholder { color: #94a3b8; font-weight: 600; }
+.np-task .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 8px; }
+.np-task .fld { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.np-task .fld span { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
+.np-task .fld input, .np-task .fld select { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font: inherit; font-size: 12.5px; color: var(--ink); padding: 5px 7px; }
+.np-task .linked { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; font-size: 12px; font-weight: 700; color: #047857; background: #ECFDF5; border-radius: 999px; padding: 3px 10px; text-decoration: none; }
+.np-tasks-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
 .np-push { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 12px; padding: 11px 18px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
   background: linear-gradient(120deg, #CFFAFE, #A7F3D0); color: #065F46; box-shadow: 0 6px 18px -8px rgba(16,185,129,.6); }
 .np-push:disabled { opacity: .6; cursor: default; }
@@ -129,7 +142,8 @@ function usePop() {
   const ref = useRef(null)
   useEffect(() => {
     if (!open) return
-    const out = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(null) }
+    // close on a click anywhere outside the open pop-up (its own trigger button toggles it)
+    const out = (e) => { if (!e.target.closest('.np-pop, [data-poptrigger]')) setOpen(null) }
     const esc = (e) => { if (e.key === 'Escape') setOpen(null) }
     document.addEventListener('mousedown', out); document.addEventListener('keydown', esc)
     return () => { document.removeEventListener('mousedown', out); document.removeEventListener('keydown', esc) }
@@ -154,6 +168,7 @@ export default function Notes() {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const [newOpen, setNewOpen, newRef] = usePop()
+  const [colorFor, setColorFor] = usePop()     // folder id whose color picker is open
 
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3500) }
 
@@ -255,6 +270,11 @@ export default function Notes() {
     await supabase.from('note_folders').update({ name: name.trim() }).eq('id', f.id)
     setFolders(fs => fs.map(x => x.id === f.id ? { ...x, name: name.trim() } : x))
   }
+  async function setFolderColor(f, color) {
+    setFolders(fs => fs.map(x => x.id === f.id ? { ...x, color } : x))
+    const { error } = await supabase.from('note_folders').update({ color }).eq('id', f.id)
+    if (error) flash(error.message)
+  }
   async function deleteFolder(f) {
     if (!window.confirm(`Delete the folder "${f.name}"? Its notes stay in All Notes.`)) return
     await supabase.from('notes').update({ folder_id: null }).eq('folder_id', f.id).eq('owner_id', me)
@@ -300,7 +320,7 @@ export default function Notes() {
           style={{ width: 'min(280px, 100%)', padding: '9px 12px', border: '1px solid var(--line)', borderRadius: 10, fontFamily: 'inherit', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)' }} />
         <div ref={newRef} style={{ position: 'relative', display: 'flex' }}>
           <button className="btn btn-primary" onClick={() => createNote(BUILT_IN_TEMPLATES[1])} style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}>＋ New note</button>
-          <button className="btn btn-primary" onClick={() => setNewOpen(o => o ? null : 'menu')} aria-label="New note from a template" style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: '1px solid rgba(255,255,255,.35)', padding: '0 10px' }}>▾</button>
+          <button data-poptrigger className="btn btn-primary" onClick={() => setNewOpen(o => o ? null : 'menu')} aria-label="New note from a template" style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: '1px solid rgba(255,255,255,.35)', padding: '0 10px' }}>▾</button>
           {newOpen && (
             <div className="np-pop np-menu" style={{ right: 0, top: 'calc(100% + 6px)', width: 260, padding: 6 }}>
               <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-soft)', padding: '4px 10px' }}>START FROM A TEMPLATE</div>
@@ -313,8 +333,7 @@ export default function Notes() {
 
       <div className="np-grid">
         {/* ---------- navigation ---------- */}
-        <aside style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div className="np-card np-nav">
+          <div className="np-card np-nav np-a-nav">
             {navItem('all', '📚', 'All Notes', counts.all)}
             {navItem('pinned', '📌', 'Pinned', counts.pinned)}
             {navItem('shared', '👥', 'Shared with Me', counts.shared)}
@@ -323,9 +342,35 @@ export default function Notes() {
             <div className="np-sec">Folders<button className="np-plus" onClick={addFolder} title="New folder" aria-label="New folder">＋</button></div>
             {folders.length === 0 && <div className="page-sub" style={{ fontSize: 12, padding: '2px 10px 6px' }}>No folders yet.</div>}
             {folders.map(f => (
-              <div key={f.id} style={{ display: 'flex', alignItems: 'center' }}>
-                <button className={'np-nav-item' + (view === 'folder:' + f.id ? ' on' : '')} onClick={() => { setView('folder:' + f.id); setQ('') }}>
-                  <span style={{ width: 18, textAlign: 'center' }}><span style={{ display: 'inline-block', width: 13, height: 11, borderRadius: 2, background: f.color || '#F59E0B' }} /></span>
+              <div key={f.id} style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                <button data-poptrigger type="button" title="Change folder color" aria-label={`Change color of ${f.name}`}
+                  onClick={() => setColorFor(colorFor === f.id ? null : f.id)}
+                  style={{ border: 0, background: 'transparent', cursor: 'pointer', padding: '4px 2px 4px 8px', display: 'grid', placeItems: 'center' }}>
+                  <span style={{ display: 'inline-block', width: 14, height: 12, borderRadius: 3, background: f.color || '#F59E0B', boxShadow: colorFor === f.id ? '0 0 0 2px var(--surface), 0 0 0 4px var(--accent)' : 'none' }} />
+                </button>
+                {colorFor === f.id && (
+                  <div className="np-pop" style={{ left: 0, top: 'calc(100% + 4px)', width: 214, padding: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                      <b style={{ flex: 1, fontSize: 13 }}>Folder color</b>
+                      <button className="np-plus" style={{ fontSize: 13 }} onClick={() => setColorFor(null)} aria-label="Close">✕</button>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
+                      {FOLDER_SWATCHES.map(c => (
+                        <button key={c} title={c} aria-label={`Color ${c}`} onClick={() => { setFolderColor(f, c); setColorFor(null) }}
+                          style={{ width: 22, height: 22, borderRadius: '50%', background: c, cursor: 'pointer', padding: 0,
+                            border: (f.color || '').toLowerCase() === c.toLowerCase() ? '2px solid var(--ink)' : '2px solid transparent', boxShadow: '0 0 0 1px rgba(0,0,0,.06)' }} />
+                      ))}
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12.5, cursor: 'pointer', color: 'var(--ink-soft)' }}>
+                      <span style={{ width: 22, height: 22, borderRadius: '50%', border: '1.5px dashed var(--ink-soft)', display: 'grid', placeItems: 'center', position: 'relative', overflow: 'hidden' }}>＋
+                        <input type="color" value={/^#[0-9a-f]{6}$/i.test(f.color || '') ? f.color : '#F59E0B'} onChange={e => setFolderColor(f, e.target.value)}
+                          style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} aria-label="Pick any color" />
+                      </span>
+                      Pick any color
+                    </label>
+                  </div>
+                )}
+                <button className={'np-nav-item' + (view === 'folder:' + f.id ? ' on' : '')} style={{ paddingLeft: 6 }} onClick={() => { setView('folder:' + f.id); setQ('') }}>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
                   <span className="ct">{mine.filter(n => n.folder_id === f.id).length}</span>
                 </button>
@@ -336,7 +381,7 @@ export default function Notes() {
               </div>
             ))}
           </div>
-          <div className="np-card np-nav">
+          <div className="np-card np-nav np-a-tpl">
             <div className="np-sec" style={{ paddingTop: 4 }}>Note Templates<button className="np-plus" title="Save the open note as a template" onClick={() => saveAsTemplate(selected)} disabled={!selected}>＋</button></div>
             {allTemplates.map(t => (
               <div key={t.id} style={{ display: 'flex', alignItems: 'center' }}>
@@ -351,7 +396,6 @@ export default function Notes() {
             <button className="np-nav-item" style={{ color: 'var(--accent)', fontWeight: 600 }} disabled={!selected} onClick={() => saveAsTemplate(selected)}
               title={selected ? 'Save the open note as a reusable template' : 'Open a note first, then save it as a template'}>＋ Create a new template</button>
           </div>
-        </aside>
 
         {/* ---------- list ---------- */}
         <div className="np-card np-list" style={{ padding: 8, maxHeight: 'calc(100vh - 170px)', overflowY: 'auto' }}>
@@ -417,7 +461,8 @@ function NoteEditor({ note, me, people, nameOf, teams, folders, projects, client
   useHandFont(ps.font === 'hand')
   const [title, setTitle] = useState(note.title || '')
   const [tasks, setTasks] = useState(() => (note.meeting_tasks || []).map(t => ({ key: t.key || newKey(), ...t })))
-  const [pop, setPop, popRef] = usePop()
+  const [pop, setPop] = usePop()
+  const [tbEl, setTbEl] = useState(null)   // the toolbar is drawn into this, above the notepad
   const [pushing, setPushing] = useState(false)
   // pending autosaves, flushed on unmount so switching notes never loses typing
   const pending = useRef({})
@@ -460,7 +505,7 @@ function NoteEditor({ note, me, people, nameOf, teams, folders, projects, client
   const btn = (label, onClick, extra = {}) => <button className="np-btn" onClick={onClick} {...extra}>{label}</button>
 
   return (
-    <div className="np-card" style={{ padding: 16 }} ref={popRef}>
+    <div className="np-card" style={{ padding: 16 }}>
       {/* title row */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 320px', minWidth: 0 }}>
@@ -473,12 +518,10 @@ function NoteEditor({ note, me, people, nameOf, teams, folders, projects, client
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', fontSize: 13, color: 'var(--ink-soft)', marginTop: 4 }}>
             <label title="Date">📅 <input type="date" disabled={!canEdit} value={note.meeting_date || ''} onChange={e => patch({ meeting_date: e.target.value || null })}
               style={{ border: 0, background: 'transparent', font: 'inherit', color: 'var(--ink)' }} /></label>
-            <label title="Time">🕐 <input type="time" disabled={!canEdit} value={(note.meeting_start || '').slice(0, 5)} onChange={e => patch({ meeting_start: e.target.value || null })}
-              style={{ border: 0, background: 'transparent', font: 'inherit', color: 'var(--ink)', width: 96 }} /> – <input type="time" disabled={!canEdit} value={(note.meeting_end || '').slice(0, 5)} onChange={e => patch({ meeting_end: e.target.value || null })}
-              style={{ border: 0, background: 'transparent', font: 'inherit', color: 'var(--ink)', width: 96 }} /></label>
+
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', position: 'relative' }}>👥
               {attendees.map(id => <span key={id} className="np-chip" style={{ padding: '2px 8px' }}>{nameOf[id] || 'Someone'}{canEdit && <button onClick={() => patch({ attendees: attendees.filter(x => x !== id) })} aria-label="Remove attendee">✕</button>}</span>)}
-              {canEdit && <button className="np-plus" style={{ fontSize: 13, color: 'var(--accent)' }} onClick={() => setPop(pop === 'att' ? null : 'att')}>＋ Add attendees</button>}
+              {canEdit && <button data-poptrigger className="np-plus" style={{ fontSize: 13, color: 'var(--accent)' }} onClick={() => setPop(pop === 'att' ? null : 'att')}>＋ Add attendees</button>}
               {pop === 'att' && <PeoplePicker people={people.filter(p => !attendees.includes(p.id))} onPick={(id) => patch({ attendees: [...attendees, id] })} style={{ left: 0, top: 26 }} />}
             </span>
           </div>
@@ -499,11 +542,11 @@ function NoteEditor({ note, me, people, nameOf, teams, folders, projects, client
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', position: 'relative' }}>
           {isOwner && btn(note.pinned ? '📌 Pinned' : '📌 Pin', () => patch({ pinned: !note.pinned }), { className: 'np-btn' + (note.pinned ? ' on' : '') })}
           <span className="np-btn" style={{ cursor: 'default' }}>{sharedCount ? '👥 Shared' : '🔒 Private'}</span>
-          {isOwner && btn('↗ Share', () => setPop(pop === 'share' ? null : 'share'), { style: { color: 'var(--accent)' } })}
-          {btn('⋮', () => setPop(pop === 'more' ? null : 'more'), { 'aria-label': 'More options' })}
+          {isOwner && btn('↗ Share', () => setPop(pop === 'share' ? null : 'share'), { style: { color: 'var(--accent)' }, 'data-poptrigger': true })}
+          {btn('⋮', () => setPop(pop === 'more' ? null : 'more'), { 'aria-label': 'More options', 'data-poptrigger': true })}
           {pop === 'more' && (
             <div className="np-pop np-menu" style={{ right: 0, top: 'calc(100% + 6px)', width: 220, padding: 6 }}>
-              {canEdit && <button onClick={() => setPop('style')}>🎨 Page style…</button>}
+              {canEdit && <button data-poptrigger onClick={() => setPop('style')}>🎨 Page style…</button>}
               {canEdit && <button onClick={() => { setPop(null); const nx = twoCol ? 'single' : 'two_col'; patch({ layout: nx }); if (nx === 'two_col' && !tasks.length) setTasksSave(blankTasks(1)) }}>{twoCol ? '▭ Remove tasks column' : '▥ Add tasks column'}</button>}
               <button onClick={() => { setPop(null); onDuplicate() }}>⧉ Duplicate</button>
               <button onClick={() => { setPop(null); exportNote(note) }}>⬇ Export (.html)</button>
@@ -516,51 +559,59 @@ function NoteEditor({ note, me, people, nameOf, teams, folders, projects, client
               {isOwner && <button style={{ color: 'var(--failed)' }} onClick={() => { setPop(null); onTrash() }}>🗑 Delete</button>}
             </div>
           )}
-          {pop === 'style' && <PageStylePanel ps={ps} onChange={(next) => patch({ page_style: next })} />}
-          {pop === 'share' && <SharePanel note={note} people={people.filter(p => p.id !== me)} nameOf={nameOf} teams={teams} patch={patch} flash={flash} />}
+          {pop === 'share' && <SharePanel note={note} people={people.filter(p => p.id !== me)} nameOf={nameOf} teams={teams} patch={patch} flash={flash} onClose={() => setPop(null)} />}
         </div>
       </div>
 
-      {/* paper controls */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, margin: '12px 0 6px' }}>
-        {canEdit && <button className="np-btn" style={{ fontSize: 12.5, padding: '4px 10px' }} onClick={() => setPop(pop === 'style' ? null : 'style')}>
-          📄 {({ plain: 'Plain', lined: 'Lined', grid: 'Grid', dotted: 'Dotted' })[ps.paper || 'plain']} paper ▾</button>}
-        {canEdit && <button className="np-btn" style={{ fontSize: 12.5, padding: '4px 10px' }} onClick={() => setPop(pop === 'style' ? null : 'style')} aria-label="Page style">🎨 ▾</button>}
-      </div>
+      {/* formatting toolbar + paper controls, above the notepad */}
+      {canEdit && (
+        <div className="np-tbrow">
+          <div ref={setTbEl} className="np-tb" />
+          <div style={{ display: 'flex', gap: 6, position: 'relative', alignSelf: 'center' }}>
+            <button data-poptrigger className="np-btn" style={{ fontSize: 12.5, padding: '4px 10px' }} onClick={() => setPop(pop === 'style' ? null : 'style')}>
+              📄 {({ plain: 'Plain', lined: 'Lined', grid: 'Grid', dotted: 'Dotted' })[ps.paper || 'plain']} paper ▾</button>
+            <button data-poptrigger className="np-btn" style={{ fontSize: 12.5, padding: '4px 10px' }} onClick={() => setPop(pop === 'style' ? null : 'style')} aria-label="Page style">🎨 ▾</button>
+            {pop === 'style' && <PageStylePanel ps={ps} onChange={(next) => patch({ page_style: next })} onClose={() => setPop(null)} />}
+          </div>
+        </div>
+      )}
 
       {/* the page */}
       <div className="np-paper" style={paperStyle}>
         <div className={twoCol ? 'np-two' : ''}>
           <div style={{ minWidth: 0 }}>
             {canEdit
-              ? <RichEditor variant="notes" value={note.body || ''} onChange={(html) => queue('body', sanitizeHtml(html), 700)} placeholder="Start writing…" minHeight={460} maxHeight={100000} />
+              ? <RichEditor variant="notes" value={note.body || ''} onChange={(html) => queue('body', sanitizeHtml(html), 700)} placeholder="Start writing…" minHeight={460} maxHeight={100000} toolbarTarget={tbEl} />
               : <div className="re-content" style={{ minHeight: 300, padding: 14 }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(note.body || '') }} />}
           </div>
           {twoCol && (
             <div className="np-tasks">
-              <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'var(--paper-font, inherit)', marginBottom: 4 }}>Tasks</div>
+              <div className="np-tasks-head">
+                <span style={{ fontSize: 26, fontWeight: 700, fontFamily: 'var(--paper-font, inherit)' }}>Tasks</span>
+                <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{tasks.filter(t => (t.title || '').trim()).length} task{tasks.filter(t => (t.title || '').trim()).length === 1 ? '' : 's'}</span>
+              </div>
               {tasks.map(t => (
-                <div key={t.key} className="np-task">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={!!t.done} disabled={!canEdit} onChange={e => updTask(t.key, { done: e.target.checked })} aria-label="Done" style={{ width: 17, height: 17, accentColor: 'var(--accent)' }} />
-                    <input value={t.title || ''} disabled={!canEdit} onChange={e => updTask(t.key, { title: e.target.value })} placeholder="Task title here" aria-label="Task title"
-                      style={{ textDecoration: t.done ? 'line-through' : 'none', opacity: t.done ? .6 : 1 }} />
+                <div key={t.key} className={'np-task' + (t.done ? ' done' : '')}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                    <input type="checkbox" checked={!!t.done} disabled={!canEdit} onChange={e => updTask(t.key, { done: e.target.checked })} aria-label="Done" style={{ width: 17, height: 17, accentColor: 'var(--accent)', flex: 'none' }} />
+                    <input className="ttl" value={t.title || ''} disabled={!canEdit} onChange={e => updTask(t.key, { title: e.target.value })} placeholder="Task title" aria-label="Task title"
+                      style={{ textDecoration: t.done ? 'line-through' : 'none' }} />
                     {canEdit && <button className="np-plus" style={{ fontSize: 12 }} title="Remove from this note (a task already in Project Management stays there)" onClick={() => setTasksSave(tasks.filter(x => x.key !== t.key))}>✕</button>}
                   </div>
                   <div className="meta">
-                    <label>📅 Due By: <input type="date" disabled={!canEdit} value={t.due || ''} onChange={e => updTask(t.key, { due: e.target.value })} /></label>
-                    <label>📁 Project: <select disabled={!canEdit} value={t.project_id || ''} onChange={e => updTask(t.key, { project_id: e.target.value })}>
-                      <option value="">—</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-                    <label>👤 Client: <select disabled={!canEdit} value={t.client_id || ''} onChange={e => updTask(t.key, { client_id: e.target.value })}>
-                      <option value="">—</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-                    {t.task_id && <a href={`/projects?task=${t.task_id}`} style={{ color: '#059669', fontWeight: 600 }}>✓ In Project Management</a>}
+                    <label className="fld"><span>Due by</span><input type="date" disabled={!canEdit} value={t.due || ''} onChange={e => updTask(t.key, { due: e.target.value })} /></label>
+                    <label className="fld"><span>Project</span><select disabled={!canEdit} value={t.project_id || ''} onChange={e => updTask(t.key, { project_id: e.target.value })}>
+                      <option value="">None</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+                    <label className="fld"><span>Client</span><select disabled={!canEdit} value={t.client_id || ''} onChange={e => updTask(t.key, { client_id: e.target.value })}>
+                      <option value="">None</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
                   </div>
+                  {t.task_id && <a className="linked" href={`/projects?task=${t.task_id}`}>✓ In Project Management ↗</a>}
                 </div>
               ))}
               {canEdit && <button className="np-plus" style={{ fontSize: 14, color: 'var(--accent)', fontWeight: 600, margin: '10px 0' }} onClick={() => setTasksSave([...tasks, ...blankTasks(1)])}>＋ Add another task</button>}
               {canEdit && (
                 <div style={{ marginTop: 14 }}>
-                  <button className="np-push" disabled={pushing} onClick={push}>☑ {pushing ? 'Pushing…' : 'Push to Project Management'} ›</button>
+                  <button className="np-push" style={{ width: '100%', justifyContent: 'center' }} disabled={pushing} onClick={push}>☑ {pushing ? 'Pushing…' : 'Push to Project Management'} ›</button>
                   <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginTop: 6 }}>Creates real tasks assigned to you. Pushing again updates them, never duplicates.</div>
                 </div>
               )}
@@ -596,14 +647,14 @@ function PeoplePicker({ people, onPick, style }) {
   )
 }
 
-function PageStylePanel({ ps, onChange }) {
+function PageStylePanel({ ps, onChange, onClose }) {
   const set = (k, v) => onChange({ ...ps, [k]: v })
   const box = (on) => ({ border: '1.5px solid ' + (on ? 'var(--accent)' : 'var(--line)'), background: on ? 'var(--accent-bg)' : 'var(--surface)', borderRadius: 8, cursor: 'pointer', padding: 6, fontFamily: 'inherit', fontSize: 11.5, color: 'var(--ink)' })
   const thumb = (paper) => { const ls = paperLayers(paper, 10); return { width: 46, height: 40, borderRadius: 4, border: '1px solid var(--line)', backgroundColor: '#fff',
     backgroundImage: ls.length ? ls.map(l => l[0]).join(', ') : 'none', backgroundSize: ls.length ? ls.map(l => l[1]).join(', ') : 'auto' } }
   return (
     <div className="np-pop" style={{ right: 0, top: 'calc(100% + 6px)', width: 300 }}>
-      <div style={{ fontWeight: 700, marginBottom: 10 }}>Page Style</div>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}><b style={{ flex: 1 }}>Page Style</b><button className="np-plus" style={{ fontSize: 14 }} onClick={onClose} aria-label="Close">✕</button></div>
       <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>Background Color</div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         {PAGE_BGS.map(b => <button key={b.key || 'w'} title={b.label} onClick={() => set('bg', b.key)}
@@ -632,7 +683,7 @@ function PageStylePanel({ ps, onChange }) {
   )
 }
 
-function SharePanel({ note, people, nameOf, teams, patch, flash }) {
+function SharePanel({ note, people, nameOf, teams, patch, flash, onClose }) {
   const shared = note.shared_with || []
   const editors = note.shared_editors || []
   const [q, setQ] = useState('')
@@ -646,7 +697,7 @@ function SharePanel({ note, people, nameOf, teams, patch, flash }) {
   const colors = ['#0EA5E9', '#8B5CF6', '#10B981', '#F59E0B', '#EC4899']
   return (
     <div className="np-pop" style={{ right: 0, top: 'calc(100% + 6px)', width: 'min(370px, 92vw)' }}>
-      <div style={{ fontWeight: 700 }}>Share Note</div>
+      <div style={{ display: 'flex', alignItems: 'center' }}><b style={{ flex: 1 }}>Share Note</b><button className="np-plus" style={{ fontSize: 14 }} onClick={onClose} aria-label="Close">✕</button></div>
       <div className="page-sub" style={{ fontSize: 12.5, margin: '2px 0 10px' }}>Share “{note.title?.trim() || 'Untitled'}”</div>
       <div style={{ display: 'flex', gap: 6 }}>
         <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search team members…" style={{ flex: 1, padding: '7px 9px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13 }} />
