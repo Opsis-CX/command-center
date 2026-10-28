@@ -406,7 +406,13 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
         start: f.start_time, end: f.end_time, color: sub?.color || COLORS.team,
       }
     })
-    const gcal = gcalEvents.filter(g => g.event_date === ds && (!g.owner_id || g.owner_id === userId)).map(g => ({
+    // A Command Center event is also pushed to Google, so the same meeting comes back in the
+    // Google sync. Skip the Google copy of anything already on the calendar. (2026-10-27)
+    const idsOf = (list) => new Set(list.map(e => e.google_event_id).filter(Boolean))
+    const myCcIds = idsOf(myEvents), allCcIds = idsOf(events)
+    const copyOf = (ids) => (g) => ids.has(g.google_id) || (g.ical_uid && ids.has(String(g.ical_uid).replace(/@google\.com$/i, '')))
+    const isMyCcCopy = copyOf(myCcIds), isCcCopy = copyOf(allCcIds)
+    const gcal = gcalEvents.filter(g => g.event_date === ds && (!g.owner_id || g.owner_id === userId) && !isMyCcCopy(g)).map(g => ({
       kind: 'gcal', id: g.id, title: g.title, allDay: g.all_day,
       // Stored in company time (sync v5) — show in the viewer's zone like everything else.
       start: g.all_day ? g.start_time : toViewerHHMM(g.event_date, g.start_time, COMPANY_TZ, viewerTZ),
@@ -429,7 +435,7 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
         description: e.notes, sharedFrom: nameOf(e.owner_id),
       }))
     const sharedGcal = gcalEvents
-      .filter(g => g.event_date === ds && g.owner_id && activeShareOwners.has(g.owner_id) && g.owner_id !== userId)
+      .filter(g => g.event_date === ds && g.owner_id && activeShareOwners.has(g.owner_id) && g.owner_id !== userId && !isCcCopy(g))
       .map(g => ({
         kind: 'shared', id: 'sg-' + g.id, title: `${g.title} · ${nameOf(g.owner_id)}`, allDay: g.all_day,
         start: g.all_day ? g.start_time : toViewerHHMM(g.event_date, g.start_time, COMPANY_TZ, viewerTZ),
