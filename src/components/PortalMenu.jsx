@@ -30,7 +30,9 @@ export default function PortalMenu() {
   if (!isPortalStaff(isAdmin, appRole) || inTraining) return null
 
   // Opens in a big pop-up over Command Center (2026-10-27). "Open in new tab" is still there.
-  const go = (p) => { setOpen(false); setViewing(p) }
+  // Click the portal = new tab (as before). The ⤢ button = big pop-up over Command Center.
+  const go = (p) => { setOpen(false); window.open(`/opsis-qa?client=${p.client_id}`, '_blank', 'noopener') }
+  const pop = (p) => { setOpen(false); setViewing(p) }
 
   return (
     <div style={{ position: 'relative' }}>
@@ -41,22 +43,26 @@ export default function PortalMenu() {
         <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 80 }} />
         <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', width: 260, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.18)', zIndex: 81, padding: '6px 0' }}>
           <div className="page-sub" style={{ padding: '4px 12px 8px', fontSize: 11.5 }}>
-            Opens the client's portal right here, exactly as their account admins see it. Changes you make there are real.
+            Opens the client's portal in a new tab (or ⤢ for a pop-up), exactly as their account admins see it. Changes you make there are real.
           </div>
           {err && <div className="login-err" style={{ margin: '4px 12px' }}>{err}</div>}
           {!list && !err && <div className="page-sub" style={{ padding: '6px 12px', fontSize: 12.5 }}>Loading…</div>}
           {list && list.length === 0 && <div className="page-sub" style={{ padding: '6px 12px', fontSize: 12.5 }}>No portals you can open yet.</div>}
           {(list || []).map(p => (
-            <button key={p.client_id} role="menuitem" onClick={() => go(p)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', border: 0, background: 'transparent', padding: '8px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}
+            <div key={p.client_id} style={{ display: 'flex', alignItems: 'center' }}>
+            <button role="menuitem" onClick={() => go(p)} title={`Open ${p.name} portal in a new tab`}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, textAlign: 'left', border: 0, background: 'transparent', padding: '8px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)' }}
               onMouseEnter={e => { e.currentTarget.style.background = 'var(--canvas)' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
               {p.logo_url
                 ? <img src={p.logo_url} alt="" style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid var(--line)' }} />
                 : <span style={{ width: 28, height: 28, borderRadius: 6, background: p.accent || 'var(--accent)', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 700 }}>{(p.name || '?')[0]}</span>}
               <span style={{ flex: 1, fontWeight: 600 }}>{p.name}</span>
-              <span aria-hidden="true" style={{ color: 'var(--ink-soft)' }}>⤢</span>
+              <span aria-hidden="true" style={{ color: 'var(--ink-soft)' }}>↗</span>
             </button>
+            <button onClick={() => pop(p)} title={`Open ${p.name} portal in a pop-up`} aria-label={`Open ${p.name} portal in a pop-up`}
+              style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 7, padding: '4px 8px', marginRight: 10, fontSize: 13, cursor: 'pointer', color: 'var(--ink-soft)', fontFamily: 'inherit' }}>⤢</button>
+            </div>
           ))}
         </div>
       </>)}
