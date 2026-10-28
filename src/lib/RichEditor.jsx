@@ -7,7 +7,7 @@ import Link from '@tiptap/extension-link'
 // These are NAMED exports in TipTap 3 — `import Table from '@tiptap/extension-table'`
 // silently yields undefined, and the editor throws at construction.
 import { TableKit } from '@tiptap/extension-table'
-import { TextStyle } from '@tiptap/extension-text-style'
+import { TextStyle, FontSize } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
 import Highlight from '@tiptap/extension-highlight'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -41,7 +41,7 @@ const TOOLBARS = {
          'bullet', 'ordered', 'quote', '|', 'link', 'color', 'highlight', '|', 'table', '|', 'spell'],
   // My Notes (2026-10-27): the full set plus undo/redo, paragraph style, underline, image,
   // code block and divider. Other editors keep their toolbars unchanged.
-  notes: ['undo', 'redo', '|', 'para', '|', 'bold', 'italic', 'underline', 'strike', '|', 'h1', 'h2', 'h3', '|',
+  notes: ['undo', 'redo', '|', 'para', 'fontsize', '|', 'bold', 'italic', 'underline', 'strike', '|', 'h1', 'h2', 'h3', '|',
           'bullet', 'ordered', 'quote', '|', 'image', 'table', 'codeblock', 'hr', '|', 'link', 'color', 'highlight', '|', 'spell'],
 }
 
@@ -462,6 +462,14 @@ function Toolbar({ editor, items, onSpellCheck }) {
           const url = window.prompt('Image web address (https://…). Tip: you can also paste or drag an image in.')
           if (url && /^https?:\/\//i.test(url)) c().setImage({ src: url }).run()
         }}>🖼</Btn>
+      case 'fontsize': return (
+          <select key={i} title="Text size (for highlighted text)" aria-label="Text size"
+            value={(editor.getAttributes('textStyle').fontSize || '').replace('px', '')}
+            onChange={(e) => { const v = e.target.value; if (!v) c().unsetFontSize().run(); else c().setFontSize(v + 'px').run() }}
+            style={{ height: 28, border: '1px solid var(--line)', borderRadius: 6, background: 'var(--surface)', color: 'var(--ink)', fontSize: 12.5, fontFamily: 'inherit', padding: '0 4px', marginLeft: 4 }}>
+            <option value="">Size</option>
+            {[10, 12, 14, 16, 18, 20, 24, 28, 32, 40].map(n => <option key={n} value={n}>{n}</option>)}
+          </select>)
       case 'para':     return (
           <select key={i} title="Text style" aria-label="Text style"
             value={editor.isActive('heading', { level: 1 }) ? 'h1' : editor.isActive('heading', { level: 2 }) ? 'h2' : editor.isActive('heading', { level: 3 }) ? 'h3' : 'p'}
@@ -544,6 +552,7 @@ export function RichEditor({
         HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' },
       }),
       TextStyle,
+      FontSize,
       Color,
       Highlight.configure({ multicolor: true }),
       TableKit.configure({ table: { resizable: true } }),
