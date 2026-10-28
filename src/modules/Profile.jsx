@@ -159,7 +159,7 @@ export default function Profile({ profileId }) {
         </Drawer>
       )}
       {openPanel === 'notes' && (
-        <Drawer title="My Notes" closeDelay={900} onClose={() => setPanel(null)}
+        <Drawer title="My Notes" width={1680} closeDelay={900} onClose={() => setPanel(null)}
           footer={<a href="/notes" className="btn btn-ghost" style={{ fontSize: 13, textDecoration: 'none' }}>Open My Notes</a>}>
           <NotesPanel />
         </Drawer>
