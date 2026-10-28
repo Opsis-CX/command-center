@@ -108,7 +108,7 @@ export default function Meetings() {
   const { user, isClientPortal } = useAuth()
   const [meetings, setMeetings] = useState(null)
   const [clients, setClients] = useState([])
-  const [selId, setSelId] = useState(null)
+  const [selId, setSelId] = useState(() => { try { return new URLSearchParams(window.location.search).get('meeting') } catch { return null } })   // ?meeting=<id> (Turri review alerts)
   const [detail, setDetail] = useState(null)      // { meeting, items }
   const [showNew, setShowNew] = useState(false)
   const [showBot, setShowBot] = useState(false)
@@ -425,8 +425,43 @@ function ShareCard({ meeting }) {
 // ---------- Meeting detail ----------
 function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted }) {
   const { meeting, items } = detail
+  const { isAdmin } = useAuth()
   const [showTranscript, setShowTranscript] = useState(false)
-  const pendingTasks = useMemo(() => items.filter(i => !i.task_id).length, [items])
+  // Turri auto-assign (2026-10-28): proposals per item, admin review, preview/live switch
+  const usesTurri = items.some(i => i.auto_status && i.auto_status !== 'manual')
+  const pendingTasks = useMemo(() => items.filter(i => !i.task_id && i.auto_status !== 'dismissed').length, [items])
+  const [look, setLook] = useState({ people: [], joined: [], clients: [], projects: [], mode: 'preview' })
+  useEffect(() => {
+    let alive = true
+    Promise.all([
+      supabase.rpc('meeting_eligible_people', { mid: meeting.id }),
+      supabase.from('profiles').select('id, full_name').eq('is_active', true).is('client_id', null).order('full_name'),
+      supabase.from('clients').select('id, name').order('name'),
+      supabase.from('projects').select('id, name').order('name'),
+      supabase.from('automation_settings').select('value').eq('key', 'meeting_autotasks_mode').maybeSingle(),
+    ]).then(([j, p, c, pr, m]) => { if (alive) setLook({ joined: j.data || [], people: p.data || [], clients: c.data || [], projects: pr.data || [], mode: m.data?.value || 'preview' }) })
+    return () => { alive = false }
+  }, [meeting.id])
+  const nameOf = (id) => look.people.find(p => p.id === id)?.full_name || look.joined.find(p => p.id === id)?.full_name || 'someone'
+  const clientOf = (id) => look.clients.find(c => c.id === id)?.name
+  const projectOf = (id) => look.projects.find(c => c.id === id)?.name
+  async function setMode(mode) {
+    const { error } = await supabase.from('automation_settings').update({ value: mode, updated_at: new Date().toISOString() }).eq('key', 'meeting_autotasks_mode')
+    if (error) return onError(error.message)
+    setLook(l => ({ ...l, mode }))
+  }
+  async function reviewAssign(item, f) {
+    onError('')
+    if (!f.owner || !f.client || !f.project || !f.due) return onError('Pick a person, client, project and due date first.')
+    const { error } = await supabase.rpc('meeting_review_assign', { p_item: item.id, p_owner: f.owner, p_client: f.client, p_project: f.project, p_due: f.due, p_text: f.text })
+    if (error) return onError(error.message)
+    await onRefresh()
+  }
+  async function reviewDismiss(item) {
+    const { error } = await supabase.rpc('meeting_review_dismiss', { p_item: item.id })
+    if (error) return onError(error.message)
+    await onRefresh()
+  }
 
   async function reprocess() {
     onError(''); setBusy('processing')
@@ -540,27 +575,35 @@ function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted })
       )}
 
       <div className="card" style={{ padding: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
           <div style={{ fontWeight: 700 }}>Action items {items.length ? `(${items.length})` : ''}</div>
-          {pendingTasks > 0 && (
-            <button className="btn btn-primary" onClick={createTasks} disabled={working}>
-              {busy === 'tasks' ? 'Creating…' : `Create ${pendingTasks} task${pendingTasks === 1 ? '' : 's'}`}
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {isAdmin && (
+              <div title="Turri auto-assign: Preview shows what Turri would do without creating anything. Live creates the tasks." style={{ display: 'inline-flex', border: '1px solid var(--line)', borderRadius: 999, padding: 2, fontSize: 12 }}>
+                <span style={{ padding: '3px 8px', color: 'var(--ink-soft)' }}>🪼 Turri</span>
+                {['preview', 'live'].map(k => (
+                  <button key={k} onClick={() => setMode(k)} style={{ border: 0, borderRadius: 999, padding: '3px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+                    background: look.mode === k ? (k === 'live' ? '#059669' : 'var(--accent)') : 'transparent', color: look.mode === k ? '#fff' : 'var(--ink-soft)' }}>{k === 'live' ? 'Live' : 'Preview'}</button>
+                ))}
+              </div>
+            )}
+            {!usesTurri && pendingTasks > 0 && (
+              <button className="btn btn-primary" onClick={createTasks} disabled={working}>
+                {busy === 'tasks' ? 'Creating…' : `Create ${pendingTasks} task${pendingTasks === 1 ? '' : 's'}`}
+              </button>
+            )}
+          </div>
         </div>
+        {usesTurri && look.mode === 'preview' && (
+          <div style={{ fontSize: 12.5, background: 'var(--accent-bg)', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+            🪼 <b>Preview mode:</b> Turri shows who it <i>would</i> assign — nothing is created until an admin switches to Live (or assigns an item below).
+          </div>
+        )}
+        {usesTurri && <div className="page-sub" style={{ fontSize: 12, marginBottom: 6 }}>Turri only assigns people who joined: {look.joined.map(p => p.full_name).join(', ') || '—'}</div>}
         {items.length === 0 && <div className="page-sub">No action items{meeting.status === 'done' ? ' were found in this meeting.' : ' yet.'}</div>}
         {items.map(item => (
-          <div key={item.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0', borderTop: '1px solid var(--line)' }}>
-            <input type="checkbox" checked={!!item.done} onChange={() => toggleDone(item)} style={{ marginTop: 3 }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ textDecoration: item.done ? 'line-through' : 'none' }}>{item.text}</div>
-              <div className="page-sub" style={{ fontSize: 12, marginTop: 2 }}>
-                {item.owner_name ? `Owner: ${item.owner_name}` : 'Owner: unassigned'}
-                {item.due_date ? ` · Due ${fmtDate(item.due_date)}` : ''}
-                {item.task_id ? ' · ✓ Task created' : ''}
-              </div>
-            </div>
-          </div>
+          <ActionItemRow key={item.id} item={item} isAdmin={isAdmin} look={look} nameOf={nameOf} clientOf={clientOf} projectOf={projectOf}
+            onToggle={() => toggleDone(item)} onAssign={(f) => reviewAssign(item, f)} onDismiss={() => reviewDismiss(item)} />
         ))}
       </div>
 
@@ -574,6 +617,73 @@ function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted })
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+
+// One action item: what Turri did / proposes, plus admin review controls when it needs a person.
+function ActionItemRow({ item, isAdmin, look, nameOf, clientOf, projectOf, onToggle, onAssign, onDismiss }) {
+  const st = item.auto_status || 'manual'
+  const open = !item.task_id && (st === 'needs_review' || st === 'proposed')
+  const [f, setF] = useState({ owner: item.proposed_owner_id || '', client: item.client_id || '', project: item.project_id || '', due: item.due_date || '', text: item.text })
+  const [editing, setEditing] = useState(false)
+  const chip = (bg, fg, txt) => <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: bg, color: fg }}>{txt}</span>
+  const sel = { padding: '5px 7px', border: '1px solid var(--line)', borderRadius: 7, fontFamily: 'inherit', fontSize: 12.5, background: 'var(--surface)', color: 'var(--ink)', minWidth: 0 }
+  const joinedIds = new Set(look.joined.map(p => p.id))
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0', borderTop: '1px solid var(--line)', opacity: st === 'dismissed' ? .55 : 1 }}>
+      <input type="checkbox" checked={!!item.done} onChange={onToggle} style={{ marginTop: 3 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ textDecoration: item.done || st === 'dismissed' ? 'line-through' : 'none' }}>{item.text}</span>
+          {st === 'assigned' && chip('#ECFDF5', '#047857', '✓ Task created')}
+          {st === 'proposed' && !item.task_id && chip('var(--accent-bg)', 'var(--accent)', '🪼 Turri would assign')}
+          {st === 'needs_review' && !item.task_id && chip('#FEF3C7', '#B45309', '⚠ Needs review')}
+          {st === 'dismissed' && chip('var(--canvas)', 'var(--ink-soft)', 'Dismissed')}
+        </div>
+        <div className="page-sub" style={{ fontSize: 12, marginTop: 2 }}>
+          {st === 'manual'
+            ? <>{item.owner_name ? `Owner: ${item.owner_name}` : 'Owner: unassigned'}{item.due_date ? ` · Due ${fmtDate(item.due_date)}` : ''}{item.task_id ? ' · ✓ Task created' : ''}</>
+            : <>
+                {(item.task_id ? item.owner_id : item.proposed_owner_id) ? `👤 ${nameOf(item.task_id ? item.owner_id : item.proposed_owner_id)}` : '👤 —'}
+                {item.client_id ? ` · 🏢 ${clientOf(item.client_id) || 'client'}` : ' · 🏢 —'}
+                {item.project_id ? ` · 📁 ${projectOf(item.project_id) || 'project'}` : ' · 📁 —'}
+                {item.due_date ? ` · 📅 ${fmtDate(item.due_date)}` : ' · 📅 —'}
+                {item.task_id && <a href={`/projects?task=${item.task_id}`} style={{ marginLeft: 6 }}>Open task ↗</a>}
+                {st === 'needs_review' && item.review_reason && <span style={{ color: '#B45309' }}> · {item.review_reason}</span>}
+              </>}
+        </div>
+        {isAdmin && open && (editing ? (
+          <div style={{ marginTop: 8, padding: 10, border: '1px solid var(--line)', borderRadius: 10, display: 'grid', gap: 8 }}>
+            <input value={f.text} onChange={e => setF({ ...f, text: e.target.value })} style={{ ...sel, fontSize: 13 }} aria-label="Task title" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+              <select value={f.owner} onChange={e => setF({ ...f, owner: e.target.value })} style={sel} aria-label="Assign to">
+                <option value="">Assign to…</option>
+                <optgroup label="Joined the meeting">{look.joined.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}</optgroup>
+                <optgroup label="Others (won’t see the meeting)">{look.people.filter(p => !joinedIds.has(p.id)).map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}</optgroup>
+              </select>
+              <select value={f.client} onChange={e => setF({ ...f, client: e.target.value })} style={sel} aria-label="Client">
+                <option value="">Client…</option>{look.clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select value={f.project} onChange={e => setF({ ...f, project: e.target.value })} style={sel} aria-label="Project">
+                <option value="">Project…</option>{look.projects.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <input type="date" value={f.due} onChange={e => setF({ ...f, due: e.target.value })} style={sel} aria-label="Due date" />
+            </div>
+            {f.owner && !joinedIds.has(f.owner) && <div style={{ fontSize: 12, color: '#B45309' }}>⚠ This person didn’t join the meeting. They’ll get the task but <b>can’t</b> open the meeting.</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={() => onAssign(f)}>Create & assign task</button>
+              <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setEditing(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => setEditing(true)}>{st === 'proposed' ? 'Review / assign now' : 'Review & assign'}</button>
+            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 10px', color: 'var(--ink-soft)' }} onClick={onDismiss}>Dismiss</button>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
