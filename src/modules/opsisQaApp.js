@@ -1373,7 +1373,7 @@ export function mountOpsisQA(ROOT, cfg) {
       (d.by_why || []).map(function (x) { var c = x.kind === 'controllable' ? '#C2562A' : '#9AA19D';
         return '<button class="click" data-ffk="misswhy" data-ffv="' + esc(x.why) + '" title="Hear these calls" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;margin-top:12px"><div style="display:flex;justify-content:space-between;gap:8px;font-size:13px"><span><b style="font-weight:600">' + esc(x.why) + '</b> <span class="pill" style="font-size:11px;background:' + (x.kind === 'controllable' ? '#FBEDE6;color:#A8441A' : '#EEEBE4;color:#56605B') + '">' + (x.kind === 'controllable' ? 'Controllable miss' : 'Not controllable') + '</span></span><span class="num">' + n0(x.n) + (+x.value ? ' · ' + usd(x.value) : '') + ' <span class="mut">›</span></span></div>' +
           '<div style="height:8px;background:#F3F1EC;border-radius:6px;margin-top:6px;overflow:hidden"><div style="height:100%;width:' + (100 * x.n / whyMax).toFixed(1) + '%;background:' + c + '"></div></div></button>'; }).join('') +
-      '<p class="mut" style="font-size:12px;margin-top:14px">Dollar values use your invoice average once 10+ invoices match a brand and job type; until then the estimate below.</p></div>';
+      '<p class="mut" style="font-size:12px;margin-top:14px">Dollar values use each brand’s Acumatica average ticket for the call’s type (see Average Ticket by Brand below).</p></div>';
     var seg = (d.by_segment || []);
     var segCard = '<div class="oq-card" style="flex:1 1 260px"><h2 class="ttl">Residential vs Commercial</h2><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th></th><th>Decided</th><th>Booked</th><th>Rate</th><th>Controllable</th></tr></thead><tbody>' +
       seg.map(function (s) { return '<tr><td><b style="font-weight:600">' + esc(s.segment) + '</b></td><td class="num">' + n0(s.decided) + '</td><td class="num">' + n0(s.booked) + '</td><td class="num">' + pc(s.rate) + '</td><td class="num">' + n0(s.ctrl_n) + '</td></tr>'; }).join('') + '</tbody></table></div>';
@@ -1398,8 +1398,8 @@ export function mountOpsisQA(ROOT, cfg) {
           '<div style="height:6px;background:#F3F1EC;border-radius:6px;margin-top:6px;overflow:hidden"><div style="height:100%;width:' + (100 * b.n / bmax).toFixed(1) + '%;background:#9AA19D"></div></div></button>' +
           (on ? '<div style="display:flex;gap:6px;flex-wrap:wrap;padding:4px 0 10px">' + (b.examples || []).map(function (id, k) { return '<button class="sel" data-call="' + id + '" style="padding:5px 10px;font-size:12px">Example call ' + (k + 1) + '</button>'; }).join('') + '</div>' : ''); }).join('') + '</div>';
     w.innerHTML = tiles + '<div class="row" style="align-items:flex-start;margin-top:16px">' + why + '<div style="flex:1 1 260px;display:flex;flex-direction:column;gap:16px;min-width:0">' + segCard.replace('class="oq-card" style="flex:1 1 260px"', 'class="oq-card"') + svcCard + '</div></div>' +
-      '<div class="row" style="align-items:flex-start;margin-top:16px">' + top + brands + '</div>' +
-      '<div class="row" style="align-items:flex-start;margin-top:16px">' + jobs + exc + '</div>' +
+      '<div class="row" style="align-items:flex-start;margin-top:16px">' + top + '<div style="flex:1 1 460px;display:flex;flex-direction:column;gap:16px;min-width:0">' + brands.replace('class="oq-card" style="flex:1 1 460px"', 'class="oq-card"') + jobs.replace('class="oq-card" style="flex:1 1 460px"', 'class="oq-card"') + '</div></div>' +
+      '<div class="row" style="align-items:flex-start;margin-top:16px">' + exc + '</div>' +
       '<div class="row" style="align-items:flex-start;margin-top:16px">' + ((d.group_values || []).length ? gvCard(d) : jvCard()) + '</div>';
   }
   // Average ticket by brand (2026-10-28): Acumatica won opportunities, brand x residential/commercial x service/sales + warranty.
