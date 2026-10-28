@@ -117,7 +117,6 @@ const COLORS = {
 // Personal colors (🎨 Colors, saved on profiles.calendar_colors) — 2026-10-27, Brittney.
 // Kinds a person can recolor, with the built-in defaults.
 const CAL_COLOR_KINDS = [
-  ['interval', 'My intervals (shifts)', '#16A34A'],
   ['event', 'My events', '#0077B6'],
   ['team', 'Team events', '#7C3AED'],
   ['coaching', 'Coaching sessions', '#DB2777'],
@@ -266,7 +265,10 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
   const [timeEntries, setTimeEntries] = useState([])
   const [sharedWithMe, setSharedWithMe] = useState([])   // shares where I'm the viewer
   const [mySharedOut, setMySharedOut] = useState([])     // shares I've granted
-  const [hiddenShares, setHiddenShares] = useState({})   // ownerId -> true (toggled off in my view)
+  // Shared calendars start hidden; you pick whose to view (search box above the calendar).
+  const [hiddenShares, setHiddenShares] = useState({})   // ownerId -> true while NOT being viewed (kept for the Shares modal)
+  const [viewShares, setViewShares] = useState({})       // ownerId -> true while being viewed
+  const [shareQ, setShareQ] = useState('')
   const [showShares, setShowShares] = useState(false)
   const [viewerTZ, setViewerTZ] = useState(COMPANY_TZ)
   const load = useCallback(async () => {
@@ -415,7 +417,7 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
     // Shared calendars: other people's manual events + intervals + Google events,
     // when they've shared with me and I haven't toggled them off.
     const shareByOwner = {}; sharedWithMe.forEach(s => { shareByOwner[s.owner_id] = s })
-    const activeShareOwners = new Set(sharedWithMe.filter(s => !hiddenShares[s.owner_id]).map(s => s.owner_id))
+    const activeShareOwners = new Set(sharedWithMe.filter(s => viewShares[s.owner_id]).map(s => s.owner_id))
     const nameOf = (pid) => (profiles.find(p => p.id === pid) || {}).full_name || 'Someone'
     const sharedEvs = events
       .filter(e => e.event_date === ds && e.owner_id && activeShareOwners.has(e.owner_id) && e.owner_id !== userId)
@@ -474,8 +476,10 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
         .map(p => { const n = y - +p.start_date.slice(0, 4); return { kind: 'anniversary', id: 'an-' + p.profile_id, title: `🎉 ${p.full_name} · ${n} year${n === 1 ? '' : 's'} at Opsis`, allDay: true, color: calColors.anniversary || '#D97706' } })
       return [...bdays, ...annis, ...evs.filter(e => e.scope === 'team')].sort(order)
     }
-    return [...evs, ...ivs, ...feeds, ...gcal, ...sharedEvs, ...sharedGcal, ...sharedIvs, ...coachIvs].sort(order)
-  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn, events, claims, coaching, sharedWithMe, hiddenShares, profiles, userId, viewerTZ, calColors, calMode, teamPeople])
+    // Intervals (shifts) are kept off the calendar (2026-10-27) — they live in Schedule and My Week.
+    void ivs; void sharedIvs
+    return [...evs, ...feeds, ...gcal, ...sharedEvs, ...sharedGcal, ...coachIvs].sort(order)
+  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn, events, claims, coaching, sharedWithMe, viewShares, profiles, userId, viewerTZ, calColors, calMode, teamPeople])
   const tasksOn = useCallback((ds) => {
     const due = myTasks.filter(t => t.due_date === ds)
     return {
@@ -506,6 +510,40 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
         <button className="btn btn-ghost" onClick={() => setShowShares(true)} style={{ fontSize: 13 }}>👥 Shared calendars</button>
         <button className="btn btn-ghost" onClick={() => setShowSubs(true)} style={{ fontSize: 13 }}>⚙ Connected calendars</button>
       </div>
+      {calMode === 'mine' && (() => {
+        const nm = (pid) => (profiles.find(p => p.id === pid) || {}).full_name || 'Someone'
+        const viewing = sharedWithMe.filter(s => viewShares[s.owner_id])
+        const t = shareQ.trim().toLowerCase()
+        const hits = t ? sharedWithMe.filter(s => !viewShares[s.owner_id] && nm(s.owner_id).toLowerCase().includes(t)).slice(0, 8) : []
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            <div style={{ position: 'relative' }}>
+              <input value={shareQ} onChange={e => setShareQ(e.target.value)} aria-label="Search people's calendars"
+                placeholder={sharedWithMe.length ? "🔍 Search people's calendars…" : '🔍 No calendars shared with you yet'} disabled={!sharedWithMe.length}
+                style={{ width: 280, padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 10, fontFamily: 'inherit', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)' }} />
+              {t && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, width: 280, zIndex: 40, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10, boxShadow: '0 12px 30px rgba(0,0,0,.14)', padding: 4 }}>
+                  {hits.length ? hits.map(s => (
+                    <button key={s.owner_id} onClick={() => { setViewShares(v => ({ ...v, [s.owner_id]: true })); setShareQ('') }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', border: 0, background: 'transparent', padding: '7px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: 'var(--ink)' }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color || '#0891B2' }} />{nm(s.owner_id)}
+                    </button>
+                  )) : <div className="page-sub" style={{ fontSize: 12.5, padding: '7px 10px' }}>No match. Only people who’ve shared their calendar with you show up here.</div>}
+                </div>
+              )}
+            </div>
+            {viewing.map(s => (
+              <span key={s.owner_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 6px 4px 10px', borderRadius: 999, fontSize: 12.5, fontWeight: 600,
+                background: `color-mix(in srgb, ${s.color || '#0891B2'} 14%, var(--surface))`, border: `1px solid ${s.color || '#0891B2'}` }}>
+                <span style={{ width: 9, height: 9, borderRadius: 3, background: s.color || '#0891B2' }} />{nm(s.owner_id)}
+                <button onClick={() => setViewShares(v => { const n = { ...v }; delete n[s.owner_id]; return n })} aria-label={`Stop viewing ${nm(s.owner_id)}`}
+                  style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 12, padding: '0 4px' }}>✕</button>
+              </span>
+            ))}
+            {viewing.length > 1 && <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => setViewShares({})}>Clear all</button>}
+          </div>
+        )
+      })()}
       <BookFrame view={view} setView={setView}>
         {view === 'month' && <MonthView {...shared} />}
         {view === 'week' && <WeekView {...shared} />}
@@ -513,7 +551,8 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
       </BookFrame>
       {showShares && (
         <SharesModal userId={userId} profiles={profiles} invitable={invitable} sharedWithMe={sharedWithMe} mySharedOut={mySharedOut}
-          hiddenShares={hiddenShares} setHiddenShares={setHiddenShares}
+          hiddenShares={Object.fromEntries(sharedWithMe.map(s => [s.owner_id, !viewShares[s.owner_id]]))}
+          setHiddenShares={(fn) => { const cur = Object.fromEntries(sharedWithMe.map(s => [s.owner_id, !viewShares[s.owner_id]])); const next = typeof fn === 'function' ? fn(cur) : fn; setViewShares(Object.fromEntries(Object.entries(next).filter(([, hid]) => !hid).map(([k]) => [k, true]))) }}
           onClose={() => setShowShares(false)} onChanged={() => load()} />
       )}
       {showColors && <CalendarColors value={calColors} onChange={saveCalColors} onClose={() => setShowColors(false)} />}
