@@ -52,17 +52,20 @@ const BUILT_IN_TEMPLATES = [
 const NP_CSS = `
 .np { container-type: inline-size; }
 .np-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
-.np-grid { display: grid; grid-template-columns: 230px 270px minmax(0, 1fr); grid-template-areas: "nav list editor" "tpl list editor"; gap: 14px; align-items: start; }
-.np-a-nav { grid-area: nav; } .np-a-tpl { grid-area: tpl; } .np-list { grid-area: list; } .np-editor { grid-area: editor; }
-/* narrower (e.g. the panel on My Profile): sidebar + note list on the left, the note beside them */
-@container (max-width: 1180px) { .np-grid { grid-template-columns: 250px minmax(0, 1fr); grid-template-areas: "nav editor" "list editor" "tpl editor"; } .np-list { max-height: 340px !important; } }
-@container (max-width: 700px) { .np-grid { grid-template-columns: 1fr; grid-template-areas: "nav" "list" "editor" "tpl"; } }
+.np-grid { display: grid; grid-template-columns: 290px minmax(0, 1fr); grid-template-areas: "nav editor"; gap: 14px; align-items: start; }
+.np-a-nav { grid-area: nav; } .np-editor { grid-area: editor; }
+@container (max-width: 760px) { .np-grid { grid-template-columns: 1fr; grid-template-areas: "nav" "editor"; } }
 .np-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
 .np-nav { padding: 10px; display: flex; flex-direction: column; gap: 2px; }
 .np-nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 9px; border: 0; background: transparent; cursor: pointer; font: inherit; font-size: 13.5px; color: var(--ink); text-align: left; width: 100%; }
 .np-nav-item:hover { background: var(--canvas); }
 .np-nav-item.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
-.np-nav-item .ct { margin-left: auto; font-size: 12px; color: var(--ink-soft); }
+.np-nav-item .ic { width: 18px; flex: none; display: inline-grid; place-items: center; }
+.np-nav-item .lb { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-nav-item .ct { flex: none; min-width: 20px; text-align: right; font-size: 12px; color: var(--ink-soft); }
+.np-nav-item .cv { flex: none; width: 12px; text-align: center; font-size: 10px; color: var(--ink-soft); }
+.np-sub { margin: 2px 0 6px 14px; padding-left: 8px; border-left: 2px solid var(--line); max-height: 300px; overflow-y: auto; }
+.np-sub .np-row { padding: 6px 8px; }
 .np-sec { display: flex; align-items: center; justify-content: space-between; padding: 12px 10px 4px; font-size: 13px; font-weight: 700; }
 .np-plus { border: 0; background: transparent; cursor: pointer; font-size: 18px; line-height: 1; color: var(--ink-soft); padding: 2px 6px; border-radius: 6px; }
 .np-plus:hover { background: var(--canvas); color: var(--ink); }
@@ -163,14 +166,16 @@ export default function Notes() {
   const [teams, setTeams] = useState([])
   const [projects, setProjects] = useState([])
   const [clients, setClients] = useState([])
-  const [view, setView] = useState('all')
   const [selId, setSelId] = useState(null)
   const [q, setQ] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
-  const [newOpen, setNewOpen, newRef] = usePop()
   const [colorFor, setColorFor] = usePop()     // folder id whose color picker is open
+  // My Notes opens to a fresh, UNSAVED note. It's only written to the database when you
+  // click "Save note", so no more piles of empty notes. Saved notes autosave as before.
+  const [draft, setDraft] = useState(null)
+  const [openSec, setOpenSec] = useState('all')   // which sidebar dropdown is open
 
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3500) }
 
@@ -192,7 +197,10 @@ export default function Notes() {
   }, [me])
   useEffect(() => { load() }, [load])
   // ?note=<id> (from "Copy link")
-  useEffect(() => { const id = new URLSearchParams(window.location.search).get('note'); if (id) setSelId(id) }, [])
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('note')
+    if (id) setSelId(id); else setDraft(makeDraft(BUILT_IN_TEMPLATES[1]))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const nameOf = useMemo(() => Object.fromEntries(people.map(p => [p.id, p.full_name])), [people])
   const live = notes.filter(n => !n.deleted_at)
@@ -203,15 +211,6 @@ export default function Notes() {
   const recent = live.filter(n => new Date(n.updated_at).getTime() >= weekAgo)
   const counts = { all: live.length, pinned: mine.filter(n => n.pinned).length, shared: sharedWithMe.length, recent: recent.length, deleted: deleted.length }
 
-  const list = useMemo(() => {
-    const t = q.trim().toLowerCase()
-    let base = view === 'all' ? live : view === 'pinned' ? mine.filter(n => n.pinned) : view === 'shared' ? sharedWithMe
-      : view === 'recent' ? recent : view === 'deleted' ? deleted
-      : view.startsWith('folder:') ? mine.filter(n => n.folder_id === view.slice(7)) : live
-    if (t) base = (view === 'deleted' ? deleted : live).filter(n => (n.title || '').toLowerCase().includes(t)
-      || htmlToText(n.body || '').toLowerCase().includes(t) || (n.tags || []).some(g => g.toLowerCase().includes(t)))
-    return [...base].sort((a, b) => (b.pinned && b.owner_id === me) - (a.pinned && a.owner_id === me) || String(b.updated_at).localeCompare(String(a.updated_at)))
-  }, [notes, view, q, me]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selected = notes.find(n => n.id === selId) || null
 
@@ -223,48 +222,63 @@ export default function Notes() {
     if (error) flash('Couldn’t save: ' + error.message)
   }, [])
 
-  async function createNote(tpl) {
-    setNewOpen(null)
-    const t = tpl || BUILT_IN_TEMPLATES[1]
-    const rowTasks = Array.isArray(t.meeting_tasks) && t.meeting_tasks.length
+  function makeDraft(t) {
+    const tasks = Array.isArray(t.meeting_tasks) && t.meeting_tasks.length
       ? t.meeting_tasks.map(x => ({ ...x, key: newKey(), task_id: undefined })) : blankTasks(t.tasks || 0)
-    const row = {
-      owner_id: me, title: '', body: t.body || null, layout: t.layout || 'single', page_style: t.page_style || {},
-      meeting_tasks: (t.layout === 'two_col' && !rowTasks.length) ? blankTasks(1) : rowTasks,
-      template_name: t.id === 'blank' ? null : t.name,
-      ...(t.meeting ? { meeting_date: todayISO() } : {}),
-      ...(view.startsWith('folder:') ? { folder_id: view.slice(7) } : {}),
+    return {
+      key: newKey(), isDraft: true, owner_id: me, title: '', body: t.body || '', layout: t.layout || 'single', page_style: t.page_style || {},
+      meeting_tasks: (t.layout === 'two_col' && !tasks.length) ? blankTasks(1) : tasks,
+      template_name: t.id === 'blank' ? null : t.name, meeting_date: t.meeting ? todayISO() : null,
+      folder_id: openSec.startsWith('folder:') ? openSec.slice(7) : null,
+      attendees: [], tags: [], shared_with: [], shared_editors: [], shared_tags: [], pinned: false,
     }
+  }
+  const draftHasContent = (d) => !!d && (!!(d.title || '').trim() || !!htmlToText(d.body || '').trim() && (d.body || '') !== (BUILT_IN_TEMPLATES.find(t => t.name === d.template_name)?.body || '')
+    || (d.meeting_tasks || []).some(t => (t.title || '').trim()))
+  function okToLeaveDraft() {
+    return !draftHasContent(draft) || window.confirm('This new note hasn’t been saved. Discard it?')
+  }
+  function newDraft(t = BUILT_IN_TEMPLATES[1]) {
+    if (!selId && !okToLeaveDraft()) return
+    setSelId(null); setDraft(makeDraft(t))
+  }
+  function openNote(id) {
+    if (!selId && draft && !okToLeaveDraft()) return
+    setDraft(null); setSelId(id)
+  }
+  async function saveDraft(fields) {
+    const row = { ...draft, ...fields }
+    delete row.key; delete row.isDraft
+    if (!draftHasContent(row)) return flash('Add a title or some text first.')
     const { data, error } = await supabase.from('notes').insert(row).select().single()
-    if (error) return flash(error.message)
-    setNotes(prev => [data, ...prev]); setSelId(data.id)
-    if (view === 'deleted' || view === 'shared') setView('all')
+    if (error) return flash('Couldn’t save: ' + error.message)
+    setNotes(prev => [data, ...prev]); setDraft(null); setSelId(data.id); flash('Note saved ✓')
   }
   async function duplicate(n) {
     const { id, created_at, updated_at, deleted_at, shared_with, shared_editors, shared_tags, owner_id, ...rest } = n
     const { data, error } = await supabase.from('notes').insert({ ...rest, owner_id: me, title: (n.title || 'Untitled') + ' (copy)', pinned: false,
       meeting_tasks: (n.meeting_tasks || []).map(t => ({ ...t, key: newKey(), task_id: undefined })) }).select().single()
     if (error) return flash(error.message)
-    setNotes(prev => [data, ...prev]); setSelId(data.id); flash('Duplicated')
+    setDraft(null); setNotes(prev => [data, ...prev]); setSelId(data.id); flash('Duplicated')
   }
   async function trash(n) {
     if (!window.confirm('Move this note to Recently Deleted? You can restore it for 30 days.')) return
     await patch(n.id, { deleted_at: new Date().toISOString(), pinned: false })
-    setSelId(null)
+    setSelId(null); setDraft(makeDraft(BUILT_IN_TEMPLATES[1]))
   }
-  async function restore(n) { await patch(n.id, { deleted_at: null }); flash('Restored'); setView('all'); setSelId(n.id) }
+  async function restore(n) { await patch(n.id, { deleted_at: null }); flash('Restored'); setOpenSec('all'); setSelId(n.id) }
   async function forever(n) {
     if (!window.confirm('Delete this note for good? This can’t be undone.')) return
     const { error } = await supabase.from('notes').delete().eq('id', n.id)
     if (error) return flash(error.message)
-    setNotes(prev => prev.filter(x => x.id !== n.id)); setSelId(null)
+    setNotes(prev => prev.filter(x => x.id !== n.id)); setSelId(null); setDraft(makeDraft(BUILT_IN_TEMPLATES[1]))
   }
   async function addFolder() {
     const name = window.prompt('New folder name')
     if (!name?.trim()) return
     const { data, error } = await supabase.from('note_folders').insert({ owner_id: me, name: name.trim(), color: FOLDER_COLORS[folders.length % FOLDER_COLORS.length] }).select().single()
     if (error) return flash(error.message)
-    setFolders(f => [...f, data]); setView('folder:' + data.id)
+    setFolders(f => [...f, data]); setOpenSec('folder:' + data.id)
   }
   async function renameFolder(f) {
     const name = window.prompt('Rename folder', f.name)
@@ -282,7 +296,7 @@ export default function Notes() {
     await supabase.from('notes').update({ folder_id: null }).eq('folder_id', f.id).eq('owner_id', me)
     await supabase.from('note_folders').delete().eq('id', f.id)
     setNotes(ns => ns.map(n => n.folder_id === f.id ? { ...n, folder_id: null } : n))
-    setFolders(fs => fs.filter(x => x.id !== f.id)); setView('all')
+    setFolders(fs => fs.filter(x => x.id !== f.id)); setOpenSec('all')
   }
   async function saveAsTemplate(n) {
     const name = window.prompt('Template name', n?.title || 'My template')
@@ -304,11 +318,50 @@ export default function Notes() {
   if (loading) return <div className="page"><p className="page-sub">Loading your notes…</p></div>
 
   const allTemplates = [...BUILT_IN_TEMPLATES, ...myTemplates.map(t => ({ ...t, mine: true }))]
-  const navItem = (key, icon, label, ct) => (
-    <button className={'np-nav-item' + (view === key ? ' on' : '')} onClick={() => { setView(key); setQ('') }}>
-      <span style={{ width: 18, textAlign: 'center' }}>{icon}</span>{label}<span className="ct">{ct}</span>
-    </button>
+  const sectionNotes = (key) => {
+    const base = key === 'all' ? live : key === 'pinned' ? mine.filter(n => n.pinned) : key === 'shared' ? sharedWithMe
+      : key === 'recent' ? recent : key === 'deleted' ? deleted : key.startsWith('folder:') ? mine.filter(n => n.folder_id === key.slice(7)) : []
+    return [...base].sort((a, b) => (b.pinned && b.owner_id === me) - (a.pinned && a.owner_id === me) || String(b.updated_at).localeCompare(String(a.updated_at)))
+  }
+  const searchHits = q.trim() ? (() => {
+    const t = q.trim().toLowerCase()
+    return live.filter(n => (n.title || '').toLowerCase().includes(t) || htmlToText(n.body || '').toLowerCase().includes(t) || (n.tags || []).some(g => g.toLowerCase().includes(t)))
+  })() : null
+  const noteLine = (n) => (
+    <div key={n.id} className={'np-row' + (selId === n.id ? ' on' : '')} onClick={() => openNote(n.id)} role="button" tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter') openNote(n.id) }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {n.pinned && n.owner_id === me && <span style={{ fontSize: 10.5 }}>📌</span>}
+        <span style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title?.trim() || 'Untitled'}</span>
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {n.owner_id !== me ? `From ${(nameOf[n.owner_id] || 'teammate').split(' ')[0]} · ` : ''}{new Date(n.deleted_at || n.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {htmlToText(n.body || '').slice(0, 50) || 'Empty'}
+      </div>
+    </div>
   )
+  // one sidebar row = a dropdown with its notes underneath
+  const section = (key, icon, label, list, extra) => {
+    const open = openSec === key
+    return (
+      <div key={key}>
+        <div className={'np-nav-item' + (open ? ' on' : '')} role="button" tabIndex={0} aria-expanded={open}
+          onClick={() => setOpenSec(open ? '' : key)} onKeyDown={(e) => { if (e.key === 'Enter') setOpenSec(open ? '' : key) }}>
+          <span className="ic">{icon}</span>
+          <span className="lb">{label}</span>
+          <span className="ct">{list.length}</span>
+          <span className="cv" aria-hidden="true">{open ? '▾' : '▸'}</span>
+        </div>
+        {open && (
+          <div className="np-sub">
+            {list.length === 0 ? <div className="page-sub" style={{ fontSize: 12, padding: '6px 10px' }}>{key === 'deleted' ? 'Nothing deleted.' : 'No notes here yet.'}</div> : list.map(noteLine)}
+            {key === 'deleted' && list.length > 0 && <div className="page-sub" style={{ fontSize: 11, padding: '4px 10px' }}>Removed for good after 30 days.</div>}
+            {extra}
+          </div>
+        )}
+      </div>
+    )
+  }
+  const current = selId ? notes.find(n => n.id === selId) : draft
 
   return (
     <div className="page np" style={{ maxWidth: 1500 }}>
@@ -320,132 +373,92 @@ export default function Notes() {
         </div>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Search notes…" aria-label="Search notes"
           style={{ width: 'min(280px, 100%)', padding: '9px 12px', border: '1px solid var(--line)', borderRadius: 10, fontFamily: 'inherit', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)' }} />
-        <div ref={newRef} style={{ position: 'relative', display: 'flex' }}>
-          <button className="btn btn-primary" onClick={() => createNote(BUILT_IN_TEMPLATES[1])} style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}>＋ New note</button>
-          <button data-poptrigger className="btn btn-primary" onClick={() => setNewOpen(o => o ? null : 'menu')} aria-label="New note from a template" style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: '1px solid rgba(255,255,255,.35)', padding: '0 10px' }}>▾</button>
-          {newOpen && (
-            <div className="np-pop np-menu" style={{ right: 0, top: 'calc(100% + 6px)', width: 260, padding: 6 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-soft)', padding: '4px 10px' }}>START FROM A TEMPLATE</div>
-              {allTemplates.map(t => <button key={t.id} onClick={() => createNote(t)}>{t.icon || '⭐'} {t.name}</button>)}
-            </div>
-          )}
-        </div>
+        <button className="btn btn-primary" onClick={() => newDraft()}>＋ New note</button>
       </div>
       {msg && <div className="card" style={{ marginBottom: 10, padding: '8px 12px', fontSize: 13 }}>{msg}</div>}
 
       <div className="np-grid">
-        {/* ---------- navigation ---------- */}
-          <div className="np-card np-nav np-a-nav">
-            {navItem('all', '📚', 'All Notes', counts.all)}
-            {navItem('pinned', '📌', 'Pinned', counts.pinned)}
-            {navItem('shared', '👥', 'Shared with Me', counts.shared)}
-            {navItem('recent', '🕒', 'Recently Edited', counts.recent)}
-            {navItem('deleted', '🗑️', 'Recently Deleted', counts.deleted)}
-            <div className="np-sec">Folders<button className="np-plus" onClick={addFolder} title="New folder" aria-label="New folder">＋</button></div>
-            {folders.length === 0 && <div className="page-sub" style={{ fontSize: 12, padding: '2px 10px 6px' }}>No folders yet.</div>}
-            {folders.map(f => (
-              <div key={f.id} style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
-                <button data-poptrigger type="button" title="Change folder color" aria-label={`Change color of ${f.name}`}
-                  onClick={() => setColorFor(colorFor === f.id ? null : f.id)}
-                  style={{ border: 0, background: 'transparent', cursor: 'pointer', padding: '4px 2px 4px 8px', display: 'grid', placeItems: 'center' }}>
-                  <span style={{ display: 'inline-block', width: 14, height: 12, borderRadius: 3, background: f.color || '#F59E0B', boxShadow: colorFor === f.id ? '0 0 0 2px var(--surface), 0 0 0 4px var(--accent)' : 'none' }} />
-                </button>
-                {colorFor === f.id && (
-                  <div className="np-pop" style={{ left: 0, top: 'calc(100% + 4px)', width: 214, padding: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-                      <b style={{ flex: 1, fontSize: 13 }}>Folder color</b>
-                      <button className="np-plus" style={{ fontSize: 13 }} onClick={() => setColorFor(null)} aria-label="Close">✕</button>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
-                      {FOLDER_SWATCHES.map(c => (
-                        <button key={c} title={c} aria-label={`Color ${c}`} onClick={() => { setFolderColor(f, c); setColorFor(null) }}
-                          style={{ width: 22, height: 22, borderRadius: '50%', background: c, cursor: 'pointer', padding: 0,
-                            border: (f.color || '').toLowerCase() === c.toLowerCase() ? '2px solid var(--ink)' : '2px solid transparent', boxShadow: '0 0 0 1px rgba(0,0,0,.06)' }} />
-                      ))}
-                    </div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12.5, cursor: 'pointer', color: 'var(--ink-soft)' }}>
-                      <span style={{ width: 22, height: 22, borderRadius: '50%', border: '1.5px dashed var(--ink-soft)', display: 'grid', placeItems: 'center', position: 'relative', overflow: 'hidden' }}>＋
-                        <input type="color" value={/^#[0-9a-f]{6}$/i.test(f.color || '') ? f.color : '#F59E0B'} onChange={e => setFolderColor(f, e.target.value)}
-                          style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} aria-label="Pick any color" />
-                      </span>
-                      Pick any color
-                    </label>
+        {/* ---------- sidebar: each item is a dropdown of its notes ---------- */}
+        <div className="np-card np-nav np-a-nav">
+          {searchHits && (
+            <div style={{ marginBottom: 8 }}>
+              <div className="np-sec" style={{ paddingTop: 2 }}>Search results <span style={{ fontWeight: 500, color: 'var(--ink-soft)' }}>{searchHits.length}</span></div>
+              <div className="np-sub">{searchHits.length ? searchHits.map(noteLine) : <div className="page-sub" style={{ fontSize: 12, padding: '6px 10px' }}>No matches.</div>}</div>
+            </div>
+          )}
+          {section('all', '📚', 'All Notes', sectionNotes('all'))}
+          {section('pinned', '📌', 'Pinned', sectionNotes('pinned'))}
+          {section('shared', '👥', 'Shared with Me', sectionNotes('shared'))}
+          {section('recent', '🕒', 'Recently Edited', sectionNotes('recent'))}
+          {section('deleted', '🗑️', 'Recently Deleted', sectionNotes('deleted'))}
+          <div className="np-sec">Folders<button className="np-plus" onClick={addFolder} title="New folder" aria-label="New folder">＋</button></div>
+          {folders.length === 0 && <div className="page-sub" style={{ fontSize: 12, padding: '2px 10px 6px' }}>No folders yet.</div>}
+          {folders.map(f => (
+            <div key={f.id} style={{ position: 'relative' }}>
+              {section('folder:' + f.id,
+                <span data-poptrigger role="button" tabIndex={0} title="Change folder color" aria-label={`Change color of ${f.name}`}
+                  onClick={(e) => { e.stopPropagation(); setColorFor(colorFor === f.id ? null : f.id) }}
+                  style={{ display: 'inline-block', width: 14, height: 12, borderRadius: 3, cursor: 'pointer', background: f.color || '#F59E0B', boxShadow: colorFor === f.id ? '0 0 0 2px var(--surface), 0 0 0 4px var(--accent)' : 'none' }} />,
+                f.name, sectionNotes('folder:' + f.id),
+                <div style={{ display: 'flex', gap: 12, padding: '6px 10px 2px' }}>
+                  <button className="np-plus" style={{ fontSize: 12 }} onClick={() => renameFolder(f)}>✎ Rename</button>
+                  <button className="np-plus" style={{ fontSize: 12, color: 'var(--failed)' }} onClick={() => deleteFolder(f)}>🗑 Delete folder</button>
+                </div>)}
+              {colorFor === f.id && (
+                <div className="np-pop" style={{ left: 0, top: 'calc(100% - 4px)', width: 214, padding: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                    <b style={{ flex: 1, fontSize: 13 }}>Folder color</b>
+                    <button className="np-plus" style={{ fontSize: 13 }} onClick={() => setColorFor(null)} aria-label="Close">✕</button>
                   </div>
-                )}
-                <button className={'np-nav-item' + (view === 'folder:' + f.id ? ' on' : '')} style={{ paddingLeft: 6 }} onClick={() => { setView('folder:' + f.id); setQ('') }}>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                  <span className="ct">{mine.filter(n => n.folder_id === f.id).length}</span>
-                </button>
-                {view === 'folder:' + f.id && <>
-                  <button className="np-plus" style={{ fontSize: 12 }} title="Rename folder" onClick={() => renameFolder(f)}>✎</button>
-                  <button className="np-plus" style={{ fontSize: 12 }} title="Delete folder" onClick={() => deleteFolder(f)}>✕</button>
-                </>}
-              </div>
-            ))}
-          </div>
-          <div className="np-card np-nav np-a-tpl">
-            <div className="np-sec" style={{ paddingTop: 4 }}>Note Templates<button className="np-plus" title="Save the open note as a template" onClick={() => saveAsTemplate(selected)} disabled={!selected}>＋</button></div>
-            {allTemplates.map(t => (
-              <div key={t.id} style={{ display: 'flex', alignItems: 'center' }}>
-                <button className="np-nav-item" onClick={() => createNote(t)} title={`New note from "${t.name}"`} style={{ alignItems: 'flex-start' }}>
-                  <span style={{ width: 18, textAlign: 'center' }}>{t.icon || '⭐'}</span>
-                  <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontWeight: 600, fontSize: 13 }}>{t.name}</span>
-                    {t.description && <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-soft)' }}>{t.description}</span>}</span>
-                </button>
-                {t.mine && <button className="np-plus" style={{ fontSize: 12 }} title="Delete template" onClick={() => deleteTemplate(t)}>✕</button>}
-              </div>
-            ))}
-            <button className="np-nav-item" style={{ color: 'var(--accent)', fontWeight: 600 }} disabled={!selected} onClick={() => saveAsTemplate(selected)}
-              title={selected ? 'Save the open note as a reusable template' : 'Open a note first, then save it as a template'}>＋ Create a new template</button>
-          </div>
-
-        {/* ---------- list ---------- */}
-        <div className="np-card np-list" style={{ padding: 8, maxHeight: 'calc(100vh - 170px)', overflowY: 'auto' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', padding: '6px 8px' }}>
-            {q ? `Search results (${list.length})` : view === 'deleted' ? 'Removed for good after 30 days' : `${list.length} note${list.length === 1 ? '' : 's'}`}
-          </div>
-          {list.length === 0 && <div className="page-sub" style={{ padding: '10px 8px', fontSize: 13 }}>{view === 'deleted' ? 'Nothing here.' : 'No notes yet.'}</div>}
-          {list.map(n => {
-            const by = n.owner_id !== me ? nameOf[n.owner_id] : null
-            const folder = folders.find(f => f.id === n.folder_id)
-            return (
-              <div key={n.id} className={'np-row' + (selId === n.id ? ' on' : '')} style={{ borderLeftColor: n.color || 'transparent' }} onClick={() => setSelId(n.id)}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {n.pinned && n.owner_id === me && <span style={{ fontSize: 11 }}>📌</span>}
-                  <span style={{ fontWeight: 600, fontSize: 13.5, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title?.trim() || 'Untitled'}</span>
-                  {(n.shared_with?.length > 0 || n.shared_tags?.length > 0) && n.owner_id === me && <span title="Shared" style={{ fontSize: 11 }}>👥</span>}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
+                    {FOLDER_SWATCHES.map(c => (
+                      <button key={c} title={c} aria-label={`Color ${c}`} onClick={() => { setFolderColor(f, c); setColorFor(null) }}
+                        style={{ width: 22, height: 22, borderRadius: '50%', background: c, cursor: 'pointer', padding: 0,
+                          border: (f.color || '').toLowerCase() === c.toLowerCase() ? '2px solid var(--ink)' : '2px solid transparent', boxShadow: '0 0 0 1px rgba(0,0,0,.06)' }} />
+                    ))}
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12.5, cursor: 'pointer', color: 'var(--ink-soft)' }}>
+                    <span style={{ width: 22, height: 22, borderRadius: '50%', border: '1.5px dashed var(--ink-soft)', display: 'grid', placeItems: 'center', position: 'relative', overflow: 'hidden' }}>＋
+                      <input type="color" value={/^#[0-9a-f]{6}$/i.test(f.color || '') ? f.color : '#F59E0B'} onChange={e => setFolderColor(f, e.target.value)}
+                        style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} aria-label="Pick any color" />
+                    </span>
+                    Pick any color
+                  </label>
                 </div>
-                <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {by ? `From ${by.split(' ')[0]} · ` : ''}{folder ? `${folder.name} · ` : ''}{new Date(n.deleted_at || n.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {htmlToText(n.body || '').slice(0, 60) || 'Empty'}
-                </div>
-              </div>
-            )
-          })}
+              )}
+            </div>
+          ))}
         </div>
 
-        {/* ---------- editor ---------- */}
+        {/* ---------- the note ---------- */}
         <div className="np-editor" style={{ minWidth: 0 }}>
-          {!selected ? (
+          {!current ? (
             <div className="np-card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-soft)' }}>
               <div style={{ fontSize: 34 }}>📝</div>
-              <div style={{ fontWeight: 700, color: 'var(--ink)', marginTop: 6 }}>Pick a note, or start a new one</div>
-              <div style={{ fontSize: 13, marginTop: 4 }}>Try <b>Meeting Notes</b> for the two-column notes + tasks layout.</div>
+              <div style={{ fontWeight: 700, color: 'var(--ink)', marginTop: 6 }}>That note isn’t available</div>
+              <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => newDraft()}>＋ New note</button>
             </div>
-          ) : selected.deleted_at ? (
+          ) : current.deleted_at ? (
             <div className="np-card" style={{ padding: 20 }}>
-              <div style={{ fontWeight: 700, fontSize: 18 }}>{selected.title?.trim() || 'Untitled'}</div>
-              <p className="page-sub" style={{ fontSize: 13 }}>Deleted {new Date(selected.deleted_at).toLocaleDateString()} — removed for good after 30 days.</p>
+              <div style={{ fontWeight: 700, fontSize: 18 }}>{current.title?.trim() || 'Untitled'}</div>
+              <p className="page-sub" style={{ fontSize: 13 }}>Deleted {new Date(current.deleted_at).toLocaleDateString()} — removed for good after 30 days.</p>
               <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-                <button className="btn btn-primary" onClick={() => restore(selected)}>Restore</button>
-                <button className="btn btn-ghost" style={{ color: 'var(--failed)' }} onClick={() => forever(selected)}>Delete for good</button>
+                <button className="btn btn-primary" onClick={() => restore(current)}>Restore</button>
+                <button className="btn btn-ghost" style={{ color: 'var(--failed)' }} onClick={() => forever(current)}>Delete for good</button>
               </div>
-              <div className="re-rendered" style={{ opacity: .75 }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(selected.body || '') }} />
+              <div className="re-rendered" style={{ opacity: .75 }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(current.body || '') }} />
             </div>
           ) : (
-            <NoteEditor key={selected.id} note={selected} me={me} people={people} nameOf={nameOf} teams={teams}
+            <NoteEditor key={current.id || current.key} note={current} isDraft={!!current.isDraft} me={me} people={people} nameOf={nameOf} teams={teams}
               folders={folders} projects={projects} clients={clients} saving={saving}
-              patch={(f) => patch(selected.id, f)} onDuplicate={() => duplicate(selected)} onTrash={() => trash(selected)}
-              onSaveTemplate={() => saveAsTemplate(selected)} flash={flash} reload={load} />
+              patch={current.isDraft ? (f) => setDraft(d => d ? { ...d, ...f } : d) : (f) => patch(current.id, f)}
+              onSaveDraft={saveDraft}
+              templates={allTemplates} onUseTemplate={(t) => {
+                if (current.isDraft && !draftHasContent(current)) { setDraft(makeDraft(t)); return }
+                newDraft(t)
+              }} onDeleteTemplate={deleteTemplate}
+              onDuplicate={() => duplicate(current)} onTrash={() => current.isDraft ? (okToLeaveDraft() && setDraft(makeDraft(BUILT_IN_TEMPLATES[1]))) : trash(current)}
+              onSaveTemplate={() => saveAsTemplate(current)} flash={flash} reload={load} />
           )}
         </div>
       </div>
@@ -456,7 +469,7 @@ export default function Notes() {
 // ============================================================
 // ONE NOTE
 // ============================================================
-function NoteEditor({ note, me, people, nameOf, teams, folders, projects, clients, saving, patch, onDuplicate, onTrash, onSaveTemplate, flash, reload }) {
+function NoteEditor({ note, isDraft, me, people, nameOf, teams, folders, projects, clients, saving, patch, onSaveDraft, templates = [], onUseTemplate, onDeleteTemplate, onDuplicate, onTrash, onSaveTemplate, flash, reload }) {
   const isOwner = note.owner_id === me
   const canEdit = isOwner || (note.shared_editors || []).includes(me)
   const ps = note.page_style || {}
@@ -481,10 +494,20 @@ function NoteEditor({ note, me, people, nameOf, teams, folders, projects, client
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setTasksSave = (next) => { setTasks(next); queue('meeting_tasks', next, 600) }
+  const [justSaved, setJustSaved] = useState(false)
+  async function saveNow() {
+    Object.values(timers.current).forEach(clearTimeout)
+    const fields = { ...pending.current, title, meeting_tasks: tasks }
+    pending.current = {}
+    if (isDraft) return onSaveDraft(fields)
+    await patch(fields)
+    setJustSaved(true); setTimeout(() => setJustSaved(false), 2000)
+  }
   const updTask = (key, f) => setTasksSave(tasks.map(t => t.key === key ? { ...t, ...f } : t))
   const twoCol = note.layout === 'two_col'
 
   async function push() {
+    if (isDraft) return flash('Save the note first, then push its tasks.')
     if (!tasks.some(t => (t.title || '').trim())) return flash('Add a task title first.')
     setPushing(true)
     // save any pending task edits first
@@ -514,7 +537,7 @@ function NoteEditor({ note, me, people, nameOf, teams, folders, projects, client
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input value={title} disabled={!canEdit} onChange={e => { setTitle(e.target.value); queue('title', e.target.value, 600) }} placeholder="Note title" aria-label="Note title"
               style={{ flex: 1, minWidth: 0, fontSize: 24, fontWeight: 800, border: 0, outline: 'none', background: 'transparent', color: 'var(--ink)', fontFamily: 'inherit' }} />
-            <span style={{ fontSize: 11.5, color: 'var(--ink-soft)', whiteSpace: 'nowrap' }}>{canEdit ? (saving ? 'Saving…' : 'Saved') : 'View only'}</span>
+            <span style={{ fontSize: 11.5, color: isDraft ? '#B45309' : 'var(--ink-soft)', whiteSpace: 'nowrap' }}>{isDraft ? 'Not saved yet' : canEdit ? (saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Saved') : 'View only'}</span>
           </div>
           {/* meeting details */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', fontSize: 13, color: 'var(--ink-soft)', marginTop: 4 }}>
@@ -542,6 +565,28 @@ function NoteEditor({ note, me, people, nameOf, teams, folders, projects, client
         </div>
         {/* actions */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', position: 'relative' }}>
+          {canEdit && (isDraft
+            ? <button className="btn btn-primary" style={{ padding: '7px 16px' }} onClick={saveNow}>💾 Save note</button>
+            : btn('💾 Save', saveNow))}
+          <span style={{ position: 'relative' }}>
+            {btn('📋 Templates ▾', () => setPop(pop === 'tpl' ? null : 'tpl'), { 'data-poptrigger': true })}
+            {pop === 'tpl' && (
+              <div className="np-pop np-menu" style={{ left: 0, top: 'calc(100% + 6px)', width: 270, padding: 6, maxHeight: 380, overflowY: 'auto' }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-soft)', padding: '4px 10px' }}>START A NEW NOTE FROM</div>
+                {templates.map(t => (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center' }}>
+                    <button style={{ flex: 1 }} onClick={() => { setPop(null); onUseTemplate(t) }}>
+                      <span style={{ marginRight: 6 }}>{t.icon || '⭐'}</span><b style={{ fontWeight: 600 }}>{t.name}</b>
+                      {t.description && <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-soft)', marginLeft: 22 }}>{t.description}</span>}
+                    </button>
+                    {t.mine && <button style={{ width: 'auto', flex: 'none', fontSize: 12 }} title="Delete template" onClick={() => onDeleteTemplate(t)}>✕</button>}
+                  </div>
+                ))}
+                <div style={{ borderTop: '1px solid var(--line)', margin: '6px 0' }} />
+                <button style={{ color: 'var(--accent)', fontWeight: 600 }} onClick={() => { setPop(null); onSaveTemplate() }}>＋ Save this note as a template</button>
+              </div>
+            )}
+          </span>
           {isOwner && btn(note.pinned ? '📌 Pinned' : '📌 Pin', () => patch({ pinned: !note.pinned }), { className: 'np-btn' + (note.pinned ? ' on' : '') })}
           <span className="np-btn" style={{ cursor: 'default' }}>{sharedCount ? '👥 Shared' : '🔒 Private'}</span>
           {isOwner && btn('↗ Share', () => setPop(pop === 'share' ? null : 'share'), { style: { color: 'var(--accent)' }, 'data-poptrigger': true })}
@@ -550,15 +595,10 @@ function NoteEditor({ note, me, people, nameOf, teams, folders, projects, client
             <div className="np-pop np-menu" style={{ right: 0, top: 'calc(100% + 6px)', width: 220, padding: 6 }}>
               {canEdit && <button data-poptrigger onClick={() => setPop('style')}>🎨 Page style…</button>}
               {canEdit && <button onClick={() => { setPop(null); const nx = twoCol ? 'single' : 'two_col'; patch({ layout: nx }); if (nx === 'two_col' && !tasks.length) setTasksSave(blankTasks(1)) }}>{twoCol ? '▭ Remove tasks column' : '▥ Add tasks column'}</button>}
-              <button onClick={() => { setPop(null); onDuplicate() }}>⧉ Duplicate</button>
+              {!isDraft && <button onClick={() => { setPop(null); onDuplicate() }}>⧉ Duplicate</button>}
               <button onClick={() => { setPop(null); exportNote(note) }}>⬇ Export (.html)</button>
               <button onClick={() => { setPop(null); onSaveTemplate() }}>⭐ Save as template</button>
-              {isOwner && <div style={{ padding: '6px 10px 2px', fontSize: 11.5, color: 'var(--ink-soft)' }}>Note color</div>}
-              {isOwner && <div style={{ display: 'flex', gap: 6, padding: '4px 10px 8px' }}>
-                {NOTE_COLORS.map(c => <span key={c.key || 'none'} title={c.label} onClick={() => patch({ color: c.key || null })}
-                  style={{ width: 18, height: 18, borderRadius: '50%', cursor: 'pointer', background: c.key || 'var(--surface)', border: (note.color || '') === c.key ? '2px solid var(--ink)' : '1px solid var(--line)', fontSize: 11, display: 'grid', placeItems: 'center' }}>{c.key ? '' : '∅'}</span>)}
-              </div>}
-              {isOwner && <button style={{ color: 'var(--failed)' }} onClick={() => { setPop(null); onTrash() }}>🗑 Delete</button>}
+              {isOwner && <button style={{ color: 'var(--failed)' }} onClick={() => { setPop(null); onTrash() }}>{isDraft ? '✕ Discard this new note' : '🗑 Delete'}</button>}
             </div>
           )}
           {pop === 'share' && <SharePanel note={note} people={people.filter(p => p.id !== me)} nameOf={nameOf} teams={teams} patch={patch} flash={flash} onClose={() => setPop(null)} />}
@@ -570,9 +610,8 @@ function NoteEditor({ note, me, people, nameOf, teams, folders, projects, client
         <div className="np-tbrow">
           <div ref={setTbEl} className="np-tb" />
           <div style={{ display: 'flex', gap: 6, position: 'relative', alignSelf: 'center' }}>
-            <button data-poptrigger className="np-btn" style={{ fontSize: 12.5, padding: '4px 10px' }} onClick={() => setPop(pop === 'style' ? null : 'style')}>
-              📄 {({ plain: 'Plain', lined: 'Lined', grid: 'Grid', dotted: 'Dotted' })[ps.paper || 'plain']} paper ▾</button>
-            <button data-poptrigger className="np-btn" style={{ fontSize: 12.5, padding: '4px 10px' }} onClick={() => setPop(pop === 'style' ? null : 'style')} aria-label="Page style">🎨 ▾</button>
+            <button data-poptrigger className="np-btn" style={{ fontSize: 12.5, padding: '5px 12px' }} onClick={() => setPop(pop === 'style' ? null : 'style')} aria-label="Page style">
+              🎨 Page style ▾</button>
             {pop === 'style' && <PageStylePanel ps={ps} onChange={(next) => patch({ page_style: next })} onClose={() => setPop(null)} />}
           </div>
         </div>
@@ -614,7 +653,7 @@ function NoteEditor({ note, me, people, nameOf, teams, folders, projects, client
               {canEdit && (
                 <div style={{ marginTop: 14 }}>
                   <button className="np-push" style={{ width: '100%', justifyContent: 'center' }} disabled={pushing} onClick={push}>☑ {pushing ? 'Pushing…' : 'Push to Project Management'} ›</button>
-                  <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginTop: 6 }}>Creates real tasks assigned to you. Pushing again updates them, never duplicates.</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginTop: 6 }}>{isDraft ? 'Save the note first, then push.' : 'Creates real tasks assigned to you. Pushing again updates them, never duplicates.'}</div>
                 </div>
               )}
             </div>
