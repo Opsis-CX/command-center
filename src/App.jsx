@@ -69,6 +69,7 @@ import { usePresenceHeartbeat, MyStatusButton, TeamStatus } from './components/P
 import { ViewAsMenu } from './components/RolePreview'
 import PortalMenu, { StaffPortal } from './components/PortalMenu'
 import PushEnrollmentBanner from './components/PushEnrollmentBanner'
+import ChatPopButton from './components/ChatPopButton'
 import Seasonal from './components/Seasonal'
 import MeetingReminder from './components/MeetingReminder'
 import LsaReminderPopup from './components/LsaReminderPopup'
@@ -491,6 +492,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <PortalMenu />
               <MyStatusButton />
               <HeaderTaskBar />
+              {canAny(appRole, 'chat') && <ChatPopButton />}
               <NotificationBell />
             </div>
           </div>
