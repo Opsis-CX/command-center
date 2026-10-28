@@ -309,6 +309,33 @@ function PushCard({ userId }) {
 // Do Not Disturb — a daily quiet-hours window (table notification_dnd; enforced on the
 // server by notif_gate → notif_in_dnd, in the person's own time zone). The server side has
 // been live since July; this panel was never committed, so nobody could turn it on. (2026-10-27)
+// Holiday decorations on/off (profiles.seasonal_effects). Saved to your account.
+function SeasonalCard({ userId }) {
+  const [on, setOn] = React.useState(null)
+  React.useEffect(() => {
+    if (!userId) return
+    supabase.from('profiles').select('seasonal_effects').eq('id', userId).maybeSingle().then(({ data }) => setOn(data?.seasonal_effects !== false))
+  }, [userId])
+  async function toggle(v) {
+    setOn(v)
+    await supabase.from('profiles').update({ seasonal_effects: v }).eq('id', userId)
+    window.dispatchEvent(new Event('cc:seasonal-changed'))
+  }
+  if (on === null) return null
+  return (
+    <div className="card" style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>🎃 Holiday decorations</div>
+        <p className="page-sub" style={{ margin: '2px 0 0', fontSize: 13 }}>Little seasonal touches — floating friends, hats in Chat, candy confetti. Turns on by itself around holidays.</p>
+      </div>
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+        <input type="checkbox" checked={on} onChange={e => toggle(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--accent)' }} />
+        {on ? 'On' : 'Off'}
+      </label>
+    </div>
+  )
+}
+
 function DndCard({ userId, tz }) {
   const [row, setRow] = React.useState(null)
   const [saving, setSaving] = React.useState(false)
@@ -587,6 +614,7 @@ export default function Settings() {
 
       <NotificationPrefsCard userId={user?.id} />
       <DndCard userId={user?.id} tz={tz} />
+      <SeasonalCard userId={user?.id} />
 
       <SoundCard userId={user?.id} />
 
