@@ -25,9 +25,17 @@ const NOTE_COLORS = [
   { key: '#eab308', label: 'Yellow' }, { key: '#22c55e', label: 'Green' }, { key: '#3b82f6', label: 'Blue' }, { key: '#a855f7', label: 'Purple' },
 ]
 const PAGE_BGS = [
-  { key: '', label: 'White' }, { key: '#FDF1F3', label: 'Blush' }, { key: '#FFF1E6', label: 'Peach' }, { key: '#FFFBEA', label: 'Cream' },
-  { key: '#ECFBF3', label: 'Mint' }, { key: '#EAF5FF', label: 'Sky' }, { key: '#F3EEFF', label: 'Lavender' },
+  { key: '', label: 'White' }, { key: '#FDF1F3', label: 'Blush' }, { key: '#FFE4EC', label: 'Pink' }, { key: '#FFF1E6', label: 'Peach' },
+  { key: '#FFFBEA', label: 'Cream' }, { key: '#FEF9C3', label: 'Lemon' }, { key: '#ECFBF3', label: 'Mint' }, { key: '#DCFCE7', label: 'Green' },
+  { key: '#E0F7F5', label: 'Aqua' }, { key: '#EAF5FF', label: 'Sky' }, { key: '#DBEAFE', label: 'Blue' }, { key: '#F3EEFF', label: 'Lavender' },
+  { key: '#EDE9FE', label: 'Violet' }, { key: '#F5F5F4', label: 'Stone' }, { key: '#F1F5F9', label: 'Slate' }, { key: '#1E293B', label: 'Night' },
 ]
+const PAGE_INKS = [
+  { key: '', label: 'Default' }, { key: '#0F172A', label: 'Black' }, { key: '#334155', label: 'Charcoal' }, { key: '#1D4ED8', label: 'Blue' },
+  { key: '#0F766E', label: 'Teal' }, { key: '#15803D', label: 'Green' }, { key: '#7C3AED', label: 'Purple' }, { key: '#BE185D', label: 'Pink' },
+  { key: '#B91C1C', label: 'Red' }, { key: '#C2410C', label: 'Orange' }, { key: '#FFFFFF', label: 'White' },
+]
+const PAGE_SIZES = [['small', 'Small', 13], ['normal', 'Normal', 15], ['large', 'Large', 17], ['xl', 'X-Large', 20]]
 const LINE_H = { narrow: 26, normal: 32, wide: 40 }
 const FOLDER_COLORS = ['#F59E0B', '#3B82F6', '#6366F1', '#0EA5E9', '#EC4899', '#22C55E', '#8B5CF6', '#14B8A6', '#EF4444']
 // choices in the folder color picker (click a folder's square)
@@ -86,7 +94,7 @@ const NP_CSS = `
 .np-tb { flex: 1 1 420px; min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .np-tb:empty { display: none; }
 .np-tb .re-toolbar { border: 0 !important; background: transparent !important; }
-.np-paper .re-content { background-color: transparent !important; line-height: var(--lh) !important; font-size: 15px; padding-top: 6px !important; padding-left: var(--pad-l, 18px) !important;
+.np-paper .re-content { background-color: transparent !important; line-height: var(--lh) !important; font-size: var(--paper-fs, 15px); color: var(--paper-ink, var(--ink)); padding-top: 6px !important; padding-left: var(--pad-l, 18px) !important;
   background-image: var(--pimg, none); background-size: var(--psize, auto); background-position: 0 6px; background-attachment: local; font-family: var(--paper-font, inherit); }
 .np-paper .re-content p, .np-paper .re-content li { margin: 0; }
 .np-paper .re-content ul, .np-paper .re-content ol { margin: 0; padding-left: 24px; }
@@ -96,7 +104,7 @@ const NP_CSS = `
 .np-tasks { border-left: 1px dashed var(--line); padding: 14px 16px; background-image: var(--pimg-t, none); background-size: var(--psize-t, auto); background-position: 0 6px; }
 .np-task { padding: 6px 2px 12px; border-bottom: 1px dashed rgba(15,23,42,.14); }
 .np-task.done { opacity: .6; }
-.np-task .ttl { border: 0; background: transparent; font-family: var(--paper-font, inherit); font-size: 17px; font-weight: 700; color: var(--ink); outline: none; width: 100%; padding: 2px 0; }
+.np-task .ttl { border: 0; background: transparent; font-family: var(--paper-font, inherit); font-size: calc(var(--paper-fs, 15px) + 2px); font-weight: 700; color: var(--paper-ink, var(--ink)); outline: none; width: 100%; padding: 2px 0; }
 .np-task .ttl::placeholder { color: rgba(100,116,139,.7); font-weight: 600; }
 .np-task .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 4px 0 0 27px; font-size: 12px; color: var(--ink-soft); }
 .np-task .fld { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
@@ -131,6 +139,9 @@ function paperVars(ps = {}) {
     '--pimg-t': img(layers), '--psize-t': size(layers),
     '--pad-l': ps.margin ? '62px' : '18px',
     '--paper-font': ps.font === 'hand' ? "'Caveat', 'Segoe Print', cursive" : 'inherit',
+    // a dark page with no font color chosen gets light text automatically
+    '--paper-ink': ps.ink || (ps.bg === '#1E293B' ? '#F8FAFC' : 'var(--ink)'),
+    '--paper-fs': ((PAGE_SIZES.find(z => z[0] === ps.size) || PAGE_SIZES[1])[2] + (ps.font === 'hand' ? 3 : 0)) + 'px',
   }
 }
 function useHandFont(on) {
@@ -694,12 +705,33 @@ function PageStylePanel({ ps, onChange, onClose }) {
   const thumb = (paper) => { const ls = paperLayers(paper, 10); return { width: 46, height: 40, borderRadius: 4, border: '1px solid var(--line)', backgroundColor: '#fff',
     backgroundImage: ls.length ? ls.map(l => l[0]).join(', ') : 'none', backgroundSize: ls.length ? ls.map(l => l[1]).join(', ') : 'auto' } }
   return (
-    <div className="np-pop" style={{ right: 0, top: 'calc(100% + 6px)', width: 300 }}>
+    <div className="np-pop" style={{ right: 0, top: 'calc(100% + 6px)', width: 330, maxHeight: '75vh', overflowY: 'auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}><b style={{ flex: 1 }}>Page Style</b><button className="np-plus" style={{ fontSize: 14 }} onClick={onClose} aria-label="Close">✕</button></div>
       <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>Background Color</div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        {PAGE_BGS.map(b => <button key={b.key || 'w'} title={b.label} onClick={() => set('bg', b.key)}
-          style={{ width: 26, height: 26, borderRadius: '50%', background: b.key || '#fff', cursor: 'pointer', border: (ps.bg || '') === b.key ? '2px solid var(--accent)' : '1px solid var(--line)' }} />)}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 7, marginBottom: 12 }}>
+        {PAGE_BGS.map(b => <button key={b.key || 'w'} title={b.label} aria-label={`Background ${b.label}`} onClick={() => set('bg', b.key)}
+          style={{ width: 24, height: 24, borderRadius: '50%', background: b.key || '#fff', cursor: 'pointer', padding: 0, border: (ps.bg || '') === b.key ? '2px solid var(--accent)' : '1px solid var(--line)' }} />)}
+        <label title="Pick any color" style={{ width: 24, height: 24, borderRadius: '50%', border: '1.5px dashed var(--ink-soft)', display: 'grid', placeItems: 'center', position: 'relative', overflow: 'hidden', cursor: 'pointer', fontSize: 13, color: 'var(--ink-soft)',
+          ...(ps.bg && !PAGE_BGS.some(b => b.key === ps.bg) ? { background: ps.bg, border: '2px solid var(--accent)' } : {}) }}>＋
+          <input type="color" aria-label="Pick any background color" value={/^#[0-9a-f]{6}$/i.test(ps.bg || '') ? ps.bg : '#FFFBEA'} onChange={e => set('bg', e.target.value)}
+            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
+        </label>
+      </div>
+      <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>Font Color</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 7, marginBottom: 12 }}>
+        {PAGE_INKS.map(c => <button key={c.key || 'd'} title={c.label} aria-label={`Font color ${c.label}`} onClick={() => set('ink', c.key)}
+          style={{ width: 24, height: 24, borderRadius: '50%', cursor: 'pointer', padding: 0, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800,
+            background: c.key || 'var(--surface)', color: c.key === '#FFFFFF' ? '#0F172A' : '#fff',
+            border: (ps.ink || '') === c.key ? '2px solid var(--accent)' : '1px solid var(--line)' }}>{c.key ? '' : <span style={{ color: 'var(--ink)' }}>A</span>}</button>)}
+        <label title="Pick any color" style={{ width: 24, height: 24, borderRadius: '50%', border: '1.5px dashed var(--ink-soft)', display: 'grid', placeItems: 'center', position: 'relative', overflow: 'hidden', cursor: 'pointer', fontSize: 13, color: 'var(--ink-soft)',
+          ...(ps.ink && !PAGE_INKS.some(c => c.key === ps.ink) ? { background: ps.ink, border: '2px solid var(--accent)' } : {}) }}>＋
+          <input type="color" aria-label="Pick any font color" value={/^#[0-9a-f]{6}$/i.test(ps.ink || '') ? ps.ink : '#0F172A'} onChange={e => set('ink', e.target.value)}
+            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
+        </label>
+      </div>
+      <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>Font Size</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 12 }}>
+        {PAGE_SIZES.map(([k, l, px]) => <button key={k} style={{ ...box((ps.size || 'normal') === k), fontSize: Math.min(px - 1, 16) }} onClick={() => set('size', k)}>{l}</button>)}
       </div>
       <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>Paper Style</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 12 }}>
