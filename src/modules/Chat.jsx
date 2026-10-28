@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { seasonalHat, WitchHat, celebrate, ChatPeekGhost } from '../components/Seasonal'
+import { seasonalHat, WitchHat, celebrate } from '../components/Seasonal'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
 import { notifyAckNudge, notifyChannelAdded, notifyIncomingCall } from '../lib/notify'
@@ -2217,8 +2217,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     // otherwise stretch the track past the shell, and the shell's overflow:hidden
     // can still be scrolled programmatically — which is what pushed the
     // conversation list off-screen when a message was sent.
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, minHeight: 0, position: 'relative' }}>
-      {!isMobile && <ChatPeekGhost />}
+    <div data-cc-chatpane="" style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, minHeight: 0, position: 'relative' }}>
       <div style={{ padding: isMobile ? '10px 12px' : '14px 18px', borderBottom: '1px solid var(--line)', flex: 'none', display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, flexWrap: 'nowrap' }}>
         {isMobile && (
           <button onClick={onBack} title="Back to channels"
