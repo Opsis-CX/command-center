@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { celebrate } from '../components/Seasonal'
 import { RichEditor, RichContent, sanitizeHtml, isEmptyHtml } from '../lib/RichEditor'
 
 // ============================================================
@@ -109,6 +110,7 @@ export default function Updates() {
     setReads(cur => ({ ...cur, [a.id]: [...(cur[a.id] || []), { profile_id: user.id, read_at: new Date().toISOString() }] }))
     setUnreadIds(cur => { if (!cur) return cur; const n = new Set(cur); n.delete(a.id); return n })
     await supabase.from('announcement_reads').insert({ announcement_id: a.id, profile_id: user.id })
+    celebrate()
     window.dispatchEvent(new Event('cc:updates-read'))
   }
   async function toggleReaders(a) {
