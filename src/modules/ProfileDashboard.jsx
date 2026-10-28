@@ -404,6 +404,10 @@ export async function reminderBadgeCount() {
   return count || 0
 }
 const toLocalInput = (iso) => { const d = iso ? new Date(iso) : new Date(Date.now() + 3600e3); d.setSeconds(0, 0); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}` }
+// Repeat choices (personal_reminders.repeat). Checking off a repeating reminder rolls it to the
+// next time; an ignored one moves forward on its own ~1 hour after it's due.
+const REPEATS = [['none', 'Doesn’t repeat'], ['daily', 'Every day'], ['weekdays', 'Every weekday (Mon–Fri)'], ['weekly', 'Every week'], ['biweekly', 'Every 2 weeks'], ['monthly', 'Every month']]
+const repeatLabel = (r) => ({ daily: 'Daily', weekdays: 'Weekdays', weekly: 'Weekly', biweekly: 'Every 2 weeks', monthly: 'Monthly' })[r] || ''
 const fmtWhen = (iso) => new Date(iso).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 
 export function RemindersPanel() {
@@ -434,8 +438,10 @@ export function RemindersPanel() {
     }
   }, [list, now, me])
   async function toggle(r) {
-    const { error } = await supabase.from('personal_reminders').update({ done_at: r.done_at ? null : new Date().toISOString() }).eq('id', r.id)
-    if (error) setErr(error.message); else load()
+    const { data, error } = await supabase.from('personal_reminders').update({ done_at: r.done_at ? null : new Date().toISOString() }).eq('id', r.id).select('remind_at, done_at').maybeSingle()
+    if (error) return setErr(error.message)
+    if (!r.done_at && r.repeat && r.repeat !== 'none' && data && !data.done_at) setErr('')
+    load()
   }
   async function del(r) {
     const forWho = r.owner_id !== me ? ` for ${names[r.owner_id] || 'them'}` : ''
@@ -483,7 +489,11 @@ export function RemindersPanel() {
                     {setByAdmin && <span className="badge" style={{ fontSize: 11 }}>Set by {names[r.created_by] || 'an admin'}</span>}
                     {forOther && <span className="badge" style={{ fontSize: 11 }}>For {names[r.owner_id] || 'a teammate'}{r.done_at ? ' · done' : ''}</span>}
                   </div>
-                  <div style={{ fontSize: 12.5, marginTop: 2, color: over ? 'var(--failed, #DC2626)' : 'var(--ink-soft)', fontWeight: over ? 600 : 400 }}>{over ? 'Overdue · ' : ''}{fmtWhen(r.remind_at)}</div>
+                  <div style={{ fontSize: 12.5, marginTop: 2, color: over ? 'var(--failed, #DC2626)' : 'var(--ink-soft)', fontWeight: over ? 600 : 400 }}>
+                    {over ? 'Overdue · ' : ''}{r.repeat && r.repeat !== 'none' && !r.done_at ? 'Next: ' : ''}{fmtWhen(r.remind_at)}
+                    {r.repeat && r.repeat !== 'none' && <span style={{ marginLeft: 8, fontWeight: 600, color: 'var(--accent)' }}>🔁 {repeatLabel(r.repeat)}{r.repeat_until ? ` until ${new Date(r.repeat_until + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}</span>}
+                    {r.last_done_at && !r.done_at && <span style={{ marginLeft: 8 }}>· last done {new Date(r.last_done_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                  </div>
                   {r.notes && <div style={{ fontSize: 13, marginTop: 6, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{r.notes}</div>}
                 </div>
                 {canChange && <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '4px 10px' }} onClick={() => setEdit(r)}>Edit</button>}
@@ -500,6 +510,8 @@ function ReminderForm({ r, me, isAdmin, onCancel, onSaved }) {
   const [title, setTitle] = useState(r.title || '')
   const [when, setWhen] = useState(toLocalInput(r.remind_at))
   const [notes, setNotes] = useState(r.notes || '')
+  const [repeat, setRepeat] = useState(r.repeat || 'none')
+  const [until, setUntil] = useState(r.repeat_until || '')
   const [owner, setOwner] = useState(r.owner_id || me)
   const [people, setPeople] = useState([])
   const [busy, setBusy] = useState(false)
@@ -513,7 +525,8 @@ function ReminderForm({ r, me, isAdmin, onCancel, onSaved }) {
     if (!title.trim()) return setErr('Add a title.')
     if (!when) return setErr('Pick a date and time.')
     setBusy(true); setErr('')
-    const row = { title: title.trim(), notes: notes.trim() || null, remind_at: new Date(when).toISOString() }
+    if (repeat !== 'none' && until && until < when.slice(0, 10)) { setBusy(false); return setErr('“Until” must be on or after the first reminder.') }
+    const row = { title: title.trim(), notes: notes.trim() || null, remind_at: new Date(when).toISOString(), repeat, repeat_until: repeat !== 'none' && until ? until : null }
     const q = r.id ? supabase.from('personal_reminders').update(row).eq('id', r.id) : supabase.from('personal_reminders').insert({ ...row, owner_id: owner })
     const { error } = await q
     setBusy(false)
@@ -533,6 +546,13 @@ function ReminderForm({ r, me, isAdmin, onCancel, onSaved }) {
       )}
       <div className="field"><label htmlFor="rm-t">Title</label><input id="rm-t" autoFocus maxLength={200} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Send the weekly report" /></div>
       <div className="field"><label htmlFor="rm-w">Date and time</label><input id="rm-w" type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} /></div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div className="field" style={{ flex: '1 1 200px' }}><label htmlFor="rm-r">Repeat</label>
+          <select id="rm-r" value={repeat} onChange={e => setRepeat(e.target.value)}>{REPEATS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
+        {repeat !== 'none' && <div className="field" style={{ flex: '1 1 160px' }}><label htmlFor="rm-u">Until (optional)</label>
+          <input id="rm-u" type="date" value={until} onChange={e => setUntil(e.target.value)} /></div>}
+      </div>
+      {repeat !== 'none' && <div className="hint" style={{ marginTop: -4, marginBottom: 8 }}>Check it off and it jumps to the next time. If you don’t, it moves forward on its own about an hour after it’s due — you’ll get the 30- and 10-minute warnings every time.</div>}
       <div className="field"><label htmlFor="rm-n">Details (optional)</label><textarea id="rm-n" maxLength={4000} value={notes} onChange={e => setNotes(e.target.value)} /></div>
       {err && <div className="login-err" role="alert" style={{ marginBottom: 8 }}>{err}</div>}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
