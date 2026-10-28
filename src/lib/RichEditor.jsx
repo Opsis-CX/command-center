@@ -819,7 +819,13 @@ function dropUnreadableColors(html) {
  * RichContent — render stored HTML. ALWAYS sanitizes, never trusts the source.
  * `highlight` optionally wraps @here / @update.
  */
-export function RichContent({ html, className = '', style, highlightMentions = false }) {
+// Cleaning big messages (report tables) is costly, so remember the result per message
+// text — redraws then cost almost nothing. (2026-10-28, typing lag in big channels)
+const _cleanCache = new Map()
+function cleanFor(html, highlightMentions) {
+  const k = (highlightMentions ? '1' : '0') + (html || '')
+  const hit = _cleanCache.get(k)
+  if (hit !== undefined) return hit
   let out = dropUnreadableColors(sanitizeHtml(html))
   if (highlightMentions) {
     // Safe: our span carries no user content, and everything around it is
@@ -827,7 +833,15 @@ export function RichContent({ html, className = '', style, highlightMentions = f
     // tags in by typing them.
     out = out.replace(/(@here|@update)\b/gi, '<span class="chat-mention">$1</span>')
   }
+  if (_cleanCache.size > 600) _cleanCache.delete(_cleanCache.keys().next().value)
+  _cleanCache.set(k, out)
+  return out
+}
+function RichContentInner({ html, className = '', style, highlightMentions = false }) {
+  const out = cleanFor(html, highlightMentions)
   return <div className={'re-rendered ' + className} style={style} dangerouslySetInnerHTML={{ __html: out }} />
 }
+export const RichContent = React.memo(RichContentInner, (a, b) =>
+  a.html === b.html && a.className === b.className && a.highlightMentions === b.highlightMentions && JSON.stringify(a.style || null) === JSON.stringify(b.style || null))
 
 export { sanitizeHtml, htmlToText, isEmptyHtml }
