@@ -429,7 +429,9 @@ function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted })
   const [showTranscript, setShowTranscript] = useState(false)
   // Turri auto-assign (2026-10-28): proposals per item, admin review, preview/live switch
   const usesTurri = items.some(i => i.auto_status && i.auto_status !== 'manual')
-  const pendingTasks = useMemo(() => items.filter(i => !i.task_id && i.auto_status !== 'dismissed').length, [items])
+  const [showRemoved, setShowRemoved] = useState(false)
+  const removed = items.filter(i => i.auto_status === 'dismissed')
+  const visibleItems = items.filter(i => i.auto_status !== 'dismissed')
   const [look, setLook] = useState({ people: [], joined: [], clients: [], projects: [], mode: 'preview' })
   useEffect(() => {
     let alive = true
@@ -458,6 +460,7 @@ function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted })
     await onRefresh()
   }
   async function reviewDismiss(item) {
+    if (!window.confirm(`Remove this task? It won’t be assigned to anyone.\n\n“${item.text}”`)) return
     const { error } = await supabase.rpc('meeting_review_dismiss', { p_item: item.id })
     if (error) return onError(error.message)
     await onRefresh()
@@ -587,11 +590,6 @@ function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted })
                 ))}
               </div>
             )}
-            {!usesTurri && pendingTasks > 0 && (
-              <button className="btn btn-primary" onClick={createTasks} disabled={working}>
-                {busy === 'tasks' ? 'Creating…' : `Create ${pendingTasks} task${pendingTasks === 1 ? '' : 's'}`}
-              </button>
-            )}
           </div>
         </div>
         {usesTurri && look.mode === 'preview' && (
@@ -601,10 +599,21 @@ function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted })
         )}
         {usesTurri && <div className="page-sub" style={{ fontSize: 12, marginBottom: 6 }}>Turri only assigns people who joined: {look.joined.map(p => p.full_name).join(', ') || '—'}</div>}
         {items.length === 0 && <div className="page-sub">No action items{meeting.status === 'done' ? ' were found in this meeting.' : ' yet.'}</div>}
-        {items.map(item => (
+        {visibleItems.map(item => (
           <ActionItemRow key={item.id} item={item} isAdmin={isAdmin} look={look} nameOf={nameOf} clientOf={clientOf} projectOf={projectOf}
             onToggle={() => toggleDone(item)} onAssign={(f) => reviewAssign(item, f)} onDismiss={() => reviewDismiss(item)} />
         ))}
+        {removed.length > 0 && (
+          <div style={{ borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '2px 6px', color: 'var(--ink-soft)' }} onClick={() => setShowRemoved(v => !v)}>
+              {showRemoved ? '▾' : '▸'} Removed ({removed.length})
+            </button>
+            {showRemoved && removed.map(item => (
+              <ActionItemRow key={item.id} item={item} isAdmin={false} look={look} nameOf={nameOf} clientOf={clientOf} projectOf={projectOf}
+                onToggle={() => toggleDone(item)} onAssign={() => {}} onDismiss={() => {}} />
+            ))}
+          </div>
+        )}
       </div>
 
       {meeting.transcript && (
@@ -625,9 +634,10 @@ function MeetingDetail({ detail, busy, setBusy, onRefresh, onError, onDeleted })
 // One action item: what Turri did / proposes, plus admin review controls when it needs a person.
 function ActionItemRow({ item, isAdmin, look, nameOf, clientOf, projectOf, onToggle, onAssign, onDismiss }) {
   const st = item.auto_status || 'manual'
-  const open = !item.task_id && (st === 'needs_review' || st === 'proposed')
+  // any item that hasn't become a task can be reviewed (old meetings included)
+  const open = !item.task_id && st !== 'dismissed'
   const [f, setF] = useState({ owner: item.proposed_owner_id || '', client: item.client_id || '', project: item.project_id || '', due: item.due_date || '', text: item.text })
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState(st === 'needs_review')   // needs review → the who-picker is open right away
   const chip = (bg, fg, txt) => <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: bg, color: fg }}>{txt}</span>
   const sel = { padding: '5px 7px', border: '1px solid var(--line)', borderRadius: 7, fontFamily: 'inherit', fontSize: 12.5, background: 'var(--surface)', color: 'var(--ink)', minWidth: 0 }
   const joinedIds = new Set(look.joined.map(p => p.id))
@@ -659,7 +669,7 @@ function ActionItemRow({ item, isAdmin, look, nameOf, clientOf, projectOf, onTog
             <input value={f.text} onChange={e => setF({ ...f, text: e.target.value })} style={{ ...sel, fontSize: 13 }} aria-label="Task title" />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
               <select value={f.owner} onChange={e => setF({ ...f, owner: e.target.value })} style={sel} aria-label="Assign to">
-                <option value="">Assign to…</option>
+                <option value="">Who should do this?</option>
                 <optgroup label="Joined the meeting">{look.joined.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}</optgroup>
                 <optgroup label="Others (won’t see the meeting)">{look.people.filter(p => !joinedIds.has(p.id)).map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}</optgroup>
               </select>
@@ -673,14 +683,15 @@ function ActionItemRow({ item, isAdmin, look, nameOf, clientOf, projectOf, onTog
             </div>
             {f.owner && !joinedIds.has(f.owner) && <div style={{ fontSize: 12, color: '#B45309' }}>⚠ This person didn’t join the meeting. They’ll get the task but <b>can’t</b> open the meeting.</div>}
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={() => onAssign(f)}>Create & assign task</button>
-              <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setEditing(false)}>Cancel</button>
+              <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={() => onAssign(f)}>✓ Assign task</button>
+              <button className="btn btn-ghost" style={{ fontSize: 12.5, color: 'var(--failed)' }} onClick={onDismiss}>🗑 Remove</button>
+              {st !== 'needs_review' && <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setEditing(false)}>Cancel</button>}
             </div>
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => setEditing(true)}>{st === 'proposed' ? 'Review / assign now' : 'Review & assign'}</button>
-            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 10px', color: 'var(--ink-soft)' }} onClick={onDismiss}>Dismiss</button>
+            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => setEditing(true)}>👤 Assign</button>
+            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 10px', color: 'var(--failed)' }} onClick={onDismiss}>🗑 Remove</button>
           </div>
         ))}
       </div>
