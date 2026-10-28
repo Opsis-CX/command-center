@@ -267,9 +267,19 @@ export default function Seasonal() {
       if (document.visibilityState === 'visible') { const id = ++idRef.current; setFloaters(f => [...f, { id, kind: 'rise' }]); setTimeout(() => setFloaters(f => f.filter(x => x.id !== id)), 5200) }
       t2 = setTimeout(rise, 90000 + Math.random() * 60000)
     }
+    // floating ghosts drift across now and then (they were missed!)
+    let t3
+    const ghost = () => {
+      if (document.visibilityState === 'visible') {
+        const id = ++idRef.current
+        setFloaters(f => [...f, { id, kind: 'ghost', top: `${18 + Math.random() * 55}vh`, dur: 17 + Math.random() * 7 }])
+      }
+      t3 = setTimeout(ghost, 30000 + Math.random() * 25000)
+    }
     t1 = setTimeout(bats, 6000)
     t2 = setTimeout(rise, 35000)
-    return () => { clearTimeout(t1); clearTimeout(t2) }
+    t3 = setTimeout(ghost, 12000)
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }
   }, [on, season?.key, still]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // peek-a-boo ghost from the right edge every ~1.5–2.5 min
@@ -307,11 +317,17 @@ export default function Seasonal() {
     <>
       <style>{CSS}</style>
       <CornerWeb />
-      <LeftWeb />
       <TopDecor />
       <PumpkinPatch />
+      <ChatGhost />
+      <CandyBucket />
       <div className="cc-season-layer" aria-hidden="true">
-        {floaters.map(f => f.kind === 'bats' ? (
+        {floaters.map(f => f.kind === 'ghost' ? (
+          <div key={f.id} style={{ position: 'absolute', top: f.top, left: 0, animation: `ccAcross ${f.dur}s linear forwards` }}
+            onAnimationEnd={() => setFloaters(x => x.filter(y => y.id !== f.id))}>
+            <div style={{ animation: 'ccBob 2.8s ease-in-out infinite' }}><Ghost size={66} /></div>
+          </div>
+        ) : f.kind === 'bats' ? (
           <div key={f.id} style={{ position: 'absolute', top: f.top, left: 0, animation: `ccFlyTop ${f.dur}s linear forwards` }}
             onAnimationEnd={() => setFloaters(x => x.filter(y => y.id !== f.id))}>
             <div style={{ position: 'relative', width: 150, height: 60, animation: 'ccBob 2.2s ease-in-out infinite' }}>
@@ -369,20 +385,40 @@ export function WitchHat({ size }) {
 
 
 // ============================================================
-// SHY CHAT GHOST — peeks up over the top edge of the chat panel. When the mouse comes
-// near, it ducks down and hides; a few seconds after the mouse leaves, it peeks back.
-// Uses a document mousemove check (no pointer events on the ghost), so it never blocks
-// clicks, scrolling or typing. Reduced motion: it just sits there, no ducking.
+// SHY CHAT GHOST — peeks up from the top edge of the chat panel's header. When the mouse
+// comes near, it ducks and hides; a few seconds after the mouse leaves, it peeks back.
+// Drawn as a fixed layer lined up with the chat panel ([data-cc-chatpane]) so nothing in
+// Chat can clip or cover it, and it never takes clicks (mousemove check only).
 // ============================================================
-export function ChatPeekGhost() {
-  const on = useSeasonOn()
-  const boxRef = useRef(null)
-  const [state, setState] = useState('hidden')   // 'peek' | 'hidden'
-  const still = reduceMotion()
+function useAnchorRect(selector, every = 700) {
+  const [rect, setRect] = useState(null)
   useEffect(() => {
-    if (!on) return
+    const read = () => {
+      const el = document.querySelector(selector)
+      const r = el && el.getBoundingClientRect()
+      setRect(prev => {
+        if (!r || r.width < 1) return prev ? null : prev
+        if (prev && Math.abs(prev.top - r.top) < 1 && Math.abs(prev.left - r.left) < 1 && Math.abs(prev.right - r.right) < 1) return prev
+        return { top: r.top, left: r.left, right: r.right, width: r.width, height: r.height }
+      })
+    }
+    read()
+    const t = setInterval(read, every)
+    window.addEventListener('resize', read)
+    return () => { clearInterval(t); window.removeEventListener('resize', read) }
+  }, [selector, every])
+  return rect
+}
+function ChatGhost() {
+  const pane = useAnchorRect('[data-cc-chatpane]')
+  const boxRef = useRef(null)
+  const [state, setState] = useState('hidden')
+  const still = reduceMotion()
+  const show = pane && pane.width >= 620
+  useEffect(() => {
+    if (!show) return
     let back, raf = 0, near = false
-    const t0 = setTimeout(() => setState('peek'), 1800)
+    const t0 = setTimeout(() => setState('peek'), 1500)
     if (still) return () => clearTimeout(t0)
     const onMove = (e) => {
       if (raf) return
@@ -398,20 +434,86 @@ export function ChatPeekGhost() {
     }
     document.addEventListener('mousemove', onMove, { passive: true })
     return () => { clearTimeout(t0); clearTimeout(back); cancelAnimationFrame(raf); document.removeEventListener('mousemove', onMove) }
-  }, [on, still])
-  if (!on) return null
+  }, [show, still])
+  if (!show) return null
+  const left = pane.right - Math.min(pane.width * 0.38, 360) - 84
   return (
-    <div ref={boxRef} aria-hidden="true"
-      style={{ position: 'absolute', top: 0, right: 'min(38%, 360px)', width: 84, height: 62, overflow: 'hidden', pointerEvents: 'none', zIndex: 3 }}>
+    <div ref={boxRef} aria-hidden="true" className="cc-desktop-only"
+      style={{ position: 'fixed', top: pane.top, left, width: 84, height: 60, overflow: 'hidden', pointerEvents: 'none', zIndex: 2350 }}>
       <div style={{ position: 'absolute', left: 6, bottom: 0, transition: still ? 'none' : 'transform .45s cubic-bezier(.34,1.56,.64,1)',
-        transform: state === 'peek' ? 'translateY(22px)' : 'translateY(78px)' }}>
+        transform: state === 'peek' ? 'translateY(20px)' : 'translateY(78px)' }}>
         <Ghost size={68} wave={false} />
-        {/* little hands holding the edge */}
         <svg width="72" height="12" viewBox="0 0 72 12" style={{ position: 'absolute', left: -2, top: 30 }}>
           <ellipse cx="11" cy="6" rx="6.5" ry="5" fill="#fff" stroke="#E9D5FF" strokeWidth="1.4" />
           <ellipse cx="61" cy="6" rx="6.5" ry="5" fill="#fff" stroke="#E9D5FF" strokeWidth="1.4" />
         </svg>
       </div>
     </div>
+  )
+}
+
+// ============================================================
+// CANDY BUCKET — a cute pumpkin pail next to the page title in the top bar. Click it and
+// candy tumbles out, then hops back in. Only the bucket itself is clickable.
+// ============================================================
+const BUCKET_CANDY = [['#F472B6'], ['#A78BFA'], [ORANGE], ['#34D399'], ['#F472B6'], ['#FDE047'], ['#A78BFA'], [ORANGE]]
+function CandyBucket() {
+  const crumb = useAnchorRect('.topbar .crumb', 900)
+  const [spill, setSpill] = useState(null)
+  const [wobble, setWobble] = useState(0)
+  const still = reduceMotion()
+  if (!crumb) return null
+  const x = crumb.right + 12, y = crumb.top + crumb.height / 2 - 20
+  function tip() {
+    setWobble(w => w + 1)
+    if (still || spill) return
+    const id = Date.now()
+    setSpill({ id, bits: BUCKET_CANDY.map(([c], i) => ({ c, i,
+      dx: `${Math.round(-70 + i * 22 + (Math.random() - .5) * 14)}px`, dy: `${Math.round(70 + Math.random() * 60)}px`,
+      rot: `${Math.round((Math.random() - .5) * 360)}deg`, delay: i * 0.04 })) })
+    setTimeout(() => setSpill(null), 2600)
+  }
+  return (
+    <>
+      <style>{`
+        @keyframes ccSpill { 0% { transform: translate(0,0) rotate(0) scale(.6); opacity: 0 }
+          8% { opacity: 1; transform: translate(calc(var(--dx) * .3), -18px) rotate(calc(var(--rot) * .3)) scale(.9) }
+          38% { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(1) }
+          44% { transform: translate(var(--dx), calc(var(--dy) - 10px)) rotate(var(--rot)) scale(1) }
+          50%, 66% { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(1) }
+          82% { transform: translate(calc(var(--dx) * .4), -26px) rotate(0) scale(.9); opacity: 1 }
+          100% { transform: translate(0, 6px) rotate(0) scale(.5); opacity: 0 } }
+        @keyframes ccWobble { 0%, 100% { transform: rotate(0) } 25% { transform: rotate(-14deg) } 60% { transform: rotate(9deg) } }
+        .cc-bucket:hover { transform: translateY(-2px) scale(1.06); }
+        .cc-bucket:focus-visible { outline: 2px solid #A78BFA; outline-offset: 3px; border-radius: 10px; }
+      `}</style>
+      <button className="cc-bucket" onClick={tip} title="Trick or treat! 🍬" aria-label="Trick or treat — candy bucket"
+        style={{ position: 'fixed', left: x, top: y, zIndex: 2360, width: 40, height: 40, padding: 0, border: 0, background: 'transparent', cursor: 'pointer', transition: 'transform .15s' }}>
+        <span key={wobble} style={{ display: 'block', transformOrigin: '50% 90%', animation: wobble ? 'ccWobble .5s ease' : 'none' }}>
+          <svg width="40" height="40" viewBox="0 0 48 48" aria-hidden="true" style={{ overflow: 'visible' }}>
+            <path d="M8 16 Q24 -6 40 16" stroke="#6D28D9" strokeWidth="2.6" fill="none" strokeLinecap="round" />
+            <g transform="translate(15 9) rotate(-18)"><Candy size={14} color="#F472B6" /></g>
+            <g transform="translate(25 8) rotate(16)"><Candy size={13} color="#A78BFA" /></g>
+            <circle cx="22" cy="13" r="3.6" fill="#34D399" /><path d="M22 13 L19 4" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
+            <ellipse cx="24" cy="31" rx="18" ry="14.5" fill={ORANGE_D} />
+            <ellipse cx="24" cy="31" rx="12" ry="14.5" fill={ORANGE} />
+            <ellipse cx="24" cy="17.5" rx="14.5" ry="3.8" fill="#C2410C" />
+            <ellipse cx="18.5" cy="29" rx="2.3" ry="2.9" fill={INK} /><ellipse cx="29.5" cy="29" rx="2.3" ry="2.9" fill={INK} />
+            <circle cx="19.2" cy="28" r=".8" fill="#fff" /><circle cx="30.2" cy="28" r=".8" fill="#fff" />
+            <ellipse cx="14.5" cy="34" rx="2.8" ry="1.7" fill="#FDA4AF" /><ellipse cx="33.5" cy="34" rx="2.8" ry="1.7" fill="#FDA4AF" />
+            <path d="M21 34 Q24 37 27 34" stroke={INK} strokeWidth="1.6" fill="none" strokeLinecap="round" />
+          </svg>
+        </span>
+      </button>
+      {spill && (
+        <div aria-hidden="true" style={{ position: 'fixed', left: x + 14, top: y + 10, zIndex: 2359, pointerEvents: 'none' }}>
+          {spill.bits.map(b => (
+            <span key={b.i} style={{ position: 'absolute', '--dx': b.dx, '--dy': b.dy, '--rot': b.rot, animation: `ccSpill 2.4s cubic-bezier(.3,.7,.4,1) ${b.delay}s both` }}>
+              {b.i % 4 === 3 ? <Sparkle size={14} color={b.c} /> : <Candy size={24} color={b.c} />}
+            </span>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
