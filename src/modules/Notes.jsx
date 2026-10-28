@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
@@ -90,16 +91,17 @@ const NP_CSS = `
 .np-two { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
 @container (max-width: 900px) { .np-two { grid-template-columns: 1fr; } }
 .np-tasks { border-left: 1px dashed var(--line); padding: 14px 16px; background-image: var(--pimg-t, none); background-size: var(--psize-t, auto); background-position: 0 6px; }
-.np-task { background: rgba(255,255,255,.82); border: 1px solid rgba(15,23,42,.08); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(15,23,42,.05); }
-.np-task:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
-.np-task.done { opacity: .65; }
-.np-task .ttl { border: 0; background: transparent; font: inherit; font-size: 15px; font-weight: 700; color: var(--ink); outline: none; width: 100%; padding: 2px 0; }
-.np-task .ttl::placeholder { color: #94a3b8; font-weight: 600; }
-.np-task .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 8px; }
-.np-task .fld { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.np-task .fld span { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
-.np-task .fld input, .np-task .fld select { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font: inherit; font-size: 12.5px; color: var(--ink); padding: 5px 7px; }
-.np-task .linked { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; font-size: 12px; font-weight: 700; color: #047857; background: #ECFDF5; border-radius: 999px; padding: 3px 10px; text-decoration: none; }
+.np-task { padding: 6px 2px 12px; border-bottom: 1px dashed rgba(15,23,42,.14); }
+.np-task.done { opacity: .6; }
+.np-task .ttl { border: 0; background: transparent; font-family: var(--paper-font, inherit); font-size: 17px; font-weight: 700; color: var(--ink); outline: none; width: 100%; padding: 2px 0; }
+.np-task .ttl::placeholder { color: rgba(100,116,139,.7); font-weight: 600; }
+.np-task .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 4px 0 0 27px; font-size: 12px; color: var(--ink-soft); }
+.np-task .fld { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.np-task .fld .lbl { white-space: nowrap; }
+.np-task .fld input, .np-task .fld select { border: 0; border-bottom: 1.5px solid rgba(100,116,139,.45); border-radius: 0; background: transparent; font: inherit; font-size: 12px; color: var(--ink); padding: 1px 2px; max-width: 150px; outline: none; cursor: pointer; }
+.np-task .fld input:focus, .np-task .fld select:focus { border-bottom-color: var(--accent); }
+.np-task .fld input[type=date] { width: 118px; }
+.np-task .linked { display: inline-flex; align-items: center; gap: 4px; margin: 6px 0 0 27px; font-size: 11.5px; font-weight: 700; color: #047857; text-decoration: none; }
 .np-tasks-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
 .np-push { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 12px; padding: 11px 18px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
   background: linear-gradient(120deg, #CFFAFE, #A7F3D0); color: #065F46; box-shadow: 0 6px 18px -8px rgba(16,185,129,.6); }
@@ -599,11 +601,11 @@ function NoteEditor({ note, me, people, nameOf, teams, folders, projects, client
                     {canEdit && <button className="np-plus" style={{ fontSize: 12 }} title="Remove from this note (a task already in Project Management stays there)" onClick={() => setTasksSave(tasks.filter(x => x.key !== t.key))}>✕</button>}
                   </div>
                   <div className="meta">
-                    <label className="fld"><span>Due by</span><input type="date" disabled={!canEdit} value={t.due || ''} onChange={e => updTask(t.key, { due: e.target.value })} /></label>
-                    <label className="fld"><span>Project</span><select disabled={!canEdit} value={t.project_id || ''} onChange={e => updTask(t.key, { project_id: e.target.value })}>
-                      <option value="">None</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-                    <label className="fld"><span>Client</span><select disabled={!canEdit} value={t.client_id || ''} onChange={e => updTask(t.key, { client_id: e.target.value })}>
-                      <option value="">None</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+                    <label className="fld"><span className="lbl">📅 Due By:</span><input type="date" disabled={!canEdit} value={t.due || ''} onChange={e => updTask(t.key, { due: e.target.value })} /></label>
+                    <label className="fld"><span className="lbl">📁 Project:</span><select disabled={!canEdit} value={t.project_id || ''} onChange={e => updTask(t.key, { project_id: e.target.value })}>
+                      <option value="">______</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+                    <label className="fld"><span className="lbl">👤 Client:</span><select disabled={!canEdit} value={t.client_id || ''} onChange={e => updTask(t.key, { client_id: e.target.value })}>
+                      <option value="">______</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
                   </div>
                   {t.task_id && <a className="linked" href={`/projects?task=${t.task_id}`}>✓ In Project Management ↗</a>}
                 </div>
