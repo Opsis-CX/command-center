@@ -1932,11 +1932,11 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
     if (error) { setMessages(prev); setErr('Could not delete: ' + error.message) }
   }
 
-  // ---- EDIT (author only; normal messages only, not @update) ----
+  // ---- EDIT (author only; @update posts too since 2026-10-28 — confirmations are kept) ----
   const [editing, setEditing] = useState(null)   // { id, html } or null
   const [editSaving, setEditSaving] = useState(false)
   function openEdit(m) {
-    if (m.sender_id !== me.id || m.requires_ack) return
+    if (m.sender_id !== me.id) return
     setEditing({ id: m.id, html: m.body || '' })
   }
   async function saveEdit(rawHtml) {
