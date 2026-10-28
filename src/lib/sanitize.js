@@ -82,7 +82,9 @@ function safeHref(raw) {
 // Only color and background-color, and only in syntax that cannot smuggle a
 // url() or an expression(). Hex, rgb/rgba, hsl/hsla, or a plain colour word.
 const COLOR_VALUE = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\)|[a-z]+)$/i
-const ALLOWED_STYLE_PROPS = new Set(['color', 'background-color', 'background'])
+const ALLOWED_STYLE_PROPS = new Set(['color', 'background-color', 'background', 'font-size'])
+// font-size (My Notes text size, 2026-10-27): plain pixel/point sizes only, 8–72.
+const FONT_SIZE_VALUE = /^(\d{1,2})(px|pt)$/i
 
 function safeStyle(raw) {
   if (!raw) return null
@@ -95,7 +97,10 @@ function safeStyle(raw) {
     if (!ALLOWED_STYLE_PROPS.has(prop)) continue
     // Reject anything containing a function call we didn't allow, or an escape.
     if (/url\s*\(|expression|javascript|@import|\\/i.test(val)) continue
-    if (!COLOR_VALUE.test(val)) continue
+    if (prop === 'font-size') {
+      const m = FONT_SIZE_VALUE.exec(val)
+      if (!m || +m[1] < 8 || +m[1] > 72) continue
+    } else if (!COLOR_VALUE.test(val)) continue
     out.push(`${prop}: ${val}`)
   }
   return out.length ? out.join('; ') : null
