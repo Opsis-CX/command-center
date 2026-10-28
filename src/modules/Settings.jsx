@@ -6,7 +6,7 @@ import { NOTIF_CATEGORIES } from '../lib/notify'
 import { loadNotifPrefs, saveNotifPref } from '../lib/notif_prefs'
 import { pushSupported, pushPermission, enablePush, disablePush, isPushEnabled, currentDeviceKey, isNativeApp, needsIosHomeScreen, describeDevice } from '../lib/push'
 import { isStaffProfile, isAgentProfile } from './Chat'
-import { SOUNDS, DEFAULT_SOUND_PREFS, loadSoundPrefs, saveSoundPrefs, playSound, primeAudio } from '../lib/sounds'
+import { SOUNDS, DEFAULT_SOUND_PREFS, loadSoundPrefs, saveSoundPrefs, playSound, primeAudio, lastSoundResult } from '../lib/sounds'
 
 
 // ---- Notification sounds (Slack-style picker) ----
@@ -47,6 +47,13 @@ function SoundCard({ userId }) {
   return (
     <div className="card" style={{ padding: 20, marginTop: 16 }}>
       <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Notification sound</div>
+      {(() => {
+        const r = lastSoundResult()
+        if (!r) return null
+        const when = new Date(r.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+        const txt = r.how === 'played' ? '✅ played' : r.how === 'backup' ? '✅ played (backup player)' : '⚠️ blocked by the browser — your computer’s notification sound was used instead'
+        return <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 8 }}>Last notification sound: <b>{txt}</b> · {when}</div>
+      })()}
       <p className="page-sub" style={{ marginTop: 0, fontSize: 13, marginBottom: 14 }}>
         Plays whenever Command Center is open — even minimized or in another tab. If Command Center is fully closed,
         pop-ups use your computer's notification sound. Turn sounds on or off per type in the Notifications table above.
