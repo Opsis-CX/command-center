@@ -53,6 +53,19 @@ export function primeAudio() {
 }
 // True if a sound can actually be heard right now (used to decide whether a
 // background pop-up should stay silent).
+// Browsers keep audio locked until the person interacts with the page after it loads
+// (Chrome/Edge autoplay rule). Unlock on the first click / tap / key press so every ding
+// after that plays — even after an overnight reload. (2026-10-28)
+if (typeof window !== 'undefined') {
+  const unlock = () => {
+    const c = getCtx()
+    if (!c) return
+    const done = () => { if (c.state === 'running') ['pointerdown', 'keydown', 'touchstart'].forEach(ev => window.removeEventListener(ev, unlock, true)) }
+    if (c.state === 'suspended') c.resume().then(done).catch(() => {}); else done()
+  }
+  ;['pointerdown', 'keydown', 'touchstart'].forEach(ev => window.addEventListener(ev, unlock, { capture: true, passive: true }))
+}
+
 export async function audioReady() {
   const c = getCtx()
   if (!c) return false
