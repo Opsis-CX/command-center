@@ -18,11 +18,19 @@ export const SEASONS = [
 ]
 
 let _off = false
+// Dates are checked in America/New_York, so Halloween ends at midnight Nov 1 Eastern for everyone.
 export function activeSeason(d = new Date()) {
-  const md = (d.getMonth() + 1) * 100 + d.getDate()
+  const [mo, da] = d.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'numeric', day: 'numeric' }).split('/').map(Number)
+  const md = mo * 100 + da
   return SEASONS.find(s => md >= s.from[0] * 100 + s.from[1] && md <= s.to[0] * 100 + s.to[1]) || null
 }
 export function seasonalHat() { if (_off) return null; return activeSeason()?.hat || null }
+// Re-render when the person's on/off setting is known or changes.
+export function useSeasonOn() {
+  const [, tick] = useState(0)
+  useEffect(() => { const f = () => tick(t => t + 1); window.addEventListener('cc:seasonal-state', f); return () => window.removeEventListener('cc:seasonal-state', f) }, [])
+  return !!seasonalHat()
+}
 const reduceMotion = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false } }
 export function celebrate(x, y) { window.dispatchEvent(new CustomEvent('cc:celebrate', { detail: { x, y } })) }
 
@@ -42,6 +50,12 @@ const CSS = `
 @keyframes ccGreetIn { from { opacity: 0; transform: translate(-50%, -10px) scale(.96) } to { opacity: 1; transform: translate(-50%, 0) scale(1) } }
 @keyframes ccSparkle { 0%, 100% { opacity: .2; transform: scale(.7) } 50% { opacity: 1; transform: scale(1) } }
 .cc-season-layer { position: fixed; inset: 0; pointer-events: none; z-index: 2400; overflow: hidden; }
+@keyframes ccFlyTop { from { transform: translateX(-180px) } to { transform: translateX(calc(100vw + 180px)) } }
+@keyframes ccRise { 0% { transform: translateY(105%) } 20%, 78% { transform: translateY(0) } 100% { transform: translateY(105%) } }
+@keyframes ccHang { 0%, 100% { transform: rotate(-7deg) } 50% { transform: rotate(7deg) } }
+@keyframes ccShimmer { from { background-position: 0 0 } to { background-position: 400px 0 } }
+.cc-desktop-only { display: block; }
+@media (max-width: 900px) { .cc-desktop-only { display: none !important; } }
 .cc-blink { transform-box: fill-box; transform-origin: center; animation: ccBlink 4.5s infinite; }
 `
 
@@ -128,7 +142,7 @@ function Sparkle({ size = 14, color = '#FDE047', delay = 0 }) {
 // A soft web with a smiling, swinging spider.
 function CornerWeb() {
   return (
-    <svg width="104" height="110" viewBox="0 0 104 110" aria-hidden="true" style={{ position: 'fixed', top: 0, right: 0, opacity: .7, pointerEvents: 'none', zIndex: 2300, overflow: 'visible' }}>
+    <svg width="130" height="138" viewBox="0 0 104 110" aria-hidden="true" style={{ position: 'fixed', top: 0, right: 0, opacity: .75, pointerEvents: 'none', zIndex: 2300, overflow: 'visible' }}>
       <g stroke={LAV} strokeWidth="1.3" fill="none" strokeLinecap="round">
         <path d="M104 0 L14 6 M104 0 L30 52 M104 0 L60 84 M104 0 L96 96" />
         <path d="M82 1.4 Q84 12 86 13 Q92 18 102 22" /><path d="M59 3 Q64 22 68 27 Q80 38 101 45" /><path d="M36 4.5 Q44 32 50 40 Q68 58 99 68" />
@@ -146,15 +160,46 @@ function CornerWeb() {
   )
 }
 
+// A smaller, mirrored web for the top-left of the main area (just right of the sidebar).
+function LeftWeb() {
+  return (
+    <svg className="cc-desktop-only" width="92" height="92" viewBox="0 0 104 110" aria-hidden="true"
+      style={{ position: 'fixed', top: 60, left: 238, transform: 'scaleX(-1)', opacity: .5, pointerEvents: 'none', zIndex: 2300 }}>
+      <g stroke={LAV} strokeWidth="1.3" fill="none" strokeLinecap="round">
+        <path d="M104 0 L14 6 M104 0 L30 52 M104 0 L60 84 M104 0 L96 96" />
+        <path d="M82 1.4 Q84 12 86 13 Q92 18 102 22" /><path d="M59 3 Q64 22 68 27 Q80 38 101 45" /><path d="M36 4.5 Q44 32 50 40 Q68 58 99 68" />
+      </g>
+    </svg>
+  )
+}
+// Three tiny bats hanging under the top bar on silk threads, and a few twinkling sparkles.
+function TopDecor() {
+  const still = reduceMotion()
+  const hang = (left, len, size, delay) => (
+    <div key={left} style={{ position: 'fixed', top: 60, left, transformOrigin: 'top center', animation: still ? 'none' : `ccHang ${3.4 + delay}s ease-in-out ${delay}s infinite`, pointerEvents: 'none', zIndex: 2300 }}>
+      <div style={{ width: 1, height: len, background: LAV, margin: '0 auto' }} />
+      <div style={{ transform: 'rotate(180deg)', marginTop: -2 }}><Bat size={size} delay={delay} /></div>
+    </div>
+  )
+  return (
+    <div aria-hidden="true" className="cc-desktop-only">
+      {hang('36%', 10, 30, 0)}{hang('57%', 18, 26, .7)}{hang('78%', 8, 28, 1.3)}
+      {[['30%', 66, '#C084FC', 0], ['46%', 70, '#F9A8D4', .6], ['66%', 64, '#FDE047', 1.1], ['86%', 70, '#C084FC', 1.6]].map(([left, top, c, d]) => (
+        <div key={left} style={{ position: 'fixed', left, top, pointerEvents: 'none', zIndex: 2300 }}><Sparkle size={12} color={c} delay={d} /></div>
+      ))}
+    </div>
+  )
+}
+
 // Little pumpkin patch with a kitty, bottom corner (left of the phone button).
 function PumpkinPatch() {
   return (
     <div aria-hidden="true" style={{ position: 'fixed', right: 92, bottom: -4, zIndex: 2300, pointerEvents: 'none', display: 'flex', alignItems: 'flex-end', gap: 0, opacity: .96 }}>
-      <div style={{ marginRight: -10, transform: 'rotate(-6deg)' }}><Pumpkin size={44} /></div>
-      <div style={{ zIndex: 1 }}><Kitty size={58} /></div>
-      <div style={{ marginLeft: -8 }}><Pumpkin size={36} /></div>
-      <div style={{ position: 'absolute', left: 30, top: -10 }}><Sparkle size={11} delay={.2} /></div>
-      <div style={{ position: 'absolute', right: 6, top: 2 }}><Sparkle size={9} color="#F9A8D4" delay={.9} /></div>
+      <div style={{ marginRight: -12, transform: 'rotate(-6deg)' }}><Pumpkin size={58} /></div>
+      <div style={{ zIndex: 1 }}><Kitty size={76} /></div>
+      <div style={{ marginLeft: -10 }}><Pumpkin size={46} /></div>
+      <div style={{ position: 'absolute', left: 38, top: -12 }}><Sparkle size={13} delay={.2} /></div>
+      <div style={{ position: 'absolute', right: 8, top: 4 }}><Sparkle size={11} color="#F9A8D4" delay={.9} /></div>
     </div>
   )
 }
@@ -164,7 +209,7 @@ export function SeasonHeaderDecor() {
   if (!seasonalHat()) return null
   return (
     <div aria-hidden="true" style={{ position: 'absolute', right: 14, top: 4, display: 'flex', alignItems: 'center', gap: 2, pointerEvents: 'none' }}>
-      <Bat size={30} delay={.1} /><Ghost size={26} /><Pumpkin size={26} /><Sparkle size={10} delay={.4} />
+      <Bat size={38} delay={.1} /><Ghost size={32} /><Pumpkin size={32} /><Sparkle size={12} delay={.4} />
     </div>
   )
 }
@@ -193,6 +238,8 @@ export default function Seasonal() {
       if (!alive) return
       const enabled = data?.seasonal_effects !== false
       _off = !enabled; setOn(enabled)
+      document.body.classList.toggle('cc-halloween', enabled && season.key === 'halloween')
+      window.dispatchEvent(new Event('cc:seasonal-state'))
       if (enabled) {
         const key = `cc.season.greet.${season.key}.${new Date().toDateString()}`
         try { if (!localStorage.getItem(key)) setGreet({ text: season.greeting((data?.full_name || '').split(' ')[0]), key }) } catch { /* ignore */ }
@@ -200,23 +247,29 @@ export default function Seasonal() {
     })
     read()
     window.addEventListener('cc:seasonal-changed', read)
-    return () => { alive = false; window.removeEventListener('cc:seasonal-changed', read) }
+    return () => { alive = false; window.removeEventListener('cc:seasonal-changed', read); document.body.classList.remove('cc-halloween') }
   }, [user?.id, season?.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // floating friends: a ghost, a little flock of bats, or a candy — every 25–45s
+  // Intentional edge moments (no more floaters through the middle of the screen):
+  //  • a little flock of bats flutters along just under the top bar (every ~45–80s)
+  //  • a ghost pops up behind the pumpkin patch and waves (every ~1.5–2.5 min)
   useEffect(() => {
     if (!on || !season || still) return
-    let t, n = 0
-    const kinds = ['ghost', 'bats', 'ghost', 'candy', 'bats', 'ghost']
-    const spawn = () => {
+    let t1, t2
+    const bats = () => {
       if (document.visibilityState === 'visible') {
         const id = ++idRef.current
-        setFloaters(f => [...f, { id, kind: kinds[n++ % kinds.length], top: `${10 + Math.random() * 62}vh`, dur: 16 + Math.random() * 8 }])
+        setFloaters(f => [...f, { id, kind: 'bats', top: 66 + Math.round(Math.random() * 18), dur: 13 + Math.random() * 5 }])
       }
-      t = setTimeout(spawn, 25000 + Math.random() * 20000)
+      t1 = setTimeout(bats, 45000 + Math.random() * 35000)
     }
-    t = setTimeout(spawn, 3000)
-    return () => clearTimeout(t)
+    const rise = () => {
+      if (document.visibilityState === 'visible') { const id = ++idRef.current; setFloaters(f => [...f, { id, kind: 'rise' }]); setTimeout(() => setFloaters(f => f.filter(x => x.id !== id)), 5200) }
+      t2 = setTimeout(rise, 90000 + Math.random() * 60000)
+    }
+    t1 = setTimeout(bats, 6000)
+    t2 = setTimeout(rise, 35000)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [on, season?.key, still]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // peek-a-boo ghost from the right edge every ~1.5–2.5 min
@@ -254,26 +307,28 @@ export default function Seasonal() {
     <>
       <style>{CSS}</style>
       <CornerWeb />
+      <LeftWeb />
+      <TopDecor />
       <PumpkinPatch />
       <div className="cc-season-layer" aria-hidden="true">
-        {floaters.map(f => (
-          <div key={f.id} style={{ position: 'absolute', top: f.top, left: 0, animation: `ccAcross ${f.dur}s linear forwards` }}
+        {floaters.map(f => f.kind === 'bats' ? (
+          <div key={f.id} style={{ position: 'absolute', top: f.top, left: 0, animation: `ccFlyTop ${f.dur}s linear forwards` }}
             onAnimationEnd={() => setFloaters(x => x.filter(y => y.id !== f.id))}>
-            <div style={{ animation: 'ccBob 2.8s ease-in-out infinite' }}>
-              {f.kind === 'ghost' && <Ghost size={58} />}
-              {f.kind === 'candy' && <Candy size={40} />}
-              {f.kind === 'bats' && <div style={{ position: 'relative', width: 120, height: 70 }}>
-                <div style={{ position: 'absolute', left: 0, top: 22 }}><Bat size={44} /></div>
-                <div style={{ position: 'absolute', left: 46, top: 0 }}><Bat size={34} delay={.12} /></div>
-                <div style={{ position: 'absolute', left: 74, top: 30 }}><Bat size={28} delay={.24} /></div>
-              </div>}
+            <div style={{ position: 'relative', width: 150, height: 60, animation: 'ccBob 2.2s ease-in-out infinite' }}>
+              <div style={{ position: 'absolute', left: 0, top: 18 }}><Bat size={48} /></div>
+              <div style={{ position: 'absolute', left: 54, top: 0 }}><Bat size={38} delay={.12} /></div>
+              <div style={{ position: 'absolute', left: 92, top: 24 }}><Bat size={32} delay={.24} /></div>
             </div>
+          </div>
+        ) : (
+          <div key={f.id} style={{ position: 'fixed', right: 150, bottom: 30, overflow: 'hidden', width: 86, height: 84, zIndex: 2299 }}>
+            <div style={{ animation: 'ccRise 5s ease-in-out forwards' }}><Ghost size={74} /></div>
           </div>
         ))}
         {peek && (
           <div key={peek.id} style={{ position: 'absolute', right: 0, top: peek.top, animation: 'ccPeek 4.5s ease-in-out forwards', display: 'flex', alignItems: 'center', gap: 6 }}>
             <div style={{ background: '#fff', border: `1.5px solid ${LAV}`, borderRadius: 14, padding: '5px 11px', fontWeight: 800, color: PURPLE, fontSize: 14, boxShadow: '0 6px 16px -8px rgba(124,58,237,.5)' }}>Boo! 💜</div>
-            <div style={{ marginRight: -14 }}><Ghost size={64} /></div>
+            <div style={{ marginRight: -16 }}><Ghost size={80} /></div>
           </div>
         )}
         {bursts.map(b => (
@@ -298,7 +353,7 @@ export default function Seasonal() {
 
 // A tiny cute witch hat (Chat avatars during Halloween week).
 export function WitchHat({ size }) {
-  const w = Math.max(12, Math.round(size * 0.72))
+  const w = Math.max(13, Math.round(size * 0.8))
   return (
     <svg aria-hidden="true" width={w} height={w} viewBox="0 0 40 40"
       style={{ position: 'absolute', left: -Math.round(size * 0.1), top: -Math.round(size * 0.5), transform: 'rotate(-14deg)', pointerEvents: 'none', overflow: 'visible', zIndex: 1 }}>
@@ -309,5 +364,54 @@ export function WitchHat({ size }) {
       <circle cx="29.5" cy="3.4" r="1.8" fill="#FDE047" />
       <path d="M33 9 l1 2 2 .4 -2 .8 -.6 2 -.8-2 -2-.6 2-.8z" fill="#FDE047" />
     </svg>
+  )
+}
+
+
+// ============================================================
+// SHY CHAT GHOST — peeks up over the top edge of the chat panel. When the mouse comes
+// near, it ducks down and hides; a few seconds after the mouse leaves, it peeks back.
+// Uses a document mousemove check (no pointer events on the ghost), so it never blocks
+// clicks, scrolling or typing. Reduced motion: it just sits there, no ducking.
+// ============================================================
+export function ChatPeekGhost() {
+  const on = useSeasonOn()
+  const boxRef = useRef(null)
+  const [state, setState] = useState('hidden')   // 'peek' | 'hidden'
+  const still = reduceMotion()
+  useEffect(() => {
+    if (!on) return
+    let back, raf = 0, near = false
+    const t0 = setTimeout(() => setState('peek'), 1800)
+    if (still) return () => clearTimeout(t0)
+    const onMove = (e) => {
+      if (raf) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        const el = boxRef.current; if (!el) return
+        const r = el.getBoundingClientRect()
+        const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2)
+        const isNear = dx * dx + dy * dy < 130 * 130
+        if (isNear && !near) { near = true; clearTimeout(back); setState('hidden') }
+        else if (!isNear && near) { near = false; clearTimeout(back); back = setTimeout(() => setState('peek'), 2600 + Math.random() * 1800) }
+      })
+    }
+    document.addEventListener('mousemove', onMove, { passive: true })
+    return () => { clearTimeout(t0); clearTimeout(back); cancelAnimationFrame(raf); document.removeEventListener('mousemove', onMove) }
+  }, [on, still])
+  if (!on) return null
+  return (
+    <div ref={boxRef} aria-hidden="true"
+      style={{ position: 'absolute', top: 0, right: 'min(38%, 360px)', width: 84, height: 62, overflow: 'hidden', pointerEvents: 'none', zIndex: 3 }}>
+      <div style={{ position: 'absolute', left: 6, bottom: 0, transition: still ? 'none' : 'transform .45s cubic-bezier(.34,1.56,.64,1)',
+        transform: state === 'peek' ? 'translateY(22px)' : 'translateY(78px)' }}>
+        <Ghost size={68} wave={false} />
+        {/* little hands holding the edge */}
+        <svg width="72" height="12" viewBox="0 0 72 12" style={{ position: 'absolute', left: -2, top: 30 }}>
+          <ellipse cx="11" cy="6" rx="6.5" ry="5" fill="#fff" stroke="#E9D5FF" strokeWidth="1.4" />
+          <ellipse cx="61" cy="6" rx="6.5" ry="5" fill="#fff" stroke="#E9D5FF" strokeWidth="1.4" />
+        </svg>
+      </div>
+    </div>
   )
 }
