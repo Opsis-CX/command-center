@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
@@ -508,6 +509,9 @@ export function RichEditor({
   placeholder = 'Write something…', variant = 'full',
   editorRef, submitOnEnter = false, minHeight = 120, maxHeight = 400,
   autofocus = false, disabled = false, profiles,
+  // Optional: a DOM element to draw the toolbar into instead of above the text (My Notes
+  // puts it above the whole notepad). Every other editor leaves this unset.
+  toolbarTarget = null,
 }) {
   const submitRef = useRef(onSubmit)
   useEffect(() => { submitRef.current = onSubmit }, [onSubmit])
@@ -716,7 +720,7 @@ export function RichEditor({
           </div>
           {fmtOpen && toolbar}
         </>
-      ) : toolbar}
+      ) : toolbarTarget ? createPortal(toolbar, toolbarTarget) : toolbar}
       <EditorContent editor={editor} />
 
       {spellUi?.kind === 'menu' && (
