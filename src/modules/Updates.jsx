@@ -63,12 +63,14 @@ function MediaGallery({ media }) {
 }
 
 export default function Updates() {
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, appRole } = useAuth()
+  // Admins, ASCs and Certification post updates and see Archived (matches can_post_updates() in the DB).
+  const canPost = !!isAdmin || String(appRole || '').toLowerCase().split(',').map(r => r.trim()).some(r => ['admin', 'asc', 'certification'].includes(r))
   const [items, setItems] = useState(null)
   const [teams, setTeams] = useState([])
   const [names, setNames] = useState({})
   const [err, setErr] = useState('')
-  const [filter, setFilter] = useState('all')
+  const [filter, setFilter] = useState(null)        // null until we know whether there's anything new
   const [editing, setEditing] = useState(null)   // null = closed | 'new' | announcement object
   const [reads, setReads] = useState({})            // announcement_id -> [{profile_id, read_at}]
   const [openReaders, setOpenReaders] = useState(null)
@@ -105,6 +107,7 @@ export default function Updates() {
   async function markRead(a) {
     if (!user?.id || readByMe(a)) return
     setReads(cur => ({ ...cur, [a.id]: [...(cur[a.id] || []), { profile_id: user.id, read_at: new Date().toISOString() }] }))
+    setUnreadIds(cur => { if (!cur) return cur; const n = new Set(cur); n.delete(a.id); return n })
     await supabase.from('announcement_reads').insert({ announcement_id: a.id, profile_id: user.id })
     window.dispatchEvent(new Event('cc:updates-read'))
   }
@@ -138,18 +141,29 @@ export default function Updates() {
 
   const teamName = (id) => teams.find(t => t.id === id)?.name || 'team'
   const audienceLabel = (a) => (!a.audience_tags || a.audience_tags.length === 0) ? 'Everyone' : a.audience_tags.map(teamName).join(', ')
-  const visible = (items || []).filter(a => filter === 'all' || a.category === filter)
-  const [unreadForMe, setUnreadForMe] = useState(0)
+  // NEW! = meant for me and not marked read. Read ones move to This Week (last 7 days) and
+  // their category. Archived = 30+ days old (only people who can post see them); removed 9 days later.
+  const [unreadIds, setUnreadIds] = useState(null)
+  const unreadForMe = unreadIds ? unreadIds.size : 0
   const [marking, setMarking] = useState(false)
   useEffect(() => {
-    supabase.rpc('my_unread_updates').then(({ data }) => setUnreadForMe((data || []).length))
+    supabase.rpc('my_unread_updates').then(({ data }) => setUnreadIds(new Set((data || []).map(u => u.id))))
   }, [items, reads])
+  const tab = filter || (unreadIds === null ? null : unreadIds.size ? 'new' : 'week')
+  const active = (items || []).filter(a => !a.archived_at)
+  const isNew = (a) => !!unreadIds?.has(a.id)
+  const weekAgo = Date.now() - 7 * 864e5
+  const visible = tab === 'new' ? active.filter(isNew)
+    : tab === 'week' ? active.filter(a => !isNew(a) && new Date(a.created_at).getTime() >= weekAgo)
+    : tab === 'archived' ? (items || []).filter(a => a.archived_at)
+    : tab === 'all' ? active
+    : active.filter(a => !isNew(a) && a.category === tab)
   async function markAllRead() {
     if (!window.confirm(`Mark all ${unreadForMe} update${unreadForMe === 1 ? '' : 's'} as read? This confirms you've read ${unreadForMe === 1 ? 'it' : 'them'}.`)) return
     setMarking(true)
     const { error } = await supabase.rpc('mark_my_updates_read')
     setMarking(false)
-    if (error) setErr(error.message); else { setUnreadForMe(0); load(); window.dispatchEvent(new Event('cc:updates-read')) }
+    if (error) setErr(error.message); else { setUnreadIds(new Set()); load(); window.dispatchEvent(new Event('cc:updates-read')) }
   }
 
   return (
@@ -161,7 +175,7 @@ export default function Updates() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {unreadForMe > 0 && <button className="btn btn-ghost" onClick={markAllRead} disabled={marking}>{marking ? 'Marking…' : `✓ Mark all as read (${unreadForMe})`}</button>}
-          <button className="btn btn-primary" onClick={() => setEditing(e => e ? null : 'new')}>{editing ? 'Close' : '＋ New update'}</button>
+          {canPost && <button className="btn btn-primary" onClick={() => setEditing(e => e ? null : 'new')}>{editing ? 'Close' : '＋ New update'}</button>}
         </div>
       </div>
 
@@ -173,14 +187,20 @@ export default function Updates() {
 
       {/* category filter */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 16px' }}>
-        <span style={chip(filter === 'all')} onClick={() => setFilter('all')}>All</span>
-        {CATS.map(c => <span key={c.key} style={chip(filter === c.key, c.color)} onClick={() => setFilter(c.key)}>{c.label}</span>)}
+        <span style={{ ...chip(tab === 'new', '#DC2626'), fontWeight: 800, ...(tab !== 'new' && unreadForMe ? { color: '#DC2626', borderColor: '#FCA5A5' } : {}) }} onClick={() => setFilter('new')}>NEW!{unreadForMe ? ` (${unreadForMe})` : ''}</span>
+        <span style={chip(tab === 'week')} onClick={() => setFilter('week')}>This Week</span>
+        <span style={chip(tab === 'all')} onClick={() => setFilter('all')}>All</span>
+        {CATS.map(c => <span key={c.key} style={chip(tab === c.key, c.color)} onClick={() => setFilter(c.key)}>{c.label}</span>)}
+        {canPost && <span style={{ ...chip(tab === 'archived', '#64748B'), marginLeft: 'auto' }} onClick={() => setFilter('archived')}>🗄 Archived</span>}
       </div>
+      {tab === 'archived' && <p className="page-sub" style={{ margin: '-6px 0 12px', fontSize: 12.5 }}>Updates move here after 30 days (pinned ones stay active) and are removed 9 days later. Only people who can post updates see this.</p>}
 
-      {items === null ? <p className="page-sub">Loading…</p>
-        : visible.length === 0 ? <div className="card" style={{ textAlign: 'center', padding: 34 }}><p className="page-sub" style={{ margin: 0 }}>No updates yet. Post the first one.</p></div>
+      {items === null || tab === null ? <p className="page-sub">Loading…</p>
+        : visible.length === 0 ? <div className="card" style={{ textAlign: 'center', padding: 34 }}><p className="page-sub" style={{ margin: 0 }}>{
+            tab === 'new' ? 'You’re all caught up! 🎉 Nothing new to read.' : tab === 'week' ? 'No updates from this week yet.' : tab === 'archived' ? 'Nothing archived.' : 'No updates here.'}</p></div>
           : (
-            <div style={{ display: 'grid', gap: 12 }}>
+            // own scroll area so a long list never makes the page super long
+            <div style={{ display: 'grid', gap: 12, maxHeight: 'calc(100vh - 250px)', minHeight: 240, overflowY: 'auto', paddingRight: 4 }}>
               {visible.map(a => {
                 const cm = catMeta(a.category)
                 const mine = a.author_id === user?.id
@@ -205,6 +225,7 @@ export default function Updates() {
                       <span>{when(a.created_at)}</span>
                       <span>·</span>
                       <span title="Who can see this">{targeted ? '📣 ' + audienceLabel(a) : '📣 Everyone'}</span>
+                      {a.archived_at && <span style={{ color: '#B45309', fontWeight: 600 }}>· 🗄 Archived — removed {new Date(new Date(a.archived_at).getTime() + 9 * 864e5).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (pin it to keep it)</span>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 10, flexWrap: 'wrap', borderTop: '1px solid var(--line-soft)', paddingTop: 8 }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, cursor: readByMe(a) ? 'default' : 'pointer', color: readByMe(a) ? '#16A34A' : 'var(--ink)' }}>
