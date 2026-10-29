@@ -89,6 +89,25 @@ jobs:
           $PSQL "$STAGING_URL" -v ON_ERROR_STOP=0 -q -f live_structure.sql 2>&1 | grep -iE "error" | head -n 40 || true
           echo "✅ Done. Tables in staging now: $($PSQL "$STAGING_URL" -tAc "select count(*) from pg_tables where schemaname='public'")"
 
+      - name: Copy storage folders, file rules and the new-account trigger
+        run: |
+          PSQL=/usr/lib/postgresql/17/bin/psql
+          # These live outside the main section, and a re-sync removes the ones that depend on it.
+          $PSQL "$PROD_URL" -tA -v ON_ERROR_STOP=1 > storage_and_auth.sql <<'SQL'
+          select format('insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types) values (%L, %L, %s, %s, %s) on conflict (id) do update set public = excluded.public, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;',
+                 id, name, public, coalesce(file_size_limit::text, 'null'), coalesce(quote_literal(allowed_mime_types::text) || '::text[]', 'null'))
+          from storage.buckets
+          union all
+          select format('drop policy if exists %I on storage.objects; create policy %I on storage.objects as %s for %s to %s%s%s;',
+                 policyname, policyname, permissive, cmd, array_to_string(roles, ', '),
+                 case when qual is not null then ' using (' || qual || ')' else '' end,
+                 case when with_check is not null then ' with check (' || with_check || ')' else '' end)
+          from pg_policies where schemaname = 'storage' and tablename = 'objects';
+          SQL
+          echo "drop trigger if exists on_auth_user_created on auth.users; create trigger on_auth_user_created after insert on auth.users for each row execute function public.handle_new_user();" >> storage_and_auth.sql
+          $PSQL "$STAGING_URL" -v ON_ERROR_STOP=0 -q -f storage_and_auth.sql 2>&1 | grep -iE "error" | head -n 20 || true
+          echo "✅ Storage folders: $($PSQL "$STAGING_URL" -tAc "select count(*) from storage.buckets") · file rules: $($PSQL "$STAGING_URL" -tAc "select count(*) from pg_policies where schemaname='storage'")"
+
       - name: Make staging safe (never call live, no scheduled jobs)
         run: |
           PSQL=/usr/lib/postgresql/17/bin/psql
@@ -101,8 +120,16 @@ jobs:
             end loop;
             raise notice 'Re-pointed % functions at staging', n;
           end $$;
+          do $$ declare r record; begin
+            for r in select conrelid::regclass as tbl, conname, pg_get_constraintdef(oid) as def from pg_constraint
+                     where connamespace = 'public'::regnamespace and contype = 'c' and pg_get_constraintdef(oid) ilike '%dqvuviyqrcrgapmxkoyx%' loop
+              execute format('alter table %s drop constraint %I', r.tbl, r.conname);
+              execute format('alter table %s add constraint %I %s', r.tbl, r.conname, replace(r.def, 'dqvuviyqrcrgapmxkoyx', 'suctozsxsqjnlyecqfer'));
+            end loop;
+          end $$;
           select cron.alter_job(job_id := jobid, active := false) from cron.job where active;
           SQL
           left=$($PSQL "$STAGING_URL" -tAc "select count(*) from pg_proc where pronamespace='public'::regnamespace and prosrc ilike '%dqvuviyqrcrgapmxkoyx%'")
           if [ "$left" != "0" ]; then echo "❌ $left functions still point at live — check before using staging."; exit 1; fi
-          echo "✅ Staging is safe: 0 functions point at live, scheduled jobs paused."
+          echo "✅ Staging is safe: 0 functions point at live, rules re-pointed, scheduled jobs paused."
+          echo "ℹ️  Re-syncing clears staging's sample data and test logins' profiles — ask Claude to re-add the demo company afterwards."
