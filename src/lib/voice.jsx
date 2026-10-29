@@ -141,10 +141,30 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
     const device = new Twilio.Device(token, {
       codecPreferences: ['opus', 'pcmu'], closeProtection: true, logLevel: 'error', allowIncomingWhileBusy: false,
     })
+    // Token refresh (10/29): the 1-hour token also expires while the laptop sleeps or the tab is in the
+    // background, when tokenWillExpire never fires. Refresh on wake, and recover from AccessTokenExpired (20104).
+    let tokenAt = Date.now()
+    const refreshToken = async () => { device.updateToken(await fetchToken()); tokenAt = Date.now() }
     device.on('tokenWillExpire', async () => {
-      try { device.updateToken(await fetchToken()) } catch (e) { console.warn('voice token refresh failed', e) }
+      try { await refreshToken() } catch (e) { console.warn('voice token refresh failed', e) }
     })
-    device.on('error', err => patch({ status: 'error', error: err?.message || 'Calling error' }))
+    const onWake = async () => {
+      if (document.visibilityState !== 'visible' || Date.now() - tokenAt < 30 * 60 * 1000) return
+      try { await refreshToken(); if (device._wantRegistered && device.state !== 'registered') await device.register() } catch (e) { console.warn('voice token refresh failed', e) }
+    }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('focus', onWake)
+    device.on('error', async err => {
+      if (err?.code === 20104 || /AccessTokenExpired|token.*expired/i.test(err?.message || '')) {
+        try {
+          await refreshToken()
+          if (device._wantRegistered && device.state !== 'registered') await device.register()
+          patch({ status: 'idle', error: '' })
+          return
+        } catch (e) { console.warn('voice token refresh failed', e) }
+      }
+      patch({ status: 'error', error: err?.message || 'Calling error' })
+    })
     device.on('registered', () => setRegistered(true))
     device.on('unregistered', () => setRegistered(false))
     device.on('incoming', handleIncoming)
@@ -157,8 +177,10 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
     try {
       if (a.state === 'ready' && a.inbound_member) {
         const d = await getDevice()
+        d._wantRegistered = true
         if (d.state !== 'registered') await d.register()
       } else if (deviceRef.current?.state === 'registered' && !['on_call', 'wrap'].includes(a.state)) {
+        deviceRef.current._wantRegistered = false
         await deviceRef.current.unregister()
       }
     } catch (e) { console.warn('inbound registration failed', e) }
