@@ -16,7 +16,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-const FN_BASE = 'https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1'
+// Uses whichever database this site is set to (live or staging) — never hard-code the live address.
+const FN_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const OUTCOMES = [['final', 'Done — stop calling'], ['retry', 'Try again later'], ['callback', 'Callback at a set time'], ['dnc', 'Do not call']]
 const STATUS_COLORS = { active: '#16a34a', paused: '#d97706', draft: '#64748b', archived: '#94a3b8' }
