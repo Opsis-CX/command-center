@@ -1,4 +1,85 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import { supabase } from '../lib/supabase'
+
+// ---- Custom emojis: one shared list for every picker, message and status (2026-10-29) ----
+let _customEmojis = null
+let _ceLoading = null
+const _ceListeners = new Set()
+export async function loadCustomEmojis(force = false) {
+  if (_customEmojis && !force) return _customEmojis
+  if (_ceLoading && !force) return _ceLoading
+  _ceLoading = supabase.from('custom_emojis').select('id, shortcode, image_url, storage_path, created_by, created_at').order('shortcode')
+    .then(({ data }) => {
+      _customEmojis = data || []
+      _ceLoading = null
+      _ceListeners.forEach(fn => fn(_customEmojis))
+      return _customEmojis
+    })
+  return _ceLoading
+}
+export function useCustomEmojis() {
+  const [list, setList] = useState(_customEmojis || [])
+  useEffect(() => {
+    _ceListeners.add(setList)
+    loadCustomEmojis().then(setList).catch(() => {})
+    return () => { _ceListeners.delete(setList) }
+  }, [])
+  return list
+}
+// Warm everything up shortly after Chat opens, so the picker opens instantly.
+export function preloadEmoji() {
+  const go = () => { loadEmojiNames().catch(() => {}); loadCustomEmojis().catch(() => {}) }
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) window.requestIdleCallback(go, { timeout: 3000 }); else setTimeout(go, 800)
+}
+// A status emoji that may be a custom one (":party:") → shows the image.
+export function StatusEmoji({ emoji, size = 15, style }) {
+  const custom = useCustomEmojis()
+  if (!emoji) return null
+  if (CUSTOM_RE.test(emoji)) return <EmojiGlyph emoji={emoji} size={size} custom={custom} />
+  return <span style={{ fontSize: size, lineHeight: 1.2, ...(style || {}) }}>{emoji}</span>
+}
+// Turn ":code:" in message text into inline custom-emoji images (text only, never inside tags).
+export function withCustomEmojis(html, custom) {
+  if (!html || !custom?.length || html.indexOf(':') < 0) return html
+  const map = new Map(custom.map(c => [c.shortcode, c.image_url]))
+  return String(html).split(/(<[^>]+>)/g).map(part => part.startsWith('<') ? part
+    : part.replace(/:([a-z0-9_+-]{2,40}):/gi, (m, code) => { const u = map.get(code.toLowerCase()) || map.get(code); return u && /^https:\/\//.test(u) ? `<img src="${u}" alt=":${code}:" width="22" height="22">` : m })).join('')
+}
+
+// ---- Floating layer: every picker opens above the page, sized to fit any window ----
+// Opens below the button if it fits, otherwise above; never off-screen; shrinks on small
+// screens; scrolling inside it never closes it. Clicking outside or Escape closes it.
+export function FloatingLayer({ anchor, onClose, children, width = 440, gap = 6, reserve = 0 }) {
+  const ref = useRef(null)
+  const [pos, setPos] = useState(null)
+  const place = useCallback(() => {
+    const a = anchor && (anchor.current || anchor)
+    if (!a || !a.getBoundingClientRect) return
+    const r = a.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight, m = 8
+    const w = Math.min(width, vw - m * 2)
+    const below = vh - r.bottom - gap - m, above = r.top - gap - m
+    const down = below >= Math.min(420, above) // prefer below unless above has clearly more room
+    // reserve = room for anything stacked with the panel (e.g. the quick-reaction bar)
+    const maxH = Math.max(200, Math.min(560, (down ? below : above) - reserve))
+    const left = Math.min(Math.max(m, r.left), vw - w - m)
+    setPos(down ? { top: r.bottom + gap, left, width: w, maxH } : { bottom: vh - r.top + gap, left, width: w, maxH })
+  }, [anchor, width, gap])
+  useLayoutEffect(() => { place() }, [place])
+  useEffect(() => {
+    const onDown = (e) => { const a = anchor && (anchor.current || anchor); if (ref.current?.contains(e.target) || a?.contains?.(e.target)) return; onClose && onClose() }
+    const onKey = (e) => { if (e.key === 'Escape') onClose && onClose() }
+    const onMove = () => place()
+    document.addEventListener('mousedown', onDown, true); document.addEventListener('touchstart', onDown, true); document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', onMove); window.addEventListener('scroll', onMove, true)
+    return () => { document.removeEventListener('mousedown', onDown, true); document.removeEventListener('touchstart', onDown, true); document.removeEventListener('keydown', onKey); window.removeEventListener('resize', onMove); window.removeEventListener('scroll', onMove, true) }
+  }, [anchor, onClose, place])
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <div ref={ref} data-up={pos && pos.bottom !== undefined ? '1' : undefined} style={{ position: 'fixed', zIndex: 3000, ...(pos ? { top: pos.top, bottom: pos.bottom, left: pos.left, width: pos.width } : { visibility: 'hidden', top: 0, left: 0 }), '--rp-max-h': pos ? pos.maxH + 'px' : '480px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {children}
+    </div>, document.body)
+}
 
 // ============================================================
 // Shared emoji pieces (2026-10-28): the emoji panel from Brittney's mockup, the reaction
@@ -121,7 +202,7 @@ const RP_CSS = `
 .rp-q { width: 40px; height: 40px; border: 0; border-radius: 12px; background: transparent; cursor: pointer; display: grid; place-items: center; transition: transform .12s, background .12s; }
 .rp-q:hover, .rp-q:focus-visible { background: var(--accent-bg); transform: scale(1.12); outline: none; }
 .rp-q.more { color: var(--accent); background: var(--accent-bg); margin-left: 4px; }
-.rp-panel { width: 440px; max-width: calc(100vw - 24px); height: 480px; max-height: 70vh; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 18px 44px rgba(0,0,0,.18); overflow: hidden; margin-top: 8px; }
+.rp-panel { width: 100%; max-width: calc(100vw - 16px); height: min(480px, var(--rp-max-h, 70vh)); max-height: var(--rp-max-h, 70vh); min-height: 220px; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 18px 44px rgba(0,0,0,.18); overflow: hidden; margin-top: 8px; }
 .rp-head { display: flex; align-items: center; padding: 16px 18px 10px; }
 .rp-head h3 { margin: 0; font-size: 17px; font-weight: 700; flex: 1; }
 .rp-x { border: 0; background: transparent; cursor: pointer; color: var(--ink-soft); width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; }
@@ -138,7 +219,14 @@ const RP_CSS = `
 .rp-sec-h { display: flex; align-items: baseline; justify-content: space-between; margin: 12px 0 8px; }
 .rp-sec-h b { font-size: 14px; }
 .rp-more { border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
-.rp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.rp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 6px; }
+.rp-gifs { columns: 2 150px; column-gap: 8px; }
+.rp-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+[data-up] .rp-wrap { flex-direction: column-reverse; }
+.rp-wrap > .rp-panel { margin-top: 0; }
+.rp-gif { display: block; width: 100%; margin: 0 0 8px; border: 0; padding: 0; border-radius: 8px; overflow: hidden; cursor: pointer; background: var(--canvas); break-inside: avoid; }
+.rp-gif img { display: block; width: 100%; height: auto; }
+.rp-gif:hover { outline: 2px solid var(--accent); }
 .rp-tile { aspect-ratio: 1; border: 1px solid var(--line-soft, var(--line)); background: var(--canvas); border-radius: 12px; cursor: pointer; display: grid; place-items: center; padding: 0; transition: transform .1s, border-color .1s, background .1s; }
 /* the emoji picture inside a tile swaps to its animated version on hover — make it ignore the mouse
    so a click always lands on the button, even mid-swap */
@@ -150,7 +238,64 @@ const RP_CSS = `
 `
 // The full emoji panel (search, tabs, Frequently Used, Animated, Custom, all groups, footer).
 // Used for reactions, the message box and the status picker. (2026-10-28)
-export function EmojiPanel({ custom = [], title = 'Choose an emoji', onPick, onClose, onAddCustom, style, autoFocusSearch = true }) {
+// One emoji button — only redraws when IT changes (hovering used to redraw ~1,900 buttons).
+const Tile = React.memo(function Tile({ e, label, custom, animate, onPick, onHover }) {
+  return (
+    <button className="rp-tile" onClick={() => onPick(e)} aria-label={label} title={label}
+      onMouseEnter={() => onHover(e)} onFocus={() => onHover(e)}>
+      <EmojiGlyph emoji={e} size={28} custom={custom} animate={animate} />
+    </button>
+  )
+})
+
+// GIF search (GIPHY via the gif-search server function; the key never reaches the browser).
+function GifPane({ onPickGif, autoFocus }) {
+  const [q, setQ] = useState('')
+  const [state, setState] = useState({ loading: true, results: [], error: null })
+  useEffect(() => {
+    let alive = true
+    setState(st => ({ ...st, loading: true }))
+    const t = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('gif-search', { body: { q } })
+        if (!alive) return
+        if (error) throw error
+        setState({ loading: false, results: data?.results || [], error: data?.error || null })
+      } catch (e) { if (alive) setState({ loading: false, results: [], error: 'failed' }) }
+    }, q ? 300 : 0)
+    return () => { alive = false; clearTimeout(t) }
+  }, [q])
+  return (
+    <>
+      <label className="rp-search"><RpIcon d={RP_ICON.search} size={16} /><input autoFocus={autoFocus} value={q} onChange={e => setQ(e.target.value)} placeholder="Search GIFs…" aria-label="Search GIFs" /></label>
+      <div className="rp-body" style={{ paddingTop: 8 }}>
+        {state.error === 'not_configured' ? (
+          <p className="page-sub" style={{ padding: 12, lineHeight: 1.5 }}>GIFs aren't set up yet. An admin needs to add a free GIPHY key — once it's in, GIFs appear here.</p>
+        ) : state.error ? (
+          <p className="page-sub" style={{ padding: 12 }}>Couldn't load GIFs right now. Try again in a moment.</p>
+        ) : state.loading && !state.results.length ? (
+          <p className="page-sub" style={{ padding: 12 }}>Loading GIFs…</p>
+        ) : !state.results.length ? (
+          <p className="page-sub" style={{ padding: 12 }}>No GIFs found.</p>
+        ) : (
+          <div className="rp-gifs">
+            {state.results.map(g => (
+              <button key={g.id} className="rp-gif" onClick={() => onPickGif(g)} title={g.title} aria-label={g.title}>
+                <img src={g.preview} alt={g.title} loading="lazy" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="rp-foot"><span className="name">Powered by GIPHY</span></div>
+    </>
+  )
+}
+
+export function EmojiPanel({ custom: customProp, title = 'Choose an emoji', onPick, onClose, onAddCustom, style, autoFocusSearch = true, onPickGif }) {
+  const sharedCustom = useCustomEmojis()
+  const custom = customProp && customProp.length ? customProp : sharedCustom   // custom emojis in EVERY picker
+  const [mode, setMode] = useState('emoji')
   const [names, setNames] = useState(_emojiNames)
   const [q, setQ] = useState('')
   const [tab, setTab] = useState('recent')
@@ -160,11 +305,19 @@ export function EmojiPanel({ custom = [], title = 'Choose an emoji', onPick, onC
   const recent = useMemo(() => readRecent(), [])
   useEffect(() => { if (!names) loadEmojiNames().then(setNames).catch(() => {}) }, [names])
   useEffect(() => { const k = (ev) => { if (ev.key === 'Escape') onClose && onClose() }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k) }, [onClose])
-  const pick = (e) => { if (!CUSTOM_RE.test(e)) pushRecent(e); onPick(e) }
+  const pick = useCallback((e) => { if (!CUSTOM_RE.test(e)) pushRecent(e); onPick(e) }, [onPick])
+  const onHover = useCallback((e) => setHover({ e }), [])
+  const labelCache = useMemo(() => new Map(), [names])   // each name worked out once, not on every hover
   const label = (e) => {
-    if (CUSTOM_RE.test(e)) return e
-    const n = names && (names[e.replace(/\uFE0F/g, '')] || names[e.replace(/\uFE0F/g, '').replace(/[\u{1F3FB}-\u{1F3FF}]/gu, '')])
-    return n ? `:${n.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')}:` : e
+    let v = labelCache.get(e)
+    if (v !== undefined) return v
+    if (CUSTOM_RE.test(e)) v = e
+    else {
+      const n = names && (names[e.replace(/\uFE0F/g, '')] || names[e.replace(/\uFE0F/g, '').replace(/[\u{1F3FB}-\u{1F3FF}]/gu, '')])
+      v = n ? `:${n.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')}:` : e
+    }
+    labelCache.set(e, v)
+    return v
   }
   const groups = useMemo(() => {
     if (!names) return []
@@ -190,8 +343,17 @@ export function EmojiPanel({ custom = [], title = 'Choose an emoji', onPick, onC
     ...groups,
   ]
   const tabs = [['recent', 'Recent'], ['animated', 'Animated'], ...(custom.length ? [['custom', 'Custom']] : []), ...EMOJI_GROUPS.map(([k, t]) => [k, t])]
+  // Draw a few sections right away and the rest a moment later, so the panel opens instantly.
+  const [shown, setShown] = useState(4)
+  useEffect(() => {
+    if (!names || shown >= sections.length) return
+    const id = requestAnimationFrame(() => setShown(n => n + 2))
+    return () => cancelAnimationFrame(id)
+  }, [names, shown, sections.length])
   const goTab = (k) => {
     setTab(k); setQ('')
+    const idx = sections.findIndex(sec => sec.key === k)
+    if (idx >= shown) setShown(idx + 2)
     requestAnimationFrame(() => { const el = bodyRef.current?.querySelector(`[data-sec="${k}"]`); if (el) bodyRef.current.scrollTo({ top: el.offsetTop - 4, behavior: 'smooth' }) })
   }
   const onScroll = () => {
@@ -201,15 +363,22 @@ export function EmojiPanel({ custom = [], title = 'Choose an emoji', onPick, onC
     if (cur !== tab) setTab(cur)
   }
   const tile = (e, i, animate) => (
-    <button key={e + i} className="rp-tile" onClick={() => pick(e)} aria-label={label(e)} title={label(e)}
-      onMouseEnter={() => setHover({ e })} onFocus={() => setHover({ e })}>
-      <EmojiGlyph emoji={e} size={28} custom={custom} animate={animate || hover?.e === e} />
-    </button>
+    <Tile key={e + i} e={e} label={label(e)} custom={custom} animate={!!animate || hover?.e === e} onPick={pick} onHover={onHover} />
   )
   return (
     <div className="rp-panel" role="dialog" aria-label={title} style={style}>
       <style>{RP_CSS}</style>
-      <div className="rp-head"><h3>{title}</h3>{onClose && <button className="rp-x" onClick={onClose} aria-label="Close"><RpIcon d={RP_ICON.close} /></button>}</div>
+      <div className="rp-head"><h3>{mode === 'gif' ? 'Send a GIF' : title}</h3>
+        {onPickGif && (
+          <div style={{ display: 'inline-flex', background: 'var(--canvas)', borderRadius: 9, padding: 3, marginRight: 6 }}>
+            {[['emoji', 'Emoji'], ['gif', 'GIF']].map(([k, t]) => (
+              <button key={k} onClick={() => setMode(k)} style={{ border: 0, borderRadius: 7, padding: '4px 11px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                background: mode === k ? 'var(--surface)' : 'transparent', color: mode === k ? 'var(--ink)' : 'var(--ink-soft)', boxShadow: mode === k ? '0 1px 3px rgba(0,0,0,.1)' : 'none' }}>{t}</button>
+            ))}
+          </div>
+        )}
+        {onClose && <button className="rp-x" onClick={onClose} aria-label="Close"><RpIcon d={RP_ICON.close} /></button>}</div>
+      {mode === 'gif' ? <GifPane onPickGif={onPickGif} autoFocus /> : <>
       <label className="rp-search"><RpIcon d={RP_ICON.search} size={16} /><input autoFocus={autoFocusSearch} value={q} onChange={e => setQ(e.target.value)} placeholder="Search emojis…" aria-label="Search emojis" /></label>
       {!q && (
         <div className="rp-tabs" role="tablist">
@@ -226,7 +395,7 @@ export function EmojiPanel({ custom = [], title = 'Choose an emoji', onPick, onC
             <div className="rp-sec-h"><b>{results.length ? 'Results' : 'No matches'}</b></div>
             <div className="rp-grid">{results.map((e, i) => tile(e, i))}</div>
           </>
-        ) : !names ? <p className="page-sub" style={{ padding: 12 }}>Loading emoji…</p> : sections.map(sec => {
+        ) : !names ? <p className="page-sub" style={{ padding: 12 }}>Loading emoji…</p> : sections.slice(0, shown).map(sec => {
           const showAll = !sec.limit || more[sec.key] || sec.list.length <= sec.limit
           const list = showAll ? sec.list : sec.list.slice(0, sec.limit)
           return (
@@ -244,6 +413,7 @@ export function EmojiPanel({ custom = [], title = 'Choose an emoji', onPick, onC
           : <><RpIcon d={RP_ICON.smileys} size={20} /><span className="name">Hover over an emoji to see its name</span></>}
         {onAddCustom && <button className="rp-add" onClick={onAddCustom}>＋ Add custom emoji</button>}
       </div>
+      </>}
     </div>
   )
 }
@@ -254,7 +424,7 @@ export function ReactionPicker({ custom, onPick, onClose, onAddCustom }) {
   const pick = (e) => { if (!CUSTOM_RE.test(e)) pushRecent(e); onPick(e) }
   useEffect(() => { const k = (ev) => { if (ev.key === 'Escape' && !full) onClose() }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k) }, [onClose, full])
   return (
-    <div>
+    <div className="rp-wrap">
       <style>{RP_CSS}</style>
       <div className="rp-quick" role="toolbar" aria-label="Quick reactions">
         {QUICK_REACTIONS.map(e => (
@@ -262,7 +432,7 @@ export function ReactionPicker({ custom, onPick, onClose, onAddCustom }) {
         ))}
         <button className="rp-q more" onClick={() => setFull(f => !f)} aria-label="All emoji" aria-expanded={full} title="All emoji"><RpIcon d={RP_ICON.smileplus} size={22} /></button>
       </div>
-      {full && <EmojiPanel custom={custom} title="Choose a reaction" onPick={onPick} onClose={onClose} onAddCustom={onAddCustom} style={{ marginTop: 8 }} />}
+      {full && <EmojiPanel custom={custom} title="Choose a reaction" onPick={onPick} onClose={onClose} onAddCustom={onAddCustom} />}
     </div>
   )
 }
