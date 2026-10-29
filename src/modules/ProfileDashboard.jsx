@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspens
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { celebrate, SeasonHeaderDecor } from '../components/Seasonal'
+import { StatusEmoji } from '../components/EmojiPanel'
 
 // ============================================================
 // MY PROFILE — dashboard pieces (2026-10-26 redesign)
@@ -201,7 +202,7 @@ export function ProfileHeader({ person, isSelf, userId, projectCount, openTasks,
         </h1>
         <div style={{ fontSize: 16, marginTop: 4, color: '#E6F4F6' }}>{person.job_title || <span style={{ color: '#9FBFC6' }}>No job title yet</span>}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginTop: 8, fontSize: 13.5, color: '#CFE7EA' }}>
-          {(person.status_emoji || person.status_text) && <span>{person.status_emoji} {person.status_text}</span>}
+          {(person.status_emoji || person.status_text) && <span><StatusEmoji emoji={person.status_emoji} size={14} /> {person.status_text}</span>}
           {isSelf && <button onClick={onEditProfile} style={{ all: 'unset', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, color: '#9FF3F0', textDecoration: 'underline', textUnderlineOffset: 3 }}><Icon d={I.pen} size={14} />Edit profile</button>}
           {isSelf && <button onClick={() => setBgOpen(v => !v)} aria-label="Change header background" aria-expanded={bgOpen} style={{ all: 'unset', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, color: '#9FF3F0', textDecoration: 'underline', textUnderlineOffset: 3 }}>🎨 Background</button>}
         </div>
