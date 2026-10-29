@@ -7,6 +7,7 @@ import { supabase } from './lib/supabase'
 import ChangePassword from './components/ChangePassword'
 import { useAuth } from './lib/auth'
 import Login from './components/Login'
+import ResetPassword from './components/ResetPassword'
 import Sidebar from './components/Sidebar'
 import Certifications from './modules/Certifications'
 import MyCertifications from './modules/MyCertifications'
@@ -196,6 +197,11 @@ export default function App() {
   // through to their own shell below, so this can never pre-empt the
   // appRole === 'client' gate.
   const isMockPublic = !session && (location.pathname === '/mock-call' || location.pathname.startsWith('/mock-call/'))
+  // Password-reset landing page (the "Forgot password?" email link). It has to
+  // render before the login gate: the link signs the person in with a short
+  // recovery session, and without this route they were dropped into the app
+  // (or the login screen) with no way to set the new password.
+  if (location.pathname === '/reset-password') return <ResetPassword />
   if (isPublic || isMockPublic) {
     return (
       <Routes>
