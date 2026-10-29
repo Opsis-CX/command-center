@@ -60,7 +60,7 @@ async function sendHiringEmail(kind, to, data) {
 
 async function uploadResume(file) {
   if (!file) return null
-  if (file.size > MAX_RESUME_BYTES) throw new Error('Resume must be under 15MB.')
+  if (file.size > MAX_RESUME_BYTES) throw new Error('Resume must be under 25MB.')
   const ext = file.name.includes('.') ? file.name.split('.').pop() : 'pdf'
   const rand = crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random())
   const path = `resumes/${rand}.${ext}`
@@ -86,10 +86,21 @@ function Section({ title, children }) {
   )
 }
 
+// The role comes from the job posting link (?role=Appointment%20Setter), not a
+// question on the form. Postings are role-specific (10/14 review with Corinne
+// and Breanna), so applicants no longer pick a role themselves. Unknown or
+// missing values fall back to Appointment Setter.
+function roleFromUrl() {
+  try {
+    const want = (new URLSearchParams(window.location.search).get('role') || '').trim().toLowerCase()
+    return ROLES.find(r => r.toLowerCase() === want) || 'Appointment Setter'
+  } catch { return 'Appointment Setter' }
+}
+
 export default function ApplicationForm() {
   const [f, setF] = useState({
     full_name: '', email: '', phone: '', city: '', state: '',
-    work_authorized: '', role_applying: '', open_to_other_roles: '',
+    work_authorized: '', role_applying: roleFromUrl(), open_to_other_roles: '',
     employment_type: '', years_experience: '', tools_platforms: '',
     organization_answer: '', remote_answer: '', problem_answer: '',
     available_start: '', time_zone: '', working_hours: '', compensation: '',
@@ -108,8 +119,8 @@ export default function ApplicationForm() {
     if (!f.email.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email)) return 'Please enter a valid email address.'
     if (!f.state) return 'Please select your state of residence.'
     if (!f.work_authorized) return 'Please answer the work authorization question.'
-    if (!f.role_applying) return 'Please choose the role you are applying for.'
     if (isContactCenter && !f.pay_ok) return `Please let us know if the ${CONTACT_CENTER_RATE} rate works for you.`
+    if (!resume) return 'Please upload your resume.'
     if (!f.info_confirmed) return 'Please confirm your information is accurate.'
     return ''
   }
@@ -233,12 +244,7 @@ export default function ApplicationForm() {
             <option value="">Select…</option><option value="yes">Yes</option><option value="no">No</option>
           </select>
         </div>
-        <div><label style={labelStyle}>Which role are you applying for?{reqMark}</label>
-          <select style={inputStyle} value={f.role_applying} onChange={set('role_applying')}>
-            <option value="">Select a role…</option>
-            {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </div>
+        <div style={{ fontSize: 13.5 }}><span style={{ fontWeight: 600 }}>Position:</span> {f.role_applying}</div>
         {isContactCenter && (
           <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '12px 14px' }}>
             <label style={labelStyle}>This position pays {CONTACT_CENTER_RATE}. Does that rate work for you?{reqMark}</label>
@@ -292,10 +298,10 @@ export default function ApplicationForm() {
 
       <Section title="Wrap-up">
         <div>
-          <label style={labelStyle}>Upload your resume <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}>(optional)</span></label>
+          <label style={labelStyle}>Upload your resume{reqMark}</label>
           <input ref={resumeRef} type="file" accept=".pdf,.doc,.docx,.rtf,.odt,.txt,.pages" onChange={e => setResume(e.target.files?.[0] || null)}
             style={{ ...inputStyle, padding: '8px 11px' }} />
-          <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>PDF, Word, Pages, or plain text — up to 25MB. Optional; you can submit without one.</div>
+          <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>PDF, Word, Pages, or plain text — up to 25MB.</div>
         </div>
         <div><label style={labelStyle}>LinkedIn profile</label><input style={inputStyle} value={f.linkedin_url} onChange={set('linkedin_url')} placeholder="linkedin.com/in/you" /></div>
         <div><label style={labelStyle}>Why are you interested in working with Opsis?</label>
