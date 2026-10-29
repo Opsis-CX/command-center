@@ -1,0 +1,60 @@
+# Copies the STRUCTURE of the live database (tables, columns, rules, functions, triggers)
+# into the STAGING database. Copies NO data — no employees, calls, customers or messages.
+# Run it by hand: GitHub → Actions → "Sync staging database structure" → Run workflow.
+#
+# Needs two repository secrets (Settings → Secrets and variables → Actions):
+#   PROD_DB_URL     – live database connection string (Session pooler, port 5432)
+#   STAGING_DB_URL  – staging database connection string (Session pooler, port 5432)
+name: Sync staging database structure
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type STAGING to confirm (this replaces the staging database structure)'
+        required: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Safety checks
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "STAGING" ]; then echo "Type STAGING to confirm."; exit 1; fi
+          # Staging must be the staging project, and must never be the live one.
+          case "$STAGING_DB_URL" in *suctozsxsqjnlyecqfer*) ;; *) echo "STAGING_DB_URL is not the staging project — stopping."; exit 1;; esac
+          case "$STAGING_DB_URL" in *dqvuviyqrcrgapmxkoyx*) echo "STAGING_DB_URL points at LIVE — stopping."; exit 1;; esac
+          case "$PROD_DB_URL" in *dqvuviyqrcrgapmxkoyx*) ;; *) echo "PROD_DB_URL is not the live project — stopping."; exit 1;; esac
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install the Postgres client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+
+      - name: Copy the live structure (no data)
+        env:
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+        run: |
+          supabase db dump --db-url "$PROD_DB_URL" --schema public -f live_structure.sql
+          echo "Lines in structure file: $(wc -l < live_structure.sql)"
+
+      - name: Replace the staging structure
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: |
+          psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          drop schema if exists public cascade;
+          create schema public;
+          grant usage on schema public to postgres, anon, authenticated, service_role;
+          grant all on schema public to postgres, service_role;
+          alter default privileges in schema public grant all on tables to postgres, anon, authenticated, service_role;
+          alter default privileges in schema public grant all on functions to postgres, anon, authenticated, service_role;
+          alter default privileges in schema public grant all on sequences to postgres, anon, authenticated, service_role;
+          SQL
+          psql "$STAGING_DB_URL" -v ON_ERROR_STOP=0 -f live_structure.sql 2>&1 | tail -n 40
+          echo "Done. Tables in staging now: $(psql "$STAGING_DB_URL" -tAc "select count(*) from pg_tables where schemaname='public'")"
