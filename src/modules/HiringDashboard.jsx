@@ -354,14 +354,20 @@ export default function HiringDashboard() {
     } catch (e) { console.error('createRipplingTask failed:', e); return null }
   }
 
-  async function transition(app, toStatus, { email, note, certTagId } = {}) {
+  async function transition(app, toStatus, { email, note, certTagId, waitlist } = {}) {
     setBusy(true)
     const from = app.status
     const patch = { status: toStatus, reviewer_id: user?.id, reviewed_at: new Date().toISOString() }
 
+    // Waitlist (passed, but no open spot yet): park them at Onboarding on hold,
+    // with NO Rippling task. The task is created when the hold is released.
+    if (waitlist) {
+      Object.assign(patch, { on_hold: true, on_hold_since: new Date().toISOString(), on_hold_by: user?.id || null, on_hold_reason: 'Waitlist: first in line for the next wave' })
+    }
+
     // When an assessment is passed, create the Corinne "set up in Rippling"
     // task and remember its id so we can watch for its completion.
-    if (toStatus === 'assessment_passed') {
+    if (toStatus === 'assessment_passed' && !waitlist) {
       const newTaskId = await createRipplingTask(app)
       if (newTaskId) patch.rippling_task_id = newTaskId
     }
@@ -530,9 +536,13 @@ export default function HiringDashboard() {
     })
     if (!hold) {
       // clear the nudge counters so the cadence starts clean on resume
-      await supabase.from('hiring_applications')
-        .update({ pipeline_reminders_sent: 0, last_pipeline_reminder_at: null, pipeline_reminder_stage: null })
-        .eq('id', app.id)
+      const resume = { pipeline_reminders_sent: 0, last_pipeline_reminder_at: null, pipeline_reminder_stage: null }
+      // Coming off the waitlist at Onboarding: now create Corinne's Rippling task.
+      if (app.status === 'assessment_passed' && !app.rippling_task_id) {
+        const newTaskId = await createRipplingTask(app)
+        if (newTaskId) resume.rippling_task_id = newTaskId
+      }
+      await supabase.from('hiring_applications').update(resume).eq('id', app.id)
     }
     if (app.email) {
       await sendHiringEmail(hold ? 'capacity_hold' : 'capacity_release', app.email, { name: app.full_name })
@@ -724,7 +734,11 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
   const [removeReason, setRemoveReason] = useState('')
   // Certification to assign on onboard — defaults to the first available cert.
   const [certTag, setCertTag] = useState('')
-  useEffect(() => { if (!certTag && certTags.length) setCertTag(certTags[0].tag_id) }, [certTags]) // eslint-disable-line
+  // Default to the Appointment Setter certification (ASC used to be picked by
+  // default because it sorted first, so setters got the wrong course).
+  useEffect(() => {
+    if (!certTag && certTags.length) setCertTag((certTags.find(ct => ct.tag_id === SETTER_CERT_TAG_ID) || certTags[0]).tag_id)
+  }, [certTags]) // eslint-disable-line
 
   // Did access actually land? Passing the mock call auto-unlocks the hire and
   // puts them on the schedule matching their passed certification, but that all
@@ -902,6 +916,11 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
                   onTransition(app, adv.to, { email: adv.email, note: adv.label, certTagId: adv.to === 'cert_assigned' ? certTag : undefined })
                 }}
                   style={{ flex: 1, border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 160 }}>{adv.label}</button>
+                {adv.to === 'assessment_passed' && (
+                  <button disabled={busy} title="They passed, but there's no open spot yet. Emails them that they're first in line for the next wave. No Rippling task until you release the hold."
+                    onClick={() => onTransition(app, 'assessment_passed', { email: 'waitlist', note: 'Passed assessment: waitlisted for next wave', waitlist: true })}
+                    style={{ flex: 1, border: '1px solid #FDE68A', borderRadius: 8, background: '#FEF3C7', color: '#92400E', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 160 }}>Pass, waitlist for next wave</button>
+                )}
                 {adv.deny && (
                   <button disabled={busy} onClick={() => onTransition(app, adv.deny.to, { email: adv.deny.email, note: adv.deny.label })}
                     style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#DC2626', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 140 }}>{adv.deny.label}</button>
