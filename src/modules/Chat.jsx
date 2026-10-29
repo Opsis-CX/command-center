@@ -6,7 +6,7 @@ import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
 import { notifyAckNudge, notifyChannelAdded, notifyIncomingCall } from '../lib/notify'
 import { useUnread } from '../lib/unread'
-import { CUSTOM_RE, AnimatedEmoji, EmojiGlyph, loadEmojiNames, emojiLabel, emojiNamesNow, ReactionPicker, EmojiPanel } from '../components/EmojiPanel'
+import { CUSTOM_RE, AnimatedEmoji, EmojiGlyph, loadEmojiNames, emojiLabel, emojiNamesNow, ReactionPicker, EmojiPanel, FloatingLayer, loadCustomEmojis, useCustomEmojis, preloadEmoji, StatusEmoji, withCustomEmojis } from '../components/EmojiPanel'
 import { RichEditor, RichContent, sanitizeHtml, htmlToText } from '../lib/RichEditor'
 import { needsTranscode, transcodeToMp3 } from '../lib/audioTranscode'
 import TradeBoardChannel from './TradeBoardChannel'
@@ -205,7 +205,7 @@ function PersonHoverCard({ profiles, me }) {
         </div>
         {st && (st.emoji || st.text) && (
           <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: 13, marginTop: 6, padding: '7px 9px', background: 'var(--canvas)', borderRadius: 8 }}>
-            {st.emoji && <span style={{ fontSize: 15, lineHeight: 1.2 }}>{st.emoji}</span>}
+            {st.emoji && <StatusEmoji emoji={st.emoji} size={15} />}
             <span style={{ minWidth: 0 }}>{st.text || ''}{until && <span className="page-sub" style={{ display: 'block', margin: 0, fontSize: 11.5 }}>Until {until}</span>}</span>
           </div>
         )}
@@ -666,6 +666,9 @@ function NameModal({ title, initial, initialIcon = null, withIcon = false, onSav
 // Sidebar styling (hover-only ⋯ on desktop, compact rows). Kept here so Chat.jsx
 // stays a single drop-in file.
 const SIDEBAR_CSS = `
+/* custom emojis inside messages (":code:" → image) and GIFs (2026-10-29) */
+.re-rendered img[alt^=":"][alt$=":"] { display: inline-block !important; width: 22px !important; height: 22px !important; vertical-align: -5px; margin: 0 1px; border-radius: 0; object-fit: contain; }
+.re-rendered img[alt^="GIF"] { display: block; max-width: min(300px, 100%); height: auto; border-radius: 10px; }
 .chat-typing-dots { display: inline-flex; align-items: center; gap: 3px; padding: 4px 7px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); flex: none; }
 .chat-typing-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--ink-soft); animation: chatTypingDot 1.2s infinite ease-in-out; }
 .chat-typing-dots i:nth-child(2) { animation-delay: .15s; }
@@ -808,6 +811,8 @@ function ChatSearchBar({ channels, profiles, dmNames, prefs = {}, onJump }) {
 }
 
 export default function Chat() {
+  // warm up emoji names + custom emojis so the picker opens instantly (2026-10-29)
+  useEffect(() => { preloadEmoji() }, [])
   const { isAdmin, level, appRole } = useAuth()
   const isOwner = (level || 0) >= 100
   // Matrix-driven: who can start new channels / DMs (see lib/permissions.js).
@@ -1260,7 +1265,7 @@ export default function Chat() {
           )}
           <span style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
             <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-            {st && st.emoji ? <span title={st.text || ''} style={{ fontSize: 12, flex: 'none' }}>{st.emoji}</span> : null}
+            {st && st.emoji ? <span title={st.text || ''} style={{ fontSize: 12, flex: 'none' }}><StatusEmoji emoji={st.emoji} size={12} /></span> : null}
             {pinnedHere && <span title="Pinned" style={{ fontSize: 10, flex: 'none' }}>📌</span>}
             {amStaff && peer && isAgentProfile(peer) && agentBlocked(peer.id) && <span title="Messages from this agent are turned off" style={{ fontSize: 10.5, flex: 'none' }}>🔕</span>}
           </span>
@@ -1586,6 +1591,7 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef(null)
   const [showPicker, setShowPicker] = useState(false)      // input emoji picker
+  const emojiBtnRef = useRef(null)
   const [reactFor, setReactFor] = useState(null)   // message id whose react-picker is open
   const [showMembers, setShowMembers] = useState(false)
   const [showPrefs, setShowPrefs] = useState(false)        // notification settings panel
@@ -2136,6 +2142,20 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
     pinToBottomSettled(4)
   }, [readersFor])
 
+  // Send a GIF as its own message (2026-10-29).
+  async function sendGif(g) {
+    if (!g?.url || !/^https:\/\//.test(g.url)) return
+    const esc = (t) => String(t || 'GIF').replace(/[<>"&]/g, '')
+    const body = sanitizeHtml(`<p><img src="${g.url}" alt="GIF: ${esc(g.title)}" width="${Math.round(g.width) || 200}" height="${Math.round(g.height) || 150}"></p>`)
+    stickToBottom.current = true
+    const temp = { id: 'temp-' + Date.now(), channel_id: channelId, sender_id: me.id, body, created_at: new Date().toISOString(), requires_ack: false, is_here: false, _optimistic: true }
+    setMessages(prev => [...prev, temp])
+    const { data, error } = await supabase.from('messages').insert({ channel_id: channelId, sender_id: me.id, body, requires_ack: false, is_here: false }).select().single()
+    if (error) { setErr(error.message); setMessages(prev => prev.filter(m => m.id !== temp.id)); return }
+    expressPush(data?.id); celebrate()
+    setMessages(prev => prev.map(m => m.id === temp.id ? data : m))
+  }
+
   async function send() {
     const rawHtml = htmlRef.current || ''
     // htmlToText walks the parsed DOM. The old regex stripped tags with
@@ -2604,15 +2624,16 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
 
         <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 8, position: 'relative' }}>
           {showPicker && (
-            // onMouseDown/preventDefault everywhere: clicking the picker must NOT
-            // blur the composer, or we lose the caret and the emoji goes nowhere.
-            <div onMouseDown={e => { if (e.target.tagName !== 'INPUT') e.preventDefault() }}
-              style={{ position: 'absolute', bottom: 52, left: 0, zIndex: 50 }}>
-              <EmojiPanel title="Add an emoji" autoFocusSearch={false}
-                onPick={(e) => { composerRef.current?.insertText(e); setShowPicker(false) }}
-                onClose={() => setShowPicker(false)}
-                style={isMobile ? { width: 'calc(100vw - 24px)', height: 420 } : undefined} />
-            </div>
+            // Floating layer: always fits the window. onMouseDown/preventDefault keeps the
+            // caret in the composer so the emoji lands where you were typing.
+            <FloatingLayer anchor={emojiBtnRef} onClose={() => setShowPicker(false)}>
+              <div onMouseDown={e => { if (e.target.tagName !== 'INPUT') e.preventDefault() }}>
+                <EmojiPanel title="Add an emoji" autoFocusSearch={false}
+                  onPick={(e) => { composerRef.current?.insertText(CUSTOM_RE.test(e) ? e + ' ' : e); setShowPicker(false) }}
+                  onPickGif={(g) => { setShowPicker(false); sendGif(g) }}
+                  onClose={() => setShowPicker(false)} />
+              </div>
+            </FloatingLayer>
           )}
 
           <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }}
@@ -2623,7 +2644,7 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
             <>
               <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach file"
                 style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, padding: '0 10px', flex: 'none' }}>📎</button>
-              <button type="button" onMouseDown={e => { e.preventDefault(); setShowPicker(p => !p) }} title="Emoji"
+              <button type="button" ref={emojiBtnRef} onMouseDown={e => { e.preventDefault(); setShowPicker(p => !p) }} title="Emoji & GIFs"
                 style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, padding: '0 10px', flex: 'none' }}>😀</button>
             </>
           )}
@@ -2650,7 +2671,7 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach file"
                 style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 17, width: 42, height: 42, padding: 0, flex: 'none', display: 'grid', placeItems: 'center' }}>📎</button>
-              <button type="button" onMouseDown={e => { e.preventDefault(); setShowPicker(p => !p) }} title="Emoji"
+              <button type="button" ref={emojiBtnRef} onMouseDown={e => { e.preventDefault(); setShowPicker(p => !p) }} title="Emoji & GIFs"
                 style={{ border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, cursor: 'pointer', fontSize: 18, width: 42, height: 42, padding: 0, flex: 'none', display: 'grid', placeItems: 'center' }}>😀</button>
               <div style={{ flex: 1 }} />
               <button className={'btn ' + (requireAck ? 'btn-cta' : 'btn-primary')} onClick={send} disabled={uploading}
@@ -3089,30 +3110,7 @@ function ReadByPanel({ names, unread, onClose }) {
 // with a custom emoji is saved as ":shortcode:" in message_reactions.emoji.
 // Staff can add; the uploader or an admin can remove; everyone can use them.
 // ============================================================
-let _customEmojis = null
-let _ceLoading = null
-const _ceListeners = new Set()
-async function loadCustomEmojis(force = false) {
-  if (_customEmojis && !force) return _customEmojis
-  if (_ceLoading && !force) return _ceLoading
-  _ceLoading = supabase.from('custom_emojis').select('id, shortcode, image_url, storage_path, created_by, created_at').order('shortcode')
-    .then(({ data }) => {
-      _customEmojis = data || []
-      _ceLoading = null
-      _ceListeners.forEach(fn => fn(_customEmojis))
-      return _customEmojis
-    })
-  return _ceLoading
-}
-function useCustomEmojis() {
-  const [list, setList] = useState(_customEmojis || [])
-  useEffect(() => {
-    _ceListeners.add(setList)
-    loadCustomEmojis().then(setList)
-    return () => { _ceListeners.delete(setList) }
-  }, [])
-  return list
-}
+// Custom emoji list now lives in components/EmojiPanel.jsx (shared by every picker, message and status).
 const EMOJI_ONLY_RE = /^(?:\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*\s*){1,3}$/u
 function emojiOnlyList(html) {
   if (!html || /<img|<a\s/i.test(html)) return null
@@ -3121,7 +3119,9 @@ function emojiOnlyList(html) {
   const list = txt.match(/\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*/gu)
   return list && list.length <= 3 ? list : null
 }
-function MessageBody({ html, style }) {
+function MessageBody({ html: rawHtml, style }) {
+  const custom = useCustomEmojis()
+  const html = useMemo(() => withCustomEmojis(rawHtml, custom), [rawHtml, custom])
   const big = emojiOnlyList(html)
   if (big) return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '2px 0', ...(style || {}) }} aria-label={big.join(' ')}>
@@ -3287,9 +3287,6 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
   // screen, which is where people usually react), open the picker UPWARD so
   // it's fully visible without scrolling.
   const barRef = useRef(null)
-  const openUp = pickerOpen && barRef.current
-    ? (window.innerHeight - barRef.current.getBoundingClientRect().bottom) < 480
-    : false
 
   // group by emoji: count, whether I reacted, and WHO reacted
   const groups = {}
@@ -3393,15 +3390,14 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
       )}
 
       {pickerOpen && (
-        <>
-          <div onClick={onClosePicker} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', ...(openUp ? { bottom: 32 } : { top: 32 }), left: 0, zIndex: 41 }}>
-            <ReactionPicker custom={custom}
-              onPick={(e) => { onToggle(messageId, e); onClosePicker() }}
-              onClose={onClosePicker}
-              onAddCustom={() => { onClosePicker(); setManageEmoji(true) }} />
-          </div>
-        </>
+        // Opens in a floating layer above the page: always fits the window (threads, small
+        // screens, half-size windows), opens up or down as needed, and scrolls inside. (2026-10-29)
+        <FloatingLayer anchor={barRef} onClose={onClosePicker} reserve={62}>
+          <ReactionPicker custom={custom}
+            onPick={(e) => { onToggle(messageId, e); onClosePicker() }}
+            onClose={onClosePicker}
+            onAddCustom={() => { onClosePicker(); setManageEmoji(true) }} />
+        </FloatingLayer>
       )}
       {manageEmoji && <CustomEmojiModal onClose={() => setManageEmoji(false)} />}
     </div>
