@@ -88,3 +88,21 @@ jobs:
           SQL
           $PSQL "$STAGING_URL" -v ON_ERROR_STOP=0 -q -f live_structure.sql 2>&1 | grep -iE "error" | head -n 40 || true
           echo "✅ Done. Tables in staging now: $($PSQL "$STAGING_URL" -tAc "select count(*) from pg_tables where schemaname='public'")"
+
+      - name: Make staging safe (never call live, no scheduled jobs)
+        run: |
+          PSQL=/usr/lib/postgresql/17/bin/psql
+          # Some live functions have live's address written inside them (push, jobs, webhooks).
+          # Re-point every one of them at STAGING so staging can never call back into live.
+          $PSQL "$STAGING_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          do $$ declare r record; n int := 0; begin
+            for r in select p.oid from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prokind = 'f' and p.prosrc ilike '%dqvuviyqrcrgapmxkoyx%' loop
+              execute replace(pg_get_functiondef(r.oid), 'dqvuviyqrcrgapmxkoyx', 'suctozsxsqjnlyecqfer'); n := n + 1;
+            end loop;
+            raise notice 'Re-pointed % functions at staging', n;
+          end $$;
+          select cron.alter_job(job_id := jobid, active := false) from cron.job where active;
+          SQL
+          left=$($PSQL "$STAGING_URL" -tAc "select count(*) from pg_proc where pronamespace='public'::regnamespace and prosrc ilike '%dqvuviyqrcrgapmxkoyx%'")
+          if [ "$left" != "0" ]; then echo "❌ $left functions still point at live — check before using staging."; exit 1; fi
+          echo "✅ Staging is safe: 0 functions point at live, scheduled jobs paused."
