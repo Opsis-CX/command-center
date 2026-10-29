@@ -1344,7 +1344,7 @@ export function mountOpsisQA(ROOT, cfg) {
 
 
   // ---------- Revenue: controllable vs not, job values (estimate -> actual), why calls were excused ----------
-  var MN = { d: null, ex: null, jv: null, key: '', bucket: null, edit: null, busy: false, jvb: '' };
+  var MN = { d: null, ex: null, jv: null, key: '', bucket: null, edit: null, busy: false, jvb: '' }, LB = { tab: 'brands', k: 'bv', dir: -1, all: false };
   var usd = function (v) { return v == null ? '—' : '$' + Math.round(+v).toLocaleString(); };
   var n0 = function (v) { return (+v || 0).toLocaleString(); };
   var pc = function (v) { return v == null ? '—' : (+v).toFixed(1) + '%'; };
@@ -1397,10 +1397,29 @@ export function mountOpsisQA(ROOT, cfg) {
         return '<button data-act="mnbucket" data-i="' + i + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:9px 0;border-top:1px solid var(--line2)" aria-expanded="' + on + '"><div style="display:flex;justify-content:space-between;gap:8px;font-size:13px"><span><b style="font-weight:600">' + esc(b.bucket) + '</b>' + (b.conversation ? '' : ' <span class="mut" style="font-size:11.5px">· no conversation</span>') + '</span><span class="num">' + n0(b.n) + (b.avg != null ? ' · avg score ' + b.avg : '') + '</span></div>' +
           '<div style="height:6px;background:#F3F1EC;border-radius:6px;margin-top:6px;overflow:hidden"><div style="height:100%;width:' + (100 * b.n / bmax).toFixed(1) + '%;background:#9AA19D"></div></div></button>' +
           (on ? '<div style="display:flex;gap:6px;flex-wrap:wrap;padding:4px 0 10px">' + (b.examples || []).map(function (id, k) { return '<button class="sel" data-call="' + id + '" style="padding:5px 10px;font-size:12px">Example call ' + (k + 1) + '</button>'; }).join('') + '</div>' : ''); }).join('') + '</div>';
-    w.innerHTML = tiles + '<div class="row" style="align-items:flex-start;margin-top:16px">' + why + '<div style="flex:1 1 260px;display:flex;flex-direction:column;gap:16px;min-width:0">' + segCard.replace('class="oq-card" style="flex:1 1 260px"', 'class="oq-card"') + svcCard + '</div></div>' +
+    w.innerHTML = tiles + '<div class="row" style="align-items:flex-start;margin-top:16px">' + lbCard(d) + '</div>' + '<div class="row" style="align-items:flex-start;margin-top:16px">' + why + '<div style="flex:1 1 260px;display:flex;flex-direction:column;gap:16px;min-width:0">' + segCard.replace('class="oq-card" style="flex:1 1 260px"', 'class="oq-card"') + svcCard + '</div></div>' +
       '<div class="row" style="align-items:flex-start;margin-top:16px">' + top + '<div style="flex:1 1 460px;display:flex;flex-direction:column;gap:16px;min-width:0">' + brands.replace('class="oq-card" style="flex:1 1 460px"', 'class="oq-card"') + jobs.replace('class="oq-card" style="flex:1 1 460px"', 'class="oq-card"') + '</div></div>' +
       '<div class="row" style="align-items:flex-start;margin-top:16px">' + exc + '</div>' +
       '<div class="row" style="align-items:flex-start;margin-top:16px">' + ((d.group_values || []).length ? gvCard(d) : jvCard()) + '</div>';
+  }
+  // Revenue leaderboard (Rob 10/28): brands and CSRs ranked by booked revenue.
+  function lbCard(d) {
+    var csr = LB.tab === 'csrs' || LOCK;
+    var rows = (csr ? (d.by_agent || []).filter(function (r) { return +r.opps >= 10; }) : (d.by_brand || [])).map(function (r) {
+      var bk = +r.booked || 0; return { name: csr ? r.agent : r.brand, brand: r.brand, bv: +r.booked_value || 0, bk: bk, rate: r.rate == null ? null : +r.rate, aov: bk ? (+r.booked_value || 0) / bk : null, cv: +r.ctrl_value || 0, cn: +r.ctrl_n || 0 }; });
+    var val = function (r) { var k = LB.k; return k === 'name' ? String(r.name || '').toLowerCase() : k === 'booked' ? r.bk : k === 'rate' ? (r.rate == null ? -1 : r.rate) : k === 'aov' ? (r.aov == null ? -1 : r.aov) : k === 'ctrl' ? r.cv : r.bv; };
+    var rank = rows.slice().sort(function (a, b) { return b.bv - a.bv; }).map(function (r) { return r.name; });
+    rows.sort(function (a, b) { var x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * LB.dir || b.bv - a.bv; });
+    var shown = csr && !LB.all ? rows.slice(0, 15) : rows;
+    var th = function (k, lbl, al) { var on = LB.k === k; return '<th data-mnlbk="' + k + '" role="button" tabindex="0" title="Sort" style="cursor:pointer;user-select:none;white-space:nowrap' + (al ? ';text-align:right' : '') + (on ? ';color:var(--ink)' : '') + '">' + lbl + ' <span style="font-size:9px;opacity:' + (on ? 1 : .35) + '">' + (on && LB.dir > 0 ? '▲' : '▼') + '</span></th>'; };
+    var medal = function (i) { var c = ['#C9A227', '#9AA3A8', '#B0703A'][i]; return i < 3 ? '<span style="display:inline-flex;width:22px;height:22px;border-radius:99px;background:' + c + ';color:#fff;font-size:11.5px;font-weight:700;align-items:center;justify-content:center">' + (i + 1) + '</span>' : '<span class="mut num" style="display:inline-block;width:22px;text-align:center">' + (i + 1) + '</span>'; };
+    return '<div class="oq-card" style="flex:1 1 100%"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start"><div><h2 class="ttl">Revenue Leaderboard</h2><p class="sub">' + (csr ? 'CSRs with 10+ revenue opportunities' : 'Every brand') + ', ranked by booked revenue in this date range. Booked revenue uses each brand’s average ticket for the job type (see Average Ticket by Brand below). Click a header to sort.</p></div>' +
+      (LOCK ? '' : '<div class="seg"><button data-mnlb="brands" class="' + (!csr ? 'on' : '') + '">Brands</button><button data-mnlb="csrs" class="' + (csr ? 'on' : '') + '">CSRs</button></div>') + '</div>' +
+      (shown.length ? '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;font-size:13px"><thead><tr><th style="width:34px">#</th>' + th('name', csr ? 'CSR' : 'Brand') + th('bv', 'Booked revenue', 1) + th('booked', 'Bookings', 1) + th('rate', 'Booking rate', 1) + th('aov', 'Avg ticket', 1) + th('ctrl', 'Controllable misses $', 1) + '</tr></thead><tbody>' +
+        shown.map(function (r) { var i = rank.indexOf(r.name); return '<tr' + (csr ? ' class="click" tabindex="0" data-agent="' + esc(r.name) + '"' : ' class="click" tabindex="0" data-brand="' + esc(r.brand) + '"') + '><td>' + medal(i) + '</td><td><span style="display:inline-flex;gap:8px;align-items:center">' + bbadge(r.brand) + '<b style="font-weight:600">' + esc(csr ? r.name : short(r.name)) + '</b>' + (csr && !LOCK ? ' <span class="mut" style="font-size:12px">· ' + esc(short(r.brand)) + '</span>' : '') + '</span></td>' +
+          '<td class="num" style="text-align:right;font-weight:600;color:#1F5A41">' + usd(r.bv) + '</td><td class="num" style="text-align:right">' + n0(r.bk) + '</td><td class="num" style="text-align:right">' + (r.rate == null ? '—' : r.rate.toFixed(1) + '%') + '</td><td class="num" style="text-align:right">' + (r.aov == null ? '—' : usd(r.aov)) + '</td><td class="num" style="text-align:right;color:#A8441A">' + (r.cv ? usd(r.cv) + ' <span class="mut" style="font-size:11.5px">(' + n0(r.cn) + ')</span>' : '—') + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+        (csr && rows.length > 15 ? '<button class="more" data-mnlb="more">' + (LB.all ? 'Show top 15' : 'Show all ' + rows.length) + '</button>' : '')
+        : '<div class="mut" style="padding:10px 0;font-size:13px">No ' + (csr ? 'CSRs with 10+ revenue opportunities' : 'bookings') + ' in this range.</div>') + '</div>';
   }
   // Average ticket by brand (2026-10-28): Acumatica won opportunities, brand x residential/commercial x service/sales + warranty.
   var GV_GRPS = ['Residential service', 'Residential sales', 'Commercial service', 'Commercial sales', 'Warranty'];
@@ -3030,6 +3049,8 @@ export function mountOpsisQA(ROOT, cfg) {
   on(document, 'click', function (e) {
     var fs = e.target.closest('[data-oqfcr]'); if (fs && $('oqa') && $('oqa').contains(fs)) { var fk2 = fs.getAttribute('data-oqfcr'); if (FCRS.k === fk2) FCRS.dir = -FCRS.dir; else { FCRS.k = fk2; FCRS.dir = fk2 === 'brand' ? 1 : -1; } drawFcr(); return; }
     var sk = e.target.closest('[data-oqsentk]'); if (sk && $('oqa') && $('oqa').contains(sk)) { var sk2 = sk.getAttribute('data-oqsentk'); if (SENT.k === sk2) SENT.dir = -SENT.dir; else { SENT.k = sk2; SENT.dir = sk2 === 'name' ? 1 : -1; } drawSent(); return; }
+    var lk = e.target.closest('[data-mnlbk]'); if (lk && $('oqa') && $('oqa').contains(lk)) { var lk2 = lk.getAttribute('data-mnlbk'); if (LB.k === lk2) LB.dir = -LB.dir; else { LB.k = lk2; LB.dir = lk2 === 'name' ? 1 : -1; } drawMoney(); return; }
+    var lt = e.target.closest('[data-mnlb]'); if (lt && $('oqa') && $('oqa').contains(lt)) { var lv = lt.getAttribute('data-mnlb'); if (lv === 'more') LB.all = !LB.all; else { LB.tab = lv; LB.all = false; } drawMoney(); return; }
     var tk = e.target.closest('[data-oqtmpk]'); if (tk && $('oqa') && $('oqa').contains(tk)) { var tk2 = tk.getAttribute('data-oqtmpk'); if (TMP.k === tk2) TMP.dir = -TMP.dir; else { TMP.k = tk2; TMP.dir = tk2 === 'name' ? 1 : -1; } drawTemper(); return; }
     var tb = e.target.closest('[data-oqtmp]'); if (tb && $('oqa') && $('oqa').contains(tb)) { var tv = tb.getAttribute('data-oqtmp'); if (tv === 'more') TMP.all = !TMP.all; else { TMP.tab = tv; TMP.all = false; } drawTemper(); return; }
     var b = e.target.closest('[data-oqback],[data-oqsent]'); if (!b || !$('oqa') || !$('oqa').contains(b)) return;
