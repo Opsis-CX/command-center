@@ -1,6 +1,8 @@
+
 import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
 
 // ---- Custom emojis: one shared list for every picker, message and status (2026-10-29) ----
 let _customEmojis = null
@@ -220,7 +222,7 @@ const RP_CSS = `
 .rp-sec-h b { font-size: 14px; }
 .rp-more { border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .rp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 6px; }
-.rp-gifs { columns: 2 150px; column-gap: 8px; }
+.rp-gifs { columns: 3 110px; column-gap: 8px; }
 .rp-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 [data-up] .rp-wrap { flex-direction: column-reverse; }
 .rp-wrap > .rp-panel { margin-top: 0; }
@@ -248,46 +250,161 @@ const Tile = React.memo(function Tile({ e, label, custom, animate, onPick, onHov
   )
 })
 
-// GIF search (GIPHY via the gif-search server function; the key never reaches the browser).
+// ============================================================
+// GIFs (2026-10-29): Favorites (yours) · Picks (admins choose) · Team GIFs (uploaded by the team)
+// · GIPHY search/trending (key stays on the server; admins set the content filter G / PG / PG-13).
+// ============================================================
+const GIF_CSS = `
+.gif-sec { display: flex; align-items: center; gap: 8px; margin: 10px 2px 6px; font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.gif-sec .act { margin-left: auto; border: 0; background: transparent; color: var(--accent); font-weight: 700; font-size: 12px; cursor: pointer; font-family: inherit; }
+.gif-tile { position: relative; break-inside: avoid; margin: 0 0 8px; }
+.gif-tile .rp-gif { margin: 0; }
+.gif-acts { position: absolute; top: 4px; right: 4px; display: none; gap: 4px; }
+.gif-tile:hover .gif-acts, .gif-tile:focus-within .gif-acts { display: flex; }
+.gif-act { border: 0; width: 26px; height: 26px; border-radius: 7px; background: rgba(15,23,42,.72); color: #fff; font-size: 13px; cursor: pointer; display: grid; place-items: center; padding: 0; }
+.gif-act.on { background: #f59e0b; }
+.gif-act.warn { background: #dc2626; }
+.gif-upload { border: 1px dashed var(--line); border-radius: 10px; padding: 10px; margin: 0 0 10px; display: grid; gap: 6px; font-size: 12.5px; }
+.gif-upload input[type=text] { border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; font: inherit; background: var(--surface); color: var(--ink); }
+`
+function GifTile({ g, fav, pinned, canPin, canDelete, onPick, onFav, onPin, onDelete }) {
+  const [sure, setSure] = useState(false)
+  return (
+    <div className="gif-tile">
+      <button className="rp-gif" onClick={() => onPick(g)} title={g.title} aria-label={g.title}>
+        <img src={g.preview || g.url} alt={g.title || 'GIF'} loading="lazy" />
+      </button>
+      <div className="gif-acts">
+        <button className={'gif-act' + (fav ? ' on' : '')} title={fav ? 'Remove from favorites' : 'Add to favorites'} onClick={() => onFav(g, fav)}>★</button>
+        {canPin && <button className={'gif-act' + (pinned ? ' on' : '')} title={pinned ? 'Remove from Picks' : 'Add to Picks (everyone sees it)'} onClick={() => onPin(g, pinned)}>📌</button>}
+        {canDelete && <button className={'gif-act' + (sure ? ' warn' : '')} title={sure ? 'Click again to delete' : 'Delete team GIF'}
+          onClick={() => { if (!sure) { setSure(true); setTimeout(() => setSure(false), 3000) } else onDelete(g) }}>{sure ? '✓' : '🗑'}</button>}
+      </div>
+    </div>
+  )
+}
 function GifPane({ onPickGif, autoFocus }) {
+  const { user, isAdmin } = useAuth()
+  const me = user?.id
   const [q, setQ] = useState('')
-  const [state, setState] = useState({ loading: true, results: [], error: null })
+  const [giphy, setGiphy] = useState({ loading: true, results: [], error: null })
+  const [team, setTeam] = useState([]), [favs, setFavs] = useState([]), [picks, setPicks] = useState([])
+  const [rating, setRating] = useState(null)
+  const [adding, setAdding] = useState(false), [upMsg, setUpMsg] = useState('')
+  const refreshRating = useRef(false)
+  const loadLists = useCallback(async () => {
+    const [t, f, p, r] = await Promise.all([
+      supabase.from('team_gifs').select('*').order('created_at', { ascending: false }).limit(200),
+      supabase.from('gif_favorites').select('*').order('created_at', { ascending: false }).limit(60),
+      supabase.from('gif_picks').select('*').order('sort').order('created_at').limit(30),
+      supabase.from('automation_settings').select('value').eq('key', 'gif_rating').maybeSingle(),
+    ])
+    setTeam(t.data || []); setFavs(f.data || []); setPicks(p.data || []); setRating(r.data?.value || 'pg')
+  }, [])
+  useEffect(() => { loadLists() }, [loadLists])
   useEffect(() => {
     let alive = true
-    setState(st => ({ ...st, loading: true }))
+    setGiphy(st => ({ ...st, loading: true }))
     const t = setTimeout(async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('gif-search', { body: { q } })
+        const { data, error } = await supabase.functions.invoke('gif-search', { body: { q, refresh_rating: refreshRating.current } })
+        refreshRating.current = false
         if (!alive) return
         if (error) throw error
-        setState({ loading: false, results: data?.results || [], error: data?.error || null })
-      } catch (e) { if (alive) setState({ loading: false, results: [], error: 'failed' }) }
+        setGiphy({ loading: false, results: data?.results || [], error: data?.error || null })
+      } catch (e) { if (alive) setGiphy({ loading: false, results: [], error: 'failed' }) }
     }, q ? 300 : 0)
     return () => { alive = false; clearTimeout(t) }
-  }, [q])
+  }, [q, rating])
+  const favSet = new Set(favs.map(f => f.url)), pinSet = new Set(picks.map(p => p.url))
+  const norm = (g) => ({ url: g.url, preview: g.preview || g.url, title: g.title || 'GIF', width: g.width || null, height: g.height || null })
+  async function toggleFav(g, on) {
+    const n = norm(g)
+    if (on) { setFavs(fs => fs.filter(f => f.url !== n.url)); await supabase.from('gif_favorites').delete().eq('profile_id', me).eq('url', n.url) }
+    else { setFavs(fs => [{ ...n, profile_id: me }, ...fs]); await supabase.from('gif_favorites').upsert({ ...n, profile_id: me }) }
+  }
+  async function togglePin(g, on) {
+    const n = norm(g)
+    if (on) { setPicks(ps => ps.filter(p => p.url !== n.url)); await supabase.from('gif_picks').delete().eq('url', n.url) }
+    else { const { data } = await supabase.from('gif_picks').insert({ ...n, sort: picks.length }).select().single(); if (data) setPicks(ps => [...ps, data]) }
+  }
+  async function deleteTeam(g) {
+    setTeam(ts => ts.filter(t => t.id !== g.id))
+    if (g.storage_path) await supabase.storage.from('team-gifs').remove([g.storage_path])
+    await supabase.from('team_gifs').delete().eq('id', g.id)
+  }
+  async function setFilter(v) {
+    setRating(v); refreshRating.current = true
+    await supabase.from('automation_settings').update({ value: v, updated_at: new Date().toISOString() }).eq('key', 'gif_rating')
+  }
+  async function upload(e) {
+    e.preventDefault()
+    const form = e.currentTarget, file = form.file.files?.[0]
+    const title = form.title.value.trim(), tags = form.tags.value.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
+    if (!file) return setUpMsg('Choose a GIF first.')
+    if (!/^image\/(gif|webp|png|jpeg)$/.test(file.type)) return setUpMsg('Use a GIF, WebP, PNG or JPG.')
+    if (file.size > 8 * 1024 * 1024) return setUpMsg('That file is over 8 MB.')
+    setUpMsg('Uploading…')
+    const dims = await new Promise(res => { const img = new Image(); img.onload = () => res({ w: img.naturalWidth, h: img.naturalHeight }); img.onerror = () => res({ w: null, h: null }); img.src = URL.createObjectURL(file) })
+    const path = `${me}/${Date.now()}-${file.name.replace(/[^a-z0-9._-]/gi, '_')}`
+    const { error: upErr } = await supabase.storage.from('team-gifs').upload(path, file, { contentType: file.type })
+    if (upErr) return setUpMsg('Upload failed: ' + upErr.message)
+    const url = supabase.storage.from('team-gifs').getPublicUrl(path).data.publicUrl
+    const { data, error } = await supabase.from('team_gifs').insert({ url, title: title || file.name.replace(/\.[a-z0-9]+$/i, ''), tags, width: dims.w, height: dims.h, storage_path: path }).select().single()
+    if (error) return setUpMsg('Couldn’t save: ' + error.message)
+    setTeam(ts => [data, ...ts]); setAdding(false); setUpMsg('')
+  }
+  const t = q.trim().toLowerCase()
+  const match = (g) => !t || (g.title || '').toLowerCase().includes(t) || (g.tags || []).some(x => x.includes(t))
+  const teamShown = team.filter(match), favShown = favs.filter(match)
+  const tiles = (list, opts = {}) => (
+    <div className="rp-gifs">
+      {list.map(g => (
+        <GifTile key={(g.id || g.url)} g={g} fav={favSet.has(g.url)} pinned={pinSet.has(g.url)} canPin={isAdmin}
+          canDelete={opts.team && (g.created_by === me || isAdmin)}
+          onPick={onPickGif} onFav={toggleFav} onPin={togglePin} onDelete={deleteTeam} />
+      ))}
+    </div>
+  )
   return (
     <>
+      <style>{GIF_CSS}</style>
       <label className="rp-search"><RpIcon d={RP_ICON.search} size={16} /><input autoFocus={autoFocus} value={q} onChange={e => setQ(e.target.value)} placeholder="Search GIFs…" aria-label="Search GIFs" /></label>
-      <div className="rp-body" style={{ paddingTop: 8 }}>
-        {state.error === 'not_configured' ? (
-          <p className="page-sub" style={{ padding: 12, lineHeight: 1.5 }}>GIFs aren't set up yet. An admin needs to add a free GIPHY key — once it's in, GIFs appear here.</p>
-        ) : state.error ? (
-          <p className="page-sub" style={{ padding: 12 }}>Couldn't load GIFs right now. Try again in a moment.</p>
-        ) : state.loading && !state.results.length ? (
-          <p className="page-sub" style={{ padding: 12 }}>Loading GIFs…</p>
-        ) : !state.results.length ? (
-          <p className="page-sub" style={{ padding: 12 }}>No GIFs found.</p>
-        ) : (
-          <div className="rp-gifs">
-            {state.results.map(g => (
-              <button key={g.id} className="rp-gif" onClick={() => onPickGif(g)} title={g.title} aria-label={g.title}>
-                <img src={g.preview} alt={g.title} loading="lazy" />
-              </button>
+      <div className="rp-body" style={{ paddingTop: 4 }}>
+        {!t && favShown.length > 0 && <><div className="gif-sec">⭐ Your favorites</div>{tiles(favShown)}</>}
+        {!t && picks.length > 0 && <><div className="gif-sec">📌 Picks</div>{tiles(picks)}</>}
+        <div className="gif-sec">🏢 Team GIFs{teamShown.length ? ` (${teamShown.length})` : ''}
+          <button className="act" onClick={() => { setAdding(a => !a); setUpMsg('') }}>{adding ? 'Cancel' : '＋ Add team GIF'}</button></div>
+        {adding && (
+          <form className="gif-upload" onSubmit={upload}>
+            <input name="file" type="file" accept="image/gif,image/webp,image/png,image/jpeg" />
+            <input name="title" type="text" placeholder="Name (e.g. Happy Friday dance)" maxLength={80} />
+            <input name="tags" type="text" placeholder="Search words, comma separated (e.g. friday, celebrate)" maxLength={200} />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><button className="btn btn-primary" style={{ fontSize: 12.5, padding: '5px 12px' }}>Upload</button><span className="page-sub">{upMsg || 'Up to 8 MB. Everyone on the team can use it.'}</span></div>
+          </form>
+        )}
+        {teamShown.length ? tiles(teamShown, { team: true }) : !adding && <p className="page-sub" style={{ padding: '0 4px 6px', fontSize: 12.5 }}>{t ? 'No team GIFs match.' : 'No team GIFs yet — add your first one!'}</p>}
+        <div className="gif-sec">{t ? '🔎 GIPHY results' : '🔥 Trending'}</div>
+        {giphy.error === 'not_configured' ? (
+          <p className="page-sub" style={{ padding: 8 }}>GIPHY search isn’t set up yet.</p>
+        ) : giphy.error ? (
+          <p className="page-sub" style={{ padding: 8 }}>Couldn’t load GIFs right now. Try again in a moment.</p>
+        ) : giphy.loading && !giphy.results.length ? (
+          <p className="page-sub" style={{ padding: 8 }}>Loading GIFs…</p>
+        ) : !giphy.results.length ? <p className="page-sub" style={{ padding: 8 }}>No GIFs found.</p> : tiles(giphy.results)}
+      </div>
+      <div className="rp-foot">
+        <span className="name">★ to save · Powered by GIPHY</span>
+        {isAdmin && rating && (
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }} title="Content filter for GIPHY search (admins)">
+            Filter
+            {['g', 'pg', 'pg-13'].map(v => (
+              <button key={v} onClick={() => setFilter(v)} style={{ border: '1px solid var(--line)', borderRadius: 6, padding: '2px 7px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                background: rating === v ? 'var(--accent)' : 'var(--surface)', color: rating === v ? '#fff' : 'var(--ink-soft)' }}>{v.toUpperCase()}</button>
             ))}
-          </div>
+          </span>
         )}
       </div>
-      <div className="rp-foot"><span className="name">Powered by GIPHY</span></div>
     </>
   )
 }
