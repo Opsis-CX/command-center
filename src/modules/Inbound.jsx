@@ -18,7 +18,8 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AgentStatus from '../components/AgentStatus'
 
-const FN_URL = 'https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/voice-inbound'
+// Uses whichever database this site is set to (live or staging) — never hard-code the live address.
+const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voice-inbound`
 const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']]
 const STATUS = {
   new: ['Starting', '#64748b'], menu: ['At menu', '#64748b'], ringing: ['Ringing', '#0891b2'],
