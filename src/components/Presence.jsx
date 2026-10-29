@@ -13,7 +13,7 @@
 // so no special backend is needed. Expired statuses auto-clear (UI-side here + an hourly
 // cron server-side).
 import { useState, useEffect, useCallback, useRef } from 'react'
-import EmojiPicker from 'emoji-picker-react'
+import { EmojiPanel } from './EmojiPanel'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 
@@ -247,14 +247,14 @@ function StatusPicker({ me, uid, onClose, onSaved }) {
               </button>
               {emojiOpen && (() => {
                 const r = emojiBtnRef.current?.getBoundingClientRect()
-                const top = r ? Math.min(r.bottom + 6, window.innerHeight - 396) : 80
-                const left = r ? Math.min(Math.max(8, r.left), window.innerWidth - 328) : 20
+                const top = r ? Math.min(r.bottom + 6, window.innerHeight - 440) : 80
+                const left = r ? Math.min(Math.max(8, r.left), window.innerWidth - 368) : 20
                 return (
                   <>
                     <div onClick={() => setEmojiOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1100 }} />
                     <div style={{ position: 'fixed', top, left, zIndex: 1101 }}>
-                      <EmojiPicker onEmojiClick={(ev) => { setEmoji(ev.emoji); if (type !== 'ooo') setType('custom'); setEmojiOpen(false) }}
-                        width={320} height={430} previewConfig={{ showPreview: true, defaultCaption: 'Hover an emoji to see its name', defaultEmoji: '1f642' }} searchDisabled={false} />
+                      <EmojiPanel title="Pick a status emoji" onPick={(e) => { setEmoji(e); if (type !== 'ooo') setType('custom'); setEmojiOpen(false) }}
+                        onClose={() => setEmojiOpen(false)} style={{ width: 360, height: 430, marginTop: 0 }} />
                     </div>
                   </>
                 )
