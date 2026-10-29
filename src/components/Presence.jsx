@@ -13,7 +13,7 @@
 // so no special backend is needed. Expired statuses auto-clear (UI-side here + an hourly
 // cron server-side).
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { EmojiPanel } from './EmojiPanel'
+import { EmojiPanel, StatusEmoji } from './EmojiPanel'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 
@@ -96,7 +96,7 @@ export function StatusBadge({ profile, showText = false, style }) {
   if (!s || (!s.emoji && !s.text)) return null
   return (
     <span title={s.text || ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12.5, color: 'var(--ink-soft)', ...style }}>
-      {s.emoji && <span style={{ fontSize: 13 }}>{s.emoji}</span>}
+      {s.emoji && <StatusEmoji emoji={s.emoji} size={13} />}
       {showText && s.text && <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }}>{s.text}</span>}
     </span>
   )
@@ -247,14 +247,14 @@ function StatusPicker({ me, uid, onClose, onSaved }) {
               </button>
               {emojiOpen && (() => {
                 const r = emojiBtnRef.current?.getBoundingClientRect()
-                const top = r ? Math.min(r.bottom + 6, window.innerHeight - 440) : 80
-                const left = r ? Math.min(Math.max(8, r.left), window.innerWidth - 368) : 20
+                const top = r ? Math.max(8, Math.min(r.bottom + 6, window.innerHeight - 440)) : 80
+                const left = r ? Math.max(8, Math.min(r.left, window.innerWidth - 368)) : 8
                 return (
                   <>
                     <div onClick={() => setEmojiOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1100 }} />
                     <div style={{ position: 'fixed', top, left, zIndex: 1101 }}>
                       <EmojiPanel title="Pick a status emoji" onPick={(e) => { setEmoji(e); if (type !== 'ooo') setType('custom'); setEmojiOpen(false) }}
-                        onClose={() => setEmojiOpen(false)} style={{ width: 360, height: 430, marginTop: 0 }} />
+                        onClose={() => setEmojiOpen(false)} style={{ width: 'min(360px, calc(100vw - 16px))', height: 'min(430px, calc(100vh - 16px))', marginTop: 0 }} />
                     </div>
                   </>
                 )
@@ -346,7 +346,7 @@ export function MyStatusButton() {
         <PresenceDot profile={{ last_seen_at: new Date().toISOString(), status_type: s?.type }} size={9} />
         {s ? (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}>
-            {s.emoji && <span>{s.emoji}</span>}
+            {s.emoji && <StatusEmoji emoji={s.emoji} size={14} />}
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.text || 'Status'}</span>
           </span>
         ) : (
@@ -370,7 +370,7 @@ function PersonRow({ p }) {
           <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.full_name || p.email || 'Unknown'}</span>
           {s && (s.emoji || s.text) && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12.5, color: 'var(--ink-soft)', minWidth: 0 }}>
-              {s.emoji && <span style={{ fontSize: 13 }}>{s.emoji}</span>}
+              {s.emoji && <StatusEmoji emoji={s.emoji} size={13} />}
               <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.text}</span>
             </span>
           )}
