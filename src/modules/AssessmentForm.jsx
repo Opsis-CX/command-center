@@ -211,7 +211,6 @@ export default function AssessmentForm({ applicationId }) {
 
   function validate() {
     if (!f.full_name.trim()) return 'Please enter your full name.'
-    if (!f.years_outbound) return 'Please select your outbound/call-center experience.'
     if (!f.quiet_workspace) return 'Please answer the quiet workspace question.'
     if (!f.own_equipment) return 'Please answer the equipment question.'
     if (!f.comfortable_1099) return 'Please answer the 1099 question.'
@@ -242,7 +241,7 @@ export default function AssessmentForm({ applicationId }) {
       const row = {
         application_id: applicationId || null,
         full_name: f.full_name.trim(),
-        years_outbound: f.years_outbound,
+        years_outbound: null,   // asked once, on the application (10/14 review)
         call_types: callTypes.join(', ') || null,
         systems_dialers: f.systems_dialers.trim() || null,
         performance_metrics: f.performance_metrics.trim() || null,
@@ -251,7 +250,7 @@ export default function AssessmentForm({ applicationId }) {
         quiet_workspace: f.quiet_workspace === 'yes',
         own_equipment: f.own_equipment === 'yes',
         comfortable_1099: f.comfortable_1099 === 'yes',
-        desired_rate: f.desired_rate.trim() || null,
+        desired_rate: null,     // pay is confirmed on the application now
         rec_outbound_path, rec_inbound_path, rec_rebuttal1_path, rec_rebuttal2_path,
       }
       const { error: aErr } = await supabase.from('hiring_assessments').insert(row)
@@ -305,11 +304,6 @@ export default function AssessmentForm({ applicationId }) {
       </Section>
 
       <Section title="Call experience">
-        <div><label style={labelStyle}>Years of outbound sales or call center experience{reqMark}</label>
-          <select style={inputStyle} value={f.years_outbound} onChange={set('years_outbound')}>
-            <option value="">Select…</option>{YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
         <div>
           <label style={labelStyle}>What type of outbound calls have you handled?</label>
           <div style={{ display: 'grid', gap: 6 }}>
@@ -356,7 +350,6 @@ export default function AssessmentForm({ applicationId }) {
         <div><label style={labelStyle}>Do you have a quiet workspace and reliable internet for handling calls?{reqMark}</label>{yesNo('quiet_workspace')}</div>
         <div><label style={labelStyle}>Do you have your own computer and headset?{reqMark}</label>{yesNo('own_equipment')}</div>
         <div><label style={labelStyle}>Are you comfortable working as a 1099 independent contractor?{reqMark}</label>{yesNo('comfortable_1099')}</div>
-        <div><label style={labelStyle}>Your desired hourly or performance-based rate</label><input style={inputStyle} value={f.desired_rate} onChange={set('desired_rate')} /></div>
       </Section>
 
       <Section title="Voice recordings" sub="Tap Record and read each script in your customer-service voice — the script stays on screen while you record. You can also upload an audio file instead.">
