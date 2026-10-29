@@ -1618,6 +1618,20 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
   }
   const clearDraft = () => { try { localStorage.removeItem(draftKey) } catch {} }
 
+  // ---- render window (newest messages only; more as you scroll up) ----
+  const PAGE = 50
+  const [showCount, setShowCount] = useState(PAGE)
+  const keepScroll = useRef(null)
+  const showEarlier = useCallback(() => {
+    const el = scrollerRef.current
+    if (el) keepScroll.current = { h: el.scrollHeight, t: el.scrollTop }
+    setShowCount(c => c + PAGE)
+  }, [])
+  useLayoutEffect(() => {
+    const el = scrollerRef.current, k = keepScroll.current
+    if (el && k) { el.scrollTop = k.t + (el.scrollHeight - k.h); keepScroll.current = null }
+  }, [showCount])
+
   // ---- scroll management ----
   const scrollerRef = useRef(null)
   const bottomRef = useRef(null)
@@ -1760,6 +1774,10 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
           document.getElementById('chat-msg-' + msg.parent_id)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
         }, 120)
       } else if (msg) {
+        // widen the window if the message is older than what's drawn
+        const tl = messages.filter(x => !x.parent_id)
+        const idx = tl.findIndex(x => x.id === msg.id)
+        if (idx >= 0 && tl.length - idx > showCount) setShowCount(tl.length - idx + 10)
         setHighlightId(msg.id)
         stickToBottom.current = false
         setTimeout(() => {
@@ -2068,6 +2086,8 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
     const el = scrollerRef.current
     if (!el) return
     stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    // near the top and there are earlier messages loaded → add the next batch (keeps your place)
+    if (el.scrollTop < 150 && !keepScroll.current && showCount < messages.filter(x => !x.parent_id).length) showEarlier()
   }
 
   // Channel opened (or finished loading): jump to the newest message, no
@@ -2253,6 +2273,24 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
   if (loading) return <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}><span className="page-sub">Loading messages…</span></div>
 
   const topLevel = messages.filter(x => !x.parent_id)
+  // Thread reply counts in ONE pass (was: every message re-scanned every other message,
+  // twice, on every redraw — ~80,000 checks for 200 messages). (2026-10-29 speed)
+  const replyInfo = (() => {
+    const out = new Map()
+    for (const x of messages) {
+      if (!x.parent_id) continue
+      const r = out.get(x.parent_id) || { count: 0, unseen: 0 }
+      r.count++
+      if (x.sender_id !== me.id) {
+        const lastRead = threadReads[x.parent_id]
+        if (!lastRead || new Date(x.created_at) > new Date(lastRead)) r.unseen++
+      }
+      out.set(x.parent_id, r)
+    }
+    return out
+  })()
+  // Draw only the newest messages; scrolling near the top adds more (keeps your place).
+  const windowStart = Math.max(0, topLevel.length - showCount)
 
   // Mirrors can_moderate_messages() in the DB, which checks profiles.is_admin.
   // The DB is the real gate — this only decides whether to draw the button.
@@ -2347,14 +2385,18 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
         {err && <div style={{ color: 'var(--failed)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
         {topLevel.length === 0
           ? <div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>No messages yet. Say hello 👋</div>
-          : topLevel.map((m, i) => {
-            const replyCount = messages.filter(x => x.parent_id === m.id).length
-            // Replies from others newer than the last time I opened this thread.
-            const threadLastRead = threadReads[m.id]
-            const unseenReplies = replyCount === 0 ? 0 : messages.filter(x =>
-              x.parent_id === m.id && x.sender_id !== me.id &&
-              (!threadLastRead || new Date(x.created_at) > new Date(threadLastRead))
-            ).length
+          : <>
+            {windowStart > 0 && (
+              <div style={{ textAlign: 'center', margin: '0 0 12px' }}>
+                <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={showEarlier}>Show earlier messages ({windowStart})</button>
+              </div>
+            )}
+            {topLevel.slice(windowStart).map((m, j) => {
+            const i = windowStart + j
+            // Reply counts come from one shared pass (replyInfo) instead of re-scanning per message.
+            const ri = replyInfo.get(m.id)
+            const replyCount = ri ? ri.count : 0
+            const unseenReplies = ri ? ri.unseen : 0
             const prev = topLevel[i - 1]
             const grouped = prev && prev.sender_id === m.sender_id && !m.requires_ack && !prev.requires_ack && (new Date(m.created_at) - new Date(prev.created_at) < 5 * 60000)
             const name = m.sender_id === me.id ? 'You' : (senders[m.sender_id] || 'Someone')
@@ -2480,6 +2522,7 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
               </div>
             )
           })}
+          </>}
         <div ref={bottomRef} />
       </div>
 
