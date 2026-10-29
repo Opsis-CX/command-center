@@ -449,7 +449,15 @@ export default function HiringDashboard() {
     return result
   }
 
-  const approve = (app) => transition(app, 'approved', { email: 'approved', note: 'approved at first review' })
+  // Pay check (contact center roles, $15/hr): anyone who said the rate doesn't
+  // work, or was never asked (older applications), gets a confirm before the
+  // assessment goes out.
+  const approve = (app) => {
+    const pay = payStatus(app)
+    if (pay === 'no' && !window.confirm(`${app.full_name} said ${CC_RATE} does NOT work for them${app.compensation ? ' (wants: ' + app.compensation + ')' : ''}. Approve and send the assessment anyway?`)) return
+    if (pay === 'unknown' && !window.confirm(`${app.full_name} hasn't confirmed the ${CC_RATE} rate yet. Have you confirmed pay with them? Click OK to approve.`)) return
+    transition(app, 'approved', { email: 'approved', note: pay === 'yes' ? 'approved at first review (pay confirmed)' : 'approved at first review (pay confirmed by reviewer)' })
+  }
   const deny = (app) => {
     if (!window.confirm(`Deny ${app.full_name}'s application? They'll get a decline email.`)) return
     transition(app, 'denied', { email: 'denied', note: 'denied at first review' })
@@ -650,6 +658,30 @@ export default function HiringDashboard() {
   )
 }
 
+// ---- Pay confirmation (contact center roles pay $15/hr) ----
+const CC_RATE = '$15/hr'
+const CC_ROLES = ['Appointment Setter']
+const PAY_CHECK_STAGES = ['pending_review', 'approved', 'assessment_sent', 'assessment_review']
+function payStatus(app) {
+  if (!CC_ROLES.includes(app.role_applying)) return 'na'
+  if (app.pay_ok === true) return 'yes'
+  if (app.pay_ok === false) return 'no'
+  return 'unknown'
+}
+function PayChip({ app }) {
+  const pay = payStatus(app)
+  if (pay === 'na') return null
+  if (pay === 'unknown' && !PAY_CHECK_STAGES.includes(app.status)) return null
+  const look = {
+    yes: { bg: '#DCFCE7', bd: '#BBF7D0', c: '#166534', t: '✓ OK with ' + CC_RATE },
+    no: { bg: '#FEE2E2', bd: '#FECACA', c: '#991B1B', t: '✗ Wants more than ' + CC_RATE + (app.compensation ? ' · ' + app.compensation : '') },
+    unknown: { bg: '#FEF3C7', bd: '#FDE68A', c: '#92400E', t: '? Pay not confirmed' },
+  }[pay]
+  return (
+    <div title={look.t} style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: look.c, background: look.bg, border: '1px solid ' + look.bd, borderRadius: 999, padding: '2px 9px', maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{look.t}</div>
+  )
+}
+
 function ApplicantCard({ app, onClick, onApprove, onDeny, busy }) {
   return (
     <div style={{ border: '1px solid ' + (app.on_hold ? '#FDE68A' : 'var(--line)'), background: 'var(--surface)', borderRadius: 10, padding: 10, cursor: 'pointer', opacity: app.on_hold ? 0.75 : 1 }} onClick={onClick}>
@@ -660,6 +692,7 @@ function ApplicantCard({ app, onClick, onApprove, onDeny, busy }) {
           <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{app.role_applying || '—'}</div>
         </div>
       </div>
+      <PayChip app={app} />
       {app.on_hold && (
         <div title={app.on_hold_reason || 'On hold at capacity'}
           style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 999, padding: '2px 9px' }}>
@@ -861,7 +894,13 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button disabled={busy} onClick={() => onTransition(app, adv.to, { email: adv.email, note: adv.label, certTagId: adv.to === 'cert_assigned' ? certTag : undefined })}
+                <button disabled={busy} onClick={() => {
+                  if (adv.to === 'assessment_sent' && payStatus(app) !== 'yes' && payStatus(app) !== 'na'
+                    && !window.confirm(payStatus(app) === 'no'
+                      ? `${app.full_name} said ${CC_RATE} does NOT work for them. Send the assessment anyway?`
+                      : `${app.full_name} hasn't confirmed the ${CC_RATE} rate yet. Have you confirmed pay with them? Click OK to send the assessment.`)) return
+                  onTransition(app, adv.to, { email: adv.email, note: adv.label, certTagId: adv.to === 'cert_assigned' ? certTag : undefined })
+                }}
                   style={{ flex: 1, border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 160 }}>{adv.label}</button>
                 {adv.deny && (
                   <button disabled={busy} onClick={() => onTransition(app, adv.deny.to, { email: adv.deny.email, note: adv.deny.label })}
@@ -967,6 +1006,7 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
           <Row label="Available to start" value={app.available_start} />
           <Row label="Time zone" value={app.time_zone} />
           <Row label="Working hours" value={app.working_hours} />
+          {payStatus(app) !== 'na' && <Row label={'OK with ' + CC_RATE + '?'} value={{ yes: 'Yes', no: 'No', unknown: 'Not asked yet. Confirm before sending the assessment.' }[payStatus(app)]} />}
           <Row label="Compensation" value={app.compensation} />
           <Row label="Why Opsis" value={app.why_opsis} />
           {app.linkedin_url && (
