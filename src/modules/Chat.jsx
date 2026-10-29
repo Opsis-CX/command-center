@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react'
+import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo, useSyncExternalStore } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { seasonalHat, WitchHat, celebrate } from '../components/Seasonal'
@@ -250,7 +250,17 @@ function useTyping(topic, meId, meName, inbox = null) {
   // sidebar that I'm typing (topic typing-inbox:<their id>; sent without joining).
   const inboxRef = useRef(inbox)
   inboxRef.current = inbox
-  const [typers, setTypers] = useState({})   // id -> { name, at }
+  // Who's typing lives in a tiny store that ONLY <TypingLine> listens to — so "X is typing"
+  // never redraws the whole channel (that made typing laggy in busy channels). (2026-10-28)
+  const store = useMemo(() => {
+    let typers = {}; let snap = ''; const subs = new Set()
+    return {
+      set(fn) { const next = fn(typers); if (next === typers) return; typers = next; const s = Object.values(typers).map(t => t.name).join('\u0001'); if (s !== snap) { snap = s; subs.forEach(l => l()) } },
+      subscribe(l) { subs.add(l); return () => subs.delete(l) },
+      getSnapshot() { return snap },
+    }
+  }, [])
+  const setTypers = store.set
   const chanRef = useRef(null)
   const lastSent = useRef(0)
 
@@ -304,8 +314,7 @@ function useTyping(topic, meId, meName, inbox = null) {
     }
   }
 
-  const names = Object.values(typers).map(t => t.name)
-  return { typerNames: names, notifyTyping, stopTyping }
+  return { typingStore: store, notifyTyping, stopTyping }
 }
 
 // ---- file attachments ----
@@ -451,7 +460,9 @@ function Lightbox({ images, index, onClose, onNav }) {
 
 
 // Renders "X is typing…" / "X and Y are typing…"
-function TypingLine({ names }) {
+function TypingLine({ store }) {
+  const snap = useSyncExternalStore(store.subscribe, store.getSnapshot)
+  const names = snap ? snap.split('\u0001') : []
   if (!names.length) return null
   let text
   if (names.length === 1) text = `${names[0]} is typing…`
@@ -1500,7 +1511,52 @@ function LsaChannelView(props) {
   )
 }
 
-function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profiles, isMobile, onBack, markRead, targetMessageId, onTargetConsumed, clearedAt = null, agentMuted = null }) {
+// ---- Only redraw the open channel when something it shows actually changed ----
+// Busy background activity (online/last-seen pings, unread counts, other channels' messages)
+// used to redraw every message in the open channel — 50–120ms each time in big channels, which
+// made typing lag. Function props are passed through stable wrappers, so they're never stale.
+// (2026-10-28)
+const PROFILE_FIELDS = ['id', 'full_name', 'avatar_url', 'job_title', 'pronouns', 'timezone', 'role', 'is_admin', 'is_active', 'status_emoji', 'status_text', 'status_type', 'status_until']
+function sameProfiles(a, b) {
+  if (a === b) return true
+  if (!a || !b || a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i], y = b[i]
+    if (x === y) continue
+    for (const f of PROFILE_FIELDS) if (x?.[f] !== y?.[f]) return false
+  }
+  return true
+}
+function shallowSame(a, b) {
+  if (a === b) return true
+  if (!a || !b) return false
+  const ka = Object.keys(a), kb = Object.keys(b)
+  if (ka.length !== kb.length) return false
+  for (const k of ka) if (a[k] !== b[k]) return false
+  return true
+}
+const ChannelPaneMemo = React.memo(ChannelPaneInner, (prev, next) => {
+  for (const k of new Set([...Object.keys(prev), ...Object.keys(next)])) {
+    const a = prev[k], b = next[k]
+    if (typeof a === 'function' || typeof b === 'function') continue
+    if (k === 'profiles') { if (!sameProfiles(a, b)) return false; continue }
+    if (k === 'channel' || k === 'me') { if (!shallowSame(a, b)) return false; continue }
+    if (a !== b) return false
+  }
+  return true
+})
+function ChannelPane(props) {
+  const latest = useRef(props)
+  latest.current = props
+  const stable = useMemo(() => ({
+    onBack: (...x) => latest.current.onBack?.(...x),
+    markRead: (...x) => latest.current.markRead?.(...x),
+    onTargetConsumed: (...x) => latest.current.onTargetConsumed?.(...x),
+  }), [])
+  return <ChannelPaneMemo {...props} onBack={stable.onBack} markRead={stable.markRead}
+    onTargetConsumed={props.onTargetConsumed ? stable.onTargetConsumed : undefined} />
+}
+function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, profiles, isMobile, onBack, markRead, targetMessageId, onTargetConsumed, clearedAt = null, agentMuted = null }) {
   // Agent side: names of staff in this DM who have turned off messages from agents.
   const [dmBlockedBy, setDmBlockedBy] = useState([])
   const refreshDmBlock = useCallback(async () => {
@@ -1573,7 +1629,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
   const sendersRef = useRef(senders)
   useEffect(() => { sendersRef.current = senders }, [senders])
 
-  const { typerNames, notifyTyping, stopTyping } = useTyping(`typing:${channelId}`, me.id, me.full_name,
+  const { typingStore, notifyTyping, stopTyping } = useTyping(`typing:${channelId}`, me.id, me.full_name,
     channel?.is_dm ? { channelId, recipients: (members || []).filter(id => id !== me.id) } : null)
 
   useEffect(() => {
@@ -2427,7 +2483,7 @@ function ChannelPane({ channelId, me, isAdmin, isOwner, channel, dmName, profile
         <div ref={bottomRef} />
       </div>
 
-      <TypingLine names={typerNames} />
+      <TypingLine store={typingStore} />
 
       {dmBlockedBy.length > 0 ? (
         <div style={{ borderTop: '1px solid var(--line)', padding: '14px 16px', flex: 'none', background: 'var(--canvas)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -3404,7 +3460,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
     threadIdsRef.current = new Set([parentId, ...replies.map(r => r.id)])
   }, [parentId, replies])
 
-  const { typerNames, notifyTyping, stopTyping } = useTyping(`typing:thread:${parentId}`, me.id, me.full_name)
+  const { typingStore, notifyTyping, stopTyping } = useTyping(`typing:thread:${parentId}`, me.id, me.full_name)
 
   useEffect(() => {
     let active = true
@@ -3643,7 +3699,7 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
           </>
         )}
       </div>
-      <TypingLine names={typerNames} />
+      <TypingLine store={typingStore} />
       <div style={{ borderTop: '1px solid var(--line)', padding: 12, flex: 'none' }}>
         {uploadErr && <div style={{ color: 'var(--failed)', fontSize: 12, marginBottom: 6 }}>{uploadErr}</div>}
         {pending.length > 0 && (
