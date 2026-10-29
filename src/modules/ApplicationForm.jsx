@@ -41,6 +41,11 @@ const ROLES = [
   'Executive Assistant',
   'Client Acquisition Specialist',
 ]
+// Contact center roles all pay the same posted rate. Applicants for these
+// roles must confirm the rate on the form (hiring_applications.pay_ok), so
+// pay expectations are settled before anyone is sent an assessment.
+const CONTACT_CENTER_ROLES = ['Appointment Setter']
+const CONTACT_CENTER_RATE = '$15/hour'
 const EMPLOYMENT_TYPES = ['Full-time', 'Part-time', 'Either', '1099 Contractor']
 const MAX_RESUME_BYTES = 25 * 1024 * 1024 // 25MB
 
@@ -88,7 +93,7 @@ export default function ApplicationForm() {
     employment_type: '', years_experience: '', tools_platforms: '',
     organization_answer: '', remote_answer: '', problem_answer: '',
     available_start: '', time_zone: '', working_hours: '', compensation: '',
-    linkedin_url: '', why_opsis: '', info_confirmed: false,
+    linkedin_url: '', why_opsis: '', info_confirmed: false, pay_ok: '',
   })
   const [resume, setResume] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -96,6 +101,7 @@ export default function ApplicationForm() {
   const [done, setDone] = useState(null)   // 'received' | 'out_of_area' | 'auto_denied'
   const resumeRef = useRef(null)
   const set = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target?.value ?? e }))
+  const isContactCenter = CONTACT_CENTER_ROLES.includes(f.role_applying)
 
   function validate() {
     if (!f.full_name.trim()) return 'Please enter your full name.'
@@ -103,6 +109,7 @@ export default function ApplicationForm() {
     if (!f.state) return 'Please select your state of residence.'
     if (!f.work_authorized) return 'Please answer the work authorization question.'
     if (!f.role_applying) return 'Please choose the role you are applying for.'
+    if (isContactCenter && !f.pay_ok) return `Please let us know if the ${CONTACT_CENTER_RATE} rate works for you.`
     if (!f.info_confirmed) return 'Please confirm your information is accurate.'
     return ''
   }
@@ -146,7 +153,8 @@ export default function ApplicationForm() {
         available_start: f.available_start.trim() || null,
         time_zone: f.time_zone.trim() || null,
         working_hours: f.working_hours.trim() || null,
-        compensation: f.compensation.trim() || null,
+        compensation: f.compensation.trim() || (isContactCenter && f.pay_ok === 'yes' ? 'Confirmed ' + CONTACT_CENTER_RATE : null),
+        pay_ok: isContactCenter ? f.pay_ok === 'yes' : null,
         resume_path,
         linkedin_url: f.linkedin_url.trim() || null,
         why_opsis: f.why_opsis.trim() || null,
@@ -231,6 +239,16 @@ export default function ApplicationForm() {
             {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
+        {isContactCenter && (
+          <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '12px 14px' }}>
+            <label style={labelStyle}>This position pays {CONTACT_CENTER_RATE}. Does that rate work for you?{reqMark}</label>
+            <select style={inputStyle} value={f.pay_ok} onChange={set('pay_ok')}>
+              <option value="">Select…</option>
+              <option value="yes">Yes, {CONTACT_CENTER_RATE} works for me</option>
+              <option value="no">No, I'm looking for a higher rate</option>
+            </select>
+          </div>
+        )}
         <div><label style={labelStyle}>Open to being considered for other roles if a better fit comes up?</label>
           <select style={inputStyle} value={f.open_to_other_roles} onChange={set('open_to_other_roles')}>
             <option value="">Select…</option><option value="yes">Yes</option><option value="no">No</option>
@@ -267,7 +285,9 @@ export default function ApplicationForm() {
           <div><label style={labelStyle}>What time zone are you in?</label><input style={inputStyle} value={f.time_zone} onChange={set('time_zone')} placeholder="e.g. Eastern (ET)" /></div>
         </div>
         <div><label style={labelStyle}>Your typical working hours</label><input style={inputStyle} value={f.working_hours} onChange={set('working_hours')} placeholder="e.g. 9am–5pm weekdays" /></div>
-        <div><label style={labelStyle}>Compensation expectations</label><input style={inputStyle} value={f.compensation} onChange={set('compensation')} placeholder="Hourly or per-project" /></div>
+        {(!isContactCenter || f.pay_ok === 'no') && (
+          <div><label style={labelStyle}>{isContactCenter ? 'What rate are you looking for?' : 'Compensation expectations'}</label><input style={inputStyle} value={f.compensation} onChange={set('compensation')} placeholder="Hourly or per-project" /></div>
+        )}
       </Section>
 
       <Section title="Wrap-up">
