@@ -121,8 +121,110 @@ const MATRIX = {
   // (and clients, who have no sidebar). Also read by LiveStatus.jsx internally.
   'live_status': ['asc', 'certification', 'quality', 'marketing', 'sales', 'admin'],
 }
-// can(role, "schedule.create_schedules") -> boolean
+// ============================================================
+// SELF-SERVICE PERMISSIONS (2026-10-29)
+// When the database has the new roles system (access_roles / my_permissions()), every check
+// below reads the person's REAL checkboxes and project/client scopes from the database.
+// When it doesn't (a database that hasn't been switched over yet), it falls back to the
+// fixed MATRIX above — so this file is safe on both, and nothing changes until switched.
+// ============================================================
+
+// Old rule → new checkbox(es). Having ANY of the listed checkboxes passes the old rule.
+export const LEGACY_MAP = {
+  'dashboard': ['reporting.view'],
+  'weekly_sync': ['reporting.view'],
+  'service_performance_scorecard': ['home.view'],
+  'quality_audit': ['qa.create'],
+  'quality_audit.enter_audits': ['qa.create'],
+  'quality_audit.view_own': ['qa.view'],
+  'quality_audit.call_reviews': ['qa.view'],
+  'call_reviews.mine': ['home.view'],
+  'service_performance_scorecard.view_personal_scorecard': ['home.view'],
+  'service_performance_scorecard.view_all_scorecards': ['qa.view'],
+  'service_performance_scorecard.edit_scorecard': ['qa.manage'],
+  'chat.all': ['chat.manage'],
+  'chat.invited_channels_dms_only': ['chat.view'],
+  'chat.create_channels': ['chat.create'],
+  'chat.create_dms': ['chat.view'],
+  'hiring.all': ['hiring.edit'],
+  'hiring.view_stage_only': ['hiring.view'],
+  'sales.all': ['sales.edit'],
+  'sales.view_only': ['sales.view'],
+  'web_chat.all': ['sales.edit'],
+  'web_chat.reply': ['sales.edit'],
+  'certifications.all': ['learning.manage'],
+  'certifications.builder': ['learning.create'],
+  'certifications.assigned_to_complete': ['learning.view'],
+  'certifications.view_personal_score_and_content_assigned': ['learning.view'],
+  'certifications.view_content_and_scores_only_of_agents': ['learning.manage'],
+  'schedule.all': ['schedule.edit'],
+  'schedule.create_schedules': ['schedule.create'],
+  'schedule.view_only_projects_assigned_to': ['schedule.view'],
+  'schedule.view_insights_assigned': ['schedule.edit'],
+  'schedule.no_release_times': ['schedule.edit'],
+  'schedule.ability_to_assign_intervals_to_agents': ['schedule.edit'],
+  'schedule.accept_and_release_intervals_on_an_assigned_schedule': ['schedule.view'],
+  'schedule.ability_to_assign_agents_to_schedules': ['schedule.edit'],
+  'schedule.view_my_schedule': ['schedule.view'],
+  'schedule.view_all_schedules': ['schedule.create'],
+  'reporting': ['reporting.view'],
+  'people_and_tags.view_only': ['people.edit'],
+  'people_and_tags.edit': ['people.edit'],
+  'people_and_tags.delete': ['people.delete'],
+  'clients.view_only': ['clients.view'],
+  'clients.edit': ['clients.edit'],
+  'positions.view_only': ['admin.settings'],
+  'positions.edit': ['admin.settings'],
+  'project_management.all': ['tasks.manage'],
+  'project_management.create_projects': ['tasks.manage'],
+  'project_management.add_tasks_to_projects_assigned_to': ['tasks.create'],
+  'tokens': ['rewards.view'],
+  'tokens.ledger': ['rewards.manage'],
+  'coaching': ['coaching.view'],
+  'meetings': ['meetings.view'],
+  'live_status': ['schedule.edit'],
+}
+
+// key -> { all: bool, projects: Set, clients: Set }   (null = new system not available)
+let _perms = null
+let _isOwner = false
+export async function loadPermissions(supabase) {
+  try {
+    const { data, error } = await supabase.rpc('my_permissions')
+    if (error) { _perms = null; return false }          // not switched over → fixed rules
+    const map = new Map()
+    for (const r of data || []) map.set(r.perm_key, { all: !!r.all_access, projects: new Set(r.project_ids || []), clients: new Set(r.client_ids || []) })
+    _perms = map
+    const { data: own } = await supabase.rpc('is_access_owner')
+    _isOwner = !!own
+    return true
+  } catch { _perms = null; return false }
+}
+export function clearPermissions() { _perms = null; _isOwner = false }
+export const usingNewPermissions = () => _perms !== null
+
+// NEW: hasPerm('reporting.view')                 → can they view reports anywhere?
+//      hasPerm('reporting.view', projectOrClient) → for THAT project/client?
+export function hasPerm(key, scopeId) {
+  if (_perms === null) return false
+  if (_isOwner) return true
+  const p = _perms.get(key)
+  if (!p) return false
+  if (!scopeId || p.all) return true
+  return p.projects.has(scopeId) || p.clients.has(scopeId)
+}
+// Which projects/clients a checkbox covers — for project pickers inside modules.
+// Returns { all: true } or { all: false, projects: [...], clients: [...] } (empty = none).
+export function permScope(key) {
+  if (_perms === null || _isOwner) return { all: _perms !== null || false, projects: [], clients: [] }
+  const p = _perms.get(key)
+  if (!p) return { all: false, projects: [], clients: [] }
+  return { all: p.all, projects: [...p.projects], clients: [...p.clients] }
+}
+
+// can(role, "schedule.create_schedules") -> boolean   (old rule names keep working)
 export function can(role, perm) {
+  if (_perms !== null) return (LEGACY_MAP[perm] || []).some(k => hasPerm(k))
   const r = String(role || '').trim().toLowerCase()
   if (r === 'admin') return true            // admin always passes
   const allowed = MATRIX[perm]
@@ -132,6 +234,7 @@ export function can(role, perm) {
 // Convenience: does this role have ANY capability under a page prefix?
 // Used for nav gating (show the page if they can do anything on it).
 export function canAny(role, pagePrefix) {
+  if (_perms !== null) return Object.keys(LEGACY_MAP).some(k => (k === pagePrefix || k.startsWith(pagePrefix + '.')) && can(role, k))
   const r = String(role || '').trim().toLowerCase()
   if (r === 'admin') return true
   return Object.keys(MATRIX).some(k => (k === pagePrefix || k.startsWith(pagePrefix + ".")) && MATRIX[k].includes(r))
