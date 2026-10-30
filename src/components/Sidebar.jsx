@@ -113,7 +113,7 @@ const NAV_MAIN = [
           { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
           { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
           { to: '/sms-consents', label: 'SMS Consent', perm: '__admin' },   // agent text opt-in report (admins only)
-          { to: '/roles', label: 'Roles & permissions', perm: '__admin' }, // admins/owners only
+          { to: '/roles', label: 'Access & Permissions', perm: '__admin' }, // admins/owners only
           { to: '/service-account', label: 'Service account', perm: '__admin' }, // the account automated posts use (Turri)
           { to: '/survey', label: 'New Hire Survey', perm: '__admin' },   // results view; agents reach the form from their notification
         ],
@@ -170,11 +170,11 @@ export default function Sidebar({ open, onNavigate }) {
   // be "everyone" or "admins only" follow the person's checkboxes too.
   const NEW_PAGE_PERMS = {
     '/home': 'home.view', '/updates': 'updates.view', '/notes': 'notes.view', '/calendar': 'calendar.view',
-    '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': 'admin.roles', '/sms-consents': 'admin.settings',
+    '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings',
     '/service-account': 'admin.settings', '/survey': 'people.edit', '/finance': 'finance.view', '/submit-purchase': 'finance.create',
   }
   const permOk = (p, to) => {
-    if (usingNewPermissions() && NEW_PAGE_PERMS[to]) return hasPerm(NEW_PAGE_PERMS[to])
+    if (usingNewPermissions() && NEW_PAGE_PERMS[to]) return [].concat(NEW_PAGE_PERMS[to]).some(k => hasPerm(k))
     return permOkOld(p)
   }
   const permOkOld = (p) =>
