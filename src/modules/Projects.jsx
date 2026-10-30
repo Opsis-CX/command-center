@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react'
+import ProjectTrash from './ProjectTrash'
+import { hasPerm, usingNewPermissions } from '../lib/permissions'
 import { useSearchParams } from 'react-router-dom'
 import { ProjectsDataProvider, useProjectsData } from './projectsData'
 import ProjectDashboard from './ProjectDashboard'
@@ -28,6 +30,7 @@ const SUBVIEWS = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'recurring', label: 'Recurring' },
   { key: 'activity', label: 'Activity' },
+  { key: 'trash', label: '🗑 Recently deleted', newPermsOnly: 'tasks.delete' },
 ]
 
 export default function Projects() {
@@ -63,7 +66,8 @@ function ProjectsInner() {
   if (loading) return <p className="page-sub">Loading projects…</p>
   if (error) return <p className="page-sub" style={{ color: 'var(--failed)' }}>Couldn't load projects: {error}</p>
 
-  const tabs = SUBVIEWS.filter(v => !v.adminOnly || isAdmin)
+  // 🗑 Recently deleted only shows where the new permissions system is on, for people who can delete/restore
+  const tabs = SUBVIEWS.filter(v => (!v.adminOnly || isAdmin) && (!v.newPermsOnly || (usingNewPermissions() && hasPerm(v.newPermsOnly))))
   const openAdd = (defaultStatus, defaultProject) => setModal({ taskId: null, defaultStatus, defaultProject })
   const openEdit = (id) => { setOpenTaskId(null); setModal({ taskId: id }) }
   const jumpToProjectKanban = (projectId) => { setKanbanProject(projectId); setView('kanban') }
@@ -92,6 +96,7 @@ function ProjectsInner() {
       {view === 'notes' && <ProjectNotes activeProject={kanbanProject} setActiveProject={setKanbanProject} />}
       {view === 'recurring' && <ProjectRecurring />}
       {view === 'activity' && <ProjectActivity />}
+      {view === 'trash' && <ProjectTrash />}
 
       {openTaskId && <TaskDetail taskId={openTaskId} onClose={() => setOpenTaskId(null)} onEdit={openEdit} />}
       {modal && (
