@@ -1,4 +1,4 @@
-[README (3).md](https://github.com/user-attachments/files/34202501/README.3.md)
+[README (5).md](https://github.com/user-attachments/files/34203007/README.5.md)
 # Staging setup scripts
 
 Run these in the **staging** database (Supabase → command-center-staging → SQL editor),
@@ -12,5 +12,7 @@ database section from live and removes anything that only exists in staging.
    progress / explicit Edit & Delete), recoverable project deletion, Recently deleted.
 4. `04_access_levels_delegation.sql` — access levels as a ceiling (Owner / Administrator /
    Manager / User), delegated role assignment ("Can assign"), clearer history.
+5. `05_clients_projects.sql` — Clients → Projects setup (archive/restore, unique names),
+   and "your words" (what the company calls a client / a project).
 
 All are safe to run more than once. Ask Claude to re-add the demo company afterwards.
