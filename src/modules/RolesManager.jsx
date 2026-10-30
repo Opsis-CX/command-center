@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { hasPerm, loadPermissions, permScope, isAccessOwner } from '../lib/permissions'
 import { useAuth } from '../lib/auth'
+import { useTerms } from '../lib/terms'
+import ClientsProjects from './ClientsProjects'
 
 // ============================================================
 // ROLES & PERMISSIONS — self-service (2026-10-29)
@@ -431,7 +433,9 @@ export default function AccessPermissions() {
   const [focusRole, setFocusRole] = useState(null)   // role to open when jumping People → Roles
   const canPeople = hasPerm('admin.assign') || hasPerm('admin.roles')
   const [tab, setTab] = useState('roles')
-  const tabs = [['roles', '🛡️ Roles'], ...(canPeople ? [['people', '👥 People']] : []), ...(hasPerm('admin.audit') ? [['history', '📜 History']] : [])]
+  const T = useTerms()
+  const canStructure = hasPerm('clients.manage') || hasPerm('tasks.manage') || hasPerm('clients.view')
+  const tabs = [['roles', '🛡️ Roles'], ...(canPeople ? [['people', '👥 People']] : []), ...(canStructure ? [['structure', `🏢 ${T.clients} & ${T.projects}`]] : []), ...(hasPerm('admin.audit') ? [['history', '📜 History']] : [])]
   return (
     <div>
       <style>{CSS}</style>
@@ -444,6 +448,7 @@ export default function AccessPermissions() {
       </div>
       {tab === 'roles' && <RolesTab key={focusRole || 'roles'} initialRoleId={focusRole} />}
       {tab === 'people' && <PeopleTab onOpenRole={(id) => { setFocusRole(id); setTab('roles') }} />}
+      {tab === 'structure' && <ClientsProjects />}
       {tab === 'history' && <HistoryTab />}
     </div>
   )
@@ -456,33 +461,92 @@ function scopeLabel(x, clients, projects) {
   return names.length ? names.join(', ') : 'Nothing selected yet'
 }
 
-// Pick where something applies: Everything, or specific clients & projects.
+// Pick where something applies: Everything, or Client → its projects. (2026-10-30)
+// Check a client, then choose "All of its projects" (includes ones added later) or only
+// specific projects of THAT client. Internal projects (no client) are listed on their own.
+// Managers only see the clients/projects they're allowed to give.
 function ScopePicker({ value, onChange, clients, projects, inMyScope, myAll }) {
+  const T = useTerms()
   const { scope_type, client_ids = [], project_ids = [] } = value
-  const toggle = (key, id) => {
-    const list = value[key] || []
-    onChange({ ...value, [key]: list.includes(id) ? list.filter(x => x !== id) : [...list, id] })
+  const set = (patch) => onChange({ ...value, ...patch })
+  const projOf = (cid) => projects.filter(p => p.client_id === cid && inMyScope('p', p.id) || p.client_id === cid && inMyScope('c', cid))
+  const internal = projects.filter(p => !p.client_id && inMyScope('p', p.id))
+  const visibleClients = clients.filter(c => inMyScope('c', c.id) || projects.some(p => p.client_id === c.id && inMyScope('p', p.id)))
+  // per-client state: 'all' (client chosen = all its projects), 'some' (specific projects), or off
+  const stateOf = (cid) => client_ids.includes(cid) ? 'all' : (projOf(cid).some(p => project_ids.includes(p.id)) ? 'some' : 'off')
+  const [open, setOpen] = useState(() => Object.fromEntries(clients.map(c => [c.id, stateOf(c.id) === 'some'])))
+  const pickClient = (cid, on) => {
+    const theirs = projOf(cid).map(p => p.id)
+    if (on) {
+      // whole client only if I'm allowed the whole client; otherwise start with "only these projects"
+      if (inMyScope('c', cid)) set({ client_ids: [...new Set([...client_ids, cid])], project_ids: project_ids.filter(id => !theirs.includes(id)) })
+      else setOpen(o => ({ ...o, [cid]: true }))
+    } else {
+      set({ client_ids: client_ids.filter(x => x !== cid), project_ids: project_ids.filter(id => !theirs.includes(id)) })
+      setOpen(o => ({ ...o, [cid]: false }))
+    }
   }
+  const setMode = (cid, mode) => {
+    const theirs = projOf(cid).map(p => p.id)
+    if (mode === 'all') set({ client_ids: [...new Set([...client_ids, cid])], project_ids: project_ids.filter(id => !theirs.includes(id)) })
+    else { set({ client_ids: client_ids.filter(x => x !== cid) }); setOpen(o => ({ ...o, [cid]: true })) }
+  }
+  const toggleProject = (pid) => set({ project_ids: project_ids.includes(pid) ? project_ids.filter(x => x !== pid) : [...project_ids, pid] })
+  const row = { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5, padding: '3px 0', cursor: 'pointer' }
   return (
     <div>
       <div style={{ display: 'flex', gap: 16, marginBottom: 10, fontSize: 13.5, flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
-          <input type="radio" checked={scope_type === 'scoped'} onChange={() => onChange({ ...value, scope_type: 'scoped' })} /> Only these clients & projects</label>
+          <input type="radio" checked={scope_type === 'scoped'} onChange={() => set({ scope_type: 'scoped' })} /> Only these {T.clients.toLowerCase()} & {T.projects.toLowerCase()}</label>
         <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: myAll ? 'pointer' : 'not-allowed', opacity: myAll ? 1 : .5 }} title={myAll ? '' : 'Only people with access to everything can give access to everything'}>
-          <input type="radio" disabled={!myAll} checked={scope_type === 'all'} onChange={() => onChange({ ...value, scope_type: 'all', client_ids: [], project_ids: [] })} /> Everything</label>
+          <input type="radio" disabled={!myAll} checked={scope_type === 'all'} onChange={() => set({ scope_type: 'all', client_ids: [], project_ids: [] })} /> Everything</label>
       </div>
       {scope_type === 'scoped' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-          <div><div className="page-sub" style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Clients</div>
-            {clients.filter(c => inMyScope('c', c.id)).map(c => (
-              <label key={c.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, padding: '2px 0', cursor: 'pointer' }}>
-                <input type="checkbox" className="rm-cb" checked={client_ids.includes(c.id)} onChange={() => toggle('client_ids', c.id)} /> {c.name}</label>))}
-          </div>
-          <div><div className="page-sub" style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Projects</div>
-            {projects.filter(p => inMyScope('p', p.id)).map(p => (
-              <label key={p.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, padding: '2px 0', cursor: 'pointer' }}>
-                <input type="checkbox" className="rm-cb" checked={project_ids.includes(p.id)} onChange={() => toggle('project_ids', p.id)} /> {p.name}</label>))}
-          </div>
+        <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '8px 12px' }}>
+          <div className="page-sub" style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{T.clients}</div>
+          {visibleClients.length === 0 && <div className="page-sub" style={{ fontSize: 13 }}>No {T.clients.toLowerCase()} yet.</div>}
+          {visibleClients.map(c => {
+            const st = stateOf(c.id), theirs = projOf(c.id), expanded = st === 'some' || open[c.id]
+            const checked = st !== 'off' || !!open[c.id]
+            return (
+              <div key={c.id} style={{ padding: '2px 0' }}>
+                <label style={row}>
+                  <input type="checkbox" className="rm-cb" checked={checked} onChange={() => pickClient(c.id, !checked)} />
+                  <b style={{ fontWeight: 600 }}>{c.name}</b>
+                  <span className="page-sub" style={{ fontSize: 12 }}>
+                    {st === 'all' ? `· all ${T.projects.toLowerCase()}` : st === 'some' ? `· ${theirs.filter(p => project_ids.includes(p.id)).length} of ${theirs.length} ${theirs.length === 1 ? T.project.toLowerCase() : T.projects.toLowerCase()}` : `· ${theirs.length} ${theirs.length === 1 ? T.project.toLowerCase() : T.projects.toLowerCase()}`}
+                  </span>
+                </label>
+                {checked && (
+                  <div style={{ margin: '2px 0 8px 26px', paddingLeft: 10, borderLeft: '2px solid var(--line)' }}>
+                    {inMyScope('c', c.id) && (
+                      <label style={row}><input type="radio" checked={st === 'all' && !open[c.id + ':some']} onChange={() => { setOpen(o => ({ ...o, [c.id + ':some']: false })); setMode(c.id, 'all') }} />
+                        All of {c.name}'s {T.projects.toLowerCase()} <span className="page-sub" style={{ fontSize: 12 }}>(including new ones)</span></label>
+                    )}
+                    <label style={row}><input type="radio" checked={st !== 'all' || !!open[c.id + ':some']} onChange={() => { setOpen(o => ({ ...o, [c.id + ':some']: true })); setMode(c.id, 'some') }} />
+                      Only these {T.projects.toLowerCase()}:</label>
+                    {(st !== 'all' || open[c.id + ':some']) && (
+                      <div style={{ marginLeft: 24 }}>
+                        {theirs.length === 0 ? <div className="page-sub" style={{ fontSize: 12.5, padding: '2px 0' }}>{c.name} has no {T.projects.toLowerCase()} yet.</div>
+                          : theirs.map(p => (
+                            <label key={p.id} style={row}><input type="checkbox" className="rm-cb" checked={project_ids.includes(p.id)} onChange={() => toggleProject(p.id)} /> {p.name}</label>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!checked && expanded && null}
+              </div>
+            )
+          })}
+          {internal.length > 0 && (
+            <>
+              <div className="page-sub" style={{ fontSize: 12, fontWeight: 700, margin: '10px 0 4px' }}>Internal {T.projects.toLowerCase()} <span style={{ fontWeight: 400 }}>(no {T.client.toLowerCase()})</span></div>
+              {internal.map(p => (
+                <label key={p.id} style={row}><input type="checkbox" className="rm-cb" checked={project_ids.includes(p.id)} onChange={() => toggleProject(p.id)} /> {p.name}</label>
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -521,7 +585,7 @@ function PeopleTab({ onOpenRole }) {
       supabase.from('access_role_permissions').select('role_id, perm_key'),
       supabase.from('access_assignments').select('*'),
       supabase.from('access_overrides').select('*'),
-      supabase.from('projects').select('id, name').order('name'),
+      supabase.from('projects').select('id, name, client_id').is('deleted_at', null).order('name'),
       supabase.from('clients').select('id, name').order('name'),
       supabase.from('perm_catalog').select('*').order('sort'),
     ])
@@ -917,6 +981,10 @@ function HistoryTab() {
     switch (x.action) {
       case 'role.insert': return `${who} created the role “${x.detail?.name || role}”`
       case 'role.update': return `${who} updated the role “${x.detail?.name || role}”`
+      case 'client.add': return `${who} added the ${'client'} “${x.detail?.name}”`
+      case 'client.update': return x.detail?.from ? `${who} renamed “${x.detail.from}” to “${x.detail?.name}”` : `${who} updated “${x.detail?.name}”`
+      case 'client.archive': return `${who} archived “${x.detail?.name}”`
+      case 'client.restore': return `${who} restored “${x.detail?.name}”`
       case 'role.archive': return `${who} archived the role “${x.detail?.name || role}”`
       case 'role.restore': return `${who} restored the archived role “${x.detail?.name || role}”`
       case 'role.rename': return `${who} renamed the role “${x.detail?.from || ''}” to “${x.detail?.name || role}”`
