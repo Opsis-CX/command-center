@@ -71,6 +71,7 @@ import { ViewAsMenu } from './components/RolePreview'
 import PortalMenu, { StaffPortal } from './components/PortalMenu'
 import PushEnrollmentBanner from './components/PushEnrollmentBanner'
 import ChatPopButton from './components/ChatPopButton'
+import GlobalSearch, { BackButton } from './components/GlobalSearch'
 import Seasonal from './components/Seasonal'
 import MeetingReminder from './components/MeetingReminder'
 import LsaReminderPopup from './components/LsaReminderPopup'
@@ -489,9 +490,11 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
           <div className="topbar">
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <button className="nav-toggle" onClick={() => setNavOpen(o => !o)} aria-label="Menu">☰</button>
+              <BackButton />
               <div className="crumb"><b>{titleFor(location.pathname)}</b></div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <GlobalSearch />
               <ViewAsMenu />
               <PortalMenu />
               <MyStatusButton />
