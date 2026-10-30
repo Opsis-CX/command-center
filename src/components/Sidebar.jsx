@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth'
 import { useUnread } from '../lib/unread'
 import { supabase } from '../lib/supabase'
 import { getTheme, setTheme, nextTheme, themeLabel } from '../lib/theme'
-import { canAny } from '../lib/permissions'
+import { canAny, hasPerm, usingNewPermissions } from '../lib/permissions'
 import { useRsnAccess } from '../lib/rsnAccess'
 import { useFinanceAccess } from '../lib/financeAccess'
 import ChangePassword from './ChangePassword'
@@ -166,7 +166,18 @@ export default function Sidebar({ open, onNavigate }) {
       .then(({ data }) => { if (active) setOnCampaign(!!(data && data.length)) })
     return () => { active = false }
   }, [user?.id])
-  const permOk = (p) =>
+  // Self-service permissions (2026-10-29): when the new roles system is on, pages that used to
+  // be "everyone" or "admins only" follow the person's checkboxes too.
+  const NEW_PAGE_PERMS = {
+    '/home': 'home.view', '/updates': 'updates.view', '/notes': 'notes.view', '/calendar': 'calendar.view',
+    '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': 'admin.roles', '/sms-consents': 'admin.settings',
+    '/service-account': 'admin.settings', '/survey': 'people.edit', '/finance': 'finance.view', '/submit-purchase': 'finance.create',
+  }
+  const permOk = (p, to) => {
+    if (usingNewPermissions() && NEW_PAGE_PERMS[to]) return hasPerm(NEW_PAGE_PERMS[to])
+    return permOkOld(p)
+  }
+  const permOkOld = (p) =>
     p === '__rsn' ? rsnOk === true
     : p === '__finance' ? fin?.manager === true
     : p === '__finance_submit' ? fin?.submitter === true
@@ -216,14 +227,14 @@ export default function Sidebar({ open, onNavigate }) {
   // Is a single item visible to this person? Used to decide whether a group
   // header should render at all.
   const itemVisible = (item) => {
-    if (item.type === 'link') return permOk(item.perm)
-    return item.children.some(c => permOk(c.perm))
+    if (item.type === 'link') return permOk(item.perm, item.to)
+    return item.children.some(c => permOk(c.perm, c.to))
   }
   // Render one nav item (link or collapsible section).
   const renderItem = (item) => {
     // --- single top-level link ---
     if (item.type === 'link') {
-      if (!permOk(item.perm)) return null
+      if (!permOk(item.perm, item.to)) return null
       return (
         <NavLink key={item.to} to={item.to} end={item.end}
           onClick={() => onNavigate && onNavigate()}
@@ -238,7 +249,7 @@ export default function Sidebar({ open, onNavigate }) {
       )
     }
     // --- collapsible section ---
-    const children = item.children.filter(c => permOk(c.perm))
+    const children = item.children.filter(c => permOk(c.perm, c.to))
     if (!children.length) return null
     const isOpen = !!openSections[item.key]
     return (
