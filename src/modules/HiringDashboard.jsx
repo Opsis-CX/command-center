@@ -725,6 +725,64 @@ function ApplicantCard({ app, onClick, onApprove, onDeny, busy }) {
   )
 }
 
+// 🔑 Login help for a new hire (2026-10-30): reset their password and copy the login details
+// to send them. Admins can reset anyone; the hiring team (certification role) only new hires
+// still in training — enforced by the admin-set-password server function.
+function LoginHelp({ app }) {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)      // { password } | { error }
+  const [requireChange, setRequireChange] = useState(false)
+  const [copied, setCopied] = useState(false)
+  function makePassword() {
+    const n = Math.floor(1000 + Math.random() * 9000)
+    const words = ['Cert', 'Start', 'Welcome', 'Opsis', 'Team']
+    return `${words[Math.floor(Math.random() * words.length)]}-${n}-Go!`
+  }
+  async function reset() {
+    setBusy(true); setResult(null); setCopied(false)
+    const password = makePassword()
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-set-password', {
+        body: { userId: app.profile_id || undefined, email: app.profile_id ? undefined : app.email, password, requireChange },
+      })
+      let msg = data?.error
+      if (error) { try { msg = (await error.context?.json())?.error || error.message } catch { msg = error.message } }
+      setResult(msg ? { error: msg } : { password })
+    } catch (e) { setResult({ error: String(e?.message || e) }) }
+    finally { setBusy(false) }
+  }
+  const details = result?.password
+    ? `Hi ${String(app.full_name || '').split(' ')[0] || 'there'}! Here's your Command Center login:\n\nLink: https://app.opsiscx.com\nEmail: ${app.email}\nPassword: ${result.password}${requireChange ? '\n\nYou\'ll be asked to choose your own password when you sign in.' : ''}`
+    : ''
+  return (
+    <div style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', marginBottom: 20, fontSize: 12.5 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontWeight: 700 }}>🔑 Command Center login</div>
+          <div style={{ color: 'var(--ink-soft)' }}>{app.email}</div>
+        </div>
+        <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '5px 12px' }} disabled={busy} onClick={reset}>
+          {busy ? 'Resetting…' : 'Reset password'}
+        </button>
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, color: 'var(--ink-soft)', cursor: 'pointer' }}>
+        <input type="checkbox" checked={requireChange} onChange={e => setRequireChange(e.target.checked)} />
+        Make them choose their own password when they sign in
+      </label>
+      {result?.error && <div style={{ marginTop: 8, color: '#B91C1C' }}>{result.error}</div>}
+      {result?.password && (
+        <div style={{ marginTop: 10, background: 'var(--canvas)', borderRadius: 8, padding: '8px 10px' }}>
+          <div>New password: <b style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13.5 }}>{result.password}</b></div>
+          <button className="btn btn-primary" style={{ marginTop: 8, fontSize: 12.5, padding: '5px 12px' }}
+            onClick={() => { navigator.clipboard?.writeText(details); setCopied(true) }}>
+            {copied ? '✓ Copied — paste it to them' : '📋 Copy login details to send'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, onRemove, onHold, certTags = [], busy }) {
   const [resumeUrl, setResumeUrl] = useState(null)
   const [assessment, setAssessment] = useState(null)
@@ -871,6 +929,11 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
               </div>
             )
           })()}
+
+          {/* 🔑 Reset a new hire's Command Center password (admins + hiring team) */}
+          {(app.profile_id || ['rippling_awaiting_signature', 'cert_assigned', 'certifying', 'cert_complete', 'mock_requested', 'hired'].includes(app.status)) && app.email && (
+            <LoginHelp app={app} />
+          )}
 
           {/* action bar */}
           {onApprove && app.status === 'pending_review' && (
