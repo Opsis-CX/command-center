@@ -202,6 +202,7 @@ export async function loadPermissions(supabase) {
 }
 export function clearPermissions() { _perms = null; _isOwner = false }
 export const usingNewPermissions = () => _perms !== null
+export const isAccessOwner = () => _isOwner
 
 // NEW: hasPerm('reporting.view')                 → can they view reports anywhere?
 //      hasPerm('reporting.view', projectOrClient) → for THAT project/client?
