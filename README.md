@@ -1,10 +1,12 @@
-// Preload runs before the web app loads, in an isolated context.
-// Kept intentionally minimal — the web app already does all the work.
-// We expose a tiny, safe marker so the site can tell it's running inside
-// the desktop app (useful later, e.g. to prefer OS notifications).
-const { contextBridge } = require('electron')
+[README (1).md](https://github.com/user-attachments/files/34191473/README.1.md)
+# Staging setup scripts
 
-contextBridge.exposeInMainWorld('commandCenterDesktop', {
-  isDesktop: true,
-  platform: process.platform
-})
+Run these in the **staging** database (Supabase → command-center-staging → SQL editor),
+in order, after the "Sync staging database structure" job — the sync rebuilds the main
+database section from live and removes anything that only exists in staging.
+
+1. `01_roles_permissions.sql` — self-service roles & permissions (tables, the checkbox
+   catalog, `has_perm()`, safety rules, the 4 starter roles).
+2. `02_per_person_adjustments.sql` — per-person ➕/➖ adjustments on top of roles.
+
+Both are safe to run more than once. Ask Claude to re-add the demo company afterwards.
