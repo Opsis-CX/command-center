@@ -81,7 +81,7 @@ export function ProjectsDataProvider({ children }) {
       setMe(profRes.data)
       setIsAdmin(profRes.data?.is_admin || false)
       setProfiles(profilesRes || [])
-      setProjects(projRes || [])
+      setProjects((projRes || []).filter(p => !p.deleted_at))   // deleted projects live in Recently deleted (2026-10-30)
       setClients(cliRes || [])
       setRecurring(recRes || [])
       setProjectMembers(pmRes || [])
