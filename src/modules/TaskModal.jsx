@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { useTaskRights, taskError } from '../lib/taskRights'
 import { supabase } from '../lib/supabase'
 import { useProjectsData } from './projectsData'
 import { Avatar } from './projectBits'
@@ -39,6 +40,10 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
   const [nameError, setNameError] = useState(false)
   const [fieldErrors, setFieldErrors] = useState({})
   const [formError, setFormError] = useState('')
+  // What this person may change (database-enforced; read-only fields mirror it). 2026-10-30
+  const rights = useTaskRights(taskId)
+  const lockStructure = !!taskId && !rights.edit_all      // name, project, client, priority, assignees
+  const lockProgress = !!taskId && !rights.edit_progress  // status, due date, notes
   // Subtasks typed into a NEW task's form (created together with the task on save)
   const [subDrafts, setSubDrafts] = useState([])
   const [subText, setSubText] = useState('')
@@ -159,18 +164,34 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
     const prevAssignees = taskId ? taskAssignees.filter(a => a.task_id === taskId).map(a => a.profile_id) : []
 
     if (taskId) {
-      const { error } = await supabase.from('tasks').update(taskData).eq('id', taskId)
-      if (error) { setBusy(false); return }
+      // Only send what actually changed — and never "created by" (saving used to quietly
+      // make whoever saved the task its creator).
+      const changed = {}
+      for (const k of ['name', 'status', 'priority', 'project_id', 'client_id', 'due_date', 'notes']) {
+        if ((taskData[k] ?? null) !== (existing?.[k] ?? null)) changed[k] = taskData[k]
+      }
+      if (Object.keys(changed).length) {
+        const { error } = await supabase.from('tasks').update(changed).eq('id', taskId)
+        if (error) { setFormError(taskError(error)); setBusy(false); return }
+      }
     } else {
       id = crypto.randomUUID()
       const { error } = await supabase.from('tasks').insert({ id, ...taskData })
-      if (error) { setBusy(false); return }
+      if (error) { setFormError(taskError(error)); setBusy(false); return }
     }
 
-    // sync assignees
-    await supabase.from('task_assignees').delete().eq('task_id', id)
-    if (assignees.length) {
-      await supabase.from('task_assignees').insert(assignees.map(pid => ({ task_id: id, profile_id: pid })))
+    // sync assignees — only the people who changed (and only if allowed to change them)
+    if (!lockStructure) {
+      const removed = prevAssignees.filter(pid => !assignees.includes(pid))
+      const added = assignees.filter(pid => !prevAssignees.includes(pid))
+      if (removed.length) {
+        const { error } = await supabase.from('task_assignees').delete().eq('task_id', id).in('profile_id', removed)
+        if (error) { setFormError(taskError(error)); setBusy(false); return }
+      }
+      if (added.length) {
+        const { error } = await supabase.from('task_assignees').insert(added.map(pid => ({ task_id: id, profile_id: pid })))
+        if (error) { setFormError(taskError(error)); setBusy(false); return }
+      }
     }
 
     // NEW task: create the subtasks typed into the form. A subtask still sitting in the box (typed but
@@ -230,7 +251,8 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
   async function del() {
     if (!taskId || !window.confirm('Delete this task?')) return
     const proj = projects.find(p => p.id === existing?.project_id)
-    await supabase.from('tasks').update({ deleted_at: new Date().toISOString(), deleted_by: userId }).eq('id', taskId)
+    const { error } = await supabase.from('tasks').update({ deleted_at: new Date().toISOString(), deleted_by: userId }).eq('id', taskId)
+    if (error) { setFormError(taskError(error)); return }
     logActivity('deleted', taskId, existing?.name, existing?.project_id, proj?.name)
     await refresh()
     onClose(true)
@@ -253,20 +275,25 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
           </div>
 
           <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {lockStructure && !lockProgress && (
+              <div style={{ background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 10 }}>
+                You can update this task's progress — status, due date, notes and links. Other details can only be changed by its creator or someone with edit access.
+              </div>
+            )}
             <Grp label="Task name *">
-              <input value={name} onChange={e => { setName(e.target.value); setNameError(false) }} placeholder="What needs to get done?" autoFocus
+              <input value={name} disabled={lockStructure} onChange={e => { setName(e.target.value); setNameError(false) }} placeholder="What needs to get done?" autoFocus
                 style={{ ...inp, borderColor: nameError ? 'var(--failed)' : 'var(--line)' }} />
             </Grp>
 
             <Row>
               <Grp label="Project">
-                <select value={projectId} onChange={e => setProjectId(e.target.value)} style={inp}>
+                <select value={projectId} disabled={lockStructure} onChange={e => setProjectId(e.target.value)} style={inp}>
                   <option value="">— No project —</option>
                   {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </Grp>
               <Grp label="Client *">
-                <select value={clientId} onChange={e => { setClientId(e.target.value); setFieldErrors(f => ({ ...f, client: false })) }}
+                <select value={clientId} disabled={lockStructure} onChange={e => { setClientId(e.target.value); setFieldErrors(f => ({ ...f, client: false })) }}
                   style={{ ...inp, borderColor: fieldErrors.client ? 'var(--failed)' : 'var(--line)' }}>
                   <option value="">— Select a client —</option>
                   {taskClientChoices(clients, clientId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -276,19 +303,19 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
 
             <Row>
               <Grp label="Status">
-                <select value={status} onChange={e => setStatus(e.target.value)} style={inp}>
+                <select value={status} disabled={lockProgress} onChange={e => setStatus(e.target.value)} style={inp}>
                   {STATUSES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>
               </Grp>
               <Grp label="Priority">
-                <select value={priority} onChange={e => setPriority(e.target.value)} style={inp}>
+                <select value={priority} disabled={lockStructure} onChange={e => setPriority(e.target.value)} style={inp}>
                   {PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
                 </select>
               </Grp>
             </Row>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
-              <input type="checkbox" checked={recurring} onChange={e => setRecurring(e.target.checked)} style={{ width: 16, height: 16 }} />
+              <input type="checkbox" checked={recurring} disabled={lockStructure} onChange={e => setRecurring(e.target.checked)} style={{ width: 16, height: 16 }} />
               🔁 {taskId ? 'Set this up to repeat' : 'Make this a recurring task'}
             </label>
             {taskId && recurring && (
@@ -354,7 +381,7 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
               </>
             ) : (
               <Grp label="Due date *">
-                <input type="date" value={due} onChange={e => { setDue(e.target.value); setFieldErrors(f => ({ ...f, due: false })) }}
+                <input type="date" value={due} disabled={lockProgress} onChange={e => { setDue(e.target.value); setFieldErrors(f => ({ ...f, due: false })) }}
                   style={{ ...inp, borderColor: fieldErrors.due ? 'var(--failed)' : 'var(--line)' }} />
                 <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>An approximate date is fine — it can always move.</div>
               </Grp>
@@ -366,7 +393,7 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
                   assignable.map(p => {
                     const sel = assignees.includes(p.id)
                     return (
-                      <div key={p.id} onClick={() => toggleAssignee(p.id)}
+                      <div key={p.id} onClick={() => { if (!lockStructure) toggleAssignee(p.id) }}
                         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', borderRadius: 6, cursor: 'pointer', background: sel ? 'var(--accent-bg)' : 'transparent' }}>
                         <span style={{ width: 18, height: 18, borderRadius: 4, border: '1.5px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: sel ? 'var(--accent)' : 'transparent', color: '#fff', fontSize: 11 }}>{sel ? '✓' : ''}</span>
                         <Avatar profile={p} size={26} />
@@ -395,7 +422,7 @@ export default function TaskModal({ taskId, defaultStatus, defaultProject, defau
           </div>
 
           <div style={{ padding: '14px 24px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
-            {taskId && <button onClick={del} className="btn btn-ghost" style={{ marginRight: 'auto', color: 'var(--failed)' }}>Delete task</button>}
+            {taskId && rights.delete && <button onClick={del} className="btn btn-ghost" style={{ marginRight: 'auto', color: 'var(--failed)' }}>Delete task</button>}
             {formError && <div style={{ marginRight: 'auto', color: 'var(--failed)', fontSize: 12.5, fontWeight: 600 }}>{formError}</div>}
             <button onClick={() => onClose(false)} className="btn btn-ghost">Cancel</button>
             <button onClick={save} disabled={busy} className="btn btn-primary">{busy ? 'Saving…' : 'Save task'}</button>
