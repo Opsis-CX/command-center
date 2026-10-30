@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { usingNewPermissions } from '../lib/permissions'
 import { supabase } from '../lib/supabase'
 import { useProjectsData } from './projectsData'
 import { Avatar } from './projectBits'
@@ -70,6 +71,16 @@ export default function ProjectModal({ projectId, onClose }) {
 
   async function del() {
     if (!projectId) return
+    // New permissions system: deleting is recoverable — the project and its tasks move to
+    // Recently deleted together and can be restored (database checks permission). 2026-10-30
+    if (usingNewPermissions()) {
+      if (!window.confirm('Delete this project? It and its tasks move to Recently deleted, where they can be restored.')) return
+      setBusy(true)
+      const { error } = await supabase.rpc('soft_delete_project', { p_project: projectId })
+      setBusy(false)
+      if (error) { window.alert(String(error.message || error).replace(/^.*?ERROR:\s*/, '')); return }
+      await refresh(); onClose(true); return
+    }
     const warn = 'Delete this project? Tasks in it will be kept but no longer grouped under a project. This cannot be undone.'
     if (!window.confirm(warn)) return
     setBusy(true)
