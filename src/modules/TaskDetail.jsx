@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { useTaskRights, taskError } from '../lib/taskRights'
 import { supabase } from '../lib/supabase'
 import { useProjectsData } from './projectsData'
 import { StatusBadge, PriorityBadge, Avatar } from './projectBits'
@@ -25,6 +26,10 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
 
   const task = tasks.find(t => t.id === taskId)
   const notesRef = useRef(null)
+  const rights = useTaskRights(taskId)            // database-enforced; fields mirror it (2026-10-30)
+  const lockStructure = !rights.edit_all          // client, priority, assignees
+  const lockProgress = !rights.edit_progress      // status, due date, notes
+  const [saveErr, setSaveErr] = useState('')
   const commentRef = useRef(null)
   const [assigneeEditorOpen, setAssigneeEditorOpen] = useState(false)
   // "Notify me when this is done" — opt-in for tasks you didn't create. The
@@ -70,7 +75,8 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
     const oldValue = task[field]
     const v = value || null
     const { error } = await supabase.from('tasks').update({ [field]: v }).eq('id', taskId)
-    if (error) return
+    if (error) { setSaveErr(taskError(error)); return }
+    setSaveErr('')
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, [field]: v } : t))
     if (field === 'status' && oldValue !== v) {
       if (v === 'done') {
@@ -83,6 +89,7 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
   }
 
   async function toggleAssignee(pid) {
+    if (lockStructure) return
     const exists = taskAssignees.find(a => a.task_id === taskId && a.profile_id === pid)
     if (exists) {
       await supabase.from('task_assignees').delete().eq('task_id', taskId).eq('profile_id', pid)
@@ -101,7 +108,9 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
 
   async function saveNotes() {
     const html = notesRef.current?.getHtml() || ''
-    await supabase.from('tasks').update({ notes: html }).eq('id', taskId)
+    if (lockProgress) return
+    const { error } = await supabase.from('tasks').update({ notes: html }).eq('id', taskId)
+    if (error) { setSaveErr(taskError(error)); return }
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, notes: html } : t))
     await handleMentions(html, 'notes')
   }
@@ -171,27 +180,29 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
         </div>
 
         <div style={{ padding: '18px 20px' }}>
+          {saveErr && <div style={{ background: '#FEF2F2', color: '#B91C1C', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, marginBottom: 12 }}>{saveErr}</div>}
+          {lockStructure && !lockProgress && <div style={{ background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 12 }}>You can update this task's progress — status, due date, notes and links.</div>}
           {/* fields grid */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
             <Field label="Project">
               {proj ? <span style={{ fontSize: 13 }}><span style={{ color: proj.color }}>● </span>{proj.name}</span> : <span style={{ color: 'var(--ink-soft)', fontSize: 13 }}>—</span>}
             </Field>
             <Field label="Client">
-              <select value={task.client_id || ''} onChange={e => updateField('client_id', e.target.value)} style={inlineSel}>
+              <select value={task.client_id || ''} disabled={lockStructure} onChange={e => updateField('client_id', e.target.value)} style={inlineSel}>
                 <option value="">— No client —</option>
                 {taskClientChoices(clients, task.client_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </Field>
             <Field label="Due date">
-              <input type="date" value={task.due_date || ''} onChange={e => updateField('due_date', e.target.value)} style={inlineSel} />
+              <input type="date" value={task.due_date || ''} disabled={lockProgress} onChange={e => updateField('due_date', e.target.value)} style={inlineSel} />
             </Field>
             <Field label="Priority">
-              <select value={task.priority || 'medium'} onChange={e => updateField('priority', e.target.value)} style={inlineSel}>
+              <select value={task.priority || 'medium'} disabled={lockStructure} onChange={e => updateField('priority', e.target.value)} style={inlineSel}>
                 {PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
               </select>
             </Field>
             <Field label="Status">
-              <select value={task.status || 'todo'} onChange={e => updateField('status', e.target.value)} style={inlineSel}>
+              <select value={task.status || 'todo'} disabled={lockProgress} onChange={e => updateField('status', e.target.value)} style={inlineSel}>
                 {STATUSES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
             </Field>
@@ -233,7 +244,7 @@ export default function TaskDetail({ taskId, onClose, onEdit }) {
                 {profiles.filter(p => aIds.includes(p.id) || (p.role !== 'agent' && p.is_active !== false)).map(p => {
                   const sel = aIds.includes(p.id)
                   return (
-                    <div key={p.id} onClick={() => toggleAssignee(p.id)}
+                    <div key={p.id} onClick={() => { if (!lockStructure) toggleAssignee(p.id) }}
                       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', borderRadius: 6, cursor: 'pointer', background: sel ? 'var(--accent-bg)' : 'transparent' }}>
                       <span style={{ width: 18, height: 18, borderRadius: 4, border: '1.5px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: sel ? 'var(--accent)' : 'transparent', color: '#fff', fontSize: 11 }}>{sel ? '✓' : ''}</span>
                       <Avatar profile={p} size={26} />
