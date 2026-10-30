@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { hasPerm, loadPermissions, permScope, isAccessOwner } from '../lib/permissions'
+import { useAuth } from '../lib/auth'
 
 // ============================================================
 // ROLES & PERMISSIONS — self-service (2026-10-29)
@@ -47,8 +48,26 @@ const CSS = `
 .rm-msg { padding: 9px 12px; border-radius: 9px; font-size: 13px; margin-bottom: 12px; }
 .rm-msg.ok { background: #ECFDF5; color: #047857; }
 .rm-msg.err { background: #FEF2F2; color: #B91C1C; }
+.rm-lvdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-left: 4px; vertical-align: middle; }
 .rm-chip { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--canvas); color: var(--ink); margin: 2px 4px 2px 0; }
 `
+
+// ---------- Access levels (2026-10-30): the ceiling on everyone's authority ----------
+const LEVEL_RANK = { user: 1, manager: 2, administrator: 3, owner: 4 }
+const LEVEL_LABEL = { user: 'User', manager: 'Manager', administrator: 'Administrator', owner: 'Owner' }
+const LEVEL_STYLE = { user: ['#EFF6FF', '#1D4ED8'], manager: ['#ECFDF5', '#047857'], administrator: ['#F5F3FF', '#6D28D9'], owner: ['#FFFBEB', '#B45309'] }
+const rankOf = (l) => LEVEL_RANK[l] || 1
+function LevelBadge({ level, suffix = '', title }) {
+  const [bg, fg] = LEVEL_STYLE[level] || LEVEL_STYLE.user
+  return <span className="rm-badge" title={title} style={{ background: bg, color: fg }}>{LEVEL_LABEL[level] || 'User'}{suffix}</span>
+}
+// Highest level any checkbox in a role needs.
+function roleLevelOf(role, keys, catByKey) {
+  if (role?.is_owner) return 'owner'
+  let lv = 'user'
+  for (const k of keys) { const m = catByKey[k]?.min_level || 'user'; if (rankOf(m) > rankOf(lv)) lv = m }
+  return lv
+}
 
 function RolesTab({ initialRoleId = null }) {
   const [catalog, setCatalog] = useState([])
@@ -65,6 +84,10 @@ function RolesTab({ initialRoleId = null }) {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const canEdit = hasPerm('admin.roles')
+  const [archived, setArchived] = useState([])        // archived roles (can be restored)
+  const [showArchived, setShowArchived] = useState(false)
+  const [delegation, setDelegation] = useState([])    // { role_id, assignable_role_id }
+  const [levels, setLevels] = useState({})            // profile_id → level
 
   const load = useCallback(async () => {
     const [c, r, g, a, p, pr, cl] = await Promise.all([
@@ -77,6 +100,13 @@ function RolesTab({ initialRoleId = null }) {
       supabase.from('clients').select('id, name'),
     ])
     setCatalog(c.data || []); setRoles(r.data || []); setGrants(g.data || []); setAssigns(a.data || [])
+    const [ar, dl, lv] = await Promise.all([
+      supabase.from('access_roles').select('*').not('archived_at', 'is', null).order('archived_at', { ascending: false }),
+      supabase.from('access_role_delegation').select('*'),
+      supabase.from('access_levels').select('profile_id, level'),
+    ])
+    setArchived(ar.data || []); setDelegation(dl.data || [])
+    setLevels(Object.fromEntries((lv.data || []).map(x => [x.profile_id, x.level])))
     setPeople(Object.fromEntries((p.data || []).map(x => [x.id, x.full_name])))
     setProjects(Object.fromEntries((pr.data || []).map(x => [x.id, x.name])))
     setClients(Object.fromEntries((cl.data || []).map(x => [x.id, x.name])))
@@ -85,6 +115,7 @@ function RolesTab({ initialRoleId = null }) {
   }, [])
   useEffect(() => { load().then(rs => { if (rs.length && !selId) setSelId(initialRoleId && rs.some(r => r.id === initialRoleId) ? initialRoleId : rs[0].id) }) }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const catByKey = useMemo(() => Object.fromEntries(catalog.map(c => [c.key, c])), [catalog])
   const permsOf = useCallback((roleId) => new Set(grants.filter(g => g.role_id === roleId).map(g => g.perm_key)), [grants])
   const peopleOf = (roleId) => assigns.filter(a => a.role_id === roleId)
 
@@ -168,6 +199,23 @@ function RolesTab({ initialRoleId = null }) {
     } finally { setSaving(false) }
   }
 
+  const levelOfPerson = (pid) => assigns.some(a => a.profile_id === pid && roles.find(r => r.id === a.role_id)?.is_owner) ? 'owner' : (levels[pid] || 'user')
+  async function toggleDelegation(assignableId, on) {
+    if (!canEdit || !draft?.id) return
+    setMsg(null)
+    const { error } = on
+      ? await supabase.from('access_role_delegation').delete().eq('role_id', draft.id).eq('assignable_role_id', assignableId)
+      : await supabase.from('access_role_delegation').insert({ role_id: draft.id, assignable_role_id: assignableId })
+    if (error) return setMsg({ kind: 'err', text: friendly(error) })
+    setDelegation(ds => on ? ds.filter(d => !(d.role_id === draft.id && d.assignable_role_id === assignableId)) : [...ds, { role_id: draft.id, assignable_role_id: assignableId }])
+  }
+  async function restoreRole(r) {
+    setMsg(null)
+    const { error } = await supabase.from('access_roles').update({ archived_at: null }).eq('id', r.id)
+    if (error) return setMsg({ kind: 'err', text: friendly(error) })
+    await load(); setSelId(r.id); setMsg({ kind: 'ok', text: `Restored “${r.name}”.` })
+  }
+
   async function archive() {
     if (!draft?.id || draft.is_owner || !canEdit) return
     const n = peopleOf(draft.id).length
@@ -212,10 +260,26 @@ function RolesTab({ initialRoleId = null }) {
                   <span style={{ display: 'block', fontWeight: 700, fontSize: 14 }}>{r.name}</span>
                   <span className="page-sub" style={{ fontSize: 12 }}>{n} {n === 1 ? 'person' : 'people'}</span>
                 </span>
-                {r.is_owner ? <span className="rm-badge" title="Protected">🔒 Protected</span> : r.is_starter ? <span className="rm-badge">Starter</span> : <span className="rm-badge">Custom</span>}
+                <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                  {r.is_owner ? <span className="rm-badge" title="Protected">🔒 Protected</span> : r.is_starter ? <span className="rm-badge">Starter</span> : <span className="rm-badge">Custom</span>}
+                  {!r.is_owner && <LevelBadge level={roleLevelOf(r, permsOf(r.id), catByKey)} suffix="-level" title="The highest access level this role's permissions need" />}
+                </span>
               </button>
             )
           })}
+          {archived.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--line)' }}>
+              <button className="rm-role" style={{ borderBottom: 0, fontSize: 13, color: 'var(--ink-soft)' }} onClick={() => setShowArchived(v => !v)}>
+                📦 Archived roles ({archived.length}) <span style={{ marginLeft: 'auto' }}>{showArchived ? '▾' : '▸'}</span>
+              </button>
+              {showArchived && archived.map(r => (
+                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px 8px', fontSize: 13 }}>
+                  <span>{r.icon}</span><span style={{ flex: 1, color: 'var(--ink-soft)' }}>{r.name}</span>
+                  {canEdit && <button className="rm-row-all" onClick={() => restoreRole(r)}>↩ Restore</button>}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ---------- editor ---------- */}
@@ -244,6 +308,11 @@ function RolesTab({ initialRoleId = null }) {
               {draft.is_owner && <div className="rm-msg" style={{ background: '#FFFBEB', color: '#92400E', margin: '12px 0 0' }}>👑 Owners always have every permission. You can rename this role, but it can't lose access or be deleted — so nobody gets locked out of their own company.</div>}
             </div>
 
+            <div className="page-sub" style={{ fontSize: 12, padding: '8px 16px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span><span className="rm-lvdot" style={{ background: LEVEL_STYLE.manager[1], marginLeft: 0 }} /> Manager level and up</span>
+              <span><span className="rm-lvdot" style={{ background: LEVEL_STYLE.administrator[1], marginLeft: 0 }} /> Administrators only</span>
+              <span>· People only get what their access level allows, even if it's checked here.</span>
+            </div>
             <div style={{ maxHeight: 'calc(100vh - 360px)', minHeight: 300, overflow: 'auto' }}>
               <table className="rm-grid">
                 <thead><tr><th style={{ width: '32%' }}>What this role can do</th>{ACTIONS.map(([a, l]) => <th key={a}>{l}</th>)}<th style={{ width: 60 }}></th></tr></thead>
@@ -260,8 +329,9 @@ function RolesTab({ initialRoleId = null }) {
                             {ACTIONS.map(([a]) => {
                               const c = m.cells[a]
                               if (!c) return <td key={a} className="na"><span className="rm-na">—</span></td>
-                              return <td key={a} title={c.label + (c.scopeable ? ' · can be limited to projects/clients' : '')}>
+                              return <td key={a} title={c.label + (c.min_level && c.min_level !== 'user' ? ` · ${LEVEL_LABEL[c.min_level]} level and up` : '') + (c.scopeable ? ' · can be limited to projects/clients' : '')}>
                                 <input type="checkbox" className="rm-cb" checked={!!has(c.key)} disabled={locked} onChange={() => toggle(c.key)} aria-label={`${m.label}: ${c.label}`} />
+                                {c.min_level && c.min_level !== 'user' && <span className="rm-lvdot" style={{ background: LEVEL_STYLE[c.min_level][1] }} />}
                               </td>
                             })}
                             <td>{!locked && <button className="rm-row-all" onClick={() => setMany(keys, !allOn)}>{allOn ? 'None' : 'All'}</button>}</td>
@@ -276,7 +346,8 @@ function RolesTab({ initialRoleId = null }) {
                       <tr><td colSpan={ACTIONS.length + 2} style={{ padding: 0 }}>
                         <div className="rm-admin">
                           {g.modules.flatMap(m => m.items).map(c => (
-                            <label key={c.key}><input type="checkbox" className="rm-cb" checked={!!has(c.key)} disabled={locked} onChange={() => toggle(c.key)} /> {c.label}</label>
+                            <label key={c.key}><input type="checkbox" className="rm-cb" checked={!!has(c.key)} disabled={locked} onChange={() => toggle(c.key)} /> {c.label}
+                              {c.min_level && c.min_level !== 'user' && <span className="rm-lvdot" style={{ background: LEVEL_STYLE[c.min_level][1] }} title={`${LEVEL_LABEL[c.min_level]} level and up`} />}</label>
                           ))}
                         </div>
                       </td></tr>
@@ -286,13 +357,42 @@ function RolesTab({ initialRoleId = null }) {
               </table>
             </div>
 
+            {draft.id && !draft.is_owner && (() => {
+              // people holding this role whose access level is below what some checked boxes need
+              const need = roleLevelOf(draft, [...draft.perms], catByKey)
+              const below = peopleOf(draft.id).filter(a => rankOf(levelOfPerson(a.profile_id)) < rankOf(need))
+              return below.length > 0 && (
+                <div className="rm-msg" style={{ background: '#FFFBEB', color: '#92400E', margin: '12px 16px 0' }}>
+                  ⚠️ This role includes {LEVEL_LABEL[need]}-level permissions. {below.map(a => people[a.profile_id] || 'Someone').join(', ')} {below.length === 1 ? 'is' : 'are'} below that level, so they won't get those permissions. Raise their access level on the People tab if they should.
+                </div>
+              )
+            })()}
+            {draft.id && !draft.is_owner && (
+              <div style={{ padding: '12px 16px', borderTop: '1px solid var(--line)' }}>
+                <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 2 }}>People with this role can assign…</div>
+                <div className="page-sub" style={{ fontSize: 12.5, marginBottom: 8 }}>
+                  Roles they may give to others — only within their own clients and projects, and only to people below their level.
+                  {!draft.perms.has('admin.assign') && <b> Turn on “Give people roles” (Administration) for this to take effect.</b>}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
+                  {roles.filter(r => !r.is_owner && r.id !== draft.id).map(r => {
+                    const on = delegation.some(d => d.role_id === draft.id && d.assignable_role_id === r.id)
+                    return (
+                      <label key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: canEdit ? 'pointer' : 'default' }}>
+                        <input type="checkbox" className="rm-cb" checked={on} disabled={!canEdit} onChange={() => toggleDelegation(r.id, on)} /> {r.icon} {r.name}
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
             {draft.id && (
               <div style={{ padding: '12px 16px', borderTop: '1px solid var(--line)' }}>
                 <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 6 }}>Who has this role</div>
                 {peopleOf(draft.id).length === 0 ? <div className="page-sub" style={{ fontSize: 12.5 }}>Nobody yet. Give it to people on the People tab.</div>
                   : peopleOf(draft.id).map(a => (
                     <div key={a.id} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '3px 0', flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 600, fontSize: 13, minWidth: 150 }}>{people[a.profile_id] || 'Someone'}</span>
+                      <span style={{ fontWeight: 600, fontSize: 13, minWidth: 150 }}>{people[a.profile_id] || 'Someone'} <LevelBadge level={levelOfPerson(a.profile_id)} /></span>
                       <span>{scopeText(a).map((t, i) => <span key={i} className="rm-chip">{t}</span>)}</span>
                     </div>
                   ))}
@@ -407,6 +507,12 @@ function PeopleTab({ onOpenRole }) {
   const isOwner = isAccessOwner()
   const myScope = permScope('admin.assign')
   const canAssign = hasPerm('admin.assign')
+  const { user } = useAuth()
+  const [levels, setLevels] = useState({})           // profile_id → stored level
+  const [delegation, setDelegation] = useState([])   // { role_id, assignable_role_id }
+  const [authority, setAuthority] = useState(null)   // my_authority(): what I may do here
+  const canAdjust = !!authority?.can_adjust
+  const canSetLevels = !!authority?.can_set_levels
 
   const load = useCallback(async () => {
     const [p, r, g, a, o, pr, cl, c] = await Promise.all([
@@ -421,13 +527,32 @@ function PeopleTab({ onOpenRole }) {
     ])
     setPeople(p.data || []); setRoles(r.data || []); setGrants(g.data || []); setAssigns(a.data || []); setOverrides(o.data || [])
     setProjects(pr.data || []); setClients(cl.data || []); setCatalog(c.data || [])
+    const [lv, dl, au] = await Promise.all([
+      supabase.from('access_levels').select('profile_id, level'),
+      supabase.from('access_role_delegation').select('*'),
+      supabase.rpc('my_authority'),
+    ])
+    setLevels(Object.fromEntries((lv.data || []).map(x => [x.profile_id, x.level])))
+    setDelegation(dl.data || []); setAuthority(au.data || null)
   }, [])
   useEffect(() => { load() }, [load])
 
   const roleById = Object.fromEntries(roles.map(r => [r.id, r]))
   const catByKey = Object.fromEntries(catalog.map(c => [c.key, c]))
   const permsOf = (roleId) => grants.filter(g => g.role_id === roleId).map(g => g.perm_key)
-  const grantable = (r) => r.is_owner ? isOwner : permsOf(r.id).every(k => hasPerm(k))
+  // Roles I'm allowed to hand out (Owners: any · Administrators: any but Owner · Managers: their "Can assign" list)
+  const grantable = (r) => (authority?.assignable_roles || []).includes(r.id)
+  const levelOfPerson = (pid) => assigns.some(a => a.profile_id === pid && roleById[a.role_id]?.is_owner) ? 'owner' : (levels[pid] || 'user')
+  const roleLevel = (r) => roleLevelOf(r, permsOf(r.id), catByKey)
+  async function setLevel(pid, level) {
+    setBusy(true); setMsg(null)
+    const { error } = level === 'user'
+      ? await supabase.from('access_levels').delete().eq('profile_id', pid)
+      : await supabase.from('access_levels').upsert({ profile_id: pid, level }, { onConflict: 'profile_id' })
+    setBusy(false)
+    if (error) return setMsg({ kind: 'err', text: friendly(error) })
+    await load(); setMsg({ kind: 'ok', text: `Access level set to ${LEVEL_LABEL[level]}.` })
+  }
   const inMyScope = (kind, id) => myScope.all || (kind === 'p' ? myScope.projects.includes(id) : myScope.clients.includes(id))
   const sel = people.find(x => x.id === selId)
   const mine = assigns.filter(a => a.profile_id === selId)
@@ -497,6 +622,7 @@ function PeopleTab({ onOpenRole }) {
     const entries = new Map()   // key → { where:Set, everywhere:bool, adj:'add'|null }
     const addEntry = (k, src, adj) => {
       if (!ownerHere && removed.has(k)) return
+      if (!ownerHere && rankOf(catByKey[k]?.min_level) > rankOf(levelOfPerson(sel.id))) return   // above their level → they don't get it
       const e = entries.get(k) || { where: new Set(), everywhere: false, adj: null }
       if (src.scope_type === 'all') e.everywhere = true
       else scopeLabel(src, clients, projects).split(', ').forEach(n => n !== 'Nothing selected yet' && e.where.add(n))
@@ -553,6 +679,28 @@ function PeopleTab({ onOpenRole }) {
             {msg && <div className={'rm-msg ' + msg.kind}>{msg.text}{msg.roleId && onOpenRole && <> <button className="rm-row-all" onClick={() => onOpenRole(msg.roleId)}>Fine-tune its permissions →</button></>}</div>}
             <div style={{ fontSize: 18, fontWeight: 800 }}>{sel.full_name}</div>
             <div className="page-sub" style={{ fontSize: 13 }}>{[sel.job_title, sel.email].filter(Boolean).join(' · ')}</div>
+            {(() => {
+              const lv = levelOfPerson(sel.id)
+              const myRank = rankOf(authority?.level)
+              const editable = canSetLevels && sel.id !== user?.id && lv !== 'owner' && (myRank >= 4 || rankOf(lv) < 3)
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>Access level</span>
+                  {editable ? (
+                    <select value={lv} disabled={busy} onChange={e => setLevel(sel.id, e.target.value)}
+                      style={{ padding: '5px 8px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)' }}>
+                      <option value="user">User — daily work only</option>
+                      <option value="manager">Manager — runs their own areas</option>
+                      {myRank >= 4 && <option value="administrator">Administrator — company-wide settings</option>}
+                    </select>
+                  ) : <LevelBadge level={lv} />}
+                  <span className="page-sub" style={{ fontSize: 12 }}>
+                    {lv === 'owner' ? 'Full control (Owner role).' : lv === 'administrator' ? 'Can manage company settings, roles and people.' : lv === 'manager' ? 'Can manage only their own areas — never company settings.' : 'Daily work only — never settings, roles or permissions.'}
+                    {' '}This is the most authority they can have, whatever their roles say.
+                  </span>
+                </div>
+              )
+            })()}
           </div>
 
           {/* ---- Roles ---- */}
@@ -571,7 +719,10 @@ function PeopleTab({ onOpenRole }) {
                 <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>Give a role</div>
                 <select value={adding.role_id} onChange={e => setAdding(x => ({ ...x, role_id: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 9, fontFamily: 'inherit', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)', minWidth: 240, marginBottom: 10 }}>
                   <option value="">Choose a role…</option>
-                  {roles.filter(r => !mine.some(a => a.role_id === r.id) && grantable(r)).map(r => <option key={r.id} value={r.id}>{r.icon} {r.name}</option>)}
+                  {roles.filter(r => !mine.some(a => a.role_id === r.id) && grantable(r)).map(r => {
+                    const need = roleLevel(r), tooHigh = !r.is_owner && rankOf(need) > rankOf(levelOfPerson(sel.id))
+                    return <option key={r.id} value={r.id} disabled={tooHigh}>{r.icon} {r.name}{tooHigh ? ` — needs ${LEVEL_LABEL[need]} level` : ''}</option>
+                  })}
                   {canCreateRoles && <option value="__new">＋ Create a new role…</option>}
                 </select>
                 {adding.role_id === '__new' && (
@@ -604,7 +755,7 @@ function PeopleTab({ onOpenRole }) {
           {/* ---- Per-person adjustments ---- */}
           <div style={{ padding: 16, borderBottom: '1px solid var(--line)' }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Adjust for {sel.full_name.split(' ')[0]}</div>
-            <div className="page-sub" style={{ fontSize: 12.5, marginBottom: 10 }}>Fine-tune just this person without making a new role. ➖ Remove always wins over their roles.</div>
+            <div className="page-sub" style={{ fontSize: 12.5, marginBottom: 10 }}>Fine-tune just this person without making a new role. ➖ Remove always wins over their roles. Only Administrators and Owners can adjust, and never above the person's access level.</div>
             {myAdj.length === 0 && <div className="page-sub" style={{ fontSize: 13, marginBottom: 8 }}>No adjustments — they get exactly what their roles give.</div>}
             {myAdj.map(o => {
               const c = catByKey[o.perm_key]
@@ -613,13 +764,13 @@ function PeopleTab({ onOpenRole }) {
                   <span className="rm-chip" style={{ background: o.effect === 'add' ? '#ECFDF5' : '#FEF2F2', color: o.effect === 'add' ? '#047857' : '#B91C1C' }}>{o.effect === 'add' ? '➕ Added' : '➖ Removed'}</span>
                   <span style={{ fontSize: 13.5, fontWeight: 600 }}>{c ? `${c.module_label}: ${c.label}` : o.perm_key}</span>
                   {o.effect === 'add' && c?.scopeable && <span className="page-sub" style={{ fontSize: 12.5 }}>· {scopeLabel(o, clients, projects)}</span>}
-                  {canAssign && <button className="btn btn-ghost" style={{ marginLeft: 'auto', fontSize: 12, padding: '3px 9px', color: '#B91C1C' }} disabled={busy}
+                  {canAdjust && <button className="btn btn-ghost" style={{ marginLeft: 'auto', fontSize: 12, padding: '3px 9px', color: '#B91C1C' }} disabled={busy}
                     onClick={() => removeRow('access_overrides', o, 'Adjustment removed.')}>{sure === o.id ? 'Click to confirm' : 'Undo'}</button>}
                 </div>
               )
             })}
-            {canAssign && !adjusting && <button className="btn btn-ghost" style={{ marginTop: 6 }} onClick={() => setAdjusting({ perm_key: '', effect: 'add', ...defaultScope() })}>✎ Add an adjustment</button>}
-            {canAssign && adjusting && (
+            {canAdjust && !adjusting && <button className="btn btn-ghost" style={{ marginTop: 6 }} onClick={() => setAdjusting({ perm_key: '', effect: 'add', ...defaultScope() })}>✎ Add an adjustment</button>}
+            {canAdjust && adjusting && (
               <div style={{ border: '1px dashed var(--line)', borderRadius: 10, padding: 12, marginTop: 8 }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
                   <select value={adjusting.effect} onChange={e => setAdjusting(x => ({ ...x, effect: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 9, fontFamily: 'inherit', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)' }}>
@@ -629,7 +780,7 @@ function PeopleTab({ onOpenRole }) {
                     <option value="">Choose a permission…</option>
                     {permOptions.map(([mod, items]) => (
                       <optgroup key={mod} label={mod}>
-                        {items.filter(c => adjusting.effect === 'remove' || isOwner || hasPerm(c.key)).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                        {items.filter(c => adjusting.effect === 'remove' || rankOf(c.min_level) <= rankOf(levelOfPerson(sel.id))).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
                       </optgroup>
                     ))}
                   </select>
@@ -645,6 +796,37 @@ function PeopleTab({ onOpenRole }) {
               </div>
             )}
           </div>
+
+          {/* ---- Authority: who/what this person can manage ---- */}
+          {(() => {
+            const lv = levelOfPerson(sel.id)
+            if (rankOf(lv) < 2) return (
+              <div style={{ padding: 16, borderBottom: '1px solid var(--line)' }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Authority</div>
+                <div className="page-sub" style={{ fontSize: 13 }}>None — Users do their assigned work but can't manage other people, roles or settings.</div>
+              </div>
+            )
+            const myRoleIds = mine.map(a => a.role_id)
+            const holdsAssign = mine.some(a => permsOf(a.role_id).includes('admin.assign')) && !myAdj.some(o => o.effect === 'remove' && o.perm_key === 'admin.assign')
+            const assignable = lv === 'owner' ? 'Any role, including Owner'
+              : lv === 'administrator' ? 'Any role except Owner'
+              : [...new Set(delegation.filter(d => myRoleIds.includes(d.role_id)).map(d => roleById[d.assignable_role_id]?.name).filter(Boolean))].join(', ') || 'None yet — add roles to their role\'s “Can assign” list'
+            const where = rankOf(lv) >= 3 ? 'Everywhere'
+              : [...new Set(mine.filter(a => permsOf(a.role_id).includes('admin.assign')).flatMap(a => a.scope_type === 'all' ? ['Everything'] : scopeLabel(a, clients, projects).split(', ')))].join(', ') || '—'
+            return (
+              <div style={{ padding: 16, borderBottom: '1px solid var(--line)' }}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>Authority</div>
+                <table className="rm-grid"><tbody>
+                  <tr><td style={{ width: '34%' }}>Can give roles</td><td style={{ textAlign: 'left' }}>{lv === 'owner' || (holdsAssign) ? assignable : 'No — “Give people roles” isn\'t on any of their roles'}</td></tr>
+                  {rankOf(lv) < 3 && <tr><td>…for these clients & projects</td><td style={{ textAlign: 'left' }}>{where}</td></tr>}
+                  <tr><td>…to people at level</td><td style={{ textAlign: 'left' }}>{lv === 'owner' ? 'Anyone' : lv === 'administrator' ? 'Managers and Users' : 'Users only'}</td></tr>
+                  <tr><td>Individual adjustments</td><td style={{ textAlign: 'left' }}>{rankOf(lv) >= 3 ? 'Yes' : 'No'}</td></tr>
+                  <tr><td>Change access levels</td><td style={{ textAlign: 'left' }}>{lv === 'owner' ? 'Yes — anyone' : lv === 'administrator' ? 'Yes — Managers and Users' : 'No'}</td></tr>
+                  <tr><td>Company settings, roles & integrations</td><td style={{ textAlign: 'left' }}>{rankOf(lv) >= 3 ? 'Yes (per their checkboxes)' : 'Never — above a Manager\'s level'}</td></tr>
+                </tbody></table>
+              </div>
+            )
+          })()}
 
           {/* ---- What they can do ---- */}
           <div style={{ padding: 16 }}>
@@ -735,6 +917,12 @@ function HistoryTab() {
     switch (x.action) {
       case 'role.insert': return `${who} created the role “${x.detail?.name || role}”`
       case 'role.update': return `${who} updated the role “${x.detail?.name || role}”`
+      case 'role.archive': return `${who} archived the role “${x.detail?.name || role}”`
+      case 'role.restore': return `${who} restored the archived role “${x.detail?.name || role}”`
+      case 'role.rename': return `${who} renamed the role “${x.detail?.from || ''}” to “${x.detail?.name || role}”`
+      case 'level.insert': case 'level.update': case 'level.delete': return `${who} changed ${person}'s access level from ${(x.detail?.from || 'user')} to ${(x.detail?.to || 'user')}`
+      case 'delegate.add': return `${who} let people with the ${role} role assign “${x.detail?.assignable}”`
+      case 'delegate.remove': return `${who} stopped people with the ${role} role from assigning “${x.detail?.assignable}”`
       case 'role.delete': return `${who} deleted the role “${x.detail?.name || role}”`
       case 'perm.add': return `${who} added “${x.detail?.perm}” to ${role}`
       case 'perm.remove': return `${who} removed “${x.detail?.perm}” from ${role}`
