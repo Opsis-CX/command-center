@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getNavIndex } from './Sidebar'
+import { useAuth } from '../lib/auth'
+import { canAny } from '../lib/permissions'
 
 // ============================================================
 // Universal search (2026-10-30) — top bar, every page. Ctrl/⌘+K or "/" opens it.
@@ -83,6 +85,9 @@ export default function GlobalSearch() {
 
 function SearchPalette({ onClose }) {
   const navigate = useNavigate()
+  const { appRole, isAdmin } = useAuth()
+  // Client names only for people who can open Clients; people results are the internal team only.
+  const canClients = isAdmin || canAny(appRole, 'clients')
   const [q, setQ] = useState('')
   const [groups, setGroups] = useState([])     // [{ title, items: [{ ic, title, sub, to }] }]
   const [loading, setLoading] = useState(false)
@@ -102,14 +107,14 @@ function SearchPalette({ onClose }) {
     const like = `%${t.replace(/[%_]/g, m => '\\' + m)}%`
     const safe = (p) => p.then(r => r.data || []).catch(() => [])
     const [people, tasks, projects, msgs, kb, meetings, notes, clients] = await Promise.all([
-      safe(supabase.from('profiles').select('id, full_name, job_title').ilike('full_name', like).eq('is_active', true).limit(5)),
+      safe(supabase.from('profiles').select('id, full_name, job_title').ilike('full_name', like).eq('is_active', true).is('client_id', null).neq('role', 'client').limit(5)),
       safe(supabase.from('tasks').select('id, name, status, due_date').ilike('name', like).is('deleted_at', null).limit(6)),
       safe(supabase.from('projects').select('id, name').ilike('name', like).limit(4)),
       safe(supabase.from('messages').select('id, body, channel_id, created_at, sender:profiles!messages_sender_id_fkey(full_name), channel:channels(name, is_dm)').ilike('body', like).is('deleted_at', null).order('created_at', { ascending: false }).limit(6)),
       safe(supabase.from('kb_articles').select('id, title, folder_id, status').ilike('title', like).limit(5)),
       safe(supabase.from('meetings').select('id, title, started_at').ilike('title', like).order('started_at', { ascending: false }).limit(5)),
       safe(supabase.from('notes').select('id, title, updated_at').ilike('title', like).is('deleted_at', null).limit(5)),
-      safe(supabase.from('clients').select('id, name').ilike('name', like).limit(4)),
+      canClients ? safe(supabase.from('clients').select('id, name').ilike('name', like).limit(4)) : Promise.resolve([]),
     ])
     if (id !== reqId.current) return   // a newer search started — drop this one
     const out = []
@@ -124,7 +129,7 @@ function SearchPalette({ onClose }) {
     if (notes.length) out.push({ title: 'My Notes', items: notes.map(n => ({ ic: '📝', title: n.title || 'Untitled note', sub: `Note · edited ${when(n.updated_at)}`, to: `/notes?note=${n.id}` })) })
     if (clients.length) out.push({ title: 'Clients', items: clients.map(c => ({ ic: '🏢', title: c.name, sub: 'Client', to: '/clients' })) })
     setGroups(out); setActive(0); setLoading(false)
-  }, [])
+  }, [canClients])
 
   useEffect(() => { const h = setTimeout(() => run(q), q.trim().length < 2 ? 0 : 250); return () => clearTimeout(h) }, [q, run])
 
