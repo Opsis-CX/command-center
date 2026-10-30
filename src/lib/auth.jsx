@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { supabase, readRoleFromSession } from './supabase'
+import { loadPermissions, clearPermissions } from './permissions'
 
 const AuthContext = createContext(null)
 
@@ -10,6 +11,7 @@ export function AuthProvider({ children }) {
   const [clientId, setClientId] = useState(null)    // set only for external client-portal users
   const [inTraining, setInTraining] = useState(false) // new hire locked to Certification until Hired
   const [loading, setLoading] = useState(true)
+  const [permsVersion, setPermsVersion] = useState(0)   // bumps when the self-service permissions load
   const activeChannelRef = useRef(null)
 
   // Read the profile row, retrying a couple of times on a transient failure.
@@ -31,7 +33,7 @@ export function AuthProvider({ children }) {
 
   async function loadAppRole(sess) {
     const uid = sess?.user?.id
-    if (!uid) { setAppRole('agent'); setClientId(null); setInTraining(false); return }
+    if (!uid) { setAppRole('agent'); setClientId(null); setInTraining(false); clearPermissions(); setPermsVersion(v => v + 1); return }
 
     const { ok, data } = await fetchProfileRole(uid)
 
@@ -44,9 +46,13 @@ export function AuthProvider({ children }) {
       return
     }
 
+    // Self-service permissions (roles + checkboxes + project/client scopes) load at the same
+    // moment as the role, so menus and pages are right from the first screen.
+    await loadPermissions(supabase)
     setAppRole(data?.role || 'agent')
     setClientId(data?.client_id || null)
     setInTraining(!!data?.in_training)
+    setPermsVersion(v => v + 1)
 
     // Auto-capture each person's real timezone from their computer so timezones
     // stay accurate without manual entry. Only writes when it actually changed.
@@ -117,6 +123,7 @@ export function AuthProvider({ children }) {
     user: session?.user ?? null,
     ...role,
     appRole,
+    permsVersion,
     clientId,
     inTraining,
     isClientPortal: appRole === 'client' || !!clientId,
