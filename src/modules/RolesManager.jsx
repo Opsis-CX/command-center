@@ -348,12 +348,52 @@ export default function AccessPermissions() {
   )
 }
 
-// ---------- 👥 People: give people roles, scoped to projects / clients ----------
+// ---------- 👥 People: roles (scoped to clients/projects) + per-person adjustments ----------
+function scopeLabel(x, clients, projects) {
+  if (x.scope_type === 'all') return 'Everything'
+  const names = [...(x.client_ids || []).map(id => clients.find(c => c.id === id)?.name), ...(x.project_ids || []).map(id => projects.find(p => p.id === id)?.name)].filter(Boolean)
+  return names.length ? names.join(', ') : 'Nothing selected yet'
+}
+
+// Pick where something applies: Everything, or specific clients & projects.
+function ScopePicker({ value, onChange, clients, projects, inMyScope, myAll }) {
+  const { scope_type, client_ids = [], project_ids = [] } = value
+  const toggle = (key, id) => {
+    const list = value[key] || []
+    onChange({ ...value, [key]: list.includes(id) ? list.filter(x => x !== id) : [...list, id] })
+  }
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 16, marginBottom: 10, fontSize: 13.5, flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
+          <input type="radio" checked={scope_type === 'scoped'} onChange={() => onChange({ ...value, scope_type: 'scoped' })} /> Only these clients & projects</label>
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: myAll ? 'pointer' : 'not-allowed', opacity: myAll ? 1 : .5 }} title={myAll ? '' : 'Only people with access to everything can give access to everything'}>
+          <input type="radio" disabled={!myAll} checked={scope_type === 'all'} onChange={() => onChange({ ...value, scope_type: 'all', client_ids: [], project_ids: [] })} /> Everything</label>
+      </div>
+      {scope_type === 'scoped' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+          <div><div className="page-sub" style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Clients</div>
+            {clients.filter(c => inMyScope('c', c.id)).map(c => (
+              <label key={c.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, padding: '2px 0', cursor: 'pointer' }}>
+                <input type="checkbox" className="rm-cb" checked={client_ids.includes(c.id)} onChange={() => toggle('client_ids', c.id)} /> {c.name}</label>))}
+          </div>
+          <div><div className="page-sub" style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Projects</div>
+            {projects.filter(p => inMyScope('p', p.id)).map(p => (
+              <label key={p.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, padding: '2px 0', cursor: 'pointer' }}>
+                <input type="checkbox" className="rm-cb" checked={project_ids.includes(p.id)} onChange={() => toggle('project_ids', p.id)} /> {p.name}</label>))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PeopleTab() {
   const [people, setPeople] = useState([])
   const [roles, setRoles] = useState([])
   const [grants, setGrants] = useState([])
   const [assigns, setAssigns] = useState([])
+  const [overrides, setOverrides] = useState([])
   const [projects, setProjects] = useState([])
   const [clients, setClients] = useState([])
   const [catalog, setCatalog] = useState([])
@@ -361,84 +401,101 @@ function PeopleTab() {
   const [q, setQ] = useState('')
   const [msg, setMsg] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [adding, setAdding] = useState('')
+  const [adding, setAdding] = useState(null)       // { role_id, scope_type, client_ids, project_ids }
+  const [adjusting, setAdjusting] = useState(null) // { perm_key, effect, scope_type, client_ids, project_ids }
   const isOwner = isAccessOwner()
-  const myScope = permScope('admin.assign')            // where I'm allowed to give access
+  const myScope = permScope('admin.assign')
   const canAssign = hasPerm('admin.assign')
 
   const load = useCallback(async () => {
-    const [p, r, g, a, pr, cl, c] = await Promise.all([
+    const [p, r, g, a, o, pr, cl, c] = await Promise.all([
       supabase.from('profiles').select('id, full_name, job_title, email').eq('is_active', true).is('client_id', null).order('full_name'),
       supabase.from('access_roles').select('*').is('archived_at', null).order('sort').order('name'),
       supabase.from('access_role_permissions').select('role_id, perm_key'),
       supabase.from('access_assignments').select('*'),
+      supabase.from('access_overrides').select('*'),
       supabase.from('projects').select('id, name').order('name'),
       supabase.from('clients').select('id, name').order('name'),
       supabase.from('perm_catalog').select('*').order('sort'),
     ])
-    setPeople(p.data || []); setRoles(r.data || []); setGrants(g.data || []); setAssigns(a.data || [])
+    setPeople(p.data || []); setRoles(r.data || []); setGrants(g.data || []); setAssigns(a.data || []); setOverrides(o.data || [])
     setProjects(pr.data || []); setClients(cl.data || []); setCatalog(c.data || [])
   }, [])
   useEffect(() => { load() }, [load])
 
   const roleById = Object.fromEntries(roles.map(r => [r.id, r]))
+  const catByKey = Object.fromEntries(catalog.map(c => [c.key, c]))
   const permsOf = (roleId) => grants.filter(g => g.role_id === roleId).map(g => g.perm_key)
-  // Can I hand this role out? (Owner role only by Owners; otherwise only roles whose every checkbox I hold.)
   const grantable = (r) => r.is_owner ? isOwner : permsOf(r.id).every(k => hasPerm(k))
   const inMyScope = (kind, id) => myScope.all || (kind === 'p' ? myScope.projects.includes(id) : myScope.clients.includes(id))
   const sel = people.find(x => x.id === selId)
   const mine = assigns.filter(a => a.profile_id === selId)
+  const myAdj = overrides.filter(o => o.profile_id === selId)
+  const defaultScope = () => myScope.all ? { scope_type: 'scoped', client_ids: [], project_ids: [] } : { scope_type: 'scoped', client_ids: [...myScope.clients], project_ids: [...myScope.projects] }
 
+  async function run(fn, ok) {
+    setBusy(true); setMsg(null)
+    const { error } = await fn()
+    setBusy(false)
+    if (error) { setMsg({ kind: 'err', text: friendly(error) }); return false }
+    await load(); if (ok) setMsg({ kind: 'ok', text: ok }); return true
+  }
   async function addRole() {
-    if (!adding || !sel) return
-    setBusy(true); setMsg(null)
-    const scoped = !myScope.all
-    const { error } = await supabase.from('access_assignments').insert({
-      profile_id: sel.id, role_id: adding, scope_type: scoped ? 'scoped' : 'all',
-      project_ids: scoped ? myScope.projects : [], client_ids: scoped ? myScope.clients : [],
-    })
-    setBusy(false); setAdding('')
-    if (error) return setMsg({ kind: 'err', text: friendly(error) })
-    await load(); setMsg({ kind: 'ok', text: `Gave ${sel.full_name} the ${roleById[adding]?.name} role${scoped ? ' for your projects — adjust below' : ''}.` })
+    const r = roleById[adding?.role_id]; if (!r || !sel) return
+    const scoped = !r.is_owner && adding.scope_type === 'scoped'
+    if (scoped && !adding.client_ids.length && !adding.project_ids.length) return setMsg({ kind: 'err', text: 'Pick at least one client or project — or choose Everything.' })
+    if (await run(() => supabase.from('access_assignments').insert({ profile_id: sel.id, role_id: r.id, scope_type: scoped ? 'scoped' : 'all',
+      client_ids: scoped ? adding.client_ids : [], project_ids: scoped ? adding.project_ids : [] }), `Gave ${sel.full_name} the ${r.name} role.`)) setAdding(null)
   }
-  async function saveScope(a, patch) {
-    setBusy(true); setMsg(null)
-    const { error } = await supabase.from('access_assignments').update(patch).eq('id', a.id)
-    setBusy(false)
-    if (error) return setMsg({ kind: 'err', text: friendly(error) })
-    await load(); setMsg({ kind: 'ok', text: 'Saved.' })
+  async function saveAdjustment() {
+    const c = catByKey[adjusting?.perm_key]; if (!c || !sel) return
+    const scoped = adjusting.effect === 'add' && c.scopeable && adjusting.scope_type === 'scoped'
+    if (scoped && !adjusting.client_ids.length && !adjusting.project_ids.length) return setMsg({ kind: 'err', text: 'Pick at least one client or project — or choose Everything.' })
+    const row = { profile_id: sel.id, perm_key: c.key, effect: adjusting.effect, scope_type: scoped ? 'scoped' : 'all', client_ids: scoped ? adjusting.client_ids : [], project_ids: scoped ? adjusting.project_ids : [] }
+    if (await run(() => supabase.from('access_overrides').upsert(row, { onConflict: 'profile_id,perm_key' }),
+      `${adjusting.effect === 'add' ? 'Added' : 'Removed'} “${c.label}” for ${sel.full_name.split(' ')[0]}.`)) setAdjusting(null)
   }
-  const [sureRemove, setSureRemove] = useState(null)
-  async function remove(a) {
-    if (sureRemove !== a.id) { setSureRemove(a.id); return }
-    setBusy(true); setMsg(null); setSureRemove(null)
-    const { error } = await supabase.from('access_assignments').delete().eq('id', a.id)
-    setBusy(false)
-    if (error) return setMsg({ kind: 'err', text: friendly(error) })
-    await load(); setMsg({ kind: 'ok', text: `Removed the ${roleById[a.role_id]?.name} role.` })
+  const [sure, setSure] = useState(null)
+  async function removeRow(table, row, label) {
+    if (sure !== row.id) { setSure(row.id); return }
+    setSure(null)
+    await run(() => supabase.from(table).delete().eq('id', row.id), label)
   }
 
-  // What this person can do, module by module (with where)
+  // What this person can do: roles + adjustments, split into client/project work vs personal tools
   const summary = useMemo(() => {
-    if (!sel) return []
-    const byModule = new Map()
-    for (const a of mine) {
-      const r = roleById[a.role_id]; if (!r) continue
-      const keys = r.is_owner ? catalog.map(c => c.key) : permsOf(r.id)
-      const where = a.scope_type === 'all' ? 'everything'
-        : [...a.client_ids.map(id => clients.find(c => c.id === id)?.name), ...a.project_ids.map(id => projects.find(p => p.id === id)?.name)].filter(Boolean).join(', ') || 'nothing yet'
-      for (const k of keys) {
-        const c = catalog.find(x => x.key === k); if (!c) continue
-        if (!byModule.has(c.module_label)) byModule.set(c.module_label, { group: c.module_group, actions: new Map() })
-        const m = byModule.get(c.module_label)
-        const label = c.module === 'admin' ? c.label : c.action
-        m.actions.set(label, c.scopeable && where !== 'everything' ? where : (m.actions.get(label) === 'everything' ? 'everything' : (c.scopeable ? where : 'everything')))
-      }
+    if (!sel) return { scoped: [], personal: [] }
+    const ownerHere = mine.some(a => roleById[a.role_id]?.is_owner)
+    const removed = new Set(myAdj.filter(o => o.effect === 'remove').map(o => o.perm_key))
+    const entries = new Map()   // key → { where:Set, everywhere:bool, adj:'add'|null }
+    const addEntry = (k, src, adj) => {
+      if (!ownerHere && removed.has(k)) return
+      const e = entries.get(k) || { where: new Set(), everywhere: false, adj: null }
+      if (src.scope_type === 'all') e.everywhere = true
+      else scopeLabel(src, clients, projects).split(', ').forEach(n => n !== 'Nothing selected yet' && e.where.add(n))
+      if (adj) e.adj = adj
+      entries.set(k, e)
     }
-    return [...byModule.entries()]
-  }, [sel, mine, roleById, catalog, clients, projects]) // eslint-disable-line react-hooks/exhaustive-deps
+    for (const a of mine) { const r = roleById[a.role_id]; if (!r) continue; (r.is_owner ? catalog.map(c => c.key) : permsOf(r.id)).forEach(k => addEntry(k, a)) }
+    if (!ownerHere) myAdj.filter(o => o.effect === 'add').forEach(o => addEntry(o.perm_key, o, 'add'))
+    const mods = { scoped: new Map(), personal: new Map() }
+    for (const [k, e] of entries) {
+      const c = catByKey[k]; if (!c) continue
+      const bucket = c.scopeable ? mods.scoped : mods.personal
+      if (!bucket.has(c.module_label)) bucket.set(c.module_label, [])
+      const where = e.everywhere ? 'everywhere' : ([...e.where].join(', ') || 'nowhere yet')
+      bucket.get(c.module_label).push({ act: c.module === 'admin' ? c.label : c.action[0].toUpperCase() + c.action.slice(1), where, adj: e.adj })
+    }
+    return { scoped: [...mods.scoped.entries()], personal: [...mods.personal.entries()], removed: [...removed].filter(() => !ownerHere) }
+  }, [sel, mine, myAdj, roleById, catalog, clients, projects]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const shown = people.filter(x => !q.trim() || (x.full_name || '').toLowerCase().includes(q.trim().toLowerCase()))
+  const permOptions = useMemo(() => {
+    const groups = {}
+    catalog.forEach(c => { (groups[c.module_label] = groups[c.module_label] || []).push(c) })
+    return Object.entries(groups)
+  }, [catalog])
+
   return (
     <div className="rm">
       <div className="card rm-list">
@@ -449,12 +506,13 @@ function PeopleTab() {
         <div style={{ maxHeight: 'calc(100vh - 300px)', overflow: 'auto' }}>
           {shown.map(x => {
             const rs = assigns.filter(a => a.profile_id === x.id).map(a => roleById[a.role_id]).filter(Boolean)
+            const nAdj = overrides.filter(o => o.profile_id === x.id).length
             return (
-              <button key={x.id} className={'rm-role' + (x.id === selId ? ' on' : '')} onClick={() => { setSelId(x.id); setMsg(null); setAdding('') }}>
+              <button key={x.id} className={'rm-role' + (x.id === selId ? ' on' : '')} onClick={() => { setSelId(x.id); setMsg(null); setAdding(null); setAdjusting(null) }}>
                 <span className="rm-dot" style={{ background: 'var(--canvas)', fontSize: 13, fontWeight: 700 }}>{(x.full_name || '?').split(' ').map(w => w[0]).slice(0, 2).join('')}</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontWeight: 700, fontSize: 14 }}>{x.full_name}</span>
-                  <span className="page-sub" style={{ fontSize: 12 }}>{rs.length ? rs.map(r => r.icon + ' ' + r.name).join(' · ') : 'No roles yet'}</span>
+                  <span className="page-sub" style={{ fontSize: 12 }}>{rs.length ? rs.map(r => r.icon + ' ' + r.name).join(' · ') : 'No roles yet'}{nAdj ? ` · ✎ ${nAdj} adjustment${nAdj === 1 ? '' : 's'}` : ''}</span>
                 </span>
               </button>
             )
@@ -470,42 +528,115 @@ function PeopleTab() {
             <div className="page-sub" style={{ fontSize: 13 }}>{[sel.job_title, sel.email].filter(Boolean).join(' · ')}</div>
           </div>
 
+          {/* ---- Roles ---- */}
           <div style={{ padding: 16, borderBottom: '1px solid var(--line)' }}>
             <div style={{ fontWeight: 700, marginBottom: 10 }}>Roles</div>
             {mine.length === 0 && <div className="page-sub" style={{ fontSize: 13, marginBottom: 10 }}>No roles yet — they can't see anything until you give them one.</div>}
             {mine.map(a => <AssignmentRow key={a.id} a={a} role={roleById[a.role_id]} clients={clients} projects={projects}
               canEdit={canAssign && !!roleById[a.role_id] && grantable(roleById[a.role_id])} inMyScope={inMyScope} myAll={myScope.all}
-              busy={busy} onSave={(patch) => saveScope(a, patch)} onRemove={() => remove(a)} sure={sureRemove === a.id} />)}
-            {canAssign && (
-              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                <select value={adding} onChange={e => setAdding(e.target.value)} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 9, fontFamily: 'inherit', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)', minWidth: 220 }}>
-                  <option value="">＋ Give a role…</option>
+              busy={busy} onSave={(patch) => run(() => supabase.from('access_assignments').update(patch).eq('id', a.id), 'Saved.')}
+              onRemove={() => removeRow('access_assignments', a, `Removed the ${roleById[a.role_id]?.name} role.`)} sure={sure === a.id} />)}
+            {canAssign && !adding && (
+              <button className="btn btn-ghost" style={{ marginTop: 6 }} onClick={() => setAdding({ role_id: '', ...defaultScope() })}>＋ Give a role</button>
+            )}
+            {canAssign && adding && (
+              <div style={{ border: '1px dashed var(--line)', borderRadius: 10, padding: 12, marginTop: 8 }}>
+                <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>Give a role</div>
+                <select value={adding.role_id} onChange={e => setAdding(x => ({ ...x, role_id: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 9, fontFamily: 'inherit', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)', minWidth: 240, marginBottom: 10 }}>
+                  <option value="">Choose a role…</option>
                   {roles.filter(r => !mine.some(a => a.role_id === r.id) && grantable(r)).map(r => <option key={r.id} value={r.id}>{r.icon} {r.name}</option>)}
                 </select>
-                <button className="btn btn-primary" disabled={!adding || busy} onClick={addRole}>Add role</button>
+                {adding.role_id && !roleById[adding.role_id]?.is_owner && (<>
+                  <div className="page-sub" style={{ fontSize: 12.5, fontWeight: 700, margin: '4px 0 6px' }}>Where does it apply?</div>
+                  <ScopePicker value={adding} onChange={v => setAdding(x => ({ ...x, ...v }))} clients={clients} projects={projects} inMyScope={inMyScope} myAll={myScope.all} />
+                </>)}
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button className="btn btn-primary" disabled={!adding.role_id || busy} onClick={addRole}>Add role</button>
+                  <button className="btn btn-ghost" onClick={() => setAdding(null)}>Cancel</button>
+                </div>
               </div>
             )}
-            {!myScope.all && canAssign && <div className="page-sub" style={{ fontSize: 12, marginTop: 8 }}>You can give access only to your own projects and clients, and only roles whose permissions you have yourself.</div>}
           </div>
 
+          {/* ---- Per-person adjustments ---- */}
+          <div style={{ padding: 16, borderBottom: '1px solid var(--line)' }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Adjust for {sel.full_name.split(' ')[0]}</div>
+            <div className="page-sub" style={{ fontSize: 12.5, marginBottom: 10 }}>Fine-tune just this person without making a new role. ➖ Remove always wins over their roles.</div>
+            {myAdj.length === 0 && <div className="page-sub" style={{ fontSize: 13, marginBottom: 8 }}>No adjustments — they get exactly what their roles give.</div>}
+            {myAdj.map(o => {
+              const c = catByKey[o.perm_key]
+              return (
+                <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', flexWrap: 'wrap' }}>
+                  <span className="rm-chip" style={{ background: o.effect === 'add' ? '#ECFDF5' : '#FEF2F2', color: o.effect === 'add' ? '#047857' : '#B91C1C' }}>{o.effect === 'add' ? '➕ Added' : '➖ Removed'}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 600 }}>{c ? `${c.module_label}: ${c.label}` : o.perm_key}</span>
+                  {o.effect === 'add' && c?.scopeable && <span className="page-sub" style={{ fontSize: 12.5 }}>· {scopeLabel(o, clients, projects)}</span>}
+                  {canAssign && <button className="btn btn-ghost" style={{ marginLeft: 'auto', fontSize: 12, padding: '3px 9px', color: '#B91C1C' }} disabled={busy}
+                    onClick={() => removeRow('access_overrides', o, 'Adjustment removed.')}>{sure === o.id ? 'Click to confirm' : 'Undo'}</button>}
+                </div>
+              )
+            })}
+            {canAssign && !adjusting && <button className="btn btn-ghost" style={{ marginTop: 6 }} onClick={() => setAdjusting({ perm_key: '', effect: 'add', ...defaultScope() })}>✎ Add an adjustment</button>}
+            {canAssign && adjusting && (
+              <div style={{ border: '1px dashed var(--line)', borderRadius: 10, padding: 12, marginTop: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                  <select value={adjusting.effect} onChange={e => setAdjusting(x => ({ ...x, effect: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 9, fontFamily: 'inherit', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)' }}>
+                    <option value="add">➕ Add</option><option value="remove">➖ Remove</option>
+                  </select>
+                  <select value={adjusting.perm_key} onChange={e => setAdjusting(x => ({ ...x, perm_key: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 9, fontFamily: 'inherit', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)', minWidth: 280, flex: 1 }}>
+                    <option value="">Choose a permission…</option>
+                    {permOptions.map(([mod, items]) => (
+                      <optgroup key={mod} label={mod}>
+                        {items.filter(c => adjusting.effect === 'remove' || isOwner || hasPerm(c.key)).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+                {adjusting.effect === 'add' && catByKey[adjusting.perm_key]?.scopeable && (<>
+                  <div className="page-sub" style={{ fontSize: 12.5, fontWeight: 700, margin: '4px 0 6px' }}>Where does it apply?</div>
+                  <ScopePicker value={adjusting} onChange={v => setAdjusting(x => ({ ...x, ...v }))} clients={clients} projects={projects} inMyScope={inMyScope} myAll={myScope.all} />
+                </>)}
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button className="btn btn-primary" disabled={!adjusting.perm_key || busy} onClick={saveAdjustment}>Save adjustment</button>
+                  <button className="btn btn-ghost" onClick={() => setAdjusting(null)}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ---- What they can do ---- */}
           <div style={{ padding: 16 }}>
             <div style={{ fontWeight: 700, marginBottom: 8 }}>What {sel.full_name.split(' ')[0]} can do</div>
-            {summary.length === 0 ? <div className="page-sub" style={{ fontSize: 13 }}>Nothing yet.</div> : (
-              <table className="rm-grid">
-                <thead><tr><th style={{ width: '30%' }}>Module</th><th style={{ textAlign: 'left' }}>Can</th></tr></thead>
-                <tbody>
-                  {summary.map(([label, m]) => (
-                    <tr key={label}><td>{label}</td><td style={{ textAlign: 'left' }}>
-                      {[...m.actions.entries()].map(([act, where]) => (
-                        <span key={act} className="rm-chip" title={where === 'everything' ? 'Everywhere' : 'Only: ' + where}>
-                          {act[0].toUpperCase() + act.slice(1)}{where !== 'everything' ? ` · ${where}` : ''}
-                        </span>
+            {!summary.scoped.length && !summary.personal.length ? <div className="page-sub" style={{ fontSize: 13 }}>Nothing yet.</div> : (<>
+              {[['For their clients & projects', summary.scoped, 'Only where shown — not anywhere else.'], ['Personal tools', summary.personal, 'Not tied to a client, so these work everywhere.']].map(([title, rows, hint]) => rows.length > 0 && (
+                <div key={title} style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--ink-soft)', margin: '6px 0 2px' }}>{title}</div>
+                  <div className="page-sub" style={{ fontSize: 12, marginBottom: 6 }}>{hint}</div>
+                  <table className="rm-grid">
+                    <tbody>
+                      {rows.map(([label, acts]) => (
+                        <tr key={label}><td style={{ width: '24%' }}>{label}</td><td style={{ textAlign: 'left' }}>
+                          {(() => {
+                            const scoped = title.startsWith('For')
+                            const same = scoped && acts.every(x => x.where === acts[0].where)   // one place for the whole row → say it once
+                            return (<>
+                              {acts.map((x, i) => (
+                                <span key={i} className="rm-chip" style={x.adj ? { background: '#ECFDF5', color: '#047857' } : undefined} title={x.adj ? 'Added just for this person' : ''}>
+                                  {x.adj ? '➕ ' : ''}{x.act}{scoped && !same ? ` · ${x.where}` : ''}
+                                </span>
+                              ))}
+                              {same && <span className="page-sub" style={{ fontSize: 12, marginLeft: 4 }}>· {acts[0].where}</span>}
+                            </>)
+                          })()}
+                        </td></tr>
                       ))}
-                    </td></tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+              {summary.removed?.length > 0 && (
+                <div className="page-sub" style={{ fontSize: 12.5 }}>➖ Removed for them: {summary.removed.map(k => catByKey[k] ? `${catByKey[k].module_label}: ${catByKey[k].label}` : k).join(' · ')}</div>
+              )}
+            </>)}
           </div>
         </div>
       )}
@@ -515,49 +646,25 @@ function PeopleTab() {
 
 function AssignmentRow({ a, role, clients, projects, canEdit, inMyScope, myAll, busy, onSave, onRemove, sure }) {
   const [open, setOpen] = useState(false)
-  const [scope, setScope] = useState(a.scope_type)
-  const [cIds, setCIds] = useState(a.client_ids || [])
-  const [pIds, setPIds] = useState(a.project_ids || [])
-  useEffect(() => { setScope(a.scope_type); setCIds(a.client_ids || []); setPIds(a.project_ids || []) }, [a])
+  const [val, setVal] = useState({ scope_type: a.scope_type, client_ids: a.client_ids || [], project_ids: a.project_ids || [] })
+  useEffect(() => { setVal({ scope_type: a.scope_type, client_ids: a.client_ids || [], project_ids: a.project_ids || [] }) }, [a])
   if (!role) return null
-  const label = a.scope_type === 'all' ? 'Everything'
-    : [...(a.client_ids || []).map(id => clients.find(c => c.id === id)?.name), ...(a.project_ids || []).map(id => projects.find(p => p.id === id)?.name)].filter(Boolean).join(', ') || 'Nothing selected yet'
-  const toggle = (list, setList, id) => setList(list.includes(id) ? list.filter(x => x !== id) : [...list, id])
   return (
     <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span className="rm-dot" style={{ background: (role.color || '#0F766E') + '22', width: 28, height: 28 }}>{role.icon}</span>
         <div style={{ flex: 1, minWidth: 160 }}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>{role.name}</div>
-          <div className="page-sub" style={{ fontSize: 12.5 }}>Applies to: <b>{label}</b></div>
+          <div className="page-sub" style={{ fontSize: 12.5 }}>Applies to: <b>{role.is_owner ? 'Everything (Owner)' : scopeLabel(a, clients, projects)}</b></div>
         </div>
         {canEdit && !role.is_owner && <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '4px 10px' }} onClick={() => setOpen(o => !o)}>{open ? 'Close' : 'Change where'}</button>}
         {canEdit && <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '4px 10px', color: '#B91C1C' }} disabled={busy} onClick={onRemove}>{sure ? 'Click to confirm' : 'Remove'}</button>}
       </div>
       {open && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
-          <div style={{ display: 'flex', gap: 16, marginBottom: 10, fontSize: 13.5 }}>
-            <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: myAll ? 'pointer' : 'not-allowed', opacity: myAll ? 1 : .5 }}>
-              <input type="radio" disabled={!myAll} checked={scope === 'all'} onChange={() => setScope('all')} /> Everything</label>
-            <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
-              <input type="radio" checked={scope === 'scoped'} onChange={() => setScope('scoped')} /> Only these clients & projects</label>
-          </div>
-          {scope === 'scoped' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div><div className="page-sub" style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Clients</div>
-                {clients.filter(c => inMyScope('c', c.id)).map(c => (
-                  <label key={c.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, padding: '2px 0', cursor: 'pointer' }}>
-                    <input type="checkbox" className="rm-cb" checked={cIds.includes(c.id)} onChange={() => toggle(cIds, setCIds, c.id)} /> {c.name}</label>))}
-              </div>
-              <div><div className="page-sub" style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Projects</div>
-                {projects.filter(p => inMyScope('p', p.id)).map(p => (
-                  <label key={p.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, padding: '2px 0', cursor: 'pointer' }}>
-                    <input type="checkbox" className="rm-cb" checked={pIds.includes(p.id)} onChange={() => toggle(pIds, setPIds, p.id)} /> {p.name}</label>))}
-              </div>
-            </div>
-          )}
+          <ScopePicker value={val} onChange={setVal} clients={clients} projects={projects} inMyScope={inMyScope} myAll={myAll} />
           <button className="btn btn-primary" style={{ marginTop: 10, fontSize: 13 }} disabled={busy}
-            onClick={() => { onSave({ scope_type: scope, client_ids: scope === 'all' ? [] : cIds, project_ids: scope === 'all' ? [] : pIds }); setOpen(false) }}>Save</button>
+            onClick={() => { onSave({ scope_type: val.scope_type, client_ids: val.scope_type === 'all' ? [] : val.client_ids, project_ids: val.scope_type === 'all' ? [] : val.project_ids }); setOpen(false) }}>Save</button>
         </div>
       )}
     </div>
@@ -591,6 +698,8 @@ function HistoryTab() {
       case 'assign.insert': return `${who} gave ${person} the ${role} role`
       case 'assign.update': return `${who} changed where ${person}'s ${role} role applies`
       case 'assign.delete': return `${who} removed ${person}'s ${role} role`
+      case 'adjust.insert': case 'adjust.update': return `${who} ${x.detail?.effect === 'remove' ? 'removed' : 'added'} “${x.detail?.perm}” ${x.detail?.effect === 'remove' ? 'for' : 'for'} ${person} (adjustment)`
+      case 'adjust.delete': return `${who} undid an adjustment (“${x.detail?.perm}”) for ${person}`
       default: return `${who}: ${x.action}`
     }
   }
