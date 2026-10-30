@@ -33,9 +33,10 @@ import ScheduleBuilder from './modules/ScheduleBuilder'
 import Positions from './modules/Positions'
 import ScheduleInsights from './modules/ScheduleInsights'
 import Chat from './modules/Chat'
-import { canAny } from './lib/permissions'
+import { canAny, hasPerm, usingNewPermissions } from './lib/permissions'
 import Settings from './modules/Settings'
 import RolesPermissions from './modules/RolesPermissions'
+import RolesManager from './modules/RolesManager'
 import ServiceAccount from './modules/ServiceAccount'
 import Projects from './modules/Projects'
 import Clients from './modules/Clients'
@@ -517,7 +518,10 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/settings" element={<Settings />} />
                             <Route path="/profile" element={<Profile />} />
               <Route path="/profile/:id" element={<ProfileRoute />} />
-              <Route path="/roles" element={isAdmin ? <RolesPermissions /> : <NoAccess />} />
+              {/* Self-service roles (new permissions system) — falls back to the old page where it isn't switched on yet */}
+              <Route path="/roles" element={usingNewPermissions()
+                ? ((hasPerm('admin.roles') || hasPerm('admin.assign')) ? <RolesManager /> : <NoAccess />)
+                : (isAdmin ? <RolesPermissions /> : <NoAccess />)} />
               <Route path="/service-account" element={isAdmin ? <ServiceAccount /> : <NoAccess />} />
               {/* SMS Consent report — admin only. Also enforced server-side:
                   sms_consents / sms_consent_status are readable only by is_app_admin(). */}
@@ -609,7 +613,7 @@ function titleFor(path) {
     '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
-    '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions', '/service-account': 'Service account',
+    '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Access & Permissions', '/service-account': 'Service account',
     '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/phone': 'Phone', '/dialer': 'Agent workspace', '/campaigns': 'Campaigns', '/inbound': 'Inbound', '/scripts': 'Scripts', '/reporting/calls': 'Call Reports', '/test-lead': 'Test a web lead',
     '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/csr-scorecards': 'CSR Scorecards', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/finance': 'Finance', '/profile': 'My profile', '/submit-purchase': 'Submit a purchase', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
   }
