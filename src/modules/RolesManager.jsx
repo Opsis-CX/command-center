@@ -50,7 +50,7 @@ const CSS = `
 .rm-chip { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--canvas); color: var(--ink); margin: 2px 4px 2px 0; }
 `
 
-function RolesTab() {
+function RolesTab({ initialRoleId = null }) {
   const [catalog, setCatalog] = useState([])
   const [roles, setRoles] = useState([])
   const [grants, setGrants] = useState([])          // { role_id, perm_key }
@@ -83,7 +83,7 @@ function RolesTab() {
     setLoading(false)
     return r.data || []
   }, [])
-  useEffect(() => { load().then(rs => { if (rs.length && !selId) setSelId(rs[0].id) }) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load().then(rs => { if (rs.length && !selId) setSelId(initialRoleId && rs.some(r => r.id === initialRoleId) ? initialRoleId : rs[0].id) }) }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const permsOf = useCallback((roleId) => new Set(grants.filter(g => g.role_id === roleId).map(g => g.perm_key)), [grants])
   const peopleOf = (roleId) => assigns.filter(a => a.role_id === roleId)
@@ -328,6 +328,7 @@ function friendly(e) {
 // ACCESS & PERMISSIONS — tabs (2026-10-30): Roles · People · History
 // ============================================================
 export default function AccessPermissions() {
+  const [focusRole, setFocusRole] = useState(null)   // role to open when jumping People → Roles
   const canPeople = hasPerm('admin.assign') || hasPerm('admin.roles')
   const [tab, setTab] = useState('roles')
   const tabs = [['roles', '🛡️ Roles'], ...(canPeople ? [['people', '👥 People']] : []), ...(hasPerm('admin.audit') ? [['history', '📜 History']] : [])]
@@ -341,8 +342,8 @@ export default function AccessPermissions() {
             color: tab === k ? 'var(--accent)' : 'var(--ink-soft)', borderBottom: '2px solid ' + (tab === k ? 'var(--accent)' : 'transparent'), marginBottom: -1 }}>{l}</button>
         ))}
       </div>
-      {tab === 'roles' && <RolesTab />}
-      {tab === 'people' && <PeopleTab />}
+      {tab === 'roles' && <RolesTab key={focusRole || 'roles'} initialRoleId={focusRole} />}
+      {tab === 'people' && <PeopleTab onOpenRole={(id) => { setFocusRole(id); setTab('roles') }} />}
       {tab === 'history' && <HistoryTab />}
     </div>
   )
@@ -388,7 +389,7 @@ function ScopePicker({ value, onChange, clients, projects, inMyScope, myAll }) {
   )
 }
 
-function PeopleTab() {
+function PeopleTab({ onOpenRole }) {
   const [people, setPeople] = useState([])
   const [roles, setRoles] = useState([])
   const [grants, setGrants] = useState([])
@@ -440,7 +441,33 @@ function PeopleTab() {
     if (error) { setMsg({ kind: 'err', text: friendly(error) }); return false }
     await load(); if (ok) setMsg({ kind: 'ok', text: ok }); return true
   }
+  const canCreateRoles = hasPerm('admin.roles')
   async function addRole() {
+    // ＋ Create a new role on the spot (self-service): make the role — blank or copied from an
+    // existing one — then give it to this person, in one step. (2026-10-30)
+    if (adding?.role_id === '__new') {
+      const name = (adding.newName || '').trim()
+      if (!name) return setMsg({ kind: 'err', text: 'Give the new role a name.' })
+      if (roles.some(r => r.name.toLowerCase() === name.toLowerCase())) return setMsg({ kind: 'err', text: `There's already a role called “${name}” — pick it from the list instead.` })
+      const scoped = adding.scope_type === 'scoped'
+      if (scoped && !adding.client_ids.length && !adding.project_ids.length) return setMsg({ kind: 'err', text: 'Pick at least one client or project — or choose Everything.' })
+      const from = roleById[adding.startFrom]
+      setBusy(true); setMsg(null)
+      const { data: nr, error: e1 } = await supabase.from('access_roles')
+        .insert({ name, description: from ? `Started from ${from.name}` : null, icon: from?.icon || '👤', color: from?.color || '#2563EB', sort: 100 }).select().single()
+      if (e1) { setBusy(false); return setMsg({ kind: 'err', text: friendly(e1) }) }
+      const keys = from ? (from.is_owner ? catalog.map(c => c.key) : permsOf(from.id)) : []
+      if (keys.length) {
+        const { error: e2 } = await supabase.from('access_role_permissions').insert(keys.map(k => ({ role_id: nr.id, perm_key: k })))
+        if (e2) { setBusy(false); await load(); return setMsg({ kind: 'err', text: friendly(e2) }) }
+      }
+      const { error: e3 } = await supabase.from('access_assignments').insert({ profile_id: sel.id, role_id: nr.id, scope_type: scoped ? 'scoped' : 'all',
+        client_ids: scoped ? adding.client_ids : [], project_ids: scoped ? adding.project_ids : [] })
+      setBusy(false); await load()
+      if (e3) return setMsg({ kind: 'err', text: `Created the “${name}” role, but couldn't give it to ${sel.full_name}: ${friendly(e3)}` })
+      setAdding(null)
+      return setMsg({ kind: 'ok', text: `Created “${name}”${from ? ` (a copy of ${from.name})` : ' (no permissions yet)'} and gave it to ${sel.full_name}.`, roleId: nr.id })
+    }
     const r = roleById[adding?.role_id]; if (!r || !sel) return
     const scoped = !r.is_owner && adding.scope_type === 'scoped'
     if (scoped && !adding.client_ids.length && !adding.project_ids.length) return setMsg({ kind: 'err', text: 'Pick at least one client or project — or choose Everything.' })
@@ -523,7 +550,7 @@ function PeopleTab() {
       {!sel ? <div className="card page-sub" style={{ padding: 24 }}>Pick someone to see and change their access.</div> : (
         <div className="card" style={{ padding: 0 }}>
           <div style={{ padding: 16, borderBottom: '1px solid var(--line)' }}>
-            {msg && <div className={'rm-msg ' + msg.kind}>{msg.text}</div>}
+            {msg && <div className={'rm-msg ' + msg.kind}>{msg.text}{msg.roleId && onOpenRole && <> <button className="rm-row-all" onClick={() => onOpenRole(msg.roleId)}>Fine-tune its permissions →</button></>}</div>}
             <div style={{ fontSize: 18, fontWeight: 800 }}>{sel.full_name}</div>
             <div className="page-sub" style={{ fontSize: 13 }}>{[sel.job_title, sel.email].filter(Boolean).join(' · ')}</div>
           </div>
@@ -545,13 +572,29 @@ function PeopleTab() {
                 <select value={adding.role_id} onChange={e => setAdding(x => ({ ...x, role_id: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 9, fontFamily: 'inherit', fontSize: 13.5, background: 'var(--surface)', color: 'var(--ink)', minWidth: 240, marginBottom: 10 }}>
                   <option value="">Choose a role…</option>
                   {roles.filter(r => !mine.some(a => a.role_id === r.id) && grantable(r)).map(r => <option key={r.id} value={r.id}>{r.icon} {r.name}</option>)}
+                  {canCreateRoles && <option value="__new">＋ Create a new role…</option>}
                 </select>
-                {adding.role_id && !roleById[adding.role_id]?.is_owner && (<>
+                {adding.role_id === '__new' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 10 }}>
+                    <div className="field" style={{ margin: 0 }}>
+                      <label>New role name</label>
+                      <input autoFocus maxLength={60} value={adding.newName || ''} placeholder="e.g. Scheduling Lead" onChange={e => setAdding(x => ({ ...x, newName: e.target.value }))} />
+                    </div>
+                    <div className="field" style={{ margin: 0 }}>
+                      <label>Start from</label>
+                      <select value={adding.startFrom || ''} onChange={e => setAdding(x => ({ ...x, startFrom: e.target.value }))}>
+                        <option value="">Blank — no permissions yet</option>
+                        {roles.filter(r => grantable(r)).map(r => <option key={r.id} value={r.id}>Copy of {r.icon} {r.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
+                {adding.role_id && (adding.role_id === '__new' || !roleById[adding.role_id]?.is_owner) && (<>
                   <div className="page-sub" style={{ fontSize: 12.5, fontWeight: 700, margin: '4px 0 6px' }}>Where does it apply?</div>
                   <ScopePicker value={adding} onChange={v => setAdding(x => ({ ...x, ...v }))} clients={clients} projects={projects} inMyScope={inMyScope} myAll={myScope.all} />
                 </>)}
                 <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <button className="btn btn-primary" disabled={!adding.role_id || busy} onClick={addRole}>Add role</button>
+                  <button className="btn btn-primary" disabled={!adding.role_id || busy || (adding.role_id === '__new' && !(adding.newName || '').trim())} onClick={addRole}>{adding.role_id === '__new' ? 'Create & give role' : 'Add role'}</button>
                   <button className="btn btn-ghost" onClick={() => setAdding(null)}>Cancel</button>
                 </div>
               </div>
