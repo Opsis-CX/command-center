@@ -167,13 +167,27 @@ export default function Clients() {
     setMsg({ kind: 'ok', text: 'p_in_invoicing' in patch ? (patch.p_in_invoicing ? `${c.name} is in invoicing.` : `${c.name} is out of invoicing (its hours are not invoiced).`)
       : (patch.p_show_in_tasks ? `${c.name} shows in task dropdowns.` : `${c.name} is hidden from task dropdowns.`) })
   }
+  // Archive a client together with its projects (and their tasks); restoring brings them back.
   async function archiveClient(c) {
     if (sure !== c.id) { setSure(c.id); return }
-    setSure(null)
-    if (await run(() => supabase.from('clients').update({ archived_at: new Date().toISOString() }).eq('id', c.id), `Archived “${c.name}” — restore it any time from 📦 Archived.`)) setSel(clients.find(x => x.id !== c.id)?.id || INTERNAL)
+    setSure(null); setBusy(true); setMsg(null)
+    const { data, error } = await supabase.rpc('archive_client', { p_client: c.id })
+    setBusy(false)
+    if (error) return setMsg({ kind: 'err', text: friendly(error) })
+    await load(); setSel(clients.find(x => x.id !== c.id)?.id || INTERNAL)
+    const n = data?.projects || 0
+    setMsg({ kind: 'ok', text: `Archived “${c.name}”${n ? ` and its ${n} ${n === 1 ? T.project.toLowerCase() : T.projects.toLowerCase()}` : ''}. Restore ${n ? 'them' : 'it'} any time from 📦 Archived.` })
   }
-  async function restoreClient(c) {
-    if (await run(() => supabase.from('clients').update({ archived_at: null }).eq('id', c.id), `Restored “${c.name}”.`)) setSel(c.id)
+  async function restoreClient(c, alsoEarlier = false) {
+    setBusy(true); setMsg(null)
+    const { data, error } = await supabase.rpc('restore_client', { p_client: c.id, p_also_earlier: alsoEarlier })
+    setBusy(false)
+    if (error) return setMsg({ kind: 'err', text: friendly(error) })
+    await load(); setSel(c.id)
+    const n = data?.projects || 0, earlier = data?.earlier || []
+    setMsg({ kind: 'ok', text: alsoEarlier ? `Restored ${n} more ${n === 1 ? T.project.toLowerCase() : T.projects.toLowerCase()}.`
+      : `Restored “${c.name}”${n ? ` and its ${n} ${n === 1 ? T.project.toLowerCase() : T.projects.toLowerCase()}` : ''}.`,
+      earlier: alsoEarlier ? [] : earlier, client: c })
   }
   async function saveRename() {
     const name = (renaming?.name || '').trim(); if (!name) return
@@ -233,7 +247,17 @@ export default function Clients() {
         <p className="page-sub">Your {T.clients.toLowerCase()} and their {T.projects.toLowerCase()} — the structure used across Projects, Scheduling, Reporting and Access & Permissions.</p>
       </div>
 
-      {msg && <div className={'cl-msg ' + msg.kind}>{msg.text}</div>}
+      {msg && (
+        <div className={'cl-msg ' + msg.kind}>
+          {msg.text}
+          {msg.earlier?.length > 0 && (
+            <div style={{ marginTop: 6 }}>
+              It also has {msg.earlier.length} {msg.earlier.length === 1 ? T.project.toLowerCase() : T.projects.toLowerCase()} archived earlier: <b>{msg.earlier.map(x => x.name).join(', ')}</b>.{' '}
+              <button className="cl-link" disabled={busy} onClick={() => restoreClient(msg.client, true)}>↩ Restore {msg.earlier.length === 1 ? 'it' : 'them'} too</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* cap banner (unchanged) */}
       {hoursOk && flagged.length > 0 && (
@@ -357,8 +381,8 @@ export default function Clients() {
                 {sel !== INTERNAL && canEdit && <button className="btn btn-ghost" onClick={() => setRenaming({ kind: 'client', id: sel, name: selClient?.name || '' })}>✎ Rename</button>}
                 {sel !== INTERNAL && canAddClients && (
                   <button className="btn btn-ghost" style={{ color: '#B91C1C' }} disabled={busy}
-                    title={theirProjects.length ? `Archive or move its ${T.projects.toLowerCase()} first` : 'Recoverable — restore from 📦 Archived'}
-                    onClick={() => archiveClient(selClient)}>{sure === sel ? 'Click to confirm' : 'Archive'}</button>
+                    title={theirProjects.length ? `Archives it together with its ${theirProjects.length} ${theirProjects.length === 1 ? T.project.toLowerCase() : T.projects.toLowerCase()} — restore them all from 📦 Archived` : 'Recoverable — restore from 📦 Archived'}
+                    onClick={() => archiveClient(selClient)}>{sure === sel ? (theirProjects.length ? `Archive with ${theirProjects.length} ${theirProjects.length === 1 ? T.project.toLowerCase() : T.projects.toLowerCase()}?` : 'Click to confirm') : 'Archive'}</button>
                 )}
               </>
             )}
