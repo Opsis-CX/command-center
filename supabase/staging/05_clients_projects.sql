@@ -60,3 +60,57 @@ create policy org_terms_write on public.org_terms for all to authenticated
   using (public.has_perm('admin.settings')) with check (public.has_perm('admin.settings'));
 insert into public.org_terms (key, singular, plural) values ('client', 'Client', 'Clients'), ('project', 'Project', 'Projects')
 on conflict (key) do nothing;
+
+-- ---------- archive a client together with its projects; restore brings them back ----------
+alter table public.projects add column if not exists deleted_with_client uuid;
+
+create or replace function public.archive_client(p_client uuid) returns jsonb
+language plpgsql security definer set search_path to 'public' as $$
+declare c record; pr record; n_proj int := 0; n_tasks int := 0; k int;
+begin
+  select * into c from public.clients where id = p_client;
+  if c is null then raise exception 'Not found.'; end if;
+  if not public.has_perm('clients.manage') then raise exception 'You don''t have permission to archive this.'; end if;
+  if c.archived_at is not null then return jsonb_build_object('projects', 0, 'tasks', 0); end if;
+  for pr in select id from public.projects where client_id = p_client and deleted_at is null loop
+    update public.projects set deleted_at = now(), deleted_by = auth.uid(), deleted_with_client = p_client where id = pr.id;
+    update public.tasks set deleted_at = now(), deleted_by = auth.uid(), deleted_with_project = pr.id where project_id = pr.id and deleted_at is null;
+    get diagnostics k = row_count; n_tasks := n_tasks + k; n_proj := n_proj + 1;
+  end loop;
+  update public.clients set archived_at = now() where id = p_client;
+  return jsonb_build_object('projects', n_proj, 'tasks', n_tasks);
+end $$;
+
+create or replace function public.restore_client(p_client uuid, p_also_earlier boolean default false) returns jsonb
+language plpgsql security definer set search_path to 'public' as $$
+declare pr record; n_proj int := 0; n_tasks int := 0; k int;
+begin
+  if not public.has_perm('clients.manage') then raise exception 'You don''t have permission to restore this.'; end if;
+  update public.clients set archived_at = null where id = p_client;
+  -- projects archived WITH the client (+ optionally ones archived on their own earlier)
+  for pr in select id from public.projects where client_id = p_client and deleted_at is not null
+              and (deleted_with_client = p_client or p_also_earlier) loop
+    update public.projects set deleted_at = null, deleted_by = null, deleted_with_client = null where id = pr.id;
+    update public.tasks set deleted_at = null, deleted_by = null, deleted_with_project = null where deleted_with_project = pr.id;
+    get diagnostics k = row_count; n_tasks := n_tasks + k; n_proj := n_proj + 1;
+  end loop;
+  return jsonb_build_object('projects', n_proj, 'tasks', n_tasks,
+    'earlier', (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'archived_at', deleted_at) order by name), '[]'::jsonb)
+                from public.projects where client_id = p_client and deleted_at is not null));
+end $$;
+grant execute on function public.archive_client(uuid), public.restore_client(uuid, boolean) to authenticated;
+
+-- Recently deleted: projects archived along with their client are restored from the client, so
+-- don't list them twice (my_recently_deleted from 03, now skipping those).
+create or replace function public.my_recently_deleted() returns table (kind text, id uuid, name text, project_name text, deleted_at timestamptz, deleted_by_name text, task_count int)
+language sql stable security definer set search_path to 'public' as $$
+  select 'project', p.id, p.name, null, p.deleted_at, (select full_name from profiles where id = p.deleted_by),
+         (select count(*)::int from tasks t where t.deleted_with_project = p.id)
+    from projects p where p.deleted_at is not null and p.deleted_with_client is null
+     and public.has_perm_on('tasks.delete', p.id, p.client_id) and public.has_perm_on('tasks.manage', p.id, p.client_id)
+  union all
+  select 'task', t.id, t.name, (select name from projects where id = t.project_id), t.deleted_at, (select full_name from profiles where id = t.deleted_by), null
+    from tasks t where t.deleted_at is not null and t.deleted_with_project is null and public.has_perm_on('tasks.delete', t.project_id, t.client_id)
+  order by 5 desc
+  limit 300
+$$;
