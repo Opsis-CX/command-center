@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabase'
 import { hasPerm, loadPermissions, permScope, isAccessOwner } from '../lib/permissions'
 import { useAuth } from '../lib/auth'
 import { useTerms } from '../lib/terms'
-import ClientsProjects from './ClientsProjects'
 
 // ============================================================
 // ROLES & PERMISSIONS — self-service (2026-10-29)
@@ -433,9 +432,8 @@ export default function AccessPermissions() {
   const [focusRole, setFocusRole] = useState(null)   // role to open when jumping People → Roles
   const canPeople = hasPerm('admin.assign') || hasPerm('admin.roles')
   const [tab, setTab] = useState('roles')
-  const T = useTerms()
-  const canStructure = hasPerm('clients.manage') || hasPerm('tasks.manage') || hasPerm('clients.view')
-  const tabs = [['roles', '🛡️ Roles'], ...(canPeople ? [['people', '👥 People']] : []), ...(canStructure ? [['structure', `🏢 ${T.clients} & ${T.projects}`]] : []), ...(hasPerm('admin.audit') ? [['history', '📜 History']] : [])]
+  // Clients & projects are set up on the Clients page; this section only reads them.
+  const tabs = [['roles', '🛡️ Roles'], ...(canPeople ? [['people', '👥 People']] : []), ...(hasPerm('admin.audit') ? [['history', '📜 History']] : [])]
   return (
     <div>
       <style>{CSS}</style>
@@ -448,7 +446,6 @@ export default function AccessPermissions() {
       </div>
       {tab === 'roles' && <RolesTab key={focusRole || 'roles'} initialRoleId={focusRole} />}
       {tab === 'people' && <PeopleTab onOpenRole={(id) => { setFocusRole(id); setTab('roles') }} />}
-      {tab === 'structure' && <ClientsProjects />}
       {tab === 'history' && <HistoryTab />}
     </div>
   )
