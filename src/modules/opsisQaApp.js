@@ -462,7 +462,7 @@ export function mountOpsisQA(ROOT, cfg) {
       if (kind === 'brand') focusMovers(f);
     }).catch(function (e) { if (tok === T) $('fk').innerHTML = errBox(e); });
     if (kind === 'csr') api(Object.assign({ action: 'calls' }, win({ agent: agent, limit: 6 }))).then(function (c) { if (tok !== T) return; $('fcalls').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start"><div><h2 class="ttl">Recent Calls</h2><p class="sub">' + fmt(c.total) + ' scored calls in this period</p></div><button class="more" data-callsfor="csr">All →</button></div>' + (c.rows || []).map(callRow).join(''); }).catch(function () {});
-    var ckey = 'why5|' + kind + '|' + name + '|' + S.start + '|' + S.end;
+    var ckey = 'why6|' + kind + '|' + name + '|' + S.start + '|' + S.end;
     // Executive summary (Becky 10/29): only what actually moved, cause -> effect, no noise. Numbers match the tiles.
     var runWhy = function (f) {
       var c = (f.kpis || {}).cur || {}, p = (f.kpis || {}).prev || {}, r1 = function (v) { return v == null ? 'n/a' : (Math.round(v * 10) / 10) + '%'; };
@@ -471,6 +471,7 @@ export function mountOpsisQA(ROOT, cfg) {
         + '1) First line: one bold sentence that explains WHY ' + (kind === 'brand' ? 'the brand' : 'this CSR') + ' is trending this way (the cause, not just the numbers). '
         + '2) Then a "**What’s driving it**" section with at most 3 bullets. FORMAT EACH ONE AS A SHORT BOLD HEADLINE BULLET (under 8 words, starting with "- ") followed by 1 or 2 SUB-BULLETS indented with two spaces ("  - "): the number that proves it, then what it means. Only include changes that are large enough to matter (about 5 points or more on a rate, or a reason that changed by 10 or more calls). Skip anything flat, small, or new without a prior to compare. Never list every call-flow step. '
         + '3) Then "**Do this week**" with 1 or 2 bullets in the same format: a bold action headline, then indented sub-bullets with who or how. Name CSRs only if they are the cause. Whenever more than one CSR is named, give EACH CSR their own sub-bullet ("  - Name: number, what to do"); never list several CSRs in one line. '
+        + 'TONE: managers read this and CSRs may see it. Describe behaviors and opportunities, never label a person. Never call anyone a drag, weak link, weakest, worst, poor, bad, struggling, failing, a problem, an underperformer or a liability. For a CSR who needs help, say what to work on (e.g. "Wanda Hackett: biggest opportunity is asking for the booking, 10 asks on 35 opportunities"). '
         + 'Every line under 15 words. Never write a bullet as a long sentence or paragraph. No arrows, check marks, emoji or symbols. Plain words, no jargon. Say "call dropped or cut off" instead of "call ended before booking". If nothing moved meaningfully, say so in one line and give the single biggest opportunity instead.';
       var q = (kind === 'brand' ? 'Explain why ' + name + ' is trending the way it is this period compared with the one before.' : 'Explain why CSR ' + name + ' is trending the way they are this period compared with the one before, and how to coach them.') + ' ' + facts + rules;
       (whyCache[ckey] || (whyCache[ckey] = api({ action: 'ask', question: q, start: S.start, end: S.end, brands: brand ? [brand] : null }))).then(function (r) {
@@ -2930,8 +2931,20 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   // ---------- Ask panel ----------
+  // Respectful wording on every AI answer (Becky 11/2): never label a person ("drag", "weakest", "underperformer").
+  function soften(t) {
+    var adj = '(?:the |a )?(?:one )?(?:clearest |clear |biggest |main |real |single |largest )?';
+    return String(t || '')
+      .replace(/\bdragging (?:down|on) /gi, 'holding back ')
+      .replace(new RegExp('\\b(is|are) ' + adj + 'drags?\\b(?: on [^.,;\\n*]+)?', 'gi'), function (m, v) { return v + ' the biggest coaching opportunity'; })
+      .replace(new RegExp('\\b' + adj + 'drags?\\b on (?:the )?(?:team|brand|location)(?: average| score| numbers)?', 'gi'), 'the biggest coaching opportunity')
+      .replace(/\bweak(?:est)? links?\b/gi, 'biggest opportunity')
+      .replace(/\bunderperformers\b/gi, 'CSRs with the most room to grow').replace(/\bunderperformer\b/gi, 'CSR with the most room to grow').replace(/\bunderperforming\b/gi, 'below target')
+      .replace(/\bweakest\b/gi, 'lowest-scoring').replace(/\bworst\b/gi, 'lowest')
+      .replace(/\bstruggling\b/gi, 'working to improve').replace(/\bstruggles\b/gi, 'has room to grow');
+  }
   function md(t) {
-    var s = esc(t || '');
+    var s = esc(soften(t));
     s = s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
     s = s.replace(/\[call:([0-9a-f-]{36})\]/gi, '<span class="lnk" data-call="$1" role="button" tabindex="0">open call ↗</span>');
     // Lists (Becky 11/2): indented "  - " lines become sub-bullets under the bullet above them.
