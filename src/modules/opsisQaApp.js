@@ -562,7 +562,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function focusMovers(f) {
     var rows = (f.agents || []).filter(function (a) { return a.n >= 1; }).map(function (a) { a.d = a.pavg != null && a.pn >= 15 ? a.avg - a.pavg : null; return a; });
     rows.sort(function (a, b) { return (b.n) - (a.n); });
-    var h = '<div><h2 class="ttl">Performance</h2><p class="sub">Every CSR this period, by location · QA score now vs before · click a CSR for their profile</p></div><p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:12.5px"><thead><tr><th>CSR</th><th>Scored calls' + itip('Scored customer calls this period.') + '</th><th>Avg QA score</th><th>Change</th><th>Booking rate' + itip(KDEF['Booking rate']) + '</th><th>Booking ask rate' + itip(KDEF['Booking ask rate']) + '</th><th><span style="display:inline-flex;align-items:center;gap:4px">Card ask rate' + itip('Share of the CSR’s booked residential service calls where they asked for a card. Commercial customers, PDQ and Dan’s Doors are left out.') + '</span></th><th></th></tr></thead><tbody>';
+    var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div><h2 class="ttl">Performance</h2><p class="sub">Every CSR this period, by location · QA score now vs before · click a CSR for their profile</p></div><div class="row" style="gap:6px" aria-label="Export the performance table"><button class="sel" data-mvx="pdf" title="A landscape scoreboard sized for a TV or bulletin board" style="min-height:34px;padding:6px 12px;font-size:12.5px">PDF</button><button class="sel" data-mvx="xlsx" style="min-height:34px;padding:6px 12px;font-size:12.5px">Excel</button><button class="sel" data-mvx="csv" style="min-height:34px;padding:6px 12px;font-size:12.5px">CSV</button></div></div><p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:12.5px"><thead><tr><th>CSR</th><th>Scored calls' + itip('Scored customer calls this period.') + '</th><th>Avg QA score</th><th>Change</th><th>Booking rate' + itip(KDEF['Booking rate']) + '</th><th>Booking ask rate' + itip(KDEF['Booking ask rate']) + '</th><th><span style="display:inline-flex;align-items:center;gap:4px">Card ask rate' + itip('Share of the CSR’s booked residential service calls where they asked for a card. Commercial customers, PDQ and Dan’s Doors are left out.') + '</span></th><th></th></tr></thead><tbody>';
     var groups = byLoc(f.roster, rows, function (a) { return a.name; }), multi = groups.length > 1;
     var tot = function (L) { var n = 0, sc = 0, sn = 0, bk = 0, dc = 0, as = 0, op = 0; L.forEach(function (a) { n += a.n; if (a.avg != null) { sc += a.avg * a.n; sn += a.n; } bk += a.booked || 0; dc += a.decided || 0; as += a.asked || 0; op += a.opps || 0; }); return { n: n, avg: sn ? sc / sn : null, rate: pct(bk, dc), ask: pct(as, op) }; };
     groups.forEach(function (g) { if (multi) { var t0 = tot(g[1]); h += '<tr style="background:#F1EEE8"><td style="font-weight:700;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#14302A">' + esc(g[0]) + ' <span class="mut" style="font-weight:500;text-transform:none;letter-spacing:0">· ' + g[1].length + ' CSR' + (g[1].length === 1 ? '' : 's') + '</span></td><td class="num" style="font-weight:700">' + fmt(t0.n) + '</td><td class="num" style="font-weight:700">' + (t0.avg != null ? t0.avg.toFixed(1) : '—') + '</td><td></td><td class="num" style="font-weight:700">' + p1(t0.rate) + '</td><td class="num" style="font-weight:700">' + p1(t0.ask) + '</td><td class="num" style="font-weight:700" data-mvloc="' + esc(g[1].map(function (a) { return String(a.name || '').toLowerCase(); }).join('|')) + '"><span class="mut">…</span></td><td></td></tr>'; }
@@ -570,12 +570,74 @@ export function mountOpsisQA(ROOT, cfg) {
       h += '<tr class="click" data-agent="' + esc(a.name) + '" tabindex="0"><td><div style="display:flex;align-items:center;gap:8px' + (multi ? ';padding-left:10px' : '') + '">' + avatar(a.name, 22) + '<b style="font-weight:600;white-space:nowrap">' + esc(a.name) + '</b></div></td><td class="num">' + fmt(a.n) + '</td><td class="num">' + (a.avg != null ? a.avg.toFixed(1) : '—') + '</td><td>' + (a.d == null ? '<span class="mut" style="font-size:11.5px">new</span>' : delta(a.avg, a.pavg, '')) + '</td><td class="num">' + p1(pct(a.booked, a.decided)) + '</td><td class="num">' + p1(pct(a.asked, a.opps)) + '</td><td class="num" data-mvcard="' + esc(String(a.name || '').toLowerCase()) + '"><span class="mut">…</span></td><td class="mut" aria-hidden="true">›</td></tr>';
     }); });
     $('fmovers').innerHTML = h + '</tbody></table></div>';
+    MV = { brand: S.brand, start: S.start, end: S.end, card: null, groups: groups.map(function (g) { var t0 = tot(g[1]); return { loc: multi ? g[0] : null, tot: t0, rows: g[1] }; }) };
+    [].forEach.call($('fmovers').querySelectorAll('[data-mvx]'), function (b) { b.onclick = function () { mvExport(b.getAttribute('data-mvx')); }; });
     var tk = T;
     api(Object.assign({ action: 'cardcap' }, win())).then(function (cc) { if (tk !== T || !$('fmovers')) return; var m = {};
       (cc && cc.by_agent || []).forEach(function (x) { if (CARD_SKIP.indexOf(x.brand) >= 0) return; var k = String(x.agent || '').toLowerCase(); m[k] = m[k] || { b: 0, a: 0 }; m[k].b += +x.booked || 0; m[k].a += +x.asked_cc || 0; });
+      if (MV) MV.card = m;
       [].forEach.call($('fmovers').querySelectorAll('[data-mvloc]'), function (td) { var b = 0, a = 0; td.getAttribute('data-mvloc').split('|').forEach(function (k) { var v = m[k]; if (v) { b += v.b; a += v.a; } }); td.innerHTML = b ? (100 * a / b).toFixed(1) + '%' : '<span class="mut">—</span>'; });
       [].forEach.call($('fmovers').querySelectorAll('[data-mvcard]'), function (td) { var v = m[td.getAttribute('data-mvcard')]; td.innerHTML = v && v.b ? '<span title="' + fmt(v.a) + ' of ' + fmt(v.b) + ' booked service calls">' + (100 * v.a / v.b).toFixed(1) + '%</span>' : '<span class="mut">—</span>'; });
     }).catch(function () { [].forEach.call(($('fmovers') || document).querySelectorAll('[data-mvcard]'), function (td) { td.innerHTML = '<span class="mut">—</span>'; }); });
+  }
+  // Performance export (Becky 11/2): CSV, Excel, and a landscape "scoreboard" PDF sized for a TV or bulletin board.
+  var MV = null;
+  function mvCard(names) { var m = MV && MV.card; if (!m) return null; var b = 0, a = 0; names.forEach(function (n) { var v = m[String(n || '').toLowerCase()]; if (v) { b += v.b; a += v.a; } }); return b ? 100 * a / b : null; }
+  function mvRows() {
+    var out = [], r1 = function (v) { return v == null ? '' : Math.round(v * 10) / 10; };
+    MV.groups.forEach(function (g) {
+      g.rows.forEach(function (a) { out.push([g.loc || '', a.name, a.n, r1(a.avg), a.d == null ? 'new' : r1(a.d), r1(pct(a.booked, a.decided)), r1(pct(a.asked, a.opps)), r1(mvCard([a.name]))]); });
+      if (g.loc) out.push([g.loc + ' total', '', g.tot.n, r1(g.tot.avg), '', r1(g.tot.rate), r1(g.tot.ask), r1(mvCard(g.rows.map(function (a) { return a.name; })))]);
+    });
+    return out;
+  }
+  var MV_COLS = ['Location', 'CSR', 'Scored calls', 'Avg QA score', 'Change vs before', 'Booking rate %', 'Booking ask rate %', 'Card ask rate %'];
+  function mvExport(kind) {
+    if (!MV) return;
+    var name = 'performance-' + String(MV.brand || 'all').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + MV.start + '-to-' + MV.end;
+    if (kind === 'csv') { sheetsCsv(name, [{ title: (MV.brand || 'All brands') + ' · Performance · ' + fdate(MV.start) + ' – ' + fdate(MV.end), cols: MV_COLS, rows: mvRows() }]); return; }
+    if (kind === 'xlsx') { sheetsXlsx(name, [{ sheet: 'Performance', cols: MV_COLS, rows: mvRows() }]).catch(function (e) { toast(e.message); }); return; }
+    mvBoard();
+  }
+  function mvBoard() {
+    var all = []; MV.groups.forEach(function (g) { g.rows.forEach(function (a) { all.push(a); }); });
+    var n = all.length + MV.groups.filter(function (g) { return g.loc; }).length;
+    var fs = n <= 10 ? 17 : n <= 16 ? 14 : n <= 22 ? 12 : 11;
+    var scol = function (v) { return v == null ? '#8A918D' : v >= 80 ? '#1F7A4D' : v >= 60 ? '#B9741C' : '#B3261E'; };
+    var sbg = function (v) { return v == null ? '#F1EEE8' : v >= 80 ? '#E3F2E9' : v >= 60 ? '#FBF0DC' : '#FBE3E1'; };
+    var rcol = function (v) { return v == null ? '#8A918D' : v >= 60 ? '#1F7A4D' : '#B3261E'; };
+    var pc = function (v) { return v == null ? '—' : Math.round(v) + '%'; };
+    var chg = function (a) { if (a.d == null) return '<span style="color:#8A918D;font-size:.8em">new</span>'; var d = Math.round(a.d * 10) / 10; if (Math.abs(d) < 0.5) return '<span style="color:#8A918D">–</span>'; return '<span style="color:' + (d > 0 ? '#1F7A4D' : '#B3261E') + ';font-weight:700">' + (d > 0 ? '▲ ' : '▼ ') + Math.abs(d).toFixed(1) + '</span>'; };
+    var elig = all.filter(function (a) { return a.n >= 10 && a.avg != null; }).sort(function (a, b) { return b.avg - a.avg; });
+    var top = elig.slice(0, 3), most = all.filter(function (a) { return a.d != null && a.d > 0 && a.n >= 10; }).sort(function (a, b) { return b.d - a.d; })[0];
+    var medal = ['#C9A227', '#9AA3A8', '#B87333'];
+    var tops = top.map(function (a, i) { return '<div class="card"><div class="rk" style="background:' + medal[i] + '">' + (i + 1) + '</div><div><div class="nm">' + esc(a.name) + '</div><div class="mt">' + a.avg.toFixed(1) + ' QA score · ' + pc(pct(a.booked, a.decided)) + ' booked</div></div></div>'; }).join('') +
+      (most ? '<div class="card"><div class="rk" style="background:#2F7D5B">▲</div><div><div class="nm">' + esc(most.name) + '</div><div class="mt">Most improved · up ' + most.d.toFixed(1) + ' points</div></div></div>' : '');
+    var body = '';
+    MV.groups.forEach(function (g) {
+      if (g.loc) body += '<tr class="loc"><td colspan="2">' + esc(g.loc) + '</td><td>' + fmt(g.tot.n) + '</td><td>' + (g.tot.avg != null ? g.tot.avg.toFixed(1) : '—') + '</td><td></td><td>' + pc(g.tot.rate) + '</td><td>' + pc(g.tot.ask) + '</td><td>' + pc(mvCard(g.rows.map(function (a) { return a.name; }))) + '</td></tr>';
+      g.rows.slice().sort(function (x, y) { return (y.avg == null ? -1 : y.avg) - (x.avg == null ? -1 : x.avg); }).forEach(function (a, i) { var rt = pct(a.booked, a.decided), ak = pct(a.asked, a.opps), cd = mvCard([a.name]);
+        body += '<tr><td class="ix">' + (i + 1) + '</td><td class="who">' + esc(a.name) + '</td><td>' + fmt(a.n) + '</td><td><span class="pill" style="color:' + scol(a.avg) + ';background:' + sbg(a.avg) + '">' + (a.avg != null ? a.avg.toFixed(1) : '—') + '</span></td><td>' + chg(a) + '</td><td style="color:' + rcol(rt) + ';font-weight:700">' + pc(rt) + '</td><td>' + pc(ak) + '</td><td>' + pc(cd) + '</td></tr>'; });
+    });
+    var logo = (document.querySelector('#oqa .logo img') || {}).src || '';
+    var gen = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    var title = (MV.brand || 'All brands') + ' · CSR Scoreboard';
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title><style>@page{size:landscape;margin:8mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+      'body{margin:0;font-family:Montserrat,"Segoe UI",Arial,sans-serif;color:#1C2421;background:#fff;font-size:' + fs + 'px}' +
+      '.hd{display:flex;align-items:center;justify-content:space-between;background:#14302A;color:#fff;border-radius:14px;padding:.9em 1.2em}.hd h1{margin:0;font-size:2em;letter-spacing:-.02em}.hd .p{opacity:.8;font-size:.95em;margin-top:.2em}.hd img{max-height:3em;max-width:12em;background:#fff;border-radius:8px;padding:.3em .6em}' +
+      '.tops{display:flex;gap:.7em;margin:.8em 0}.card{flex:1;display:flex;align-items:center;gap:.7em;border:1px solid #E8E4DC;border-radius:12px;padding:.6em .8em;background:#FAF8F4}.rk{width:2.2em;height:2.2em;border-radius:99px;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}.nm{font-weight:700;font-size:1.05em}.mt{color:#5F6763;font-size:.8em}' +
+      'table{width:100%;border-collapse:separate;border-spacing:0}th{background:#F1EEE8;color:#3B4541;font-size:.7em;text-transform:uppercase;letter-spacing:.06em;padding:.6em .5em;text-align:center}th:nth-child(2){text-align:left}' +
+      'td{padding:.42em .5em;text-align:center;border-bottom:1px solid #EEEAE2;font-variant-numeric:tabular-nums}td.who{text-align:left;font-weight:600}td.ix{color:#8A918D;width:2em;font-size:.85em}tr{page-break-inside:avoid}' +
+      'tr.loc td{background:#E6F0EA;color:#14302A;font-weight:800;text-transform:uppercase;letter-spacing:.05em;font-size:.8em;text-align:center}tr.loc td:first-child{text-align:left}' +
+      '.pill{display:inline-block;min-width:3.4em;padding:.15em .5em;border-radius:8px;font-weight:800}' +
+      '#bd{width:1000px;margin:0 auto}.key{display:flex;justify-content:space-between;color:#5F6763;font-size:.72em;margin-top:.7em}.key span b{display:inline-block;width:.8em;height:.8em;border-radius:3px;margin:0 .3em -.05em 0}</style></head><body><div id="bd">' +
+      '<div class="hd"><div><h1>' + esc(MV.brand || 'All brands') + ' Scoreboard</h1><div class="p">' + esc(fdate(MV.start) + ' – ' + fdate(MV.end)) + ' · ' + fmt(all.length) + ' CSRs · change is vs the ' + daysBetween(MV.start, MV.end) + ' days before</div></div>' + (logo ? '<img src="' + esc(logo) + '" alt="">' : '') + '</div>' +
+      (tops ? '<div class="tops">' + tops + '</div>' : '') +
+      '<table><thead><tr><th></th><th>CSR</th><th>Scored calls</th><th>QA score</th><th>Change</th><th>Booking rate</th><th>Asked to book</th><th>Card ask</th></tr></thead><tbody>' + body + '</tbody></table>' +
+      '<div class="key"><span><b style="background:#E3F2E9"></b>80+ &nbsp; <b style="background:#FBF0DC"></b>60–79 &nbsp; <b style="background:#FBE3E1"></b>under 60 · Top 3 need 10+ scored calls · Card ask = booked residential service calls</span><span>Opsis QA · ' + esc(gen) + '</span></div></div>' +
+      // Fit everything on one landscape page: shrink the whole board if it runs taller than a page.
+      '<scr' + 'ipt>(function(){function fit(){var b=document.getElementById("bd");b.style.zoom=1;var z=Math.min(1,700/b.scrollHeight);b.style.zoom=z;}window.addEventListener("load",fit);fit();})();</scr' + 'ipt></body></html>';
+    var w = pdfWin(); w.document.open(); w.document.write(html); w.document.close();
   }
   // Brand / CSR page (Rob 10/29): three tiles instead of tabs. Customer reasons (reasons + objections grouped),
   // what the CSR missed (call-flow steps), and what callers wanted. Time of day removed.
