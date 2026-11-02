@@ -1,0 +1,628 @@
+import NotificationBell from './components/NotificationBell'
+import HeaderTaskBar from './components/HeaderTaskBar'
+import { useState, useEffect } from 'react'
+import { Routes, Route, useLocation } from 'react-router-dom'
+import { initTheme } from './lib/theme'
+import { supabase } from './lib/supabase'
+import ChangePassword from './components/ChangePassword'
+import { useAuth } from './lib/auth'
+import Login from './components/Login'
+import ResetPassword from './components/ResetPassword'
+import Sidebar from './components/Sidebar'
+import Certifications from './modules/Certifications'
+import MyCertifications from './modules/MyCertifications'
+import MyCourses from './modules/MyCourses'
+import Dashboard from './modules/Dashboard'
+import TestLead from './modules/TestLead'
+import { Placeholder } from './modules/Placeholders'
+
+// Shown instead of a page when the signed-in role isn't allowed to see it.
+// Previously these routes simply weren't registered, so a denied user fell
+// through to "*" and landed on the Dashboard with no explanation — which reads
+// as "the app is broken" rather than "you don't have access".
+const NoAccess = () => (
+  <Placeholder
+    title="No access"
+    note="You don't have access to this area. If you think that's wrong, contact an admin."
+  />
+)
+import PeopleTags from './modules/PeopleTags'
+import CourseBuilder from './modules/CourseBuilder'
+import Schedule from './modules/Schedule'
+import ScheduleBuilder from './modules/ScheduleBuilder'
+import Positions from './modules/Positions'
+import ScheduleInsights from './modules/ScheduleInsights'
+import Chat from './modules/Chat'
+import { canAny } from './lib/permissions'
+import Settings from './modules/Settings'
+import RolesPermissions from './modules/RolesPermissions'
+import ServiceAccount from './modules/ServiceAccount'
+import Projects from './modules/Projects'
+import Clients from './modules/Clients'
+import Reporting from './modules/Reporting'
+import HourlyReports from './modules/HourlyReports'
+import Updates from './modules/Updates'
+import OpsisWeekly from './modules/OpsisWeekly'
+import Notes from './modules/Notes'
+import Calendar from './modules/Calendar'
+import WeeklySync from './modules/WeeklySync'
+import Notifications from './modules/Notifications'
+import KnowledgeBase from './modules/KnowledgeBase'
+import Scorecard from './modules/Scorecard'
+import QualityAudit from './modules/QualityAudit'
+import CallQA from './modules/CallQA'
+// Opsis QA client portal v2 (2026-10-20): new look for garageco.opsiscx.com. Client logins get it
+// when clients.portal_v2 = true; Opsis QA staff can preview it at /opsis-qa.
+import OpsisQAPortal from './modules/OpsisQAPortal'
+import HelpCenter from './modules/HelpCenter'
+import Coaching from './modules/Coaching'
+import Tokens from './modules/Tokens'
+import TeamFavorites from './modules/TeamFavorites'
+import Meetings from './modules/Meetings'
+import TimeAdmin from './modules/TimeAdmin'
+import NewHireSurvey from './modules/NewHireSurvey'
+// GarageCo CSR coaching scorecards (2026-09-27). One module, three views:
+// CSR (own only), client manager (their brand / all brands), Opsis QA staff (edit).
+import CsrScorecard from './modules/CsrScorecard'
+// --- Who's On: live check-ins (LiveStatus) + Slack-style team presence board ---
+import LiveStatus from './modules/LiveStatus'
+import { usePresenceHeartbeat, MyStatusButton, TeamStatus } from './components/Presence'
+import { ViewAsMenu } from './components/RolePreview'
+import PortalMenu, { StaffPortal } from './components/PortalMenu'
+import PushEnrollmentBanner from './components/PushEnrollmentBanner'
+import ChatPopButton from './components/ChatPopButton'
+import GlobalSearch, { BackButton } from './components/GlobalSearch'
+import Seasonal from './components/Seasonal'
+import MeetingReminder from './components/MeetingReminder'
+import LsaReminderPopup from './components/LsaReminderPopup'
+import PhotoNudge from './components/PhotoNudge'
+import UpdatePopup from './components/UpdatePopup'
+import ReminderPopup from './components/ReminderPopup'
+import { UnreadProvider } from './lib/unread'
+// --- hiring pipeline ---
+import ApplicationForm from './modules/ApplicationForm'
+import AssessmentForm from './modules/AssessmentForm'
+import HiringDashboard from './modules/HiringDashboard'
+import MockCallScheduler from './modules/MockCallScheduler'
+import TradeBoardChannel from './modules/TradeBoardChannel'
+import { MyCallReviews } from './modules/QualityAudit'
+// --- sales pipeline ---
+import SalesDashboard from './modules/SalesDashboard'
+// Website chat inbox - conversations from opsiscx.com, where Turri hands off
+// to a person. Gated by the 'web_chat' page-key in lib/permissions.js.
+import WebChat from './modules/WebChat'
+// --- RSN pipeline (tag/role-gated variant of Sales with LinkedIn stages) ---
+import RsnPipeline from './modules/RsnPipeline'
+import { useRsnAccess } from './lib/rsnAccess'
+// --- Finance (Admins/Owners) and the staff purchase form; both gated by the database ---
+import Finance from './modules/Finance'
+import SubmitPurchase from './modules/SubmitPurchase'
+import Profile from './modules/Profile'
+import { useFinanceAccess } from './lib/financeAccess'
+// --- SMS consent (2026-10-15) ---
+// Public opt-in form at /sms-consent (Twilio A2P 10DLC reviewers must be able to
+// reach it without a login), admin report at /sms-consents, and a dismissible
+// banner nudging signed-in staff who haven't answered yet. Records live in the
+// append-only sms_consents table; profiles.sms_enabled follows the latest answer.
+import SmsConsentForm from './modules/SmsConsentForm'
+import SmsConsentReport from './modules/SmsConsentReport'
+import SmsConsentBanner from './components/SmsConsentBanner'
+// --- Browser calling (2026-10-15) ---
+// Twilio Voice JS SDK, click-to-call. Everyone EXCEPT agents, clients and CSRs can
+// call (trainees never reach AuthedApp). Phone numbers are never sent to the
+// browser — buttons pass a profile id and the server looks the number up.
+// Typing a raw number on the dial pad is admin-only. All of this is also enforced
+// server-side (can_place_calls() + the voice-token / voice-twiml edge functions).
+// Add a call button anywhere:  import { CallButton } from './lib/voice'
+//                              <CallButton profileId={p.id} name={p.full_name} />
+import { VoiceProvider } from './lib/voice'
+import Softphone from './components/Softphone'
+import Phone from './modules/Phone'
+// --- Dialer (Opsis Voice phase 1, 2026-10-15) ---
+// Dialer = agent workspace (Ready → next contact → call → disposition).
+// Campaigns = managers build campaigns, assign agents, load the queue, HubSpot webhook.
+// Agents can only dial contacts the server hands them on campaigns they're assigned to;
+// the calling token itself is gated by can_use_softphone() in the database.
+import Dialer from './modules/Dialer'
+import Campaigns from './modules/Campaigns'
+// Inbound = business line routing + AI receptionist (page itself checks line membership / manager).
+import Inbound from './modules/Inbound'
+// Scripts = the guided call screens agents see (inbound + outbound); managers build them here.
+import Scripts from './modules/Scripts'
+// Call Reports = Five9-style custom reports (Call Log, Agent Occupancy, List Details) + scheduled emails.
+import CallReports from './modules/CallReports'
+const NO_CALL_ROLES = ['agent', 'client', 'csr']
+const canPlaceCalls = appRole => !NO_CALL_ROLES.includes(appRole)
+// Wraps the signed-in app in the calling provider. The Twilio library only loads on a
+// first call. canCallPeople = team click-to-call (not agents); canDialNumbers = admins.
+function MaybeVoice({ enabled, canCallPeople, canDialNumbers, children }) {
+  return enabled
+    ? <VoiceProvider canCallPeople={canCallPeople} canDialNumbers={canDialNumbers}>{children}<Softphone /></VoiceProvider>
+    : children
+}
+// A tiny wrapper so the assessment route can read :appId from the URL and
+// pass it into the form as a prop.
+import { useParams } from 'react-router-dom'
+// /profile = your own page; /profile/:id = anyone's page (Admins and Owners only; the database enforces it)
+function ProfileRoute() {
+  const { id } = useParams()
+  return <Profile key={id || 'me'} profileId={id} />
+}
+function AssessmentRoute() {
+  const { appId } = useParams()
+  return <AssessmentForm applicationId={appId} />
+}
+// Public fallback for the old emailed /mock-call/:appId link. The normal path
+// is now the "Schedule my mock call" tab inside the onboarding shell — by this
+// stage candidates have a Command Center login, so they book there the same way
+// they do their certification.
+function MockCallRoute() {
+  const { appId } = useParams()
+  return <MockCallScheduler appId={appId} />
+}
+// Who's On — live check-in / current-task view (LiveStatus, shift-based) PLUS the
+// team presence board (who's online, self-set status, OOO). LiveStatus self-scopes:
+// admins/managers see the whole team. Gated by the 'live_status' page-key.
+function LiveStatusPage() {
+  return (
+    <div>
+      <div style={{ marginBottom: 12 }}>
+        <h1 className="page-title">Who's On</h1>
+        <p className="page-sub">Live check-ins and what each person is working on right now.</p>
+      </div>
+      <LiveStatus />
+      <div style={{ marginTop: 28, marginBottom: 12 }}>
+        <h2 className="page-title" style={{ fontSize: 20 }}>Team status</h2>
+        <p className="page-sub">Who's online, everyone's self-set status, and who's out of office. Set your own from the button up top.</p>
+      </div>
+      <TeamStatus />
+    </div>
+  )
+}
+export default function App() {
+  const { session, loading, isAdmin, appRole, clientId, inTraining, signOut } = useAuth()
+  const [navOpen, setNavOpen] = useState(false)
+  const location = useLocation()
+  // apply the saved light/dark/system theme as early as possible
+  useEffect(() => { initTheme() }, [])
+  if (loading) return <div className="loading-screen">Loading…</div>
+  // ---- PUBLIC routes (no login required) ----
+  // These must be checked BEFORE the login gate so job applicants who aren't
+  // signed in can reach the application and assessment forms.
+  // /sms-consent is the agent SMS opt-in page — public on purpose (carrier/Twilio
+  // review). Note it's an exact match: the admin report at /sms-consents is NOT public.
+  const publicPaths = ['/apply', '/assessment', '/sms-consent']
+  const isPublic = publicPaths.some(p => location.pathname === p || location.pathname.startsWith(p + '/'))
+  // /mock-call is public ONLY for someone with no session at all (the legacy
+  // emailed link). Anyone signed in — client portal, trainee, staff — must fall
+  // through to their own shell below, so this can never pre-empt the
+  // appRole === 'client' gate.
+  const isMockPublic = !session && (location.pathname === '/mock-call' || location.pathname.startsWith('/mock-call/'))
+  // Password-reset landing page (the "Forgot password?" email link). It has to
+  // render before the login gate: the link signs the person in with a short
+  // recovery session, and without this route they were dropped into the app
+  // (or the login screen) with no way to set the new password.
+  if (location.pathname === '/reset-password') return <ResetPassword />
+  if (isPublic || isMockPublic) {
+    return (
+      <Routes>
+        <Route path="/apply" element={<ApplicationForm />} />
+        <Route path="/assessment/:appId" element={<AssessmentRoute />} />
+        <Route path="/assessment" element={<AssessmentForm />} />
+        <Route path="/sms-consent" element={<SmsConsentForm />} />
+        <Route path="/mock-call/:appId" element={<MockCallRoute />} />
+        <Route path="/mock-call" element={<Login />} />
+      </Routes>
+    )
+  }
+  if (!session) return <Login />
+  // External CSR login (a brand's front-desk employee in the GarageCo coaching
+  // program): a branded shell that shows ONLY their own coaching scorecard.
+  // Must come before every other gate. The database enforces this too — CSR
+  // logins are blocked from every table/RPC except their scorecard.
+  if (appRole === 'csr') return <CsrPortal session={session} />
+  // Opsis QA portal v2 preview for Opsis QA staff — exactly what a client account admin sees
+  // (GarageCo by default). Full-screen, outside the Command Center shell. Changes made here are real.
+const isQaStaff = isAdmin || ['owner', 'admin', 'asc', 'certification', 'quality', 'marketing', 'support'].includes(String(appRole || '').toLowerCase())
+  if (location.pathname === '/opsis-qa' && isQaStaff && !inTraining) {
+    // ?client=<id> picks the portal (Portals ▾ menu); no param = GarageCo, as before.
+    return <StaffPortal OpsisQAPortal={OpsisQAPortal} defaultLogo={GARAGECO_PORTAL_LOGO} hasCsrs={canAny(appRole, 'quality_audit.call_reviews')} onSignOut={() => signOut()} />
+  }
+  // External client-portal login: a branded, single-purpose shell that shows ONLY
+  // Call QA (their own data, RLS-enforced — CallRail/LightSpeed only, never Five9)
+  // plus the CSR Scorecards for the CSRs they manage.
+  // No sidebar, no other modules.
+  if (appRole === 'client') return <ClientPortal session={session} clientId={clientId} />
+  // New hires in the pipeline are locked to a Certification-only view until an
+  // admin marks them Hired (which clears in_training). No sidebar, no other modules.
+  if (inTraining) return <TraineePortal session={session} />
+  return <AuthedApp session={session} isAdmin={isAdmin} appRole={appRole} navOpen={navOpen} setNavOpen={setNavOpen} location={location} />
+}
+// CSR portal — branded, single-page shell with the CSR's own coaching scorecard.
+function CsrPortal({ session }) {
+  const { signOut } = useAuth()
+  const [brand, setBrand] = useState(null)          // { portal_name, portal_accent, portal_logo_url }
+  const [mustChange, setMustChange] = useState(null) // null = still checking
+
+  useEffect(() => {
+    let active = true
+    supabase.from('profiles').select('must_change_password').eq('id', session.user.id).single()
+      .then(({ data }) => { if (active) setMustChange(!!data?.must_change_password) })
+      .catch(() => { if (active) setMustChange(false) })
+    return () => { active = false }
+  }, [session.user.id])
+
+  useEffect(() => {
+    let active = true
+    // CSRs can't read the clients table directly; branding comes from an RPC.
+    supabase.rpc('csr_portal_branding')
+      .then(({ data }) => { if (active) setBrand(data || {}) })
+      .catch(() => { if (active) setBrand({}) })
+    return () => { active = false }
+  }, [session.user.id])
+
+  if (mustChange === null || brand === null) return <div className="loading-screen">Loading…</div>
+  if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
+
+  const accent = brand.portal_accent || '#0f766e'
+  const name = brand.portal_name || 'GarageCo'
+  return (
+    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+      <header style={{ background: accent, color: '#fff', padding: '0 20px', minHeight: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {brand.portal_logo_url
+            ? <img src={brand.portal_logo_url} alt={name} style={{ height: 32, width: 'auto', borderRadius: 4, background: '#fff', padding: 2 }} />
+            : <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: 0.3 }}>{name}</div>}
+          <span style={{ fontSize: 13, opacity: 0.85 }}>My Coaching Scorecard</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <span style={{ fontSize: 13, opacity: 0.9 }}>{session.user.email}</span>
+          <button onClick={() => signOut()} style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Sign out</button>
+        </div>
+      </header>
+      <CsrScorecard supabase={supabase} mode="csr" accent={accent} />
+      <footer style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: '24px 0 32px' }}>Powered by Opsis CX</footer>
+    </div>
+  )
+}
+// External client portal — a branded, single-page shell that renders ONLY the
+// Call QA module in portal mode, plus CSR Scorecards. Clients see their own calls
+// (RLS-enforced), can export and add notes, but never manager controls or any other module.
+const GARAGECO_PORTAL_LOGO = 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/garageco/logo.png'
+function ClientPortal({ session, clientId }) {
+  const { signOut, user } = useAuth()   // user is needed by PushEnrollmentBanner below
+  const [brand, setBrand] = useState(null)          // { portal_name, portal_accent, portal_logo_url, name }
+  const [mustChange, setMustChange] = useState(null) // null = still checking
+  const [tab, setTab] = useState('qa')                // 'qa' | 'csr'
+  const [hasCsrs, setHasCsrs] = useState(false)       // only show the tab when this login manages CSRs
+  // Portal v2 (clients.portal_v2): the new Opsis QA look. "Classic view" switches back to the
+  // original Call QA screen and is remembered on this device.
+  const [myV2, setMyV2] = useState(null)              // profiles.portal_v2: per-person override (null = follow the client)
+  const [classic, setClassic] = useState(() => { try { return localStorage.getItem('oqa-classic') === '1' } catch { return false } })
+  const setClassicView = (v) => { setClassic(v); try { localStorage.setItem('oqa-classic', v ? '1' : '0') } catch { /* private mode */ } }
+
+  useEffect(() => {
+    let active = true
+    supabase.from('profiles').select('must_change_password, portal_v2').eq('id', session.user.id).single()
+      .then(({ data }) => { if (active) { setMustChange(!!data?.must_change_password); setMyV2(data?.portal_v2 ?? null) } })
+      .catch(() => { if (active) setMustChange(false) })
+    return () => { active = false }
+  }, [session.user.id])
+
+  useEffect(() => {
+    let active = true
+    if (!clientId) { setBrand({}); return }
+    supabase.from('clients').select('name, portal_name, portal_accent, portal_logo_url, portal_v2').eq('id', clientId).maybeSingle()
+      .then(({ data }) => { if (active) setBrand(data || {}) })
+      .catch(() => { if (active) setBrand({}) })
+    return () => { active = false }
+  }, [clientId])
+
+  useEffect(() => {
+    let active = true
+    supabase.rpc('csr_roster')
+      .then(({ data }) => { if (active) setHasCsrs(Array.isArray(data) && data.length > 0) })
+      .catch(() => {})
+    return () => { active = false }
+  }, [session.user.id])
+
+  if (mustChange === null || brand === null) return <div className="loading-screen">Loading…</div>
+  if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
+
+  const newView = myV2 ?? !!brand.portal_v2
+  if (newView && !classic) {
+    return <OpsisQAPortal logo={brand.portal_logo_url || undefined} hasCsrs={hasCsrs} csrMode="manager"
+      onClassic={() => setClassicView(true)} onSignOut={() => signOut()} />
+  }
+  const accent = brand.portal_accent || '#0f766e'
+  const name = brand.portal_name || brand.name || 'Call QA'
+  const tabBtn = (k, label) => (
+    <button onClick={() => setTab(k)} style={{ background: tab === k ? '#fff' : 'rgba(255,255,255,0.12)', color: tab === k ? accent : '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>{label}</button>
+  )
+  return (
+    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+      <header style={{ background: accent, color: '#fff', padding: '0 20px', height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {brand.portal_logo_url
+            ? <img src={brand.portal_logo_url} alt={name} style={{ height: 32, width: 'auto', borderRadius: 4, background: '#fff', padding: 2 }} />
+            : <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: 0.3 }}>{name}</div>}
+          {hasCsrs
+            ? <div style={{ display: 'flex', gap: 6 }}>{tabBtn('qa', 'Call Quality & Conversion')}{tabBtn('csr', 'CSR Scorecards')}</div>
+            : <span style={{ fontSize: 13, opacity: 0.85 }}>Call Quality &amp; Conversion</span>}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          {newView && <button onClick={() => setClassicView(false)} style={{ background: '#fff', color: accent, border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>Try the new view</button>}
+          <span style={{ fontSize: 13, opacity: 0.9 }}>{session.user.email}</span>
+          <button onClick={() => signOut()} style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Sign out</button>
+        </div>
+      </header>
+      {tab === 'csr' && hasCsrs ? <CsrScorecard supabase={supabase} mode="manager" accent={accent} /> : <CallQA portal />}
+      <footer style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: '24px 0 32px' }}>Powered by Opsis CX</footer>
+    </div>
+  )
+}
+// New-hire onboarding shell — a Certification-only view. New hires keep their agent
+// account (so certification data works exactly as it does for agents) but are locked
+// here — no sidebar, no other modules — until an admin marks them Hired, which clears
+// in_training (finish_onboarding). Questions route to onboarding@opsiscx.com.
+function TraineePortal({ session }) {
+  const { signOut } = useAuth()
+  const [tab, setTab] = useState('certs')
+  const [mustChange, setMustChange] = useState(null)
+  // Is this person at the mock-call step? If so they get a booking tab here —
+  // same place they do their certification, no separate link to keep track of.
+  const [mock, setMock] = useState(null)   // {ok, status, booked, provider_name}
+  useEffect(() => {
+    let active = true
+    supabase.from('profiles').select('must_change_password').eq('id', session.user.id).single()
+      .then(({ data }) => { if (active) setMustChange(!!data?.must_change_password) })
+      .catch(() => { if (active) setMustChange(false) })
+    return () => { active = false }
+  }, [session.user.id])
+  useEffect(() => {
+    let active = true
+    supabase.rpc('get_my_mock_application')
+      .then(({ data }) => {
+        if (!active) return
+        setMock(data || { ok: false })
+        // Land straight on booking when that's the step they're on — either
+        // because they followed the email link or because it's simply what's
+        // next for them.
+        if (data?.ok && !data?.booked) setTab('mock')
+      })
+      .catch(() => { if (active) setMock({ ok: false }) })
+    return () => { active = false }
+  }, [session.user.id])
+  // 2026-09-03 (Becky): once the certification is PASSED, a hire may start
+  // taking intervals ("nesting") before the pipeline reaches Hired — so the
+  // Schedule and Trade Board unlock here. Everything else stays locked.
+  const [certPassed, setCertPassed] = useState(false)
+  useEffect(() => {
+    let active = true
+    supabase.from('agent_cert_records').select('id').eq('profile_id', session.user.id).eq('status', 'passed').limit(1)
+      .then(({ data }) => { if (active) setCertPassed(!!(data && data.length)) })
+      .catch(() => {})
+    return () => { active = false }
+  }, [session.user.id])
+  if (mustChange === null) return <div className="loading-screen">Loading…</div>
+  if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
+
+  const tabBtn = (k, label) => (
+    <button onClick={() => setTab(k)} style={{ background: tab === k ? '#0077B6' : 'transparent', color: tab === k ? '#fff' : '#0f172a', border: '1px solid #0077B6', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>{label}</button>
+  )
+  return (
+    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+      <header style={{ background: '#0077B6', color: '#fff', padding: '0 20px', height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontWeight: 800, fontSize: 18 }}>Opsis Command Center</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <span style={{ fontSize: 13, opacity: 0.9 }}>{session.user.email}</span>
+          <button onClick={() => signOut()} style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Sign out</button>
+        </div>
+      </header>
+      <div style={{ maxWidth: 1000, margin: '0 auto', padding: '20px 16px 40px' }}>
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 14 }}>
+          {mock?.ok && !mock?.booked
+            ? <>🎧 You're almost done! Your last step is a <strong>mock call</strong> with {mock.provider_name || 'our team'} — pick a time on the <strong>Schedule my mock call</strong> tab below.</>
+            : mock?.ok && mock?.booked
+              ? <>🎧 Your <strong>mock call</strong> is booked — see the details on the <strong>My mock call</strong> tab below.</>
+              : <>👋 Welcome! Your first step is <strong>certification</strong> — complete it below to move forward in onboarding. The rest of Command Center unlocks once you're all set.</>}
+          <div style={{ marginTop: 6 }}>Questions? Email <a href="mailto:onboarding@opsiscx.com" style={{ color: '#1d4ed8', fontWeight: 600 }}>onboarding@opsiscx.com</a>.</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+          {tabBtn('certs', 'My Certifications')}
+          {tabBtn('courses', 'My Courses')}
+          {mock?.ok && tabBtn('mock', mock?.booked ? '🎧 My mock call' : '🎧 Schedule my mock call')}
+          {certPassed && tabBtn('schedule', '◷ Schedule')}
+          {certPassed && tabBtn('trades', '🔁 Trade Board')}
+        </div>
+        {certPassed && (tab === 'schedule' || tab === 'trades') && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#14532d', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}>
+            🎉 Certification passed — you can pick up intervals while you finish onboarding. Accepting an interval is a commitment to service it.
+          </div>
+        )}
+        {tab === 'mock' ? <MockCallScheduler embedded />
+          : tab === 'schedule' && certPassed ? <Schedule />
+          : tab === 'trades' && certPassed ? <TradeBoardChannel />
+          : tab === 'certs' ? <MyCertifications /> : <MyCourses />}
+      </div>
+      <footer style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: '24px 0 32px' }}>Opsis CX</footer>
+    </div>
+  )
+}
+// Everything behind the login gate. Split out so the must-change-password
+// check can run with a session guaranteed to exist.
+function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location }) {
+  // RSN pipeline visibility — DB-gated (admins, marketing role, or 'access/rsn' tag).
+  const rsnOk = useRsnAccess()
+  const fin = useFinanceAccess()   // null while checking, then { manager, submitter }
+  // Presence heartbeat — quietly marks this user online while the app is open
+  // (feeds the Who's On page and presence dots).
+  usePresenceHeartbeat()
+  // Agents handed the shared temporary password must set their own before
+  // they can use the app. Checked once, on load.
+  const [mustChange, setMustChange] = useState(null) // null = still checking
+  useEffect(() => {
+    let active = true
+    supabase.from('profiles').select('must_change_password').eq('id', session.user.id).single()
+      .then(({ data }) => { if (active) setMustChange(!!data?.must_change_password) })
+      .catch(() => { if (active) setMustChange(false) }) // never lock someone out on an error
+    return () => { active = false }
+  }, [session.user.id])
+  if (mustChange === null) return <div className="loading-screen">Loading…</div>
+  if (mustChange) return <ChangePassword forced onDone={() => setMustChange(false)} />
+  return (
+    <MaybeVoice enabled canCallPeople={canPlaceCalls(appRole)} canDialNumbers={!!isAdmin}>
+    <UnreadProvider>
+      {/* Full-screen meeting alert at T-10 and T-2. Internal staff only —
+          it sits inside AuthedApp, which the client portal never reaches. */}
+      <MeetingReminder />
+      <LsaReminderPopup />
+      <PhotoNudge />
+      <UpdatePopup />
+      {/* holiday decorations (date-based; each person can turn off in Settings) */}
+      <Seasonal />
+      <ReminderPopup />
+      <div className="app">
+        <Sidebar open={navOpen} onNavigate={() => setNavOpen(false)} />
+        {/* tap-to-close backdrop, only visible on mobile when the nav is open */}
+        {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
+        <main className="main">
+          {/* Top bar grows instead of overflowing: on smaller screens the right-hand
+              group wraps onto a second row inside the bar (it used to spill out
+              under a fixed 60px bar and cover the page, 2026-11-01). */}
+          <div className="topbar" style={{ height: 'auto', minHeight: 58, flexWrap: 'wrap', rowGap: 8, columnGap: 12, paddingTop: 8, paddingBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+              <button className="nav-toggle" onClick={() => setNavOpen(o => !o)} aria-label="Menu">☰</button>
+              <BackButton />
+              <div className="crumb" style={{ whiteSpace: 'nowrap' }}><b>{titleFor(location.pathname)}</b></div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end', minWidth: 0, marginLeft: 'auto' }}>
+              <GlobalSearch />
+              <ViewAsMenu />
+              <PortalMenu />
+              <MyStatusButton />
+              <HeaderTaskBar />
+              {canAny(appRole, 'chat') && <ChatPopButton />}
+              <NotificationBell />
+            </div>
+          </div>
+          <div className="content">
+            {/* Nudge for anyone who hasn't answered the SMS opt-in yet. Never opts
+                anyone in by itself — it links to the real consent form. */}
+            <SmsConsentBanner userId={session.user.id} />
+            {/* Per-device notifications: turns on quietly where already allowed, otherwise
+                a one-tap banner. Never shows on a device where they turned it off. */}
+            <PushEnrollmentBanner profileId={session.user.id} />
+            <Routes>
+              <Route path="/" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <OpsisWeekly />} />
+              <Route path="/calendar" element={<Calendar />} />
+              {/* Mock-call booking for anyone signed in but no longer in_training
+                  (e.g. unlocked early) — trainees get it as a tab instead. */}
+              <Route path="/mock-call" element={<MockCallScheduler embedded />} />
+              <Route path="/mock-call/:appId" element={<MockCallRoute />} />
+              <Route path="/settings" element={<Settings />} />
+                            <Route path="/profile" element={<Profile />} />
+              <Route path="/profile/:id" element={<ProfileRoute />} />
+              <Route path="/roles" element={isAdmin ? <RolesPermissions /> : <NoAccess />} />
+              <Route path="/service-account" element={isAdmin ? <ServiceAccount /> : <NoAccess />} />
+              {/* SMS Consent report — admin only. Also enforced server-side:
+                  sms_consents / sms_consent_status are readable only by is_app_admin(). */}
+              <Route path="/sms-consents" element={isAdmin ? <SmsConsentReport /> : <NoAccess />} />
+              {/* Phone — click-to-call directory + call history. Everyone except agents/clients/CSRs
+                  (matches can_place_calls() on the server). */}
+              <Route path="/phone" element={canPlaceCalls(appRole) ? <Phone /> : <NoAccess />} />
+              {/* Dialer — anyone; the page shows only campaigns they're assigned to (dialer_my_campaigns). */}
+              <Route path="/dialer" element={<Dialer />} />
+              {/* Campaigns — managers (same rule as Phone; RLS can_manage_dialer() enforces it). */}
+              <Route path="/campaigns" element={canPlaceCalls(appRole) ? <Campaigns /> : <NoAccess />} />
+              {/* Inbound — line members + managers (page + RPCs enforce it). */}
+              <Route path="/inbound" element={<Inbound />} />
+              {/* Scripts — managers (RLS can_manage_dialer() on call_scripts enforces it). */}
+              <Route path="/scripts" element={canPlaceCalls(appRole) ? <Scripts /> : <NoAccess />} />
+              {/* Test a web lead — any signed-in team member can submit themselves as an Opsis Overhead Doors (made-up brand) test lead. */}
+              <Route path="/test-lead" element={<TestLead />} />
+              {/* Call Reports — managers (report_data RPC checks can_manage_dialer()). */}
+              <Route path="/reporting/calls" element={canPlaceCalls(appRole) ? <CallReports /> : <NoAccess />} />
+              <Route path="/notifications" element={<Notifications />} />
+              <Route path="/knowledge" element={<KnowledgeBase />} />
+              <Route path="/scorecard" element={canAny(appRole, 'service_performance_scorecard') ? <Scorecard /> : <NoAccess />} />
+              <Route path="/help" element={<HelpCenter />} />
+              <Route path="/quality" element={(canAny(appRole, 'quality_audit.view_own') || canAny(appRole, 'quality_audit.call_reviews')) ? <QualityAudit /> : <NoAccess />} />
+              {/* Internal Call QA (AI) — full manager view incl. Rubric, all campaigns (GarageCo / Lavin / Open Invoices). */}
+              <Route path="/call-qa" element={canAny(appRole, 'quality_audit.call_reviews') ? <CallQA /> : <NoAccess />} />
+              {/* GarageCo CSR coaching scorecards — coaches set focus, notes, activities and
+                  first-1:1 dates here. Editing is also enforced server-side (can_manage_qa()). */}
+              <Route path="/csr-scorecards" element={canAny(appRole, 'quality_audit.call_reviews') ? <CsrScorecard supabase={supabase} mode="staff" /> : <NoAccess />} />
+              <Route path="/my-call-reviews" element={canAny(appRole, 'call_reviews.mine') ? <MyCallReviews /> : <NoAccess />} />
+              <Route path="/schedule" element={<Schedule />} />
+              <Route path="/chat" element={canAny(appRole, 'chat') ? <Chat /> : <NoAccess />} />
+              <Route path="/certifications" element={canAny(appRole, 'certifications.all') ? <Certifications /> : <NoAccess />} />
+              <Route path="/courses" element={canAny(appRole, 'certifications.builder') ? <CourseBuilder /> : <NoAccess />} />
+              <Route path="/my-certifications" element={canAny(appRole, 'certifications.assigned_to_complete') ? <MyCertifications /> : <NoAccess />} />
+              <Route path="/my-courses" element={canAny(appRole, 'certifications.assigned_to_complete') ? <MyCourses /> : <NoAccess />} />
+              <Route path="/projects" element={canAny(appRole, 'project_management') ? <Projects /> : <NoAccess />} />
+              <Route path="/clients" element={canAny(appRole, 'clients.view_only') ? <Clients /> : <NoAccess />} />
+              <Route path="/updates" element={<Updates />} />
+              <Route path="/home" element={<OpsisWeekly />} />
+              <Route path="/notes" element={<Notes />} />
+              <Route path="/coaching" element={canAny(appRole, 'coaching') ? <Coaching /> : <NoAccess />} />
+              <Route path="/meetings" element={canAny(appRole, 'meetings') ? <Meetings /> : <NoAccess />} />
+              <Route path="/live" element={canAny(appRole, 'live_status') ? <LiveStatusPage /> : <NoAccess />} />
+              {/* Time (admin) — find/adjust anyone's tracked time, stop runaway timers.
+                  The Sidebar has linked here since the module landed, but the route was
+                  never registered, so /time fell through to "*" and rendered Dashboard.
+                  TimeAdmin re-checks isAdmin itself and RLS enforces it server-side. */}
+              <Route path="/time" element={<TimeAdmin />} />
+              {/* New Hire Survey — open to any signed-in user. Agents arrive from the
+                  notification link and see only the form; admins/reporting also get
+                  the aggregate results below it. Responses are anonymous by DB design. */}
+              <Route path="/survey" element={<NewHireSurvey />} />
+              <Route path="/tokens" element={canAny(appRole, 'tokens') ? <Tokens /> : <NoAccess />} />
+              <Route path="/get-to-know-you" element={<TeamFavorites />} />{/* everyone; RLS lets you write only your own card */}
+              <Route path="/reporting" element={canAny(appRole, 'reporting') ? <Reporting /> : <NoAccess />} />
+              <Route path="/reporting/hourly" element={canAny(appRole, 'reporting') ? <HourlyReports /> : <NoAccess />} />
+              <Route path="/people" element={canAny(appRole, 'people_and_tags.view_only') ? <PeopleTags /> : <NoAccess />} />
+              <Route path="/hiring" element={canAny(appRole, 'hiring') ? <HiringDashboard /> : <NoAccess />} />
+              {/* Sales pipeline. Gated by the 'sales' page-key — add it to lib/permissions.js
+                  and grant it to the right roles, exactly like 'hiring'. To open it to
+                  everyone temporarily, replace this line with:
+                  <Route path="/sales" element={<SalesDashboard />} /> */}
+              <Route path="/sales/*" element={canAny(appRole, 'sales') ? <SalesDashboard /> : <NoAccess />} />
+              {/* Website chat inbox. Same audience as Sales - a website visitor is a
+                  prospect. The database gate is can_see_sales_pipeline(), so keep the
+                  'web_chat' page-key in step with it or the page loads empty. */}
+              <Route path="/web-chat" element={canAny(appRole, 'web_chat') ? <WebChat /> : <NoAccess />} />
+              {/* RSN pipeline — gated by can_access_rsn_pipeline() (RsnPipeline re-checks on direct hits). */}
+              <Route path="/rsn" element={rsnOk ? <RsnPipeline /> : <NoAccess />} />
+              <Route path="/finance" element={fin === null ? <p className="page-sub">Loading…</p> : fin.manager ? <Finance /> : <NoAccess />} />
+              <Route path="/submit-purchase" element={fin === null ? <p className="page-sub">Loading…</p> : fin.submitter ? <SubmitPurchase /> : <NoAccess />} />
+              <Route path="/weekly-sync" element={canAny(appRole, 'weekly_sync') ? <WeeklySync /> : <NoAccess />} />
+              <Route path="/schedule-builder" element={canAny(appRole, 'schedule.create_schedules') ? <ScheduleBuilder /> : <NoAccess />} />
+              <Route path="/positions" element={canAny(appRole, 'positions.view_only') ? <Positions /> : <NoAccess />} />
+              <Route path="/insights" element={(canAny(appRole, 'schedule.all') || canAny(appRole, 'schedule.view_insights_assigned')) ? <ScheduleInsights /> : <NoAccess />} />
+              <Route path="*" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <OpsisWeekly />} />
+            </Routes>
+          </div>
+        </main>
+      </div>
+    </UnreadProvider>
+    </MaybeVoice>
+  )
+}
+function titleFor(path) {
+  const map = {
+    '/': 'Dashboard', '/certifications': 'Certifications',
+    '/courses': 'Course builder', '/projects': 'Project Management', '/clients': 'Clients', '/people': 'People & tags',
+    '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
+    '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
+    '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Roles & permissions', '/service-account': 'Service account',
+    '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/phone': 'Phone', '/dialer': 'Agent workspace', '/campaigns': 'Campaigns', '/inbound': 'Inbound', '/scripts': 'Scripts', '/reporting/calls': 'Call Reports', '/test-lead': 'Test a web lead',
+    '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/csr-scorecards': 'CSR Scorecards', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/finance': 'Finance', '/profile': 'My profile', '/submit-purchase': 'Submit a purchase', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
+  }
+  // Sales is now a tabbed shell with nested routes (/sales/dashboard,
+  // /sales/scorecard, etc.) -- Pipeline itself stays at the bare /sales so
+  // existing bookmarks keep working, but every nested tab should still read
+  // "Sales" in the header rather than falling through to "Command Center".
+  if (path.startsWith('/sales/')) return 'Sales'
+  return map[path] || 'Command Center'
+}
