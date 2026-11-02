@@ -462,7 +462,7 @@ export function mountOpsisQA(ROOT, cfg) {
       if (kind === 'brand') focusMovers(f);
     }).catch(function (e) { if (tok === T) $('fk').innerHTML = errBox(e); });
     if (kind === 'csr') api(Object.assign({ action: 'calls' }, win({ agent: agent, limit: 6 }))).then(function (c) { if (tok !== T) return; $('fcalls').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start"><div><h2 class="ttl">Recent Calls</h2><p class="sub">' + fmt(c.total) + ' scored calls in this period</p></div><button class="more" data-callsfor="csr">All →</button></div>' + (c.rows || []).map(callRow).join(''); }).catch(function () {});
-    var ckey = 'why4|' + kind + '|' + name + '|' + S.start + '|' + S.end;
+    var ckey = 'why5|' + kind + '|' + name + '|' + S.start + '|' + S.end;
     // Executive summary (Becky 10/29): only what actually moved, cause -> effect, no noise. Numbers match the tiles.
     var runWhy = function (f) {
       var c = (f.kpis || {}).cur || {}, p = (f.kpis || {}).prev || {}, r1 = function (v) { return v == null ? 'n/a' : (Math.round(v * 10) / 10) + '%'; };
@@ -470,7 +470,7 @@ export function mountOpsisQA(ROOT, cfg) {
       var rules = ' Write an executive summary for a regional manager who has 30 seconds. Rules: '
         + '1) First line: one bold sentence that explains WHY ' + (kind === 'brand' ? 'the brand' : 'this CSR') + ' is trending this way (the cause, not just the numbers). '
         + '2) Then a "**What’s driving it**" section with at most 3 bullets. FORMAT EACH ONE AS A SHORT BOLD HEADLINE BULLET (under 8 words, starting with "- ") followed by 1 or 2 SUB-BULLETS indented with two spaces ("  - "): the number that proves it, then what it means. Only include changes that are large enough to matter (about 5 points or more on a rate, or a reason that changed by 10 or more calls). Skip anything flat, small, or new without a prior to compare. Never list every call-flow step. '
-        + '3) Then "**Do this week**" with 1 or 2 bullets in the same format: a bold action headline, then one indented sub-bullet with who or how. Name CSRs only if they are the cause. '
+        + '3) Then "**Do this week**" with 1 or 2 bullets in the same format: a bold action headline, then indented sub-bullets with who or how. Name CSRs only if they are the cause. Whenever more than one CSR is named, give EACH CSR their own sub-bullet ("  - Name: number, what to do"); never list several CSRs in one line. '
         + 'Every line under 15 words. Never write a bullet as a long sentence or paragraph. No arrows, check marks, emoji or symbols. Plain words, no jargon. Say "call dropped or cut off" instead of "call ended before booking". If nothing moved meaningfully, say so in one line and give the single biggest opportunity instead.';
       var q = (kind === 'brand' ? 'Explain why ' + name + ' is trending the way it is this period compared with the one before.' : 'Explain why CSR ' + name + ' is trending the way they are this period compared with the one before, and how to coach them.') + ' ' + facts + rules;
       (whyCache[ckey] || (whyCache[ckey] = api({ action: 'ask', question: q, start: S.start, end: S.end, brands: brand ? [brand] : null }))).then(function (r) {
@@ -486,8 +486,19 @@ export function mountOpsisQA(ROOT, cfg) {
     var pieces = function (x) {
       x = String(x || '').replace(/\s*(?:→|->)\s*/g, ' to ').replace(/\*\*/g, '').replace(/\b(vs|approx|e\.g|i\.e)\.\s/gi, '$1 ').trim();
       var out = x.split(/(?<=[.!?])\s+(?=[A-Z0-9“"(])|;\s+|\s+[—–]\s+|,\s+(?=(?:then|which|so that|so)\s)/).map(function (y) { y = y.trim().replace(/^(then|which|so that|so)\s+/i, '').replace(/[.;,]$/, ''); return y.charAt(0).toUpperCase() + y.slice(1); }).filter(Boolean);
-      return out.slice(0, 3);
+      var res = [];
+      out.forEach(function (y) { perCsr(y).forEach(function (z) { res.push(z); }); });
+      return res.slice(0, 6);
     };
+    // One CSR per line (Becky 11/2): "Ana (52), Bo (48) and Cy (40)" -> three lines, but only when every part names a CSR.
+    var names = ((typeof KNOWN !== 'undefined' && KNOWN.agents) || []).filter(function (a) { return a && a.length >= 3; });
+    var hasCsr = function (x) { var lx = x.toLowerCase(); return names.some(function (a) { return lx.indexOf(String(a).toLowerCase()) >= 0 || lx.indexOf(String(a).split(' ')[0].toLowerCase() + ' ') === 0; }); };
+    function perCsr(y) {
+      var m = y.match(/^([^:]{3,60}:\s+)(.*)$/), lead = m && !hasCsr(m[1]) ? m[1] : '', body = lead ? m[2] : y;
+      var parts = body.split(/,\s+(?:and\s+)?|\s+and\s+|;\s+/).map(function (q) { return q.trim(); }).filter(Boolean);
+      if (parts.length < 2 || !parts.every(hasCsr)) return [y];
+      return parts.map(function (q) { q = q.replace(/^(and|plus)\s+/i, ''); return q.charAt(0).toUpperCase() + q.slice(1); });
+    }
     var lines = String(t || '').replace(/\r/g, '').split('\n'), out = [], last = null, started = false;
     lines.forEach(function (raw) {
       var l = raw.replace(/\s+$/, ''), tr = l.trim();
@@ -573,6 +584,9 @@ export function mountOpsisQA(ROOT, cfg) {
     ['Scheduling / timing', ['Scheduling/timing conflict']],
     ['Follow-up by another team', ['Sent to another team', 'We’ll call them back (no appt set)', "We'll call them back (no appt set)", 'Quote Request', 'Sales Team', 'Gates Team', 'Follow up is needed by different department']],
     ['Call dropped or cut off', ['Call ended before booking (hold / cut off)']]];
+  // Softer, skill-style labels for coaching tiles (Becky 11/2): "Active listening" instead of "Didn't listen".
+  var SKILL = { introduce: 'Introduction', listen: 'Active listening', collect_info: 'Customer information', sell_offer: 'Offering the booking', sell_ask: 'Asking for the booking', sell_card: 'Card on file', sell_objection: 'Overcoming objections', sell_expert: 'Tech as the expert', confirm_thank: 'Confirm and thank you', sell_appointment: 'Selling the appointment', greeting: 'Greeting', empathy: 'Empathy', verify_approver: 'Verifying the approver', discovery: 'Discovery questions', set_expectations: 'Setting expectations', explain_fee: 'Explaining the fee', capture_payment: 'Card on file', confirm_details: 'Confirming details', thank_close: 'Thank-you close' };
+  var SKILL_REASON = { 'Knowledge Gap': 'Product and policy knowledge', 'CSR didn’t offer an appointment': 'Offering an appointment', "CSR didn't offer an appointment": 'Offering an appointment' };
   var CSR_REASONS = ['CSR didn’t offer an appointment', "CSR didn't offer an appointment", 'Knowledge Gap'];
   function focusMix(f, brand, agent) {
     var tile = function (title, sub, body) { return '<div class="oq-card" style="flex:1 1 300px;min-width:0"><h2 class="ttl">' + title + '</h2><p class="sub">' + sub + '</p><div style="margin-top:8px">' + body + '</div></div>'; };
@@ -588,14 +602,14 @@ export function mountOpsisQA(ROOT, cfg) {
     // 2. what the CSR missed
     var st = (f.steps || []).filter(function (s0) { return s0.applies > 0 && s0.missed > 0; }).sort(function (a, b) { return b.missed - a.missed; });
     var sm = Math.max.apply(null, st.map(function (s0) { return s0.missed; }).concat([1]));
-    var csrR = (f.reasons || []).filter(function (r) { return CSR_REASONS.indexOf(r.k) >= 0; });
-    var miss = st.map(function (s0) { return '<button class="click" data-step="' + s0.key + '"' + (brand ? ' data-sbrand="' + esc(brand) + '"' : '') + (agent ? ' data-sagent="' + esc(agent) + '"' : '') + ' title="Hear the calls that missed this step" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>Didn’t ' + esc((STEPNAMES[s0.key] || s0.key).replace(/^./, function (c) { return c.toLowerCase(); })) + ' <span class="mut" aria-hidden="true">›</span></span><span class="num mut">' + fmt(s0.missed) + ' of ' + fmt(s0.applies) + '</span></div>' + bar(s0.missed, sm, '#C2562A') + '</button>'; }).join('') +
-      csrR.map(function (r) { return '<button class="click" data-ffk="reason" data-ffv="' + esc(r.k) + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>' + esc(r.k === 'Knowledge Gap' ? 'Didn’t know the answer' : r.k) + ' <span class="mut" aria-hidden="true">›</span></span><span class="num mut">' + fmt(r.n) + ' calls</span></div></button>'; }).join('') || '<p class="mut" style="font-size:12.5px">Nothing missed in this period.</p>';
+    var csrR = (f.reasons || []).filter(function (r) { return CSR_REASONS.indexOf(r.k) >= 0 && +r.n > 0; });
+    var miss = st.map(function (s0) { return '<button class="click" data-step="' + s0.key + '"' + (brand ? ' data-sbrand="' + esc(brand) + '"' : '') + (agent ? ' data-sagent="' + esc(agent) + '"' : '') + ' title="Hear the calls that missed this step" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>' + esc(SKILL[s0.key] || STEPNAMES[s0.key] || s0.key) + ' <span class="mut" aria-hidden="true">›</span></span><span class="num mut">' + fmt(s0.missed) + ' of ' + fmt(s0.applies) + ' missed</span></div>' + bar(s0.missed, sm, '#C2562A') + '</button>'; }).join('') +
+      csrR.map(function (r) { return '<button class="click" data-ffk="reason" data-ffv="' + esc(r.k) + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>' + esc(SKILL_REASON[r.k] || r.k) + ' <span class="mut" aria-hidden="true">›</span></span><span class="num mut">' + fmt(r.n) + ' call' + (+r.n === 1 ? '' : 's') + ' lost</span></div></button>'; }).join('') || '<p class="mut" style="font-size:12.5px">Nothing missed in this period.</p>';
     // 3. what callers wanted
     var tp = f.topics || [], tm = Math.max.apply(null, tp.map(function (r) { return r.n; }).concat([1]));
     var want = tp.map(function (r) { return '<button class="click" data-ffk="category" data-ffv="' + esc(r.k) + '" title="Hear these calls" style="all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px"><div style="display:flex;justify-content:space-between;gap:8px"><span>' + esc(r.k) + ' <span class="mut" aria-hidden="true">›</span></span><span class="num mut">' + fmt(r.n) + dd(r.n, r.pn) + '</span></div>' + bar(r.n, tm, G) + '</button>'; }).join('') || '<p class="mut" style="font-size:12.5px">No calls in this period.</p>';
     $('fmix').innerHTML = tile('Why Customers Didn’t Book', 'Unbooked revenue opportunities by the customer’s reason · (% vs the period before) · click a reason to hear the calls', why) +
-      tile('What the CSR Missed', 'Call-flow steps the CSR skipped when the step applied · click to hear the calls', miss) +
+      tile('Coaching Opportunities', 'Call-flow skills to work on · missed out of the calls where the step applied · click to hear the calls', miss) +
       tile('What Callers Wanted', 'Why customers called · (% vs the period before) · click to hear the calls', want);
     $('fmix').dataset.fb = brand || ''; $('fmix').dataset.fa = agent || '';
     lastFocus = f;
@@ -609,6 +623,8 @@ export function mountOpsisQA(ROOT, cfg) {
         return { name: a.agent, brand: a.brand, inc: +a.in_calls || 0, out: +a.out_calls || 0, talk: talk, avg: calls ? talk / calls : null, tta: a.tta == null ? null : +a.tta, days: days, util: days ? talk / (days * 8 * 3600) * 100 : null }; });
       var hm = function (sec) { sec = Math.round(sec || 0); var h = Math.floor(sec / 3600), m = Math.round(sec % 3600 / 60); return h ? h + 'h ' + m + 'm' : m + 'm'; }, ms = function (sec) { if (sec == null) return '—'; sec = Math.round(sec); return Math.floor(sec / 60) + ':' + ('0' + sec % 60).slice(-2); };
       var head = '<h2 class="ttl">Call Center Efficiency</h2><p class="sub">Straight from LightSpeed, separate from QA' + ((ph.kpis || {}).data_last ? ' · data runs through ' + esc(fdate(ph.kpis.data_last)) : '') + '. Utilization = talk time as a share of an 8-hour day for each day they took calls.</p>';
+      var dl = (ph.kpis || {}).data_last, e0 = String(S.end || '').slice(0, 10);
+      if (dl && e0 && String(dl).slice(0, 10) < e0) { var miss = daysBetween(String(dl).slice(0, 10), e0) - 1; head += '<div class="banner" style="margin-top:10px"><b>Phone data is behind.</b> LightSpeed numbers stop at ' + esc(fdate(dl)) + ', so the last ' + miss + ' day' + (miss === 1 ? '' : 's') + ' of this period ' + (miss === 1 ? 'is' : 'are') + ' missing. The daily file from Switchboard hasn’t arrived since then. QA numbers on this page are current.</div>'; }
       if (!rows.length) { el.innerHTML = head + '<p class="mut" style="font-size:12.5px">' + (agent ? 'No LightSpeed phone activity matched to ' + esc(agent) + ' in this period.' : 'No phone activity in this period.') + '</p>'; return; }
       if (agent) { var r = rows.reduce(function (a, x) { a.inc += x.inc; a.out += x.out; a.talk += x.talk; a.days = Math.max(a.days, x.days); if (x.tta != null) { a.ts += x.tta * x.inc; a.tn += x.inc; } return a; }, { inc: 0, out: 0, talk: 0, days: 0, ts: 0, tn: 0 });
         var tl = function (cap, v, sub) { return '<div style="min-width:120px"><div class="cap">' + cap + '</div><div class="num" style="font-size:22px;font-weight:600;margin-top:4px">' + v + '</div><div class="mut" style="font-size:11.5px">' + sub + '</div></div>'; };
