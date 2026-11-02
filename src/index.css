@@ -984,3 +984,47 @@ body{
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
+
+/* ============================================================
+   PORTAL THEME (2026-11-02) — match the Opsis CX portal: solid teal
+   sidebar (#015974), white logo card, white line icons, Montserrat,
+   teal buttons, no violet/cyan wash. Appended last so it wins.
+   Same values as the "Opsis CX — Internal" client's portal branding.
+   ============================================================ */
+:root{
+  --opsis-side:#015974;
+  --opsis-side-hl:#2F778D;   /* portal's auto highlight = sidebar lightened 18% */
+  --opsis-accent:#15B8CF;
+  --font-body:'Montserrat','Poppins',ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-head:'Montserrat','Poppins',ui-sans-serif,system-ui,sans-serif;
+  --sidebar:var(--opsis-side);
+  --sidebar-soft:rgba(255,255,255,.62);
+  --grad-accent:linear-gradient(135deg,#0a6f8e 0%,#015974 100%);
+  --amb1:transparent; --amb2:transparent;
+}
+:root[data-theme="dark"]{ --amb1:transparent; --amb2:transparent; }
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]):not([data-theme="dark"]){ --amb1:transparent; --amb2:transparent; }
+}
+.sidebar{ background:var(--opsis-side); border-right:0; padding:22px 16px; }
+.brand{
+  display:flex; align-items:center; justify-content:center;
+  background:#fff; border-radius:18px; padding:16px 18px; margin:0 2px 22px;
+}
+.brand img{ width:100%; height:auto; max-height:72px; object-fit:contain; display:block; }
+.nav-label{ color:rgba(255,255,255,.55); }
+.nav-item{
+  font-family:var(--font-head); font-size:15px; font-weight:500; color:rgba(255,255,255,.92);
+  border-radius:12px; padding:10px 12px; gap:14px;
+}
+.nav-item .ic{ width:20px; display:inline-flex; align-items:center; justify-content:center; opacity:1; }
+.nav-item:hover{ background:rgba(255,255,255,.08); color:#fff; transform:none; }
+.nav-item.on{ background:var(--opsis-side-hl); color:#fff; font-weight:600; box-shadow:none; }
+.nav-subitem{ font-size:14px; color:rgba(255,255,255,.78); }
+.user-chip{ background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); }
+.user-av{ box-shadow:0 0 0 2px var(--opsis-accent); }
+.user-name{ color:#fff; }
+.signout{ color:rgba(255,255,255,.7); }
+.signout:hover{ color:#fff; }
+.btn-primary{ box-shadow:0 8px 22px -12px rgba(1,89,116,.7); }
+.btn-primary:hover{ box-shadow:0 10px 26px -10px rgba(1,89,116,.8); }
