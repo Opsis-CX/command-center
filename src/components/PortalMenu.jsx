@@ -71,7 +71,7 @@ export default function PortalMenu() {
 }
 
 // The portal in a big pop-up: the same /opsis-qa page, framed over Command Center.
-function PortalPopup({ portal, onClose }) {
+export function PortalPopup({ portal, onClose }) {
   const [loading, setLoading] = useState(true)
   const url = `/opsis-qa?client=${portal.client_id}`
   useEffect(() => {

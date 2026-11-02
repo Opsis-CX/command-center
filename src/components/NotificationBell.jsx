@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { categoryForType } from '../lib/notify'
 import { loadNotifPrefs, allowsSound, allowsInApp } from '../lib/notif_prefs'
 import { primeAudio, loadSoundPrefs, playForNotification } from '../lib/sounds'
+import { BellIcon } from './HeaderIcons'
 
 // ============================================================
 // NOTIFICATION BELL — unread badge, dropdown, realtime,
@@ -67,6 +68,12 @@ export default function NotificationBell() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  // header ↻ button: re-read the list quietly
+  useEffect(() => {
+    const h = () => load()
+    window.addEventListener('cc:refresh', h)
+    return () => window.removeEventListener('cc:refresh', h)
+  }, [load])
 
   // Re-read prefs when the tab regains focus, so a change made on the
   // Settings page takes effect here without needing a full reload.
@@ -163,10 +170,10 @@ export default function NotificationBell() {
 
   return (
     <div ref={wrapRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 4 }}>
-      <button onClick={() => setOpen(o => !o)} aria-label="Notifications"
-        style={{ position: 'relative', border: 0, background: 'transparent', cursor: 'pointer', padding: 6, fontSize: 18, lineHeight: 1, color: 'var(--ink)' }}>
-        🔔
-        {unread > 0 && <span style={{ position: 'absolute', top: 0, right: 0, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: 'var(--failed)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center', lineHeight: 1 }}>{unread > 9 ? '9+' : unread}</span>}
+      <button type="button" className="hd-icon-btn" onClick={() => setOpen(o => !o)} aria-label="Notifications"
+        style={{ position: 'relative' }}>
+        <BellIcon />
+        {unread > 0 && <span className="hd-badge">{unread > 9 ? '9+' : unread}</span>}
       </button>
 
       {!open && toasts.length > 0 && (
