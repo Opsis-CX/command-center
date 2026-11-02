@@ -411,6 +411,93 @@ function ColorMenu({ editor, kind }) {
   )
 }
 
+// Link box. Replaces window.prompt(), which browsers silently block once a
+// site has had "prevent this page from creating additional dialogs" ticked —
+// the button then did nothing at all.
+function normalizeUrl(raw) {
+  const u = raw.trim()
+  if (!u) return ''
+  if (/^(https?:|mailto:)/i.test(u)) return u
+  if (/^[^\s/@]+@[^\s/@]+\.[^\s/@]+$/.test(u)) return 'mailto:' + u
+  if (/^[a-z][a-z0-9+.-]*:(?!\d)/i.test(u)) return null  // javascript:, ftp:, etc. → rejected
+  return 'https://' + u.replace(/^\/+/, '')
+}
+
+function LinkMenu({ editor }) {
+  const [open, setOpen] = React.useState(false)
+  const [url, setUrl] = React.useState('')
+  const [err, setErr] = React.useState('')
+  const rangeRef = React.useRef(null)
+  const inputRef = React.useRef(null)
+
+  const openBox = () => {
+    if (open) { setOpen(false); return }
+    // If the caret sits inside an existing link, edit the whole link.
+    if (editor.isActive('link')) editor.chain().focus().extendMarkRange('link').run()
+    const { from, to } = editor.state.selection
+    rangeRef.current = { from, to }
+    setUrl(editor.getAttributes('link').href || '')
+    setErr('')
+    setOpen(true)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  const close = () => { setOpen(false); editor.chain().focus().run() }
+
+  const apply = () => {
+    const href = normalizeUrl(url)
+    if (href === null) { setErr('Use a web address (https://…) or an email.'); return }
+    const r = rangeRef.current || editor.state.selection
+    const chain = editor.chain().focus().setTextSelection(r)
+    if (!href) { chain.extendMarkRange('link').unsetLink().run(); setOpen(false); return }
+    if (r.from === r.to) {
+      // Nothing highlighted → insert the address itself as the link text.
+      chain.insertContent({ type: 'text', text: url.trim(), marks: [{ type: 'link', attrs: { href } }] }).run()
+    } else {
+      chain.extendMarkRange('link').setLink({ href }).run()
+    }
+    const ok = editor.getAttributes('link').href ||
+      editor.state.doc.rangeHasMark(r.from, Math.max(r.to, r.from + 1), editor.schema.marks.link)
+    if (!ok) { setErr('Use a web address (https://…) or an email.'); return }
+    setOpen(false)
+  }
+
+  const remove = () => {
+    const r = rangeRef.current || editor.state.selection
+    editor.chain().focus().setTextSelection(r).extendMarkRange('link').unsetLink().run()
+    setOpen(false)
+  }
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <Btn title="Link" active={open || editor.isActive('link')} onClick={openBox}>🔗</Btn>
+      {open && (
+        <>
+          <div onMouseDown={e => { e.preventDefault(); close() }}
+            style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
+          <div className="re-popover" style={{ width: 260 }}>
+            <input ref={inputRef} type="text" value={url} placeholder="Paste link (https://…)"
+              onChange={e => { setUrl(e.target.value); setErr('') }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); apply() }
+                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close() }
+              }}
+              style={{ width: '100%', boxSizing: 'border-box', height: 30, padding: '0 8px', border: '1px solid var(--line)',
+                borderRadius: 6, background: 'var(--canvas)', color: 'var(--ink)', fontSize: 13, fontFamily: 'inherit' }} />
+            {err && <div style={{ color: '#c0392b', fontSize: 11.5, marginTop: 4 }}>{err}</div>}
+            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+              <button type="button" className="re-clear" style={{ background: 'var(--accent, #1a73e8)', color: '#fff', borderColor: 'transparent' }}
+                onMouseDown={e => { e.preventDefault(); apply() }}>Apply</button>
+              {editor.isActive('link') &&
+                <button type="button" className="re-clear" onMouseDown={e => { e.preventDefault(); remove() }}>Remove</button>}
+            </div>
+          </div>
+        </>
+      )}
+    </span>
+  )
+}
+
 // Table controls. Once the caret is inside a table, the button set changes.
 function TableMenu({ editor }) {
   const inTable = editor.isActive('table')
@@ -438,17 +525,6 @@ function TableMenu({ editor }) {
 function Toolbar({ editor, items, onSpellCheck }) {
   if (!editor) return null
   const c = () => editor.chain().focus()
-
-  const setLink = () => {
-    const prev = editor.getAttributes('link').href || ''
-    const url = window.prompt('Link URL', prev)
-    if (url === null) return                       // cancelled
-    if (url === '') { c().unsetLink().run(); return }
-    // sanitize.js rejects javascript: etc. on save, but check here too so the
-    // person gets told rather than silently losing the link later.
-    c().setLink({ href: url }).run()
-    if (!editor.getAttributes('link').href) window.alert('That link was rejected. Use http://, https://, or mailto:.')
-  }
 
   const render = (key, i) => {
     switch (key) {
@@ -487,7 +563,7 @@ function Toolbar({ editor, items, onSpellCheck }) {
       case 'bullet':   return <Btn key={i} title="Bulleted list" active={editor.isActive('bulletList')}  onClick={() => c().toggleBulletList().run()}>•</Btn>
       case 'ordered':  return <Btn key={i} title="Numbered list" active={editor.isActive('orderedList')} onClick={() => c().toggleOrderedList().run()}>1.</Btn>
       case 'quote':    return <Btn key={i} title="Quote" active={editor.isActive('blockquote')} onClick={() => c().toggleBlockquote().run()}>❝</Btn>
-      case 'link':     return <Btn key={i} title="Link" active={editor.isActive('link')} onClick={setLink}>🔗</Btn>
+      case 'link':     return <LinkMenu key={i} editor={editor} />
       case 'color':    return <ColorMenu key={i} editor={editor} kind="color" />
       case 'highlight':return <ColorMenu key={i} editor={editor} kind="highlight" />
       case 'table':    return <TableMenu key={i} editor={editor} />
