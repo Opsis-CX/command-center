@@ -1627,6 +1627,12 @@ function EventDetailModal({ item, onClose, onEdit }) {
               : <span key={idx}>{p}</span>)}
           </div>
         )}
+        {item.kind === 'event' && item.raw?.attachments?.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <span style={{ color: 'var(--ink-soft)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', display: 'block', marginBottom: 4 }}>Attachments</span>
+            <AttachmentList files={item.raw.attachments} />
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>
           {item.htmlLink && <a href={item.htmlLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--ink-soft)' }}>Open in Google ↗</a>}
           {item.kind === 'event' && item.raw && <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => onEdit(item.raw)}>Edit</button>}
@@ -1637,6 +1643,91 @@ function EventDetailModal({ item, onClose, onEdit }) {
   )
 }
 // ---------- EVENT DETAIL end ----------
+// ---------- ATTACHMENTS ----------
+// Files live in the private 'calendar-attachments' bucket under <uid>/<uuid>/<name>.
+// The event row stores [{ path, name, size, type }]. Storage RLS lets the
+// uploader and anyone who can see the event read them; google-calendar-write
+// adds a download link for each file to the emailed invite.
+const ATTACH_BUCKET = 'calendar-attachments'
+const ATTACH_MAX = 25 * 1024 * 1024
+function fmtSize(n) {
+  if (!n && n !== 0) return ''
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+async function openAttachment(a) {
+  const { data, error } = await supabase.storage.from(ATTACH_BUCKET).createSignedUrl(a.path, 300, { download: a.name || true })
+  if (error || !data?.signedUrl) { window.alert(`Couldn't open ${a.name || 'file'}: ${error?.message || 'not found'}`); return }
+  window.open(data.signedUrl, '_blank', 'noopener')
+}
+function AttachmentList({ files }) {
+  if (!files || !files.length) return null
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {files.map(a => (
+        <a key={a.path} href="#" onClick={e => { e.preventDefault(); openAttachment(a) }}
+          style={{ fontSize: 13, color: 'var(--accent, #0077B6)', wordBreak: 'break-all' }}>
+          📎 {a.name}{a.size ? <span style={{ color: 'var(--ink-soft)', fontSize: 11 }}> · {fmtSize(a.size)}</span> : null}
+        </a>
+      ))}
+    </div>
+  )
+}
+function AttachmentsField({ userId, value, onChange, disabled }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const inputRef = useRef(null)
+  async function onPick(e) {
+    const picked = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (!picked.length) return
+    setErr(''); setBusy(true)
+    const added = []
+    const problems = []
+    for (const f of picked) {
+      if (f.size > ATTACH_MAX) { problems.push(`${f.name} is over 25 MB`); continue }
+      const safe = f.name.replace(/[^\w.\-() ]+/g, '_')
+      const path = `${userId}/${newUuid()}/${safe}`
+      const { error } = await supabase.storage.from(ATTACH_BUCKET).upload(path, f, { contentType: f.type || undefined, upsert: false })
+      if (error) problems.push(`${f.name}: ${error.message}`)
+      else added.push({ path, name: f.name, size: f.size, type: f.type || null })
+    }
+    if (added.length) onChange([...(value || []), ...added])
+    if (problems.length) setErr(problems.join(' · '))
+    setBusy(false)
+  }
+  // Removing only detaches the file from this event. The file itself is kept,
+  // because other dates in a repeating series point at the same file.
+  const remove = (path) => onChange((value || []).filter(a => a.path !== path))
+  return (
+    <div>
+      {(value || []).length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
+          {value.map(a => (
+            <div key={a.path} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, border: '1px solid var(--line)', borderRadius: 8, padding: '5px 8px' }}>
+              <a href="#" onClick={e => { e.preventDefault(); openAttachment(a) }} style={{ flex: 1, minWidth: 0, color: 'var(--accent, #0077B6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.name}>📎 {a.name}</a>
+              <span style={{ fontSize: 11, color: 'var(--ink-soft)', flexShrink: 0 }}>{fmtSize(a.size)}</span>
+              {!disabled && <span onClick={() => remove(a.path)} title="Remove" style={{ cursor: 'pointer', fontWeight: 700, fontSize: 15, lineHeight: 1, padding: '0 3px', color: 'var(--ink-soft)' }}>×</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {!disabled && (
+        <>
+          <input ref={inputRef} type="file" multiple onChange={onPick} style={{ display: 'none' }} />
+          <button type="button" className="btn btn-ghost" style={{ fontSize: 12 }} disabled={busy} onClick={() => inputRef.current?.click()}>
+            {busy ? 'Uploading…' : '+ Attach files'}
+          </button>
+          <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>Up to 25 MB each. Invitees can open them here, and the emailed invite includes download links.</div>
+        </>
+      )}
+      {disabled && !(value || []).length && <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>No attachments</div>}
+      {err && <div style={{ color: 'var(--failed)', fontSize: 12, marginTop: 4 }}>{err}</div>}
+    </div>
+  )
+}
+// ---------- ATTACHMENTS end ----------
 // ---------- INVITEE PICKER ----------
 // A compact searchable multi-select over team members. Selected people show as
 // removable chips; the list below toggles membership. Excludes the current user
@@ -1694,6 +1785,7 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], invitable
   const [scope, setScope] = useState(event.scope || 'personal')
   const [color, setColor] = useState(event.color || '#0077B6')
   const [invitees, setInvitees] = useState(event.invitee_ids || [])
+  const [attachments, setAttachments] = useState(Array.isArray(event.attachments) ? event.attachments : [])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   // --- recurrence (new events only) ---------------------------------------
@@ -1746,6 +1838,7 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], invitable
       start_time: allDay ? null : start, end_time: allDay ? null : end,
       notes: notes.trim() || null, scope, color, owner_id: userId, tz: detectedTZ(),
       invitee_ids: invitees, meeting_url: meetingUrl.trim() || null,
+      attachments,
     }
     let savedId = event.id
     let res
@@ -1895,6 +1988,9 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], invitable
           {meetingUrl && /^https?:\/\//i.test(meetingUrl.trim()) && (
             <a href={meetingUrl.trim()} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: 12, color: 'var(--accent, #0077B6)', wordBreak: 'break-all' }}>Join meeting ↗</a>
           )}
+        </div>
+        <div className="field"><label>Attachments</label>
+          <AttachmentsField userId={userId} value={attachments} onChange={setAttachments} disabled={!isOwner} />
         </div>
         <div className="field"><label>Invitees</label>
           {isOwner ? (
