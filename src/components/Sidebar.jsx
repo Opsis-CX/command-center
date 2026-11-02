@@ -33,6 +33,52 @@ import ChangePassword from './ChangePassword'
 // (so agents simply see fewer items in the same order). NAV_DEFAULT and
 // NAV_ADMIN both point at NAV_MAIN — kept as two names so the two orders can be
 // split again later without touching the component.
+// Line icons matching the Opsis CX portal (2026-11-02). Keyed by section key
+// or route; anything not listed falls back to its emoji `ic`, which global
+// search still uses.
+const OPSIS_LOGO = 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/9726e6eb-1364-4dba-8ddb-10c07a408ecb/logo-1793310857674.png'
+const C9 = '<circle cx="12" cy="12" r="9"/>'
+const NAV_SVG = {
+  opsis: '<path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"/>',
+  schedule: C9 + '<path d="M12 7v5l3 2"/>',
+  '/chat': '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+  '/web-chat': C9 + '<path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  calling: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>',
+  '/notes': '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
+  '/projects': '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v10"/>',
+  '/calendar': '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  '/scorecard': C9 + '<circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  '/my-call-reviews': '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1v-6h3zM3 19a2 2 0 0 0 2 2h1v-6H3z"/>',
+  '/knowledge': '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
+  '/coaching': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+  '/call-qa': '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
+  '/tokens': '<path d="M2 9V6a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v3a3 3 0 0 0 0 6v3a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-3a3 3 0 0 0 0-6z"/><path d="M13 5v14" stroke-dasharray="2 2"/>',
+  '/help': C9 + '<path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/>',
+  '/get-to-know-you': C9 + '<path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>',
+  reporting: '<path d="M3 3v18h18"/><path d="M8 17v-5M13 17V8M18 17V9"/>',
+  certifications: '<circle cx="12" cy="8" r="6"/><path d="M8.2 13.9 7 22l5-3 5 3-1.2-8.1"/>',
+  '/weekly-sync': '<path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M3 21v-5h5"/>',
+  '/hiring': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>',
+  '/sales': '<path d="M22 7l-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>',
+  '/rsn': '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+  '/quality': C9 + '<path d="M8 12l3 3 5-6"/>',
+  '/meetings': '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/>',
+  '/finance': '<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  '/submit-purchase': '<path d="M5 2v20l2.5-1.5L10 22l2-1.5 2 1.5 2.5-1.5L19 22V2l-2.5 1.5L14 2l-2 1.5L10 2 7.5 3.5z"/><path d="M9 8h6M9 12h6"/>',
+  backend: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+}
+function NavIcon({ id, fallback }) {
+  const svg = NAV_SVG[id]
+  if (!svg) return <span className="ic">{fallback}</span>
+  return (
+    <span className="ic">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" dangerouslySetInnerHTML={{ __html: svg }} />
+    </span>
+  )
+}
+
 const NAV_MAIN = [
   {
     group: '',
@@ -237,7 +283,7 @@ export default function Sidebar({ open, onNavigate }) {
         <NavLink key={item.to} to={item.to} end={item.end}
           onClick={() => onNavigate && onNavigate()}
           className={({ isActive }) => 'nav-item' + (isActive ? ' on' : '')}>
-          <span className="ic">{item.ic}</span> {item.label}
+          <NavIcon id={item.to} fallback={item.ic} /> {item.label}
           {item.to === '/chat' && unreadTotal > 0 && (
             <span style={{ marginLeft: 'auto', background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
               {unreadTotal > 99 ? '99+' : unreadTotal}
@@ -254,7 +300,7 @@ export default function Sidebar({ open, onNavigate }) {
       <div key={item.key} className="nav-section">
         <button type="button" className="nav-item nav-section-head" onClick={() => toggleSection(item.key)}
           aria-expanded={isOpen}>
-          <span className="ic">{item.ic}</span> {item.label}
+          <NavIcon id={item.key} fallback={item.ic} /> {item.label}
           <span className="nav-caret" style={{ marginLeft: 'auto', transition: 'transform .15s ease', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
         </button>
         {isOpen && (
@@ -275,7 +321,7 @@ export default function Sidebar({ open, onNavigate }) {
   return (
     <aside className={'sidebar' + (open ? ' open' : '')}>
       <div className="brand">
-        <img src="/opsis-logo.png" alt="Opsis" style={{ width: '100%', height: 'auto', maxHeight: 64, objectFit: 'contain' }} />
+        <img src={OPSIS_LOGO} alt="Opsis CX" onError={e => { e.currentTarget.src = '/opsis-logo.png' }} />
       </div>
       {/* Only THIS region scrolls when the nav outgrows the window — the page
           itself never gets a scrollbar, and the user chip stays pinned below. */}
@@ -310,7 +356,7 @@ export default function Sidebar({ open, onNavigate }) {
       <div className="nav-section">
         <button className="nav-item nav-section-head" onClick={() => setSettingsOpen(o => !o)}
           style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-          <span className="ic">⚙️</span> Settings
+          <NavIcon id="settings" fallback="⚙️" /> Settings
           <span className="nav-caret" style={{ marginLeft: 'auto', transition: 'transform .15s ease', transform: settingsOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
         </button>
         {settingsOpen && (
