@@ -1104,6 +1104,7 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
           <Row label="Phone" value={app.phone} />
           <Row label="Location" value={[app.city, app.state].filter(Boolean).join(', ')} />
           <Row label="Applied from" value={<GeoLoc loc={app.apply_lat != null ? { ip: app.apply_ip, lat: app.apply_lat, lng: app.apply_lng, city: app.apply_city, region: app.apply_region, country: app.apply_country } : null} state={app.state} empty="Not captured (applied before tracking was added)" />} />
+          {app.assess_lat != null && <Row label="Assessment taken from" value={<GeoLoc loc={{ ip: app.assess_ip, lat: app.assess_lat, lng: app.assess_lng, city: app.assess_city, region: app.assess_region, country: app.assess_country }} state={app.state} when={app.assess_geo_at} />} />}
           {app.profile_id && <Row label="Last login from" value={<GeoLoc loc={loginLoc} state={app.state} when={loginLoc?.created_at} empty="No login recorded yet — captured on their next login" />} />}
           <Row label="Work authorized" value={app.work_authorized ? 'Yes' : 'No'} />
           <Row label="Role applying for" value={app.role_applying} />
