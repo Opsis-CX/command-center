@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth'
 import { can, hasPerm, permScope, usingNewPermissions } from '../lib/permissions'
 import { useFinanceAccess } from '../lib/financeAccess'
 import { useTerms, loadTerms } from '../lib/terms'
+import { ClientPage } from './FinanceClients'
 
 // ============================================================
 // CLIENTS (revamped 2026-10-30) — where the company structure lives:
@@ -99,6 +100,11 @@ export default function Clients() {
   const [sure, setSure] = useState(null)
   const [showArchived, setShowArchived] = useState(false)
   const [editTerms, setEditTerms] = useState(null)
+  const [tab, setTab] = useState('overview')            // detail tab for the selected client
+  const [finData, setFinData] = useState(null)          // Finance's client data (Finance managers only)
+  const [usageTypes, setUsageTypes] = useState([])      // custom "where used" switches
+  const [usage, setUsage] = useState([])                // { client_id, type_id }
+  const [newSwitch, setNewSwitch] = useState(null)
 
   const load = useCallback(async () => {
     const [cliRes, prRes, taskRes, schRes, hrsRes] = await Promise.all([
@@ -120,9 +126,39 @@ export default function Clients() {
       const map = {}; h.clients.forEach(r => { map[r.client_id] = r })
       setHours(map); setWeek({ week_start: h.week_start, week_end: h.week_end }); setHoursOk(true)
     } else setHoursOk(false)
+    const [ut, us] = await Promise.all([
+      supabase.from('client_usage_types').select('*').is('archived_at', null).order('sort').order('label'),
+      supabase.from('client_usage').select('client_id, type_id'),
+    ])
+    setUsageTypes(ut.error ? [] : (ut.data || [])); setUsage(us.error ? [] : (us.data || []))
     setLoading(false)
     return all.filter(c => !c.archived_at)
   }, [])
+
+  // Finance's client data — the same tables Finance uses, so there's one copy of everything.
+  const loadFinance = useCallback(async () => {
+    const [en, li, de, ra, ty, cl, pr, co, rt, tm, cp, rm, dc, ct, ctp] = await Promise.all([
+      supabase.from('finance_billing_entities').select('*').order('name'),
+      supabase.from('finance_client_links').select('*'),
+      supabase.from('finance_deals').select('*').order('name'),
+      supabase.from('finance_rate_lines').select('*').order('sort').order('product_name'),
+      supabase.from('finance_invoice_types').select('*').order('sort').order('name'),
+      supabase.from('clients').select('id,name,show_in_tasks').order('name'),
+      supabase.from('finance_client_profiles').select('*'),
+      supabase.from('finance_client_contacts').select('*').order('created_at'),
+      supabase.from('finance_retainers').select('*'),
+      supabase.from('finance_coverage_terms').select('*'),
+      supabase.from('finance_client_caps').select('*'),
+      supabase.from('finance_reminders').select('*').order('created_at'),
+      supabase.from('finance_client_documents').select('*').order('created_at', { ascending: false }),
+      supabase.from('finance_contracts').select('*').order('created_at', { ascending: false }),
+      supabase.from('finance_contract_templates').select('*').order('built_in', { ascending: false }).order('name'),
+    ])
+    setFinData({ entities: en.data || [], links: li.data || [], deals: de.data || [], rates: ra.data || [], types: ty.data || [],
+      allClients: cl.data || [], profiles: pr.data || [], contacts: co.data || [], retainers: rt.data || [], terms: tm.data || [],
+      caps: cp.data || [], reminders: rm.data || [], documents: dc.data || [], contracts: ct.data || [], contractTemplates: ctp.data || [] })
+  }, [])
+  useEffect(() => { if (fin?.manager) loadFinance() }, [fin?.manager, loadFinance])
   useEffect(() => { load().then(cs => setSel(s => s || cs[0]?.id || INTERNAL)) }, [load])
 
   useEffect(() => {
@@ -209,6 +245,25 @@ export default function Clients() {
     if (sure !== p.id) { setSure(p.id); return }
     setSure(null)
     await run(() => supabase.rpc('soft_delete_project', { p_project: p.id }), `Archived “${p.name}” — restore it any time from Projects → 🗑 Recently deleted.`)
+  }
+
+  // ---------- where this client is used: custom switches ----------
+  async function toggleUsage(c, typeId, on) {
+    setMsg(null)
+    const { error } = on
+      ? await supabase.from('client_usage').delete().eq('client_id', c.id).eq('type_id', typeId)
+      : await supabase.from('client_usage').insert({ client_id: c.id, type_id: typeId })
+    if (error) return setMsg({ kind: 'err', text: friendly(error) })
+    setUsage(u => on ? u.filter(x => !(x.client_id === c.id && x.type_id === typeId)) : [...u, { client_id: c.id, type_id: typeId }])
+  }
+  async function addSwitch() {
+    const label = (newSwitch || '').trim(); if (!label) return
+    if (await run(() => supabase.from('client_usage_types').insert({ label }), `Added “${label}” — it's now a switch on every ${T.client.toLowerCase()}.`)) setNewSwitch(null)
+  }
+  async function removeSwitch(t) {
+    if (sure !== t.id) { setSure(t.id); return }
+    setSure(null)
+    await run(() => supabase.from('client_usage_types').update({ archived_at: new Date().toISOString() }).eq('id', t.id), `Removed the “${t.label}” switch.`)
   }
 
   // ---------- your words ----------
@@ -328,7 +383,7 @@ export default function Clients() {
             const n = projects.filter(p => p.client_id === c.id).length
             const hr = hours[c.id], cp = hr && Number(hr.cap) > 0 ? hr.pct : null
             return (
-              <button key={c.id} className={'cl-item' + (sel === c.id ? ' on' : '')} onClick={() => { setSel(c.id); setMsg(null); setRenaming(null); setSure(null) }}>
+              <button key={c.id} className={'cl-item' + (sel === c.id ? ' on' : '')} onClick={() => { setSel(c.id); setMsg(null); setRenaming(null); setSure(null); setTab('overview') }}>
                 <span style={{ fontSize: 18 }}>🏢</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontWeight: 700, fontSize: 14 }}>{c.name}</span>
@@ -388,6 +443,31 @@ export default function Clients() {
             )}
           </div>
 
+          {/* detail tabs — the finance ones are for Finance managers only */}
+          {sel !== INTERNAL && fin?.manager && (
+            <div style={{ display: 'flex', gap: 2, padding: '0 10px', borderBottom: '1px solid var(--line)', overflowX: 'auto' }}>
+              {[['overview', 'Overview'], ['contacts', '👤 Contacts & details'], ['billing', '💰 Billing & rates'], ['caps', '⏱ Hour caps'], ['reminders', '🔔 Invoicing reminders'], ['documents', '📄 Documents']].map(([k, l]) => (
+                <button key={k} onClick={() => setTab(k)} style={{ border: 0, background: 'transparent', padding: '10px 12px', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                  color: tab === k ? 'var(--accent)' : 'var(--ink-soft)', borderBottom: '2px solid ' + (tab === k ? 'var(--accent)' : 'transparent'), marginBottom: -1 }}>{l}</button>
+              ))}
+            </div>
+          )}
+          {sel !== INTERNAL && fin?.manager && tab !== 'overview' && selClient && (
+            <div style={{ padding: 16 }}>
+              {!finData ? <p className="page-sub">Loading…</p> : (
+                <ClientPage key={selClient.id + tab} section={tab} client={selClient}
+                  profile={finData.profiles.find(x => x.client_id === selClient.id)} entities={finData.entities} links={finData.links} types={finData.types}
+                  contacts={finData.contacts.filter(c => c.client_id === selClient.id)} retainers={finData.retainers} terms={finData.terms}
+                  caps={finData.caps.filter(k => k.client_id === selClient.id)} reminders={finData.reminders}
+                  documents={finData.documents.filter(x => x.client_id === selClient.id)} contracts={finData.contracts.filter(x => x.client_id === selClient.id)}
+                  contractTemplates={finData.contractTemplates} rates={finData.rates} deals={finData.deals} allClients={finData.allClients} profiles={finData.profiles}
+                  onBack={() => setTab('overview')} onOpenBill={() => { window.location.href = '/finance' }} onOpenClient={(id) => { setSel(id); setTab('overview') }}
+                  reload={async () => { await loadFinance(); await load() }} flash={(m) => setMsg({ kind: 'ok', text: m })} />
+              )}
+            </div>
+          )}
+
+          {(tab === 'overview' || sel === INTERNAL || !fin?.manager) && <>
           {/* projects */}
           <div className="cl-sec">
             <h3>{T.projects}</h3>
@@ -447,24 +527,45 @@ export default function Clients() {
             </div>
           )}
 
-          {/* settings */}
+          {/* where this client is used */}
           {sel !== INTERNAL && selClient && (
             <div className="cl-sec" style={{ borderBottom: 0 }}>
-              <h3>Settings</h3>
+              <h3>Where this {T.client.toLowerCase()} is used</h3>
               <div style={{ display: 'grid', gap: 8, fontSize: 13.5 }}>
                 <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: canEdit ? 'pointer' : 'default' }}>
                   <input type="checkbox" checked={selClient.show_in_tasks !== false} disabled={!canEdit} onChange={e => setFlag(selClient, { p_show_in_tasks: e.target.checked })} />
-                  <span><b>Task management</b> <span className="page-sub" style={{ fontSize: 12 }}>— offer this {T.client.toLowerCase()} in task dropdowns</span></span>
+                  <span><b>Task management</b> <span className="page-sub" style={{ fontSize: 12 }}>— offered in the {T.client.toLowerCase()} dropdowns for the timer, tasks and recurring tasks</span></span>
                 </label>
                 {fin?.manager && (parents[selClient.id]
-                  ? <div className="page-sub" style={{ fontSize: 12.5 }}>Billed under <b>{clients.find(x => x.id === parents[selClient.id])?.name || 'another client'}</b> (set in Finance).</div>
+                  ? <div className="page-sub" style={{ fontSize: 12.5 }}>Billed under <b>{clients.find(x => x.id === parents[selClient.id])?.name || 'another client'}</b> (see 💰 Billing & rates).</div>
                   : <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
                       <input type="checkbox" checked={invoicing[selClient.id] !== false} onChange={e => setFlag(selClient, { p_in_invoicing: e.target.checked })} />
-                      <span><b>Invoicing</b> <span className="page-sub" style={{ fontSize: 12 }}>— include this {T.client.toLowerCase()}'s hours in Finance billing</span></span>
+                      <span><b>Invoicing</b> <span className="page-sub" style={{ fontSize: 12 }}>— this {T.client.toLowerCase()} gets its own invoice in Finance</span></span>
                     </label>)}
+                {usageTypes.map(t => {
+                  const on = usage.some(u => u.client_id === selClient.id && u.type_id === t.id)
+                  return (
+                    <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: canEdit ? 'pointer' : 'default', flex: 1 }}>
+                        <input type="checkbox" checked={on} disabled={!canEdit} onChange={() => toggleUsage(selClient, t.id, on)} />
+                        <span><b>{t.label}</b>{t.description ? <span className="page-sub" style={{ fontSize: 12 }}> — {t.description}</span> : null}</span>
+                      </label>
+                      {canSettings && <button className="cl-link" style={{ color: 'var(--ink-soft)' }} title={`Remove the “${t.label}” switch from every ${T.client.toLowerCase()}`} onClick={() => removeSwitch(t)}>{sure === t.id ? 'Remove from all?' : '✕'}</button>}
+                    </div>
+                  )
+                })}
+                {canSettings && (newSwitch === null
+                  ? <div><button className="cl-link" onClick={() => setNewSwitch('')}>＋ Add a switch</button> <span className="page-sub" style={{ fontSize: 12 }}>(e.g. Sales deals, Scheduling — shows on every {T.client.toLowerCase()})</span></div>
+                  : <div style={{ display: 'flex', gap: 8, maxWidth: 420 }}>
+                      <input className="cl-in" autoFocus maxLength={40} placeholder="Switch name — e.g. Sales deals" value={newSwitch}
+                        onChange={e => setNewSwitch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addSwitch(); if (e.key === 'Escape') setNewSwitch(null) }} />
+                      <button className="btn btn-primary" disabled={busy || !newSwitch.trim()} onClick={addSwitch}>Add</button>
+                      <button className="btn btn-ghost" onClick={() => setNewSwitch(null)}>Cancel</button>
+                    </div>)}
               </div>
             </div>
           )}
+          </>}
         </div>
       </div>
     </div>
