@@ -1076,6 +1076,17 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
           <Row label="Email" value={app.email} />
           <Row label="Phone" value={app.phone} />
           <Row label="Location" value={[app.city, app.state].filter(Boolean).join(', ')} />
+          <Row label="Applied from" value={app.apply_lat != null && app.apply_lng != null ? (
+            <span>
+              {[app.apply_city, app.apply_region, app.apply_country].filter(Boolean).join(', ')}{' · '}
+              <a href={`https://www.google.com/maps?q=${app.apply_lat},${app.apply_lng}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
+                {Number(app.apply_lat).toFixed(4)}, {Number(app.apply_lng).toFixed(4)}
+              </a>
+              {app.apply_country && app.apply_country !== 'US' && <span style={{ marginLeft: 8, color: '#B91C1C', fontWeight: 700 }}>⚠ Outside U.S.</span>}
+              {app.apply_country === 'US' && app.apply_region && app.state && app.apply_region !== app.state && <span style={{ marginLeft: 8, color: '#B45309', fontWeight: 700 }}>⚠ Doesn't match stated state ({app.state})</span>}
+              <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>Approximate, from IP{app.apply_ip ? ` ${app.apply_ip}` : ''} — VPNs can skew this.</div>
+            </span>
+          ) : 'Not captured (applied before tracking was added)'} />
           <Row label="Work authorized" value={app.work_authorized ? 'Yes' : 'No'} />
           <Row label="Role applying for" value={app.role_applying} />
           <Row label="Open to other roles" value={app.open_to_other_roles ? 'Yes' : 'No'} />
