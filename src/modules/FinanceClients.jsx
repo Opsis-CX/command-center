@@ -128,7 +128,10 @@ export function ClientList({ clients, profiles, entities, links, types, retainer
   )
 }
 
-export function ClientPage({ client, profile, entities, links, types, contacts, retainers, terms, caps = [], reminders = [], documents = [], contracts = [], contractTemplates = [], rates = [], deals = [], allClients = [], profiles = [], onBack, onOpenBill, onOpenClient, reload, flash }) {
+export function ClientPage({ client, profile, entities, links, types, contacts, retainers, terms, caps = [], reminders = [], documents = [], contracts = [], contractTemplates = [], rates = [], deals = [], allClients = [], profiles = [], onBack, onOpenBill, onOpenClient, reload, flash, section }) {
+  // section (2026-10-30): the Clients page shows ONE part per tab — 'contacts' (details + contacts),
+  // 'billing', 'caps', 'reminders' or 'documents'. Without it (Finance), the whole page shows as before.
+  const show = (k) => !section || section === k
   const p = profile || { billing_kind: 'not_set', hours_mode: 'decide', status: 'active', in_invoicing: true }
   const inv = p.in_invoicing !== false
   const profOf = (id) => profiles.find(x => x.client_id === id) || {}
@@ -205,6 +208,7 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
 
   return (
     <div data-client-page={client.name}>
+      {!section && <>
       <button className="btn btn-ghost" style={{ fontSize: 12.5, marginBottom: 10 }} onClick={onBack}>← All clients</button>
       <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 2px' }}>{client.name} <span className={isChild ? 'badge' : typeBadge(p)[1]} style={{ marginLeft: 6, fontSize: 12 }}>{isChild ? `Part of ${parentClient.name}` : typeBadge(p)[0]}</span></h2>
       <p className="page-sub" style={{ margin: '0 0 14px' }}>{isChild ? `Hours follow ${parentClient.name}: ${describeHoursSetting(profOf(parentClient.id), types, entities)}` : describeHoursSetting(p, types, entities)}</p>
@@ -231,7 +235,11 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
         </label>
       </div>
 
-      {inv && !isChild && (
+      </>}
+
+      {/* "Deals under a client" is Finance's older client-in-client setup; on the Clients page, real
+          Projects replace it, so it only shows inside Finance (until live is switched over). */}
+      {!section && inv && !isChild && (
         <div style={{ ...panel, marginBottom: 14 }} data-deals>
           <h3 style={{ margin: '0 0 6px', fontSize: 16 }}>Deals and projects under {client.name}</h3>
           <p className="page-sub" style={{ margin: '0 0 8px' }}>One invoice for the client. These roll up into it: their hours are billed on its invoice and paid as usual.</p>
@@ -248,11 +256,11 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
             <select id="cl-adddeal" value="" onChange={e => { const t = candidates.find(x => x.id === e.target.value); if (t) setParentFor(t, client) }}><option value="">Choose a client…</option>{candidates.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
         </div>)}
 
-      {!inv && !isChild && <div className="card" style={{ marginBottom: 14 }} data-not-invoiced>This client is not in invoicing. It is hidden from the Clients list here, and hours worked for it are not invoiced (they are still paid as usual). Tick <b>Invoicing</b> above to set up its billing.
+      {show('billing') && !inv && !isChild && <div className="card" style={{ marginBottom: 14 }} data-not-invoiced>This client is not in invoicing. It is hidden from the Clients list here, and hours worked for it are not invoiced (they are still paid as usual). Tick <b>Invoicing</b> above to set up its billing.
         {parentCandidates.length > 0 && <div className="field" style={{ maxWidth: 420, marginTop: 8 }}><label htmlFor="cl-putunder">Or, if this is a deal or project of a client you invoice, put it under that client</label>
           <select id="cl-putunder" value="" onChange={e => { const t = parentCandidates.find(x => x.id === e.target.value); if (t) setParentFor(client, t) }}><option value="">Choose a client…</option>{parentCandidates.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
       </div>}
-      {inv && !isChild && (<>
+      {show('billing') && inv && !isChild && (<>
       <div style={{ ...panel, marginBottom: 14 }} data-checklist>
         <b>{left === 0 ? 'This client is ready.' : `${left} thing${left === 1 ? '' : 's'} left to set up`}</b>
         <ul style={{ listStyle: 'none', padding: 0, margin: '6px 0 0' }}>
@@ -308,7 +316,7 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
         </div>)}
       </>)}
 
-      <div style={{ ...panel, marginBottom: 14 }}>
+      {show('contacts') && <div style={{ ...panel, marginBottom: 14 }}>
         <h3 style={{ margin: '0 0 8px', fontSize: 16 }}>Details</h3>
         {detErr && <div className="login-err" role="alert">{detErr}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
@@ -320,17 +328,17 @@ export function ClientPage({ client, profile, entities, links, types, contacts, 
         </div>
         <div className="field"><label htmlFor="cd-notes">Notes</label><textarea id="cd-notes" rows={3} value={det.notes} onChange={e => setDet({ ...det, notes: e.target.value })} style={{ width: '100%' }} /></div>
         <button className="btn btn-primary" onClick={saveDetails} disabled={detBusy}>{detBusy ? 'Saving…' : 'Save details'}</button>
-      </div>
+      </div>}
 
-      {!isChild && savedBill && <WhatClientPays bill={savedBill} billTypes={savedTypes} rates={rates} deals={deals} retainers={retainers} terms={terms} onOpenBill={() => onOpenBill(savedBill.id)} />}
+      {show('billing') && !isChild && savedBill && <WhatClientPays bill={savedBill} billTypes={savedTypes} rates={rates} deals={deals} retainers={retainers} terms={terms} onOpenBill={() => onOpenBill(savedBill.id)} />}
 
-      <CapsSection client={client} caps={caps} reload={reload} flash={flash} />
+      {show('caps') && <CapsSection client={client} caps={caps} reload={reload} flash={flash} />}
 
-      <RemindersSection client={client} bill={isChild ? null : savedBill} billTypes={isChild ? [] : savedTypes} reminders={reminders} entities={entities} types={types} allClients={allClients} reload={reload} flash={flash} />
+      {show('reminders') && <RemindersSection client={client} bill={isChild ? null : savedBill} billTypes={isChild ? [] : savedTypes} reminders={reminders} entities={entities} types={types} allClients={allClients} reload={reload} flash={flash} />}
 
-      <DocumentsSection client={client} documents={documents} contracts={contracts} templates={contractTemplates} reload={reload} flash={flash} />
+      {show('documents') && <DocumentsSection client={client} documents={documents} contracts={contracts} templates={contractTemplates} reload={reload} flash={flash} />}
 
-      <Contacts client={client} contacts={contacts} reload={reload} flash={flash} />
+      {show('contacts') && <Contacts client={client} contacts={contacts} reload={reload} flash={flash} />}
     </div>
   )
 }
