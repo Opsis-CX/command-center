@@ -115,16 +115,44 @@ export default function Meetings() {
   const [busy, setBusy] = useState('')            // '' | 'processing' | 'tasks' | 'saving'
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
+  const [q, setQ] = useState('')                  // meetings search box
+  const [contentHits, setContentHits] = useState(null)   // ids whose summary/transcript match q (null = not searched)
 
   const load = useCallback(async () => {
     const [{ data: m }, { data: c }] = await Promise.all([
-      supabase.from('meetings').select('id, title, meeting_date, client_name, status, source, created_at, share_token, recording_link').order('meeting_date', { ascending: false }).order('created_at', { ascending: false }),
+      supabase.from('meetings').select('id, title, meeting_date, client_name, participants, status, source, created_at, share_token, recording_link').order('meeting_date', { ascending: false }).order('created_at', { ascending: false }),
       supabase.from('clients').select('id, name').order('name'),
     ])
     setMeetings(m || [])
     setClients(c || [])
   }, [])
   useEffect(() => { load() }, [load])
+
+  // Search: title / client / participants match instantly; summaries and transcripts are searched server-side (debounced)
+  const term = q.trim()
+  useEffect(() => {
+    const clean = term.replace(/[,()*%\\]/g, ' ').trim()
+    if (clean.length < 3) { setContentHits(null); return }
+    let alive = true
+    const t = setTimeout(async () => {
+      const pat = `%${clean}%`
+      const { data } = await supabase.from('meetings').select('id')
+        .or(`summary.ilike.${pat},transcript.ilike.${pat}`).limit(500)
+      if (alive) setContentHits(new Set((data || []).map(r => r.id)))
+    }, 300)
+    return () => { alive = false; clearTimeout(t) }
+  }, [term])
+
+  const filtered = useMemo(() => {
+    if (!meetings) return meetings
+    const n = term.toLowerCase()
+    if (!n) return meetings
+    return meetings.filter(m => {
+      const hay = [m.title, m.client_name, Array.isArray(m.participants) ? m.participants.join(' ') : m.participants, fmtDate(m.meeting_date)]
+        .filter(Boolean).join(' ').toLowerCase()
+      return hay.includes(n) || (contentHits && contentHits.has(m.id))
+    })
+  }, [meetings, term, contentHits])
 
   // First name for the bot label ("Becky's Notetaker")
   const [myFirstName, setMyFirstName] = useState('')
@@ -183,13 +211,23 @@ export default function Meetings() {
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         {/* list */}
         <div className="card" style={{ padding: 0, overflow: 'hidden', flex: '1 1 320px', minWidth: 300, maxWidth: 460 }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>
-            All meetings {meetings ? `(${meetings.length})` : ''}
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)' }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>
+              {term ? `Matching meetings (${filtered ? filtered.length : 0} of ${meetings ? meetings.length : 0})` : `All meetings ${meetings ? `(${meetings.length})` : ''}`}
+            </div>
+            <div style={{ position: 'relative' }}>
+              <input type="search" value={q} onChange={e => setQ(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Escape') setQ('') }}
+                placeholder="🔍 Search meetings — title, people, client, notes, transcript"
+                aria-label="Search meetings"
+                style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--bg, #fff)', fontSize: 13 }} />
+            </div>
           </div>
           <div style={{ maxHeight: 620, overflow: 'auto' }}>
             {meetings == null && <div style={{ padding: 16 }} className="page-sub">Loading…</div>}
             {meetings && meetings.length === 0 && <div style={{ padding: 16 }} className="page-sub">No meetings yet. Click “New meeting” to add one.</div>}
-            {(meetings || []).map(m => (
+            {meetings && meetings.length > 0 && filtered && filtered.length === 0 && <div style={{ padding: 16 }} className="page-sub">No meetings match “{term}”.</div>}
+            {(filtered || []).map(m => (
               <button key={m.id} onClick={() => setSelId(m.id)}
                 style={{ display: 'block', width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', borderBottom: '1px solid var(--line)', background: selId === m.id ? 'var(--canvas, #f1f5f9)' : 'transparent', cursor: 'pointer' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
