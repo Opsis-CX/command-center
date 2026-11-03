@@ -73,7 +73,7 @@ export function mountOpsisQA(ROOT, cfg) {
 
   // ---------------- data ----------------
   var cache = {};
-  var CACHEABLE = { report: 1, focus: 1, calls: 1, phone: 1, repeat: 1, ai: 1, cardcap: 1, qaextras: 1 };
+  var CACHEABLE = { report: 1, focus: 1, calls: 1, phone: 1, repeat: 1, ai: 1, cardcap: 1, pricetalk: 1, qaextras: 1 };
   function api(body) {
     if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
     var k = JSON.stringify(body), cacheable = !!CACHEABLE[body.action];
@@ -125,7 +125,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (k === 'brandset') k = 'settings';
     return {
       overview: 'M4 5h16v14H4zM4 9h16M9 9v10', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
-      cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+      cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', pricetalk: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
       scorecards: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8 11h8M8 15h8M8 19h5', reporting: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3', money: 'M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5s-5 1.6-5 3.5 2.2 3.2 5 3.5 5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5', team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
@@ -133,7 +133,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   // ---------------- nav + top bar ----------------
-  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview'], ['insights', 'Insights']].concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', W_BRANDS]]).concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['money', 'Revenue']]).concat([['reporting', 'Reporting']]).concat(OPSIS ? [] : [['hub', 'Coaching Hub']]).concat(!OPSIS && !LOCK && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])],
+  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview'], ['insights', 'Insights']].concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', W_BRANDS]]).concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['pricetalk', 'Price talk'], ['money', 'Revenue']]).concat([['reporting', 'Reporting']]).concat(OPSIS ? [] : [['hub', 'Coaching Hub']]).concat(!OPSIS && !LOCK && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])],
     ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(IS_ADMIN ? [['team', 'Team & access'], ['brandset', 'Portal settings']] : [])]];
   function renderWho() {
     var w = $('oqwho'); if (!w) return;
@@ -1094,6 +1094,64 @@ export function mountOpsisQA(ROOT, cfg) {
     lines.push(['Total', '', o.booked, o.asked_cc, p(o.asked_cc, o.booked), o.captured_cc, p(o.captured_cc, o.asked_cc), p(o.captured_cc, o.booked)].join(','));
     saveBlob('card-capture-' + S.start + '-to-' + S.end + '.csv', new Blob([lines.join('\n')], { type: 'text/csv' }));
   }
+  // ---------- Price talk (Rob & Marc 11/3) — analytics only; price and fees are not part of the QA score ----------
+  var PT = { d: null, key: null, f: 'all', ag: null, b: null, shown: 50 };
+  var PTK = { none: 'Price never came up', asked_answered: 'Customer asked · CSR gave a number', asked_no_number: 'Customer asked · left to the tech', volunteered: 'CSR brought it up first' };
+  var PTC = { none: ['#E6F0EA', '#1F5A41'], asked_answered: ['#EEF2FB', '#2B3A67'], asked_no_number: ['#F3F1EC', '#3B4541'], volunteered: ['#FCEBDD', '#A8441A'] };
+  function vPrice(tok) {
+    setMain(crumb([['Price talk']]) + '<div id="ptwrap"><div class="oq-card">' + skel(36, 6) + '</div></div>');
+    var key = S.start + '|' + S.end + '|' + S.brands.join(',');
+    if (PT.d && PT.key === key) { drawPrice(); return; }
+    api(win({ action: 'pricetalk' })).then(function (r) { if (tok !== T) return; PT.d = r || {}; PT.key = key; PT.ag = null; PT.b = null; PT.shown = 50; drawPrice(); })
+      .catch(function (e) { if (tok === T && $('ptwrap')) $('ptwrap').innerHTML = errBox(e); });
+  }
+  function ptPct(a, b) { return b ? pc(100 * a / b) : '—'; }
+  function ptRows() {
+    var f = PT.f;
+    return (PT.d.calls || []).filter(function (c) {
+      if (PT.ag && (c.agent !== PT.ag || c.brand !== PT.b)) return false;
+      if (PT.b && !PT.ag && c.brand !== PT.b) return false;
+      return f === 'all' || (f === 'nobk' && c.kind === 'none' && c.booked) || (f === 'vol' && c.kind === 'volunteered') || (f === 'ask' && /^asked/.test(c.kind)) ||
+        (f === 'lost' && c.kind !== 'none' && c.decided && !c.booked) || (f === 'decl' && c.reaction === 'declined');
+    });
+  }
+  function drawPrice() {
+    var w = $('ptwrap'); if (!w || !PT.d) return; var d = PT.d, K = d.kinds || {};
+    var g = function (k) { return K[k] || { n: 0, decided: 0, booked: 0, declined: 0, hesitated: 0, lost: 0 }; };
+    var none = g('none'), aa = g('asked_answered'), an = g('asked_no_number'), vol = g('volunteered'), read = +d.read || 0;
+    var askN = aa.n + an.n, askD = aa.decided + an.decided, askB = aa.booked + an.booked;
+    var tile = function (k, title, x, sub) { return mnTile(title, ptPct(x.n, read), n0(x.n) + ' calls · ' + ptPct(x.booked, x.decided) + ' booked' + (sub || ''), PTC[k][1], ''); };
+    var tiles = '<div class="row">' + tile('none', 'Price never came up', none) +
+      mnTile('Customer asked about price', ptPct(askN, read), n0(askN) + ' calls · ' + ptPct(askB, askD) + ' booked · CSR gave a number on ' + ptPct(aa.n, askN), PTC.asked_answered[1], 'The caller raised price first. Split below by whether the CSR gave a number or left pricing to the technician.') +
+      tile('volunteered', 'CSR brought up price first', vol, ' · ' + n0(vol.declined) + ' declined after hearing it') + '</div>';
+    var cmp = '<div class="oq-card"><h2 class="ttl">Booking rate by how price came up</h2><p class="sub">Revenue opportunities that reached a decision. Price and fees are not part of the QA score; this is for coaching decisions only.</p><div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">' +
+      ['none', 'asked_no_number', 'asked_answered', 'volunteered'].map(function (k) { var x = g(k), r = x.decided ? 100 * x.booked / x.decided : 0;
+        return '<button class="click" data-act="ptf" data-f="' + ({ none: 'nobk', asked_no_number: 'ask', asked_answered: 'ask', volunteered: 'vol' })[k] + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:minmax(150px,260px) minmax(0,1fr) 54px 90px;gap:12px;align-items:center;font-size:13px"><span>' + PTK[k] + '</span><span style="height:14px;border-radius:3px;background:#F1EEE8;overflow:hidden;display:block"><span style="display:block;height:100%;background:' + PTC[k][1] + ';width:' + r.toFixed(0) + '%"></span></span><span class="num" style="text-align:right;font-weight:600">' + (x.decided ? r.toFixed(0) + '%' : '—') + '</span><span class="mut num" style="text-align:right;font-size:12px">' + n0(x.booked) + ' of ' + n0(x.decided) + '</span></button>'; }).join('') + '</div></div>';
+    var th = function (t, tip) { return '<th style="text-align:right"' + (tip ? ' title="' + esc(tip) + '"' : '') + '>' + t + '</th>'; };
+    var brands = d.by_brand || [], agents = d.by_agent || [];
+    var btbl = (LOCK || brands.length < 2) ? '' : '<div class="oq-card"><h2 class="ttl">By brand</h2><p class="sub">Click a brand to see its calls.</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>Brand</th>' + th('Opportunities') + th('Price came up') + th('CSR first') + th('Booked · no price talk') + th('Booked · price came up') + '</tr></thead><tbody>' +
+      brands.map(function (r) { var on = PT.b === r.brand && !PT.ag; return '<tr style="cursor:pointer' + (on ? ';background:#EEF2FB' : '') + '" data-act="ptbr" data-br="' + esc(r.brand) + '"><td>' + esc(short(r.brand)) + '</td><td class="num" style="text-align:right">' + n0(r.n) + '</td><td class="num" style="text-align:right">' + ptPct(r.talk, r.n) + '</td><td class="num" style="text-align:right">' + ptPct(r.vol, r.n) + '</td><td class="num" style="text-align:right">' + ptPct(r.b0, r.d0) + '</td><td class="num" style="text-align:right">' + ptPct(r.b1, r.d1) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
+    var atbl = !agents.length ? '' : '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">By CSR</h2><p class="sub">CSRs with 3+ opportunities read · click a CSR to see their calls.</p></div><button class="sel btnd" data-act="ptcsv">⬇ Download CSV</button></div><div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>CSR</th>' + (LOCK ? '' : '<th>Brand</th>') + th('Opportunities') + th('CSR brought up price first', 'Share of the CSR’s opportunities where they raised a price or fee before the caller asked') + th('Customer asked') + th('Gave a number when asked') + th('Booking rate') + '</tr></thead><tbody>' +
+      agents.map(function (r) { var on = PT.ag === r.agent && PT.b === r.brand; return '<tr style="cursor:pointer' + (on ? ';background:#EEF2FB' : '') + '" data-act="ptag" data-ag="' + esc(r.agent) + '" data-br="' + esc(r.brand) + '"><td>' + esc(r.agent) + '</td>' + (LOCK ? '' : '<td class="mut">' + esc(short(r.brand)) + '</td>') + '<td class="num" style="text-align:right">' + n0(r.n) + '</td><td class="num" style="text-align:right">' + ptPct(r.vol, r.n) + '</td><td class="num" style="text-align:right">' + ptPct(r.asked, r.n) + '</td><td class="num" style="text-align:right">' + ptPct(r.ans, r.asked) + '</td><td class="num" style="text-align:right">' + ptPct(r.bk, r.d) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
+    var rows = ptRows(), shown = rows.slice(0, PT.shown);
+    var chip = function (k, l) { return '<button class="sel' + (PT.f === k ? ' btnd' : '') + '" data-act="ptf" data-f="' + k + '" style="padding:5px 12px;font-size:12.5px;' + (PT.f === k ? '' : 'background:#EEF4EF;border-color:#CFE5DF;color:#14302A') + '">' + l + '</button>'; };
+    var who = PT.ag ? esc(PT.ag) + (LOCK ? '' : ' · ' + esc(short(PT.b))) : PT.b ? esc(short(PT.b)) : '';
+    var list = '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Calls' + (who ? ' · ' + who : '') + '</h2><p class="sub">Click a call to hear it.' + (who ? ' <button class="lnk" data-act="ptclr">Show everyone</button>' : '') + '</p></div><div style="display:flex;gap:6px;flex-wrap:wrap">' +
+      chip('all', 'All') + chip('nobk', 'Booked, price never came up') + chip('ask', 'Customer asked') + chip('vol', 'CSR brought it up') + chip('lost', 'Not booked after price talk') + chip('decl', 'Declined after hearing price') + '</div></div>' +
+      (shown.length ? shown.map(function (c) { var col = PTC[c.kind] || PTC.none;
+        return '<button class="click" data-call="' + esc(c.review_id) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--line2)"><span class="mut num" style="width:58px;flex:none;font-size:12.5px">' + fdate(c.call_date) + '</span><span style="flex:1;min-width:0"><span style="font-weight:600">' + esc(c.agent || 'Unknown') + '</span>' + (LOCK ? '' : ' <span class="mut" style="font-size:12.5px">· ' + esc(short(c.brand)) + '</span>') + (c.summary ? '<span class="mut" style="display:block;font-size:12.5px;margin-top:2px;line-height:1.45">' + esc(c.summary) + '</span>' : '') + '</span><span style="display:flex;gap:6px;flex:none;flex-wrap:wrap;justify-content:flex-end;max-width:46%"><span class="pill" style="background:' + col[0] + ';color:' + col[1] + '">' + esc(PTK[c.kind] || c.kind) + '</span><span class="pill" style="background:' + (c.booked ? '#E6F0EA;color:#1F5A41' : '#F3F1EC;color:#56605B') + '">' + esc(c.outcome || '') + '</span></span></button>'; }).join('') : '<div class="mut" style="padding:14px 0">No calls match.</div>') +
+      (rows.length > shown.length ? '<button class="sel" data-act="ptmore" style="margin-top:10px;width:100%;justify-content:center">Show more (' + n0(rows.length - shown.length) + ' left)</button>' : '') + '</div>';
+    var cov = (+d.opps || 0) > read ? '<p class="mut" style="font-size:12px;margin:6px 0 0">Read so far: ' + n0(read) + ' of ' + n0(d.opps) + ' opportunities in this period. The rest are still being read and will appear on refresh.</p>' : '';
+    w.innerHTML = '<div class="oq-card" style="background:#FAF8F4"><p class="sub" style="line-height:1.55;margin:0"><b>How price comes up on revenue opportunity calls.</b> Price and fees are <b>not</b> part of the QA score (GarageCo, 11/3). This shows who raised price first, whether the CSR gave a number, and how bookings compare, so pricing coaching can be based on real calls.</p>' + cov + '</div>' +
+      (read ? tiles + cmp + btbl + atbl + list : '<div class="oq-card"><p class="mut">No calls have been read for price talk in this period yet.</p></div>');
+  }
+  function ptCsv() {
+    var a = (PT.d && PT.d.by_agent) || [];
+    var q = function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var p = function (x, y) { return y ? (100 * x / y).toFixed(1) + '%' : ''; };
+    var lines = [['CSR', 'Brand', 'Opportunities', 'CSR brought up price first', 'Customer asked', 'Gave a number when asked', 'Booking rate'].join(',')].concat(a.map(function (r) { return [q(r.agent), q(r.brand), r.n, p(r.vol, r.n), p(r.asked, r.n), p(r.ans, r.asked), p(r.bk, r.d)].join(','); }));
+    saveBlob('price-talk-' + S.start + '-to-' + S.end + '.csv', new Blob([lines.join('\n')], { type: 'text/csv' }));
+  }
   // QA settings
   var QS = null, QSE = { ins: false, metric: false, req: false, del: null, busy: false };
   // Suggested scoring rules: patterns the tool finds in corrections your team keeps making.
@@ -1276,7 +1334,7 @@ export function mountOpsisQA(ROOT, cfg) {
   var RP_COLS = ['call_date', 'call_time', 'brand', 'agent', 'customer_name', 'customer_phone', 'customer_phone_10', 'customer_state', 'direction', 'duration_sec', 'call_type',
     'call_leg', 'leg_no', 'legs', 'transferred', 'journey', 'customer_type', 'commercial', 'opportunity', 'outcome', 'not_booked_reason', 'fcr', 'first_person_resolution', 'sentiment', 'sentiment_score',
     'opportunity_context', 'objections', 'revenue_tip', 'asked_for_booking', 'info_before_pricing', 'set_fee_expectations',
-    'asked_for_cc', 'collected_cc', 'topics', 'score_pct', 'earned', 'max', 'introduce', 'listen', 'collect_info', 'sell_offer', 'sell_ask', 'sell_card', 'sell_objection', 'sell_expert', 'sell_appointment', 'confirm_thank', 'steps_missed',
+    'asked_for_cc', 'collected_cc', 'topics', 'score_pct', 'earned', 'max', 'introduce', 'listen', 'collect_info', 'sell_expert', 'sell_offer', 'sell_ask', 'sell_card', 'sell_objection', 'sell_appointment', 'confirm_thank', 'steps_missed',
     'job_type', 'missed_type', 'missed_why', 'summary', 'coaching_note', 'strengths', 'improvements', 'risk_flags', 'manager_adjusted', 'reviewed', 'review_id', 'call_id'];
   function rpWin() { return { start: S.start, end: S.end, brands: S.brands.length ? S.brands : null }; }
   function rpTag() { return (S.brands.length === 1 ? '-' + String(S.brands[0]).toLowerCase().replace(/[^a-z0-9]+/g, '-') : S.brands.length ? '-multi-brand' : '') + '-' + S.start + '-to-' + S.end; }
@@ -2684,15 +2742,15 @@ export function mountOpsisQA(ROOT, cfg) {
     var c = S.cur; if (!c || !$('cd')) return;
     var steps = c.steps || [], changed = !!c.adjusted && c.ai_score != null;
     var who = steps.filter(function (s) { return s.adj; }).map(function (s) { return s.adj.by; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
-    var sc = c.score, col = sc >= 80 ? G : (sc >= 60 ? '#E8A06A' : O), yn = function (v) { return v === true ? '<b style="color:#1F5A41">Yes</b>' : (v === false ? '<b style="color:#A61B1B">No</b>' : (v === 'yes' ? '<b style="color:#1F5A41">Yes</b>' : (v === 'no' ? '<b style="color:#A61B1B">No</b>' : '<b class="mut">N/A</b>'))); };
+    var noq = !OPSIS && c.counted === false, sc = noq ? null : c.score, col = sc == null ? '#CFC9BE' : (sc >= 80 ? G : (sc >= 60 ? '#E8A06A' : O)), yn = function (v) { return v === true ? '<b style="color:#1F5A41">Yes</b>' : (v === false ? '<b style="color:#A61B1B">No</b>' : (v === 'yes' ? '<b style="color:#1F5A41">Yes</b>' : (v === 'no' ? '<b style="color:#A61B1B">No</b>' : '<b class="mut">N/A</b>'))); };
     var h = '' + (S.fromAsk ? '<button class="sel" data-backask="1" style="align-self:flex-start;min-height:34px;padding:4px 12px;font-size:12.5px">← Back to AI answer</button>' : '') + '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><div class="cap">Call review</div><div style="font-size:22px;font-weight:600;letter-spacing:-0.025em;margin-top:4px">' + esc(c.agent || 'Unknown CSR') + ' · ' + esc(short(c.brand)) + '</div><div class="mut" style="font-size:12.5px">' + fdate(c.date) + ' · ' + esc(c.direction || '') + ' · ' + fsecs(c.secs) + (c.phone ? ' · ' + esc(c.phone) : '') + '</div></div><div style="display:flex;gap:8px;flex-shrink:0"><button class="sel" data-act="copycall" data-v="' + esc(c.id || S.callId) + '" title="Copy a link that opens this call review" style="min-height:44px;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>Share</button><button class="sel" data-close="1" aria-label="Close" style="width:44px;justify-content:center">✕</button></div></div>' +
       '<div class="oq-card" id="plr" style="position:sticky;top:-22px;z-index:3;padding:12px 14px;box-shadow:0 4px 14px rgba(20,48,42,.08)">' + playerInner() + '</div>' +
-      '<div class="oq-card" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:96px;height:96px;flex-shrink:0"><svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="Score ' + sc + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + (sc / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span class="num" style="font-size:24px;font-weight:600">' + sc + '</span><span class="mut" style="font-size:9.5px">brand avg ' + (c.brand_avg || '—') + '</span></div></div>' +
+      '<div class="oq-card" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:96px;height:96px;flex-shrink:0"><svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="' + (sc == null ? 'Not scored' : 'Score ' + sc) + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + ((sc || 0) / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span class="num" style="font-size:' + (sc == null ? '15' : '24') + 'px;font-weight:600">' + (sc == null ? 'Not scored' : sc) + '</span><span class="mut" style="font-size:9.5px">brand avg ' + (c.brand_avg || '—') + '</span></div></div>' +
       '<div style="flex:1;min-width:220px"><div class="row" style="gap:6px"><span class="pill" style="' + chipOut(c.outcome) + '">' + esc(c.outcome || '—') + '</span>' + (c.winnable ? '<span class="pill" style="background:#FFF4E8;color:#9A4A0B">Winnable</span>' : '') + (c.reason ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(c.reason) + '</span>' : '') + (c.category ? [c.category] : (c.topics || []).filter(function (t) { return t !== 'General Inquiry'; }).slice(0, 3).map(tLab)).map(function (t) { return '<span class="pill" style="background:#E6F0EA;color:#1F5A41">' + esc(t) + '</span>'; }).join('') + '</div>' +
       (c.caller_wanted ? '<div style="margin-top:10px"><div class="cap">Caller wanted</div><div style="margin-top:3px;line-height:1.45">' + esc(c.caller_wanted) + '</div></div>' : '') + '</div>' +
       (changed ? '<div style="flex-basis:100%;background:#FFF8E8;border:1px solid #F0DDB0;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#6B4E12">Score updated' + (who.length ? ' by <b>' + who.map(esc).join(', ') + '</b>' : '') + '.</div>' : '') + '</div>';
     h += factsBar(c);
-    if (!OPSIS && c.opportunity === false) h += '<div class="banner" style="background:#F3F1EC;border-color:#E1DCD2;color:#3B4541"><b>Not counted in QA scores.</b> This wasn\u2019t a sales or service opportunity, so its call-flow score doesn\u2019t count toward the CSR\u2019s or brand\u2019s QA score. It still counts for customer sentiment.</div>';
+    if (noq) h += '<div class="banner" style="background:#F3F1EC;border-color:#E1DCD2;color:#3B4541"><b>Not counted in QA scores.</b> This wasn\u2019t a new sales or service opportunity (e.g. asking for a person, a job follow-up, billing or a status check), so it isn\u2019t scored and doesn\u2019t count toward the CSR\u2019s or brand\u2019s QA score. The steps below are for reference only. It still counts for customer sentiment.</div>';
     h += legsNote(c);
     if (CFG.showMetrics) h += metCard(c);
     h += ccCard(c);
@@ -3401,7 +3459,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function render() {
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash(); trackHist();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, cardcap: vCard, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
   }
@@ -3594,6 +3652,12 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rpdl') { rpDownload(d.r, d.f); }
       else if (a === 'rpweek') { var wk0 = ($('rpwk') || {}).value || lastMon(); RP.week = wk0; RP.wkb = ($('rpwkb') || {}).value || ''; var ww = pdfWin(); if (ww) { RP.busy = 'week'; drawReporting(); opWeek(ww, wk0, RP.wkb || (LOCK || null)).then(function () { RP.busy = ''; drawReporting(); }).catch(function (e) { try { ww.close(); } catch (x) {} RP.busy = ''; drawReporting(); toast(e.message || 'Couldn’t build that report.'); }); } }
       else if (a === 'qsinsedit') { QSE.ins = true; drawQs(); }
+      else if (a === 'ptf') { PT.f = d.f; PT.shown = 50; drawPrice(); }
+      else if (a === 'ptag') { if (PT.ag === d.ag && PT.b === d.br) { PT.ag = null; PT.b = null; } else { PT.ag = d.ag; PT.b = d.br; } PT.shown = 50; drawPrice(); }
+      else if (a === 'ptbr') { if (PT.b === d.br && !PT.ag) { PT.b = null; } else { PT.b = d.br; PT.ag = null; } PT.shown = 50; drawPrice(); }
+      else if (a === 'ptclr') { PT.ag = null; PT.b = null; PT.shown = 50; drawPrice(); }
+      else if (a === 'ptmore') { PT.shown += 50; drawPrice(); }
+      else if (a === 'ptcsv') { ptCsv(); }
       else if (a === 'ccf') { CAP.f = d.f; CAP.shown = 50; drawCard(); }
       else if (a === 'ccag') { if (CAP.ag === d.ag && CAP.b === d.br) { CAP.ag = null; CAP.b = null; } else { CAP.ag = d.ag; CAP.b = d.br; } CAP.shown = 50; drawCard(); }
       else if (a === 'ccbr') { if (CAP.b === d.br && !CAP.ag) CAP.b = null; else { CAP.b = d.br; CAP.ag = null; } CAP.shown = 50; drawCard(); }
