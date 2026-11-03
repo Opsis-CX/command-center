@@ -1,6 +1,8 @@
 // Returns the caller's approximate location (Vercel IP geolocation headers)
-// plus VPN / proxy / Tor / datacenter detection from ipapi.is (free tier, no
-// key). Used by the application form, the assessment, and login tracking.
+// plus VPN / proxy / Tor / datacenter detection from ipapi.is. Detection needs
+// the IPAPI_KEY env var in Vercel (free account, 1,000 lookups/day) — without
+// it the flags come back null (unknown), never a false "clean".
+// Used by the application form, the assessment, and login tracking.
 export default async function handler(req, res) {
   const h = req.headers
   const dec = v => { try { return v ? decodeURIComponent(v) : null } catch { return v || null } }
@@ -11,12 +13,14 @@ export default async function handler(req, res) {
   if (ip) {
     try {
       const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 2000)
-      const r = await fetch('https://api.ipapi.is/?q=' + encodeURIComponent(ip), { signal: ctl.signal })
+      const key = process.env.IPAPI_KEY ? '&key=' + encodeURIComponent(process.env.IPAPI_KEY) : ''
+      const r = await fetch('https://api.ipapi.is/?q=' + encodeURIComponent(ip) + key, { signal: ctl.signal })
       clearTimeout(t)
       if (r.ok) {
         const d = await r.json()
+        const b = v => (typeof v === 'boolean' ? v : null)   // missing field = unknown, not "clean"
         vpn = {
-          is_vpn: !!d.is_vpn, is_proxy: !!d.is_proxy, is_tor: !!d.is_tor, is_hosting: !!d.is_datacenter,
+          is_vpn: b(d.is_vpn), is_proxy: b(d.is_proxy), is_tor: b(d.is_tor), is_hosting: b(d.is_datacenter),
           vpn_service: (d.vpn && d.vpn.service) || null,
         }
       }
