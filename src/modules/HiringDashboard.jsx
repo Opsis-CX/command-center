@@ -783,6 +783,24 @@ function LoginHelp({ app }) {
   )
 }
 
+// Approximate IP location with a map link and mismatch flags.
+function GeoLoc({ loc, state, when, empty }) {
+  if (!loc || loc.lat == null || loc.lng == null) return <span style={{ color: 'var(--ink-soft)' }}>{empty}</span>
+  return (
+    <span>
+      {[loc.city, loc.region, loc.country].filter(Boolean).join(', ')}{' · '}
+      <a href={`https://www.google.com/maps?q=${loc.lat},${loc.lng}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
+        {Number(loc.lat).toFixed(4)}, {Number(loc.lng).toFixed(4)}
+      </a>
+      {loc.country && loc.country !== 'US' && <span style={{ marginLeft: 8, color: '#B91C1C', fontWeight: 700 }}>⚠ Outside U.S.</span>}
+      {loc.country === 'US' && loc.region && state && loc.region !== state && <span style={{ marginLeft: 8, color: '#B45309', fontWeight: 700 }}>⚠ Doesn't match stated state ({state})</span>}
+      <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
+        Approximate, from IP{loc.ip ? ` ${loc.ip}` : ''}{when ? ` · ${new Date(when).toLocaleString()}` : ''} — VPNs can skew this.
+      </div>
+    </span>
+  )
+}
+
 function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, onRemove, onHold, certTags = [], busy }) {
   const [resumeUrl, setResumeUrl] = useState(null)
   const [assessment, setAssessment] = useState(null)
@@ -790,6 +808,15 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
   const [moveTo, setMoveTo] = useState('')
   const [holdReason, setHoldReason] = useState('')
   const [removeReason, setRemoveReason] = useState('')
+  // Most recent login location for this applicant's Command Center account (if any).
+  const [loginLoc, setLoginLoc] = useState(null)
+  useEffect(() => {
+    setLoginLoc(null)
+    if (!app?.profile_id) return
+    supabase.from('login_locations').select('created_at, ip, lat, lng, city, region, country')
+      .eq('profile_id', app.profile_id).order('created_at', { ascending: false }).limit(1)
+      .then(({ data }) => setLoginLoc(data?.[0] || null), () => {})
+  }, [app?.profile_id])
   // Certification to assign on onboard — defaults to the first available cert.
   const [certTag, setCertTag] = useState('')
   // Default to the Appointment Setter certification (ASC used to be picked by
@@ -1076,17 +1103,8 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
           <Row label="Email" value={app.email} />
           <Row label="Phone" value={app.phone} />
           <Row label="Location" value={[app.city, app.state].filter(Boolean).join(', ')} />
-          <Row label="Applied from" value={app.apply_lat != null && app.apply_lng != null ? (
-            <span>
-              {[app.apply_city, app.apply_region, app.apply_country].filter(Boolean).join(', ')}{' · '}
-              <a href={`https://www.google.com/maps?q=${app.apply_lat},${app.apply_lng}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
-                {Number(app.apply_lat).toFixed(4)}, {Number(app.apply_lng).toFixed(4)}
-              </a>
-              {app.apply_country && app.apply_country !== 'US' && <span style={{ marginLeft: 8, color: '#B91C1C', fontWeight: 700 }}>⚠ Outside U.S.</span>}
-              {app.apply_country === 'US' && app.apply_region && app.state && app.apply_region !== app.state && <span style={{ marginLeft: 8, color: '#B45309', fontWeight: 700 }}>⚠ Doesn't match stated state ({app.state})</span>}
-              <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>Approximate, from IP{app.apply_ip ? ` ${app.apply_ip}` : ''} — VPNs can skew this.</div>
-            </span>
-          ) : 'Not captured (applied before tracking was added)'} />
+          <Row label="Applied from" value={<GeoLoc loc={app.apply_lat != null ? { ip: app.apply_ip, lat: app.apply_lat, lng: app.apply_lng, city: app.apply_city, region: app.apply_region, country: app.apply_country } : null} state={app.state} empty="Not captured (applied before tracking was added)" />} />
+          {app.profile_id && <Row label="Last login from" value={<GeoLoc loc={loginLoc} state={app.state} when={loginLoc?.created_at} empty="No login recorded yet — captured on their next login" />} />}
           <Row label="Work authorized" value={app.work_authorized ? 'Yes' : 'No'} />
           <Row label="Role applying for" value={app.role_applying} />
           <Row label="Open to other roles" value={app.open_to_other_roles ? 'Yes' : 'No'} />
