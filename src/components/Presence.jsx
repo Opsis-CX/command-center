@@ -141,6 +141,8 @@ export function useLoginLocation() {
         const { error } = await supabase.from('login_locations').insert({
           profile_id: uid, ip: g.ip || null, lat: g.lat ?? null, lng: g.lng ?? null,
           city: g.city || null, region: g.region || null, country: g.country || null,
+          is_vpn: g.is_vpn ?? null, is_proxy: g.is_proxy ?? null, is_tor: g.is_tor ?? null,
+          is_hosting: g.is_hosting ?? null, vpn_service: g.vpn_service || null,
         })
         if (!error) { try { sessionStorage.setItem(key, '1') } catch { /* ignore */ } }
       } catch { /* never block the app */ }
