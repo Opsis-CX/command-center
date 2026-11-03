@@ -1,0 +1,1158 @@
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
+import { can } from '../lib/permissions'
+// ============================================================
+//  ADMIN HIRING DASHBOARD  (Stage 3)
+//  Kanban pipeline board. Screened-out applicants (out_of_area,
+//  auto_denied, denied, assessment_denied, mock_failed, withdrawn)
+//  are hidden behind a toggle. First review = approve / deny.
+//  Emails on each transition are STUBBED (see sendHiringEmail).
+// ============================================================
+
+async function sendHiringEmail(kind, to, data) {
+  try {
+    const { error } = await supabase.functions.invoke('send-hiring-email', { body: { kind, to, data } })
+    if (error) console.error('email send failed:', error)
+  } catch (e) { console.error('email send failed:', e) }
+}
+
+// The board columns, in pipeline order. Each maps to one status.
+const COLUMNS = [
+  { key: 'pending_review', title: 'Pending review', hint: 'New applicants to approve or deny' },
+  { key: 'approved', title: 'Approved', hint: 'Assessment goes out' },
+  { key: 'assessment_review', title: 'Assessment', hint: 'Submitted, needs review' },
+  { key: 'assessment_passed', title: 'Onboarding', hint: 'Rippling invite' },
+  { key: 'rippling_awaiting_signature', title: 'Rippling — Awaiting Signature', hint: 'Invite sent, waiting on their signature' },
+  { key: 'cert_assigned', title: 'Certification Assigned', hint: 'Assigned, awaiting completion' },
+  { key: 'certifying', title: 'Certifying', hint: 'Doing certification' },
+  { key: 'cert_complete', title: 'Five9 setup', hint: 'Create Five9 account' },
+  { key: 'mock_requested', title: 'Mock call', hint: 'Scheduling / grading' },
+  { key: 'hired', title: 'Hired', hint: 'Active' },
+]
+// Statuses considered "screened out" — hidden unless the toggle is on.
+const SCREENED_OUT = ['out_of_area', 'auto_denied', 'denied', 'assessment_denied', 'mock_failed', 'withdrawn']
+
+// If you have a dedicated "Onboarding" (or "New Hires") project in the
+// Projects module, paste its id here and the Rippling setup tasks will be
+// filed under it. Leave as null to create the tasks with no project.
+// To find a project's id: open it in Projects, or check the projects table.
+const ONBOARDING_PROJECT_ID = null
+
+// Task owners. Corinne handles Rippling onboarding; Becky is the fallback if
+// automatic Command Center account creation fails.
+const CORINNE_ID = '6d73d6ff-b70f-4180-880b-1b791bb03bde'
+const BECKY_ID = '2825c623-847e-4747-9234-ee5579f1afcb'
+
+// The tag that carries the setter certification — assigning it makes the
+// certification appear under the hire's "My Certifications". (People & Tags →
+// "GarageCo: Appointment Setter Certification Needed".)
+const SETTER_CERT_TAG_ID = '13f17205-a32b-4f71-9ac7-e743384f0b6d'
+
+// Some statuses live under a column even though the column key differs
+// (e.g. assessment_sent belongs under "Approved" until it comes back).
+const STATUS_TO_COLUMN = {
+  pending_review: 'pending_review',
+  approved: 'approved',
+  assessment_sent: 'approved',
+  assessment_review: 'assessment_review',
+  assessment_passed: 'assessment_passed',
+  rippling_invited: 'assessment_passed',
+  onboarding: 'assessment_passed',
+  rippling_awaiting_signature: 'rippling_awaiting_signature',
+  cert_assigned: 'cert_assigned',
+  certifying: 'certifying',
+  cert_complete: 'cert_complete',
+  five9_pending: 'cert_complete',
+  mock_requested: 'mock_requested',
+  mock_scheduled: 'mock_requested',
+  mock_passed: 'hired',
+  hired: 'hired',
+}
+
+const STATUS_LABEL = {
+  applied: 'Applied', out_of_area: 'Out of area', auto_denied: 'Auto-denied',
+  pending_review: 'Pending review', denied: 'Denied', approved: 'Approved',
+  assessment_sent: 'Assessment sent', assessment_review: 'Assessment in review',
+  assessment_denied: 'Assessment denied', assessment_passed: 'Assessment passed',
+  rippling_invited: 'Rippling invited', onboarding: 'Onboarding',
+  rippling_awaiting_signature: 'Rippling — awaiting signature', cert_assigned: 'Certification assigned',
+  certifying: 'Certifying',
+  cert_complete: 'Certification complete', five9_pending: 'Five9 pending',
+  mock_requested: 'Mock requested', mock_scheduled: 'Mock scheduled',
+  mock_passed: 'Mock passed', mock_failed: 'Mock failed', hired: 'Hired', withdrawn: 'Withdrawn',
+}
+
+function timeAgo(iso) {
+  const d = new Date(iso), now = new Date(), s = Math.floor((now - d) / 1000)
+  if (s < 60) return 'just now'
+  if (s < 3600) return Math.floor(s / 60) + 'm ago'
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago'
+  if (s < 604800) return Math.floor(s / 86400) + 'd ago'
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+function initials(name) {
+  const p = (name || '?').trim().split(/\s+/); return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase() || '?'
+}
+function avatarColor(name) {
+  const colors = ['#0077B6', '#16A34A', '#D97706', '#7C3AED', '#DC2626', '#0891B2', '#DB2777', '#65A30D']
+  let h = 0; for (const c of (name || '?')) h = (h * 31 + c.charCodeAt(0)) >>> 0
+  return colors[h % colors.length]
+}
+
+export default function HiringDashboard() {
+  const { user, appRole } = useAuth()
+  // View-only mode: roles with hiring.view_stage_only (ASC, Marketing) can see the
+  // pipeline but get no approve/deny/advance/hold/move/remove controls. Full
+  // control requires hiring.all (Certification, Admin). DB read access for ASC is
+  // granted via the hiring_*_select RLS policies; write policies exclude them.
+  const readOnly = !can(appRole, 'hiring.all')
+  const [apps, setApps] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState('')
+  const [showScreened, setShowScreened] = useState(false)
+  const [holdFilter, setHoldFilter] = useState('all')   // all | hold | active
+  const [selected, setSelected] = useState(null)  // application being viewed
+  const [busy, setBusy] = useState(false)
+  const [lastOnboard, setLastOnboard] = useState(null)  // onboarding result banner
+  const rippleRunning = useRef(false)  // guards checkRipplingTasks against concurrent runs
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr('')
+    const { data, error } = await supabase.from('hiring_applications')
+      .select('*').order('created_at', { ascending: false })
+    if (error) setErr(error.message)
+    else setApps(data || [])
+    setLoading(false)
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  // Certifications that can be assigned on onboard (each maps to a "Certification
+  // Needed" tag). Loaded once; used to populate the onboarding cert picker.
+  const [certTags, setCertTags] = useState([])
+  useEffect(() => {
+    supabase.from('certification_assignments').select('tag_id, cert:certifications(id, name, active)')
+      .then(({ data }) => {
+        const seen = new Set()
+        const list = (data || [])
+          .filter(r => r.cert && r.cert.active !== false && !seen.has(r.tag_id) && seen.add(r.tag_id))
+          .map(r => ({ tag_id: r.tag_id, cert_name: r.cert.name }))
+          .sort((a, b) => a.cert_name.localeCompare(b.cert_name))
+        setCertTags(list)
+      })
+  }, [])
+
+  // realtime: refresh when applications change
+  useEffect(() => {
+    const ch = supabase.channel('hiring-board')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hiring_applications' }, () => load())
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [load])
+
+  // Watch for Corinne completing the "set up in Rippling" task. Any applicant
+  // sitting in assessment_passed with a linked task that's now done gets
+  // advanced to certification automatically. We check on load, on a light
+  // interval, and whenever the tasks table changes.
+  // Safety net at the Certifying transition: make sure the hire really does
+  // have a login before they're expected to certify. The account is normally
+  // already created one stage earlier (Rippling signed → onboardHire).
+  //
+  // This used to call the legacy `invite-agent` function, which returns a
+  // non-2xx for an account that already exists — so it raised a critical
+  // "Create Command Center account for X" task for Becky on essentially every
+  // hire, all of them false. Worse, invite-agent's already-registered path
+  // resets the password and sets must_change_password BEFORE returning, so it
+  // could lock out a hire in the middle of their certification.
+  //
+  // `onboard-hire` is the robust one: idempotent, and it skips anyone who has
+  // already signed in (never touches their password). Only a genuine failure
+  // raises the fallback task now.
+  async function inviteAgentAccount(app) {
+    try {
+      const { data, error } = await supabase.functions.invoke('onboard-hire', {
+        body: { email: app.email, fullName: app.full_name },
+      })
+      let failure = error?.message || data?.error
+      if (error) {
+        try { failure = (await error.context?.json())?.error || failure } catch { /* ignore */ }
+      }
+      if (failure) {
+        console.error('onboard-hire failed:', failure)
+        await createAccountFallbackTask(app, failure)
+        return false
+      }
+      // Only a fresh or reactivated login sends a welcome email; an already
+      // active hire is skipped on purpose and needs no task.
+      if ((data?.created || data?.reactivated) && data?.emailError) {
+        await createAccountFallbackTask(app, `Account created, but the welcome email failed: ${data.emailError}`)
+      }
+      return true
+    } catch (e) {
+      console.error('onboard-hire failed:', e)
+      await createAccountFallbackTask(app, String(e?.message || e))
+      return false
+    }
+  }
+
+  // Fallback: if automatic account creation fails, tell Becky to do it by hand
+  // rather than letting the new hire quietly fall through the cracks.
+  //
+  // BUT verify first. Every one of these tasks raised so far has been false —
+  // the login already existed and the call simply errored — which turned a
+  // "critical, do this by hand" task into noise. So we ask the database whether
+  // the account actually exists, and stay silent when it does. A task now means
+  // the hire genuinely has no login.
+  async function createAccountFallbackTask(app, reason) {
+    try {
+      try {
+        const { data: acct } = await supabase.rpc('account_exists_for_email', { p_email: app.email })
+        if (acct?.exists) {
+          console.info('account already exists for', app.email, '— no fallback task raised:', reason)
+          return
+        }
+      } catch (e) { /* can't verify → fall through and raise the task */ }
+      const taskId = crypto.randomUUID()
+      const contact = [
+        app.email ? `Email: ${app.email}` : null,
+        app.phone ? `Phone: ${app.phone}` : null,
+      ].filter(Boolean).join('\n')
+      const { error } = await supabase.from('tasks').insert({
+        id: taskId,
+        name: `Create Command Center account for ${app.full_name}`,
+        status: 'todo',
+        priority: 'critical',
+        due_date: new Date().toISOString().slice(0, 10),
+        project_id: ONBOARDING_PROJECT_ID || null,
+        notes: `Automatic account creation failed, so this needs to be done manually — they can't start certification without a login.\n\n${contact}\n\nReason: ${reason}`,
+        created_by: user?.id || null,
+      })
+      if (error) { console.error('fallback task failed:', error); return }
+      await supabase.from('task_assignees').insert({ task_id: taskId, profile_id: BECKY_ID })
+      try {
+        const notify = await import('../lib/notify')
+        notify.notifyTaskAssigned?.({
+          recipientIds: [BECKY_ID], actorId: user?.id, actorName: 'Hiring',
+          taskName: `Create Command Center account for ${app.full_name}`, projectName: null, taskId,
+        })
+      } catch (e) { /* notify optional */ }
+    } catch (e) { console.error('createAccountFallbackTask failed:', e) }
+  }
+
+  const checkRipplingTasks = useCallback(async () => {
+    // Re-entrancy guard: this runs on mount, whenever `apps` changes, AND on
+    // every realtime tasks UPDATE. Without a lock, several copies race before
+    // the status flip commits and each one advances + logs + provisions an
+    // account — that storm is what fired 2–28 duplicate events per hire and
+    // hammered account creation. One run at a time only.
+    if (rippleRunning.current) return
+    rippleRunning.current = true
+    try {
+    const waiting = apps.filter(a => a.status === 'assessment_passed' && a.rippling_task_id)
+    if (!waiting.length) return
+    const ids = waiting.map(a => a.rippling_task_id)
+    const { data: doneTasks } = await supabase.from('tasks')
+      .select('id, status').in('id', ids).eq('status', 'done')
+    if (!doneTasks || !doneTasks.length) return
+    const doneIds = new Set(doneTasks.map(t => t.id))
+    for (const app of waiting) {
+      if (doneIds.has(app.rippling_task_id)) {
+        // Rippling invite is out — advance exactly ONE step, to "Rippling —
+        // Awaiting Signature". (Do NOT jump ahead to Certifying; the manager
+        // walks them through Awaiting Signature -> Certification Assigned ->
+        // Certifying one step at a time.) The Command Center login is created
+        // later, when certification is actually started (the cert_assigned ->
+        // certifying transition), so we don't provision accounts before the
+        // hire has even signed their Rippling paperwork.
+        const patch = { status: 'rippling_awaiting_signature', reviewed_at: new Date().toISOString() }
+        // Conditional update: only flip a row that is STILL assessment_passed.
+        // A racing/duplicate run updates 0 rows, so we only log the stage event
+        // for the single run that actually made the change — no more duplicates.
+        const { data: flipped } = await supabase.from('hiring_applications')
+          .update(patch).eq('id', app.id).eq('status', 'assessment_passed').select('id')
+        if (flipped && flipped.length) {
+          await supabase.from('hiring_stage_events').insert({
+            application_id: app.id, from_status: 'assessment_passed', to_status: 'rippling_awaiting_signature',
+            note: 'Rippling setup completed by Corinne — invite sent, now awaiting the hire\'s signature.',
+          })
+        }
+      }
+    }
+    load()
+    } finally {
+      rippleRunning.current = false
+    }
+  }, [apps, load])
+
+  useEffect(() => { checkRipplingTasks() }, [checkRipplingTasks])
+  useEffect(() => {
+    const ch = supabase.channel('hiring-tasks-watch')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, () => checkRipplingTasks())
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [checkRipplingTasks])
+
+  // move an application to a new status, log the event, fire the stubbed email
+  // Corinne's profile id — the "set up in Rippling" task is assigned to her.
+
+  // The Chat channel to alert when someone finishes certification.
+  const SUPPORT_CHANNEL_NAME = '# Call Center Support Team'
+
+  // Post a message into the support channel saying an agent is ready for
+  // their Five9 login. Posts as the current admin (a real person triggered it).
+  async function postFive9Alert(app) {
+    try {
+      const { data: chans } = await supabase.from('channels')
+        .select('id, name').eq('name', SUPPORT_CHANNEL_NAME).limit(1)
+      const channel = chans && chans[0]
+      if (!channel) { console.error('support channel not found:', SUPPORT_CHANNEL_NAME); return }
+      const body = `🎧 ${app.full_name} has completed certification and is ready for their Five9 login. Please create their Five9 account and enter the username and password in People & Tags.`
+      await supabase.from('messages').insert({
+        channel_id: channel.id,
+        sender_id: user?.id || CORINNE_ID,
+        body,
+      })
+    } catch (e) { console.error('postFive9Alert failed:', e) }
+  }
+
+  // Create a task in the Projects module telling Corinne to set this new
+  // hire up in Rippling. Returns the new task id (or null on failure).
+  async function createRipplingTask(app) {
+    try {
+      const taskId = crypto.randomUUID()
+      // Contact details go in the task itself so Corinne doesn't have to dig
+      // through the pipeline to find them. Due same day — onboarding paperwork
+      // gates everything downstream.
+      const contact = [
+        app.email ? `Email: ${app.email}` : null,
+        app.phone ? `Phone: ${app.phone}` : null,
+        app.state ? `State: ${app.state}` : null,
+      ].filter(Boolean).join('\n')
+      const { error: tErr } = await supabase.from('tasks').insert({
+        id: taskId,
+        name: `Set up ${app.full_name} in Rippling`,
+        status: 'todo',
+        priority: 'high',
+        due_date: new Date().toISOString().slice(0, 10),
+        project_id: ONBOARDING_PROJECT_ID || null,
+        notes: `New hire cleared assessment.\n\n${contact}\n\nCreate their Rippling onboarding, then mark this task done — that automatically advances them to "Rippling — Awaiting Signature" in the hiring pipeline.`,
+        created_by: user?.id || null,
+      })
+      if (tErr) { console.error('could not create Rippling task:', tErr); return null }
+      await supabase.from('task_assignees').insert({ task_id: taskId, profile_id: CORINNE_ID })
+      // notify Corinne if the notify helper exists in this app
+      try {
+        const notify = await import('../lib/notify')
+        if (notify.notifyTaskAssigned) {
+          notify.notifyTaskAssigned({
+            recipientIds: [CORINNE_ID], actorId: user?.id, actorName: 'Hiring',
+            taskName: `Set up ${app.full_name} in Rippling`, projectName: null, taskId,
+          })
+        }
+      } catch (e) { /* notify is optional */ }
+      return taskId
+    } catch (e) { console.error('createRipplingTask failed:', e); return null }
+  }
+
+  async function transition(app, toStatus, { email, note, certTagId, waitlist } = {}) {
+    setBusy(true)
+    const from = app.status
+    const patch = { status: toStatus, reviewer_id: user?.id, reviewed_at: new Date().toISOString() }
+
+    // Waitlist (passed, but no open spot yet): park them at Onboarding on hold,
+    // with NO Rippling task. The task is created when the hold is released.
+    if (waitlist) {
+      Object.assign(patch, { on_hold: true, on_hold_since: new Date().toISOString(), on_hold_by: user?.id || null, on_hold_reason: 'Waitlist: first in line for the next wave' })
+    }
+
+    // When an assessment is passed, create the Corinne "set up in Rippling"
+    // task and remember its id so we can watch for its completion.
+    if (toStatus === 'assessment_passed' && !waitlist) {
+      const newTaskId = await createRipplingTask(app)
+      if (newTaskId) patch.rippling_task_id = newTaskId
+    }
+
+    // When certification completes, alert the support channel for Five9 setup.
+    if (toStatus === 'cert_complete') {
+      await postFive9Alert(app)
+    }
+
+    // When Rippling is signed (certification assigned), onboard the hire:
+    // create their login with a temporary password, assign their certification
+    // so it shows in My Certifications, and email a welcome with the login link
+    // + next steps. Handled by onboardHire(); result surfaced in a banner.
+    let onboardResult = null
+    if (toStatus === 'cert_assigned') {
+      onboardResult = await onboardHire(app, certTagId)
+    }
+
+    // Safety net: if someone jumps straight to certifying without the account
+    // having been made, ensure a login exists.
+    if (toStatus === 'certifying') {
+      await inviteAgentAccount(app)
+    }
+
+    // Passing the mock call is now the single activation event, handled in the
+    // database (migrations auto_activate_hire_on_mock_pass +
+    // auto_advance_mock_passed_to_hired, 2026-08-14): it clears in_training,
+    // adds them to the schedule matching the certification they passed, and
+    // advances the record to 'hired'. Nothing to call from here — and note there
+    // has never been a UI action producing 'hired' (no advanceMap entry for
+    // mock_passed), which is exactly why the old finish_onboarding call below
+    // never fired. Kept only for a manual/legacy jump straight to Hired.
+    if (toStatus === 'hired') {
+      await supabase.rpc('finish_onboarding', { p_application_id: app.id }).catch(() => {})
+    }
+
+    // Read the row back instead of trusting the local patch: the database may
+    // have advanced the status past what we wrote (mock_passed -> hired), and
+    // the detail panel would otherwise keep showing the stale label.
+    const { data: saved, error } = await supabase.from('hiring_applications')
+      .update(patch).eq('id', app.id).select().single()
+    if (error) { setErr(error.message); setBusy(false); return }
+    const applied = saved || { ...app, ...patch }
+    await supabase.from('hiring_stage_events').insert({
+      application_id: app.id, from_status: from, to_status: toStatus, actor_id: user?.id, note: note || null,
+    })
+    if (email) await sendHiringEmail(email, app.email, { name: app.full_name, appId: app.id, state: app.state })
+    if (onboardResult) setLastOnboard({ name: app.full_name, ...onboardResult })
+    setApps(prev => prev.map(a => a.id === app.id ? { ...a, ...applied } : a))
+    setSelected(prev => prev && prev.id === app.id ? { ...prev, ...applied } : prev)
+    setBusy(false)
+  }
+
+  // Onboard a hire whose Rippling is signed: create/repair their login with a
+  // temporary password (via the onboard-hire Edge Function — always succeeds,
+  // returns the temp password), then assign their certification so it appears
+  // in My Certifications. Returns { tempPassword, emailed, error? } for the UI.
+  async function onboardHire(app, certTagId) {
+    let result
+    try {
+      const { data, error } = await supabase.functions.invoke('onboard-hire', {
+        body: { email: app.email, fullName: app.full_name },
+      })
+      if (error) {
+        let detail = ''
+        try { detail = (await error.context?.json())?.error } catch { /* ignore */ }
+        result = { error: detail || error.message }
+      } else {
+        result = data
+      }
+    } catch (e) {
+      result = { error: String(e?.message || e) }
+    }
+    // Assign the chosen certification (add its "Certification Needed" tag) so
+    // the course shows up under My Certifications. Best-effort, de-duplicated.
+    const uid = result?.userId
+    const tagId = certTagId || SETTER_CERT_TAG_ID
+    if (uid && tagId) {
+      try {
+        const { data: exists } = await supabase.from('taggables').select('id')
+          .eq('tag_id', tagId).eq('entity_type', 'profile').eq('entity_id', uid).maybeSingle()
+        if (!exists) await supabase.from('taggables').insert({ tag_id: tagId, entity_type: 'profile', entity_id: uid })
+      } catch (e) { console.error('cert tag assign failed:', e) }
+    }
+    return result
+  }
+
+  // Pay check (contact center roles, $15/hr): anyone who said the rate doesn't
+  // work, or was never asked (older applications), gets a confirm before the
+  // assessment goes out.
+  const approve = (app) => {
+    const pay = payStatus(app)
+    if (pay === 'no' && !window.confirm(`${app.full_name} said ${CC_RATE} does NOT work for them${app.compensation ? ' (wants: ' + app.compensation + ')' : ''}. Approve and send the assessment anyway?`)) return
+    if (pay === 'unknown' && !window.confirm(`${app.full_name} hasn't confirmed the ${CC_RATE} rate yet. Have you confirmed pay with them? Click OK to approve.`)) return
+    transition(app, 'approved', { email: 'approved', note: pay === 'yes' ? 'approved at first review (pay confirmed)' : 'approved at first review (pay confirmed by reviewer)' })
+  }
+  const deny = (app) => {
+    if (!window.confirm(`Deny ${app.full_name}'s application? They'll get a decline email.`)) return
+    transition(app, 'denied', { email: 'denied', note: 'denied at first review' })
+  }
+
+  // Universal remove/deny — available at ANY stage. Screens the applicant out
+  // (moves them to the screened-out list, reinstatable) and sends NO email, so
+  // it's safe for undeliverable-email or stale applicants. toStatus: 'withdrawn'
+  // (neutral removal) or 'denied' (rejection).
+  async function removeFromPipeline(app, toStatus, reason) {
+    const verb = toStatus === 'denied' ? 'Deny' : 'Remove'
+    if (!window.confirm(`${verb} ${app.full_name}? They'll move to the screened-out list. No email is sent.`)) return
+    setBusy(true)
+    const from = app.status
+    const patch = { status: toStatus, reviewer_id: user?.id, reviewed_at: new Date().toISOString(), screen_reason: reason || null }
+    const { error } = await supabase.from('hiring_applications').update(patch).eq('id', app.id)
+    if (error) { setErr(error.message); setBusy(false); return }
+    await supabase.from('hiring_stage_events').insert({
+      application_id: app.id, from_status: from, to_status: toStatus, actor_id: user?.id,
+      note: `${toStatus === 'denied' ? 'Denied' : 'Removed from pipeline'}${reason ? ': ' + reason : ''} (from "${STATUS_LABEL[from] || from}", no email sent)`,
+    })
+    setApps(prev => prev.map(a => a.id === app.id ? { ...a, ...patch } : a))
+    setSelected(prev => prev && prev.id === app.id ? { ...prev, ...patch } : prev)
+    setBusy(false)
+  }
+
+  // Corrective move: set an applicant to any stage (usually to move them BACK
+  // to the right one). Unlike the forward "advance" buttons this sends NO email
+  // and fires NO side effects (no new Rippling task, Five9 alert, or account
+  // creation) — it just fixes the stage and logs the change.
+  async function moveToStep(app, toStatus) {
+    if (!toStatus || toStatus === app.status) return
+    setBusy(true)
+    const from = app.status
+    const patch = { status: toStatus, reviewer_id: user?.id, reviewed_at: new Date().toISOString() }
+    const { error } = await supabase.from('hiring_applications').update(patch).eq('id', app.id)
+    if (error) { setErr(error.message); setBusy(false); return }
+    await supabase.from('hiring_stage_events').insert({
+      application_id: app.id, from_status: from, to_status: toStatus, actor_id: user?.id,
+      note: `Manually moved to "${STATUS_LABEL[toStatus] || toStatus}" (stage correction — no email sent)`,
+    })
+    setApps(prev => prev.map(a => a.id === app.id ? { ...a, ...patch } : a))
+    setSelected(prev => prev && prev.id === app.id ? { ...prev, ...patch } : prev)
+    setBusy(false)
+  }
+
+  // ---- capacity hold ----
+  // Parks an applicant where they are. The stage is deliberately left alone, so
+  // releasing them resumes exactly where they stopped. Releasing also writes a
+  // stage event: pipeline-reminders reads the latest event for the current
+  // status as the in-stage clock, so this hands them a fresh 48h/14-day window
+  // rather than instantly auto-denying someone who waited out a long hold.
+  async function setHold(app, hold, reason) {
+    setBusy(true)
+    const { error } = await supabase.from('hiring_applications').update({
+      on_hold: hold,
+      on_hold_since: hold ? new Date().toISOString() : null,
+      on_hold_by: hold ? (user?.id || null) : null,
+      on_hold_reason: hold ? (reason || null) : null,
+    }).eq('id', app.id)
+    if (error) { setErr(error.message); setBusy(false); return }
+
+    await supabase.from('hiring_stage_events').insert({
+      application_id: app.id,
+      from_status: app.status,
+      to_status: app.status,
+      note: hold
+        ? `Placed on hold at capacity${reason ? ': ' + reason : ''}`
+        : 'Released from capacity hold — reminder clock reset',
+    })
+    if (!hold) {
+      // clear the nudge counters so the cadence starts clean on resume
+      const resume = { pipeline_reminders_sent: 0, last_pipeline_reminder_at: null, pipeline_reminder_stage: null }
+      // Coming off the waitlist at Onboarding: now create Corinne's Rippling task.
+      if (app.status === 'assessment_passed' && !app.rippling_task_id) {
+        const newTaskId = await createRipplingTask(app)
+        if (newTaskId) resume.rippling_task_id = newTaskId
+      }
+      await supabase.from('hiring_applications').update(resume).eq('id', app.id)
+    }
+    if (app.email) {
+      await sendHiringEmail(hold ? 'capacity_hold' : 'capacity_release', app.email, { name: app.full_name })
+    }
+    await load()
+    setSelected(prev => (prev && prev.id === app.id ? { ...prev, on_hold: hold, on_hold_reason: hold ? (reason || null) : null } : prev))
+    setBusy(false)
+  }
+
+  // group visible apps by column
+  const visible = apps.filter(a => showScreened ? true : !SCREENED_OUT.includes(a.status))
+  const byColumn = {}
+  COLUMNS.forEach(c => { byColumn[c.key] = [] })
+  const screenedOut = []
+  visible.forEach(a => {
+    if (SCREENED_OUT.includes(a.status)) { screenedOut.push(a); return }
+    if (holdFilter === 'hold' && !a.on_hold) return
+    if (holdFilter === 'active' && a.on_hold) return
+    const col = STATUS_TO_COLUMN[a.status]
+    if (col && byColumn[col]) byColumn[col].push(a)
+  })
+
+  const activeCount = apps.filter(a => !SCREENED_OUT.includes(a.status)).length
+  const screenedCount = apps.filter(a => SCREENED_OUT.includes(a.status)).length
+  const holdCount = apps.filter(a => a.on_hold && !SCREENED_OUT.includes(a.status)).length
+
+  if (loading) return <p className="page-sub" style={{ padding: 20 }}>Loading applicants…</p>
+
+  return (
+    <div style={{ padding: '20px 20px 40px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Hiring pipeline</h1>
+          <p className="page-sub" style={{ margin: '4px 0 0', fontSize: 13.5 }}>
+            {activeCount} active · {screenedCount} screened out{holdCount > 0 ? ` · ⏸ ${holdCount} on hold` : ''}
+          </p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <select value={holdFilter} onChange={e => setHoldFilter(e.target.value)}
+            style={{ padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)' }}>
+            <option value="all">All applicants</option>
+            <option value="active">Active only (hide on hold)</option>
+            <option value="hold">On hold only ({holdCount})</option>
+          </select>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, cursor: 'pointer', color: 'var(--ink-soft)' }}>
+            <input type="checkbox" checked={showScreened} onChange={e => setShowScreened(e.target.checked)} />
+            Show screened-out ({screenedCount})
+          </label>
+        </div>
+      </div>
+
+      {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>{err}</div>}
+
+      {lastOnboard && (
+        <div style={{ background: lastOnboard.error ? '#FEF2F2' : '#ECFDF5', border: '1px solid ' + (lastOnboard.error ? '#FECACA' : '#A7F3D0'), borderRadius: 10, padding: '12px 16px', marginBottom: 14, position: 'relative' }}>
+          <button onClick={() => setLastOnboard(null)} style={{ position: 'absolute', top: 8, right: 10, border: 0, background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--ink-soft)', lineHeight: 1 }}>×</button>
+          {lastOnboard.error ? (
+            <div style={{ fontSize: 13, color: '#B91C1C' }}><b>Onboarding for {lastOnboard.name} hit a problem:</b> {lastOnboard.error} — you can retry, or set a password from People & Tags.</div>
+          ) : (
+            <div style={{ fontSize: 13.5, color: '#065F46' }}>
+              <b>✓ {lastOnboard.name} onboarded.</b> Account {lastOnboard.created ? 'created' : 'updated'}, certification assigned, and a welcome email {lastOnboard.emailed ? 'sent' : 'could NOT be sent — share the login below manually'}.
+              <div style={{ marginTop: 8, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
+                <span><b>Login:</b> app.opsiscx.com</span>
+                <span><b>Email:</b> {lastOnboard.email}</span>
+                <span style={{ fontFamily: 'monospace', background: '#fff', border: '1px solid #A7F3D0', borderRadius: 6, padding: '2px 8px' }}><b>Temp password:</b> {lastOnboard.tempPassword}</span>
+                <button onClick={() => { navigator.clipboard?.writeText(`Login: https://app.opsiscx.com\nEmail: ${lastOnboard.email}\nTemporary password: ${lastOnboard.tempPassword}`) }}
+                  style={{ border: '1px solid #A7F3D0', background: '#fff', borderRadius: 6, padding: '3px 10px', fontSize: 12.5, cursor: 'pointer', fontWeight: 600 }}>Copy login</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Kanban board */}
+      <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start' }}>
+        {COLUMNS.map(col => (
+          <div key={col.key} style={{ flex: 'none', width: 260, background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 12, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100dvh - 220px)' }}>
+            <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid var(--line)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <b style={{ fontSize: 13.5 }}>{col.title}</b>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--surface)', borderRadius: 10, padding: '1px 8px', border: '1px solid var(--line)' }}>{byColumn[col.key].length}</span>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 2 }}>{col.hint}</div>
+            </div>
+            <div style={{ padding: 10, overflowY: 'auto', display: 'grid', gap: 8, flex: 1, minHeight: 60 }}>
+              {byColumn[col.key].length === 0 && <div style={{ fontSize: 12, color: 'var(--ink-soft)', textAlign: 'center', padding: '16px 0' }}>—</div>}
+              {byColumn[col.key].map(app => (
+                <ApplicantCard key={app.id} app={app} onClick={() => setSelected(app)}
+                  onApprove={!readOnly && col.key === 'pending_review' ? () => approve(app) : null}
+                  onDeny={!readOnly && col.key === 'pending_review' ? () => deny(app) : null}
+                  busy={busy} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Screened-out list */}
+      {showScreened && screenedOut.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Screened out</h2>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {screenedOut.map(app => (
+              <button key={app.id} onClick={() => setSelected(app)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <span style={{ width: 28, height: 28, borderRadius: '50%', background: avatarColor(app.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>{initials(app.full_name)}</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>{app.full_name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{app.state} · {STATUS_LABEL[app.status]}{app.screen_reason ? ` · ${app.screen_reason}` : ''}</div>
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{timeAgo(app.created_at)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selected && <DetailPanel app={selected} onClose={() => setSelected(null)}
+        onApprove={readOnly ? null : approve} onDeny={readOnly ? null : deny} onTransition={readOnly ? null : transition}
+        onMove={readOnly ? null : moveToStep} onRemove={readOnly ? null : removeFromPipeline} onHold={readOnly ? null : setHold}
+        certTags={certTags} busy={busy} />}
+    </div>
+  )
+}
+
+// ---- Pay confirmation (contact center roles pay $15/hr) ----
+const CC_RATE = '$15/hr'
+const CC_ROLES = ['Appointment Setter']
+const PAY_CHECK_STAGES = ['pending_review', 'approved', 'assessment_sent', 'assessment_review']
+function payStatus(app) {
+  if (!CC_ROLES.includes(app.role_applying)) return 'na'
+  if (app.pay_ok === true) return 'yes'
+  if (app.pay_ok === false) return 'no'
+  return 'unknown'
+}
+function PayChip({ app }) {
+  const pay = payStatus(app)
+  if (pay === 'na') return null
+  if (pay === 'unknown' && !PAY_CHECK_STAGES.includes(app.status)) return null
+  const look = {
+    yes: { bg: '#DCFCE7', bd: '#BBF7D0', c: '#166534', t: '✓ OK with ' + CC_RATE },
+    no: { bg: '#FEE2E2', bd: '#FECACA', c: '#991B1B', t: '✗ Wants more than ' + CC_RATE + (app.compensation ? ' · ' + app.compensation : '') },
+    unknown: { bg: '#FEF3C7', bd: '#FDE68A', c: '#92400E', t: '? Pay not confirmed' },
+  }[pay]
+  return (
+    <div title={look.t} style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: look.c, background: look.bg, border: '1px solid ' + look.bd, borderRadius: 999, padding: '2px 9px', maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{look.t}</div>
+  )
+}
+
+function ApplicantCard({ app, onClick, onApprove, onDeny, busy }) {
+  return (
+    <div style={{ border: '1px solid ' + (app.on_hold ? '#FDE68A' : 'var(--line)'), background: 'var(--surface)', borderRadius: 10, padding: 10, cursor: 'pointer', opacity: app.on_hold ? 0.75 : 1 }} onClick={onClick}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+        <span style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(app.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flex: 'none' }}>{initials(app.full_name)}</span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{app.full_name}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{app.role_applying || '—'}</div>
+        </div>
+      </div>
+      <PayChip app={app} />
+      {app.on_hold && (
+        <div title={app.on_hold_reason || 'On hold at capacity'}
+          style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 999, padding: '2px 9px' }}>
+          ⏸ On hold{app.on_hold_reason ? ' · ' + app.on_hold_reason : ''}
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 11, color: 'var(--ink-soft)' }}>
+        <span>{app.city ? app.city + ', ' : ''}{app.state}</span>
+        <span style={{ marginLeft: 'auto' }}>{timeAgo(app.created_at)}</span>
+      </div>
+      {(onApprove || onDeny) && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 9 }} onClick={e => e.stopPropagation()}>
+          <button disabled={busy} onClick={onApprove}
+            style={{ flex: 1, border: 0, borderRadius: 7, background: '#16A34A', color: '#fff', fontSize: 12.5, fontWeight: 700, padding: '6px 0', cursor: 'pointer', fontFamily: 'inherit' }}>Approve</button>
+          <button disabled={busy} onClick={onDeny}
+            style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 7, background: 'var(--surface)', color: '#DC2626', fontSize: 12.5, fontWeight: 700, padding: '6px 0', cursor: 'pointer', fontFamily: 'inherit' }}>Deny</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// 🔑 Login help for a new hire (2026-10-30): reset their password and copy the login details
+// to send them. Admins can reset anyone; the hiring team (certification role) only new hires
+// still in training — enforced by the admin-set-password server function.
+function LoginHelp({ app }) {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)      // { password } | { error }
+  const [requireChange, setRequireChange] = useState(false)
+  const [copied, setCopied] = useState(false)
+  function makePassword() {
+    const n = Math.floor(1000 + Math.random() * 9000)
+    const words = ['Cert', 'Start', 'Welcome', 'Opsis', 'Team']
+    return `${words[Math.floor(Math.random() * words.length)]}-${n}-Go!`
+  }
+  async function reset() {
+    setBusy(true); setResult(null); setCopied(false)
+    const password = makePassword()
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-set-password', {
+        body: { userId: app.profile_id || undefined, email: app.profile_id ? undefined : app.email, password, requireChange },
+      })
+      let msg = data?.error
+      if (error) { try { msg = (await error.context?.json())?.error || error.message } catch { msg = error.message } }
+      setResult(msg ? { error: msg } : { password })
+    } catch (e) { setResult({ error: String(e?.message || e) }) }
+    finally { setBusy(false) }
+  }
+  const details = result?.password
+    ? `Hi ${String(app.full_name || '').split(' ')[0] || 'there'}! Here's your Command Center login:\n\nLink: https://app.opsiscx.com\nEmail: ${app.email}\nPassword: ${result.password}${requireChange ? '\n\nYou\'ll be asked to choose your own password when you sign in.' : ''}`
+    : ''
+  return (
+    <div style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', marginBottom: 20, fontSize: 12.5 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontWeight: 700 }}>🔑 Command Center login</div>
+          <div style={{ color: 'var(--ink-soft)' }}>{app.email}</div>
+        </div>
+        <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '5px 12px' }} disabled={busy} onClick={reset}>
+          {busy ? 'Resetting…' : 'Reset password'}
+        </button>
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, color: 'var(--ink-soft)', cursor: 'pointer' }}>
+        <input type="checkbox" checked={requireChange} onChange={e => setRequireChange(e.target.checked)} />
+        Make them choose their own password when they sign in
+      </label>
+      {result?.error && <div style={{ marginTop: 8, color: '#B91C1C' }}>{result.error}</div>}
+      {result?.password && (
+        <div style={{ marginTop: 10, background: 'var(--canvas)', borderRadius: 8, padding: '8px 10px' }}>
+          <div>New password: <b style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13.5 }}>{result.password}</b></div>
+          <button className="btn btn-primary" style={{ marginTop: 8, fontSize: 12.5, padding: '5px 12px' }}
+            onClick={() => { navigator.clipboard?.writeText(details); setCopied(true) }}>
+            {copied ? '✓ Copied — paste it to them' : '📋 Copy login details to send'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, onRemove, onHold, certTags = [], busy }) {
+  const [resumeUrl, setResumeUrl] = useState(null)
+  const [assessment, setAssessment] = useState(null)
+  const [assessLoading, setAssessLoading] = useState(false)
+  const [moveTo, setMoveTo] = useState('')
+  const [holdReason, setHoldReason] = useState('')
+  const [removeReason, setRemoveReason] = useState('')
+  // Certification to assign on onboard — defaults to the first available cert.
+  const [certTag, setCertTag] = useState('')
+  // Default to the Appointment Setter certification (ASC used to be picked by
+  // default because it sorted first, so setters got the wrong course).
+  useEffect(() => {
+    if (!certTag && certTags.length) setCertTag((certTags.find(ct => ct.tag_id === SETTER_CERT_TAG_ID) || certTags[0]).tag_id)
+  }, [certTags]) // eslint-disable-line
+
+  // Did access actually land? Passing the mock call auto-unlocks the hire and
+  // puts them on the schedule matching their passed certification, but that all
+  // happens in the database — so show it here rather than finding out days later
+  // when they email someone that they can only see Certification. (2026-08-14)
+  const [access, setAccess] = useState(null)
+  const showAccess = ['mock_passed', 'hired'].includes(app.status)
+  useEffect(() => {
+    let active = true
+    setAccess(null)
+    if (!showAccess) return
+    ;(async () => {
+      const { data } = await supabase.rpc('hire_access_status', { p_application_id: app.id })
+      if (active) setAccess(data || null)
+    })()
+    return () => { active = false }
+  }, [app.id, app.status]) // eslint-disable-line
+  useEffect(() => {
+    if (app.resume_path) {
+      const { data } = supabase.storage.from('hiring-files').getPublicUrl(app.resume_path)
+      setResumeUrl(data?.publicUrl || null)
+    } else setResumeUrl(null)
+  }, [app.resume_path])
+  // Load this applicant's assessment (if they've submitted one) so we can
+  // show their answers and play their voice recordings.
+  useEffect(() => {
+    let active = true
+    setAssessment(null)
+    ;(async () => {
+      setAssessLoading(true)
+      const { data } = await supabase.from('hiring_assessments')
+        .select('*').eq('application_id', app.id).order('created_at', { ascending: false }).limit(1)
+      if (!active) return
+      const a = (data && data[0]) || null
+      if (a) {
+        // turn each recording's storage path into a playable URL
+        const paths = ['rec_outbound_path', 'rec_inbound_path', 'rec_rebuttal1_path', 'rec_rebuttal2_path']
+        a._urls = {}
+        for (const p of paths) {
+          if (a[p]) {
+            const { data: pub } = supabase.storage.from('hiring-files').getPublicUrl(a[p])
+            a._urls[p] = pub?.publicUrl || null
+          }
+        }
+      }
+      setAssessment(a)
+      setAssessLoading(false)
+    })()
+    return () => { active = false }
+  }, [app.id])
+
+  const Row = ({ label, value }) => value ? (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 13.5, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{value}</div>
+    </div>
+  ) : null
+
+  const Recording = ({ label, url }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>{label}</div>
+      {url
+        ? <audio controls src={url} style={{ width: '100%', height: 38 }} />
+        : <div style={{ fontSize: 12, color: 'var(--ink-soft)', fontStyle: 'italic' }}>Not submitted</div>}
+    </div>
+  )
+
+  // "advance" options for stages past first review (simple move-forward controls)
+  const advanceMap = {
+    approved: { to: 'assessment_sent', label: 'Send assessment link', email: 'approved', hint: 'Emails the applicant their assessment link.' },
+    assessment_review: { to: 'assessment_passed', label: 'Pass assessment', email: 'assessment_passed', deny: { to: 'assessment_denied', label: 'Reject assessment', email: 'assessment_denied' } },
+    assessment_passed: { to: 'rippling_awaiting_signature', label: '✋ Mark: Rippling invite sent', email: null, hint: 'Move to "Rippling — Awaiting Signature" once the invite is out and you\'re waiting on their signature. (If Corinne completes the Rippling setup task first, they auto-advance to this same step.)' },
+    rippling_awaiting_signature: { to: 'cert_assigned', label: '✅ Mark: Rippling signed — onboard', email: null, hint: 'Click once their Rippling paperwork is signed. This creates their Command Center login with a temporary password, assigns their certification (shows in My Certifications), and emails them a welcome with the login link + next steps. The temp password also appears here so you can share it.' },
+    cert_assigned: { to: 'certifying', label: '✋ Mark: certification in progress', email: null, hint: 'Move once they have started their certification. This also creates their Command Center login if needed.' },
+    certifying: { to: 'cert_complete', label: '✋ Mark: certification complete', email: null, hint: 'Manual — mark when they finish certification in Projects.' },
+    cert_complete: { to: 'five9_pending', label: '✋ Mark: creating Five9 account', email: null, hint: 'The support channel was alerted to create their Five9 account. Mark this once someone is on it.' },
+    five9_pending: { to: 'mock_requested', label: '✋ Mark: request mock call', email: null, hint: 'Manual — once Five9 is set up, ask them to schedule their mock call.' },
+    mock_requested: { to: 'mock_passed', label: 'Pass mock call', email: 'mock_passed', deny: { to: 'mock_failed', label: 'Fail mock call', email: 'mock_failed' } },
+    mock_scheduled: { to: 'mock_passed', label: 'Pass mock call', email: 'mock_passed', deny: { to: 'mock_failed', label: 'Fail mock call', email: 'mock_failed' } },
+  }
+  const adv = advanceMap[app.status]
+
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 100, display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ width: 460, maxWidth: '92%', height: '100%', background: 'var(--surface)', overflowY: 'auto', boxShadow: '-10px 0 30px rgba(0,0,0,.15)' }}>
+        <div style={{ position: 'sticky', top: 0, background: 'var(--surface)', borderBottom: '1px solid var(--line)', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12, zIndex: 2 }}>
+          <span style={{ width: 40, height: 40, borderRadius: '50%', background: avatarColor(app.full_name), color: '#fff', display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 700, flex: 'none' }}>{initials(app.full_name)}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 17, fontWeight: 700 }}>{app.full_name}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>{STATUS_LABEL[app.status]} · applied {timeAgo(app.created_at)}</div>
+          </div>
+          <button onClick={onClose} style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 22, color: 'var(--ink-soft)', lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ padding: 20 }}>
+          {/* Access check — only for people who have made it through. */}
+          {showAccess && access?.found && (() => {
+            const scheds = Array.isArray(access.schedules) ? access.schedules : []
+            const chans = Array.isArray(access.channels) ? access.channels : []
+            const ok = access.has_login && !access.in_training && scheds.length > 0 && chans.length > 0
+            const problems = []
+            if (!access.has_login) problems.push('no Command Center login')
+            else {
+              if (access.in_training) problems.push('still locked to the Certification-only view')
+              if (!scheds.length) problems.push('not on any schedule, so they see no intervals')
+              if (!chans.length) problems.push('not in the team chat channel for their schedule')
+              if (!access.is_active) problems.push('account is deactivated')
+            }
+            const certCount = access.passed_certs || access.assigned_certs || 0
+            return (
+              <div style={{
+                border: `1px solid ${ok ? 'var(--line)' : '#DC2626'}`,
+                background: ok ? 'var(--canvas)' : 'rgba(220,38,38,.07)',
+                borderRadius: 8, padding: '10px 12px', marginBottom: 20, fontSize: 12.5, lineHeight: 1.5,
+              }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                  {ok ? '✓ Full access' : '⚠️ Access not complete'}
+                </div>
+                {ok ? (
+                  <div style={{ color: 'var(--ink-soft)' }}>
+                    Unlocked, on {scheds.join(', ')}, and in #{chans.join(', #')}.
+                    {certCount ? ` ${certCount} certification${certCount !== 1 ? 's' : ''}${access.passed_certs ? ' passed' : ' assigned'}.` : ''}
+                  </div>
+                ) : (
+                  <div style={{ color: 'var(--ink-soft)' }}>
+                    {problems.join('; ')}. Fix on Schedule builder → Audience, or ask Claude to re-run activation.
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* 🔑 Reset a new hire's Command Center password (admins + hiring team) */}
+          {(app.profile_id || ['rippling_awaiting_signature', 'cert_assigned', 'certifying', 'cert_complete', 'mock_requested', 'hired'].includes(app.status)) && app.email && (
+            <LoginHelp app={app} />
+          )}
+
+          {/* action bar */}
+          {onApprove && app.status === 'pending_review' && (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+              <button disabled={busy} onClick={() => onApprove(app)} style={{ flex: 1, border: 0, borderRadius: 8, background: '#16A34A', color: '#fff', fontSize: 14, fontWeight: 700, padding: '10px 0', cursor: 'pointer', fontFamily: 'inherit' }}>Approve</button>
+              <button disabled={busy} onClick={() => onDeny(app)} style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#DC2626', fontSize: 14, fontWeight: 700, padding: '10px 0', cursor: 'pointer', fontFamily: 'inherit' }}>Deny</button>
+            </div>
+          )}
+          {onTransition && SCREENED_OUT.includes(app.status) && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 8 }}>
+                This applicant was screened out{app.screen_reason ? ` (${app.screen_reason})` : ''}. You can override that and put them back into review.
+              </div>
+              <button disabled={busy} onClick={() => onTransition(app, 'pending_review', { email: null, note: 'manually reinstated' })}
+                style={{ width: '100%', border: 0, borderRadius: 8, background: '#16A34A', color: '#fff', fontSize: 14, fontWeight: 700, padding: '10px 0', cursor: 'pointer', fontFamily: 'inherit' }}>
+                ✋ Reinstate to review
+              </button>
+            </div>
+          )}
+          {onTransition && adv && (
+            <div style={{ marginBottom: 20 }}>
+              {/* Onboarding step: choose which certification to assign to this hire. */}
+              {adv.to === 'cert_assigned' && (
+                <div style={{ marginBottom: 10, background: 'var(--canvas)', border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>Certification to assign on onboard</div>
+                  {certTags.length === 0 ? (
+                    <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>No certifications set up yet — they can be assigned later in People &amp; Tags.</div>
+                  ) : (
+                    <select value={certTag} onChange={e => setCertTag(e.target.value)}
+                      style={{ width: '100%', fontSize: 13, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }}>
+                      {certTags.map(ct => <option key={ct.tag_id} value={ct.tag_id}>{ct.cert_name}</option>)}
+                    </select>
+                  )}
+                  <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 6 }}>This is what appears under their My Certifications after onboarding.</div>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button disabled={busy} onClick={() => {
+                  if (adv.to === 'assessment_sent' && payStatus(app) !== 'yes' && payStatus(app) !== 'na'
+                    && !window.confirm(payStatus(app) === 'no'
+                      ? `${app.full_name} said ${CC_RATE} does NOT work for them. Send the assessment anyway?`
+                      : `${app.full_name} hasn't confirmed the ${CC_RATE} rate yet. Have you confirmed pay with them? Click OK to send the assessment.`)) return
+                  onTransition(app, adv.to, { email: adv.email, note: adv.label, certTagId: adv.to === 'cert_assigned' ? certTag : undefined })
+                }}
+                  style={{ flex: 1, border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 160 }}>{adv.label}</button>
+                {adv.to === 'assessment_passed' && (
+                  <button disabled={busy} title="They passed, but there's no open spot yet. Emails them that they're first in line for the next wave. No Rippling task until you release the hold."
+                    onClick={() => onTransition(app, 'assessment_passed', { email: 'waitlist', note: 'Passed assessment: waitlisted for next wave', waitlist: true })}
+                    style={{ flex: 1, border: '1px solid #FDE68A', borderRadius: 8, background: '#FEF3C7', color: '#92400E', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 160 }}>Pass, waitlist for next wave</button>
+                )}
+                {adv.deny && (
+                  <button disabled={busy} onClick={() => onTransition(app, adv.deny.to, { email: adv.deny.email, note: adv.deny.label })}
+                    style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#DC2626', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit', minWidth: 140 }}>{adv.deny.label}</button>
+                )}
+              </div>
+              {adv.hint && <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 7, lineHeight: 1.4 }}>{adv.hint}</div>}
+            </div>
+          )}
+
+          {/* Capacity hold — park them between stages without losing their place. */}
+          {onHold && !SCREENED_OUT.includes(app.status) && (
+            app.on_hold ? (
+              <div style={{ marginBottom: 20, background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '12px 14px' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>⏸ On hold at capacity</div>
+                <div style={{ fontSize: 12.5, color: '#92400E', lineHeight: 1.5, marginBottom: 10 }}>
+                  {app.on_hold_reason ? <>Reason: {app.on_hold_reason}. </> : null}
+                  They're still at <b>{STATUS_LABEL[app.status] || app.status}</b> and will resume there. Reminder emails and the 14-day
+                  auto-deny are paused, and they're excluded from the morning report's SLA. Releasing them emails them the good news and
+                  restarts their reminder clock from zero.
+                </div>
+                <button disabled={busy} onClick={() => onHold(app, false)}
+                  style={{ width: '100%', border: 0, borderRadius: 8, background: '#16A34A', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 0', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  ▶ Release hold — resume at {STATUS_LABEL[app.status] || app.status}
+                </button>
+              </div>
+            ) : (
+              <details style={{ marginBottom: 20, border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px' }}>
+                <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-soft)' }}>Put on hold (at capacity)</summary>
+                <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', margin: '8px 0 10px', lineHeight: 1.45 }}>
+                  Parks them at <b>{STATUS_LABEL[app.status] || app.status}</b> without moving them backwards or forwards. Pauses their
+                  reminder emails and the 14-day auto-deny, and takes them out of the morning report's 24-hour SLA. They get a short
+                  "we're at capacity, this isn't a rejection" email.
+                </div>
+                <input value={holdReason} onChange={e => setHoldReason(e.target.value)} placeholder="Reason (optional) — e.g. no open spots until September"
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', boxSizing: 'border-box', marginBottom: 8 }} />
+                <button disabled={busy} onClick={() => onHold(app, true, holdReason.trim())}
+                  style={{ width: '100%', border: '1px solid #FDE68A', borderRadius: 8, background: '#FEF3C7', color: '#92400E', fontSize: 13.5, fontWeight: 700, padding: '9px 0', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  ⏸ Put on hold &amp; email them
+                </button>
+              </details>
+            )
+          )}
+
+          {/* Corrective move — set the stage directly (e.g. move someone back
+              who was advanced too far). No email, no side effects. */}
+          {onMove && !SCREENED_OUT.includes(app.status) && (
+            <details style={{ marginBottom: 20, border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-soft)' }}>Move to a different step</summary>
+              <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', margin: '8px 0 10px', lineHeight: 1.4 }}>
+                Corrects the stage without sending any email or re-triggering onboarding tasks. Use this to move someone back to where they actually are.
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select value={moveTo} onChange={e => setMoveTo(e.target.value)}
+                  style={{ flex: '1 1 180px', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)' }}>
+                  <option value="">Choose a step…</option>
+                  {COLUMNS.map(c => (
+                    <option key={c.key} value={c.key} disabled={c.key === app.status}>
+                      {c.title}{c.key === app.status ? ' (current)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <button disabled={busy || !moveTo || moveTo === app.status}
+                  onClick={() => { onMove(app, moveTo); setMoveTo('') }}
+                  style={{ border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 700, padding: '8px 16px', cursor: (busy || !moveTo) ? 'default' : 'pointer', opacity: (busy || !moveTo) ? 0.5 : 1, fontFamily: 'inherit', flex: 'none' }}>
+                  Move
+                </button>
+              </div>
+            </details>
+          )}
+
+          {/* Universal remove / deny — works at ANY stage, sends NO email. Use for
+              undeliverable-email or stale applicants to keep the pipeline clean. */}
+          {onRemove && !SCREENED_OUT.includes(app.status) && (
+            <details style={{ marginBottom: 20, border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', background: '#fef2f2' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: '#b91c1c' }}>Remove from pipeline</summary>
+              <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', margin: '8px 0 10px', lineHeight: 1.4 }}>
+                Screens this applicant out from any stage (they move to the screened-out list and can be reinstated later). <strong>No email is sent</strong> — safe for bad-email or stale applicants.
+              </div>
+              <input value={removeReason} onChange={e => setRemoveReason(e.target.value)} placeholder="Reason (optional) — e.g. undeliverable email, no response"
+                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', marginBottom: 8 }} />
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button disabled={busy} onClick={() => { onRemove(app, 'withdrawn', removeReason.trim()); setRemoveReason('') }}
+                  style={{ flex: '1 1 140px', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', color: '#b91c1c', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>Remove (no email)</button>
+                <button disabled={busy} onClick={() => { onRemove(app, 'denied', removeReason.trim()); setRemoveReason('') }}
+                  style={{ flex: '1 1 140px', border: 0, borderRadius: 8, background: '#DC2626', color: '#fff', fontSize: 13.5, fontWeight: 700, padding: '9px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>Deny</button>
+              </div>
+            </details>
+          )}
+
+          <Row label="Email" value={app.email} />
+          <Row label="Phone" value={app.phone} />
+          <Row label="Location" value={[app.city, app.state].filter(Boolean).join(', ')} />
+          <Row label="Applied from" value={app.apply_lat != null && app.apply_lng != null ? (
+            <span>
+              {[app.apply_city, app.apply_region, app.apply_country].filter(Boolean).join(', ')}{' · '}
+              <a href={`https://www.google.com/maps?q=${app.apply_lat},${app.apply_lng}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
+                {Number(app.apply_lat).toFixed(4)}, {Number(app.apply_lng).toFixed(4)}
+              </a>
+              {app.apply_country && app.apply_country !== 'US' && <span style={{ marginLeft: 8, color: '#B91C1C', fontWeight: 700 }}>⚠ Outside U.S.</span>}
+              {app.apply_country === 'US' && app.apply_region && app.state && app.apply_region !== app.state && <span style={{ marginLeft: 8, color: '#B45309', fontWeight: 700 }}>⚠ Doesn't match stated state ({app.state})</span>}
+              <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>Approximate, from IP{app.apply_ip ? ` ${app.apply_ip}` : ''} — VPNs can skew this.</div>
+            </span>
+          ) : 'Not captured (applied before tracking was added)'} />
+          <Row label="Work authorized" value={app.work_authorized ? 'Yes' : 'No'} />
+          <Row label="Role applying for" value={app.role_applying} />
+          <Row label="Open to other roles" value={app.open_to_other_roles ? 'Yes' : 'No'} />
+          <Row label="Employment type" value={app.employment_type} />
+          <Row label="Years experience" value={app.years_experience} />
+          <Row label="Tools & platforms" value={app.tools_platforms} />
+          <Row label="Staying organized" value={app.organization_answer} />
+          <Row label="Working remotely" value={app.remote_answer} />
+          <Row label="Problem solved" value={app.problem_answer} />
+          <Row label="Available to start" value={app.available_start} />
+          <Row label="Time zone" value={app.time_zone} />
+          <Row label="Working hours" value={app.working_hours} />
+          {payStatus(app) !== 'na' && <Row label={'OK with ' + CC_RATE + '?'} value={{ yes: 'Yes', no: 'No', unknown: 'Not asked yet. Confirm before sending the assessment.' }[payStatus(app)]} />}
+          <Row label="Compensation" value={app.compensation} />
+          <Row label="Why Opsis" value={app.why_opsis} />
+          {app.linkedin_url && (
+            <Row label="LinkedIn" value={<a href={app.linkedin_url.startsWith('http') ? app.linkedin_url : 'https://' + app.linkedin_url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{app.linkedin_url}</a>} />
+          )}
+          {resumeUrl && (
+            <div style={{ marginTop: 14 }}>
+              <a href={resumeUrl} target="_blank" rel="noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, border: '1px solid var(--line)', borderRadius: 8, padding: '9px 14px', fontSize: 13.5, fontWeight: 600, textDecoration: 'none', color: 'var(--ink)', background: 'var(--canvas)' }}>
+                📄 View resume
+              </a>
+            </div>
+          )}
+
+          {/* ---- Assessment (answers + voice recordings) ---- */}
+          {assessLoading && <div style={{ marginTop: 20, fontSize: 12.5, color: 'var(--ink-soft)' }}>Loading assessment…</div>}
+          {assessment && (
+            <div style={{ marginTop: 24, paddingTop: 18, borderTop: '2px solid var(--line)' }}>
+              <h3 style={{ fontSize: 15, fontWeight: 800, margin: '0 0 14px' }}>Assessment</h3>
+              <Row label="Outbound / call-center experience" value={assessment.years_outbound} />
+              <Row label="Call types handled" value={assessment.call_types} />
+              <Row label="Systems / dialers / CRMs" value={assessment.systems_dialers} />
+              <Row label="Performance metrics" value={assessment.performance_metrics} />
+              <Row label="Hours per week" value={assessment.hours_per_week} />
+              <Row label="Quiet workspace" value={assessment.quiet_workspace ? 'Yes' : 'No'} />
+              <Row label="Own computer & headset" value={assessment.own_equipment ? 'Yes' : 'No'} />
+              <Row label="Comfortable as 1099" value={assessment.comfortable_1099 ? 'Yes' : 'No'} />
+              <Row label="Desired rate" value={assessment.desired_rate} />
+              {assessment.availability && (
+                <Row label="Availability" value={
+                  ['Morning', 'Afternoon', 'Evening']
+                    .map(s => (assessment.availability[s]?.length ? `${s}: ${assessment.availability[s].join(', ')}` : null))
+                    .filter(Boolean).join('\n') || '—'
+                } />
+              )}
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-soft)', marginBottom: 10 }}>Voice recordings</div>
+                <Recording label="1. Outbound greeting" url={assessment._urls?.rec_outbound_path} />
+                <Recording label="2. Inbound greeting" url={assessment._urls?.rec_inbound_path} />
+                <Recording label='3. Rebuttal — "I&apos;m not interested"' url={assessment._urls?.rec_rebuttal1_path} />
+                <Recording label='4. Rebuttal — "How much does it cost?"' url={assessment._urls?.rec_rebuttal2_path} />
+              </div>
+            </div>
+          )}
+          {!assessLoading && !assessment && ['assessment_review', 'assessment_passed', 'assessment_denied'].includes(app.status) && (
+            <div style={{ marginTop: 20, fontSize: 12.5, color: 'var(--ink-soft)', fontStyle: 'italic' }}>No assessment record found for this applicant.</div>
+          )}
+
+          {app.screen_reason && (
+            <div style={{ marginTop: 16, fontSize: 12, color: 'var(--ink-soft)', fontStyle: 'italic' }}>Auto-screen note: {app.screen_reason}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
