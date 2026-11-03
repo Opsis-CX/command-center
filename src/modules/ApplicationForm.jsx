@@ -143,6 +143,15 @@ export default function ApplicationForm() {
       if (!authorized) { status = 'auto_denied'; screen_reason = 'not_authorized' }
       else if (excluded) { status = 'out_of_area'; screen_reason = 'state:' + f.state }
 
+      // Approximate location the applicant is applying from (IP-based, via
+      // our /api/geo Vercel function). Never blocks submission.
+      let geo = {}
+      try {
+        const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 2500)
+        const r = await fetch('/api/geo', { signal: ctl.signal }); clearTimeout(t)
+        if (r.ok) geo = await r.json()
+      } catch { /* ignore */ }
+
       const newId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random())
       const row = {
         id: newId,
@@ -170,6 +179,12 @@ export default function ApplicationForm() {
         linkedin_url: f.linkedin_url.trim() || null,
         why_opsis: f.why_opsis.trim() || null,
         info_confirmed: true,
+        apply_ip: geo.ip || null,
+        apply_lat: geo.lat ?? null,
+        apply_lng: geo.lng ?? null,
+        apply_city: geo.city || null,
+        apply_region: geo.region || null,
+        apply_country: geo.country || null,
       }
       // NOTE: no .select() here — anonymous applicants can insert but cannot
       // read the table back (reads are admin-only), so selecting the new row
