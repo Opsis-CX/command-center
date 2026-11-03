@@ -107,7 +107,7 @@ const NAV_MAIN = [
       { type: 'link', to: '/finance', label: 'Finance', ic: '💰', perm: '__finance' },                    // Admins and Owners only (enforced by the database)
       { type: 'link', to: '/submit-purchase', label: 'Submit a purchase', ic: '🧾', perm: '__finance_submit' }, // roles owners choose, plus Admins and Owners
       {
-        type: 'section', key: 'backend', label: 'Backend', ic: '⚙',
+        type: 'section', key: 'backend', label: 'Configuration', ic: '⚙',
         children: [
           { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
           { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
