@@ -269,6 +269,7 @@ export default function AssessmentForm({ applicationId }) {
           ...(geo.lat != null ? {
             assess_ip: geo.ip || null, assess_lat: geo.lat, assess_lng: geo.lng ?? null,
             assess_city: geo.city || null, assess_region: geo.region || null, assess_country: geo.country || null,
+            assess_vpn_flag: (g => [g.is_tor && 'Tor', g.is_vpn && ('VPN' + (g.vpn_service ? ' (' + g.vpn_service + ')' : '')), g.is_proxy && !g.is_vpn && 'Proxy', g.is_hosting && !g.is_vpn && !g.is_proxy && 'Datacenter IP (likely VPN)'].filter(Boolean).join(' · ') || null)(geo),
             assess_geo_at: new Date().toISOString(),
           } : {}),
         }).eq('id', applicationId)
