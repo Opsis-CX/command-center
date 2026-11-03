@@ -257,7 +257,21 @@ export default function AssessmentForm({ applicationId }) {
       if (aErr) throw aErr
 
       if (applicationId) {
-        await supabase.from('hiring_applications').update({ status: 'assessment_review' }).eq('id', applicationId)
+        // Approximate location they took the assessment from (IP-based, via /api/geo).
+        let geo = {}
+        try {
+          const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 2500)
+          const r = await fetch('/api/geo', { signal: ctl.signal }); clearTimeout(t)
+          if (r.ok) geo = await r.json()
+        } catch { /* never block submission */ }
+        await supabase.from('hiring_applications').update({
+          status: 'assessment_review',
+          ...(geo.lat != null ? {
+            assess_ip: geo.ip || null, assess_lat: geo.lat, assess_lng: geo.lng ?? null,
+            assess_city: geo.city || null, assess_region: geo.region || null, assess_country: geo.country || null,
+            assess_geo_at: new Date().toISOString(),
+          } : {}),
+        }).eq('id', applicationId)
         await supabase.from('hiring_stage_events').insert({
           application_id: applicationId, from_status: 'assessment_sent', to_status: 'assessment_review', note: 'assessment submitted',
         })
