@@ -784,7 +784,7 @@ function LoginHelp({ app }) {
 }
 
 // Approximate IP location with a map link and mismatch flags.
-function GeoLoc({ loc, state, when, empty }) {
+function GeoLoc({ loc, state, when, empty, vpnFlag }) {
   if (!loc || loc.lat == null || loc.lng == null) return <span style={{ color: 'var(--ink-soft)' }}>{empty}</span>
   return (
     <span>
@@ -793,6 +793,7 @@ function GeoLoc({ loc, state, when, empty }) {
         {Number(loc.lat).toFixed(4)}, {Number(loc.lng).toFixed(4)}
       </a>
       {loc.country && loc.country !== 'US' && <span style={{ marginLeft: 8, color: '#B91C1C', fontWeight: 700 }}>⚠ Outside U.S.</span>}
+      {vpnFlag && <span style={{ marginLeft: 8, color: '#B91C1C', fontWeight: 700 }}>⚠ {vpnFlag}</span>}
       {loc.country === 'US' && loc.region && state && loc.region !== state && <span style={{ marginLeft: 8, color: '#B45309', fontWeight: 700 }}>⚠ Doesn't match stated state ({state})</span>}
       <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
         Approximate, from IP{loc.ip ? ` ${loc.ip}` : ''}{when ? ` · ${new Date(when).toLocaleString()}` : ''} — VPNs can skew this.
@@ -1103,8 +1104,8 @@ function DetailPanel({ app, onClose, onApprove, onDeny, onTransition, onMove, on
           <Row label="Email" value={app.email} />
           <Row label="Phone" value={app.phone} />
           <Row label="Location" value={[app.city, app.state].filter(Boolean).join(', ')} />
-          <Row label="Applied from" value={<GeoLoc loc={app.apply_lat != null ? { ip: app.apply_ip, lat: app.apply_lat, lng: app.apply_lng, city: app.apply_city, region: app.apply_region, country: app.apply_country } : null} state={app.state} empty="Not captured (applied before tracking was added)" />} />
-          {app.assess_lat != null && <Row label="Assessment taken from" value={<GeoLoc loc={{ ip: app.assess_ip, lat: app.assess_lat, lng: app.assess_lng, city: app.assess_city, region: app.assess_region, country: app.assess_country }} state={app.state} when={app.assess_geo_at} />} />}
+          <Row label="Applied from" value={<GeoLoc loc={app.apply_lat != null ? { ip: app.apply_ip, lat: app.apply_lat, lng: app.apply_lng, city: app.apply_city, region: app.apply_region, country: app.apply_country } : null} state={app.state} vpnFlag={app.apply_vpn_flag} empty="Not captured (applied before tracking was added)" />} />
+          {app.assess_lat != null && <Row label="Assessment taken from" value={<GeoLoc loc={{ ip: app.assess_ip, lat: app.assess_lat, lng: app.assess_lng, city: app.assess_city, region: app.assess_region, country: app.assess_country }} state={app.state} when={app.assess_geo_at} vpnFlag={app.assess_vpn_flag} />} />}
           {app.profile_id && <Row label="Last login from" value={<GeoLoc loc={loginLoc} state={app.state} when={loginLoc?.created_at} empty="No login recorded yet — captured on their next login" />} />}
           <Row label="Work authorized" value={app.work_authorized ? 'Yes' : 'No'} />
           <Row label="Role applying for" value={app.role_applying} />
