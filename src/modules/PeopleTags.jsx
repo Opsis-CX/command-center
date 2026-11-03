@@ -28,6 +28,7 @@ export default function PeopleTags() {
   const canDelete = can(appRole, 'people_and_tags.delete')   // admin only
   const [tags, setTags] = useState([])
   const [people, setPeople] = useState([])
+  const [lastLoc, setLastLoc] = useState({})   // profile_id -> latest login_locations row (admins only)
   const [taggables, setTaggables] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
@@ -81,6 +82,14 @@ export default function PeopleTags() {
       setTags(tagsRes.data || [])
       setPeople(peopleRes.data || [])
       setTaggables(tgRes.data || [])
+      // Latest login location per person (RLS: admins only; others just get none).
+      supabase.from('login_locations').select('profile_id, created_at, city, region, country, lat, lng')
+        .order('created_at', { ascending: false }).limit(5000)
+        .then(({ data }) => {
+          const m = {}
+          ;(data || []).forEach(r => { if (!m[r.profile_id]) m[r.profile_id] = r })
+          setLastLoc(m)
+        }, () => {})
     } catch (e) {
       setErr(e.message || 'Failed to load')
     } finally {
@@ -398,6 +407,16 @@ export default function PeopleTags() {
                       {!p.is_active && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--line-soft)', padding: '1px 7px', borderRadius: 999 }}>Inactive{p.inactive_reason ? ' · ' + p.inactive_reason : ''}</span>}
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{p.email}</div>
+                    {lastLoc[p.id] && (() => { const L = lastLoc[p.id]; return (
+                      <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginTop: 2 }}>
+                        📍 Last login:{' '}
+                        <a href={`https://www.google.com/maps?q=${L.lat},${L.lng}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
+                          {[L.city, L.region, L.country !== 'US' ? L.country : null].filter(Boolean).join(', ') || `${Number(L.lat).toFixed(3)}, ${Number(L.lng).toFixed(3)}`}
+                        </a>
+                        {' · '}{new Date(L.created_at).toLocaleDateString()}
+                        {L.country && L.country !== 'US' && <span style={{ marginLeft: 6, color: '#B91C1C', fontWeight: 700 }}>⚠ Outside U.S.</span>}
+                      </div>
+                    ) })()}
                   </div>
                   {p.id in callable && p.id !== user?.id && (
                     <CallButton profileId={p.id} name={p.full_name} hasPhone={callable[p.id]} style={{ flex: 'none' }} />
