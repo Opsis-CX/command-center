@@ -185,6 +185,7 @@ export default function ApplicationForm() {
         apply_city: geo.city || null,
         apply_region: geo.region || null,
         apply_country: geo.country || null,
+        apply_vpn_flag: (g => [g.is_tor && 'Tor', g.is_vpn && ('VPN' + (g.vpn_service ? ' (' + g.vpn_service + ')' : '')), g.is_proxy && !g.is_vpn && 'Proxy', g.is_hosting && !g.is_vpn && !g.is_proxy && 'Datacenter IP (likely VPN)'].filter(Boolean).join(' · ') || null)(geo),
       }
       // NOTE: no .select() here — anonymous applicants can insert but cannot
       // read the table back (reads are admin-only), so selecting the new row
