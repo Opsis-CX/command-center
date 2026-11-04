@@ -12,7 +12,7 @@ import { loadBranding, applyBranding, inkOn } from '../lib/branding'
 // ============================================================
 
 export const PRESETS = ['#0077B6', '#0F766E', '#2563EB', '#7C3AED', '#DB2777', '#DC2626', '#EA580C', '#B45309', '#16A34A', '#111827']
-export const SIDEBAR_PRESETS = ['#0B1F2A', '#111827', '#14302A', '#1E1B4B', '#3B0764', '#7F1D1D', '#FFFFFF']
+export const SIDEBAR_PRESETS = ['#015974', '#0B1F2A', '#111827', '#14302A', '#1E1B4B', '#3B0764', '#7F1D1D']
 const hexOk = (h) => /^#[0-9a-f]{6}$/i.test(h || '')
 
 export const BRAND_CSS = `
@@ -157,7 +157,8 @@ export default function Branding() {
 
           <ColorField label="Brand color" value={b.primary_color} presets={PRESETS} disabled={!canEdit} onChange={v => setB(x => ({ ...x, primary_color: v }))}
             hint="Buttons, links and highlights. Text on top switches to dark or light automatically so it stays readable." />
-          <ColorField label="Sidebar color" value={b.sidebar_color} presets={SIDEBAR_PRESETS} disabled={!canEdit} onChange={v => setB(x => ({ ...x, sidebar_color: v }))} />
+          <ColorField label="Sidebar color" value={b.sidebar_color} presets={SIDEBAR_PRESETS} disabled={!canEdit} onChange={v => setB(x => ({ ...x, sidebar_color: v }))}
+            hint={hexOk(b.sidebar_color) && inkOn(b.sidebar_color) !== '#ffffff' ? '⚠️ This color is quite light — the menu text is white, so a darker color will be easier to read.' : 'The menu text is white, so darker colors work best.'} />
 
           {canEdit && (
             <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
