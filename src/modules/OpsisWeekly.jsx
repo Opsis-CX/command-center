@@ -360,27 +360,10 @@ function PicksAdmin({ onChanged, spotlights, tip, quote, names }) {
       {open && (
         <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {/* spotlight */}
-          <div>
-            <div style={adminLbl}>⭐ Spotlights <span style={{ fontWeight: 400, color: 'var(--ink-soft)' }}>— add one per team; leave team blank for everyone</span></div>
-            {spotlights.map(s => (
-              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
-                <span style={{ fontSize: 13, flex: 1 }}><b>{names[s.spotlight_profile_id] || 'Team member'}</b>{s.audience_tags?.length ? '' : ' · everyone'} {s.blurb ? `— ${s.blurb}` : ''}</span>
-                <button className="btn btn-ghost" style={{ fontSize: 11, padding: '3px 8px', color: 'var(--failed)' }} disabled={busy === s.id} onClick={() => removePick(s.id)}>Remove</button>
-              </div>
-            ))}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
-              <select value={spPid} onChange={e => setSpPid(e.target.value)} style={adminInp}>
-                <option value="">Choose a person…</option>
-                {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-              </select>
-              <select value={spTeam} onChange={e => setSpTeam(e.target.value)} style={adminInp}>
-                <option value="">Everyone</option>
-                {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-              <input value={spBlurb} onChange={e => setSpBlurb(e.target.value)} placeholder="Why they're the spotlight…" style={{ ...adminInp, flex: '1 1 240px' }} />
-              <button className="btn btn-primary" style={{ fontSize: 12, padding: '7px 13px' }} disabled={busy === 'sp' || !spPid} onClick={addSpotlight}>Add</button>
-            </div>
+          {/* spotlight + daily quote moved to Backend (2026-11-04) */}
+          <div style={{ fontSize: 13, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            <a href="/backend/spotlight">⭐ Post the weekly spotlight →</a>
+            <a href="/backend/quotes">💬 Manage daily quotes →</a>
           </div>
 
           {/* tip */}
@@ -388,16 +371,6 @@ function PicksAdmin({ onChanged, spotlights, tip, quote, names }) {
             <div style={adminLbl}>💡 Tip of the day</div>
             <textarea value={tipText} onChange={e => setTipText(e.target.value)} placeholder="A short productivity or service tip…" style={{ ...adminInp, width: '100%', minHeight: 56, resize: 'vertical' }} />
             <div style={{ marginTop: 6 }}><button className="btn btn-primary" style={{ fontSize: 12, padding: '7px 13px' }} disabled={busy === 'tip'} onClick={() => saveSingle('tip', { body: tipText.trim() || null })}>Save tip</button></div>
-          </div>
-
-          {/* quote */}
-          <div>
-            <div style={adminLbl}>🌟 Daily inspiration</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input value={qText} onChange={e => setQText(e.target.value)} placeholder="Quote…" style={{ ...adminInp, flex: '1 1 320px' }} />
-              <input value={qBy} onChange={e => setQBy(e.target.value)} placeholder="Author (optional)" style={{ ...adminInp, flex: '1 1 160px' }} />
-            </div>
-            <div style={{ marginTop: 6 }}><button className="btn btn-primary" style={{ fontSize: 12, padding: '7px 13px' }} disabled={busy === 'quote'} onClick={() => saveSingle('quote', { body: qText.trim() || null, author: qBy.trim() || null })}>Save quote</button></div>
           </div>
 
         </div>
