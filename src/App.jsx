@@ -106,6 +106,7 @@ import { useFinanceAccess } from './lib/financeAccess'
 // append-only sms_consents table; profiles.sms_enabled follows the latest answer.
 import SmsConsentForm from './modules/SmsConsentForm'
 import SmsConsentReport from './modules/SmsConsentReport'
+import { DailyQuotes, Spotlight } from './modules/Backend'
 import SmsConsentBanner from './components/SmsConsentBanner'
 // --- Browser calling (2026-10-15) ---
 // Twilio Voice JS SDK, click-to-call. Everyone EXCEPT agents, clients and CSRs can
@@ -526,6 +527,9 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {/* SMS Consent report — admin only. Also enforced server-side:
                   sms_consents / sms_consent_status are readable only by is_app_admin(). */}
               <Route path="/sms-consents" element={isAdmin ? <SmsConsentReport /> : <NoAccess />} />
+              {/* Backend (2026-11-04): content that powers Command Center */}
+              <Route path="/backend/quotes" element={(usingNewPermissions() ? hasPerm('content.quotes') : isAdmin) ? <DailyQuotes /> : <NoAccess />} />
+              <Route path="/backend/spotlight" element={(usingNewPermissions() ? hasPerm('content.spotlight') : isAdmin) ? <Spotlight /> : <NoAccess />} />
               {/* Phone — click-to-call directory + call history. Everyone except agents/clients/CSRs
                   (matches can_place_calls() on the server). */}
               <Route path="/phone" element={canPlaceCalls(appRole) ? <Phone /> : <NoAccess />} />
@@ -614,7 +618,7 @@ function titleFor(path) {
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Access & Permissions', '/service-account': 'Service account',
-    '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/phone': 'Phone', '/dialer': 'Agent workspace', '/campaigns': 'Campaigns', '/inbound': 'Inbound', '/scripts': 'Scripts', '/reporting/calls': 'Call Reports', '/test-lead': 'Test a web lead',
+    '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/backend/quotes': 'Daily Quotes', '/backend/spotlight': 'Spotlight', '/phone': 'Phone', '/dialer': 'Agent workspace', '/campaigns': 'Campaigns', '/inbound': 'Inbound', '/scripts': 'Scripts', '/reporting/calls': 'Call Reports', '/test-lead': 'Test a web lead',
     '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/csr-scorecards': 'CSR Scorecards', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/finance': 'Finance', '/profile': 'My profile', '/submit-purchase': 'Submit a purchase', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
   }
   // Sales is now a tabbed shell with nested routes (/sales/dashboard,
