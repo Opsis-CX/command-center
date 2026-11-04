@@ -985,3 +985,11 @@ body{
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
+
+/* ---- Company branding hooks (2026-11-04): logo size/shape, menu font/size/color, icon style ---- */
+.brand-logo{ display:block; margin:0 auto; width:var(--logo-w, 100%); height:var(--logo-h, auto); max-width:100%; max-height:var(--logo-maxh, 64px);
+  object-fit:contain; border-radius:var(--logo-radius, 0); background:var(--logo-frame, transparent); padding:var(--logo-pad, 0); box-sizing:border-box; }
+.sidebar .nav-item{ font-family:var(--nav-font, var(--font-head)); font-size:var(--nav-size, 14px); }
+.sidebar .nav-item:not(.on){ color:var(--nav-ink, #c7d2d6); }
+.sidebar .nav-item:not(.on):hover{ color:var(--nav-ink, #eaf6fb); filter:brightness(1.15); }
+.sidebar .nav-item .ic{ filter:var(--nav-ic-filter, none); }
