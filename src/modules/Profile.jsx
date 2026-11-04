@@ -139,6 +139,7 @@ export default function Profile({ profileId }) {
           </Section>
         </div>
         <aside className="pd-aside">
+          <TeamSpotlight />
           <Inspiration />
           <NeedHelp />
           <AskTurri />
@@ -347,6 +348,42 @@ function TipOfDay() {
 }
 
 // ---------- Daily Inspiration (same pick as the Home Base card) ----------
+// ⭐ Team Spotlight (2026-11-04) — moved here from Opsis Weekly. Shows the spotlight(s) for
+// this person's team (the database only returns ones meant for them). Posted in Backend → Spotlight.
+function TeamSpotlight() {
+  const [list, setList] = useState(null)
+  useEffect(() => {
+    let alive = true
+    supabase.from('weekly_picks').select('id, spotlight_profile_id, blurb, created_at').eq('kind', 'spotlight').eq('active', true)
+      .order('created_at', { ascending: false }).limit(3)
+      .then(async ({ data }) => {
+        const ids = [...new Set((data || []).map(x => x.spotlight_profile_id).filter(Boolean))]
+        const { data: ps } = ids.length ? await supabase.from('profiles').select('id, full_name, avatar_url').in('id', ids) : { data: [] }
+        const byId = Object.fromEntries((ps || []).map(p => [p.id, p]))
+        if (alive) setList((data || []).map(x => ({ ...x, person: byId[x.spotlight_profile_id] })))
+      })
+    return () => { alive = false }
+  }, [])
+  if (!list || !list.length) return null
+  return (
+    <div style={{ ...panel, background: 'linear-gradient(160deg, color-mix(in srgb, #F59E0B 12%, var(--surface)), var(--surface) 70%)' }}>
+      {cardHead('⭐', 'Team Spotlight')}
+      {list.map(s => (
+        <a key={s.id} href={`/profile/${s.spotlight_profile_id}`} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', textDecoration: 'none', color: 'inherit', padding: '6px 0' }}>
+          <span style={{ width: 42, height: 42, borderRadius: '50%', flex: 'none', overflow: 'hidden', display: 'grid', placeItems: 'center', background: 'var(--accent-bg)', color: 'var(--accent)', fontWeight: 800 }}>
+            {s.person?.avatar_url ? <img src={s.person.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : (s.person?.full_name || '?').split(' ').map(w => w[0]).slice(0, 2).join('')}
+          </span>
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: 'block', fontWeight: 700, fontSize: 15 }}>{s.person?.full_name || 'Team member'}</span>
+            {s.blurb && <span style={{ display: 'block', fontSize: 13, lineHeight: 1.45, color: 'var(--ink-soft)', marginTop: 2 }}>{s.blurb}</span>}
+          </span>
+        </a>
+      ))}
+    </div>
+  )
+}
+
 function Inspiration() {
   const picks = usePicks()
   // Fallback when no quote is picked: Calendar's daily rotating quote.
