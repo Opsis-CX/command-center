@@ -107,15 +107,24 @@ const NAV_MAIN = [
       { type: 'link', to: '/finance', label: 'Finance', ic: '💰', perm: '__finance' },                    // Admins and Owners only (enforced by the database)
       { type: 'link', to: '/submit-purchase', label: 'Submit a purchase', ic: '🧾', perm: '__finance_submit' }, // roles owners choose, plus Admins and Owners
       {
+        // Configuration: how Command Center works, who can access things, how the organization is structured
         type: 'section', key: 'backend', label: 'Configuration', ic: '⚙',
         children: [
           { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
           { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
           { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
-          { to: '/sms-consents', label: 'SMS Consent', perm: '__admin' },   // agent text opt-in report (admins only)
           { to: '/roles', label: 'Access & Permissions', perm: '__admin' }, // admins/owners only
           { to: '/service-account', label: 'Service account', perm: '__admin' }, // the account automated posts use (Turri)
-          { to: '/survey', label: 'New Hire Survey', perm: '__admin' },   // results view; agents reach the form from their notification
+        ],
+      },
+      {
+        // Backend: the information, content and processes that power Command Center (2026-11-04)
+        type: 'section', key: 'content-backend', label: 'Backend', ic: '🗄️',
+        children: [
+          { to: '/backend/quotes', label: 'Daily Quotes', perm: '__admin' },
+          { to: '/backend/spotlight', label: 'Spotlight', perm: '__admin' },
+          { to: '/sms-consents', label: 'SMS Consent', perm: '__admin' },   // agent text opt-in report (admins only)
+          { to: '/survey', label: 'New Hire Survey', perm: '__admin' },     // results view; agents reach the form from their notification
         ],
       },
     ],
@@ -170,7 +179,7 @@ export default function Sidebar({ open, onNavigate }) {
   // be "everyone" or "admins only" follow the person's checkboxes too.
   const NEW_PAGE_PERMS = {
     '/home': 'home.view', '/updates': 'updates.view', '/notes': 'notes.view', '/calendar': 'calendar.view',
-    '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings',
+    '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings', '/backend/quotes': 'content.quotes', '/backend/spotlight': 'content.spotlight',
     '/service-account': 'admin.settings', '/survey': 'people.edit', '/finance': 'finance.view', '/submit-purchase': 'finance.create',
   }
   const permOk = (p, to) => {
