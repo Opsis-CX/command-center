@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import LiveStatus from './LiveStatus'
-import EodReportCard from './EodReports'
 
 // ============================================================
 // DASHBOARD — role-aware command center home.
@@ -105,9 +104,7 @@ export default function Dashboard() {
         ? <AdminDashboard data={data} navigate={navigate} />
         : <AgentDashboard data={data} me={me} navigate={navigate} />}
 
-      {/* End-of-day reports: admin roll-up, or the person's own report to fill.
-          Self-gates by role (agents see nothing). */}
-      <EodReportCard />
+      {/* End-of-day reports moved to Team Updates → End of Day Report (2026-11-04). */}
     </div>
   )
 }
@@ -177,7 +174,6 @@ function AdminDashboard({ data, navigate }) {
         <StatCard label="Today's fill rate" value={`${fillPct}%`} sub={`${todayClaimed}/${todaySpots} spots claimed`} color={fillPct >= 80 ? 'var(--passed)' : fillPct >= 50 ? 'var(--needed)' : 'var(--failed)'} onClick={() => navigate('/insights')} />
         <StatCard label="Open intervals" value={openBlocks.length} sub="today & upcoming" color="var(--accent)" onClick={() => navigate('/insights')} />
         <StatCard label="Agent certifications" value={pendingCerts} sub="records marked needed or failed" color={pendingCerts ? 'var(--needed)' : 'var(--passed)'} onClick={() => navigate('/certifications')} />
-        <StatCard label="EOD reports today" value={`${eodDone}/${eodExpected}`} sub="non-agents submitted" color={eodDone >= eodExpected ? 'var(--passed)' : 'var(--needed)'} onClick={() => navigate('/')} />
       </div>
 
       <Section title="Fill rate — next 7 days" action="Schedule insights →" onAction={() => navigate('/insights')}>
