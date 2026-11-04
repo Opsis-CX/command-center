@@ -100,7 +100,14 @@ const NAV_MAIN = [
           { to: '/my-courses', label: 'My courses', perm: 'certifications.assigned_to_complete' },
         ],
       },
-      { type: 'link', to: '/weekly-sync', label: 'Weekly Sync', ic: '🔄', perm: 'weekly_sync' },
+      {
+        // Team Updates (2026-11-04): the team's regular check-ins
+        type: 'section', key: 'team-updates', label: 'Team Updates', ic: '📣',
+        children: [
+          { to: '/weekly-sync', label: 'Weekly Sync', perm: 'weekly_sync' },
+          { to: '/eod', label: 'End of Day Report', perm: '__eod' },   // non-agents submit; admins also see everyone's
+        ],
+      },
       { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧲', perm: 'hiring' },
       { type: 'link', to: '/sales', label: 'Sales', ic: '📊', perm: 'sales' },
       { type: 'link', to: '/rsn', label: 'RSN Pipeline', ic: '🔗', perm: '__rsn' },
@@ -188,7 +195,7 @@ export default function Sidebar({ open, onNavigate }) {
   // Self-service permissions (2026-10-29): when the new roles system is on, pages that used to
   // be "everyone" or "admins only" follow the person's checkboxes too.
   const NEW_PAGE_PERMS = {
-    '/home': 'home.view', '/updates': 'updates.create', '/notes': 'notes.view', '/calendar': 'calendar.view',
+    '/home': 'home.view', '/updates': 'updates.create', '/weekly-sync': 'team.weekly_sync', '/eod': ['team.eod_submit', 'team.eod_view'], '/notes': 'notes.view', '/calendar': 'calendar.view',
     '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings', '/branding': 'admin.settings', '/backend/quotes': 'content.quotes', '/backend/spotlight': 'content.spotlight',
     '/service-account': 'admin.settings', '/survey': 'people.edit', '/finance': 'finance.view', '/submit-purchase': 'finance.create',
   }
@@ -201,6 +208,7 @@ export default function Sidebar({ open, onNavigate }) {
     : p === '__finance' ? fin?.manager === true
     : p === '__finance_submit' ? fin?.submitter === true
     : p === '__admin' ? (isAdmin || isOwner)
+    : p === '__eod' ? (isAdmin || isOwner || !String(appRole || '').toLowerCase().split(',').map(r => r.trim()).every(r => r === 'agent'))
     : p === '__updates_post' ? (isAdmin || isOwner || String(appRole || '').toLowerCase().split(',').map(r => r.trim()).some(r => ['admin', 'asc', 'certification'].includes(r)))
     : p === '__caller' ? !NO_CALL_ROLES.includes(appRole)
     : p === '__dialer' ? (!NO_CALL_ROLES.includes(appRole) || onCampaign)
