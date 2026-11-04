@@ -44,7 +44,6 @@ const NAV_MAIN = [
         type: 'section', key: 'opsis', label: 'Opsis Weekly', ic: '🏠',
         children: [
           { to: '/home', label: 'Opsis Weekly', perm: null },            // the page itself; everyone
-          { to: '/updates', label: 'Updates', perm: null },              // everyone; RLS gates audience
           { to: '/', label: 'Dashboard', perm: 'dashboard', end: true }, // managers only (perm-gated)
         ],
       },
@@ -125,6 +124,7 @@ const NAV_MAIN = [
         // Backend: the information, content and processes that power Command Center (2026-11-04)
         type: 'section', key: 'content-backend', label: 'Backend', ic: '🗄️',
         children: [
+          { to: '/updates', label: 'Updates', perm: '__updates_post' },    // posting/managing; everyone still READS updates on Opsis Weekly, their profile and links
           { to: '/backend/quotes', label: 'Daily Quotes', perm: '__admin' },
           { to: '/backend/spotlight', label: 'Spotlight', perm: '__admin' },
           { to: '/sms-consents', label: 'SMS Consent', perm: '__admin' },   // agent text opt-in report (admins only)
@@ -188,7 +188,7 @@ export default function Sidebar({ open, onNavigate }) {
   // Self-service permissions (2026-10-29): when the new roles system is on, pages that used to
   // be "everyone" or "admins only" follow the person's checkboxes too.
   const NEW_PAGE_PERMS = {
-    '/home': 'home.view', '/updates': 'updates.view', '/notes': 'notes.view', '/calendar': 'calendar.view',
+    '/home': 'home.view', '/updates': 'updates.create', '/notes': 'notes.view', '/calendar': 'calendar.view',
     '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings', '/branding': 'admin.settings', '/backend/quotes': 'content.quotes', '/backend/spotlight': 'content.spotlight',
     '/service-account': 'admin.settings', '/survey': 'people.edit', '/finance': 'finance.view', '/submit-purchase': 'finance.create',
   }
@@ -201,6 +201,7 @@ export default function Sidebar({ open, onNavigate }) {
     : p === '__finance' ? fin?.manager === true
     : p === '__finance_submit' ? fin?.submitter === true
     : p === '__admin' ? (isAdmin || isOwner)
+    : p === '__updates_post' ? (isAdmin || isOwner || String(appRole || '').toLowerCase().split(',').map(r => r.trim()).some(r => ['admin', 'asc', 'certification'].includes(r)))
     : p === '__caller' ? !NO_CALL_ROLES.includes(appRole)
     : p === '__dialer' ? (!NO_CALL_ROLES.includes(appRole) || onCampaign)
     : (!p || canAny(appRole, p))
