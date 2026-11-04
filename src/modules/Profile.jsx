@@ -116,6 +116,7 @@ export default function Profile({ profileId }) {
       <div className="pd-grid">
         <div className="pd-main">
           {isSelf && <Checklist person={person} hasFavs={hasFavs} />}
+          {isSelf && <WalkNudge />}{/* moved here from the Dashboard (2026-11-04) */}
           <MyWeek profileId={isSelf ? null : person.id} isSelf={isSelf} firstName={first} tz={isSelf ? person.timezone : null} />
           {isSelf && <MyMeetings userId={user?.id} tz={person.timezone} refreshKey={meetKey} onOpenCalendar={(opts) => setPanel({ kind: 'calendar', ...opts })} />}
 
@@ -724,6 +725,60 @@ function TokensBody({ tokens, isSelf }) {
         </div>
       ))}
       {isSelf && <ActionLink href="/tokens">View Tokens</ActionLink>}
+    </div>
+  )
+}
+
+// ---- 15-minute walk reminder (moved from the Dashboard, 2026-11-04) ----
+// Gentle daily walk reminder (wellbeing). Reads today's day_planner row.
+function WalkNudge() {
+  const [state, setState] = useState(null) // null=loading, {done, id}
+  const [userId, setUserId] = useState(null)
+
+  const todayISO = () => {
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }))
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!active || !user) return
+      setUserId(user.id)
+      const { data } = await supabase.from('day_planner').select('walk_done').eq('owner_id', user.id).eq('day', todayISO()).maybeSingle()
+      if (active) setState({ done: !!data?.walk_done })
+    })()
+    return () => { active = false }
+  }, [])
+
+  async function markDone() {
+    if (!userId) return
+    setState({ done: true })
+    await supabase.from('day_planner').upsert(
+      { owner_id: userId, day: todayISO(), walk_done: true, updated_at: new Date().toISOString() },
+      { onConflict: 'owner_id,day' }
+    )
+  }
+
+  if (!state) return null
+
+  if (state.done) {
+    return (
+      <div style={{ background: 'rgba(22,163,74,.08)', border: '1px solid #16A34A', borderRadius: 12, padding: '12px 16px', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 18 }}>🌿</span>
+        <span style={{ fontSize: 13.5, color: 'var(--ink)' }}>You took your 15-minute walk today — nicely done. Your wellbeing matters to us.</span>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ background: 'var(--accent-bg, rgba(0,119,182,.06))', border: '1px solid var(--accent, #0077B6)', borderRadius: 12, padding: '12px 16px', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 18 }}>🚶</span>
+      <span style={{ fontSize: 13.5, color: 'var(--ink)', flex: 1, minWidth: 200 }}>
+        Have you taken your 15-minute walk today? A little movement is good for the body and mind — we care about your wellbeing.
+      </span>
+      <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={markDone}>I took my walk ✓</button>
     </div>
   )
 }
