@@ -93,3 +93,4 @@ create table if not exists public.calendar_prefs (
 alter table public.calendar_prefs enable row level security;
 drop policy if exists calendar_prefs_own on public.calendar_prefs;
 create policy calendar_prefs_own on public.calendar_prefs for all to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+alter table public.calendar_prefs add column if not exists show_quote boolean not null default true;
