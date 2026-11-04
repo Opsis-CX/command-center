@@ -1,4 +1,4 @@
-[README (8).md](https://github.com/user-attachments/files/34379184/README.8.md)
+[README (9).md](https://github.com/user-attachments/files/34381052/README.9.md)
 # Staging setup scripts
 
 Run these in the **staging** database (Supabase → command-center-staging → SQL editor),
@@ -18,5 +18,6 @@ database section from live and removes anything that only exists in staging.
 6. `06_client_usage_switches.sql` — "Where this client is used": custom switches admins add.
 
 9. `09_team_updates.sql` — Team Updates checkboxes (Weekly Sync, submit / view end-of-day reports).
+10. `10_calendars.sql` — shared calendars (people/teams, view or add) + each person's Customize choices.
 
 All are safe to run more than once. Ask Claude to re-add the demo company afterwards.
