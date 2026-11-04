@@ -249,7 +249,7 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
   const [orgAccess, setOrgAccess] = useState([])
   const [calEdit, setCalEdit] = useState(null)        // calendar being created/edited (modal)
   const [showCustomize, setShowCustomize] = useState(false)
-  const [prefs, setPrefs] = useState({ show_meals: true, show_water: true, show_wellbeing: true, show_tasks: true })
+  const [prefs, setPrefs] = useState({ show_meals: true, show_water: true, show_wellbeing: true, show_tasks: true, show_quote: true })
   const canManageCals = usingNewPermissions() ? hasPerm('calendar.manage') : !!isAdmin
   const loadOrgCals = useCallback(async () => {
     const [c, a] = await Promise.all([
@@ -267,7 +267,7 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
   const savePrefs = useCallback(async (next) => {
     setPrefs(next)
     await supabase.from('calendar_prefs').upsert({ owner_id: userId, show_meals: next.show_meals, show_water: next.show_water,
-      show_wellbeing: next.show_wellbeing, show_tasks: next.show_tasks, updated_at: new Date().toISOString() }, { onConflict: 'owner_id' })
+      show_wellbeing: next.show_wellbeing, show_tasks: next.show_tasks, show_quote: next.show_quote !== false, updated_at: new Date().toISOString() }, { onConflict: 'owner_id' })
   }, [userId])
   const orgCal = orgCals.find(c => c.id === calMode) || null
   // can I add events to / manage this shared calendar? (the database enforces the same rules)
@@ -1219,6 +1219,7 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
 const MEAL_FIELDS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snack', 'Snack']]
 const WATER_GOAL = 8
 function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenItem, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries, prefs = {} }) {
+  const showQuote = prefs.show_quote !== false
   const showTasks = prefs.show_tasks !== false, showMeals = prefs.show_meals !== false, showWater = prefs.show_water !== false, showWell = prefs.show_wellbeing !== false
   const narrow = useNarrow(700)
   const [water, setWater] = useState(0)
@@ -1299,10 +1300,10 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
         <QuickAdd value={newOtherTodo} setValue={setNewOtherTodo} onAdd={() => addTodo('other')} placeholder="Add a to-do…" />
       </div>}
       <div style={{ width: narrow || !showTasks ? '100%' : 250, flexShrink: 0 }}>
-        <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 13, color: 'var(--cal-ink-soft)', lineHeight: 1.5 }}>
+        {showQuote && <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 13, color: 'var(--cal-ink-soft)', lineHeight: 1.5 }}>
           &ldquo;{q}&rdquo;
           <div style={{ marginTop: 6, fontStyle: 'normal', fontSize: 12, color: 'var(--cal-ink-mute)' }}>— {who}</div>
-        </div>
+        </div>}
         {showMeals && <div style={{ marginTop: 22 }}>
           <PanelHead>MEALS</PanelHead>
           {MEAL_FIELDS.map(([key, label]) => (
@@ -2121,6 +2122,7 @@ function OrgCalendarModal({ cal, profiles = [], userId, onClose, onSaved }) {
 // 🧩 Customize (2026-11-04): each person chooses what shows on their calendar.
 function CustomizeModal({ prefs, onChange, onClose }) {
   const opts = [['show_tasks', 'Tasks', 'Your tasks with due dates — on the day planner and the month/week views'],
+    ['show_quote', 'Daily quote', 'The quote at the top of the day planner'],
     ['show_meals', 'Meals', 'Breakfast, lunch, dinner and snack notes'], ['show_water', 'Water', 'The 8-glass water tracker'],
     ['show_wellbeing', 'Wellbeing', 'Walk, breaks, fresh air, connecting and "one good thing"']]
   return (
