@@ -35,6 +35,7 @@ import ChangePassword from './ChangePassword'
 // (so agents simply see fewer items in the same order). NAV_DEFAULT and
 // NAV_ADMIN both point at NAV_MAIN — kept as two names so the two orders can be
 // split again later without touching the component.
+
 const NAV_MAIN = [
   {
     group: '',
@@ -154,6 +155,10 @@ function formatRole(raw) {
     .map(p => ROLE_LABELS[p] || p.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))
     .join(' & ')
 }
+// Pages this person can open (filled in by the sidebar on every render).
+let _navIndex = []
+export const getNavIndex = () => _navIndex
+
 export default function Sidebar({ open, onNavigate }) {
   const branding = useBranding()   // company logo (Configuration → Branding)
   const lineIcons = branding?.nav_icon_style === 'bw'   // "Line icons" option
@@ -244,6 +249,11 @@ export default function Sidebar({ open, onNavigate }) {
     if (item.type === 'link') return permOk(item.perm, item.to)
     return item.children.some(c => permOk(c.perm, c.to))
   }
+  // Share this person's allowed pages with the universal search (so its "Pages" results
+  // always match their menu exactly). 2026-10-30
+  _navIndex = NAV.flatMap(grp => (grp.items || []).flatMap(item => item.type === 'link'
+    ? (permOk(item.perm, item.to) ? [{ label: item.label, to: item.to, ic: item.ic, group: grp.group || '' }] : [])
+    : (item.children || []).filter(c => permOk(c.perm, c.to)).map(c => ({ label: c.label, to: c.to, ic: c.ic || item.ic, group: item.label }))))
   // Render one nav item (link or collapsible section).
   const renderItem = (item) => {
     // --- single top-level link ---
