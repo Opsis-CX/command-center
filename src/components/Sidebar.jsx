@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useBranding, logoFor } from '../lib/branding'
+import NavIcon from './NavIcon'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useUnread } from '../lib/unread'
@@ -155,6 +156,7 @@ function formatRole(raw) {
 }
 export default function Sidebar({ open, onNavigate }) {
   const branding = useBranding()   // company logo (Configuration → Branding)
+  const lineIcons = branding?.nav_icon_style === 'bw'   // "Line icons" option
   const { isAdmin, level, roles, user, signOut, appRole } = useAuth()
   const navigate = useNavigate()
   const { total: unreadTotal } = useUnread()
@@ -251,7 +253,7 @@ export default function Sidebar({ open, onNavigate }) {
         <NavLink key={item.to} to={item.to} end={item.end}
           onClick={() => onNavigate && onNavigate()}
           className={({ isActive }) => 'nav-item' + (isActive ? ' on' : '')}>
-          <span className="ic">{item.ic}</span> {item.label}
+          <NavIcon ic={item.ic} line={lineIcons} /> {item.label}
           {item.to === '/chat' && unreadTotal > 0 && (
             <span style={{ marginLeft: 'auto', background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
               {unreadTotal > 99 ? '99+' : unreadTotal}
@@ -268,7 +270,7 @@ export default function Sidebar({ open, onNavigate }) {
       <div key={item.key} className="nav-section">
         <button type="button" className="nav-item nav-section-head" onClick={() => toggleSection(item.key)}
           aria-expanded={isOpen}>
-          <span className="ic">{item.ic}</span> {item.label}
+          <NavIcon ic={item.ic} line={lineIcons} /> {item.label}
           <span className="nav-caret" style={{ marginLeft: 'auto', transition: 'transform .15s ease', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
         </button>
         {isOpen && (
@@ -324,7 +326,7 @@ export default function Sidebar({ open, onNavigate }) {
       <div className="nav-section">
         <button className="nav-item nav-section-head" onClick={() => setSettingsOpen(o => !o)}
           style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-          <span className="ic">⚙️</span> Settings
+          <NavIcon ic="⚙️" line={lineIcons} /> Settings
           <span className="nav-caret" style={{ marginLeft: 'auto', transition: 'transform .15s ease', transform: settingsOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
         </button>
         {settingsOpen && (
