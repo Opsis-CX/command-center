@@ -814,6 +814,15 @@ function ScheduleModal({ schedule, callTypes, clients, profiles, audience, onClo
   const [status, setStatus] = useState(schedule.status || 'draft')
   const [callTypeId, setCallTypeId] = useState(schedule.call_type_id || (callTypes.filter(c => c.active !== false)[0]?.id || ''))
   const [clientId, setClientId] = useState(schedule.client_id || '')
+  // Project (2026-11-04): each schedule can belong to one of its client's projects. Only shown
+  // where the database supports it (projects have a client) — otherwise saving works as before.
+  const [projectId, setProjectId] = useState(schedule.project_id || '')
+  const [projects, setProjects] = useState(null)   // null = not supported here
+  useEffect(() => {
+    supabase.from('projects').select('id, name, client_id, deleted_at').order('name')
+      .then(({ data, error }) => setProjects(error ? null : (data || []).filter(p => !p.deleted_at)))
+  }, [])
+  const clientProjects = (projects || []).filter(p => p.client_id === clientId)
   const [picked, setPicked] = useState(() => new Set(audience.filter(a => a.schedule_id === schedule.id).map(a => a.profile_id)))
   const [audQ, setAudQ] = useState('')   // filter the audience people list
   const [saving, setSaving] = useState(false)
@@ -829,7 +838,8 @@ function ScheduleModal({ schedule, callTypes, clients, profiles, audience, onClo
     setSaving(true); setErr('')
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      const payload = { title: title.trim(), week_start_date: weekStart, status, call_type_id: callTypeId, client_id: clientId || null }
+      const payload = { title: title.trim(), week_start_date: weekStart, status, call_type_id: callTypeId, client_id: clientId || null,
+        ...(projects ? { project_id: clientProjects.some(p => p.id === projectId) ? projectId : null } : {}) }
       let scheduleId = schedule.id
       if (isNew) {
         payload.created_by = user?.id ?? null
@@ -871,11 +881,20 @@ function ScheduleModal({ schedule, callTypes, clients, profiles, audience, onClo
             <option value="archived">Archived</option>
           </select></div>
         <div className="field"><label>Client</label>
-          <select value={clientId} onChange={e => setClientId(e.target.value)}>
+          <select value={clientId} onChange={e => { setClientId(e.target.value); setProjectId('') }}>
             <option value="">— Select client —</option>
             {clients.map(cl => <option key={cl.id} value={cl.id}>{cl.name}</option>)}
           </select>
         </div>
+        {projects && clientId && (
+          <div className="field"><label>Project</label>
+            <select value={projectId} onChange={e => setProjectId(e.target.value)}>
+              <option value="">— No specific project —</option>
+              {clientProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            {clientProjects.length === 0 && <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginTop: 4 }}>This client has no projects yet — add them on the Clients page.</div>}
+          </div>
+        )}
         <div className="field"><label>Position</label>
           <select value={callTypeId} onChange={e => setCallTypeId(e.target.value)}>
             {activeCallTypes.length ? activeCallTypes.map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)
