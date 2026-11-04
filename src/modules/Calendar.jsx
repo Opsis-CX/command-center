@@ -1061,6 +1061,9 @@ function useNarrow(breakpoint = 900) {
   return narrow
 }
 // ---------- DAY VIEW ----------
+// Day grid starts at 5 am (2026-11-04, Becky) instead of midnight. Anything that
+// starts before 5 am is clipped to the top of the grid rather than dropped.
+const DAY_START_HOUR = 5
 function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddEvent, onEditEvent, onShowDetail, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries }) {
   const openItem = (i, e) => { if (e) e.stopPropagation(); if (i.kind === 'event' && i.raw) onEditEvent(i.raw); else onShowDetail(i) }
   const ds = isoDate(cursor)
@@ -1068,7 +1071,8 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
   const allDay = items.filter(i => i.allDay)
   const timed = items.filter(i => !i.allDay && i.start)
   const { priority, other } = tasksOn(ds)
-  const hours = Array.from({ length: 24 }, (_, i) => i) // 12a–11p (full day)
+  const hours = Array.from({ length: 24 - DAY_START_HOUR }, (_, i) => i + DAY_START_HOUR) // 5a–11p
+  const startMins = DAY_START_HOUR * 60
   const [q, who] = quoteFor(cursor)
   const narrow = useNarrow(900)
   // Fixed pixels-per-hour so block height == duration. (The old grid used flex:1
@@ -1076,7 +1080,8 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
   // no longer linear.)
   const ROW = narrow ? 52 : 40
   const AXIS_W = 46
-  const laid = layoutTimed(timed)
+  // Events that end at or before 5 am have nothing to show in the grid.
+  const laid = layoutTimed(timed).filter(r => r.e > startMins)
   const isToday = ds === isoDate(new Date())
   const [nowMins, setNowMins] = useState(localNowMins())
   useEffect(() => {
@@ -1103,10 +1108,10 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
         {allDay.map(i => (
           <div key={i.id} onClick={(e) => openItem(i, e)} style={{ ...blockStyle(i.color), fontSize: 11, padding: '3px 6px', borderRadius: 3, marginBottom: 4, cursor: 'pointer' }}>{i.title}</div>
         ))}
-        <div style={{ position: 'relative', height: 24 * ROW }}>
+        <div style={{ position: 'relative', height: hours.length * ROW }}>
           {/* hour gutter + gridlines */}
-          {hours.map(h => (
-            <div key={h} style={{ position: 'absolute', top: h * ROW, left: 0, right: 0, height: ROW, borderTop: '1px solid var(--cal-line-3)' }}>
+          {hours.map((h, idx) => (
+            <div key={h} style={{ position: 'absolute', top: idx * ROW, left: 0, right: 0, height: ROW, borderTop: '1px solid var(--cal-line-3)' }}>
               <div style={{ width: AXIS_W, fontSize: 11, color: 'var(--cal-ink-mute)', paddingTop: 2 }}>
                 {h === 0 ? '12 am' : h === 12 ? '12 pm' : h > 12 ? `${h - 12} pm` : `${h} am`}
               </div>
@@ -1116,8 +1121,10 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
           {/* event surface — click empty space to add */}
           <div style={{ position: 'absolute', top: 0, bottom: 0, left: AXIS_W, right: 0 }} onClick={() => onAddEvent(cursor)}>
             {laid.map(({ i, s, e, col, cols, overlapped }) => {
-              const top = (s / 60) * ROW
-              const height = Math.max(16, ((e - s) / 60) * ROW - 2)
+              const rawTop = ((s - startMins) / 60) * ROW
+              const rawHeight = ((e - s) / 60) * ROW - 2
+              const top = Math.max(0, rawTop)
+              const height = Math.max(16, rawHeight - (top - rawTop))
               const widthPct = 100 / cols
               return (
                 <div key={i.kind + i.id} onClick={(ev) => openItem(i, ev)}
@@ -1140,9 +1147,9 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
                 </div>
               )
             })}
-            {/* current-time line */}
-            {isToday && (
-              <div style={{ position: 'absolute', top: (nowMins / 60) * ROW, left: 0, right: 0, pointerEvents: 'none', zIndex: 5 }}>
+            {/* current-time line (hidden before 5 am — it would be above the grid) */}
+            {isToday && nowMins >= startMins && (
+              <div style={{ position: 'absolute', top: ((nowMins - startMins) / 60) * ROW, left: 0, right: 0, pointerEvents: 'none', zIndex: 5 }}>
                 <div style={{ borderTop: '2px solid ' + COLORS.priority }} />
                 <div style={{ position: 'absolute', top: -4, left: -4, width: 8, height: 8, borderRadius: '50%', background: COLORS.priority }} />
               </div>
