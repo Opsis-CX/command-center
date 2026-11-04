@@ -55,3 +55,12 @@ begin
 end $$;
 drop trigger if exists trg_clients_archive_needs_manage on public.clients;
 create trigger trg_clients_archive_needs_manage before update on public.clients for each row execute function public.tg_clients_archive_needs_manage();
+
+-- ---------- logo size/shape + menu font/size/color + icon style (2026-11-04) ----------
+alter table public.org_branding add column if not exists logo_size int check (logo_size between 20 and 160);
+alter table public.org_branding add column if not exists logo_shape text check (logo_shape in ('original','square','rounded','circle','wide'));
+alter table public.org_branding add column if not exists logo_frame_color text check (logo_frame_color is null or logo_frame_color ~* '^#[0-9a-f]{6}$');
+alter table public.org_branding add column if not exists nav_font text check (nav_font is null or char_length(nav_font) <= 40);
+alter table public.org_branding add column if not exists nav_font_size int check (nav_font_size between 11 and 20);
+alter table public.org_branding add column if not exists nav_text_color text check (nav_text_color is null or nav_text_color ~* '^#[0-9a-f]{6}$');
+alter table public.org_branding add column if not exists nav_icon_style text check (nav_icon_style in ('color','bw','white','black'));
