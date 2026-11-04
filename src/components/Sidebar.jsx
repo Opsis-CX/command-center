@@ -40,13 +40,17 @@ const NAV_MAIN = [
   {
     group: '',
     items: [
+      // Top of the menu (2026-11-04): My Profile → My Tools → Dashboard.
+      // Opsis Weekly's content now lives on My Profile (quote, spotlight, updates, my week).
+      { type: 'link', to: '/profile', label: 'My Profile', ic: '👤', perm: null },
       {
-        type: 'section', key: 'opsis', label: 'Opsis Weekly', ic: '🏠',
+        type: 'section', key: 'my-tools', label: 'My Tools', ic: '🧰',
         children: [
-          { to: '/home', label: 'Opsis Weekly', perm: null },            // the page itself; everyone
-          { to: '/', label: 'Dashboard', perm: 'dashboard', end: true }, // managers only (perm-gated)
+          { to: '/notes', label: 'My Notes', perm: null },
+          { to: '/calendar', label: 'Calendar', perm: null },
         ],
       },
+      { type: 'link', to: '/', label: 'Dashboard', ic: '📊', perm: 'dashboard', end: true }, // managers only (perm-gated)
       {
         type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
         children: [
@@ -73,9 +77,7 @@ const NAV_MAIN = [
           { to: '/inbound', label: 'Inbound', perm: '__caller' },
         ],
       },
-      { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },
       { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
-      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
       { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
       { type: 'link', to: '/my-call-reviews', label: 'My Call Reviews', ic: '🎧', perm: 'call_reviews.mine' },
       { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },
@@ -350,11 +352,6 @@ export default function Sidebar({ open, onNavigate }) {
         </button>
         {settingsOpen && (
           <div className="nav-section-body">
-            <NavLink to="/profile" onClick={() => onNavigate && onNavigate()}
-              className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
-              style={{ paddingLeft: 34 }}>
-              My profile
-            </NavLink>
             <NavLink to="/settings" onClick={() => onNavigate && onNavigate()}
               className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
               style={{ paddingLeft: 34 }}>
