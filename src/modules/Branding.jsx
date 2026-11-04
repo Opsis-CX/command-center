@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { hasPerm, usingNewPermissions } from '../lib/permissions'
 import { useAuth } from '../lib/auth'
+import NavIcon from '../components/NavIcon'
 import { loadBranding, applyBranding, inkOn, FONTS, fontStack, loadFont, logoStyle, ICON_FILTERS } from '../lib/branding'
 
 // ============================================================
@@ -88,10 +89,10 @@ export function BrandPreview({ name, logo, primary, sidebar, b = {} }) {
             width: ls.w === 'auto' ? 'auto' : `calc(${ls.w} * ${scale})`, height: `calc(${ls.h} * ${scale})`, maxWidth: '100%', objectFit: 'contain',
             borderRadius: ls.radius, background: ls.frame, padding: ls.pad === '0' ? 0 : '6%', boxSizing: 'border-box' } : { maxWidth: '100%', maxHeight: 34, objectFit: 'contain' }} />
           : <b style={{ fontSize: 13 }}>{name || 'Your company'}</b>}</div>
-        {[['🏠', 'Home'], ['💬', 'Chat'], ['📊', 'Reporting'], ['📋', 'Projects']].map(([ic, x], i) => (
+        {[['🏠', 'Home'], ['💬', 'Chat'], ['📊', 'Reporting'], ['🗂️', 'Projects']].map(([ic, x], i) => (
           <div key={x} style={{ fontSize: b.nav_font_size ? b.nav_font_size * 0.86 : 12, fontFamily: fontStack(b.nav_font) || 'inherit', padding: '5px 8px', borderRadius: 7, display: 'flex', gap: 6, alignItems: 'center',
             background: i === 2 ? `color-mix(in srgb, ${p} 30%, transparent)` : 'transparent', opacity: i === 2 ? 1 : .85 }}>
-            <span style={{ filter: ICON_FILTERS[b.nav_icon_style || 'color'] }}>{ic}</span>{x}</div>
+            {b.nav_icon_style === 'bw' ? <NavIcon ic={ic} line size={14} /> : <span style={{ filter: ICON_FILTERS[b.nav_icon_style || 'color'] }}>{ic}</span>}{x}</div>
         ))}
       </div>
       <div style={{ padding: 14 }}>
@@ -216,12 +217,14 @@ export default function Branding() {
             onChange={v => setB(x => ({ ...x, nav_text_color: v }))} hint="The tab names in the sidebar. The selected tab keeps its highlight so you always know where you are." />
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Menu icons</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-            {[['color', 'Color'], ['bw', 'Black & white'], ['white', 'All white'], ['black', 'All black']].map(([k, l]) => {
+            {[['color', 'Color'], ['bw', 'Line icons'], ['white', 'All white'], ['black', 'All black']].map(([k, l]) => {
               const on = (b.nav_icon_style || 'color') === k
               return (
                 <button key={k} type="button" disabled={!canEdit} onClick={() => setB(x => ({ ...x, nav_icon_style: k }))}
                   style={{ border: '2px solid ' + (on ? 'var(--accent)' : 'var(--line)'), background: k === 'white' ? '#1F2937' : on ? 'var(--accent-bg)' : 'var(--surface)', borderRadius: 10, padding: '7px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: k === 'white' ? '#fff' : 'var(--ink)', display: 'grid', justifyItems: 'center', gap: 4 }}>
-                  <span style={{ filter: ICON_FILTERS[k], fontSize: 16, letterSpacing: 4 }}>📊💬📋</span>{l}
+                  {k === 'bw'
+                    ? <span style={{ display: 'flex', gap: 6 }}>{['📊', '💬', '🗂️'].map(ic => <NavIcon key={ic} ic={ic} line size={16} />)}</span>
+                    : <span style={{ filter: ICON_FILTERS[k], fontSize: 16, letterSpacing: 4 }}>📊💬🗂️</span>}{l}
                 </button>
               )
             })}
