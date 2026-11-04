@@ -20,8 +20,41 @@ function luminance(hex) {
 // readable text on top of a color
 export const inkOn = (hex) => hexOk(hex) && luminance(hex) > 0.45 ? '#111827' : '#ffffff'
 
+// Menu fonts: '' = Command Center default. Google Fonts load on demand.
+export const FONTS = ['', 'Poppins', 'Inter', 'Montserrat', 'Lato', 'Open Sans', 'Roboto', 'Nunito', 'Raleway', 'Source Sans 3', 'Work Sans', 'DM Sans', 'Playfair Display', 'Merriweather', 'Georgia', 'Arial']
+const SYSTEM_FONTS = { Georgia: 'Georgia, serif', Arial: 'Arial, Helvetica, sans-serif' }
+export const fontStack = (f) => !f ? '' : SYSTEM_FONTS[f] || `'${f}', system-ui, sans-serif`
+export function loadFont(f) {
+  if (!f || SYSTEM_FONTS[f] || typeof document === 'undefined') return
+  const id = 'cc-font-' + f.replace(/\s+/g, '-')
+  if (document.getElementById(id)) return
+  const link = document.createElement('link'); link.id = id; link.rel = 'stylesheet'
+  link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(f).replace(/%20/g, '+')}:wght@400;500;600;700&display=swap`
+  document.head.appendChild(link)
+}
+// Logo frame for a shape + size (px height). Used by the sidebar and the preview.
+export function logoStyle(b) {
+  const size = Number(b?.logo_size) || null, shape = b?.logo_shape || 'original'
+  const frame = b?.logo_frame_color || '#ffffff'
+  if (shape === 'original') return size ? { h: size + 'px', w: 'auto', maxh: size + 'px', radius: '0', frame: 'transparent', pad: '0' } : null
+  const h = (size || 64) + 'px'
+  if (shape === 'wide') return { h, w: Math.round((size || 64) * 2.6) + 'px', maxh: h, radius: '10px', frame, pad: '6px 10px' }
+  return { h, w: h, maxh: h, radius: shape === 'circle' ? '50%' : shape === 'rounded' ? '22%' : '4px', frame, pad: shape === 'circle' ? '14%' : '9%' }
+}
+export const ICON_FILTERS = { color: 'none', bw: 'grayscale(1)', white: 'grayscale(1) brightness(0) invert(1)', black: 'grayscale(1) brightness(0)' }
+
 export function applyBranding(b) {
   const root = document.documentElement.style
+  const setOr = (k, v) => v ? root.setProperty(k, v) : root.removeProperty(k)
+  // logo size/shape
+  const ls = logoStyle(b)
+  setOr('--logo-h', ls?.h); setOr('--logo-w', ls?.w); setOr('--logo-maxh', ls?.maxh); setOr('--logo-radius', ls?.radius); setOr('--logo-frame', ls?.frame); setOr('--logo-pad', ls?.pad)
+  // menu font / size / color / icons
+  if (b?.nav_font) loadFont(b.nav_font)
+  setOr('--nav-font', fontStack(b?.nav_font))
+  setOr('--nav-size', b?.nav_font_size ? b.nav_font_size + 'px' : '')
+  setOr('--nav-ink', hexOk(b?.nav_text_color) ? b.nav_text_color : '')
+  setOr('--nav-ic-filter', b?.nav_icon_style && b.nav_icon_style !== 'color' ? ICON_FILTERS[b.nav_icon_style] : '')
   if (b && hexOk(b.primary_color)) {
     root.setProperty('--accent', b.primary_color)
     root.setProperty('--accent-bg', `color-mix(in srgb, ${b.primary_color} 13%, transparent)`)
