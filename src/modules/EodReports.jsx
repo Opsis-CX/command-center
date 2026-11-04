@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { hasPerm, usingNewPermissions } from '../lib/permissions'
 
 // ============================================================
 // END-OF-DAY REPORTS
@@ -471,4 +472,139 @@ export default function EodReportCard() {
   )
   if (role !== 'agent') return <div style={{ marginTop: 22 }}><PersonalEod userId={user?.id} /></div>
   return null
+}
+
+
+// ============================================================
+// 📝 END OF DAY REPORT page (Team Updates, 2026-11-04) — replaces the Dashboard card.
+//   ✍️ My report         → write today's report + your past reports (anyone who submits)
+//   📥 Submitted reports → By day (who filed / who didn't) or All reports (date range,
+//                          person, search). Admins, or "View the team's end-of-day reports".
+// ============================================================
+export function EodPage() {
+  const { user, appRole, isAdmin } = useAuth()
+  const role = String(appRole || '').toLowerCase()
+  const newPerms = usingNewPermissions()
+  const canSubmit = newPerms ? hasPerm('team.eod_submit') : (isAdmin || role !== 'agent')
+  const canViewTeam = newPerms ? hasPerm('team.eod_view') : !!isAdmin
+  const tabs = [...(canSubmit ? [['mine', '✍️ My report']] : []), ...(canViewTeam ? [['team', '📥 Submitted reports']] : [])]
+  const [tab, setTab] = useState(tabs[0]?.[0] || 'mine')
+  const [view, setView] = useState('list')
+  if (!tabs.length) return <p className="page-sub">End-of-day reports aren't part of your role.</p>
+  return (
+    <div style={{ maxWidth: 1100 }}>
+      <h1 className="page-title">📝 End of Day Report</h1>
+      <p className="page-sub">Your tracked time fills in automatically — add what the tracker can't show, then submit. You'll get a copy by email.</p>
+      {tabs.length > 1 && (
+        <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--line)', margin: '6px 0 16px' }}>
+          {tabs.map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)} style={{ border: 0, background: 'transparent', padding: '10px 14px', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+              color: tab === k ? 'var(--accent)' : 'var(--ink-soft)', borderBottom: '2px solid ' + (tab === k ? 'var(--accent)' : 'transparent'), marginBottom: -1 }}>{l}</button>
+          ))}
+        </div>
+      )}
+      {tab === 'mine' && canSubmit && <PersonalEod userId={user?.id} />}
+      {tab === 'team' && canViewTeam && (
+        <div>
+          <div style={{ display: 'inline-flex', border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden', marginBottom: 14 }}>
+            {[['list', 'All reports'], ['day', 'By day (who filed)']].map(([k, l]) => (
+              <button key={k} onClick={() => setView(k)} style={{ border: 0, padding: '7px 14px', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                background: view === k ? 'var(--accent)' : 'var(--surface)', color: view === k ? 'var(--accent-ink)' : 'var(--ink)' }}>{l}</button>
+            ))}
+          </div>
+          {view === 'list' ? <SubmittedReports /> : <AdminEod />}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// All submitted reports: date range + person + search; each opens to the full report.
+function SubmittedReports() {
+  const today = isoDate(etNow())
+  const back = (n) => { const d = etNow(); d.setDate(d.getDate() - n); return isoDate(d) }
+  const [from, setFrom] = useState(back(13))
+  const [to, setTo] = useState(today)
+  const [person, setPerson] = useState('')
+  const [q, setQ] = useState('')
+  const [rows, setRows] = useState(null)
+  const [people, setPeople] = useState({})
+  const [openId, setOpenId] = useState(null)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    setRows(null); setErr('')
+    ;(async () => {
+      const { data, error } = await supabase.from('daily_reports').select('*').gte('report_date', from).lte('report_date', to)
+        .not('submitted_at', 'is', null).order('report_date', { ascending: false }).order('submitted_at', { ascending: false }).limit(1000)
+      if (!alive) return
+      if (error) { setErr(error.message); setRows([]); return }
+      const ids = [...new Set((data || []).map(r => r.profile_id))]
+      if (ids.length) {
+        const { data: ps } = await supabase.from('profiles').select('id, full_name').in('id', ids)
+        if (alive) setPeople(prev => ({ ...prev, ...Object.fromEntries((ps || []).map(p => [p.id, p.full_name])) }))
+      }
+      setRows(data || [])
+    })()
+    return () => { alive = false }
+  }, [from, to])
+
+  const tl = q.trim().toLowerCase()
+  const shown = (rows || []).filter(r => (!person || r.profile_id === person)
+    && (!tl || [r.additional_work, r.concerns, r.notes, people[r.profile_id], ...(r.tasks_snapshot || []).map(t => `${t.task} ${t.client || ''}`)].join(' ').toLowerCase().includes(tl)))
+  const byDate = shown.reduce((m, r) => { (m[r.report_date] = m[r.report_date] || []).push(r); return m }, {})
+  const inp = { border: '1px solid var(--line)', borderRadius: 8, padding: '6px 9px', fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }
+  const names = Object.entries(people).sort((a, b) => (a[1] || '').localeCompare(b[1] || ''))
+
+  return (
+    <div className="card">
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+        <label style={{ fontSize: 12.5, fontWeight: 600 }}>From <input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} style={inp} /></label>
+        <label style={{ fontSize: 12.5, fontWeight: 600 }}>To <input type="date" value={to} min={from} max={today} onChange={e => setTo(e.target.value)} style={inp} /></label>
+        <select value={person} onChange={e => setPerson(e.target.value)} style={inp} aria-label="Person">
+          <option value="">Everyone</option>{names.map(([id, n]) => <option key={id} value={id}>{n}</option>)}
+        </select>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search reports, tasks, clients…" style={{ ...inp, flex: '1 1 200px' }} aria-label="Search reports" />
+        <span className="page-sub" style={{ fontSize: 12.5 }}>{rows ? `${shown.length} report${shown.length === 1 ? '' : 's'}` : ''}</span>
+      </div>
+      {err ? <div style={{ background: '#FEF2F2', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12.5 }}>{err}</div>
+        : !rows ? <p className="page-sub">Loading…</p>
+        : shown.length === 0 ? <p className="page-sub">No reports were submitted for these dates{person || tl ? ' that match your filters' : ''}.</p>
+        : Object.entries(byDate).map(([d, list]) => (
+          <div key={d} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--ink-soft)', margin: '6px 0' }}>{prettyDate(d)} · {list.length}</div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {list.map(r => {
+                const open = openId === r.id
+                return (
+                  <div key={r.id} style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
+                    <button onClick={() => setOpenId(open ? null : r.id)}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--canvas)', border: 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', color: 'var(--ink)' }}>
+                      <span style={{ fontWeight: 600, fontSize: 13.5 }}>{people[r.profile_id] || 'Someone'}</span>
+                      <span className="page-sub" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{(r.additional_work || r.notes || r.concerns || '').slice(0, 90)}</span>
+                      <span style={{ fontSize: 12.5, color: 'var(--ink-soft)', whiteSpace: 'nowrap' }}>{hrs(r.total_minutes || 0)}h tracked</span>
+                      {r.concerns && <span title="Has agent / trend concerns" style={{ fontSize: 11, fontWeight: 700, color: '#B45309', background: '#FFFBEB', borderRadius: 999, padding: '1px 8px', whiteSpace: 'nowrap' }}>⚠ Concerns</span>}
+                      <span style={{ fontSize: 11.5, color: 'var(--ink-soft)', whiteSpace: 'nowrap' }}>{new Date(r.submitted_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })}</span>
+                      <span style={{ fontSize: 11, opacity: .6, transform: open ? 'rotate(90deg)' : 'none' }}>▸</span>
+                    </button>
+                    {open && (
+                      <div style={{ padding: 12, borderTop: '1px solid var(--line)' }}>
+                        <TrackedTable tracked={{ rows: r.tasks_snapshot || [], total: r.total_minutes || 0 }} />
+                        <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+                          <ReportBlock title="Additional work / comments" body={r.additional_work} />
+                          <ReportBlock title="Agent / trend concerns" body={r.concerns} />
+                          <ReportBlock title="Notes" body={r.notes} />
+                          <div className="page-sub" style={{ fontSize: 11 }}>Submitted {new Date(r.submitted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })} ET{r.updated_at && r.updated_at !== r.submitted_at ? ' · edited later' : ''}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+    </div>
+  )
 }
