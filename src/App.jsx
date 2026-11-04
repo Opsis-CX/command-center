@@ -105,6 +105,7 @@ import SmsConsentForm from './modules/SmsConsentForm'
 import SmsConsentReport from './modules/SmsConsentReport'
 import { DailyQuotes, Spotlight } from './modules/Backend'
 import Branding from './modules/Branding'
+import AlertSettings from './modules/AlertSettings'
 import { EodPage } from './modules/EodReports'
 import { initBranding } from './lib/branding'
 import SmsConsentBanner from './components/SmsConsentBanner'
@@ -520,6 +521,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
                   sms_consents / sms_consent_status are readable only by is_app_admin(). */}
               <Route path="/sms-consents" element={isAdmin ? <SmsConsentReport /> : <NoAccess />} />
               {/* Backend (2026-11-04): content that powers Command Center */}
+              <Route path="/alerts" element={(usingNewPermissions() ? hasPerm('admin.alerts') : isAdmin) ? <AlertSettings /> : <NoAccess />} />
               <Route path="/branding" element={(usingNewPermissions() ? hasPerm('admin.settings') : isAdmin) ? <Branding /> : <NoAccess />} />
               <Route path="/backend/quotes" element={(usingNewPermissions() ? hasPerm('content.quotes') : isAdmin) ? <DailyQuotes /> : <NoAccess />} />
               <Route path="/backend/spotlight" element={(usingNewPermissions() ? hasPerm('content.spotlight') : isAdmin) ? <Spotlight /> : <NoAccess />} />
@@ -615,7 +617,7 @@ function titleFor(path) {
     '/my-certifications': 'My certifications', '/my-courses': 'My courses', '/schedule': 'Schedule',
     '/chat': 'Chat', '/updates': 'Updates', '/home': 'Opsis Weekly', '/notes': 'My Notes', '/schedule-builder': 'Schedule builder', '/positions': 'Positions', '/insights': 'Schedule insights', '/reporting': 'Reporting', '/reporting/hourly': 'Hourly Reports', '/weekly-sync': 'Weekly Sync',
     '/hiring': 'Hiring', '/sales': 'Sales', '/help': 'Help Center', '/roles': 'Access & Permissions', '/service-account': 'Service account',
-    '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/branding': 'Branding', '/eod': 'End of Day Report', '/backend/quotes': 'Daily Quotes', '/backend/spotlight': 'Spotlight', '/phone': 'Phone', '/dialer': 'Agent workspace', '/campaigns': 'Campaigns', '/inbound': 'Inbound', '/scripts': 'Scripts', '/reporting/calls': 'Call Reports', '/test-lead': 'Test a web lead',
+    '/web-chat': 'Web Chat', '/sms-consents': 'SMS Consent', '/branding': 'Branding', '/alerts': 'Alerts', '/eod': 'End of Day Report', '/backend/quotes': 'Daily Quotes', '/backend/spotlight': 'Spotlight', '/phone': 'Phone', '/dialer': 'Agent workspace', '/campaigns': 'Campaigns', '/inbound': 'Inbound', '/scripts': 'Scripts', '/reporting/calls': 'Call Reports', '/test-lead': 'Test a web lead',
     '/coaching': 'Coaching', '/tokens': 'Tokens', '/get-to-know-you': 'Get to Know You', '/call-qa': 'Call QA (AI)', '/csr-scorecards': 'CSR Scorecards', '/my-call-reviews': 'My Call Reviews', '/rsn': 'RSN Pipeline', '/finance': 'Finance', '/profile': 'My profile', '/submit-purchase': 'Submit a purchase', '/meetings': 'Meetings', '/live': "Who's On", '/mock-call': 'Mock call', '/time': 'Time', '/survey': 'New Hire Survey',
   }
   // Sales is now a tabbed shell with nested routes (/sales/dashboard,
