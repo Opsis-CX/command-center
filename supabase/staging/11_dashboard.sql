@@ -42,6 +42,8 @@ language sql stable security definer set search_path to 'public' as $$
     'views', jsonb_build_object('operations', public.is_access_owner() or public.has_perm('dashboard.operations'), 'staffing', public.is_access_owner() or public.has_perm('dashboard.staffing'),
       'schedule', public.is_access_owner() or public.has_perm('dashboard.schedule'), 'activity', public.is_access_owner() or public.has_perm('dashboard.activity')),
     'names', public.is_access_owner() or public.has_perm('dashboard.names'),
+    'nudge', public.is_access_owner() or public.has_perm('dashboard.nudge'),
+    'checkin', public.is_access_owner() or public.has_perm('dashboard.checkin'),
     'internal', public.is_access_owner() or public.level_rank(public.my_level()) >= 3,
     'clients', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'name', c.name,
         'projects', coalesce((select jsonb_agg(jsonb_build_object('id', p.id, 'name', p.name) order by p.name) from public.projects p
@@ -229,7 +231,7 @@ begin
   with s as (select * from public.dash_schedules(p_client, p_project)),
   ev as (
     select l.id::text id, 'schedule' kind, l.action, l.created_at at_, l.actor_id, l.affected_profile_id person_id,
-           coalesce(l.block_label, l.schedule_title) what, s.client_id, s.project_id
+           case when l.action = 'open_alert' then concat_ws(' · ', l.block_label, l.affected_profile_name) else coalesce(l.block_label, l.schedule_title) end what, s.client_id, s.project_id
       from public.schedule_activity_log l join s on s.schedule_id = l.schedule_id
      where l.created_at > now() - interval '60 days'
     union all
