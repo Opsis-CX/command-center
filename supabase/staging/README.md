@@ -1,4 +1,4 @@
-[README (10).md](https://github.com/user-attachments/files/34382529/README.10.md)
+[README (11).md](https://github.com/user-attachments/files/34383326/README.11.md)
 # Staging setup scripts
 
 Run these in the **staging** database (Supabase → command-center-staging → SQL editor),
@@ -20,5 +20,6 @@ database section from live and removes anything that only exists in staging.
 9. `09_team_updates.sql` — Team Updates checkboxes (Weekly Sync, submit / view end-of-day reports).
 10. `10_calendars.sql` — shared calendars (people/teams, view or add) + each person's Customize choices.
 11. `11_dashboard.sql` — Dashboard: project on schedules, dashboard checkboxes, and the secure dash_* functions.
+12. `12_dashboard_actions.sql` — nudge people who haven't checked in; alert available people about open intervals.
 
 All are safe to run more than once. (Staging also has fictional @demo.test people + sample schedules for testing.) Ask Claude to re-add the demo company afterwards.
