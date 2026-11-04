@@ -1,5 +1,3 @@
-import NotificationBell from './components/NotificationBell'
-import HeaderTaskBar from './components/HeaderTaskBar'
 import { useState, useEffect } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { initTheme } from './lib/theme'
@@ -67,11 +65,11 @@ import NewHireSurvey from './modules/NewHireSurvey'
 import CsrScorecard from './modules/CsrScorecard'
 // --- Who's On: live check-ins (LiveStatus) + Slack-style team presence board ---
 import LiveStatus from './modules/LiveStatus'
-import { usePresenceHeartbeat, MyStatusButton, TeamStatus } from './components/Presence'
-import { ViewAsMenu } from './components/RolePreview'
-import PortalMenu, { StaffPortal } from './components/PortalMenu'
+import { usePresenceHeartbeat, TeamStatus } from './components/Presence'
+import { StaffPortal } from './components/PortalMenu'
+import AppHeader from './components/AppHeader'
+import { RefreshProvider, RefreshBoundary } from './lib/refresh'
 import PushEnrollmentBanner from './components/PushEnrollmentBanner'
-import ChatPopButton from './components/ChatPopButton'
 import Seasonal from './components/Seasonal'
 import MeetingReminder from './components/MeetingReminder'
 import LsaReminderPopup from './components/LsaReminderPopup'
@@ -476,6 +474,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
   return (
     <MaybeVoice enabled canCallPeople={canPlaceCalls(appRole)} canDialNumbers={!!isAdmin}>
     <UnreadProvider>
+    <RefreshProvider>
       {/* Full-screen meeting alert at T-10 and T-2. Internal staff only —
           it sits inside AuthedApp, which the client portal never reaches. */}
       <MeetingReminder />
@@ -490,20 +489,8 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
         {/* tap-to-close backdrop, only visible on mobile when the nav is open */}
         {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
         <main className="main">
-          <div className="topbar">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button className="nav-toggle" onClick={() => setNavOpen(o => !o)} aria-label="Menu">☰</button>
-              <div className="crumb"><b>{titleFor(location.pathname)}</b></div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <ViewAsMenu />
-              <PortalMenu />
-              <MyStatusButton />
-              <HeaderTaskBar />
-              {canAny(appRole, 'chat') && <ChatPopButton />}
-              <NotificationBell />
-            </div>
-          </div>
+          {/* Two-row header (2026-11-02): navigation bar + work bar. See components/AppHeader.jsx */}
+          <AppHeader title={titleFor(location.pathname)} onToggleNav={() => setNavOpen(o => !o)} showChat={canAny(appRole, 'chat')} />
           <div className="content">
             {/* Nudge for anyone who hasn't answered the SMS opt-in yet. Never opts
                 anyone in by itself — it links to the real consent form. */}
@@ -511,6 +498,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             {/* Per-device notifications: turns on quietly where already allowed, otherwise
                 a one-tap banner. Never shows on a device where they turned it off. */}
             <PushEnrollmentBanner profileId={session.user.id} />
+            <RefreshBoundary>
             <Routes>
               <Route path="/" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <OpsisWeekly />} />
               <Route path="/calendar" element={<Calendar />} />
@@ -607,9 +595,11 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/insights" element={(canAny(appRole, 'schedule.all') || canAny(appRole, 'schedule.view_insights_assigned')) ? <ScheduleInsights /> : <NoAccess />} />
               <Route path="*" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <OpsisWeekly />} />
             </Routes>
+            </RefreshBoundary>
           </div>
         </main>
       </div>
+    </RefreshProvider>
     </UnreadProvider>
     </MaybeVoice>
   )
