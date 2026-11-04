@@ -453,6 +453,8 @@ function TraineePortal({ session }) {
 // Everything behind the login gate. Split out so the must-change-password
 // check can run with a session guaranteed to exist.
 function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location }) {
+  // Dashboard (redesign 2026-11-04): Overview or Client/Project access (new permissions), else the old rule.
+  const canSeeDashboard = usingNewPermissions() ? (hasPerm('dashboard.overview') || hasPerm('dashboard.client')) : canAny(appRole, 'dashboard')
   // RSN pipeline visibility — DB-gated (admins, marketing role, or 'access/rsn' tag).
   const rsnOk = useRsnAccess()
   const fin = useFinanceAccess()   // null while checking, then { manager, submitter }
@@ -500,7 +502,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             <PushEnrollmentBanner profileId={session.user.id} />
             <RefreshBoundary>
             <Routes>
-              <Route path="/" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <Profile />} />
+              <Route path="/" element={canSeeDashboard ? <Dashboard /> : <Profile />} />
               <Route path="/calendar" element={<Calendar />} />
               {/* Mock-call booking for anyone signed in but no longer in_training
                   (e.g. unlocked early) — trainees get it as a tab instead. */}
@@ -595,7 +597,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/schedule-builder" element={canAny(appRole, 'schedule.create_schedules') ? <ScheduleBuilder /> : <NoAccess />} />
               <Route path="/positions" element={canAny(appRole, 'positions.view_only') ? <Positions /> : <NoAccess />} />
               <Route path="/insights" element={(canAny(appRole, 'schedule.all') || canAny(appRole, 'schedule.view_insights_assigned')) ? <ScheduleInsights /> : <NoAccess />} />
-              <Route path="*" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <Profile />} />
+              <Route path="*" element={canSeeDashboard ? <Dashboard /> : <Profile />} />
             </Routes>
             </RefreshBoundary>
           </div>
