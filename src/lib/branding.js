@@ -28,8 +28,11 @@ export function applyBranding(b) {
     root.setProperty('--accent-ink', inkOn(b.primary_color))
     root.setProperty('--grad-accent', `linear-gradient(135deg, color-mix(in srgb, ${b.primary_color} 82%, white) 0%, ${b.primary_color} 100%)`)
   } else { ['--accent', '--accent-bg', '--accent-ink', '--grad-accent'].forEach(v => root.removeProperty(v)) }
-  if (b && hexOk(b.sidebar_color)) root.setProperty('--sidebar', b.sidebar_color)
-  else root.removeProperty('--sidebar')
+  if (b && hexOk(b.sidebar_color)) {
+    root.setProperty('--sidebar', b.sidebar_color)
+    // the sidebar normally has a dark overlay; with a brand color, use the color itself (subtle depth)
+    root.setProperty('--sidebar-bg', `linear-gradient(180deg, color-mix(in srgb, ${b.sidebar_color} 88%, white), ${b.sidebar_color} 55%, color-mix(in srgb, ${b.sidebar_color} 88%, black))`)
+  } else { root.removeProperty('--sidebar'); root.removeProperty('--sidebar-bg') }
   const icon = b?.icon_url
   if (icon) {
     let link = document.querySelector('link[rel="icon"]')
