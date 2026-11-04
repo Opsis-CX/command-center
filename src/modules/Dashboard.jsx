@@ -172,8 +172,8 @@ export default function Dashboard() {
       </div>
 
       {view === 'operations' && <Operations key={`o${tab}${filter.c}${filter.p}${days}`} f={filter} days={days} from={from} T={T} overview={tab === 'overview'} />}
-      {view === 'staffing' && <Staffing key={`s${tab}${filter.c}${filter.p}`} f={filter} T={T} />}
-      {view === 'schedule' && <Schedule key={`c${tab}${filter.c}${filter.p}`} f={filter} days={days} from={from} setFrom={setFrom} T={T} />}
+      {view === 'staffing' && <Staffing key={`s${tab}${filter.c}${filter.p}`} f={filter} T={T} canNudge={!!scope.nudge} canCheck={!!scope.checkin} />}
+      {view === 'schedule' && <Schedule key={`c${tab}${filter.c}${filter.p}`} f={filter} days={days} from={from} setFrom={setFrom} T={T} canNudge={!!scope.nudge} />}
       {view === 'activity' && <Activity key={`a${tab}${filter.c}${filter.p}`} f={filter} T={T} overview={tab === 'overview'} scope={scope} />}
     </div>
   )
@@ -285,7 +285,7 @@ function Donut({ parts }) {
     </div>
   )
 }
-function Staffing({ f, T }) {
+function Staffing({ f, T, canNudge, canCheck }) {
   const { data, err } = useRpc('dash_staffing', { p_client: f.c, p_project: f.p })
   const [open, toggle] = useOpen()
   const [who, setWho] = useState('all')       // all | agent | internal
@@ -304,6 +304,7 @@ function Staffing({ f, T }) {
         {data.can_internal ? <Kpi icon={I.staff} value={t.internal ?? 0} label="Internal staff" /> : <Kpi icon={I.open} value={t.open_spots ?? 0} label="Open spots (next 7 days)" />}
         <Kpi icon={I.on} value={t.on_now ?? 0} label="On now"><div className="db-kpi-d" style={{ color: '#16A34A' }}>● checked in right now</div></Kpi>
       </div>
+      <CheckIns f={f} T={T} canNudge={canNudge} canCheck={canCheck} />
       <div className="db-split" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.7fr)' }}>
         <div className="db-card">
           <h3>Staff by type</h3>
@@ -371,7 +372,7 @@ function Staffing({ f, T }) {
 }
 
 // ---------------------------- SCHEDULE ----------------------------
-function Schedule({ f, days, from, setFrom, T }) {
+function Schedule({ f, days, from, setFrom, T, canNudge }) {
   const { data, err } = useRpc('dash_schedule', { p_client: f.c, p_project: f.p, p_from: from, p_days: days })
   const [open, toggle] = useOpen()
   const [sub, setSub] = useState('overview')
@@ -432,18 +433,7 @@ function Schedule({ f, days, from, setFrom, T }) {
           <div className="page-sub" style={{ fontSize: 12, marginTop: 10 }}>Colors show coverage: green 85%+, amber 70–84%, red under 70%. Hover a cell for filled vs. scheduled.</div>
         </div>
       ) : (
-        <div className="db-card">
-          {(data.open || []).length === 0 ? <div className="db-empty">Every interval in this range is filled. 🎉</div> : (
-            <div className="db-tbl-wrap"><table className="db-tbl">
-              <thead><tr><th>Date</th><th>Time</th><th>{T.client} / {T.project}</th><th>Role</th><th className="num">Open</th><th className="num">Spots</th></tr></thead>
-              <tbody>{data.open.map(b => (
-                <tr key={b.id}><td style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>{fmtDay(b.date)}</td><td style={{ whiteSpace: 'nowrap' }}>{fmtTime(b.start)} – {fmtTime(b.end)}</td>
-                  <td>{b.client || 'Internal'}{b.project ? <span className="page-sub"> · {b.project}</span> : null}</td><td>{b.role || '—'}</td>
-                  <td className="num"><b style={{ color: '#DC2626' }}>{b.open}</b></td><td className="num">{b.spots}</td></tr>
-              ))}</tbody>
-            </table></div>
-          )}
-        </div>
+        <OpenIntervals open={data.open || []} T={T} canNudge={canNudge} />
       )}
     </>
   )
@@ -451,7 +441,8 @@ function Schedule({ f, days, from, setFrom, T }) {
 
 // ---------------------------- ACTIVITY ----------------------------
 const ACTION_TEXT = { claimed: 'picked up an interval', released: 'released an interval', checked_in: 'checked in', checked_out: 'checked out', marked_no_show: 'was marked a no-show',
-  assigned: 'was assigned an interval', unassigned: 'was unassigned from an interval', break_started: 'started a break', break_ended: 'ended a break', passed: 'passed a certification' }
+  assigned: 'was assigned an interval', unassigned: 'was unassigned from an interval', break_started: 'started a break', break_ended: 'ended a break', passed: 'passed a certification',
+  nudged: 'was nudged to check in', open_alert: 'open-interval alert sent' }
 const ACTION_ICON = { checked_in: I.on, checked_out: I.on, passed: I.cert, marked_no_show: I.warn }
 function Activity({ f, T, overview, scope }) {
   const [clientF, setClientF] = useState('')
@@ -481,6 +472,7 @@ function Activity({ f, T, overview, scope }) {
           <option value="claimed">Picked up intervals</option><option value="released">Released intervals</option>
           <option value="checked_in">Check-ins</option><option value="checked_out">Check-outs</option>
           <option value="marked_no_show">No-shows</option><option value="assigned">Assignments</option>
+          <option value="nudged">Check-in nudges</option><option value="open_alert">Open-interval alerts</option>
           {overview && <option value="certification">Certifications</option>}
         </select>
         <div style={{ position: 'relative', flex: '1 1 220px' }}>
@@ -495,7 +487,11 @@ function Activity({ f, T, overview, scope }) {
             <tr key={a.id}>
               <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ color: a.action === 'marked_no_show' ? '#DC2626' : 'var(--accent)', display: 'inline-flex' }}><Ico d={ACTION_ICON[a.action] || I.staff} size={17} /></span>
-                <span><b>{a.person || a.actor || 'Someone'}</b> {ACTION_TEXT[a.action] || a.action.replace(/_/g, ' ')}{a.what ? <span className="page-sub"> · {a.what}</span> : null}</span>
+                <span>{a.action === 'open_alert'
+                  ? <><b>{a.actor || 'Someone'}</b> sent an open-interval alert{a.person ? ` to ${a.person}` : ''}</>
+                  : a.action === 'nudged' ? <><b>{a.person || 'A team member'}</b> was nudged to check in{a.actor ? <> by <b>{a.actor}</b></> : null}</>
+                  : <><b>{a.person || a.actor || 'Someone'}</b> {ACTION_TEXT[a.action] || a.action.replace(/_/g, ' ')}</>}
+                  {a.what ? <span className="page-sub"> · {a.what}</span> : null}</span>
               </span></td>
               <td>{a.client || (a.kind === 'certification' ? 'Certifications' : 'Internal')}{a.project ? <span className="page-sub"> / {a.project}</span> : null}</td>
               <td style={{ whiteSpace: 'nowrap' }}>{new Date(a.at).toLocaleString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })}</td>
@@ -503,6 +499,141 @@ function Activity({ f, T, overview, scope }) {
           ))}</tbody>
         </table></div>
       )}
+    </div>
+  )
+}
+
+
+// ---------------------------- actions: nudges + open-interval alerts ----------------------------
+const ago = (iso) => { if (!iso) return ''; const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago` }
+function Flash({ msg }) { return msg ? <div style={{ margin: '0 0 12px', padding: '8px 12px', borderRadius: 9, fontSize: 13, background: msg.kind === 'ok' ? '#ECFDF5' : '#FEF2F2', color: msg.kind === 'ok' ? '#047857' : '#B91C1C' }}>{msg.text}</div> : null }
+
+// Check-ins: people whose interval started but haven't checked in (Nudge / Check in), and
+// people checked in right now (Check out). Actions need their own checkboxes; all logged.
+function CheckIns({ f, T, canNudge, canCheck }) {
+  const [late, setLate] = useState(null)
+  const [on, setOn] = useState(null)
+  const [tab, setTab] = useState('late')
+  const [busy, setBusy] = useState(null)
+  const [msg, setMsg] = useState(null)
+  const [inAt, setInAt] = useState('in')   // 'in' (now) | 'in_at_start'
+  const load = useCallback(() => {
+    supabase.rpc('dash_not_checked_in', { p_client: f.c, p_project: f.p }).then(({ data }) => setLate(data || []))
+    supabase.rpc('dash_on_now', { p_client: f.c, p_project: f.p }).then(({ data }) => setOn(data || []))
+  }, [f.c, f.p])
+  useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t) }, [load])
+  async function nudge(claims, label) {
+    setBusy(label); setMsg(null)
+    const { data, error } = await supabase.rpc('dash_nudge', { p_claims: claims })
+    setBusy(null)
+    if (error) return setMsg({ kind: 'err', text: error.message })
+    setMsg({ kind: 'ok', text: data.sent ? `Nudged ${data.sent} ${data.sent === 1 ? 'person' : 'people'} — they got a notification and a push.${data.skipped ? ` ${data.skipped} skipped (nudged in the last 10 minutes).` : ''}` : 'Everyone here was nudged in the last 10 minutes.' })
+    load()
+  }
+  async function check(claims, action, label, who) {
+    setBusy(label); setMsg(null)
+    const { data, error } = await supabase.rpc('dash_check', { p_claims: claims, p_action: action })
+    setBusy(null)
+    if (error) return setMsg({ kind: 'err', text: error.message })
+    const verb = action === 'out' ? 'Checked out' : 'Checked in'
+    setMsg({ kind: data.done ? 'ok' : 'err', text: data.done ? `${verb} ${claims.length === 1 && who ? who : `${data.done} ${data.done === 1 ? 'person' : 'people'}`}${action === 'in_at_start' ? ' as of their interval start' : ''}. It's noted on their record that you did it from the Dashboard.`
+      : `Nothing changed — ${action === 'out' ? 'they may already be checked out' : 'they may already be checked in'} (you also can't check yourself in or out here).` })
+    load()
+  }
+  if (!late || !on) return null
+  if (!late.length && !on.length) return null
+  const rows = tab === 'late' ? late : on
+  return (
+    <div className="db-card" style={late.length ? { borderColor: '#FCD34D' } : undefined}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+        <h3 style={{ margin: 0 }}><Ico d={I.on} size={18} />Check-ins</h3>
+        <div className="db-pills" style={{ marginRight: 'auto' }}>
+          <button className={'db-pill' + (tab === 'late' ? ' on' : '')} style={{ padding: '5px 14px', fontSize: 12.5 }} onClick={() => { setTab('late'); setMsg(null) }}>
+            {late.length ? <span style={{ color: tab === 'late' ? undefined : '#B45309' }}>⚠ </span> : null}Not checked in ({late.length})</button>
+          <button className={'db-pill' + (tab === 'on' ? ' on' : '')} style={{ padding: '5px 14px', fontSize: 12.5 }} onClick={() => { setTab('on'); setMsg(null) }}>Checked in ({on.length})</button>
+        </div>
+        {tab === 'late' && late.length > 0 && canCheck && (
+          <select className="db-sel" style={{ minWidth: 0, fontSize: 12.5, padding: '6px 10px' }} value={inAt} onChange={e => setInAt(e.target.value)} aria-label="Check in as of">
+            <option value="in">Check in as of: now</option><option value="in_at_start">Check in as of: interval start</option>
+          </select>
+        )}
+        {tab === 'late' && canNudge && late.length > 1 && <button className="btn btn-primary" style={{ fontSize: 13 }} disabled={!!busy} onClick={() => nudge(late.map(r => r.claim_id), 'all')}>{busy === 'all' ? 'Nudging…' : `🔔 Nudge all ${late.length}`}</button>}
+      </div>
+      <Flash msg={msg} />
+      {rows.length === 0 ? <div className="db-empty">{tab === 'late' ? 'Everyone who should be on has checked in. 🎉' : 'Nobody is checked in right now.'}</div> : (
+        <div className="db-tbl-wrap"><table className="db-tbl">
+          <thead><tr><th>Who</th><th>Interval</th><th>{T.client} / {T.project}</th>{tab === 'late' ? <><th>Late</th><th>Last nudged</th></> : <th>Checked in</th>}{(canNudge || canCheck) && <th />}</tr></thead>
+          <tbody>{rows.map(r => (
+            <tr key={r.claim_id}>
+              <td style={{ fontWeight: 700 }}>{r.name}</td>
+              <td style={{ whiteSpace: 'nowrap' }}>{fmtTime(r.start)} – {fmtTime(r.end)}<div className="page-sub" style={{ fontSize: 12 }}>{r.role || ''}</div></td>
+              <td>{r.client || 'Internal'}{r.project ? <span className="page-sub"> · {r.project}</span> : null}</td>
+              {tab === 'late' ? <>
+                <td><span className="db-badge" style={{ background: r.minutes_late >= 15 ? '#FEE2E2' : '#FEF3C7', color: r.minutes_late >= 15 ? '#991B1B' : '#92400E' }}>{r.minutes_late} min</span></td>
+                <td className="page-sub" style={{ fontSize: 12.5 }}>{r.last_nudged ? ago(r.last_nudged) : '—'}</td>
+              </> : <td style={{ whiteSpace: 'nowrap' }}>{new Date(r.checked_in_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })}</td>}
+              {(canNudge || canCheck) && (
+                <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                  {tab === 'late' && canNudge && <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '5px 12px' }} disabled={!!busy} onClick={() => nudge([r.claim_id], 'n' + r.claim_id)}>{busy === 'n' + r.claim_id ? '…' : '🔔 Nudge'}</button>}
+                  {tab === 'late' && canCheck && <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '5px 12px', marginLeft: 6 }} disabled={!!busy} onClick={() => check([r.claim_id], inAt, 'i' + r.claim_id, r.name)}>{busy === 'i' + r.claim_id ? '…' : '✓ Check in'}</button>}
+                  {tab === 'on' && canCheck && <button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '5px 12px' }} disabled={!!busy} onClick={() => { if (window.confirm(`Check ${r.name} out now?`)) check([r.claim_id], 'out', 'o' + r.claim_id, r.name) }}>{busy === 'o' + r.claim_id ? '…' : '⏏ Check out'}</button>}
+                </td>
+              )}
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+    </div>
+  )
+}
+
+// Open intervals: how many people are available, and alert them (one, several or all).
+function OpenIntervals({ open, T, canNudge }) {
+  const [avail, setAvail] = useState({})
+  const [picked, setPicked] = useState(() => new Set())
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
+  const ids = open.map(b => b.id)
+  useEffect(() => {
+    if (!ids.length) return
+    supabase.rpc('dash_open_available', { p_blocks: ids }).then(({ data }) => setAvail(data || {}))
+  }, [ids.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+  const toggle = (id) => setPicked(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
+  async function alert(blockIds) {
+    setBusy(true); setMsg(null)
+    const { data, error } = await supabase.rpc('dash_alert_open', { p_blocks: blockIds, p_note: note || null })
+    setBusy(false)
+    if (error) return setMsg({ kind: 'err', text: error.message })
+    setMsg({ kind: 'ok', text: data.people ? `Alerted ${data.people} available ${data.people === 1 ? 'person' : 'people'} about ${data.intervals} interval${data.intervals === 1 ? '' : 's'} — notification + push.` : 'Nobody new to alert — everyone available was already alerted in the last 2 hours (or nobody is free then).' })
+    setPicked(new Set())
+  }
+  if (!open.length) return <div className="db-card"><div className="db-empty">Every interval in this range is filled. 🎉</div></div>
+  const selected = [...picked]
+  return (
+    <div className="db-card">
+      {canNudge && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+          <input className="db-sel" style={{ flex: '1 1 260px', fontWeight: 400 }} maxLength={140} placeholder="Optional note to include — e.g. Bonus tokens for this one!" value={note} onChange={e => setNote(e.target.value)} aria-label="Alert note" />
+          <button className="btn btn-primary" style={{ fontSize: 13 }} disabled={busy || !selected.length} onClick={() => alert(selected)}>{busy ? 'Sending…' : `🔔 Alert available (${selected.length} selected)`}</button>
+          <button className="btn btn-ghost" style={{ fontSize: 13 }} disabled={busy} onClick={() => alert(ids)}>Alert for all {ids.length}</button>
+        </div>
+      )}
+      <Flash msg={msg} />
+      <div className="db-tbl-wrap"><table className="db-tbl">
+        <thead><tr>{canNudge && <th style={{ width: 28 }}><input type="checkbox" aria-label="Select all" checked={selected.length === ids.length} onChange={e => setPicked(e.target.checked ? new Set(ids) : new Set())} /></th>}
+          <th>Date</th><th>Time</th><th>{T.client} / {T.project}</th><th>Role</th><th className="num">Open</th><th className="num">Available <span title="Assigned to this schedule, not working an overlapping interval, not already on it" style={{ cursor: 'help' }}>ⓘ</span></th>{canNudge && <th />}</tr></thead>
+        <tbody>{open.map(b => (
+          <tr key={b.id}>
+            {canNudge && <td><input type="checkbox" checked={picked.has(b.id)} onChange={() => toggle(b.id)} aria-label="Select interval" /></td>}
+            <td style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>{fmtDay(b.date)}</td><td style={{ whiteSpace: 'nowrap' }}>{fmtTime(b.start)} – {fmtTime(b.end)}</td>
+            <td>{b.client || 'Internal'}{b.project ? <span className="page-sub"> · {b.project}</span> : null}</td><td>{b.role || '—'}</td>
+            <td className="num"><b style={{ color: '#DC2626' }}>{b.open}</b> <span className="page-sub">/ {b.spots}</span></td>
+            <td className="num">{avail[b.id] ?? '…'}</td>
+            {canNudge && <td className="num"><button className="btn btn-ghost" style={{ fontSize: 12.5, padding: '5px 12px', whiteSpace: 'nowrap' }} disabled={busy || !avail[b.id]} onClick={() => alert([b.id])}>🔔 Alert</button></td>}
+          </tr>
+        ))}</tbody>
+      </table></div>
     </div>
   )
 }
