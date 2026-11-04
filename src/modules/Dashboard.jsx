@@ -111,6 +111,8 @@ export default function Dashboard() {
   const [days, setDays] = useState(7)
   const [from, setFrom] = useState(todayET())
 
+  const [flags, setFlags] = useState({ nudge: true, open: true })   // Configuration → Alerts on/off
+  useEffect(() => { supabase.rpc('dash_alert_flags').then(({ data }) => { if (data) setFlags(data) }) }, [])
   useEffect(() => {
     supabase.rpc('dash_scope').then(({ data }) => {
       const s = data || {}
@@ -172,8 +174,8 @@ export default function Dashboard() {
       </div>
 
       {view === 'operations' && <Operations key={`o${tab}${filter.c}${filter.p}${days}`} f={filter} days={days} from={from} T={T} overview={tab === 'overview'} />}
-      {view === 'staffing' && <Staffing key={`s${tab}${filter.c}${filter.p}`} f={filter} T={T} canNudge={!!scope.nudge} canCheck={!!scope.checkin} />}
-      {view === 'schedule' && <Schedule key={`c${tab}${filter.c}${filter.p}`} f={filter} days={days} from={from} setFrom={setFrom} T={T} canNudge={!!scope.nudge} />}
+      {view === 'staffing' && <Staffing key={`s${tab}${filter.c}${filter.p}`} f={filter} T={T} canNudge={!!scope.nudge && flags.nudge !== false} canCheck={!!scope.checkin} />}
+      {view === 'schedule' && <Schedule key={`c${tab}${filter.c}${filter.p}`} f={filter} days={days} from={from} setFrom={setFrom} T={T} canNudge={!!scope.nudge && flags.open !== false} />}
       {view === 'activity' && <Activity key={`a${tab}${filter.c}${filter.p}`} f={filter} T={T} overview={tab === 'overview'} scope={scope} />}
     </div>
   )
@@ -289,6 +291,8 @@ function Staffing({ f, T, canNudge, canCheck }) {
   const { data, err } = useRpc('dash_staffing', { p_client: f.c, p_project: f.p })
   const [open, toggle] = useOpen()
   const [who, setWho] = useState('all')       // all | agent | internal
+  const [ptab, setPtab] = useState('people')  // people | late | on  (check-ins live under People)
+  const [counts, setCounts] = useState({ late: 0, on: 0 })
   const [onlyOn, setOnlyOn] = useState(false)
   const [q, setQ] = useState('')
   if (err) return <Err msg={err} />
@@ -304,7 +308,8 @@ function Staffing({ f, T, canNudge, canCheck }) {
         {data.can_internal ? <Kpi icon={I.staff} value={t.internal ?? 0} label="Internal staff" /> : <Kpi icon={I.open} value={t.open_spots ?? 0} label="Open spots (next 7 days)" />}
         <Kpi icon={I.on} value={t.on_now ?? 0} label="On now"><div className="db-kpi-d" style={{ color: '#16A34A' }}>● checked in right now</div></Kpi>
       </div>
-      <CheckIns f={f} T={T} canNudge={canNudge} canCheck={canCheck} />
+      {!data.can_names && <CheckIns f={f} T={T} canNudge={canNudge} canCheck={canCheck} />}
+      {data.can_names && ptab === 'people' && <CheckIns f={f} T={T} onCounts={setCounts} countsOnly />}
       <div className="db-split" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.7fr)' }}>
         <div className="db-card">
           <h3>Staff by type</h3>
@@ -344,14 +349,23 @@ function Staffing({ f, T, canNudge, canCheck }) {
       {data.can_names && (
         <div className="db-card">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
-            <h3 style={{ margin: 0, marginRight: 'auto' }}>People</h3>
+            <h3 style={{ margin: 0 }}>People</h3>
+            <div className="db-pills" style={{ marginRight: 'auto' }}>
+              <button className={'db-pill' + (ptab === 'people' ? ' on' : '')} style={{ padding: '5px 14px', fontSize: 12.5 }} onClick={() => setPtab('people')}>Everyone</button>
+              <button className={'db-pill' + (ptab === 'late' ? ' on' : '')} style={{ padding: '5px 14px', fontSize: 12.5 }} onClick={() => setPtab('late')}>
+                {counts.late ? <span style={{ color: ptab === 'late' ? undefined : '#B45309' }}>⚠ </span> : null}Not checked in ({counts.late})</button>
+              <button className={'db-pill' + (ptab === 'on' ? ' on' : '')} style={{ padding: '5px 14px', fontSize: 12.5 }} onClick={() => setPtab('on')}>Checked in ({counts.on})</button>
+            </div>
+            {ptab === 'people' && <>
             <div className="db-pills">
               {[['all', 'All'], ['agent', 'Agents'], ...(data.can_internal ? [['internal', 'Internal']] : [])].map(([k, l]) => <button key={k} className={'db-pill' + (who === k ? ' on' : '')} style={{ padding: '5px 14px', fontSize: 12.5 }} onClick={() => setWho(k)}>{l}</button>)}
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><input type="checkbox" checked={onlyOn} onChange={e => setOnlyOn(e.target.checked)} /> On now only</label>
             <input className="db-sel" style={{ minWidth: 200, fontWeight: 400 }} placeholder="Search people…" value={q} onChange={e => setQ(e.target.value)} aria-label="Search people" />
+            </>}
           </div>
-          {people.length === 0 ? <div className="db-empty">Nobody matches.</div> : (
+          {ptab !== 'people' ? <CheckIns f={f} T={T} canNudge={canNudge} canCheck={canCheck} tab={ptab} onCounts={setCounts} embedded />
+          : people.length === 0 ? <div className="db-empty">Nobody matches.</div> : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', columnGap: 24 }}>
               {people.map(p => (
                 <a key={p.id} href={`/profile/${p.id}`} className="db-person" style={{ textDecoration: 'none', color: 'inherit' }}>
@@ -510,10 +524,12 @@ function Flash({ msg }) { return msg ? <div style={{ margin: '0 0 12px', padding
 
 // Check-ins: people whose interval started but haven't checked in (Nudge / Check in), and
 // people checked in right now (Check out). Actions need their own checkboxes; all logged.
-function CheckIns({ f, T, canNudge, canCheck }) {
+function CheckIns({ f, T, canNudge, canCheck, tab: tabProp, onCounts, embedded, countsOnly }) {
   const [late, setLate] = useState(null)
   const [on, setOn] = useState(null)
-  const [tab, setTab] = useState('late')
+  const [tabState, setTab] = useState('late')
+  const tab = tabProp || tabState
+  useEffect(() => { if (late && on && onCounts) onCounts({ late: late.length, on: on.length }) }, [late, on]) // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(null)
   const [msg, setMsg] = useState(null)
   const [inAt, setInAt] = useState('in')   // 'in' (now) | 'in_at_start'
@@ -540,18 +556,20 @@ function CheckIns({ f, T, canNudge, canCheck }) {
       : `Nothing changed — ${action === 'out' ? 'they may already be checked out' : 'they may already be checked in'} (you also can't check yourself in or out here).` })
     load()
   }
-  if (!late || !on) return null
-  if (!late.length && !on.length) return null
+  if (countsOnly) return null
+  if (!late || !on) return embedded ? <div className="db-empty">Loading…</div> : null
+  if (!embedded && !late.length && !on.length) return null
   const rows = tab === 'late' ? late : on
+  const Wrap = embedded ? 'div' : 'div'
   return (
-    <div className="db-card" style={late.length ? { borderColor: '#FCD34D' } : undefined}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-        <h3 style={{ margin: 0 }}><Ico d={I.on} size={18} />Check-ins</h3>
-        <div className="db-pills" style={{ marginRight: 'auto' }}>
+    <Wrap className={embedded ? '' : 'db-card'} style={!embedded && late.length ? { borderColor: '#FCD34D' } : embedded ? { marginTop: 8 } : undefined}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap', justifyContent: embedded ? 'flex-end' : undefined }}>
+        {!embedded && <h3 style={{ margin: 0 }}><Ico d={I.on} size={18} />Check-ins</h3>}
+        {!embedded && <div className="db-pills" style={{ marginRight: 'auto' }}>
           <button className={'db-pill' + (tab === 'late' ? ' on' : '')} style={{ padding: '5px 14px', fontSize: 12.5 }} onClick={() => { setTab('late'); setMsg(null) }}>
             {late.length ? <span style={{ color: tab === 'late' ? undefined : '#B45309' }}>⚠ </span> : null}Not checked in ({late.length})</button>
           <button className={'db-pill' + (tab === 'on' ? ' on' : '')} style={{ padding: '5px 14px', fontSize: 12.5 }} onClick={() => { setTab('on'); setMsg(null) }}>Checked in ({on.length})</button>
-        </div>
+        </div>}
         {tab === 'late' && late.length > 0 && canCheck && (
           <select className="db-sel" style={{ minWidth: 0, fontSize: 12.5, padding: '6px 10px' }} value={inAt} onChange={e => setInAt(e.target.value)} aria-label="Check in as of">
             <option value="in">Check in as of: now</option><option value="in_at_start">Check in as of: interval start</option>
@@ -583,7 +601,7 @@ function CheckIns({ f, T, canNudge, canCheck }) {
           ))}</tbody>
         </table></div>
       )}
-    </div>
+    </Wrap>
   )
 }
 
