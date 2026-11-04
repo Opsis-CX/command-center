@@ -577,7 +577,7 @@ function PeopleTab({ onOpenRole }) {
 
   const load = useCallback(async () => {
     const [p, r, g, a, o, pr, cl, c] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, job_title, email').eq('is_active', true).is('client_id', null).order('full_name'),
+      supabase.from('profiles').select('id, full_name, job_title, email, manager_id, role').eq('is_active', true).is('client_id', null).order('full_name'),
       supabase.from('access_roles').select('*').is('archived_at', null).order('sort').order('name'),
       supabase.from('access_role_permissions').select('role_id, perm_key'),
       supabase.from('access_assignments').select('*'),
@@ -605,6 +605,14 @@ function PeopleTab({ onOpenRole }) {
   const grantable = (r) => (authority?.assignable_roles || []).includes(r.id)
   const levelOfPerson = (pid) => assigns.some(a => a.profile_id === pid && roleById[a.role_id]?.is_owner) ? 'owner' : (levels[pid] || 'user')
   const roleLevel = (r) => roleLevelOf(r, permsOf(r.id), catByKey)
+  // Reports to (2026-11-04): team leads see the people who report to them on the Dashboard.
+  async function setManager(pid, managerId) {
+    setBusy(true); setMsg(null)
+    const { error } = await supabase.from('profiles').update({ manager_id: managerId || null }).eq('id', pid)
+    setBusy(false)
+    if (error) return setMsg({ kind: 'err', text: friendly(error) })
+    await load(); setMsg({ kind: 'ok', text: managerId ? `Now reports to ${people.find(p => p.id === managerId)?.full_name || 'their manager'}.` : 'No longer reports to anyone.' })
+  }
   async function setLevel(pid, level) {
     setBusy(true); setMsg(null)
     const { error } = level === 'user'
@@ -758,6 +766,27 @@ function PeopleTab({ onOpenRole }) {
                   <span className="page-sub" style={{ fontSize: 12 }}>
                     {lv === 'owner' ? 'Full control (Owner role).' : lv === 'administrator' ? 'Can manage company settings, roles and people.' : lv === 'manager' ? 'Can manage only their own areas — never company settings.' : 'Daily work only — never settings, roles or permissions.'}
                     {' '}This is the most authority they can have, whatever their roles say.
+                  </span>
+                </div>
+              )
+            })()}
+            {(() => {
+              const mgr = people.find(p => p.id === sel.manager_id)
+              const reports = people.filter(p => p.manager_id === sel.id)
+              // can't report to yourself or to someone who (directly or indirectly) reports to you
+              const below = new Set(); const walk = (id) => people.filter(p => p.manager_id === id).forEach(p => { if (!below.has(p.id)) { below.add(p.id); walk(p.id) } }); walk(sel.id)
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>Reports to</span>
+                  {canSetLevels ? (
+                    <select value={sel.manager_id || ''} disabled={busy} onChange={e => setManager(sel.id, e.target.value)}
+                      style={{ padding: '5px 8px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', minWidth: 200 }}>
+                      <option value="">— Nobody —</option>
+                      {people.filter(p => p.id !== sel.id && !below.has(p.id) && String(p.role || '').toLowerCase() !== 'agent').map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                    </select>
+                  ) : <span style={{ fontSize: 13 }}>{mgr?.full_name || 'Nobody'}</span>}
+                  <span className="page-sub" style={{ fontSize: 12 }}>
+                    {reports.length ? `${reports.length} ${reports.length === 1 ? 'person reports' : 'people report'} to ${sel.full_name.split(' ')[0]}: ${reports.map(r => r.full_name).join(', ')}.` : 'Team leads see the people who report to them on the Dashboard.'}
                   </span>
                 </div>
               )
