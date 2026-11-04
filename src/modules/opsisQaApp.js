@@ -1036,12 +1036,12 @@ export function mountOpsisQA(ROOT, cfg) {
 
   // Card capture: booked service calls where the CSR asked for a card to hold the appointment (asked)
   // and the customer gave one (captured). Same numbers as the daily card capture email.
-  var CAP = { d: null, key: null, f: 'all', ag: null, b: null, shown: 50 };
+  var CAP = { d: null, key: null, f: 'all', ag: null, b: null, shown: 50, loc: '', sk: 'booked', sd: -1, cs: 'new' };
   function vCard(tok) {
     setMain(crumb([['Card capture']]) + '<div id="ccwrap"><div class="oq-card">' + skel(36, 6) + '</div></div>');
     var key = S.start + '|' + S.end + '|' + S.brands.join(',');
     if (CAP.d && CAP.key === key) { drawCard(); return; }
-    api(win({ action: 'cardcap' })).then(function (r) { if (tok !== T) return; CAP.d = r || {}; CAP.key = key; CAP.ag = null; CAP.b = null; CAP.shown = 50; drawCard(); })
+    api(win({ action: 'cardcap' })).then(function (r) { if (tok !== T) return; CAP.d = r || {}; CAP.key = key; CAP.ag = null; CAP.b = null; CAP.loc = ''; CAP.shown = 50; drawCard(); })
       .catch(function (e) { if (tok === T && $('ccwrap')) $('ccwrap').innerHTML = errBox(e); });
   }
   function ccPct(a, b) { return b ? pc(100 * a / b) : '—'; }
@@ -1051,47 +1051,68 @@ export function mountOpsisQA(ROOT, cfg) {
     return (CAP.d.calls || []).filter(function (c) {
       if (CAP.ag && (c.agent !== CAP.ag || c.brand !== CAP.b)) return false;
       if (CAP.b && !CAP.ag && c.brand !== CAP.b) return false;
+      if (CAP.loc && (c.location || 'No location') !== CAP.loc) return false;
       return f === 'all' || (f === 'asked' && c.asked_for_cc) || (f === 'cap' && c.collected_cc) || (f === 'miss' && c.asked_for_cc && !c.collected_cc) || (f === 'not' && !c.asked_for_cc);
     });
   }
+  function ccLocs() { var m = {}; ((CAP.d && CAP.d.by_agent) || []).forEach(function (r) { var l = r.location || 'No location'; m[l] = (m[l] || 0) + (+r.booked || 0); }); return Object.keys(m).sort(function (a, b) { return (a === 'No location') - (b === 'No location') || a.localeCompare(b); }); }
+  function ccAgents() {
+    var k = CAP.sk, dir = CAP.sd || -1, val = function (r) { return k === 'agent' ? String(r.agent || '') : k === 'location' ? String(r.location || 'zz') : k === 'askpct' ? (+r.booked ? r.asked_cc / r.booked : -1) : k === 'cappct' ? (+r.asked_cc ? r.captured_cc / r.asked_cc : -1) : +r[k] || 0; };
+    return ((CAP.d && CAP.d.by_agent) || []).filter(function (r) { return !CAP.loc || (r.location || 'No location') === CAP.loc; })
+      .slice().sort(function (a, b) { var x = val(a), y = val(b); return (typeof x === 'string' ? x.localeCompare(y) : x - y) * dir || (b.booked - a.booked); });
+  }
   function drawCard() {
     var w = $('ccwrap'); if (!w || !CAP.d) return; var d = CAP.d, o = d.overall || {};
+    if (CAP.loc) { o = (d.by_agent || []).filter(function (r) { return (r.location || 'No location') === CAP.loc; }).reduce(function (a, r) { a.booked += +r.booked || 0; a.asked_cc += +r.asked_cc || 0; a.captured_cc += +r.captured_cc || 0; return a; }, { booked: 0, asked_cc: 0, captured_cc: 0 }); }
     var bk = +o.booked || 0, as = +o.asked_cc || 0, cp = +o.captured_cc || 0;
     var tiles = '<div class="row">' +
-      mnTile('Booked service calls', n0(bk), 'Repair and maintenance appointments booked by CSRs', '', 'Booked service calls handled by your CSRs, duplicates removed.') +
+      mnTile('Booked service calls', n0(bk), 'Residential repair appointments booked by CSRs', '', 'Booked service calls handled by your CSRs, duplicates removed.') +
       mnTile('Card asked', ccPct(as, bk), n0(as) + ' of ' + n0(bk) + ' bookings · the CSR asked for a card to hold the appointment', '#2B3A67', 'This is the CSR behavior. A card mentioned only as a way to pay later does not count.') +
       mnTile('Card captured', ccPct(cp, as), n0(cp) + ' of ' + n0(as) + ' asks · ' + ccPct(cp, bk) + ' of all bookings', '#1F5A41', 'The customer gave a card when asked.') +
       mnTile('Asked, not captured', n0(Math.max(as - cp, 0)), 'Customer declined or the card wasn’t taken', '#A8441A') + '</div>';
+    var hasLoc = (d.by_agent || []).some(function (r) { return r.location; });
+    var ccTh = function (k, l, al) { var on = CAP.sk === k; return '<th style="text-align:' + (al || 'right') + ';cursor:pointer;white-space:nowrap" data-act="ccsort" data-k="' + k + '" title="Sort by ' + esc(l) + '">' + l + (on ? (CAP.sd === 1 ? ' ▲' : ' ▼') : '') + '</th>'; };
     var tbl = function (title, sub, rows, isAgent) {
       if (!rows.length) return '';
-      return '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">' + title + '</h2><p class="sub">' + sub + '</p></div>' + (isAgent ? '<button class="sel btnd" data-act="cccsv">⬇ Download CSV</button>' : '') + '</div><p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;width:100%"><thead><tr><th style="text-align:left">' + (isAgent ? 'CSR' : 'Brand') + '</th>' + (isAgent && !LOCK ? '<th style="text-align:left">Brand</th>' : '') + '<th style="text-align:right">Booked</th><th style="text-align:right">Asked</th><th style="text-align:right">Asked %</th><th style="text-align:right">Captured</th><th style="text-align:right">Captured ÷ asked</th><th style="text-align:right">Asked, not captured</th><th style="text-align:right">Captured ÷ booked</th></tr></thead><tbody>' +
+      return '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">' + title + '</h2><p class="sub">' + sub + '</p></div>' + (isAgent ? '<button class="sel btnd" data-act="cccsv">⬇ Download CSV</button>' : '') + '</div><p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto"><table class="tbl" style="margin-top:10px;width:100%"><thead><tr>' + (isAgent ? ccTh('agent', 'CSR', 'left') + (hasLoc ? ccTh('location', 'Location', 'left') : '') + (!LOCK ? '<th style="text-align:left">Brand</th>' : '') + ccTh('booked', 'Booked') + ccTh('asked_cc', 'Asked') + ccTh('askpct', 'Asked %') + ccTh('captured_cc', 'Captured') + ccTh('cappct', 'Captured ÷ asked') + '<th style="text-align:right">Asked, not captured</th><th style="text-align:right">Captured ÷ booked</th>'
+          : '<th style="text-align:left">Brand</th><th style="text-align:right">Booked</th><th style="text-align:right">Asked</th><th style="text-align:right">Asked %</th><th style="text-align:right">Captured</th><th style="text-align:right">Captured ÷ asked</th><th style="text-align:right">Asked, not captured</th><th style="text-align:right">Captured ÷ booked</th>') + '</tr></thead><tbody>' +
         rows.map(function (r) {
           var on = isAgent ? (CAP.ag === r.agent && CAP.b === r.brand) : (CAP.b === r.brand && !CAP.ag);
-          return '<tr style="cursor:pointer' + (on ? ';background:#EEF2FB' : '') + '" data-act="' + (isAgent ? 'ccag' : 'ccbr') + '" data-ag="' + esc(r.agent || '') + '" data-br="' + esc(r.brand) + '"><td>' + esc(isAgent ? r.agent : r.brand) + '</td>' + (isAgent && !LOCK ? '<td class="mut">' + esc(r.brand) + '</td>' : '') +
+          return '<tr style="cursor:pointer' + (on ? ';background:#EEF2FB' : '') + '" data-act="' + (isAgent ? 'ccag' : 'ccbr') + '" data-ag="' + esc(r.agent || '') + '" data-br="' + esc(r.brand) + '"><td>' + esc(isAgent ? r.agent : r.brand) + '</td>' + (isAgent && hasLoc ? '<td class="mut">' + esc(r.location || '—') + '</td>' : '') + (isAgent && !LOCK ? '<td class="mut">' + esc(r.brand) + '</td>' : '') +
             '<td class="num" style="text-align:right">' + n0(r.booked) + '</td><td class="num" style="text-align:right">' + n0(r.asked_cc) + '</td><td class="num" style="text-align:right">' + ccPct(r.asked_cc, r.booked) + '</td><td class="num" style="text-align:right">' + n0(r.captured_cc) + '</td><td class="num" style="text-align:right">' + ccPct(r.captured_cc, r.asked_cc) + '</td><td class="num" style="text-align:right;color:#A8441A">' + n0(Math.max((+r.asked_cc || 0) - (+r.captured_cc || 0), 0)) + '</td><td class="num" style="text-align:right">' + ccPct(r.captured_cc, r.booked) + '</td></tr>';
         }).join('') +
-        '<tr style="font-weight:600;border-top:2px solid var(--line);background:#F3F1EC"><td>Total</td>' + (isAgent && !LOCK ? '<td></td>' : '') + '<td class="num" style="text-align:right">' + n0(bk) + '</td><td class="num" style="text-align:right">' + n0(as) + '</td><td class="num" style="text-align:right">' + ccPct(as, bk) + '</td><td class="num" style="text-align:right">' + n0(cp) + '</td><td class="num" style="text-align:right">' + ccPct(cp, as) + '</td><td class="num" style="text-align:right;color:#A8441A">' + n0(Math.max(as - cp, 0)) + '</td><td class="num" style="text-align:right">' + ccPct(cp, bk) + '</td></tr>' +
+        '<tr style="font-weight:600;border-top:2px solid var(--line);background:#F3F1EC"><td>' + (CAP.loc && isAgent ? esc(CAP.loc) + ' total' : 'Total') + '</td>' + (isAgent && hasLoc ? '<td></td>' : '') + (isAgent && !LOCK ? '<td></td>' : '') + '<td class="num" style="text-align:right">' + n0(bk) + '</td><td class="num" style="text-align:right">' + n0(as) + '</td><td class="num" style="text-align:right">' + ccPct(as, bk) + '</td><td class="num" style="text-align:right">' + n0(cp) + '</td><td class="num" style="text-align:right">' + ccPct(cp, as) + '</td><td class="num" style="text-align:right;color:#A8441A">' + n0(Math.max(as - cp, 0)) + '</td><td class="num" style="text-align:right">' + ccPct(cp, bk) + '</td></tr>' +
         '</tbody></table></div></div>';
     };
-    var brands = d.by_brand || [], agents = d.by_agent || [];
-    var rows = ccRows(), shown = rows.slice(0, CAP.shown);
+    var brands = d.by_brand || [], agents = ccAgents();
+    var tsk = function (c) { return String(c.call_started_at || c.call_date || ''); };
+    var rows = ccRows().slice().sort(CAP.cs === 'old' ? function (a, b) { return tsk(a).localeCompare(tsk(b)); } : CAP.cs === 'csr' ? function (a, b) { return String(a.agent || '').localeCompare(String(b.agent || '')) || tsk(b).localeCompare(tsk(a)); } : CAP.cs === 'loc' ? function (a, b) { return String(a.location || 'zz').localeCompare(String(b.location || 'zz')) || String(a.agent || '').localeCompare(String(b.agent || '')); } : function (a, b) { return tsk(b).localeCompare(tsk(a)); }), shown = rows.slice(0, CAP.shown);
+    var locs = ccLocs(), allAg = (d.by_agent || []).filter(function (r) { return !CAP.loc || (r.location || 'No location') === CAP.loc; }).slice().sort(function (a, b) { return String(a.agent).localeCompare(String(b.agent)); });
+    var bar = '<div class="oq-card" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;padding:14px 18px">' +
+      (locs.length > 1 ? '<label style="display:flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Location<select id="ccloc" class="oq-field" style="min-width:180px"><option value="">All locations</option>' + locs.map(function (l) { return '<option' + (CAP.loc === l ? ' selected' : '') + '>' + esc(l) + '</option>'; }).join('') + '</select></label>' : '') +
+      '<label style="display:flex;flex-direction:column;gap:4px;font-size:12px" class="mut">CSR<select id="ccagsel" class="oq-field" style="min-width:200px"><option value="">Everyone' + (CAP.loc ? ' at ' + esc(CAP.loc) : '') + '</option>' + allAg.map(function (r) { var v = r.brand + '|' + r.agent; return '<option value="' + esc(v) + '"' + (CAP.ag === r.agent && CAP.b === r.brand ? ' selected' : '') + '>' + esc(r.agent) + (LOCK ? '' : ' · ' + esc(short(r.brand))) + '</option>'; }).join('') + '</select></label>' +
+      '<label style="display:flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Sort calls<select id="cccs" class="oq-field"><option value="new"' + (CAP.cs === 'new' ? ' selected' : '') + '>Newest first</option><option value="old"' + (CAP.cs === 'old' ? ' selected' : '') + '>Oldest first</option><option value="csr"' + (CAP.cs === 'csr' ? ' selected' : '') + '>By CSR</option>' + (locs.length > 1 ? '<option value="loc"' + (CAP.cs === 'loc' ? ' selected' : '') + '>By location</option>' : '') + '</select></label>' +
+      ((CAP.loc || CAP.ag || CAP.b) ? '<button class="lnk" data-act="ccreset" style="margin-bottom:8px">Clear filters</button>' : '') + '</div>';
     var chip = function (k, l) { return '<button class="sel' + (CAP.f === k ? ' btnd' : '') + '" data-act="ccf" data-f="' + k + '" style="padding:5px 12px;font-size:12.5px;' + (CAP.f === k ? '' : 'background:#EEF4EF;border-color:#CFE5DF;color:#14302A') + '">' + l + '</button>'; };
     var who = CAP.ag ? esc(CAP.ag) + (LOCK ? '' : ' · ' + esc(CAP.b)) : CAP.b ? esc(CAP.b) : '';
     var list = '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Booked Calls' + (who ? ' · ' + who : '') + '</h2><p class="sub">Click a call to hear it and read what was said.' + (who ? ' <button class="lnk" data-act="ccclr">Show everyone</button>' : '') + '</p></div><div style="display:flex;gap:6px;flex-wrap:wrap">' + chip('all', 'All') + chip('asked', 'Card asked') + chip('cap', 'Captured') + chip('miss', 'Asked, not captured') + chip('not', 'Not asked') + '</div></div>' +
       (shown.length ? shown.map(function (c) {
         var q = c.cc_quote;
-        return '<button class="click" data-call="' + esc(c.review_id) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--line2)"><span class="mut num" style="width:58px;flex:none;font-size:12.5px">' + fdate(c.call_date) + '</span><span style="flex:1;min-width:0"><span style="font-weight:600">' + esc(c.agent || 'Unknown') + '</span>' + (LOCK ? '' : ' <span class="mut" style="font-size:12.5px">· ' + esc(c.brand) + '</span>') + (q ? '<span class="mut" style="display:block;font-size:12.5px;margin-top:2px;line-height:1.45">“' + esc(q) + '”</span>' : '') + '</span><span style="display:flex;gap:6px;flex:none">' + ccYes(c.asked_for_cc, 'Asked', 'Not asked') + (c.asked_for_cc ? ccYes(c.collected_cc, 'Captured', 'Not captured') : '') + '</span></button>';
+        return '<button class="click" data-call="' + esc(c.review_id) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--line2)"><span class="mut num" style="width:58px;flex:none;font-size:12.5px">' + fdate(c.call_date) + '</span><span style="flex:1;min-width:0"><span style="font-weight:600">' + esc(c.agent || 'Unknown') + '</span>' + (LOCK ? '' : ' <span class="mut" style="font-size:12.5px">· ' + esc(c.brand) + '</span>') + (c.location ? ' <span class="mut" style="font-size:12.5px">· ' + esc(c.location) + '</span>' : '') + (q ? '<span class="mut" style="display:block;font-size:12.5px;margin-top:2px;line-height:1.45">“' + esc(q) + '”</span>' : '') + '</span><span style="display:flex;gap:6px;flex:none">' + ccYes(c.asked_for_cc, 'Asked', 'Not asked') + (c.asked_for_cc ? ccYes(c.collected_cc, 'Captured', 'Not captured') : '') + '</span></button>';
       }).join('') : '<div class="mut" style="padding:14px 0">No calls match.</div>') +
       (rows.length > shown.length ? '<button class="sel" data-act="ccmore" style="margin-top:10px;width:100%;justify-content:center">Show more (' + n0(rows.length - shown.length) + ' left)</button>' : '') + '</div>';
-    w.innerHTML = '<div class="oq-card" style="background:#FAF8F4"><p class="sub" style="line-height:1.55;margin:0"><b>Card asked</b> means that while booking a repair or maintenance visit, the CSR asked for a card to hold or secure the appointment. <b>Captured</b> means the customer gave one. A card mentioned only as a way to pay the technician later doesn’t count. These are the same numbers as the daily card capture email.</p></div>' +
-      tiles + (LOCK || brands.length < 2 ? '' : tbl('By brand', 'Capture rate and asked-not-captured for each brand · click a brand to see its calls.', brands, false)) + tbl('By CSR', 'Click a CSR to see their calls.', agents, true) + list;
+    w.innerHTML = '<div class="oq-card" style="background:#FAF8F4"><p class="sub" style="line-height:1.55;margin:0"><b>Card asked</b> means that while booking a residential repair visit, the CSR asked for a card to hold or secure the appointment. Maintenance and tune-ups (including Gold Star and other prepaid plans), warranty, return visits, sales estimates and commercial calls don\u2019t need a card and aren\u2019t counted. <b>Captured</b> means the customer gave one. A card mentioned only as a way to pay the technician later doesn’t count. These are the same numbers as the daily card capture email.</p></div>' +
+      bar + tiles + (LOCK || brands.length < 2 || CAP.loc ? '' : tbl('By brand', 'Capture rate and asked-not-captured for each brand · click a brand to see its calls.', brands, false)) + tbl('By CSR' + (CAP.loc ? ' · ' + esc(CAP.loc) : ''), 'Click a column to sort · click a CSR to see their calls.', agents, true) + list;
+    var e1 = $('ccloc'); if (e1) e1.addEventListener('change', function () { CAP.loc = e1.value; CAP.ag = null; CAP.b = null; CAP.shown = 50; drawCard(); });
+    var e2 = $('ccagsel'); if (e2) e2.addEventListener('change', function () { var v = e2.value; if (!v) { CAP.ag = null; CAP.b = null; } else { var i = v.indexOf('|'); CAP.b = v.slice(0, i); CAP.ag = v.slice(i + 1); } CAP.shown = 50; drawCard(); });
+    var e3 = $('cccs'); if (e3) e3.addEventListener('change', function () { CAP.cs = e3.value; CAP.shown = 50; drawCard(); });
   }
   function ccCsv() {
-    var a = (CAP.d && CAP.d.by_agent) || [], o = (CAP.d && CAP.d.overall) || {};
+    var a = ccAgents(), o = CAP.loc ? a.reduce(function (t, r) { t.booked += +r.booked || 0; t.asked_cc += +r.asked_cc || 0; t.captured_cc += +r.captured_cc || 0; return t; }, { booked: 0, asked_cc: 0, captured_cc: 0 }) : ((CAP.d && CAP.d.overall) || {});
     var q = function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     var p = function (x, y) { return y ? (100 * x / y).toFixed(1) + '%' : ''; };
-    var lines = [['CSR', 'Brand', 'Booked', 'Asked', 'Asked %', 'Captured', 'Captured / asked', 'Captured / booked'].join(',')].concat(a.map(function (r) { return [q(r.agent), q(r.brand), r.booked, r.asked_cc, p(r.asked_cc, r.booked), r.captured_cc, p(r.captured_cc, r.asked_cc), p(r.captured_cc, r.booked)].join(','); }));
-    lines.push(['Total', '', o.booked, o.asked_cc, p(o.asked_cc, o.booked), o.captured_cc, p(o.captured_cc, o.asked_cc), p(o.captured_cc, o.booked)].join(','));
+    var lines = [['CSR', 'Location', 'Brand', 'Booked', 'Asked', 'Asked %', 'Captured', 'Captured / asked', 'Captured / booked'].join(',')].concat(a.map(function (r) { return [q(r.agent), q(r.location || ''), q(r.brand), r.booked, r.asked_cc, p(r.asked_cc, r.booked), r.captured_cc, p(r.captured_cc, r.asked_cc), p(r.captured_cc, r.booked)].join(','); }));
+    lines.push([CAP.loc ? q(CAP.loc + ' total') : 'Total', '', '', o.booked, o.asked_cc, p(o.asked_cc, o.booked), o.captured_cc, p(o.captured_cc, o.asked_cc), p(o.captured_cc, o.booked)].join(','));
     saveBlob('card-capture-' + S.start + '-to-' + S.end + '.csv', new Blob([lines.join('\n')], { type: 'text/csv' }));
   }
   // ---------- Price talk (Rob & Marc 11/3) — analytics only; price and fees are not part of the QA score ----------
@@ -3659,6 +3680,8 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'ptmore') { PT.shown += 50; drawPrice(); }
       else if (a === 'ptcsv') { ptCsv(); }
       else if (a === 'ccf') { CAP.f = d.f; CAP.shown = 50; drawCard(); }
+      else if (a === 'ccsort') { if (CAP.sk === d.k) CAP.sd = -(CAP.sd || -1); else { CAP.sk = d.k; CAP.sd = (d.k === 'agent' || d.k === 'location') ? 1 : -1; } drawCard(); }
+      else if (a === 'ccreset') { CAP.loc = ''; CAP.ag = null; CAP.b = null; CAP.shown = 50; drawCard(); }
       else if (a === 'ccag') { if (CAP.ag === d.ag && CAP.b === d.br) { CAP.ag = null; CAP.b = null; } else { CAP.ag = d.ag; CAP.b = d.br; } CAP.shown = 50; drawCard(); }
       else if (a === 'ccbr') { if (CAP.b === d.br && !CAP.ag) CAP.b = null; else { CAP.b = d.br; CAP.ag = null; } CAP.shown = 50; drawCard(); }
       else if (a === 'ccclr') { CAP.ag = null; CAP.b = null; drawCard(); }
