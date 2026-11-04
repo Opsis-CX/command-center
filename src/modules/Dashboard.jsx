@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback, Fragment } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTerms } from '../lib/terms'
@@ -293,6 +293,8 @@ function Staffing({ f, T, canNudge, canCheck }) {
   const [who, setWho] = useState('all')       // all | agent | internal
   const [ptab, setPtab] = useState('people')  // people | late | on  (check-ins live under People)
   const [counts, setCounts] = useState({ late: 0, on: 0 })
+  const peopleRef = useRef(null)
+  const goLate = () => { setPtab('late'); setTimeout(() => peopleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }
   const [onlyOn, setOnlyOn] = useState(false)
   const [q, setQ] = useState('')
   if (err) return <Err msg={err} />
@@ -308,6 +310,13 @@ function Staffing({ f, T, canNudge, canCheck }) {
         {data.can_internal ? <Kpi icon={I.staff} value={t.internal ?? 0} label="Internal staff" /> : <Kpi icon={I.open} value={t.open_spots ?? 0} label="Open spots (next 7 days)" />}
         <Kpi icon={I.on} value={t.on_now ?? 0} label="On now"><div className="db-kpi-d" style={{ color: '#16A34A' }}>● checked in right now</div></Kpi>
       </div>
+      {data.can_names && counts.late > 0 && (
+        <div className="db-card" style={{ borderColor: '#FCD34D', background: 'color-mix(in srgb, #F59E0B 8%, var(--surface))', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', flexWrap: 'wrap' }}>
+          <span style={{ color: '#D97706', display: 'inline-flex' }}><Ico d={I.warn} size={20} /></span>
+          <span style={{ flex: 1, minWidth: 220, fontSize: 14 }}><b>{counts.late} {counts.late === 1 ? 'person hasn\'t' : 'people haven\'t'} checked in</b> for intervals that already started.</span>
+          <button className="btn btn-primary" style={{ fontSize: 13 }} onClick={goLate}>Review &amp; nudge →</button>
+        </div>
+      )}
       {!data.can_names && <CheckIns f={f} T={T} canNudge={canNudge} canCheck={canCheck} />}
       {data.can_names && ptab === 'people' && <CheckIns f={f} T={T} onCounts={setCounts} countsOnly />}
       <div className="db-split" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.7fr)' }}>
@@ -347,7 +356,7 @@ function Staffing({ f, T, canNudge, canCheck }) {
         </div>
       </div>
       {data.can_names && (
-        <div className="db-card">
+        <div className="db-card" ref={peopleRef} style={{ scrollMarginTop: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
             <h3 style={{ margin: 0 }}>People</h3>
             <div className="db-pills" style={{ marginRight: 'auto' }}>
