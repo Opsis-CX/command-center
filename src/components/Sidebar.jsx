@@ -289,7 +289,7 @@ export default function Sidebar({ open, onNavigate }) {
   return (
     <aside className={'sidebar' + (open ? ' open' : '')}>
       <div className="brand">
-        <img src={logoFor(branding, true)} alt={branding?.company_name || 'Opsis'} style={{ width: '100%', height: 'auto', maxHeight: 64, objectFit: 'contain' }} />
+        <img className="brand-logo" src={logoFor(branding, true)} alt={branding?.company_name || 'Opsis'} />
       </div>
       {/* Only THIS region scrolls when the nav outgrows the window — the page
           itself never gets a scrollbar, and the user chip stays pinned below. */}
