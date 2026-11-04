@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useBranding, logoFor } from '../lib/branding'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useUnread } from '../lib/unread'
@@ -113,6 +114,7 @@ const NAV_MAIN = [
           { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
           { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
           { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
+          { to: '/branding', label: 'Branding', perm: '__admin' },          // company logo + colors
           { to: '/roles', label: 'Access & Permissions', perm: '__admin' }, // admins/owners only
           { to: '/service-account', label: 'Service account', perm: '__admin' }, // the account automated posts use (Turri)
         ],
@@ -152,6 +154,7 @@ function formatRole(raw) {
     .join(' & ')
 }
 export default function Sidebar({ open, onNavigate }) {
+  const branding = useBranding()   // company logo (Configuration → Branding)
   const { isAdmin, level, roles, user, signOut, appRole } = useAuth()
   const navigate = useNavigate()
   const { total: unreadTotal } = useUnread()
@@ -179,7 +182,7 @@ export default function Sidebar({ open, onNavigate }) {
   // be "everyone" or "admins only" follow the person's checkboxes too.
   const NEW_PAGE_PERMS = {
     '/home': 'home.view', '/updates': 'updates.view', '/notes': 'notes.view', '/calendar': 'calendar.view',
-    '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings', '/backend/quotes': 'content.quotes', '/backend/spotlight': 'content.spotlight',
+    '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings', '/branding': 'admin.settings', '/backend/quotes': 'content.quotes', '/backend/spotlight': 'content.spotlight',
     '/service-account': 'admin.settings', '/survey': 'people.edit', '/finance': 'finance.view', '/submit-purchase': 'finance.create',
   }
   const permOk = (p, to) => {
@@ -286,7 +289,7 @@ export default function Sidebar({ open, onNavigate }) {
   return (
     <aside className={'sidebar' + (open ? ' open' : '')}>
       <div className="brand">
-        <img src="/opsis-logo.png" alt="Opsis" style={{ width: '100%', height: 'auto', maxHeight: 64, objectFit: 'contain' }} />
+        <img src={logoFor(branding, true)} alt={branding?.company_name || 'Opsis'} style={{ width: '100%', height: 'auto', maxHeight: 64, objectFit: 'contain' }} />
       </div>
       {/* Only THIS region scrolls when the nav outgrows the window — the page
           itself never gets a scrollbar, and the user chip stays pinned below. */}
