@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { hasPerm, usingNewPermissions } from '../lib/permissions'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { celebrate } from '../components/Seasonal'
@@ -66,7 +67,9 @@ function MediaGallery({ media }) {
 export default function Updates() {
   const { user, isAdmin, appRole } = useAuth()
   // Admins, ASCs and Certification post updates and see Archived (matches can_post_updates() in the DB).
-  const canPost = !!isAdmin || String(appRole || '').toLowerCase().split(',').map(r => r.trim()).some(r => ['admin', 'asc', 'certification'].includes(r))
+  // Who can post: the "Create updates" checkbox (new permissions), otherwise Admins / ASC / Certification as before.
+  const canPost = usingNewPermissions() ? hasPerm('updates.create')
+    : (!!isAdmin || String(appRole || '').toLowerCase().split(',').map(r => r.trim()).some(r => ['admin', 'asc', 'certification'].includes(r)))
   const [items, setItems] = useState(null)
   const [teams, setTeams] = useState([])
   const [names, setNames] = useState({})
