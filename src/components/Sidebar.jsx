@@ -197,7 +197,7 @@ export default function Sidebar({ open, onNavigate }) {
   // Self-service permissions (2026-10-29): when the new roles system is on, pages that used to
   // be "everyone" or "admins only" follow the person's checkboxes too.
   const NEW_PAGE_PERMS = {
-    '/home': 'home.view', '/updates': 'updates.create', '/weekly-sync': 'team.weekly_sync', '/eod': ['team.eod_submit', 'team.eod_view'], '/notes': 'notes.view', '/calendar': 'calendar.view',
+    '/home': 'home.view', '/': ['dashboard.overview', 'dashboard.client'], '/updates': 'updates.create', '/weekly-sync': 'team.weekly_sync', '/eod': ['team.eod_submit', 'team.eod_view'], '/notes': 'notes.view', '/calendar': 'calendar.view',
     '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings', '/branding': 'admin.settings', '/backend/quotes': 'content.quotes', '/backend/spotlight': 'content.spotlight',
     '/service-account': 'admin.settings', '/survey': 'people.edit', '/finance': 'finance.view', '/submit-purchase': 'finance.create',
   }
