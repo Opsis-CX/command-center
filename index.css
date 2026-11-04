@@ -885,7 +885,8 @@ body{
 
 /* ---- Sidebar: frosted dark glass, glowing active item ---- */
 .sidebar{
-  background:linear-gradient(180deg, rgba(15,20,32,.97), rgba(8,11,19,.99)), var(--sidebar);
+  /* --sidebar-bg is set by company branding; without it, the original dark look */
+  background:var(--sidebar-bg, linear-gradient(180deg, rgba(15,20,32,.97), rgba(8,11,19,.99)), var(--sidebar));
   border-right:1px solid rgba(255,255,255,.07);
   backdrop-filter:blur(12px);
 }
