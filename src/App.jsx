@@ -41,7 +41,6 @@ import Clients from './modules/Clients'
 import Reporting from './modules/Reporting'
 import HourlyReports from './modules/HourlyReports'
 import Updates from './modules/Updates'
-import OpsisWeekly from './modules/OpsisWeekly'
 import Notes from './modules/Notes'
 import Calendar from './modules/Calendar'
 import WeeklySync from './modules/WeeklySync'
@@ -501,7 +500,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
             <PushEnrollmentBanner profileId={session.user.id} />
             <RefreshBoundary>
             <Routes>
-              <Route path="/" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <OpsisWeekly />} />
+              <Route path="/" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <Profile />} />
               <Route path="/calendar" element={<Calendar />} />
               {/* Mock-call booking for anyone signed in but no longer in_training
                   (e.g. unlocked early) — trainees get it as a tab instead. */}
@@ -557,7 +556,8 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/projects" element={canAny(appRole, 'project_management') ? <Projects /> : <NoAccess />} />
               <Route path="/clients" element={canAny(appRole, 'clients.view_only') ? <Clients /> : <NoAccess />} />
               <Route path="/updates" element={<Updates />} />
-              <Route path="/home" element={<OpsisWeekly />} />
+              {/* Opsis Weekly retired from the menu (2026-11-04) — old links land on My Profile */}
+              <Route path="/home" element={<Profile />} />
               <Route path="/notes" element={<Notes />} />
               <Route path="/coaching" element={canAny(appRole, 'coaching') ? <Coaching /> : <NoAccess />} />
               <Route path="/meetings" element={canAny(appRole, 'meetings') ? <Meetings /> : <NoAccess />} />
@@ -595,7 +595,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               <Route path="/schedule-builder" element={canAny(appRole, 'schedule.create_schedules') ? <ScheduleBuilder /> : <NoAccess />} />
               <Route path="/positions" element={canAny(appRole, 'positions.view_only') ? <Positions /> : <NoAccess />} />
               <Route path="/insights" element={(canAny(appRole, 'schedule.all') || canAny(appRole, 'schedule.view_insights_assigned')) ? <ScheduleInsights /> : <NoAccess />} />
-              <Route path="*" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <OpsisWeekly />} />
+              <Route path="*" element={canAny(appRole, 'dashboard') ? <Dashboard /> : <Profile />} />
             </Routes>
             </RefreshBoundary>
           </div>
