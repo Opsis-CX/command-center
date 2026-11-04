@@ -5,6 +5,8 @@ import { can, hasPerm, permScope, usingNewPermissions } from '../lib/permissions
 import { useFinanceAccess } from '../lib/financeAccess'
 import { useTerms, loadTerms } from '../lib/terms'
 import { ClientPage } from './FinanceClients'
+import { ColorField, LogoField, BrandPreview, uploadBrandImage, PRESETS, SIDEBAR_PRESETS, BRAND_CSS } from './Branding'
+import { useBranding } from '../lib/branding'
 
 // ============================================================
 // CLIENTS (revamped 2026-10-30) — where the company structure lives:
@@ -444,15 +446,19 @@ export default function Clients() {
           </div>
 
           {/* detail tabs — the finance ones are for Finance managers only */}
-          {sel !== INTERNAL && fin?.manager && (
+          {sel !== INTERNAL && (fin?.manager || canEdit) && (
             <div style={{ display: 'flex', gap: 2, padding: '0 10px', borderBottom: '1px solid var(--line)', overflowX: 'auto' }}>
-              {[['overview', 'Overview'], ['contacts', '👤 Contacts & details'], ['billing', '💰 Billing & rates'], ['caps', '⏱ Hour caps'], ['reminders', '🔔 Invoicing reminders'], ['documents', '📄 Documents']].map(([k, l]) => (
+              {[['overview', 'Overview'], ...(canEdit ? [['branding', '🎨 Branding']] : []),
+                ...(fin?.manager ? [['contacts', '👤 Contacts & details'], ['billing', '💰 Billing & rates'], ['caps', '⏱ Hour caps'], ['reminders', '🔔 Invoicing reminders'], ['documents', '📄 Documents']] : [])].map(([k, l]) => (
                 <button key={k} onClick={() => setTab(k)} style={{ border: 0, background: 'transparent', padding: '10px 12px', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
                   color: tab === k ? 'var(--accent)' : 'var(--ink-soft)', borderBottom: '2px solid ' + (tab === k ? 'var(--accent)' : 'transparent'), marginBottom: -1 }}>{l}</button>
               ))}
             </div>
           )}
-          {sel !== INTERNAL && fin?.manager && tab !== 'overview' && selClient && (
+          {sel !== INTERNAL && tab === 'branding' && selClient && canEdit && (
+            <ClientBranding key={selClient.id} client={selClient} onSaved={async (m) => { await load(); setMsg({ kind: 'ok', text: m }) }} onError={(m) => setMsg({ kind: 'err', text: m })} />
+          )}
+          {sel !== INTERNAL && fin?.manager && !['overview', 'branding'].includes(tab) && selClient && (
             <div style={{ padding: 16 }}>
               {!finData ? <p className="page-sub">Loading…</p> : (
                 <ClientPage key={selClient.id + tab} section={tab} client={selClient}
@@ -467,7 +473,7 @@ export default function Clients() {
             </div>
           )}
 
-          {(tab === 'overview' || sel === INTERNAL || !fin?.manager) && <>
+          {(tab === 'overview' || sel === INTERNAL || (!fin?.manager && tab !== 'branding')) && <>
           {/* projects */}
           <div className="cl-sec">
             <h3>{T.projects}</h3>
@@ -567,6 +573,68 @@ export default function Clients() {
           )}
           </>}
         </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ---------- 🎨 Client branding (2026-11-04) ----------
+// Uses the same fields the client portal already reads (portal_name, portal_logo_url,
+// portal_accent, portal_sidebar) + switches for where it's used. Off = your company branding.
+function ClientBranding({ client, onSaved, onError }) {
+  const company = useBranding()
+  const init = { portal_name: client.portal_name || '', portal_logo_url: client.portal_logo_url || '', portal_accent: client.portal_accent || '',
+    portal_sidebar: client.portal_sidebar || '', brand_portal: client.brand_portal !== false, brand_reports: !!client.brand_reports }
+  const [b, setB] = useState(init)
+  const [busy, setBusy] = useState(false)
+  const dirty = Object.keys(init).some(k => init[k] !== b[k])
+  const hexBad = (h) => h && !/^#[0-9a-f]{6}$/i.test(h)
+  async function upload(file) {
+    try { const url = await uploadBrandImage(file, client.id, 'logo'); setB(x => ({ ...x, portal_logo_url: url })) }
+    catch (e) { onError(String(e.message || e)) }
+  }
+  async function save() {
+    if (hexBad(b.portal_accent) || hexBad(b.portal_sidebar)) return onError('Colors need to look like #0077B6.')
+    setBusy(true)
+    const { error } = await supabase.from('clients').update({ portal_name: b.portal_name.trim() || null, portal_logo_url: b.portal_logo_url || null,
+      portal_accent: b.portal_accent || null, portal_sidebar: b.portal_sidebar || null, brand_portal: b.brand_portal, brand_reports: b.brand_reports }).eq('id', client.id)
+    setBusy(false)
+    if (error) return onError(/row-level|permission/i.test(error.message) ? "You don't have permission to change this client's branding." : error.message)
+    onSaved(`Saved ${client.name}'s branding.`)
+  }
+  const using = b.brand_portal || b.brand_reports
+  return (
+    <div style={{ padding: 16 }}>
+      <style>{BRAND_CSS}</style>
+      <p className="page-sub" style={{ marginTop: 0, fontSize: 13 }}>Brand {client.name}'s portal and reports with their own look. Anywhere this is off, they see your company branding{company?.company_name ? ` (${company.company_name})` : ''}.</p>
+      <div style={{ display: 'grid', gap: 8, marginBottom: 14, fontSize: 13.5 }}>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+          <input type="checkbox" checked={b.brand_portal} onChange={e => setB(x => ({ ...x, brand_portal: e.target.checked }))} />
+          <span><b>Client portal</b> <span className="page-sub" style={{ fontSize: 12 }}>— their logo and colors when they log in to their portal</span></span></label>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+          <input type="checkbox" checked={b.brand_reports} onChange={e => setB(x => ({ ...x, brand_reports: e.target.checked }))} />
+          <span><b>Client reports</b> <span className="page-sub" style={{ fontSize: 12 }}>— their logo and colors on reports sent to or shared with them</span></span></label>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(280px, 1fr)', gap: 16, alignItems: 'start', opacity: using ? 1 : .5 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Name on their portal & reports</div>
+          <input className="br-in" maxLength={60} value={b.portal_name} placeholder={client.name} onChange={e => setB(x => ({ ...x, portal_name: e.target.value }))} />
+          <div style={{ margin: '14px 0', maxWidth: 260 }}>
+            <LogoField label="Logo" hint="PNG, JPG, WebP or SVG, up to 2 MB." url={b.portal_logo_url} onFile={upload} onRemove={() => setB(x => ({ ...x, portal_logo_url: '' }))} />
+          </div>
+          <ColorField label="Brand color" value={b.portal_accent} presets={PRESETS} onChange={v => setB(x => ({ ...x, portal_accent: v }))} />
+          <ColorField label="Sidebar color" value={b.portal_sidebar} presets={SIDEBAR_PRESETS} onChange={v => setB(x => ({ ...x, portal_sidebar: v }))} />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--ink-soft)', marginBottom: 8 }}>Preview</div>
+          <BrandPreview name={b.portal_name || client.name} logo={b.portal_logo_url || (!using ? (company?.logo_dark_url || company?.logo_url) : '')}
+            primary={using ? b.portal_accent : company?.primary_color} sidebar={using ? b.portal_sidebar : company?.sidebar_color} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+        <button className="btn btn-primary" disabled={busy || !dirty} onClick={save}>{busy ? 'Saving…' : 'Save branding'}</button>
+        {dirty && <button className="btn btn-ghost" onClick={() => setB(init)}>Discard changes</button>}
       </div>
     </div>
   )
