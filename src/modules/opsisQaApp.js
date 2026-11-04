@@ -125,7 +125,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (k === 'brandset') k = 'settings';
     return {
       overview: 'M4 5h16v14H4zM4 9h16M9 9v10', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
-      cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', pricetalk: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+      cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', practice: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2', pricetalk: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
       scorecards: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8 11h8M8 15h8M8 19h5', reporting: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3', money: 'M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5s-5 1.6-5 3.5 2.2 3.2 5 3.5 5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5', team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
@@ -1172,6 +1172,111 @@ export function mountOpsisQA(ROOT, cfg) {
     var p = function (x, y) { return y ? (100 * x / y).toFixed(1) + '%' : ''; };
     var lines = [['CSR', 'Brand', 'Opportunities', 'CSR brought up price first', 'Customer asked', 'Gave a number when asked', 'Booking rate'].join(',')].concat(a.map(function (r) { return [q(r.agent), q(r.brand), r.n, p(r.vol, r.n), p(r.asked, r.n), p(r.ans, r.asked), p(r.bk, r.d)].join(','); }));
     saveBlob('price-talk-' + S.start + '-to-' + S.end + '.csv', new Blob([lines.join('\n')], { type: 'text/csv' }));
+  }
+  // ---------- Practice: AI practice customer (pilot) ----------
+  var PR = { d: null, brand: '', live: null, result: null, busy: false, err: null, view: null, okChecked: false };
+  var PR_BRANDS = ['Apple Door', 'Cedar Park Overhead Door', 'Cheney Door', 'Cunningham Door', 'Dan’s Doors', 'Genson Overhead Door', 'Omaha Door', 'PDQ', 'Quality Overhead Door', 'TVG'];
+  function prCheckAccess() {
+    if (PR.okChecked || OPSIS || CFG.csrSelf) return; PR.okChecked = true;
+    api({ action: 'practice', op: 'access' }).then(function (r) {
+      if (!r || !r.allowed) return;
+      var sec = NAV[0][1]; if (!sec.some(function (n) { return n[0] === 'practice'; })) { var i = sec.map(function (n) { return n[0]; }).indexOf('hub'); sec.splice(i >= 0 ? i + 1 : sec.length, 0, ['practice', 'Practice']); }
+      renderNav();
+    }).catch(function () { });
+  }
+  function prDots(n) { return '<span title="' + (['', 'Easier', 'Normal', 'Tougher'][n] || '') + '" style="letter-spacing:2px;color:#E0662A">' + '●●●'.slice(0, n || 2) + '<span style="color:#E1DCD2">' + '●●●'.slice(0, 3 - (n || 2)) + '</span></span>'; }
+  function vPractice(tok) {
+    setMain(crumb([['Practice']]) + '<div id="prwrap"><div class="oq-card">' + skel(30, 6) + '</div></div>');
+    api({ action: 'practice', op: 'list' }).then(function (r) { if (tok !== T) return; PR.d = r; if (!PR.brand) PR.brand = r.lock || 'Quality Overhead Door'; drawPractice(); })
+      .catch(function (e) { if (tok === T && $('prwrap')) $('prwrap').innerHTML = errBox(e); });
+  }
+  function prMine(sid) { var me = PR.d && PR.d.me; return ((PR.d && PR.d.sessions) || []).filter(function (s) { return s.scenario_id === sid && s.user_id === me && s.status === 'scored'; }); }
+  function prScoreChip(v) { return v == null ? '<span class="mut">—</span>' : '<span class="pill num" style="' + chipScore(Math.round(v)) + '">' + Math.round(v) + '</span>'; }
+  function drawPractice() {
+    var w = $('prwrap'); if (!w || !PR.d) return; var d = PR.d;
+    if (PR.live) { w.innerHTML = prLiveHtml(); return; }
+    if (PR.result) { w.innerHTML = prResultHtml(PR.result); return; }
+    var intro = '<div class="oq-card" style="background:#FAF8F4"><h2 class="ttl" style="margin:0 0 4px">Practice calls</h2><p class="sub" style="line-height:1.55;margin:0">Take a 1–3 minute call from an AI customer, then get an instant debrief on the 5-step call flow. Use your computer’s mic and speakers (a headset works best). Practice calls are saved here so you can see progress over time; they never count toward real QA scores. <b>Pilot</b> — only a few people can see this tab.</p>' +
+      (!d.ready ? '<div class="banner" style="margin-top:10px"><b>Not set up yet.</b> ' + (CFG.staff ? 'Add the ElevenLabs key, then <button class="lnk" data-act="prsetup">set up the practice caller</button>.' : 'Opsis is finishing setup.') + '</div>' : '') +
+      (LOCK ? '' : '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px;margin-top:12px" class="mut">Practice as<select id="prbrand" class="oq-field" style="min-width:230px">' + PR_BRANDS.map(function (b) { return '<option' + (PR.brand === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select></label>') +
+      (PR.err ? '<div class="banner" style="margin-top:10px;background:#FDECEC;border-color:#F3C7C7;color:#A61B1B">' + esc(PR.err) + '</div>' : '') + '</div>';
+    var cards = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">' + (d.scenarios || []).map(function (s) {
+      var mine = prMine(s.id), best = mine.reduce(function (m, x) { return x.score_pct != null && (m == null || x.score_pct > m) ? x.score_pct : m; }, null);
+      return '<div class="oq-card" style="display:flex;flex-direction:column;gap:8px;margin:0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div style="font-weight:600;font-size:15px">' + esc(s.title) + '</div>' + prDots(s.difficulty) + '</div>' +
+        '<div class="mut" style="font-size:12px">' + esc(s.call_type || '') + ' · ' + (s.voice === 'male' ? 'male caller' : 'female caller') + '</div>' +
+        '<div style="font-size:12.5px;line-height:1.5;color:#3B4541;flex:1">' + esc(s.goal.length > 190 ? s.goal.slice(0, 187) + '…' : s.goal) + '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="mut" style="font-size:12px">' + (mine.length ? mine.length + ' tr' + (mine.length === 1 ? 'y' : 'ies') + ' · best ' + Math.round(best || 0) : 'Not tried yet') + '</span><button class="sel btnd" data-act="prstart" data-id="' + esc(s.id) + '"' + (d.ready && !PR.busy ? '' : ' disabled') + '>☎ Start call</button></div></div>';
+    }).join('') + '</div>';
+    var hist = (d.sessions || []).filter(function (x) { return x.status === 'scored' || x.status === 'failed'; });
+    var names = {}; (d.scenarios || []).forEach(function (s) { names[s.id] = s.title; });
+    var showWho = hist.some(function (x) { return x.user_id !== d.me; });
+    var htbl = '<div class="oq-card"><h2 class="ttl">Practice history</h2><p class="sub">' + (showWho ? 'Everyone in the pilot' : 'Your practice calls') + ' · click one to see the debrief.</p>' + (hist.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>When</th>' + (showWho ? '<th>Who</th>' : '') + '<th>Scenario</th>' + (LOCK ? '' : '<th>Brand</th>') + '<th style="text-align:right">Length</th><th style="text-align:right">Booked</th><th style="text-align:right">Score</th></tr></thead><tbody>' +
+      hist.map(function (x) { return '<tr style="cursor:pointer" data-act="prview" data-id="' + esc(x.id) + '"><td>' + fdate(String(x.started_at).slice(0, 10)) + '</td>' + (showWho ? '<td>' + esc(x.user_name || '') + '</td>' : '') + '<td>' + esc(names[x.scenario_id] || '') + '</td>' + (LOCK ? '' : '<td class="mut">' + esc(short(x.brand || '')) + '</td>') + '<td class="num" style="text-align:right">' + (x.duration_secs ? fsecs(x.duration_secs) : '—') + '</td><td style="text-align:right">' + (x.status === 'failed' ? '<span class="mut">too short</span>' : x.booked ? 'Yes' : 'No') + '</td><td style="text-align:right">' + prScoreChip(x.score_pct) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="mut" style="margin-top:8px">No practice calls yet.</p>') + '</div>';
+    w.innerHTML = intro + cards + htbl;
+    var bs = $('prbrand'); if (bs) bs.addEventListener('change', function () { PR.brand = bs.value; });
+  }
+  function prLiveHtml() {
+    var L = PR.live, sc = L.sc;
+    var lines = L.lines.slice(-14).map(function (m) { return '<div style="display:flex;' + (m.me ? 'justify-content:flex-end' : '') + '"><span style="max-width:78%;padding:8px 12px;border-radius:14px;font-size:13.5px;line-height:1.45;' + (m.me ? 'background:#E6F0EA;color:#14302A' : 'background:#F3F1EC;color:#1C2421') + '"><b style="font-size:11px;display:block;opacity:.7">' + (m.me ? 'You' : 'Customer') + '</b>' + esc(m.text) + '</span></div>'; }).join('');
+    var st = L.state === 'connecting' ? 'Connecting…' : L.state === 'ending' ? 'Scoring your call…' : (L.mode === 'speaking' ? 'Customer is talking…' : 'Listening — go ahead');
+    return '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><div class="mut" style="font-size:12px">Practice call · ' + esc(short(L.brand)) + '</div><h2 class="ttl" style="margin:2px 0 0">' + esc(sc.title) + '</h2></div><div style="display:flex;align-items:center;gap:12px"><span class="num" id="prclock" style="font-size:20px;font-weight:600">' + fsecs(L.secs || 0) + '</span>' +
+      (L.state === 'ending' ? '' : '<button class="sel" data-act="prend" style="background:#A61B1B;border-color:#A61B1B;color:#fff">End call</button>') + '</div></div>' +
+      '<div style="margin-top:12px;display:flex;align-items:center;gap:10px"><span style="width:12px;height:12px;border-radius:999px;background:' + (L.mode === 'speaking' ? '#E0662A' : '#2F7D5B') + ';box-shadow:0 0 0 6px ' + (L.mode === 'speaking' ? '#FCEBDD' : '#E6F0EA') + '"></span><b>' + st + '</b></div>' +
+      '<div class="banner" style="margin-top:12px;background:#FAF8F4;border-color:#E8E4DC;color:#3B4541;font-size:12.5px"><b>Your goal:</b> ' + esc(sc.goal) + '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;min-height:120px">' + (lines || '<div class="mut">The customer will start talking in a moment. Answer like a real call.</div>') + '</div></div>';
+  }
+  function prResultHtml(r) {
+    if (r.status === 'failed') return '<div class="oq-card"><h2 class="ttl">Practice call</h2><p>' + esc(r.error || 'That call couldn’t be scored.') + '</p><div style="display:flex;gap:8px;margin-top:10px"><button class="sel btnd" data-act="prback">Back to practice</button></div></div>';
+    if (r.status !== 'scored') return '<div class="oq-card"><h2 class="ttl">Scoring your call…</h2><p class="mut">This usually takes under a minute.</p></div>';
+    var D = r.debrief || {}, sc = r.score, col = sc == null ? '#CFC9BE' : (sc >= 80 ? G : (sc >= 60 ? '#E8A06A' : O));
+    var li = function (a) { return (a || []).map(function (x) { return '<li style="margin:4px 0">' + esc(x) + '</li>'; }).join(''); };
+    var steps = (r.steps || []).map(function (s) { var c = s.answer === 'yes' ? ['#E6F0EA', '#1F5A41', 'Done'] : s.answer === 'no' ? ['#FCEBDD', '#A8441A', 'Missed'] : ['#F3F1EC', '#56605B', 'N/A'];
+      return '<div style="display:grid;grid-template-columns:minmax(150px,230px) 70px 1fr;gap:10px;align-items:start;padding:8px 0;border-top:1px solid var(--line2);font-size:13px"><span>' + esc(STEPNAMES[s.key] || s.label || s.key) + '</span><span class="pill" style="background:' + c[0] + ';color:' + c[1] + ';justify-self:start">' + c[2] + '</span><span class="mut" style="line-height:1.45">' + esc(s.note || '') + '</span></div>'; }).join('');
+    var tx = (r.transcript || []).map(function (t) { return '<div style="margin:4px 0;font-size:13px"><b style="color:' + (t.role === 'CSR' ? '#1F5A41' : '#5F6763') + '">' + (t.role === 'CSR' ? 'You' : 'Customer') + ':</b> ' + esc(t.text) + '</div>'; }).join('');
+    return '<div class="oq-card"><div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:96px;height:96px;flex-shrink:0"><svg width="96" height="96" viewBox="0 0 120 120" aria-label="Score ' + sc + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + ((sc || 0) / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span class="num" style="font-size:24px;font-weight:600">' + (sc == null ? '—' : Math.round(sc)) + '</span></div></div>' +
+      '<div style="flex:1;min-width:220px"><div class="mut" style="font-size:12px">' + esc(r.title || 'Practice call') + ' · ' + esc(short(r.brand || '')) + (r.duration_secs ? ' · ' + fsecs(r.duration_secs) : '') + ' · ' + (r.booked ? 'Booked' : 'Not booked') + '</div><div style="font-size:16px;font-weight:600;margin-top:4px;line-height:1.4">' + esc(D.headline || '') + '</div></div></div>' +
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px"><div style="flex:1 1 260px"><div class="cap" style="color:#1F5A41">What went well</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(D.went_well) + '</ul></div><div style="flex:1 1 260px"><div class="cap" style="color:#A8441A">Try this next time</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(D.try_next) + '</ul></div></div>' +
+      (D.say_this ? '<div class="banner" style="margin-top:14px;background:#EEF2FB;border-color:#D5DDF3;color:#2B3A67"><b>Say it like this:</b> “' + esc(D.say_this) + '”</div>' : '') +
+      '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' + (r.scenario_id ? '<button class="sel btnd" data-act="prstart" data-id="' + esc(r.scenario_id) + '">↻ Try it again</button>' : '') + '<button class="sel" data-act="prback">Pick another scenario</button></div></div>' +
+      '<div class="oq-card"><h2 class="ttl">Call flow</h2>' + steps + '</div>' +
+      '<div class="oq-card"><details><summary style="cursor:pointer;font-weight:600">Transcript</summary><div style="margin-top:8px">' + tx + '</div></details></div>';
+  }
+  var PR_SDK = null;
+  function prSdk() { if (!PR_SDK) PR_SDK = (new Function('u', 'return import(u)'))('https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.35.0/+esm'); return PR_SDK; }
+  function prStart(id) {
+    var sc = ((PR.d && PR.d.scenarios) || []).filter(function (s) { return s.id === id; })[0]; if (!sc || PR.busy) return;
+    PR.busy = true; PR.err = null; PR.result = null;
+    var brand = LOCK || PR.brand || 'Quality Overhead Door';
+    PR.live = { sc: sc, brand: brand, lines: [], state: 'connecting', mode: 'listening', secs: 0, conv: null, sid: null }; drawPractice();
+    var fail = function (e) { var L = PR.live; if (L && L.timer) clearInterval(L.timer); PR.live = null; PR.busy = false; PR.err = (e && e.message) || String(e); drawPractice(); };
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); return Promise.all([api({ action: 'practice', op: 'start', scenario_id: id, brand: brand }), prSdk()]); })
+      .then(function (rr) {
+        var st = rr[0], SDK = rr[1], L = PR.live; if (!L) return; L.sid = st.session_id;
+        return SDK.Conversation.startSession({ signedUrl: st.signed_url, connectionType: 'websocket', dynamicVariables: st.dynamic_variables,
+          onConnect: function () { L.state = 'live'; L.t0 = Date.now(); L.timer = setInterval(function () { L.secs = Math.round((Date.now() - L.t0) / 1000); var c = $('prclock'); if (c) c.textContent = fsecs(L.secs); if (L.secs >= 300) prEnd(); }, 1000); drawPractice(); },
+          onMessage: function (m) { var txt = (m && (m.message || m.text)) || ''; if (!txt) return; L.lines.push({ me: (m.source || m.role) === 'user', text: txt }); if (PR.live === L) drawPractice(); },
+          onModeChange: function (m) { L.mode = (m && m.mode) || m; if (PR.live === L) drawPractice(); },
+          onError: function (e) { console.warn('practice', e); },
+          onDisconnect: function () { if (PR.live === L) prFinish(); }
+        }).then(function (conv) { L.conv = conv; });
+      }).catch(fail);
+  }
+  function prEnd() { var L = PR.live; if (!L || L.state === 'ending') return; if (L.conv && L.conv.endSession) { L.conv.endSession(); } else prFinish(); }
+  function prFinish() {
+    var L = PR.live; if (!L || L.state === 'ending') return; L.state = 'ending'; if (L.timer) clearInterval(L.timer); drawPractice();
+    var cid = null; try { cid = L.conv && L.conv.getId ? L.conv.getId() : null; } catch (e) { }
+    if (!L.sid || !cid) { PR.live = null; PR.busy = false; PR.err = 'The call ended before it connected. Check your mic and try again.'; drawPractice(); return; }
+    var tries = 0, go = function (op) {
+      api(op === 'finish' ? { action: 'practice', op: 'finish', session_id: L.sid, conversation_id: cid } : { action: 'practice', op: 'session', session_id: L.sid }).then(function (r) {
+        if (r.status === 'processing' && tries++ < 12) { setTimeout(function () { go('finish'); }, 4000); return; }
+        r.title = L.sc.title; r.scenario_id = L.sc.id; PR.live = null; PR.busy = false; PR.result = r; PR.d = null;
+        api({ action: 'practice', op: 'list' }).then(function (d) { PR.d = d; drawPractice(); }).catch(function () { });
+      }).catch(function (e) { PR.live = null; PR.busy = false; PR.err = e.message; drawPractice(); });
+    };
+    go('finish');
+  }
+  function prView(id) {
+    api({ action: 'practice', op: 'session', session_id: id }).then(function (r) { var s = ((PR.d && PR.d.sessions) || []).filter(function (x) { return x.id === id; })[0]; var sc = s && ((PR.d.scenarios || []).filter(function (y) { return y.id === s.scenario_id; })[0]); r.title = sc ? sc.title : ''; r.scenario_id = sc ? sc.id : null; PR.result = r; drawPractice(); window.scrollTo(0, 0); }).catch(function (e) { toast(e.message); });
   }
   // QA settings
   var QS = null, QSE = { ins: false, metric: false, req: false, del: null, busy: false };
@@ -3478,9 +3583,10 @@ export function mountOpsisQA(ROOT, cfg) {
     applyRange();
   }
   function render() {
+    prCheckAccess();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash(); trackHist();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
   }
@@ -3673,6 +3779,11 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rpdl') { rpDownload(d.r, d.f); }
       else if (a === 'rpweek') { var wk0 = ($('rpwk') || {}).value || lastMon(); RP.week = wk0; RP.wkb = ($('rpwkb') || {}).value || ''; var ww = pdfWin(); if (ww) { RP.busy = 'week'; drawReporting(); opWeek(ww, wk0, RP.wkb || (LOCK || null)).then(function () { RP.busy = ''; drawReporting(); }).catch(function (e) { try { ww.close(); } catch (x) {} RP.busy = ''; drawReporting(); toast(e.message || 'Couldn’t build that report.'); }); } }
       else if (a === 'qsinsedit') { QSE.ins = true; drawQs(); }
+      else if (a === 'prstart') { prStart(d.id); }
+      else if (a === 'prend') { prEnd(); }
+      else if (a === 'prback') { PR.result = null; PR.err = null; if (PR.d) drawPractice(); else render(); }
+      else if (a === 'prview') { prView(d.id); }
+      else if (a === 'prsetup') { api({ action: 'practice', op: 'setup' }).then(function () { toast('Practice caller is set up.'); PR.d = null; render(); }).catch(function (e) { toast(e.message); }); }
       else if (a === 'ptf') { PT.f = d.f; PT.shown = 50; drawPrice(); }
       else if (a === 'ptag') { if (PT.ag === d.ag && PT.b === d.br) { PT.ag = null; PT.b = null; } else { PT.ag = d.ag; PT.b = d.br; } PT.shown = 50; drawPrice(); }
       else if (a === 'ptbr') { if (PT.b === d.br && !PT.ag) { PT.b = null; } else { PT.b = d.br; PT.ag = null; } PT.shown = 50; drawPrice(); }
