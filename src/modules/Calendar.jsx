@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { hasPerm, usingNewPermissions } from '../lib/permissions'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { COMPANY_TZ, companyTimeToInstant, formatInTZ, detectedTZ, wallTimeToViewerHHMM } from '../lib/tz'
@@ -241,7 +242,45 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
   const [showSubs, setShowSubs] = useState(false)
   const [showColors, setShowColors] = useState(false)
   // My calendar vs 🎉 Team calendar (team events + birthdays + work anniversaries, same for everyone)
-  const [calMode, setCalMode] = useState(() => { try { return localStorage.getItem('cc.cal.mode') === 'team' ? 'team' : 'mine' } catch { return 'mine' } })
+  const [calMode, setCalMode] = useState(() => { try { return localStorage.getItem('cc.cal.mode') || 'mine' } catch { return 'mine' } })
+  // Shared calendars (2026-11-04): calendars like Team calendar, made by people with
+  // "Manage company calendars", visible to everyone or chosen people/teams.
+  const [orgCals, setOrgCals] = useState([])
+  const [orgAccess, setOrgAccess] = useState([])
+  const [calEdit, setCalEdit] = useState(null)        // calendar being created/edited (modal)
+  const [showCustomize, setShowCustomize] = useState(false)
+  const [prefs, setPrefs] = useState({ show_meals: true, show_water: true, show_wellbeing: true, show_tasks: true })
+  const canManageCals = usingNewPermissions() ? hasPerm('calendar.manage') : !!isAdmin
+  const loadOrgCals = useCallback(async () => {
+    const [c, a] = await Promise.all([
+      supabase.from('org_calendars').select('*').is('archived_at', null).order('name'),
+      supabase.from('org_calendar_access').select('*'),
+    ])
+    if (!c.error) setOrgCals(c.data || [])
+    if (!a.error) setOrgAccess(a.data || [])
+  }, [])
+  useEffect(() => { loadOrgCals() }, [loadOrgCals])
+  useEffect(() => {
+    if (!userId) return
+    supabase.from('calendar_prefs').select('*').eq('owner_id', userId).maybeSingle().then(({ data }) => { if (data) setPrefs(data) })
+  }, [userId])
+  const savePrefs = useCallback(async (next) => {
+    setPrefs(next)
+    await supabase.from('calendar_prefs').upsert({ owner_id: userId, show_meals: next.show_meals, show_water: next.show_water,
+      show_wellbeing: next.show_wellbeing, show_tasks: next.show_tasks, updated_at: new Date().toISOString() }, { onConflict: 'owner_id' })
+  }, [userId])
+  const orgCal = orgCals.find(c => c.id === calMode) || null
+  // can I add events to / manage this shared calendar? (the database enforces the same rules)
+  const [myTagIds, setMyTagIds] = useState(() => new Set())   // my teams (for team-shared calendars)
+  useEffect(() => {
+    if (!userId) return
+    supabase.from('taggables').select('tag_id').eq('entity_type', 'profile').eq('entity_id', userId)
+      .then(({ data }) => setMyTagIds(new Set((data || []).map(t => t.tag_id))))
+  }, [userId])
+  const canAddTo = (c) => !!c && (c.created_by === userId || canManageCals || c.everyone_can_add
+    || orgAccess.some(a => a.calendar_id === c.id && a.can_edit && (a.profile_id === userId || myTagIds.has(a.tag_id))))
+  const canManageCal = (c) => !!c && (c.created_by === userId || canManageCals)
+  useEffect(() => { if (calMode !== 'mine' && calMode !== 'team' && orgCals.length && !orgCals.some(c => c.id === calMode)) setCalMode('mine') }, [calMode, orgCals])
   const [teamPeople, setTeamPeople] = useState(null)
   useEffect(() => { try { localStorage.setItem('cc.cal.mode', calMode) } catch { /* ignore */ } }, [calMode])
   useEffect(() => {
@@ -378,13 +417,22 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
     }
   }, [load])
   // ---- visibility: events (personal to me OR team), tasks (mine or admin), intervals (mine) ----
-  const myEvents = useMemo(() => events.filter(e => e.scope === 'team' || e.owner_id === userId || (e.invitee_ids || []).includes(userId)), [events, userId])
+  const myEvents = useMemo(() => events.filter(e => !e.calendar_id && (e.scope === 'team' || e.owner_id === userId || (e.invitee_ids || []).includes(userId))), [events, userId])
   const myTaskIds = useMemo(() => new Set(assignees.filter(a => a.profile_id === userId).map(a => a.task_id)), [assignees, userId])
   // Personal calendar: always only the current user's own tasks, even for admins.
   const myTasks = useMemo(() => tasks.filter(t => myTaskIds.has(t.id)), [tasks, myTaskIds])
   const myClaims = useMemo(() => claims.filter(c => c.profile_id === userId), [claims, userId])
   // items on a given ISO date
   const itemsOn = useCallback((ds) => {
+    if (orgCal) {
+      // a shared calendar: just its own events, in its color
+      return events.filter(e => e.calendar_id === orgCal.id && e.event_date === ds).map(e => ({
+        kind: 'event', id: e.id, title: e.title, allDay: e.all_day,
+        start: e.all_day ? e.start_time : toViewerHHMM(e.event_date, e.start_time, e.tz || COMPANY_TZ, viewerTZ),
+        end: e.all_day ? e.end_time : toViewerHHMM(e.event_date, e.end_time, e.tz || COMPANY_TZ, viewerTZ),
+        color: e.color || orgCal.color, scope: e.scope, raw: e,
+      })).sort((a, b) => (a.allDay === b.allDay ? (a.start || '').localeCompare(b.start || '') : a.allDay ? -1 : 1))
+    }
     const evs = myEvents.filter(e => e.event_date === ds).map(e => ({
       kind: 'event', id: e.id, title: e.title, allDay: e.all_day,
       start: e.all_day ? e.start_time : toViewerHHMM(e.event_date, e.start_time, e.tz || COMPANY_TZ, viewerTZ),
@@ -485,14 +533,15 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
     // Intervals (shifts) are kept off the calendar (2026-10-27) — they live in Schedule and My Week.
     void ivs; void sharedIvs
     return [...evs, ...feeds, ...gcal, ...sharedEvs, ...sharedGcal, ...coachIvs].sort(order)
-  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn, events, claims, coaching, sharedWithMe, viewShares, profiles, userId, viewerTZ, calColors, calMode, teamPeople])
+  }, [myEvents, myClaims, blocks, feedEvents, subs, gcalEvents, gcalConn, events, claims, coaching, sharedWithMe, viewShares, profiles, userId, viewerTZ, calColors, calMode, teamPeople, orgCal])
   const tasksOn = useCallback((ds) => {
+    if (prefs.show_tasks === false) return { priority: [], other: [] }   // Customize → Tasks off
     const due = myTasks.filter(t => t.due_date === ds)
     return {
       priority: due.filter(t => t.priority === 'high'),
       other: due.filter(t => t.priority !== 'high'),
     }
-  }, [myTasks])
+  }, [myTasks, prefs.show_tasks])
   const openedRef = useRef(false)
   useEffect(() => {
     if (loading || openedRef.current) return
@@ -501,19 +550,22 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
     else if (startNew) setEditEvent({ event_date: isoDate(etNow()) })
   }, [loading, openEventId, startNew, events])
   if (loading) return <div className="page-sub" style={{ padding: 30 }}>Loading calendar…</div>
-  const shared = { cursor, setCursor, itemsOn, tasksOn, userId, allTasks: myTasks, onAddEvent: (d) => setEditEvent({ event_date: isoDate(d || cursor), ...(calMode === 'team' && isAdmin ? { scope: 'team' } : {}) }), onEditEvent: setEditEvent, onShowDetail: setDetailItem, onToggleTaskDone: toggleTaskDone, onToggleTaskTimer: toggleTaskTimer, runningEntry, timeEntries }
+  const shared = { cursor, setCursor, itemsOn, tasksOn, userId, allTasks: myTasks, prefs, onAddEvent: (d) => setEditEvent({ event_date: isoDate(d || cursor), ...(orgCal && canAddTo(orgCal) ? { calendar_id: orgCal.id, color: orgCal.color, _calName: orgCal.name } : {}), ...(calMode === 'team' && isAdmin ? { scope: 'team' } : {}) }), onEditEvent: setEditEvent, onShowDetail: setDetailItem, onToggleTaskDone: toggleTaskDone, onToggleTaskTimer: toggleTaskTimer, runningEntry, timeEntries }
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
         <div role="tablist" aria-label="Which calendar" style={{ display: 'inline-flex', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10, padding: 3, marginRight: 'auto' }}>
-          {[['mine', '📅 My calendar'], ['team', '🎉 Team calendar']].map(([k, l]) => (
+          {[['mine', '📅 My calendar'], ['team', '🎉 Team calendar'], ...orgCals.map(c => [c.id, `${c.icon} ${c.name}`])].map(([k, l]) => (
             <button key={k} role="tab" aria-selected={calMode === k} onClick={() => setCalMode(k)}
               style={{ border: 0, borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                 background: calMode === k ? 'var(--accent)' : 'transparent', color: calMode === k ? '#fff' : 'var(--ink)' }}>{l}</button>
           ))}
         </div>
+        {canManageCals && <button className="btn btn-ghost" onClick={() => setCalEdit({ name: '', icon: '📅', color: '#2563EB', description: '', everyone: false, everyone_can_add: false, access: [] })} style={{ fontSize: 13 }}>＋ New calendar</button>}
+        {orgCal && canManageCal(orgCal) && <button className="btn btn-ghost" onClick={() => setCalEdit({ ...orgCal, access: orgAccess.filter(a => a.calendar_id === orgCal.id) })} style={{ fontSize: 13 }}>⚙ {orgCal.name} settings</button>}
+        <button className="btn btn-ghost" onClick={() => setShowCustomize(true)} style={{ fontSize: 13 }}>🧩 Customize</button>
         <button className="btn btn-ghost" onClick={() => setShowColors(true)} style={{ fontSize: 13 }}>🎨 Colors</button>
-        <button className="btn btn-ghost" onClick={() => setShowShares(true)} style={{ fontSize: 13 }}>👥 Shared calendars</button>
+        <button className="btn btn-ghost" onClick={() => setShowShares(true)} style={{ fontSize: 13 }} title="Let specific people see your personal calendar">👥 Share my calendar</button>
         <button className="btn btn-ghost" onClick={() => setShowSubs(true)} style={{ fontSize: 13 }}>⚙ Connected calendars</button>
       </div>
       {calMode === 'mine' && (() => {
@@ -569,8 +621,13 @@ export default function Calendar({ openEventId = null, startNew = false, onChang
       )}
       {detailItem && <EventDetailModal item={detailItem} onClose={() => setDetailItem(null)}
         onEdit={(raw) => { setDetailItem(null); setEditEvent(raw) }} />}
+      {calEdit && <OrgCalendarModal cal={calEdit} profiles={profiles} userId={userId} onClose={() => setCalEdit(null)}
+        onSaved={async (id) => { setCalEdit(null); await loadOrgCals(); if (id) setCalMode(id); else setCalMode('mine') }} />}
+      {showCustomize && <CustomizeModal prefs={prefs} onChange={savePrefs} onClose={() => setShowCustomize(false)} />}
       {editEvent && (
         <EventModal event={editEvent} userId={userId} isAdmin={isAdmin} gcalConn={gcalConn} profiles={profiles} invitable={invitable}
+          canEditShared={editEvent?.calendar_id ? canAddTo(orgCals.find(c => c.id === editEvent.calendar_id)) : false}
+          sharedCalName={editEvent?.calendar_id ? (orgCals.find(c => c.id === editEvent.calendar_id)?.name || editEvent._calName) : null}
           onClose={() => setEditEvent(null)}
           onSaved={() => { setEditEvent(null); load(); onChanged && onChanged() }} />
       )}
@@ -1061,7 +1118,7 @@ function useNarrow(breakpoint = 900) {
   return narrow
 }
 // ---------- DAY VIEW ----------
-function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddEvent, onEditEvent, onShowDetail, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries }) {
+function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddEvent, onEditEvent, onShowDetail, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries, prefs = {} }) {
   const openItem = (i, e) => { if (e) e.stopPropagation(); if (i.kind === 'event' && i.raw) onEditEvent(i.raw); else onShowDetail(i) }
   const ds = isoDate(cursor)
   const items = itemsOn(ds)
@@ -1152,7 +1209,7 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
       </div>
       {/* right page: panels */}
       <div style={{ flex: 1, padding: narrow ? '12px 10px' : '18px 20px', minWidth: 0 }}>
-        <DayPlanner userId={userId} ds={ds} priority={priority} other={other} quote={[q, who]} dayItems={items} onOpenItem={openItem}
+        <DayPlanner userId={userId} ds={ds} priority={priority} other={other} quote={[q, who]} dayItems={items} onOpenItem={openItem} prefs={prefs}
           onToggleTaskDone={onToggleTaskDone} onToggleTaskTimer={onToggleTaskTimer} runningEntry={runningEntry} timeEntries={timeEntries} />
       </div>
     </div>
@@ -1161,7 +1218,8 @@ function DayView({ cursor, setCursor, itemsOn, tasksOn, userId, allTasks, onAddE
 // ---------- DAY PLANNER (interactive: tasks + quick todos + meals + water) ----------
 const MEAL_FIELDS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snack', 'Snack']]
 const WATER_GOAL = 8
-function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenItem, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries }) {
+function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenItem, onToggleTaskDone, onToggleTaskTimer, runningEntry, timeEntries, prefs = {} }) {
+  const showTasks = prefs.show_tasks !== false, showMeals = prefs.show_meals !== false, showWater = prefs.show_water !== false, showWell = prefs.show_wellbeing !== false
   const narrow = useNarrow(700)
   const [water, setWater] = useState(0)
   const [meals, setMeals] = useState({})
@@ -1229,7 +1287,7 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
         </div>
       )}
     <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', gap: 20 }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      {showTasks && <div style={{ flex: 1, minWidth: 0 }}>
         <PanelHead>PRIORITY TASKS</PanelHead>
         <TaskAndTodoList tasks={priority} todos={myPriorityTodos} onToggle={toggleTodo} onDel={delTodo} emptyBoth="No priority items."
           onToggleTaskDone={onToggleTaskDone} onToggleTaskTimer={onToggleTaskTimer} runningEntry={runningEntry} />
@@ -1239,13 +1297,13 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
         <TaskAndTodoList tasks={other} todos={myOtherTodos} onToggle={toggleTodo} onDel={delTodo} emptyBoth="Nothing else today."
           onToggleTaskDone={onToggleTaskDone} onToggleTaskTimer={onToggleTaskTimer} runningEntry={runningEntry} />
         <QuickAdd value={newOtherTodo} setValue={setNewOtherTodo} onAdd={() => addTodo('other')} placeholder="Add a to-do…" />
-      </div>
-      <div style={{ width: narrow ? '100%' : 250, flexShrink: 0 }}>
+      </div>}
+      <div style={{ width: narrow || !showTasks ? '100%' : 250, flexShrink: 0 }}>
         <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 13, color: 'var(--cal-ink-soft)', lineHeight: 1.5 }}>
           &ldquo;{q}&rdquo;
           <div style={{ marginTop: 6, fontStyle: 'normal', fontSize: 12, color: 'var(--cal-ink-mute)' }}>— {who}</div>
         </div>
-        <div style={{ marginTop: 22 }}>
+        {showMeals && <div style={{ marginTop: 22 }}>
           <PanelHead>MEALS</PanelHead>
           {MEAL_FIELDS.map(([key, label]) => (
             <div key={key} style={{ marginTop: 6 }}>
@@ -1254,8 +1312,8 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
                 placeholder="…" style={{ width: '100%', fontSize: 12, border: 'none', borderBottom: '1px solid var(--cal-line-2)', background: 'transparent', padding: '2px 0', outline: 'none', color: 'var(--cal-ink)' }} />
             </div>
           ))}
-        </div>
-        <div style={{ marginTop: 22 }}>
+        </div>}
+        {showWater && <div style={{ marginTop: 22 }}>
           <PanelHead>WATER</PanelHead>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginTop: 8 }}>
             {Array.from({ length: WATER_GOAL }).map((_, i) => {
@@ -1267,8 +1325,8 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
             })}
           </div>
           <div style={{ fontSize: 11, color: 'var(--cal-ink-mute)', marginTop: 6 }}>{water} of {WATER_GOAL} glasses</div>
-        </div>
-        <div style={{ marginTop: 22 }}>
+        </div>}
+        {showWell && <div style={{ marginTop: 22 }}>
           <PanelHead>WELLBEING</PanelHead>
           <div onClick={toggleWalk}
             style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, cursor: 'pointer', padding: '8px 10px', borderRadius: 8, background: walkDone ? 'rgba(22,163,74,.08)' : 'transparent', border: '1px solid ' + (walkDone ? '#16A34A' : 'var(--cal-line-2)') }}>
@@ -1296,7 +1354,7 @@ function DayPlanner({ userId, ds, priority, other, quote, dayItems = [], onOpenI
               placeholder="Something that went well…"
               style={{ width: '100%', fontSize: 12, border: 'none', borderBottom: '1px solid var(--cal-line-2)', background: 'transparent', padding: '3px 0', outline: 'none', color: 'var(--cal-ink)', marginTop: 4 }} />
           </div>
-        </div>
+        </div>}
       </div>
     </div>
     </div>
@@ -1680,10 +1738,11 @@ function InviteePicker({ profiles, invitable, userId, value, onChange }) {
   )
 }
 // ---------- EVENT MODAL ----------
-function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], invitable = [], onClose, onSaved }) {
+function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], invitable = [], onClose, onSaved, canEditShared = false, sharedCalName = null }) {
   const isNew = !event.id
   // Only the owner (or a brand-new event) can edit; invitees see it read-only.
-  const isOwner = isNew || event.owner_id === userId
+  // shared-calendar events can be edited by anyone allowed to add to that calendar
+  const isOwner = isNew || event.owner_id === userId || (!!event.calendar_id && canEditShared)
   const [title, setTitle] = useState(event.title || '')
   const [date, setDate] = useState(event.event_date || isoDate(etNow()))
   const [allDay, setAllDay] = useState(event.all_day || false)
@@ -1744,7 +1803,8 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], invitable
     const payload = {
       title: title.trim(), event_date: date, all_day: allDay,
       start_time: allDay ? null : start, end_time: allDay ? null : end,
-      notes: notes.trim() || null, scope, color, owner_id: userId, tz: detectedTZ(),
+      notes: notes.trim() || null, scope: event.calendar_id ? 'personal' : scope, color, owner_id: isNew ? userId : (event.owner_id || userId), tz: detectedTZ(),
+      calendar_id: event.calendar_id || null,
       invitee_ids: invitees, meeting_url: meetingUrl.trim() || null,
     }
     let savedId = event.id
@@ -1922,13 +1982,19 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], invitable
             <span style={{ width: 18, height: 18, borderRadius: 4, background: color, marginLeft: 4 }} />
           </div>
         </div>
+        {event.calendar_id ? (
+          <div className="field"><label>Calendar</label>
+            <div style={{ fontSize: 13.5, padding: '6px 0' }}>📅 <b>{sharedCalName || 'Shared calendar'}</b> — everyone who can see this calendar sees this event.</div>
+          </div>
+        ) : <>
         <div className="field"><label>Visibility</label>
           <select value={scope} onChange={e => setScope(e.target.value)} disabled={!isOwner || (!isAdmin && scope !== 'team')}>
             <option value="personal">Personal{invitees.length ? ' + invitees' : ' (only me)'}</option>
             <option value="team">Team (everyone)</option>
           </select>
         </div>
-        {isOwner && !isAdmin && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: -6, marginBottom: 8 }}>Only admins can create team events, but you can invite specific people above.</div>}
+        </>}
+        {!event.calendar_id && isOwner && !isAdmin && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: -6, marginBottom: 8 }}>Only admins can create team events, but you can invite specific people above.</div>}
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           {isOwner ? (
             <>
@@ -1944,6 +2010,131 @@ function EventModal({ event, userId, isAdmin, gcalConn, profiles = [], invitable
             <button className="btn btn-ghost" onClick={onClose}>Close</button>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ============================================================
+// Shared calendar settings (2026-11-04): name, icon, color, description, and who can see it
+// (everyone, or people/teams) — each can view, or view + add events. Archive to retire it.
+// ============================================================
+const CAL_ICONS = ['📅', '🎉', '🛠️', '🎓', '🧭', '📣', '🏖️', '💼', '🎧', '📈', '🏢', '⭐']
+const CAL_COLORS = ['#2563EB', '#0F766E', '#015974', '#7C3AED', '#DB2777', '#DC2626', '#EA580C', '#B45309', '#16A34A', '#475569']
+function OrgCalendarModal({ cal, profiles = [], userId, onClose, onSaved }) {
+  const isNew = !cal.id
+  const [f, setF] = useState({ name: cal.name || '', icon: cal.icon || '📅', color: cal.color || '#2563EB', description: cal.description || '',
+    everyone: !!cal.everyone, everyone_can_add: !!cal.everyone_can_add })
+  const [access, setAccess] = useState((cal.access || []).map(a => ({ profile_id: a.profile_id, tag_id: a.tag_id, can_edit: a.can_edit })))
+  const [teams, setTeams] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [sure, setSure] = useState(false)
+  useEffect(() => { supabase.from('tags').select('id, name').eq('namespace', 'team').order('name').then(({ data }) => setTeams(data || [])) }, [])
+  const nameOf = (a) => a.profile_id ? (profiles.find(p => p.id === a.profile_id)?.full_name || 'Someone') : `👥 ${teams.find(t => t.id === a.tag_id)?.name || 'Team'}`
+  const people = profiles.filter(p => p.id !== userId && !access.some(a => a.profile_id === p.id)).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
+  async function save() {
+    if (!f.name.trim()) return setErr('Give the calendar a name.')
+    setBusy(true); setErr('')
+    const row = { name: f.name.trim(), icon: f.icon, color: f.color, description: f.description.trim() || null, everyone: f.everyone, everyone_can_add: f.everyone && f.everyone_can_add }
+    let id = cal.id
+    if (isNew) {
+      const { data, error } = await supabase.from('org_calendars').insert({ ...row, created_by: userId }).select().single()
+      if (error) { setBusy(false); return setErr(/row-level|permission/i.test(error.message) ? "You don't have permission to create calendars." : error.message) }
+      id = data.id
+    } else {
+      const { error } = await supabase.from('org_calendars').update(row).eq('id', id)
+      if (error) { setBusy(false); return setErr(error.message) }
+      await supabase.from('org_calendar_access').delete().eq('calendar_id', id)
+    }
+    if (!f.everyone && access.length) {
+      const { error } = await supabase.from('org_calendar_access').insert(access.map(a => ({ calendar_id: id, profile_id: a.profile_id || null, tag_id: a.tag_id || null, can_edit: !!a.can_edit })))
+      if (error) { setBusy(false); return setErr(error.message) }
+    }
+    setBusy(false); onSaved(id)
+  }
+  async function archive() {
+    if (!sure) { setSure(true); return }
+    setBusy(true)
+    const { error } = await supabase.from('org_calendars').update({ archived_at: new Date().toISOString() }).eq('id', cal.id)
+    setBusy(false)
+    if (error) return setErr(error.message)
+    onSaved(null)
+  }
+  const row = { display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--line)', fontSize: 13.5 }
+  return (
+    <div className="modal-backdrop" onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.4)', zIndex: 3000, display: 'grid', placeItems: 'center', padding: 12 }}>
+      <div className="card" onClick={e => e.stopPropagation()} style={{ width: 'min(620px, 100%)', maxHeight: '90vh', overflow: 'auto', padding: 20 }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: 18 }}>{isNew ? '＋ New calendar' : `⚙ ${cal.name}`}</h3>
+        {err && <div style={{ background: '#FEF2F2', color: '#B91C1C', borderRadius: 8, padding: '8px 11px', fontSize: 12.5, marginBottom: 10 }}>{err}</div>}
+        <div className="field"><label>Name</label><input maxLength={60} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="e.g. Training sessions, Northwind ops, PTO" autoFocus /></div>
+        <div className="field"><label>Description <span style={{ fontWeight: 400 }}>(optional)</span></label><input maxLength={200} value={f.description} onChange={e => setF({ ...f, description: e.target.value })} /></div>
+        <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 14 }}>
+          <div><div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>Icon</div>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', maxWidth: 260 }}>{CAL_ICONS.map(ic => (
+              <button key={ic} type="button" onClick={() => setF({ ...f, icon: ic })} style={{ width: 32, height: 32, borderRadius: 8, fontSize: 16, cursor: 'pointer', border: '2px solid ' + (f.icon === ic ? 'var(--accent)' : 'var(--line)'), background: 'var(--surface)' }}>{ic}</button>))}</div></div>
+          <div><div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>Color</div>
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', maxWidth: 220 }}>{CAL_COLORS.map(c => (
+              <button key={c} type="button" onClick={() => setF({ ...f, color: c })} aria-label={c} style={{ width: 26, height: 26, borderRadius: 7, cursor: 'pointer', background: c, border: '2px solid ' + (f.color === c ? 'var(--ink)' : 'transparent') }} />))}</div></div>
+        </div>
+        <div style={{ fontSize: 14, fontWeight: 700, margin: '4px 0 8px' }}>Who can see it</div>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5, cursor: 'pointer', marginBottom: 6 }}>
+          <input type="radio" checked={f.everyone} onChange={() => setF({ ...f, everyone: true })} /> <b>Everyone</b></label>
+        {f.everyone && <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', margin: '0 0 8px 24px' }}>
+          <input type="checkbox" checked={f.everyone_can_add} onChange={e => setF({ ...f, everyone_can_add: e.target.checked })} /> …and everyone can add events</label>}
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5, cursor: 'pointer', marginBottom: 6 }}>
+          <input type="radio" checked={!f.everyone} onChange={() => setF({ ...f, everyone: false })} /> <b>Only these people & teams</b></label>
+        {!f.everyone && (
+          <div style={{ marginLeft: 24 }}>
+            {access.length === 0 && <div className="page-sub" style={{ fontSize: 12.5, padding: '4px 0' }}>Nobody yet — only you (and calendar managers) can see it.</div>}
+            {access.map((a, i) => (
+              <div key={i} style={row}>
+                <span style={{ flex: 1 }}>{nameOf(a)}</span>
+                <select value={a.can_edit ? 'edit' : 'view'} onChange={e => setAccess(x => x.map((y, j) => j === i ? { ...y, can_edit: e.target.value === 'edit' } : y))}
+                  style={{ border: '1px solid var(--line)', borderRadius: 7, padding: '3px 6px', fontFamily: 'inherit', fontSize: 12.5, background: 'var(--surface)', color: 'var(--ink)' }}>
+                  <option value="view">Can view</option><option value="edit">Can view + add events</option>
+                </select>
+                <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => setAccess(x => x.filter((_, j) => j !== i))}>Remove</button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              <select value="" onChange={e => e.target.value && setAccess(x => [...x, { profile_id: e.target.value, can_edit: false }])} style={{ flex: '1 1 200px' }}>
+                <option value="">＋ Add a person…</option>{people.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+              </select>
+              <select value="" onChange={e => e.target.value && setAccess(x => [...x, { tag_id: e.target.value, can_edit: false }])} style={{ flex: '1 1 200px' }}>
+                <option value="">＋ Add a team…</option>{teams.filter(t => !access.some(a => a.tag_id === t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, marginTop: 18, flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : isNew ? 'Create calendar' : 'Save'}</button>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          {!isNew && <button className="btn btn-ghost" style={{ marginLeft: 'auto', color: '#B91C1C' }} disabled={busy} onClick={archive}>{sure ? 'Click again to archive' : 'Archive calendar'}</button>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// 🧩 Customize (2026-11-04): each person chooses what shows on their calendar.
+function CustomizeModal({ prefs, onChange, onClose }) {
+  const opts = [['show_tasks', 'Tasks', 'Your tasks with due dates — on the day planner and the month/week views'],
+    ['show_meals', 'Meals', 'Breakfast, lunch, dinner and snack notes'], ['show_water', 'Water', 'The 8-glass water tracker'],
+    ['show_wellbeing', 'Wellbeing', 'Walk, breaks, fresh air, connecting and "one good thing"']]
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.4)', zIndex: 3000, display: 'grid', placeItems: 'center', padding: 12 }}>
+      <div className="card" onClick={e => e.stopPropagation()} style={{ width: 'min(460px, 100%)', padding: 20 }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 18 }}>🧩 Customize your calendar</h3>
+        <p className="page-sub" style={{ margin: '0 0 12px', fontSize: 13 }}>Choose what shows up. Only changes your own calendar.</p>
+        {opts.map(([k, l, h]) => (
+          <label key={k} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '10px 0', borderBottom: '1px solid var(--line)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={prefs[k] !== false} onChange={e => onChange({ ...prefs, [k]: e.target.checked })} style={{ marginTop: 3, width: 16, height: 16 }} />
+            <span><b style={{ fontSize: 14 }}>{l}</b><span className="page-sub" style={{ display: 'block', fontSize: 12.5 }}>{h}</span></span>
+          </label>
+        ))}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}><button className="btn btn-primary" onClick={onClose}>Done</button></div>
       </div>
     </div>
   )
