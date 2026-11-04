@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { hasPerm, usingNewPermissions } from '../lib/permissions'
 import { useAuth } from '../lib/auth'
-import { loadBranding, applyBranding, inkOn } from '../lib/branding'
+import { loadBranding, applyBranding, inkOn, FONTS, fontStack, loadFont, logoStyle, ICON_FILTERS } from '../lib/branding'
 
 // ============================================================
 // 🎨 Branding (Configuration, 2026-11-04) — the company's own look for Command Center:
@@ -75,15 +75,23 @@ export function LogoField({ label, hint, url, onFile, onRemove, disabled, dark }
 }
 
 // Mini preview: sidebar + header + a button, in the chosen colors.
-export function BrandPreview({ name, logo, primary, sidebar }) {
+export function BrandPreview({ name, logo, primary, sidebar, b = {} }) {
   const p = hexOk(primary) ? primary : '#0077B6', sb = hexOk(sidebar) ? sidebar : '#0B1F2A'
-  const sideInk = inkOn(sb)
+  const sideInk = hexOk(b.nav_text_color) ? b.nav_text_color : inkOn(sb)
+  const ls = logoStyle(b)
+  if (b.nav_font) loadFont(b.nav_font)
+  const scale = 0.62   // the preview sidebar is narrower than the real one
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', minHeight: 190, background: 'var(--surface)' }}>
       <div style={{ background: sb, color: sideInk, padding: 12, display: 'grid', alignContent: 'start', gap: 8 }}>
-        <div style={{ height: 34, display: 'grid', placeItems: 'center' }}>{logo ? <img src={logo} alt="" style={{ maxWidth: '100%', maxHeight: 34, objectFit: 'contain' }} /> : <b style={{ fontSize: 13 }}>{name || 'Your company'}</b>}</div>
-        {['Home', 'Chat', 'Reporting', 'Projects'].map((x, i) => (
-          <div key={x} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 7, background: i === 2 ? `color-mix(in srgb, ${p} 30%, transparent)` : 'transparent', opacity: i === 2 ? 1 : .8 }}>{x}</div>
+        <div style={{ minHeight: 34, display: 'grid', placeItems: 'center' }}>{logo ? <img src={logo} alt="" style={ls ? {
+            width: ls.w === 'auto' ? 'auto' : `calc(${ls.w} * ${scale})`, height: `calc(${ls.h} * ${scale})`, maxWidth: '100%', objectFit: 'contain',
+            borderRadius: ls.radius, background: ls.frame, padding: ls.pad === '0' ? 0 : '6%', boxSizing: 'border-box' } : { maxWidth: '100%', maxHeight: 34, objectFit: 'contain' }} />
+          : <b style={{ fontSize: 13 }}>{name || 'Your company'}</b>}</div>
+        {[['🏠', 'Home'], ['💬', 'Chat'], ['📊', 'Reporting'], ['📋', 'Projects']].map(([ic, x], i) => (
+          <div key={x} style={{ fontSize: b.nav_font_size ? b.nav_font_size * 0.86 : 12, fontFamily: fontStack(b.nav_font) || 'inherit', padding: '5px 8px', borderRadius: 7, display: 'flex', gap: 6, alignItems: 'center',
+            background: i === 2 ? `color-mix(in srgb, ${p} 30%, transparent)` : 'transparent', opacity: i === 2 ? 1 : .85 }}>
+            <span style={{ filter: ICON_FILTERS[b.nav_icon_style || 'color'] }}>{ic}</span>{x}</div>
         ))}
       </div>
       <div style={{ padding: 14 }}>
@@ -117,17 +125,21 @@ export default function Branding() {
   useEffect(() => { if (b) applyBranding(b) }, [b])
   useEffect(() => () => { loadBranding(true).catch(() => {}) }, [])
 
-  const dirty = b && saved && ['company_name', 'logo_url', 'logo_dark_url', 'icon_url', 'primary_color', 'sidebar_color'].some(k => (b[k] || '') !== (saved[k] || ''))
+  const FIELDS = ['company_name', 'logo_url', 'logo_dark_url', 'icon_url', 'primary_color', 'sidebar_color', 'logo_size', 'logo_shape', 'logo_frame_color', 'nav_font', 'nav_font_size', 'nav_text_color', 'nav_icon_style']
+  const dirty = b && saved && FIELDS.some(k => String(b[k] ?? '') !== String(saved[k] ?? ''))
   async function upload(field, file) {
     setMsg(null)
     try { const url = await uploadBrandImage(file, 'company', field.replace('_url', '')); setB(x => ({ ...x, [field]: url })) }
     catch (e) { setMsg({ kind: 'err', text: String(e.message || e) }) }
   }
   async function save() {
-    for (const k of ['primary_color', 'sidebar_color']) if (b[k] && !hexOk(b[k])) return setMsg({ kind: 'err', text: 'Colors need to look like #0077B6.' })
+    for (const k of ['primary_color', 'sidebar_color', 'logo_frame_color', 'nav_text_color']) if (b[k] && !hexOk(b[k])) return setMsg({ kind: 'err', text: 'Colors need to look like #0077B6.' })
     setBusy(true); setMsg(null)
     const patch = { company_name: (b.company_name || '').trim() || null, logo_url: b.logo_url || null, logo_dark_url: b.logo_dark_url || null,
-      icon_url: b.icon_url || null, primary_color: b.primary_color || null, sidebar_color: b.sidebar_color || null, updated_at: new Date().toISOString() }
+      icon_url: b.icon_url || null, primary_color: b.primary_color || null, sidebar_color: b.sidebar_color || null,
+      logo_size: b.logo_size ? Number(b.logo_size) : null, logo_shape: b.logo_shape || null, logo_frame_color: b.logo_frame_color || null,
+      nav_font: b.nav_font || null, nav_font_size: b.nav_font_size ? Number(b.nav_font_size) : null, nav_text_color: b.nav_text_color || null,
+      nav_icon_style: b.nav_icon_style || null, updated_at: new Date().toISOString() }
     const { error } = await supabase.from('org_branding').update(patch).eq('id', true)
     setBusy(false)
     if (error) return setMsg({ kind: 'err', text: /row-level|permission/i.test(error.message) ? "You don't have permission to change branding." : error.message })
@@ -160,17 +172,73 @@ export default function Branding() {
           <ColorField label="Sidebar color" value={b.sidebar_color} presets={SIDEBAR_PRESETS} disabled={!canEdit} onChange={v => setB(x => ({ ...x, sidebar_color: v }))}
             hint={hexOk(b.sidebar_color) && inkOn(b.sidebar_color) !== '#ffffff' ? '⚠️ This color is quite light — the menu text is white, so a darker color will be easier to read.' : 'The menu text is white, so darker colors work best.'} />
 
+          {/* ---- logo size + shape ---- */}
+          <div style={{ borderTop: '1px solid var(--line)', margin: '6px 0 14px' }} />
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Logo size</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <span className="page-sub" style={{ fontSize: 12 }}>Small</span>
+            <input type="range" min={24} max={140} step={2} disabled={!canEdit} value={b.logo_size || 64} onChange={e => setB(x => ({ ...x, logo_size: Number(e.target.value) }))} style={{ flex: 1, accentColor: 'var(--accent)' }} aria-label="Logo size" />
+            <span className="page-sub" style={{ fontSize: 12 }}>Large</span>
+            <span style={{ fontSize: 12.5, fontWeight: 700, minWidth: 44 }}>{b.logo_size || 64}px</span>
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Logo shape</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            {[['original', 'Original', '0', 40, 24], ['square', 'Square', '3px', 30, 30], ['rounded', 'Rounded', '8px', 30, 30], ['circle', 'Circle', '50%', 30, 30], ['wide', 'Wide rectangle', '6px', 52, 22]].map(([k, l, r, w, h]) => {
+              const on = (b.logo_shape || 'original') === k
+              return (
+                <button key={k} type="button" disabled={!canEdit} onClick={() => setB(x => ({ ...x, logo_shape: k }))}
+                  style={{ border: '2px solid ' + (on ? 'var(--accent)' : 'var(--line)'), background: on ? 'var(--accent-bg)' : 'var(--surface)', borderRadius: 10, padding: '8px 10px', cursor: 'pointer', display: 'grid', justifyItems: 'center', gap: 5, fontFamily: 'inherit', fontSize: 11.5, fontWeight: 700, color: 'var(--ink)', minWidth: 74 }}>
+                  <span style={{ width: w, height: h, borderRadius: r, background: k === 'original' ? 'transparent' : '#CBD5E1', border: k === 'original' ? '2px dashed #94A3B8' : 0 }} />{l}
+                </button>
+              )
+            })}
+          </div>
+          {b.logo_shape && b.logo_shape !== 'original' && (
+            <ColorField label="Logo frame color" value={b.logo_frame_color} presets={['#FFFFFF', '#F1F5F9', '#111827', '#015974', '#00E6E6']} disabled={!canEdit}
+              onChange={v => setB(x => ({ ...x, logo_frame_color: v }))} hint="The background behind your logo inside the shape. White works for most logos." />
+          )}
+
+          {/* ---- menu: font, size, text color, icons ---- */}
+          <div style={{ borderTop: '1px solid var(--line)', margin: '6px 0 14px' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: 12, marginBottom: 14 }}>
+            <label style={{ fontSize: 13, fontWeight: 700 }}>Menu font
+              <select className="br-in" style={{ marginTop: 6, fontFamily: fontStack(b.nav_font) || 'inherit' }} disabled={!canEdit} value={b.nav_font || ''}
+                onChange={e => { loadFont(e.target.value); setB(x => ({ ...x, nav_font: e.target.value })) }}>
+                {FONTS.map(f => { if (f) loadFont(f); return <option key={f} value={f} style={{ fontFamily: fontStack(f) || 'inherit' }}>{f || 'Command Center default'}</option> })}
+              </select></label>
+            <label style={{ fontSize: 13, fontWeight: 700 }}>Menu text size
+              <select className="br-in" style={{ marginTop: 6 }} disabled={!canEdit} value={b.nav_font_size || ''} onChange={e => setB(x => ({ ...x, nav_font_size: e.target.value ? Number(e.target.value) : null }))}>
+                <option value="">Default (14px)</option>
+                {[12, 13, 14, 15, 16, 17, 18].map(n => <option key={n} value={n}>{n}px{n <= 12 ? ' · small' : n >= 17 ? ' · large' : ''}</option>)}
+              </select></label>
+          </div>
+          <ColorField label="Menu text color" value={b.nav_text_color} presets={['#C7D2D6', '#FFFFFF', '#E2E8F0', '#00E6E6', '#FDE68A', '#111827']} disabled={!canEdit}
+            onChange={v => setB(x => ({ ...x, nav_text_color: v }))} hint="The tab names in the sidebar. The selected tab keeps its highlight so you always know where you are." />
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Menu icons</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+            {[['color', 'Color'], ['bw', 'Black & white'], ['white', 'All white'], ['black', 'All black']].map(([k, l]) => {
+              const on = (b.nav_icon_style || 'color') === k
+              return (
+                <button key={k} type="button" disabled={!canEdit} onClick={() => setB(x => ({ ...x, nav_icon_style: k }))}
+                  style={{ border: '2px solid ' + (on ? 'var(--accent)' : 'var(--line)'), background: k === 'white' ? '#1F2937' : on ? 'var(--accent-bg)' : 'var(--surface)', borderRadius: 10, padding: '7px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: k === 'white' ? '#fff' : 'var(--ink)', display: 'grid', justifyItems: 'center', gap: 4 }}>
+                  <span style={{ filter: ICON_FILTERS[k], fontSize: 16, letterSpacing: 4 }}>📊💬📋</span>{l}
+                </button>
+              )
+            })}
+          </div>
+
           {canEdit && (
             <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
               <button className="btn btn-primary" disabled={busy || !dirty} onClick={save}>{busy ? 'Saving…' : 'Save branding'}</button>
               {dirty && <button className="btn btn-ghost" onClick={() => { setB(saved); setMsg(null) }}>Discard changes</button>}
-              <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => setB(x => ({ ...x, logo_url: null, logo_dark_url: null, icon_url: null, primary_color: null, sidebar_color: null }))}>Reset to Command Center default</button>
+              <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => setB(x => ({ ...x, logo_url: null, logo_dark_url: null, icon_url: null, primary_color: null, sidebar_color: null,
+                logo_size: null, logo_shape: null, logo_frame_color: null, nav_font: null, nav_font_size: null, nav_text_color: null, nav_icon_style: null }))}>Reset to Command Center default</button>
             </div>
           )}
         </div>
         <div style={{ position: 'sticky', top: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--ink-soft)', marginBottom: 8 }}>Preview</div>
-          <BrandPreview name={b.company_name} logo={b.logo_dark_url || b.logo_url} primary={b.primary_color} sidebar={b.sidebar_color} />
+          <BrandPreview name={b.company_name} logo={b.logo_dark_url || b.logo_url} primary={b.primary_color} sidebar={b.sidebar_color} b={b} />
           <p className="page-sub" style={{ fontSize: 12, marginTop: 8 }}>Clients can have their own branding for their portal and reports — set it on Clients → a client → 🎨 Branding. Clients without their own use yours.</p>
         </div>
       </div>
