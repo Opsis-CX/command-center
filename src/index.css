@@ -993,3 +993,4 @@ body{
 .sidebar .nav-item:not(.on){ color:var(--nav-ink, #c7d2d6); }
 .sidebar .nav-item:not(.on):hover{ color:var(--nav-ink, #eaf6fb); filter:brightness(1.15); }
 .sidebar .nav-item .ic{ filter:var(--nav-ic-filter, none); }
+.sidebar .nav-item .ic.line{ filter:none; opacity:.95; display:inline-flex; }
