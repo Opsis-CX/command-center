@@ -54,7 +54,8 @@ export function applyBranding(b) {
   setOr('--nav-font', fontStack(b?.nav_font))
   setOr('--nav-size', b?.nav_font_size ? b.nav_font_size + 'px' : '')
   setOr('--nav-ink', hexOk(b?.nav_text_color) ? b.nav_text_color : '')
-  setOr('--nav-ic-filter', b?.nav_icon_style && b.nav_icon_style !== 'color' ? ICON_FILTERS[b.nav_icon_style] : '')
+  // 'bw' = Line icons: drawn outlines (NavIcon), so no filter; white/black silhouette the emojis
+  setOr('--nav-ic-filter', ['white', 'black'].includes(b?.nav_icon_style) ? ICON_FILTERS[b.nav_icon_style] : '')
   if (b && hexOk(b.primary_color)) {
     root.setProperty('--accent', b.primary_color)
     root.setProperty('--accent-bg', `color-mix(in srgb, ${b.primary_color} 13%, transparent)`)
