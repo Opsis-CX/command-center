@@ -104,6 +104,7 @@ export function StatusBadge({ profile, showText = false, style }) {
 
 // ---- heartbeat (mount once) ----
 export function usePresenceHeartbeat() {
+  useLoginLocation()
   const { session } = useAuth()
   const uid = session?.user?.id
   useEffect(() => {
@@ -118,6 +119,35 @@ export function usePresenceHeartbeat() {
     document.addEventListener('visibilitychange', onVis)
     window.addEventListener('focus', onVis)
     return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('focus', onVis) }
+  }, [uid])
+}
+
+// ---- login location: once per browser session, record the approximate
+// location (IP-based, via /api/geo) into login_locations. Admin-readable only.
+// Mounted alongside the heartbeat so it runs for every logged-in user.
+export function useLoginLocation() {
+  const { session } = useAuth()
+  const uid = session?.user?.id
+  useEffect(() => {
+    if (!uid) return
+    const key = 'cc_login_loc_' + uid
+    try { if (sessionStorage.getItem(key)) return } catch { /* ignore */ }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch('/api/geo')
+        if (!r.ok || cancelled) return
+        const g = await r.json()
+        const { error } = await supabase.from('login_locations').insert({
+          profile_id: uid, ip: g.ip || null, lat: g.lat ?? null, lng: g.lng ?? null,
+          city: g.city || null, region: g.region || null, country: g.country || null,
+          is_vpn: g.is_vpn ?? null, is_proxy: g.is_proxy ?? null, is_tor: g.is_tor ?? null,
+          is_hosting: g.is_hosting ?? null, vpn_service: g.vpn_service || null,
+        })
+        if (!error) { try { sessionStorage.setItem(key, '1') } catch { /* ignore */ } }
+      } catch { /* never block the app */ }
+    })()
+    return () => { cancelled = true }
   }, [uid])
 }
 
