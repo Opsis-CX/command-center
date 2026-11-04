@@ -1,4 +1,4 @@
-[README (6).md](https://github.com/user-attachments/files/34341215/README.6.md)
+[README (8).md](https://github.com/user-attachments/files/34379184/README.8.md)
 # Staging setup scripts
 
 Run these in the **staging** database (Supabase → command-center-staging → SQL editor),
@@ -16,5 +16,7 @@ database section from live and removes anything that only exists in staging.
    and "your words" (what the company calls a client / a project). Archiving a client
    takes its projects with it; restoring brings them back.
 6. `06_client_usage_switches.sql` — "Where this client is used": custom switches admins add.
+
+9. `09_team_updates.sql` — Team Updates checkboxes (Weekly Sync, submit / view end-of-day reports).
 
 All are safe to run more than once. Ask Claude to re-add the demo company afterwards.
