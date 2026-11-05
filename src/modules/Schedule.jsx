@@ -1172,37 +1172,84 @@ const tradeGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minm
 
 // ---------- MY SCHEDULE ----------
 function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onCheckIn, onCheckOut, openBreaks = {}, onStartBreak, onEndBreak, onOfferTrade, onCancelTrade, myOpenTradeFor }) {
+  // Week-table layout (2026-11-05): same cards and actions as before, laid out Mon–Sun like the
+  // Schedule tab. Colors/density follow Configuration → Schedule.
+  const schedSettings = useScheduleSettings()
+  const [weekStart, setWeekStart] = useState(() => mondayOf(etNow()))
   const myClaims = claims.filter(c => c.profile_id === me.id)
   if (!myClaims.length) return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>No intervals claimed yet. Head to Schedule to pick up some time.</div></div>
 
   const entries = myClaims.map(c => ({ claim: c, block: blocks.find(b => b.id === c.shift_block_id) })).filter(e => e.block)
   const todayStr = isoDate(etNow())
-  const upcoming = entries.filter(e => e.block.block_date >= todayStr).sort((a, b) => (a.block.block_date + a.block.start_time).localeCompare(b.block.block_date + b.block.start_time))
-  const past = entries.filter(e => e.block.block_date < todayStr).sort((a, b) => (b.block.block_date + b.block.start_time).localeCompare(a.block.block_date + a.block.start_time))
-
-  const byDate = {}
-  upcoming.forEach(e => { (byDate[e.block.block_date] = byDate[e.block.block_date] || []).push(e) })
+  const days = weekDates(weekStart)
+  const dayStrs = days.map(isoDate)
+  const inWeek = (ds) => entries.filter(e => e.block.block_date === ds).sort((a, b) => a.block.start_time.localeCompare(b.block.start_time))
+  const weekHours = personWeekHours(me.id, blocks, claims, dayStrs[0], dayStrs[6])
+  const over = weekHours > WEEKLY_HOUR_CAP
+  const shift = (n) => { const d = new Date(weekStart); d.setDate(d.getDate() + n * 7); setWeekStart(d) }
+  // where's the next interval, if this week is empty?
+  const next = entries.filter(e => e.block.block_date > dayStrs[6]).sort((a, b) => a.block.block_date.localeCompare(b.block.block_date))[0]
 
   return <div>
-    {Object.keys(byDate).length ? Object.keys(byDate).sort().map(date => (
-      <div key={date} style={{ marginBottom: 22 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', marginBottom: 10 }}>
-          {date === todayStr ? 'Today · ' : ''}{new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 12 }}>
-          {byDate[date].map(e => <ShiftCard key={e.claim.id} block={e.block} claim={e.claim} isPast={false} started={hasIntervalStarted(e.block)} viewerTZ={me?.timezone} onUnclaim={onUnclaim} onCheckIn={onCheckIn} onCheckOut={onCheckOut} openBreak={openBreaks[e.claim.id]} onStartBreak={onStartBreak} onEndBreak={onEndBreak} onOfferTrade={onOfferTrade} onCancelTrade={onCancelTrade} myTrade={myOpenTradeFor ? myOpenTradeFor(e.block.id) : null} />)}
-        </div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+      <button className="btn btn-ghost" onClick={() => shift(-1)} aria-label="Previous week">‹</button>
+      <div style={{ fontSize: 13.5, fontWeight: 700, minWidth: 150, textAlign: 'center' }}>
+        {days[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {days[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
       </div>
-    )) : <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 20 }}>No upcoming intervals.</div></div>}
-
-    {past.length > 0 && <div style={{ marginBottom: 22 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-soft)', marginBottom: 10, opacity: .6 }}>Past intervals</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 12 }}>
-        {past.slice(0, 12).map(e => <ShiftCard key={e.claim.id} block={e.block} claim={e.claim} isPast={true} started={true} viewerTZ={me?.timezone} onUnclaim={onUnclaim} onCheckIn={onCheckIn} onCheckOut={onCheckOut} />)}
+      <button className="btn btn-ghost" onClick={() => shift(1)} aria-label="Next week">›</button>
+      <button className="btn btn-ghost" onClick={() => setWeekStart(mondayOf(etNow()))}>This week</button>
+      {next && dayStrs.every(ds => !inWeek(ds).length) && (
+        <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => setWeekStart(mondayOf(new Date(next.block.block_date + 'T12:00:00')))}>
+          Next interval: {new Date(next.block.block_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} →
+        </button>
+      )}
+    </div>
+    <div className={'st-client' + (schedSettings.density === 'comfortable' ? ' st-comfy' : '')} style={{ marginBottom: 0, ...colorVars(schedSettings.colors) }}>
+      <style>{ST_CSS + MY_SCHED_CSS}</style>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="st-grid ms-grid" style={{ minWidth: 1180 }}>
+          <thead><tr>
+            <th style={{ textAlign: 'left', paddingLeft: 14, position: 'sticky', left: 0, zIndex: 2, width: 150 }}>My schedule</th>
+            {days.map((d, i) => { const ds = dayStrs[i]; const n = inWeek(ds).length
+              return <th key={ds} className={ds === todayStr ? 'today' : ''}>{d.toLocaleDateString('en-US', { weekday: 'short' })}
+                <div style={{ fontWeight: 500 }}>{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                <div style={{ fontWeight: 500, fontSize: 11, color: 'var(--ink-soft)' }}>{n} interval{n !== 1 ? 's' : ''}</div></th> })}
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td className="who" style={{ verticalAlign: 'top' }}>
+                <span className="st-av" style={{ background: avatarColor(me.full_name || 'You'), color: '#fff' }}>{initials(me.full_name || 'You')}</span>
+                <span style={{ display: 'inline-block', verticalAlign: 'middle' }}>Your intervals
+                  <div className="page-sub" style={{ fontSize: 11.5, fontWeight: over ? 800 : 500, color: over ? 'var(--failed)' : undefined }}>{fmtHours(weekHours)} / {WEEKLY_HOUR_CAP} h this week</div></span>
+              </td>
+              {dayStrs.map(ds => { const its = inWeek(ds); const isPast = ds < todayStr
+                return <td key={ds} className={ds === todayStr ? 'ms-today' : ''}>
+                  {its.length === 0 ? <span className="page-sub">—</span> : its.map(e => (
+                    <div key={e.claim.id} className="ms-card">
+                      <ShiftCard block={e.block} claim={e.claim} isPast={isPast} started={isPast || hasIntervalStarted(e.block)} viewerTZ={me?.timezone}
+                        onUnclaim={onUnclaim} onCheckIn={onCheckIn} onCheckOut={onCheckOut}
+                        {...(isPast ? {} : { openBreak: openBreaks[e.claim.id], onStartBreak, onEndBreak, onOfferTrade, onCancelTrade, myTrade: myOpenTradeFor?.(e.block.id) })} />
+                    </div>
+                  ))}
+                </td> })}
+            </tr>
+          </tbody>
+        </table>
       </div>
-    </div>}
+    </div>
   </div>
 }
+// The cards keep their look and buttons; these just fit them neatly into the day columns.
+const MY_SCHED_CSS = `
+.ms-grid { table-layout: fixed; }
+.ms-grid th:first-child { width: 170px; }
+.ms-grid td { vertical-align: top; }
+.ms-grid td.ms-today { background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+.ms-card { margin-bottom: 8px; text-align: left; }
+.ms-card > .iv { padding: 10px 11px !important; }
+.ms-card .iv-time { font-size: 13px !important; white-space: normal; }
+.ms-card .btn { padding-left: 6px; padding-right: 6px; white-space: normal; line-height: 1.25; }
+`
 
 function workedLabel(claim) {
   if (!claim?.checked_in_at || !claim?.checked_out_at) return null
