@@ -115,7 +115,8 @@ export default function ScheduleTeam({ mode: modeProp = 'team', view = null }) {
   const groupBy = view?.group_by || settings.group_by
   const openRow = view?.open_row || settings.open_row
   const [scope, setScope] = useState(null)
-  const [range, setRange] = useState(view?.default_range || SETTINGS.default_range || 'week')
+  const asRange = (r) => (r === 'month' ? 'month' : 'week')   // the single-day view was retired (week highlights today)
+  const [range, setRange] = useState(asRange(view?.default_range || SETTINGS.default_range))
   const [anchor, setAnchor] = useState(todayET())
   const [clientF, setClientF] = useState('')
   const [projectF, setProjectF] = useState('')
@@ -143,7 +144,7 @@ export default function ScheduleTeam({ mode: modeProp = 'team', view = null }) {
     setData(data)
   }, [mode, from, to, clientF, projectF])
   useEffect(() => { setData(null); load() }, [load])
-  useEffect(() => { if (!view?.default_range) setRange(settings.default_range) }, [settings.default_range]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!view?.default_range) setRange(asRange(settings.default_range)) }, [settings.default_range]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!legend) return
     const h = (e) => { if (legendRef.current && !legendRef.current.contains(e.target)) setLegend(false) }
@@ -219,8 +220,8 @@ export default function ScheduleTeam({ mode: modeProp = 'team', view = null }) {
         <button className="st-btn" onClick={() => shift(-1)} aria-label="Previous">‹</button>
         <span style={{ fontWeight: 800, fontSize: 14, minWidth: 150, textAlign: 'center' }}>{label}</span>
         <button className="st-btn" onClick={() => shift(1)} aria-label="Next">›</button>
-        {[['day', 'Today'], ['week', 'This week'], ['month', 'This month']].map(([k, l]) => (
-          <button key={k} className={'st-btn' + (range === k ? ' on' : '')} onClick={() => { setRange(k); if (k === 'day' || range === k) setAnchor(today) }}><Ico d={ICO.cal} size={14} />{l}</button>
+        {[['week', 'This week'], ['month', 'This month']].map(([k, l]) => (
+          <button key={k} className={'st-btn' + (range === k ? ' on' : '')} onClick={() => { setRange(k); setAnchor(today) }}><Ico d={ICO.cal} size={14} />{l}</button>
         ))}
         <div style={{ flex: 1 }} />
         {mode === 'team' && <>
@@ -293,7 +294,7 @@ export default function ScheduleTeam({ mode: modeProp = 'team', view = null }) {
       })}
 
       {detail && <Detail blockId={detail} onClose={() => setDetail(null)} onChanged={(msg) => { if (msg) flash('ok', msg); load() }} onError={(m) => flash('err', m)} />}
-      {addFor && <AddInterval ctx={addFor} defaultDate={range === 'day' ? from : today} onClose={() => setAddFor(null)} onDone={(m) => { setAddFor(null); flash('ok', m); load() }} />}
+      {addFor && <AddInterval ctx={addFor} defaultDate={today} onClose={() => setAddFor(null)} onDone={(m) => { setAddFor(null); flash('ok', m); load() }} />}
     </div>
   )
 }
