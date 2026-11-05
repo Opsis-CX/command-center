@@ -66,11 +66,13 @@ export default function ScheduleSettings() {
   const dirty = s && saved && JSON.stringify(s) !== JSON.stringify(saved)
 
   async function save() {
+    if (!(Number(s.fill_warn) < Number(s.fill_good))) return setMsg({ kind: 'err', text: 'Fill Rate tab: the amber cutoff has to be lower than the green one.' })
     setBusy(true); setMsg(null)
     const { error } = await supabase.from('schedule_settings').update({ colors: s.colors, group_by: s.group_by, default_range: s.default_range, week_starts: s.week_starts,
-      time_format: s.time_format, density: s.density, open_row: s.open_row, people_sort: s.people_sort, people_limit: Number(s.people_limit) || 8, updated_at: new Date().toISOString() }).eq('id', true)
+      time_format: s.time_format, density: s.density, open_row: s.open_row, people_sort: s.people_sort, people_limit: Number(s.people_limit) || 8,
+      fill_mentions: s.fill_mentions || [], fill_lines: s.fill_lines || {}, fill_good: Number(s.fill_good) || 95, fill_warn: Number(s.fill_warn) || 90, updated_at: new Date().toISOString() }).eq('id', true)
     setBusy(false)
-    if (error) return setMsg({ kind: 'err', text: /row-level|permission/i.test(error.message) ? "You don't have permission to change these." : error.message })
+    if (error) return setMsg({ kind: 'err', text: /row-level|permission/i.test(error.message) ? "You don't have permission to change these." : /check/i.test(error.message) ? 'One of the numbers is outside the allowed range.' : error.message })
     setSaved(s); loadScheduleSettings(true); setMsg({ kind: 'ok', text: 'Saved — the Schedule uses these right away.' })
   }
   async function move(v, dir) {
@@ -172,6 +174,8 @@ export default function ScheduleSettings() {
           <div><span className="ss-lbl">People shown before “Show more”</span><input type="number" min={3} max={200} className="ss-in" style={{ width: 100 }} disabled={off} value={s.people_limit} onChange={e => set('people_limit', e.target.value)} /></div>
         </div>
       </div>
+
+      <FillRateCard s={s} set={set} off={off} />
 
       {canEdit && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', position: 'sticky', bottom: 0, padding: '12px 16px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14 }}>
@@ -284,6 +288,52 @@ function ViewEditor({ v, onClose, onSaved }) {
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : f.id ? 'Save view' : 'Create view'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- Fill Rate tab (Schedule → Fill Rate): colors + the "Copy update" message ----
+function FillRateCard({ s, set, off }) {
+  const [people, setPeople] = useState([])
+  useEffect(() => { supabase.from('profiles').select('id, full_name').eq('is_active', true).is('client_id', null).order('full_name').then(({ data }) => setPeople(data || [])) }, [])
+  const mentions = s.fill_mentions || []
+  const lines = { staffed: true, coverage: true, open: true, tiers: true, ...(s.fill_lines || {}) }
+  const nameOf = (id) => people.find(p => p.id === id)?.full_name || '…'
+  return (
+    <div className="ss-card">
+      <h2>Fill Rate tab</h2>
+      <p className="ss-sub">Colors on Schedule → Fill Rate, and what “📋 Copy update” puts on the clipboard. Who can see the tab is in Access &amp; Permissions (“See the Fill Rate tab”). What counts toward fill rate is in Configuration → Dashboard.</p>
+      <div className="ss-grid">
+        <div>
+          <span className="ss-lbl">Colors</span>
+          <div style={{ display: 'grid', gap: 8, fontSize: 13.5 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ width: 12, height: 12, borderRadius: 4, background: '#1b5e20' }} /><b>Green</b> at
+              <input type="number" min={1} max={100} className="ss-in" style={{ width: 74 }} disabled={off} value={s.fill_good ?? 95} onChange={e => set('fill_good', e.target.value)} />% or higher</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ width: 12, height: 12, borderRadius: 4, background: '#8d6e00' }} /><b>Amber</b> at
+              <input type="number" min={0} max={99} className="ss-in" style={{ width: 74 }} disabled={off} value={s.fill_warn ?? 90} onChange={e => set('fill_warn', e.target.value)} />% or higher</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ width: 12, height: 12, borderRadius: 4, background: '#b71c1c' }} /><b>Red</b> below {s.fill_warn ?? 90}%</div>
+          </div>
+        </div>
+        <div>
+          <span className="ss-lbl">“Copy update” includes</span>
+          {[['staffed', 'Staffed fill rate (clients using Five9)'], ['coverage', 'Coverage (slots claimed)'], ['open', 'Open intervals'], ['tiers', 'Tier mix']].map(([k, l]) => (
+            <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, padding: '3px 0', cursor: off ? 'default' : 'pointer' }}>
+              <input type="checkbox" disabled={off} checked={lines[k] !== false} onChange={e => set('fill_lines', { ...lines, [k]: e.target.checked })} />{l}
+            </label>
+          ))}
+        </div>
+        <div>
+          <span className="ss-lbl">…and tags</span>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+            {mentions.length === 0 && <span className="page-sub" style={{ fontSize: 12.5 }}>Nobody — the update won't @-mention anyone.</span>}
+            {mentions.map(id => <span key={id} style={{ background: 'var(--canvas)', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 700, cursor: off ? 'default' : 'pointer' }}
+              onClick={() => !off && set('fill_mentions', mentions.filter(x => x !== id))}>@{nameOf(id)}{!off && ' ✕'}</span>)}
+          </div>
+          {!off && <select className="ss-in" value="" onChange={e => e.target.value && set('fill_mentions', [...mentions, e.target.value])}>
+            <option value="">＋ Tag someone…</option>{people.filter(p => !mentions.includes(p.id)).map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+          </select>}
         </div>
       </div>
     </div>
