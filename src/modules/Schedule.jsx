@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import ScheduleTeam, { ST_CSS } from './ScheduleTeam'
+import ScheduleTeam, { ST_CSS, colorVars, useScheduleSettings } from './ScheduleTeam'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
@@ -199,6 +199,11 @@ export default function Schedule() {
   const [adminView, setAdminView] = useState('team') // internal | team | mine
   // New Team / Internal views (2026-11-05): available where the database has them (sched_scope).
   const [schedScope, setSchedScope] = useState(null)
+  const [savedViews, setSavedViews] = useState([])   // Configuration → Schedule → Views
+  useEffect(() => {
+    supabase.from('schedule_views').select('*').is('archived_at', null).order('sort').order('name')
+      .then(({ data, error }) => { if (!error) setSavedViews(data || []) })
+  }, [])
   useEffect(() => {
     supabase.rpc('sched_scope').then(({ data, error }) => {
       if (error || !data) return
@@ -642,7 +647,7 @@ export default function Schedule() {
         <FillRateView />
       ) : tab === 'claim' ? (
         <ClaimView
-          isAdmin={isAdmin} adminView={adminView} setAdminView={setAdminView} schedScope={schedScope}
+          isAdmin={isAdmin} adminView={adminView} setAdminView={setAdminView} schedScope={schedScope} savedViews={savedViews}
           me={me} profiles={profiles} tiers={tiers}
           schedules={myVisibleSchedules(isAdmin && adminView === 'mine')} blocks={blocks} claims={claims}
           weekStart={weekStart} setWeekStart={setWeekStart}
@@ -696,7 +701,7 @@ function VtoBanner({ rows, schedules }) {
 }
 
 function ClaimView(props) {
-  const { isAdmin, adminView, setAdminView, schedScope, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
+  const { isAdmin, adminView, setAdminView, schedScope, savedViews = [], me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
     claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow,
     canAssign, audience, onAssign, onUnassign,
     trades, onOfferTrade, onAcceptTrade, onCancelTrade, certOkForBlock, myOpenTradeFor, callable } = props
@@ -706,7 +711,10 @@ function ClaimView(props) {
   // admins who switched to 'My view') see the personal claim grid.
   const teamMode = isAdmin && adminView === 'team'
   // New views: Internal / Team / My — each shown only with its permission (server-checked too)
-  const views = schedScope ? [...(schedScope.internal ? [['internal', 'Internal view', '🗂']] : []), ...(schedScope.team ? [['team', 'Team view', '👥']] : []), ['mine', 'My view', '👤']] : null
+  // custom views only appear when their base (Team / Internal) is something this person can see
+  const custom = (savedViews || []).filter(v => (v.base === 'internal' ? schedScope?.internal : schedScope?.team))
+  const views = schedScope ? [...(schedScope.internal ? [['internal', 'Internal view', '🗂']] : []), ...(schedScope.team ? [['team', 'Team view', '👥']] : []),
+    ...custom.map(v => ['view:' + v.id, v.name, v.icon]), ['mine', 'My view', '👤']] : null
   const switcher = views && views.length > 1 && (
     <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
       {views.map(([k, l, ic]) => <button key={k} className={'btn ' + (adminView === k ? 'btn-primary' : 'btn-ghost')} onClick={() => setAdminView(k)}>{ic} {l}</button>)}
@@ -714,6 +722,10 @@ function ClaimView(props) {
   )
   if (views && (adminView === 'team' || adminView === 'internal') && views.some(v => v[0] === adminView)) {
     return <div>{switcher}<ScheduleTeam key={adminView} mode={adminView} /></div>
+  }
+  if (views && adminView.startsWith('view:') && views.some(v => v[0] === adminView)) {
+    const v = custom.find(x => 'view:' + x.id === adminView)
+    return <div>{switcher}<ScheduleTeam key={adminView} view={v} /></div>
   }
 
   if (!schedules.length) {
@@ -839,7 +851,9 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
   // An interval up for trade (offered by someone else) shows here as grabbable too —
   // so a released interval is available on BOTH the trade board and the schedule.
   const tradeFor = (bid) => (trades || []).find(tr => tr.shift_block_id === bid && tr.offered_by !== me.id && tr.status === 'open')
-  // Compact look (2026-11-05) — same table, chips and colors as the Team view.
+  // Compact look (2026-11-05) — same table, chips and colors as the Team view (colors + density
+  // come from Configuration → Schedule).
+  const schedSettings = useScheduleSettings()
   const nowEt = etNow()
   const stateOf = (b) => {
     const st = new Date(`${b.block_date}T${b.start_time}`), en = new Date(`${b.block_date}T${b.end_time}`)
@@ -866,7 +880,7 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
   const totalOpen = days.reduce((n, d) => n + openFor(isoDate(d)).reduce((s, g) => s + g.open, 0), 0)
 
   return (
-    <div className="st-client" style={{ marginBottom: 0 }}>
+    <div className={'st-client' + (schedSettings.density === 'comfortable' ? ' st-comfy' : '')} style={{ marginBottom: 0, ...colorVars(schedSettings.colors) }}>
       <style>{ST_CSS}</style>
       <div style={{ overflowX: 'auto' }}>
         <table className="st-grid" style={{ minWidth: 860 }}>
@@ -900,11 +914,10 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
                   const claim = claims.find(c => c.shift_block_id === b.id && c.profile_id === me.id)
                   const st = stateOf(b), noshow = claim?.status === 'no_show', done = !!claim?.checked_out_at
                   return (
-                    <div key={b.id} className={'st-chip ' + (b.locked_at && st !== 'past' ? 'locked' : st)} onClick={() => onPop(b)}
-                      style={noshow ? { background: 'var(--failed-bg)', color: 'var(--failed)', borderColor: 'var(--failed)' } : undefined}
+                    <div key={b.id} className={'st-chip ' + (noshow ? 'noshow' : b.locked_at && st !== 'past' ? 'locked' : st)} onClick={() => onPop(b)}
                       title={`${tm(b)}${b.role ? ' · ' + b.role : ''}${noshow ? ' · no-show' : ''}`}>
                       {tm(b)}
-                      {claim?.checked_in_at && !done && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#16A34A', display: 'inline-block' }} />}
+                      {claim?.checked_in_at && !done && <span className="st-dot" />}
                       {done && <span aria-hidden="true">✓</span>}
                     </div>
                   )
