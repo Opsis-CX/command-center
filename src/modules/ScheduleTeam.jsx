@@ -12,7 +12,7 @@ import { supabase } from '../lib/supabase'
 // My View (claiming, trades, check-ins) stays in Schedule.jsx, unchanged.
 // ============================================================
 
-const CSS = `
+export const ST_CSS = `
 .st-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .st-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 10px; padding: 7px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .st-btn:hover:not(:disabled) { border-color: var(--accent); }
@@ -151,13 +151,13 @@ export default function ScheduleTeam({ mode = 'team' }) {
     flash('ok', `${lock ? 'Locked' : 'Unlocked'} ${r.done} interval${r.done === 1 ? '' : 's'}${r.skipped ? ` (${r.skipped} skipped — no permission or already ${lock ? 'locked' : 'unlocked'})` : ''}.`); load()
   }
 
-  if (!scope || !data) return <div><style>{CSS}</style><p className="page-sub">Loading schedule…</p></div>
+  if (!scope || !data) return <div><style>{ST_CSS}</style><p className="page-sub">Loading schedule…</p></div>
   const clientOpts = scope.clients || []
   const projOpts = (clientOpts.find(c => c.id === clientF)?.projects) || []
 
   return (
     <div>
-      <style>{CSS}</style>
+      <style>{ST_CSS}</style>
       {toast && <div className={'st-msg ' + toast.kind} style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 4000, boxShadow: '0 10px 30px rgba(0,0,0,.15)', maxWidth: 420 }}>{toast.text}</div>}
       <div className="st-bar">
         <button className="st-btn" onClick={() => shift(-1)} aria-label="Previous">‹</button>
