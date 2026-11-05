@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import ScheduleTeam, { ST_CSS, colorVars, useScheduleSettings } from './ScheduleTeam'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { can } from '../lib/permissions'
+import { can, hasPerm, usingNewPermissions } from '../lib/permissions'
 import { notifyIntervalReleased, notifyNoShow, notifyIntervalAssigned } from '../lib/notify'
 import { COMPANY_TZ, wallTimeToViewer } from '../lib/tz'
 // Click-to-call (2026-10-15): a 📞 next to each person in the interval popover's
@@ -161,7 +161,8 @@ export default function Schedule() {
   // Managers who can place agents directly onto intervals (Admin + ASC).
   const canAssign = isAdmin || can(appRole, 'schedule.ability_to_assign_intervals_to_agents')
   // Fill Rate command panel — Admin + ASC (schedule insights).
-  const canFillRate = isAdmin || can(appRole, 'schedule.view_insights_assigned')
+  // Fill Rate tab: its own checkbox in Access & Permissions (client-scoped on the server)
+  const canFillRate = usingNewPermissions() ? hasPerm('schedule.fill_rate') : (isAdmin || can(appRole, 'schedule.view_insights_assigned'))
   const [me, setMe] = useState(null)
   const [profiles, setProfiles] = useState([])
   const [tiers, setTiers] = useState([])
@@ -1356,9 +1357,20 @@ const TIER_COLOR = {
   'Developing Performer': '#0d47a1', 'Improvement Opportunity': '#b71c1c', 'Unranked': '#6b7280',
 }
 // Fill rate / coverage colour: target is ~100%. Green ≥95, amber 90–95, red <90.
-function rateColor(v) { return v == null ? 'var(--ink)' : v >= 95 ? '#1b5e20' : v >= 90 ? '#8d6e00' : '#b71c1c' }
+// cutoffs come from Configuration → Schedule → Fill Rate tab (defaults 95 / 90)
+const FILL_TH = { good: 95, warn: 90 }
+function rateColor(v) { return v == null ? 'var(--ink)' : v >= FILL_TH.good ? '#1b5e20' : v >= FILL_TH.warn ? '#8d6e00' : '#b71c1c' }
 
 function FillRateView() {
+  const fset = useScheduleSettings()
+  FILL_TH.good = fset.fill_good ?? 95; FILL_TH.warn = fset.fill_warn ?? 90
+  const lines = { staffed: true, coverage: true, open: true, tiers: true, ...(fset.fill_lines || {}) }
+  const [mentionNames, setMentionNames] = useState([])
+  useEffect(() => {
+    const ids = fset.fill_mentions || []
+    if (!ids.length) { setMentionNames([]); return }
+    supabase.from('profiles').select('id, full_name').in('id', ids).then(({ data }) => setMentionNames((data || []).map(p => p.full_name)))
+  }, [JSON.stringify(fset.fill_mentions || [])]) // eslint-disable-line react-hooks/exhaustive-deps
   const [day, setDay] = useState(() => isoDate(etNow()))
   const [data, setData] = useState(null)
   const [selKey, setSelKey] = useState(null)   // selected client name for the detail panel
@@ -1385,13 +1397,14 @@ function FillRateView() {
     if (!sel) return ''
     const openStr = opens.length ? opens.map(o => `${o.start}–${o.end} (${o.open})`).join(', ') : 'none — fully covered'
     const tierStr = tiers.length ? tiers.map(t => `${t.tier.replace(' Performer', '')} ${t.pct}%`).join(' · ') : 'n/a'
-    const lines = [`${sel.client} Fill Rate — ${dayLabel}${data.is_today ? ` · as of ${nowEt}` : ''}`, ``]
-    if (sel.uses_five9) lines.push(`Fill rate: ${sel.fill_rate == null ? 'n/a' : sel.fill_rate + '%'}  (${sel.occupancy_hours_todate} / ${sel.scheduled_hours_todate} staffed hrs to-date)`)
-    lines.push(`Coverage: ${sel.coverage_pct ?? 'n/a'}%  (${sel.filled_spots} of ${sel.total_spots} slots · ${sel.open_spots} open)`)
-    lines.push(`Open intervals: ${openStr}`)
-    lines.push(`Tier mix: ${tierStr}`)
-    lines.push(``, `@Corinne Kerper @Becky Jackson @Brittney Thompson`)
-    return lines.join('\n')
+    const out = [`${sel.client} Fill Rate — ${dayLabel}${data.is_today ? ` · as of ${nowEt}` : ''}`, ``]
+    // which lines + who's tagged come from Configuration → Schedule → Fill Rate tab
+    if (sel.uses_five9 && lines.staffed) out.push(`Fill rate: ${sel.fill_rate == null ? 'n/a' : sel.fill_rate + '%'}  (${sel.occupancy_hours_todate} / ${sel.scheduled_hours_todate} staffed hrs to-date)`)
+    if (lines.coverage) out.push(`Coverage: ${sel.coverage_pct ?? 'n/a'}%  (${sel.filled_spots} of ${sel.total_spots} slots · ${sel.open_spots} open)`)
+    if (lines.open) out.push(`Open intervals: ${openStr}`)
+    if (lines.tiers) out.push(`Tier mix: ${tierStr}`)
+    if (mentionNames.length) out.push(``, mentionNames.map(n => '@' + n).join(' '))
+    return out.join('\n')
   }
   async function copyUpdate() {
     try { await navigator.clipboard.writeText(buildUpdate()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { setErr('Could not copy — select and copy manually.') }
