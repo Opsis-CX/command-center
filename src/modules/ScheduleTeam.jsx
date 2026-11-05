@@ -31,16 +31,21 @@ export const ST_CSS = `
 .st-grid th.today { background: color-mix(in srgb, var(--accent) 14%, var(--canvas)); }
 .st-grid td { border-bottom: 1px solid var(--line); padding: 6px 8px; vertical-align: top; text-align: center; }
 .st-grid td.who { text-align: left; white-space: nowrap; font-weight: 700; font-size: 13px; padding-left: 14px; position: sticky; left: 0; background: var(--surface); z-index: 1; }
-.st-grid tr.openrow td { background: color-mix(in srgb, #FEF3C7 55%, var(--surface)); }
-.st-grid tr.openrow td.who { background: color-mix(in srgb, #FEF3C7 70%, var(--surface)); }
+.st-grid tr.openrow td { background: color-mix(in srgb, var(--st-open, #F59E0B) 9%, var(--surface)); }
+.st-grid tr.openrow td.who { background: color-mix(in srgb, var(--st-open, #F59E0B) 14%, var(--surface)); }
+.st-chip.noshow { background: color-mix(in srgb, var(--st-noshow, #DC2626) 14%, var(--surface)); color: color-mix(in srgb, var(--st-noshow, #DC2626) 75%, #0F172A); border-color: color-mix(in srgb, var(--st-noshow, #DC2626) 45%, transparent); }
+.st-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--st-checkedin, #16A34A); display: inline-block; flex: none; }
+.st-comfy .st-chip { padding: 8px 9px; font-size: 12.5px; max-width: 180px; }
+.st-comfy .st-grid td { padding: 9px 10px; }
+.st-comfy .st-grid td.who { font-size: 14px; }
 .st-chip { display: flex; align-items: center; justify-content: center; gap: 5px; border-radius: 8px; padding: 5px 6px; margin: 0 auto 4px; font-size: 11.5px; font-weight: 700; cursor: pointer; border: 1px solid transparent; white-space: nowrap; width: 100%; max-width: 150px; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; }
 .st-chip.stack { flex-direction: column; gap: 1px; line-height: 1.25; padding: 5px 4px; }
 .st-chip .cnt { font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; gap: 4px; }
-.st-chip.past { background: #F1F5F9; color: #64748B; border-color: #E2E8F0; }
-.st-chip.current { background: #DBEAFE; color: #1E3A8A; border-color: #93C5FD; }
-.st-chip.upcoming { background: #EDE9FE; color: #5B21B6; border-color: #C4B5FD; }
-.st-chip.open { background: #FEF3C7; color: #92400E; border-color: #FCD34D; }
-.st-chip.locked { background: #F1F5F9; color: #475569; border-color: #CBD5E1; border-style: dashed; }
+.st-chip.past { background: color-mix(in srgb, var(--st-past, #94A3B8) 16%, var(--surface)); color: color-mix(in srgb, var(--st-past, #94A3B8) 72%, #0F172A); border-color: color-mix(in srgb, var(--st-past, #94A3B8) 45%, transparent); }
+.st-chip.current { background: color-mix(in srgb, var(--st-current, #3B82F6) 16%, var(--surface)); color: color-mix(in srgb, var(--st-current, #3B82F6) 72%, #0F172A); border-color: color-mix(in srgb, var(--st-current, #3B82F6) 45%, transparent); }
+.st-chip.upcoming { background: color-mix(in srgb, var(--st-upcoming, #8B5CF6) 16%, var(--surface)); color: color-mix(in srgb, var(--st-upcoming, #8B5CF6) 72%, #0F172A); border-color: color-mix(in srgb, var(--st-upcoming, #8B5CF6) 45%, transparent); }
+.st-chip.open { background: color-mix(in srgb, var(--st-open, #F59E0B) 16%, var(--surface)); color: color-mix(in srgb, var(--st-open, #F59E0B) 72%, #0F172A); border-color: color-mix(in srgb, var(--st-open, #F59E0B) 45%, transparent); }
+.st-chip.locked { background: color-mix(in srgb, var(--st-locked, #64748B) 16%, var(--surface)); color: color-mix(in srgb, var(--st-locked, #64748B) 72%, #0F172A); border-color: color-mix(in srgb, var(--st-locked, #64748B) 45%, transparent); border-style: dashed; }
 .st-av { width: 26px; height: 26px; border-radius: 50%; background: var(--accent-bg); color: var(--accent); display: inline-grid; place-items: center; font-weight: 800; font-size: 10.5px; margin-right: 8px; vertical-align: middle; }
 .st-modal-bg { position: fixed; inset: 0; background: rgba(15,23,42,.42); z-index: 3000; display: grid; place-items: center; padding: 14px; }
 .st-modal { background: var(--surface); color: var(--ink); border-radius: 16px; width: min(560px, 100%); max-height: 90vh; overflow: auto; box-shadow: 0 24px 60px rgba(0,0,0,.25); }
@@ -67,9 +72,29 @@ const Ico = ({ d, size = 16 }) => <svg width={size} height={size} viewBox="0 0 2
 
 const todayET = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA') }
-const mondayOf = (iso) => { const d = new Date(iso + 'T12:00:00'); const k = (d.getDay() + 6) % 7; d.setDate(d.getDate() - k); return d.toLocaleDateString('en-CA') }
-const fmtT = (t) => { if (!t) return ''; const [h, m] = String(t).split(':').map(Number); return `${((h + 11) % 12) + 1}${m ? ':' + String(m).padStart(2, '0') : ''} ${h < 12 ? 'AM' : 'PM'}` }
-const fmtTT = (t) => { if (!t) return ''; const [h, m] = String(t).split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}` }
+const mondayOf = (iso) => { const d = new Date(iso + 'T12:00:00'); const k = SETTINGS.week_starts === 0 ? d.getDay() : (d.getDay() + 6) % 7; d.setDate(d.getDate() - k); return d.toLocaleDateString('en-CA') }
+// ---- Configuration → Schedule (2026-11-05): company settings, loaded once and shared ----
+export const SCHED_DEFAULTS = { colors: { past: '#94A3B8', current: '#3B82F6', upcoming: '#8B5CF6', open: '#F59E0B', locked: '#64748B', noshow: '#DC2626', checkedin: '#16A34A' },
+  group_by: 'client_project', default_range: 'week', week_starts: 1, time_format: '12', density: 'compact', open_row: 'top', people_sort: 'name', people_limit: 8 }
+let SETTINGS = SCHED_DEFAULTS, settingsPromise = null
+export function loadScheduleSettings(force) {
+  if (!settingsPromise || force) settingsPromise = supabase.from('schedule_settings').select('*').maybeSingle()
+    .then(({ data }) => { SETTINGS = data ? { ...SCHED_DEFAULTS, ...data, colors: { ...SCHED_DEFAULTS.colors, ...(data.colors || {}) } } : SCHED_DEFAULTS; return SETTINGS })
+  return settingsPromise
+}
+export function useScheduleSettings() {
+  const [s, setS] = useState(SETTINGS)
+  useEffect(() => { let alive = true; loadScheduleSettings().then(v => { if (alive) setS(v) }); return () => { alive = false } }, [])
+  return s
+}
+// CSS variables for the interval colors (put on any wrapper; chips read them)
+export const colorVars = (colors = {}) => Object.fromEntries(Object.entries({ ...SCHED_DEFAULTS.colors, ...colors }).map(([k, v]) => [`--st-${k}`, v]))
+const fmtT = (t) => { if (!t) return ''; const [h, m] = String(t).split(':').map(Number)
+  if (SETTINGS.time_format === '24') return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  return `${((h + 11) % 12) + 1}${m ? ':' + String(m).padStart(2, '0') : ''} ${h < 12 ? 'AM' : 'PM'}` }
+const fmtTT = (t) => { if (!t) return ''; const [h, m] = String(t).split(':').map(Number)
+  if (SETTINGS.time_format === '24') return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}` }
 const dayHead = (iso) => { const d = new Date(iso + 'T12:00:00'); return [d.toLocaleDateString('en-US', { weekday: 'short' }), d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })] }
 const longDate = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
 const hrs = (s, e) => { const [a, b] = [s, e].map(t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m }); return ((b - a) / 60).toFixed((b - a) % 60 ? 1 : 0) }
@@ -83,9 +108,14 @@ function rangeFor(mode, anchor) {
 }
 function daysBetween(a, b) { const out = []; for (let d = a; d <= b; d = addDays(d, 1)) out.push(d); return out }
 
-export default function ScheduleTeam({ mode = 'team' }) {
+export default function ScheduleTeam({ mode: modeProp = 'team', view = null }) {
+  // A saved view (Configuration → Schedule → Views) narrows and lays out what the server already allows.
+  const mode = view?.base || modeProp
+  const settings = useScheduleSettings()
+  const groupBy = view?.group_by || settings.group_by
+  const openRow = view?.open_row || settings.open_row
   const [scope, setScope] = useState(null)
-  const [range, setRange] = useState('week')
+  const [range, setRange] = useState(view?.default_range || SETTINGS.default_range || 'week')
   const [anchor, setAnchor] = useState(todayET())
   const [clientF, setClientF] = useState('')
   const [projectF, setProjectF] = useState('')
@@ -111,9 +141,9 @@ export default function ScheduleTeam({ mode = 'team' }) {
     const { data, error } = await supabase.rpc('sched_view', { p_mode: mode, p_from: from, p_to: to, p_client: clientF || null, p_project: projectF || null })
     if (error) { setErr(errText(error)); setData({ blocks: [], clients: [] }); return }
     setData(data)
-    setOpen(o => Object.keys(o).length ? o : Object.fromEntries((data.clients || []).slice(0, 1).map(c => [c.id || 'internal', true])))
   }, [mode, from, to, clientF, projectF])
   useEffect(() => { setData(null); load() }, [load])
+  useEffect(() => { if (!view?.default_range) setRange(settings.default_range) }, [settings.default_range]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!legend) return
     const h = (e) => { if (legendRef.current && !legendRef.current.contains(e.target)) setLegend(false) }
@@ -131,8 +161,13 @@ export default function ScheduleTeam({ mode = 'team' }) {
 
   // filter by search (person, role or time)
   const ql = q.trim().toLowerCase()
-  const blocks = useMemo(() => (data?.blocks || []).filter(b => !ql || (b.role || '').toLowerCase().includes(ql) || fmtTT(b.start).toLowerCase().includes(ql)
-    || (b.people || []).some(p => (p.name || '').toLowerCase().includes(ql))), [data, ql])
+  const blocks = useMemo(() => (data?.blocks || [])
+    .filter(b => !view?.client_ids?.length || view.client_ids.includes(b.client_id))
+    .filter(b => !view?.project_ids?.length || view.project_ids.includes(b.project_id))
+    .filter(b => !view?.roles?.length || view.roles.some(r => (b.role || '').toLowerCase().includes(String(r).toLowerCase())))
+    .map(b => view?.people && view.people !== 'all' ? { ...b, people: (b.people || []).filter(p => view.people === 'agents' ? p.agent !== false : p.agent === false) } : b)
+    .filter(b => !ql || (b.role || '').toLowerCase().includes(ql) || fmtTT(b.start).toLowerCase().includes(ql)
+      || (b.people || []).some(p => (p.name || '').toLowerCase().includes(ql))), [data, ql, view])
 
   function exportCsv() {
     const rows = [['Client', 'Project', 'Date', 'Start', 'End', 'Role', 'Spots', 'Filled', 'Open', 'Locked', 'People']]
@@ -151,12 +186,33 @@ export default function ScheduleTeam({ mode = 'team' }) {
     flash('ok', `${lock ? 'Locked' : 'Unlocked'} ${r.done} interval${r.done === 1 ? '' : 's'}${r.skipped ? ` (${r.skipped} skipped — no permission or already ${lock ? 'locked' : 'unlocked'})` : ''}.`); load()
   }
 
+  // Sections by the chosen grouping: Client → Project (tabs), Client, Project, or one list
+  const cName = Object.fromEntries((data?.clients || []).map(c => [c.id || 'internal', c.name]))
+  const pName = Object.fromEntries((data?.clients || []).flatMap(c => c.projects).map(p => [p.id || 'none', p.name]))
+  const sections = ((() => {
+    if (!data) return []
+    const byClient = (data.clients || []).map(c => ({ c, b: blocks.filter(x => (x.client_id || 'internal') === (c.id || 'internal')) })).filter(x => x.b.length)
+    if (groupBy === 'none') return blocks.length ? [{ key: 'all', title: view?.name || 'All schedules', tabs: [{ key: 'all', label: 'All', blocks }] }] : []
+    if (groupBy === 'client') return byClient.map(({ c, b }) => ({ key: c.id || 'internal', title: c.name, sub: `${c.projects.length} project${c.projects.length === 1 ? '' : 's'}`,
+      tabs: [{ key: 'all', label: 'All', blocks: b }] }))
+    if (groupBy === 'project') {
+      const keys = [...new Set(blocks.map(x => `${x.client_id || 'internal'}|${x.project_id || 'none'}`))]
+      return keys.map(k => { const [ci, pi] = k.split('|'); const b = blocks.filter(x => `${x.client_id || 'internal'}|${x.project_id || 'none'}` === k)
+        return { key: k, title: pName[pi] && pi !== 'none' ? pName[pi] : 'No project', sub: cName[ci] || 'Internal', tabs: [{ key: pi, label: pName[pi] || 'No project', blocks: b }],
+          addCtx: () => ({ clientId: ci === 'internal' ? null : ci, projectId: pi === 'none' ? null : pi }) } })
+        .sort((x, y) => (x.sub + x.title).localeCompare(y.sub + y.title))
+    }
+    return byClient.map(({ c, b }) => ({ key: c.id || 'internal', title: c.name, sub: `${c.projects.length} project${c.projects.length === 1 ? '' : 's'}`,
+      tabs: c.projects.map(p => ({ key: p.id || 'none', label: p.name, blocks: b.filter(x => (x.project_id || 'none') === (p.id || 'none')) })),
+      addCtx: (pk) => ({ clientId: c.id, projectId: pk === 'none' ? null : pk }) }))
+  })()).map(sec => ({ ...sec, blocks: sec.tabs.flatMap(t => t.blocks) }))   // header totals use every interval in the section
+
   if (!scope || !data) return <div><style>{ST_CSS}</style><p className="page-sub">Loading schedule…</p></div>
-  const clientOpts = scope.clients || []
+  const clientOpts = (scope.clients || []).filter(c => !view?.client_ids?.length || view.client_ids.includes(c.id))
   const projOpts = (clientOpts.find(c => c.id === clientF)?.projects) || []
 
   return (
-    <div>
+    <div style={colorVars(settings.colors)} className={settings.density === 'comfortable' ? 'st-comfy' : ''}>
       <style>{ST_CSS}</style>
       {toast && <div className={'st-msg ' + toast.kind} style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 4000, boxShadow: '0 10px 30px rgba(0,0,0,.15)', maxWidth: 420 }}>{toast.text}</div>}
       <div className="st-bar">
@@ -189,45 +245,47 @@ export default function ScheduleTeam({ mode = 'team' }) {
       </div>
 
       {err && <div className="st-msg err">{err}</div>}
-      {(data.clients || []).length === 0 && <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 26 }}>{mode === 'internal' ? 'No internal shifts in this range.' : 'No intervals in this range for the clients and projects you can see.'}</div></div>}
+      {sections.length === 0 && <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 26 }}>{mode === 'internal' ? 'No internal shifts in this range.' : 'No intervals in this range for the clients and projects you can see.'}</div></div>}
 
-      {(data.clients || []).map(c => {
-        const cid = c.id || 'internal', isOpen = !!open[cid]
-        const cb = blocks.filter(b => (b.client_id || 'internal') === cid)
-        const assigned = cb.reduce((s, b) => s + b.filled, 0), total = cb.reduce((s, b) => s + b.total, 0)
-        const openSpots = cb.filter(b => !b.locked && b.state !== 'past').reduce((s, b) => s + Math.max(b.total - b.filled, 0), 0)
-        const lockedSpots = cb.filter(b => b.locked).reduce((s, b) => s + Math.max(b.total - b.filled, 0), 0)
+      {sections.map((sec, si) => {
+        const cid = sec.key, isOpen = open[cid] !== undefined ? open[cid] : (si === 0 || sections.length === 1)   // first section starts open
+        const cb = sec.blocks
+        const assigned = cb.reduce((n, b) => n + b.filled, 0), total = cb.reduce((n, b) => n + b.total, 0)
+        const openSpots = cb.filter(b => !b.locked && b.state !== 'past').reduce((n, b) => n + Math.max(b.total - b.filled, 0), 0)
+        const lockedSpots = cb.filter(b => b.locked).reduce((n, b) => n + Math.max(b.total - b.filled, 0), 0)
         const people = new Set(cb.flatMap(b => (b.people || []).map(p => p.person_id)))
         const fill = total ? Math.round(100 * assigned / total) : null
-        const activeP = proj[cid] !== undefined ? proj[cid] : (c.projects[0]?.id ?? null)
-        const pb = cb.filter(b => (b.project_id ?? null) === (activeP ?? null))
+        const activeP = sec.tabs.length > 1 ? (proj[cid] !== undefined && sec.tabs.some(t => t.key === proj[cid]) ? proj[cid] : sec.tabs[0].key) : sec.tabs[0].key
+        const pb = sec.tabs.find(t => t.key === activeP)?.blocks || []
         return (
           <div key={cid} className="st-client">
             <div className="st-chead" onClick={() => setOpen(o => ({ ...o, [cid]: !isOpen }))} role="button" aria-expanded={isOpen}>
               <span style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s', color: 'var(--ink-soft)', display: 'inline-flex' }}><Ico d={ICO.chev} size={18} /></span>
-              <h2>{c.name}</h2>
-              <span className="st-pill">{c.projects.length} project{c.projects.length === 1 ? '' : 's'} · {people.size} {mode === 'internal' ? 'people' : 'agents'}</span>
+              <h2>{sec.title}</h2>
+              {sec.sub && <span className="st-pill">{sec.sub}</span>}
+              <span className="st-pill">{people.size} {mode === 'internal' ? 'people' : 'agents'}</span>
               <span style={{ flex: 1 }} />
               <span className="st-stat"><Ico d={ICO.cal} />{cb.length} intervals</span>
               <span className="st-stat"><Ico d={ICO.ppl} />{assigned} assigned</span>
-              <span className="st-stat" style={{ background: openSpots ? '#FEF3C7' : 'transparent', color: openSpots ? '#92400E' : undefined, padding: '3px 9px', borderRadius: 999 }}><Ico d={ICO.chair} />{openSpots} open</span>
+              <span className="st-stat" style={{ background: openSpots ? 'color-mix(in srgb, var(--st-open, #F59E0B) 16%, var(--surface))' : 'transparent', color: openSpots ? 'color-mix(in srgb, var(--st-open, #F59E0B) 72%, #0F172A)' : undefined, padding: '3px 9px', borderRadius: 999 }}><Ico d={ICO.chair} />{openSpots} open</span>
               {lockedSpots > 0 && <span className="st-stat" style={{ color: '#475569' }} title="Open spots closed by locking"><Ico d={ICO.lock} />{lockedSpots} locked</span>}
               {fill != null && <span className="st-stat" style={{ color: fill >= 85 ? '#16A34A' : fill >= 70 ? '#B45309' : '#DC2626' }}>◯ {fill}% fill rate</span>}
             </div>
             {isOpen && (
               <>
                 <div className="st-tabs">
-                  {c.projects.map(p => {
-                    const n = new Set(cb.filter(b => (b.project_id ?? null) === (p.id ?? null)).flatMap(b => (b.people || []).map(x => x.person_id))).size
-                    return <button key={p.id || 'none'} className={'st-btn' + ((p.id ?? null) === (activeP ?? null) ? ' on' : '')} onClick={() => setProj(x => ({ ...x, [cid]: p.id ?? null }))}>{p.name} ({n})</button>
+                  {sec.tabs.length > 1 && sec.tabs.map(t => {
+                    const n = new Set(t.blocks.flatMap(b => (b.people || []).map(x => x.person_id))).size
+                    return <button key={t.key} className={'st-btn' + (t.key === activeP ? ' on' : '')} onClick={() => setProj(x => ({ ...x, [cid]: t.key }))}>{t.label} ({n})</button>
                   })}
                   <span style={{ flex: 1 }} />
-                  {scope.add && <button className="st-btn" onClick={() => setAddFor({ clientId: c.id, projectId: activeP, blocks: pb })}><Ico d={ICO.plus} size={14} />Add interval</button>}
+                  {scope.add && sec.addCtx && <button className="st-btn" onClick={() => setAddFor({ ...sec.addCtx(activeP), blocks: pb })}><Ico d={ICO.plus} size={14} />Add interval</button>}
                   {scope.lock && <button className="st-btn" onClick={() => lockOpen(pb.filter(b => !b.locked && b.state !== 'past' && b.filled < b.total).map(b => b.id), true)}><Ico d={ICO.lock} size={14} />Lock open</button>}
                   {scope.lock && pb.some(b => b.locked) && <button className="st-btn" onClick={() => lockOpen(pb.filter(b => b.locked).map(b => b.id), false)}><Ico d={ICO.unlock} size={14} />Unlock</button>}
                   {scope.export && <button className="st-btn" onClick={exportCsv}><Ico d={ICO.exp} size={14} />Export</button>}
                 </div>
-                <ProjectGrid days={days} today={today} blocks={pb} mode={mode} showAll={!!more[cid + activeP]} onMore={() => setMore(m => ({ ...m, [cid + activeP]: !m[cid + activeP] }))} onOpen={setDetail} />
+                <ProjectGrid days={days} today={today} blocks={pb} mode={mode} openRow={openRow} sort={settings.people_sort} limit={settings.people_limit}
+                  showAll={!!more[cid + activeP]} onMore={() => setMore(m => ({ ...m, [cid + activeP]: !m[cid + activeP] }))} onOpen={setDetail} />
               </>
             )}
           </div>
@@ -241,7 +299,7 @@ export default function ScheduleTeam({ mode = 'team' }) {
 }
 
 // ---------- the calendar for one project ----------
-function ProjectGrid({ days, today, blocks, mode, showAll, onMore, onOpen }) {
+function ProjectGrid({ days, today, blocks, mode, showAll, onMore, onOpen, openRow = 'top', sort = 'name', limit = 8 }) {
   const compact = days.length > 7
   // people rows (named) — anyone without a visible name is grouped as "Assigned"
   const rows = useMemo(() => {
@@ -251,9 +309,13 @@ function ProjectGrid({ days, today, blocks, mode, showAll, onMore, onOpen }) {
       if (!m.has(key)) m.set(key, { key, name: p.name || 'Assigned (names hidden)', hidden: !p.name, items: [] })
       m.get(key).items.push({ b, p })
     }
-    return [...m.values()].sort((a, z) => (a.hidden - z.hidden) || a.name.localeCompare(z.name))
-  }, [blocks])
-  const visible = showAll ? rows : rows.slice(0, 8)
+    const mins = (t) => { const [h, mm] = String(t).split(':').map(Number); return h * 60 + mm }
+    const hours = (r) => r.items.reduce((n, x) => n + (mins(x.b.end) - mins(x.b.start)), 0)
+    const first = (r) => r.items.map(x => x.b.date + x.b.start).sort()[0] || ''
+    return [...m.values()].sort((a, z) => (a.hidden - z.hidden)
+      || (sort === 'hours' ? hours(z) - hours(a) : sort === 'first' ? first(a).localeCompare(first(z)) : 0) || a.name.localeCompare(z.name))
+  }, [blocks, sort])
+  const visible = showAll ? rows : rows.slice(0, limit)
   // open intervals: identical times on the same day grouped into one card
   const openByDay = useMemo(() => {
     const m = {}
@@ -267,24 +329,9 @@ function ProjectGrid({ days, today, blocks, mode, showAll, onMore, onOpen }) {
     return Object.fromEntries(Object.entries(m).map(([d, gs]) => [d, Object.values(gs).sort((a, z) => a.start.localeCompare(z.start))]))
   }, [blocks])
   const totalOpen = Object.values(openByDay).flat().filter(g => !g.locked).reduce((s, g) => s + g.open, 0)
-  if (!blocks.length) return <div className="page-sub" style={{ padding: '6px 18px 18px', fontSize: 13 }}>No intervals for this project in this range.</div>
-  const Chip = ({ b, p }) => {
-    const done = p?.checked_out || p?.status === 'completed'
-    return (
-      <div className={'st-chip ' + (b.locked && b.state !== 'past' ? 'locked' : b.state)} onClick={() => onOpen(b.id)} title={`${fmtTT(b.start)} – ${fmtTT(b.end)}${b.role ? ' · ' + b.role : ''}${b.locked ? ' · locked' : ''}`}>
-        {b.locked && <Ico d={ICO.lock} size={11} />}{compact ? `${fmtT(b.start)}` : `${fmtTT(b.start)} – ${fmtTT(b.end)}`}
-        {p?.checked_in && !done && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#16A34A', display: 'inline-block' }} />}
-        {done && <Ico d={ICO.check} size={11} />}
-      </div>
-    )
-  }
-  return (
-    <div style={{ overflowX: 'auto', borderTop: '1px solid var(--line)' }}>
-      <table className="st-grid" style={{ minWidth: compact ? days.length * 78 + 180 : 860 }}>
-        <thead><tr><th style={{ textAlign: 'left', paddingLeft: 14, position: 'sticky', left: 0, zIndex: 2 }}>{mode === 'internal' ? 'Staff' : 'Team'}</th>
-          {days.map(d => { const [w, md] = dayHead(d); return <th key={d} className={d === today ? 'today' : ''}>{w}<div style={{ fontWeight: 500 }}>{md}</div></th> })}</tr></thead>
-        <tbody>
-          <tr className="openrow">
+  if (!blocks.length) return <div className="page-sub" style={{ padding: '6px 18px 18px', fontSize: 13 }}>No intervals here in this range.</div>
+  const openRowEl = (
+          <tr className="openrow" key="openrow">
             <td className="who"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Ico d={ICO.chair} size={18} /><span>Open intervals<div className="page-sub" style={{ fontSize: 11.5, fontWeight: 500 }}>{totalOpen} total open</div></span></span></td>
             {days.map(d => (
               <td key={d}>{(openByDay[d] || []).length === 0 ? <span className="page-sub">—</span> : (openByDay[d] || []).map((g, i) => (
@@ -296,6 +343,24 @@ function ProjectGrid({ days, today, blocks, mode, showAll, onMore, onOpen }) {
               ))}</td>
             ))}
           </tr>
+  )
+  const Chip = ({ b, p }) => {
+    const done = p?.checked_out || p?.status === 'completed'
+    return (
+      <div className={'st-chip ' + (p?.status === 'no_show' ? 'noshow' : b.locked && b.state !== 'past' ? 'locked' : b.state)} onClick={() => onOpen(b.id)} title={`${fmtTT(b.start)} – ${fmtTT(b.end)}${b.role ? ' · ' + b.role : ''}${b.locked ? ' · locked' : ''}`}>
+        {b.locked && <Ico d={ICO.lock} size={11} />}{compact ? `${fmtT(b.start)}` : `${fmtTT(b.start)} – ${fmtTT(b.end)}`}
+        {p?.checked_in && !done && <span className="st-dot" />}
+        {done && <Ico d={ICO.check} size={11} />}
+      </div>
+    )
+  }
+  return (
+    <div style={{ overflowX: 'auto', borderTop: '1px solid var(--line)' }}>
+      <table className="st-grid" style={{ minWidth: compact ? days.length * 78 + 180 : 860 }}>
+        <thead><tr><th style={{ textAlign: 'left', paddingLeft: 14, position: 'sticky', left: 0, zIndex: 2 }}>{mode === 'internal' ? 'Staff' : 'Team'}</th>
+          {days.map(d => { const [w, md] = dayHead(d); return <th key={d} className={d === today ? 'today' : ''}>{w}<div style={{ fontWeight: 500 }}>{md}</div></th> })}</tr></thead>
+        <tbody>
+          {openRow === 'top' && openRowEl}
           {visible.map(r => (
             <tr key={r.key}>
               <td className="who">{!r.hidden && <span className="st-av">{initials(r.name)}</span>}{r.name}</td>
@@ -303,9 +368,10 @@ function ProjectGrid({ days, today, blocks, mode, showAll, onMore, onOpen }) {
                 return <td key={d}>{its.length ? its.map(x => <Chip key={x.b.id + (x.p.claim_id || '')} b={x.b} p={x.p} />) : <span className="page-sub">—</span>}</td> })}
             </tr>
           ))}
+          {openRow === 'bottom' && openRowEl}
         </tbody>
       </table>
-      {rows.length > 8 && <button className="st-btn" style={{ border: 0, color: 'var(--accent)', margin: '8px 10px' }} onClick={onMore}>{showAll ? 'Show fewer' : `+ Show ${rows.length - 8} more`}</button>}
+      {rows.length > limit && <button className="st-btn" style={{ border: 0, color: 'var(--accent)', margin: '8px 10px' }} onClick={onMore}>{showAll ? 'Show fewer' : `+ Show ${rows.length - limit} more`}</button>}
     </div>
   )
 }
