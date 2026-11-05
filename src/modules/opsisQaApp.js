@@ -1,4 +1,5 @@
 // Opsis QA client portal — the app shown at garageco.opsiscx.com.
+// 2026-11-05: Ask panel can hand out downloads (brand one-pager, CSR scorecard, executive summary, call lists, human vs AI) -> askDownload().
 // 2026-11-05: AI receptionist Settings gains a "Call alert emails" box (who gets the after-call email, per brand) -> ai-csr-alerts.
 // 2026-10-22: hand-edited — wording points to the account's own admins (not Opsis CX), and QA settings
 // gains "Suggested scoring rules" (opsis-qa-portal action 'rulesugs' -> opsis-qa-rules).
@@ -1977,6 +1978,33 @@ export function mountOpsisQA(ROOT, cfg) {
     var bc = null; // billing statement removed from the client portal (Becky, 2026-10-26)
     w.innerHTML = '<div class="row" style="align-items:flex-start">' + exp + reps + '</div>' + (bc ? '<div class="row" style="margin-top:16px">' + bc + '</div>' : '');
   }
+  // Ask-panel downloads (2026-11-05): the AI returns { report, format, brand, agent, scope, start, end }; the file is built here
+  // with the Reporting page's own builders, for the date range at the top of the page (the AI is told to use that range).
+  function askDownload(dl) {
+    if (!dl || RP.busy) return;
+    if (dl.start !== S.start || dl.end !== S.end) { toast('The dates at the top changed. Ask again for a download of the new range.'); return; }
+    var bset = dl.report === 'brand' && dl.brand && !S.brands.length ? [dl.brand] : (S.brands.length ? S.brands : null);
+    var key = S.start + '|' + S.end + '|' + (bset || []).join(',');
+    toast('Preparing your download…');
+    var ready = RP.sc && RP.key === key ? Promise.resolve(RP.sc) : api({ action: 'scorecards', start: S.start, end: S.end, brands: bset }).then(function (r) { RP.sc = r || {}; RP.key = key; return RP.sc; });
+    ready.then(function (sc) {
+      var low = function (v) { return String(v || '').toLowerCase().trim(); };
+      var brands = (sc.brands || []).map(function (b) { return b.brand; }).filter(function (b) { return b && b !== '—'; });
+      var findBrand = function (b) { return brands.filter(function (x) { return low(x) === low(b); })[0] || brands.filter(function (x) { return low(b) && (low(x).indexOf(low(b)) >= 0 || low(b).indexOf(low(short(x))) >= 0); })[0]; };
+      if (dl.report === 'brand') {
+        var tb = findBrand(dl.brand); if (!tb) { toast('No scored calls for ' + (dl.brand || 'that brand') + ' in this date range'); return; }
+        RP.team = tb; rpDownload('team', dl.format); return;
+      }
+      if (dl.report === 'csr') {
+        var ag = (sc.agents || []).filter(function (a) { return low(a.name) === low(dl.agent) && (!dl.brand || !findBrand(dl.brand) || a.brand === findBrand(dl.brand)); });
+        if (!ag.length) ag = (sc.agents || []).filter(function (a) { return low(a.name).indexOf(low(dl.agent)) === 0; });
+        if (!ag.length) { toast('No scored calls for ' + dl.agent + ' in this date range'); return; }
+        RP.csr = ag[0].name + '|||' + ag[0].brand; rpDownload('csr', dl.format); return;
+      }
+      if (dl.report === 'calls') { RP.scope = dl.scope || 'notbooked'; RP.agent = dl.agent || ''; RP.allTypes = false; RP.trans = false; rpExport(); return; }
+      rpDownload(dl.report === 'human_vs_ai' ? 'hai' : 'exec', dl.format);
+    }).catch(function (e) { toast(e.message || 'Couldn’t build that download. Try again.'); });
+  }
   function rpExport() {
     if (RP.busy) return; RP.busy = 'export'; RP.n = 0; drawReporting();
     var tick = function (n) { RP.n = n; var b = document.querySelector('#oqa [data-act="rpexport"]'); if (b) b.textContent = 'Preparing… ' + n.toLocaleString() + ' calls'; };
@@ -3568,9 +3596,10 @@ export function mountOpsisQA(ROOT, cfg) {
   function askPanel() {
     var A = S.ask, h = '<div class="overlay" data-close="1"><div class="drawer" role="dialog" aria-modal="true" aria-label="Ask your call data" style="background:#fff"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div style="display:flex;gap:10px;align-items:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><div><b style="font-size:16px">Ask your call data</b><div class="mut" style="font-size:12px">' + (S.brands.length ? S.brands.map(short).join(', ') : 'All brands') + ' · ' + fdate(S.start) + ' – ' + fdate(S.end) + '</div></div></div><button class="sel" data-close="1" aria-label="Close" style="width:44px;justify-content:center">✕</button></div><div id="convo" style="display:flex;flex-direction:column;gap:12px;flex:1">';
     if (!A.msgs.length) h += '<p class="mut" style="font-size:13px">Ask anything about your calls, brands and CSRs. Answers are built from your live call data.</p><div style="display:flex;flex-direction:column;gap:6px">' + suggestList().map(function (q) { return '<button class="chip" data-ask="' + esc(q) + '">' + esc(q) + '</button>'; }).join('') + '</div>';
-    A.msgs.forEach(function (m) {
+    A.msgs.forEach(function (m, mi) {
       if (m.role === 'user') h += '<div style="align-self:flex-end;background:var(--side);color:#fff;border-radius:14px 14px 4px 14px;padding:10px 14px;max-width:85%;font-size:13.5px">' + esc(m.content) + '</div>';
-      else h += '<div class="ai" style="max-width:100%"><div class="md">' + (m.error ? '<span style="color:#A8441A">' + esc(m.content) + '</span>' : md(m.content)) + '</div></div>';
+      else h += '<div class="ai" style="max-width:100%"><div class="md">' + (m.error ? '<span style="color:#A8441A">' + esc(m.content) + '</span>' : md(m.content)) + '</div>' +
+        ((m.downloads || []).length ? '<div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">' + m.downloads.map(function (d, di) { return '<button class="sel btnd" data-act="askdl" data-mi="' + mi + '" data-di="' + di + '" style="justify-content:flex-start;gap:8px;text-align:left"' + (RP.busy ? ' disabled' : '') + '><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>Download ' + esc(d.label) + ' (' + (d.format === 'xlsx' ? 'Excel' : String(d.format || 'pdf').toUpperCase()) + ')</button>'; }).join('') + '<span class="mut" style="font-size:12px">' + fdate(m.downloads[0].start) + ' – ' + fdate(m.downloads[0].end) + '</span></div>' : '') + '</div>';
     });
     if (A.busy) h += '<div class="ai"><span class="dots"><span></span><span></span><span></span></span> <span class="mut" style="font-size:13px">Looking through your calls…</span></div>';
     h += '</div><form id="askform2" style="display:flex;gap:8px;position:sticky;bottom:0;background:#fff;padding-top:8px"><label class="sr" for="askq2">Follow-up question</label><input id="askq2" class="oq-field" placeholder="Ask a follow-up…" autocomplete="off"' + (A.busy ? ' disabled' : '') + '><button class="sel btnd" type="submit"' + (A.busy ? ' disabled' : '') + '>Ask</button></form></div></div>';
@@ -3583,10 +3612,11 @@ export function mountOpsisQA(ROOT, cfg) {
     q = (q || '').trim(); if (!q) return;
     if (phoneQ(q)) { openCalls({ q: q }); return; }
     var A = S.ask; A.open = true; S.callId = null;
-    var history = A.msgs.filter(function (m) { return !m.error; }).slice(-6);
+    var history = A.msgs.filter(function (m) { return !m.error; }).slice(-6).map(function (m) { return { role: m.role, content: m.content }; });
     A.msgs.push({ role: 'user', content: q }); A.busy = true; askPanel();
-    api({ action: 'ask', question: q, history: history, start: S.start, end: S.end, brands: S.brands.length ? S.brands : null }).then(function (r) {
-      A.msgs.push({ role: 'assistant', content: r.answer }); A.busy = false; if (A.open) askPanel();
+    var pg = S.view === 'brand' || S.view === 'csr' ? { view: S.view, brand: S.brand || null, agent: S.view === 'csr' ? (S.agent || null) : null } : null;
+    api({ action: 'ask', question: q, history: history, start: S.start, end: S.end, brands: S.brands.length ? S.brands : null, page: pg, dl: 1 }).then(function (r) {
+      A.msgs.push({ role: 'assistant', content: r.answer, downloads: Array.isArray(r.downloads) ? r.downloads : [] }); A.busy = false; if (A.open) askPanel();
     }).catch(function (e) { A.msgs.push({ role: 'assistant', content: e.message, error: true }); A.busy = false; if (A.open) askPanel(); });
   }
 
@@ -4158,6 +4188,7 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'jvcancel') { MN.edit = null; drawMoney(); }
       else if (a === 'jvsave') { jvSave(d.jt); }
       else if (a === 'rpdl') { rpDownload(d.r, d.f); }
+      else if (a === 'askdl') { var am = S.ask.msgs[+d.mi]; if (am && am.downloads) askDownload(am.downloads[+d.di]); }
       else if (a === 'rpweek') { var wk0 = ($('rpwk') || {}).value || lastMon(); RP.week = wk0; RP.wkb = ($('rpwkb') || {}).value || ''; var ww = pdfWin(); if (ww) { RP.busy = 'week'; drawReporting(); opWeek(ww, wk0, RP.wkb || (LOCK || null)).then(function () { RP.busy = ''; drawReporting(); }).catch(function (e) { try { ww.close(); } catch (x) {} RP.busy = ''; drawReporting(); toast(e.message || 'Couldn’t build that report.'); }); } }
       else if (a === 'qsinsedit') { QSE.ins = true; drawQs(); }
       else if (a === 'prstart') { prStart(d.id); }
