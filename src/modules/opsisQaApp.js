@@ -1296,48 +1296,269 @@ export function mountOpsisQA(ROOT, cfg) {
     api({ action: 'practice', op: 'session', session_id: id }).then(function (r) { var s = ((PR.d && PR.d.sessions) || []).filter(function (x) { return x.id === id; })[0]; var sc = s && ((PR.d.scenarios || []).filter(function (y) { return y.id === s.scenario_id; })[0]); r.title = sc ? sc.title : ''; r.scenario_id = sc ? sc.id : null; PR.result = r; drawPractice(); window.scrollTo(0, 0); }).catch(function (e) { toast(e.message); });
   }
   // ---------- AI receptionist (Broccoli replacement, phase 1, pilot) ----------
-  var RC = { d: null, brand: '', live: null, res: null, err: null };
+  var RC = { d: null, brand: '', live: null, res: null, err: null, tab: 'calls', s: null, sBrand: '', dirty: false, saving: false, open: { id: true }, rp: null };
+  var RC_DAYS = [['sun', 'Sun'], ['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['fri', 'Fri'], ['sat', 'Sat']];
+  var RC_TZ = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific']];
+  function rcStrip(s) { return String(s || '').replace(/\[[a-z][a-z ,'-]{0,30}\]\s*/gi, '').replace(/\s{2,}/g, ' ').trim(); }
   function vRecep(tok) {
     if (!RC.live) RC.res = null;
     setMain(crumb([['AI receptionist']]) + '<div id="rcwrap"><div class="oq-card">' + skel(30, 6) + '</div></div>');
-    api({ action: 'receptionist', op: 'list' }).then(function (r) { if (tok !== T) return; RC.d = r; if (!RC.brand) RC.brand = r.lock || 'Quality Overhead Door'; drawRecep(); })
+    api({ action: 'receptionist', op: 'list' }).then(function (r) { if (tok !== T) return; RC.d = r; if (!RC.brand) RC.brand = r.lock || 'Apple Door'; drawRecep(); })
       .catch(function (e) { if (tok === T && $('rcwrap')) $('rcwrap').innerHTML = errBox(e); });
   }
-  function rcField(l, v) { return '<div><div class="cap">' + l + '</div><div style="font-size:13.5px;margin-top:2px">' + (v ? esc(String(v)) : '<span class="mut">—</span>') + '</div></div>'; }
+  function rcField(l, v) { return '<div><div class="cap">' + esc(l) + '</div><div style="font-size:13.5px;margin-top:2px">' + (v != null && v !== '' ? esc(String(v)) : '<span class="mut">—</span>') + '</div></div>'; }
   function rcResultHtml(r) {
     if (r.status === 'failed') return '<div class="oq-card"><p>' + esc(r.error || 'That call couldn’t be read.') + '</p><button class="sel btnd" data-act="rcback">Back</button></div>';
     if (r.status !== 'done') return '<div class="oq-card"><h2 class="ttl">Reading the call…</h2><p class="mut">This usually takes under a minute.</p></div>';
-    var L = r.lead || {}, V = r.review || {};
+    var L = r.lead || {}, V = r.review || {}, who = r.agent_name || 'Ava';
     var li = function (a) { return (a || []).map(function (x) { return '<li style="margin:3px 0">' + esc(x) + '</li>'; }).join(''); };
-    var tx = (r.transcript || []).map(function (t) { return '<div style="margin:4px 0;font-size:13px"><b style="color:' + (t.role === 'Ava' ? '#1F5A41' : '#5F6763') + '">' + esc(t.role) + ':</b> ' + esc(t.text) + '</div>'; }).join('');
-    return '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><div class="mut" style="font-size:12px">AI receptionist · ' + esc(short(r.brand)) + (r.duration_secs ? ' · ' + fsecs(r.duration_secs) : '') + '</div><h2 class="ttl" style="margin:2px 0 0">' + esc(L.summary || 'Service request') + '</h2></div>' +
-      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (L.category ? '<span class="pill" style="background:#EEF2FB;color:#2B3A67">' + esc(L.category) + '</span>' : '') + (L.urgent ? '<span class="pill" style="background:#FDECEC;color:#A61B1B">Urgent</span>' : '') + '</div></div>' +
-      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-top:14px">' + rcField('Name', L.name) + rcField('Phone', L.phone) + rcField('Email', L.email) + rcField('Address', L.address) + rcField('Home or business', L.home_or_business) + rcField('Approves the work', L.approver) + rcField('Preferred day', L.preferred_day) + rcField('Preferred window', L.preferred_window) + '</div>' +
+    var tx = (r.transcript || []).map(function (t) { return '<div style="margin:4px 0;font-size:13px"><b style="color:' + (t.role !== 'Caller' ? '#1F5A41' : '#5F6763') + '">' + esc(t.role) + ':</b> ' + esc(rcStrip(t.text)) + '</div>'; }).join('');
+    var ans = L.answers && typeof L.answers === 'object' ? Object.keys(L.answers) : [];
+    return '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><div class="mut" style="font-size:12px">AI receptionist · ' + esc(short(r.brand)) + (r.location ? ' · ' + esc(r.location) : '') + (r.duration_secs ? ' · ' + fsecs(r.duration_secs) : '') + '</div><h2 class="ttl" style="margin:2px 0 0">' + esc(L.summary || 'Service request') + '</h2></div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (L.category ? '<span class="pill" style="background:#EEF2FB;color:#2B3A67">' + esc(L.category) + '</span>' : '') + (L.outcome ? '<span class="pill" style="background:#F3F1EC;color:#5F6763">' + esc(L.outcome) + '</span>' : '') + (L.urgent ? '<span class="pill" style="background:#FDECEC;color:#A61B1B">Urgent</span>' : '') + '</div></div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-top:14px">' + rcField('Name', L.name) + rcField('Phone', L.phone) + rcField('Email', L.email) + rcField('Address', L.address) + rcField('Location', r.location || L.location) + rcField('Home or business', L.home_or_business) + rcField('Approves the work', L.approver) + rcField('Preferred day', L.preferred_day) + rcField('Preferred window', L.preferred_window) + (L.transferred_to ? rcField('Transferred to', L.transferred_to) : '') +
+      ans.map(function (k) { return rcField(k, L.answers[k]); }).join('') + '</div>' +
       '<div style="margin-top:12px">' + rcField('Issue', L.issue) + '</div>' +
       '<div class="banner" style="margin-top:12px;background:#E6F0EA;border-color:#CFE5DF;color:#14302A"><b>Next step for the team:</b> ' + esc(L.next_step || '—') + '</div>' +
       '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="sel btnd" data-act="rcstart">☎ Call again</button><button class="sel" data-act="rcback">Back to the list</button></div></div>' +
-      '<div class="oq-card"><h2 class="ttl">How Ava did</h2><div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px"><div style="flex:1 1 260px"><div class="cap" style="color:#1F5A41">Handled well</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(V.handled_well) + '</ul></div><div style="flex:1 1 260px"><div class="cap" style="color:#A8441A">To fix</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + (li(V.issues) || '<li class="mut">Nothing flagged</li>') + '</ul>' + ((V.missing || []).length ? '<div class="mut" style="font-size:12.5px;margin-top:6px">Didn’t get: ' + esc(V.missing.join(', ')) + '</div>' : '') + '</div></div></div>' +
+      '<div class="oq-card"><h2 class="ttl">How ' + esc(who) + ' did</h2><div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px"><div style="flex:1 1 260px"><div class="cap" style="color:#1F5A41">Handled well</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(V.handled_well) + '</ul></div><div style="flex:1 1 260px"><div class="cap" style="color:#A8441A">To fix</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + (li(V.issues) || '<li class="mut">Nothing flagged</li>') + '</ul>' + ((V.missing || []).length ? '<div class="mut" style="font-size:12.5px;margin-top:6px">Didn’t get: ' + esc(V.missing.join(', ')) + '</div>' : '') + '</div></div></div>' +
       '<div class="oq-card"><details open><summary style="cursor:pointer;font-weight:600">Transcript</summary><div style="margin-top:8px">' + tx + '</div></details></div>';
+  }
+  function rcTabs() {
+    var t = [['calls', 'Test calls'], ['settings', 'Settings'], ['reports', 'Reports']];
+    return '<div style="display:flex;gap:6px;margin:0 0 12px;flex-wrap:wrap">' + t.map(function (x) { var on = RC.tab === x[0]; return '<button class="sel' + (on ? ' btnd' : '') + '" data-act="rctab" data-t="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
+  }
+  function rcBrandSel(id, val, all) {
+    if (LOCK) return '';
+    return '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Brand<select id="' + id + '" class="oq-field" style="min-width:220px">' + (all ? '<option value=""' + (!val ? ' selected' : '') + '>All brands</option>' : '') + PR_BRANDS.map(function (b) { return '<option' + (val === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select></label>';
   }
   function drawRecep() {
     var w = $('rcwrap'); if (!w || !RC.d) return; var d = RC.d;
     if (RC.live) {
-      var L = RC.live, lines = L.lines.slice(-16).map(function (m) { return '<div style="display:flex;' + (m.me ? 'justify-content:flex-end' : '') + '"><span style="max-width:78%;padding:8px 12px;border-radius:14px;font-size:13.5px;line-height:1.45;' + (m.me ? 'background:#F3F1EC' : 'background:#E6F0EA;color:#14302A') + '"><b style="font-size:11px;display:block;opacity:.7">' + (m.me ? 'You (caller)' : 'Ava') + '</b>' + esc(m.text) + '</span></div>'; }).join('');
+      var L = RC.live, who = L.agent || 'Ava', lines = L.lines.slice(-16).map(function (m) { return '<div style="display:flex;' + (m.me ? 'justify-content:flex-end' : '') + '"><span style="max-width:78%;padding:8px 12px;border-radius:14px;font-size:13.5px;line-height:1.45;' + (m.me ? 'background:#F3F1EC' : 'background:#E6F0EA;color:#14302A') + '"><b style="font-size:11px;display:block;opacity:.7">' + (m.me ? 'You (caller)' : esc(who)) + '</b>' + esc(rcStrip(m.text)) + '</span></div>'; }).join('');
       w.innerHTML = '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><div class="mut" style="font-size:12px">Test call · you are the customer</div><h2 class="ttl" style="margin:2px 0 0">' + esc(L.brand) + ' line</h2></div><div style="display:flex;align-items:center;gap:12px"><span class="num" id="rcclock" style="font-size:20px;font-weight:600">' + fsecs(L.secs || 0) + '</span>' + (L.state === 'ending' ? '' : '<button class="sel" data-act="rcend" style="background:#A61B1B;border-color:#A61B1B;color:#fff">Hang up</button>') + '</div></div>' +
-        '<div style="margin-top:12px"><b>' + (L.state === 'connecting' ? 'Connecting…' : L.state === 'ending' ? 'Reading the call…' : (L.mode === 'speaking' ? 'Ava is talking…' : 'Listening')) + '</b></div><div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;min-height:120px">' + lines + '</div></div>';
+        '<div style="margin-top:12px"><b>' + (L.state === 'connecting' ? 'Connecting…' : L.state === 'ending' ? 'Reading the call…' : (L.mode === 'speaking' ? esc(who) + ' is talking…' : 'Listening')) + '</b></div><div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;min-height:120px">' + lines + '</div></div>';
       return;
     }
     if (RC.res) { w.innerHTML = rcResultHtml(RC.res); return; }
-    var intro = '<div class="oq-card" style="background:#FAF8F4"><h2 class="ttl" style="margin:0 0 4px">AI receptionist (test)</h2><p class="sub" style="line-height:1.55;margin:0">Ava answers the brand’s line like a top CSR: she follows the 5-step call flow, collects the caller’s details and preferred day and window, and sends the team a ready-to-book request. Call her as a customer to test her. <b>Phase 1</b>: test calls only. She can’t see the live schedule or book in Acumatica yet, so a team member confirms the time. Pilot: only a few people can see this tab.</p>' +
-      (!d.ready ? '<div class="banner" style="margin-top:10px"><b>Not set up yet.</b> ' + (CFG.staff ? '<button class="lnk" data-act="rcsetup">Set up Ava</button>' : 'Opsis is finishing setup.') + '</div>' : '') +
-      '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' + (LOCK ? '' : '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Brand line<select id="rcbrand" class="oq-field" style="min-width:230px">' + PR_BRANDS.map(function (b) { return '<option' + (RC.brand === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select></label>') +
+    if (RC.tab === 'settings') { w.innerHTML = rcTabs() + '<div id="rcset"></div>'; drawRcSettings(); return; }
+    if (RC.tab === 'reports') { w.innerHTML = rcTabs() + '<div id="rcrep"></div>'; drawRcReport(); return; }
+    var intro = '<div class="oq-card" style="background:#FAF8F4"><h2 class="ttl" style="margin:0 0 4px">AI receptionist (test)</h2><p class="sub" style="line-height:1.55;margin:0">The AI receptionist answers the brand’s line like a top CSR: she follows the 5-step call flow, asks your required questions, offers the days and windows in Settings, and sends the team a ready-to-book request. Call her as a customer to test her. <b>Phase 1</b>: test calls only. Transfers are simulated, and a team member confirms the time. Pilot: only a few people can see this tab.</p>' +
+      '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' + rcBrandSel('rcbrand', RC.brand) +
       '<button class="sel btnd" data-act="rcstart"' + (d.ready ? '' : ' disabled') + '>☎ Call the ' + esc(short(LOCK || RC.brand)) + ' line</button></div>' +
       (RC.err ? '<div class="banner" style="margin-top:10px;background:#FDECEC;border-color:#F3C7C7;color:#A61B1B">' + esc(RC.err) + '</div>' : '') + '</div>';
     var rows = (d.calls || []).filter(function (c) { return c.status === 'done'; });
-    var tbl = '<div class="oq-card"><h2 class="ttl">Requests Ava took</h2><p class="sub">Test calls so far · click one to see the request and transcript.</p>' + (rows.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>When</th><th>Brand</th><th>Caller</th><th>Request</th><th style="text-align:right">Length</th><th>Tested by</th></tr></thead><tbody>' +
-      rows.map(function (c) { var L = c.lead || {}; return '<tr style="cursor:pointer" data-act="rcview" data-id="' + esc(c.id) + '"><td>' + fdate(String(c.started_at).slice(0, 10)) + '</td><td class="mut">' + esc(short(c.brand)) + '</td><td>' + esc(L.name || '—') + '</td><td>' + (L.urgent ? '<b style="color:#A61B1B">Urgent · </b>' : '') + esc(L.summary || L.issue || '') + '</td><td class="num" style="text-align:right">' + (c.duration_secs ? fsecs(c.duration_secs) : '—') + '</td><td class="mut">' + esc(c.user_name || '') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="mut" style="margin-top:8px">No test calls yet.</p>') + '</div>';
-    w.innerHTML = intro + tbl;
+    var tbl = '<div class="oq-card"><h2 class="ttl">Requests taken</h2><p class="sub">Test calls so far · click one to see the request and transcript.</p>' + (rows.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>When</th><th>Brand</th><th>Location</th><th>Caller</th><th>Request</th><th style="text-align:right">Length</th><th>Tested by</th></tr></thead><tbody>' +
+      rows.map(function (c) { var L = c.lead || {}; return '<tr style="cursor:pointer" data-act="rcview" data-id="' + esc(c.id) + '"><td>' + fdate(String(c.started_at).slice(0, 10)) + '</td><td class="mut">' + esc(short(c.brand)) + '</td><td class="mut">' + esc(c.location || '—') + '</td><td>' + esc(L.name || '—') + '</td><td>' + (L.urgent ? '<b style="color:#A61B1B">Urgent · </b>' : '') + esc(L.summary || L.issue || '') + '</td><td class="num" style="text-align:right">' + (c.duration_secs ? fsecs(c.duration_secs) : '—') + '</td><td class="mut">' + esc(c.user_name || '') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="mut" style="margin-top:8px">No test calls yet.</p>') + '</div>';
+    w.innerHTML = rcTabs() + intro + tbl;
     var bs = $('rcbrand'); if (bs) bs.addEventListener('change', function () { RC.brand = bs.value; drawRecep(); });
+  }
+
+  // ---------- AI receptionist · Settings ----------
+  function rcLoadSettings(brand) {
+    RC.s = null; RC.sBrand = brand; RC.dirty = false; drawRcSettings();
+    api({ action: 'receptionist', op: 'settings', brand: brand }).then(function (r) { if (RC.sBrand !== brand) return; RC.s = r; drawRcSettings(); })
+      .catch(function (e) { var el = $('rcset'); if (el) el.innerHTML = errBox(e); });
+  }
+  function rcGet(path) { var o = RC.s.settings; path.split('.').forEach(function (k) { o = o == null ? o : o[k]; }); return o; }
+  function rcSet(path, v) { var ks = path.split('.'), o = RC.s.settings; for (var i = 0; i < ks.length - 1; i++) o = o[ks[i]]; o[ks[ks.length - 1]] = v; RC.dirty = true; var sv = $('rcsavebar'); if (sv) sv.style.display = 'flex'; }
+  function rcIn(path, opt) {
+    opt = opt || {}; var v = rcGet(path); var dis = RC.s.can_edit ? '' : ' disabled';
+    if (opt.type === 'textarea') return '<textarea class="oq-field" data-k="' + path + '" rows="' + (opt.rows || 2) + '" style="width:100%;resize:vertical"' + dis + '>' + esc(v == null ? '' : v) + '</textarea>';
+    if (opt.type === 'select') return '<select class="oq-field" data-k="' + path + '"' + (opt.num ? ' data-num="1"' : '') + ' style="width:auto;max-width:100%;' + (opt.style || '') + '"' + dis + '>' + opt.options.map(function (o) { var val = Array.isArray(o) ? o[0] : o, lab = Array.isArray(o) ? o[1] : o; return '<option value="' + esc(val) + '"' + (String(v) === String(val) ? ' selected' : '') + '>' + esc(lab) + '</option>'; }).join('') + '</select>';
+    if (opt.type === 'check') return '<input type="checkbox" data-k="' + path + '"' + (v ? ' checked' : '') + dis + '>';
+    if (opt.type === 'time') return '<input type="time" class="oq-field" data-k="' + path + '" value="' + esc(v || '') + '" style="width:120px"' + dis + '>';
+    if (opt.type === 'number') return '<input type="number" class="oq-field" data-k="' + path + '" data-num="1" min="' + (opt.min != null ? opt.min : 0) + '" max="' + (opt.max != null ? opt.max : 999) + '" value="' + esc(v == null ? '' : v) + '" style="width:' + (opt.w || 80) + 'px"' + dis + '>';
+    return '<input type="text" class="oq-field" data-k="' + path + '" value="' + esc(v == null ? '' : v) + '" placeholder="' + esc(opt.ph || '') + '" style="width:' + (opt.w ? opt.w + 'px' : '100%') + '"' + dis + '>';
+  }
+  function rcDays(path) {
+    var v = rcGet(path) || [], dis = RC.s.can_edit ? '' : ' disabled';
+    return '<span style="display:inline-flex;gap:4px;flex-wrap:wrap">' + RC_DAYS.map(function (x) { return '<label style="display:inline-flex;align-items:center;gap:3px;font-size:12.5px;padding:3px 7px;border:1px solid var(--line2);border-radius:8px"><input type="checkbox" data-days="' + path + '" data-day="' + x[0] + '"' + (v.indexOf(x[0]) >= 0 ? ' checked' : '') + dis + '>' + x[1] + '</label>'; }).join('') + '</span>';
+  }
+  function rcRow(label, ctl, help) { return '<div style="margin-top:12px"><div style="font-size:13px;font-weight:600">' + label + '</div>' + (help ? '<div class="mut" style="font-size:12px;margin:2px 0 4px">' + help + '</div>' : '') + '<div style="margin-top:4px">' + ctl + '</div></div>'; }
+  function rcSec(id, title, help, body) {
+    var open = RC.open[id];
+    return '<div class="oq-card" style="padding:0;overflow:hidden"><button data-act="rcsec" data-id="' + id + '" style="all:unset;cursor:pointer;display:flex;justify-content:space-between;align-items:center;width:100%;box-sizing:border-box;padding:14px 18px;background:#FAF8F4"><span><b style="font-size:15px">' + title + '</b><span class="mut" style="font-size:12.5px;margin-left:8px">' + help + '</span></span><span>' + (open ? '▴' : '▾') + '</span></button>' + (open ? '<div style="padding:4px 18px 18px">' + body + '</div>' : '') + '</div>';
+  }
+  function rcDel(list, i) { return RC.s.can_edit ? '<button class="lnk" data-act="rcdel" data-list="' + list + '" data-i="' + i + '" title="Remove" style="color:#A61B1B">✕ Remove</button>' : ''; }
+  function rcAdd(list, label) { return RC.s.can_edit ? '<button class="sel" data-act="rcadd" data-list="' + list + '" style="margin-top:10px">+ ' + label + '</button>' : ''; }
+  function rcZips(v) { var out = [], t = Array.isArray(v) ? v.join(',') : String(v || ''), re = /(\d{5})(?:\s*(?:-|–|to)\s*(\d{5}))?/g, m; while ((m = re.exec(t)) && out.length < 3000) { var a = +m[1], b = m[2] ? +m[2] : a; if (b >= a && b - a <= 2000) { for (var z = a; z <= b; z++) { var k = String(z); while (k.length < 5) k = '0' + k; if (out.indexOf(k) < 0) out.push(k); } } else if (out.indexOf(m[1]) < 0) out.push(m[1]); } return out; }
+  function rcPreview(s) { return function (t) { return String(t || '').replace(/\{agent\}/gi, s.agent_name || 'Ava').replace(/\{company\}/gi, s.company_name || ''); }; }
+  function drawRcSettings() {
+    var el = $('rcset'); if (!el) return;
+    var brand = LOCK || RC.sBrand || RC.brand;
+    if (RC.sBrand !== brand) { rcLoadSettings(brand); return; }
+    if (!RC.s) { el.innerHTML = '<div class="oq-card">' + skel(30, 6) + '</div>'; return; }
+    var R = RC.s, s = R.settings, pv = rcPreview(s);
+    var head = '<div class="oq-card" style="background:#FAF8F4"><div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;justify-content:space-between"><div><h2 class="ttl" style="margin:0">Receptionist settings</h2><p class="sub" style="margin:2px 0 0">Each brand has its own settings. Saving updates that brand’s line right away.' + (R.updated_by_name ? ' Last saved by ' + esc(R.updated_by_name) + (R.updated_at ? ' · ' + fdate(String(R.updated_at).slice(0, 10)) : '') + '.' : ' Not saved yet: these are the starting defaults.') + '</p></div>' + rcBrandSel('rcsbrand', brand) + '</div>' +
+      (!R.can_edit ? '<div class="banner" style="margin-top:10px">View only. Ask an admin to change these settings.</div>' : '') + '</div>';
+    var id = rcRow('Assistant name', rcIn('agent_name', { w: 200 }), 'What she calls herself on the phone.') +
+      rcRow('Company name as spoken', rcIn('company_name', { w: 320 }), 'Exactly how she says the company name, e.g. “Giel Doors” instead of “Thomas V Giel”.') +
+      rcRow('Other names callers use', rcIn('aka', { ph: 'e.g. TVG, Thomas V Giel' }), 'So she knows these are the same company.') +
+      rcRow('Voice', rcIn('voice', { type: 'select', options: [['female', 'Female (Rachel)'], ['male', 'Male (Adam)']] })) +
+      rcRow('Greeting', rcIn('greeting', { type: 'textarea' }), 'Use {agent} and {company} to fill in the names. She’ll say: <i>“' + esc(pv(s.greeting)) + '”</i>') +
+      rcRow('Closing line', rcIn('end_greeting', { type: 'textarea' }), 'Said at the end of every call, then she hangs up. She’ll say: <i>“' + esc(pv(s.end_greeting)) + '”</i>');
+    var oh = rcRow('Time zone', rcIn('timezone', { type: 'select', options: RC_TZ })) +
+      '<table class="tbl" style="font-size:13px;margin-top:12px;max-width:520px"><thead><tr><th>Day</th><th>Open</th><th>From</th><th>To</th></tr></thead><tbody>' +
+      RC_DAYS.map(function (x) { return '<tr><td>' + x[1] + '</td><td>' + rcIn('office_hours.' + x[0] + '.open', { type: 'check' }) + '</td><td>' + rcIn('office_hours.' + x[0] + '.from', { type: 'time' }) + '</td><td>' + rcIn('office_hours.' + x[0] + '.to', { type: 'time' }) + '</td></tr>'; }).join('') + '</tbody></table>' +
+      rcRow('What to tell callers when the office is closed', rcIn('closed_message', { type: 'textarea' }), 'She already knows when the office opens next and will say so.');
+    var qs = (s.questions || []).map(function (q, i) { return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:10px;border:1px solid var(--line2);border-radius:10px;background:#FCFBF8"><div style="flex:2 1 260px"><div class="cap">Question she asks</div>' + rcIn('questions.' + i + '.ask', { ph: 'How did you hear about us?' }) + '</div><div style="flex:1 1 150px"><div class="cap">Report column name</div>' + rcIn('questions.' + i + '.label', { ph: 'Heard about us' }) + '</div><label style="font-size:12.5px;display:inline-flex;gap:4px;align-items:center;margin-top:14px">' + rcIn('questions.' + i + '.required', { type: 'check' }) + ' Required</label><div style="margin-top:14px">' + rcDel('questions', i) + '</div></div>'; }).join('') || '<p class="mut" style="font-size:13px">No questions yet.</p>';
+    qs += rcAdd('questions', 'Add question');
+    var reasons = R.transfer_reasons || ['Emergency', 'New door / sales', 'Commercial', 'Existing job / billing / warranty', 'Caller asks for a person', 'Other'];
+    var trs = (s.transfers || []).map(function (t, i) {
+      return '<div style="margin-top:8px;padding:12px;border:1px solid var(--line2);border-radius:10px;background:#FCFBF8"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><div><div class="cap">When</div>' + rcIn('transfers.' + i + '.reason', { type: 'select', options: reasons }) + '</div><div style="flex:1 1 160px"><div class="cap">Details (optional)</div>' + rcIn('transfers.' + i + '.detail', { ph: 'e.g. door stuck open, car trapped' }) + '</div><div style="flex:1 1 150px"><div class="cap">Transfer to</div>' + rcIn('transfers.' + i + '.to_name', { ph: 'e.g. On-call tech' }) + '</div><div><div class="cap">Phone number</div>' + rcIn('transfers.' + i + '.phone', { w: 150, ph: '(555) 555-0100' }) + '</div></div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px"><span class="cap">Can transfer</span>' + rcDays('transfers.' + i + '.days') + rcIn('transfers.' + i + '.from', { type: 'time' }) + '<span class="mut">to</span>' + rcIn('transfers.' + i + '.to', { type: 'time' }) + '</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px"><span class="cap">Outside those hours</span>' + rcIn('transfers.' + i + '.otherwise', { type: 'select', options: [['message', 'Take a message for a callback when the office opens'], ['urgent_callback', 'Mark urgent: on-call team calls right back']] }) + '<span style="margin-left:auto">' + rcDel('transfers', i) + '</span></div></div>';
+    }).join('') || '<p class="mut" style="font-size:13px">No transfers set up: she takes a message instead.</p>';
+    trs += rcAdd('transfers', 'Add transfer');
+    var unitOpts = [['business_days', 'Business days'], ['days', 'Days']];
+    var jt = R.job_types || ['Emergency', 'Repair', 'Opener', 'Maintenance / tune-up', 'New door estimate', 'Commercial'];
+    var sc = rcRow('Earliest regular appointment she can offer', '<span style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap">' + rcIn('sched.earliest', { type: 'number', max: 60 }) + rcIn('sched.unit', { type: 'select', options: unitOpts }) + '<span class="mut" style="font-size:13px">out</span></span>') +
+      rcRow('Change the earliest appointment by job type', '', 'e.g. Emergency 0 days = same day; New door estimate 5 business days.') +
+      (s.sched.by_type || []).map(function (r, i) { return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:10px;border:1px solid var(--line2);border-radius:10px;background:#FCFBF8">' + rcIn('sched.by_type.' + i + '.type', { type: 'select', options: jt }) + '<span class="mut" style="font-size:13px">jobs scheduled</span>' + rcIn('sched.by_type.' + i + '.n', { type: 'number', max: 60 }) + rcIn('sched.by_type.' + i + '.unit', { type: 'select', options: unitOpts }) + '<span class="mut" style="font-size:13px">out</span><span style="margin-left:auto">' + rcDel('sched.by_type', i) + '</span></div>'; }).join('') + rcAdd('sched.by_type', 'Add job type') +
+      rcRow('Arrival windows', (s.sched.windows || []).map(function (w2, i) { return '<div style="display:inline-flex;gap:8px;align-items:center;margin:0 10px 8px 0;padding:8px 10px;border:1px solid var(--line2);border-radius:10px;background:#FCFBF8">' + rcIn('sched.windows.' + i + '.from', { type: 'time' }) + '<span class="mut">to</span>' + rcIn('sched.windows.' + i + '.to', { type: 'time' }) + rcDel('sched.windows', i) + '</div>'; }).join('') + rcAdd('sched.windows', 'Add window')) +
+      rcRow('Days she can offer appointments', rcDays('sched.days'));
+    var bh = rcRow('Interruption sensitivity', rcIn('behavior.interrupt', { type: 'select', options: [['normal', 'Normal: caller can cut in any time'], ['low', 'Low: ignores “uh-huh”, “okay” and can’t be cut off during the greeting'], ['off', 'Off: she always finishes her sentence']] })) +
+      rcRow('Response speed', rcIn('behavior.speed', { type: 'select', options: [['patient', 'Patient: waits longer after the caller stops'], ['normal', 'Normal'], ['eager', 'Quick: answers as soon as the caller pauses']] })) +
+      rcRow('Check in after silence', rcIn('behavior.checkin_secs', { type: 'number', min: 1, max: 30 }) + ' <span class="mut" style="font-size:13px">seconds (she asks “are you still there?”)</span>') +
+      rcRow('End the call after silence', rcIn('behavior.silence_end_secs', { type: 'number', min: 0, max: 300 }) + ' <span class="mut" style="font-size:13px">seconds (0 = never)</span>') +
+      rcRow('Maximum call length', rcIn('behavior.max_minutes', { type: 'number', min: 1, max: 60 }) + ' <span class="mut" style="font-size:13px">minutes</span>');
+    var lc = (s.locations || []).map(function (l, i) { var zs = Array.isArray(l.zips) ? l.zips : rcZips(l.zips); return '<div style="margin-top:8px;padding:10px;border:1px solid var(--line2);border-radius:10px;background:#FCFBF8"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><div style="flex:1 1 160px"><div class="cap">Location</div>' + rcIn('locations.' + i + '.name') + '</div><div style="flex:3 1 320px"><div class="cap">Cities / towns it serves</div>' + rcIn('locations.' + i + '.serves', { ph: 'e.g. Richmond, Henrico, Glen Allen, Mechanicsville' }) + '</div><div style="margin-top:14px">' + rcDel('locations', i) + '</div></div>' +
+      '<div style="margin-top:8px"><div class="cap">Service-area zip codes <span class="mut" style="text-transform:none;letter-spacing:0">(' + zs.length + ')</span></div><textarea class="oq-field" data-zips="' + i + '" rows="2" style="width:100%;resize:vertical" placeholder="Paste zip codes separated by commas, spaces or new lines. Ranges work too: 23220-23299"' + (R.can_edit ? '' : ' disabled') + '>' + esc(zs.join(', ')) + '</textarea></div></div>'; }).join('') + rcAdd('locations', 'Add location') +
+      rcRow('When the zip code isn’t in any service area', rcIn('out_of_area', { type: 'select', options: [['message', 'Take a message so a team member can call back'], ['decline', 'Politely tell the caller we don’t service that area']] }), 'Only applies once zip codes are entered.') +
+      rcRow('What to say (optional)', rcIn('out_of_area_message', { ph: 'e.g. That zip code is outside our service area, but we’d be glad to point you to someone nearby.' }));
+    var wb = '<p class="mut" style="font-size:12.5px;margin:6px 0 0">Add the website pages she can read to answer questions about services, products, door brands, warranties and service areas. Add each page you want her to know (home, services, FAQ, service areas): she reads the pages listed, not the whole site. Fees and hours still come from the Knowledge base, and she won’t quote website prices or coupons unless the Knowledge base has them too.</p>' +
+      (s.websites || []).map(function (w2, i) { return '<div style="display:flex;gap:8px;align-items:center;margin-top:8px">' + rcIn('websites.' + i + '.url', { ph: 'https://www.example.com/services' }) + (w2.kb_id ? '<span class="pill" style="background:#E6F0EA;color:#1F5A41;white-space:nowrap">Read ✓</span>' : '<span class="pill" style="background:#F3F1EC;color:#5F6763;white-space:nowrap">Read on save</span>') + rcDel('websites', i) + '</div>'; }).join('') + rcAdd('websites', 'Add web page');
+    var nt = rcRow('Extra instructions', rcIn('notes', { type: 'textarea', rows: 4 }), 'Anything else she should know or say, in plain words. Fees and hours come from the Knowledge base.');
+    el.innerHTML = head +
+      rcSec('id', 'Name and greetings', 'name, company name, greeting, closing', id) +
+      rcSec('hours', 'Office hours', 'when someone is in the office to call back', oh) +
+      rcSec('qs', 'Required questions', 'asked on every call, e.g. how did you hear about us', qs) +
+      rcSec('tr', 'Transfers', 'emergency, sales, commercial… who and when', trs) +
+      rcSec('sched', 'Scheduling', 'earliest day, job types, arrival windows', sc) +
+      rcSec('loc', 'Locations and service area', 'towns and zip codes each location covers', lc) +
+      rcSec('web', 'Website', 'pages she can look up to answer questions', wb) +
+      rcSec('beh', 'Call behavior', 'interruptions, silence, speed, call length', bh) +
+      rcSec('notes', 'Extra instructions', 'optional', nt) +
+      (R.can_edit ? '<div id="rcsavebar" style="position:sticky;bottom:12px;display:' + (RC.dirty ? 'flex' : 'none') + ';gap:10px;align-items:center;justify-content:flex-end;padding:12px 16px;background:#14302A;color:#fff;border-radius:12px;margin-top:10px"><span style="margin-right:auto;font-size:13.5px">Unsaved changes for ' + esc(short(brand)) + '</span><button class="sel" data-act="rcsreset" style="background:transparent;color:#fff;border-color:#fff">Discard</button><button class="sel btnd" data-act="rcssave"' + (RC.saving ? ' disabled' : '') + '>' + (RC.saving ? 'Saving…' : 'Save') + '</button></div>' : '');
+    var sb = $('rcsbrand'); if (sb) sb.addEventListener('change', function () { if (RC.dirty && !confirm('Discard unsaved changes?')) { sb.value = brand; return; } RC.brand = sb.value; rcLoadSettings(sb.value); });
+    [].forEach.call(el.querySelectorAll('[data-k]'), function (inp) {
+      inp.addEventListener(inp.type === 'checkbox' || inp.tagName === 'SELECT' ? 'change' : 'input', function () {
+        var v = inp.type === 'checkbox' ? inp.checked : inp.getAttribute('data-num') ? (inp.value === '' ? null : Number(inp.value)) : inp.value;
+        rcSet(inp.getAttribute('data-k'), v);
+        if (/greeting$/.test(inp.getAttribute('data-k')) || /^(agent_name|company_name)$/.test(inp.getAttribute('data-k'))) { clearTimeout(drawRcSettings.t); drawRcSettings.t = setTimeout(function () { var a = document.activeElement, k = a && a.getAttribute && a.getAttribute('data-k'), pos = a && a.selectionStart; drawRcSettings(); if (k) { var n = el.querySelector('[data-k="' + k + '"]'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } } }, 600); }
+      });
+    });
+    [].forEach.call(el.querySelectorAll('[data-zips]'), function (ta) { ta.addEventListener('input', function () { rcSet('locations.' + ta.getAttribute('data-zips') + '.zips', rcZips(ta.value)); }); ta.addEventListener('blur', function () { drawRcSettings(); }); });
+    [].forEach.call(el.querySelectorAll('[data-days]'), function (cb) { cb.addEventListener('change', function () { var p = cb.getAttribute('data-days'), cur = (rcGet(p) || []).slice(), dd = cb.getAttribute('data-day'), ix = cur.indexOf(dd); if (cb.checked && ix < 0) cur.push(dd); if (!cb.checked && ix >= 0) cur.splice(ix, 1); rcSet(p, cur); }); });
+  }
+  function rcListAdd(list) {
+    var s = RC.s.settings, arr = rcGet(list);
+    var blank = { questions: { label: '', ask: '', required: true }, transfers: { reason: 'Emergency', detail: '', to_name: '', phone: '', days: ['mon', 'tue', 'wed', 'thu', 'fri'], from: '08:00', to: '17:00', otherwise: 'urgent_callback' }, 'sched.by_type': { type: 'Repair', n: 2, unit: 'business_days' }, 'sched.windows': { from: '08:00', to: '12:00' }, locations: { name: '', serves: '', zips: [] }, websites: { url: '', kb_id: null } }[list];
+    if (!arr) { rcSet(list, []); arr = rcGet(list); }
+    arr.push(JSON.parse(JSON.stringify(blank))); RC.dirty = true; drawRcSettings(); void s;
+  }
+  function rcSave() {
+    if (RC.saving || !RC.s) return; RC.saving = true; drawRcSettings();
+    api({ action: 'receptionist', op: 'save', brand: RC.sBrand, settings: RC.s.settings }).then(function (r) {
+      RC.saving = false; RC.dirty = false; RC.s.settings = r.settings; RC.s.updated_by_name = r.updated_by_name; RC.s.updated_at = r.updated_at; drawRcSettings(); toast('Saved. The ' + short(r.brand) + ' line is updated.');
+    }).catch(function (e) { RC.saving = false; drawRcSettings(); toast(e.message || 'Couldn’t save.'); });
+  }
+
+  // ---------- AI receptionist · Reports ----------
+  var RC_COLS = [
+    ['date', 'Date', function (r) { return String(r.started_at).slice(0, 10); }],
+    ['time', 'Time', function (r) { return new Date(r.started_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }],
+    ['brand', 'Brand', function (r) { return r.brand; }],
+    ['location', 'Location', function (r) { return r.location || (r.lead || {}).location || 'Unknown'; }],
+    ['name', 'Caller name', function (r) { return (r.lead || {}).name; }],
+    ['phone', 'Phone', function (r) { return (r.lead || {}).phone; }],
+    ['email', 'Email', function (r) { return (r.lead || {}).email; }],
+    ['address', 'Address', function (r) { return (r.lead || {}).address; }],
+    ['city', 'City', function (r) { return (r.lead || {}).city; }],
+    ['zip', 'Zip', function (r) { return (r.lead || {}).zip; }],
+    ['home_or_business', 'Home or business', function (r) { return (r.lead || {}).home_or_business; }],
+    ['approver', 'Approves the work', function (r) { return (r.lead || {}).approver; }],
+    ['category', 'Job type', function (r) { return (r.lead || {}).category; }],
+    ['urgent', 'Urgent', function (r) { return (r.lead || {}).urgent ? 'Yes' : 'No'; }],
+    ['issue', 'Issue', function (r) { return (r.lead || {}).issue; }],
+    ['preferred_day', 'Preferred day', function (r) { return (r.lead || {}).preferred_day; }],
+    ['preferred_window', 'Preferred window', function (r) { return (r.lead || {}).preferred_window; }],
+    ['outcome', 'Outcome', function (r) { return r.outcome || (r.lead || {}).outcome; }],
+    ['in_area', 'In service area', function (r) { var v = (r.lead || {}).in_service_area; return v == null ? '' : v ? 'Yes' : 'No'; }],
+    ['transferred_to', 'Transferred to', function (r) { return r.transferred_to || (r.lead || {}).transferred_to; }],
+    ['callback_from', 'Wants callback from', function (r) { return (r.lead || {}).wants_callback_from; }],
+    ['summary', 'Summary', function (r) { return (r.lead || {}).summary; }],
+    ['next_step', 'Next step', function (r) { return (r.lead || {}).next_step; }],
+    ['captured_all', 'Captured all info', function (r) { var v = (r.review || {}).captured_all_info; return v == null ? '' : v ? 'Yes' : 'No'; }],
+    ['missing', 'Missing info', function (r) { return ((r.review || {}).missing || []).join('; '); }],
+    ['sentiment', 'Caller sentiment', function (r) { return (r.review || {}).caller_sentiment; }],
+    ['duration', 'Length (min)', function (r) { return r.duration_secs ? Math.round(r.duration_secs / 6) / 10 : ''; }],
+    ['agent', 'Assistant', function (r) { return r.agent_name || 'Ava'; }],
+    ['tested_by', 'Tested by', function (r) { return r.user_name; }]
+  ];
+  function rcRpInit() {
+    if (RC.rp) return RC.rp;
+    var cols = ['date', 'brand', 'location', 'name', 'phone', 'category', 'outcome'];
+    try { var sv = JSON.parse(localStorage.getItem('rcRpCols') || 'null'); if (Array.isArray(sv) && sv.length) cols = sv; } catch (e) {}
+    var end = new Date(), st = new Date(); st.setDate(st.getDate() - 29);
+    RC.rp = { brand: LOCK || '', loc: '', start: st.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10), cols: cols, g1: 'location', g2: '', data: null, busy: false, pick: false };
+    return RC.rp;
+  }
+  function rcAllCols(P) { var qs = (P.data && P.data.questions) || []; return RC_COLS.concat(qs.map(function (q) { return ['q:' + q, q, function (r) { var a = (r.lead || {}).answers || {}; return a[q]; }]; })); }
+  function rcColMap(P) { var m = {}; rcAllCols(P).forEach(function (c) { m[c[0]] = c; }); return m; }
+  function rcRpLoad() {
+    var P = rcRpInit(); P.busy = true; drawRcReport();
+    api({ action: 'receptionist', op: 'report', start: P.start, end: P.end, brands: P.brand ? [P.brand] : null, locations: P.loc ? [P.loc] : null }).then(function (r) {
+      P.busy = false; P.data = r;
+      if (!P.seeded) { P.seeded = true; (r.questions || []).forEach(function (q) { if (P.cols.indexOf('q:' + q) < 0) P.cols.push('q:' + q); }); }
+      drawRcReport();
+    }).catch(function (e) { P.busy = false; var el = $('rcrep'); if (el) el.innerHTML = errBox(e); });
+  }
+  function rcVal(c, r) { var v = c[2](r); return v == null || v === '' ? '' : String(v); }
+  function drawRcReport() {
+    var el = $('rcrep'); if (!el) return; var P = rcRpInit();
+    if (!P.data && !P.busy) { rcRpLoad(); return; }
+    var M = rcColMap(P), all = rcAllCols(P), rows = (P.data && P.data.rows) || [];
+    var locs = []; if (P.data) { var lm = P.data.locations || {}; (P.brand ? [P.brand] : Object.keys(lm)).forEach(function (b) { (lm[b] || []).forEach(function (l) { if (locs.indexOf(l) < 0) locs.push(l); }); }); rows.forEach(function (r) { if (r.location && locs.indexOf(r.location) < 0) locs.push(r.location); }); }
+    var gOpts = '<option value="">—</option>' + all.filter(function (c) { return ['date', 'time', 'name', 'phone', 'email', 'address', 'summary', 'next_step', 'issue', 'missing', 'duration'].indexOf(c[0]) < 0 || c[0] === 'date'; }).map(function (c) { return '<option value="' + esc(c[0]) + '">' + esc(c[1]) + '</option>'; }).join('');
+    var filt = '<div class="oq-card"><div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">' + rcBrandSel('rpbrand', P.brand, true) +
+      '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Location<select id="rploc" class="oq-field" style="min-width:170px"><option value="">All locations</option>' + locs.map(function (l) { return '<option' + (P.loc === l ? ' selected' : '') + '>' + esc(l) + '</option>'; }).join('') + '</select></label>' +
+      '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">From<input type="date" id="rpst" class="oq-field" value="' + P.start + '"></label><label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">To<input type="date" id="rpen" class="oq-field" value="' + P.end + '"></label>' +
+      '<button class="sel btnd" data-act="rcrprun">' + (P.busy ? 'Loading…' : 'Apply') + '</button><span class="mut" style="font-size:12.5px;margin-left:auto">' + (P.data ? rows.length + ' call' + (rows.length === 1 ? '' : 's') : '') + '</span></div></div>';
+    if (P.busy && !P.data) { el.innerHTML = filt + '<div class="oq-card">' + skel(30, 5) + '</div>'; return; }
+    // summary (group by)
+    var g1 = M[P.g1], g2 = M[P.g2], sum = '';
+    if (g1) {
+      var keys2 = [], tab = {}, tot = {};
+      rows.forEach(function (r) { var a = rcVal(g1, r) || '(blank)', b = g2 ? (rcVal(g2, r) || '(blank)') : 'Calls'; if (keys2.indexOf(b) < 0) keys2.push(b); tab[a] = tab[a] || {}; tab[a][b] = (tab[a][b] || 0) + 1; tot[a] = (tot[a] || 0) + 1; });
+      keys2.sort(function (x, y) { var sx = 0, sy = 0; Object.keys(tab).forEach(function (k) { sx += tab[k][x] || 0; sy += tab[k][y] || 0; }); return sy - sx; });
+      var keys1 = Object.keys(tab).sort(function (x, y) { return tot[y] - tot[x]; });
+      P.sum = { head: [g1[1]].concat(g2 ? keys2 : []).concat(['Total', '% of calls']), rows: keys1.map(function (k) { return [k].concat(g2 ? keys2.map(function (b) { return tab[k][b] || 0; }) : []).concat([tot[k], rows.length ? Math.round(tot[k] * 1000 / rows.length) / 10 + '%' : '']); }) };
+      sum = '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr>' + P.sum.head.map(function (h, i) { return '<th' + (i ? ' style="text-align:right"' : '') + '>' + esc(h) + '</th>'; }).join('') + '</tr></thead><tbody>' + P.sum.rows.map(function (r) { return '<tr>' + r.map(function (v, i) { return '<td' + (i ? ' class="num" style="text-align:right"' : '') + '>' + (i === 0 ? esc(v) : (v === 0 ? '<span class="mut">0</span>' : esc(String(v)))) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>';
+    }
+    var sumCard = '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-end"><div><h2 class="ttl" style="margin:0">Summary</h2><p class="sub" style="margin:2px 0 0">Count calls by any field, and optionally split them by a second one (e.g. Location × Heard about us).</p></div><div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap"><label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Group by<select id="rpg1" class="oq-field">' + gOpts + '</select></label><label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Split by<select id="rpg2" class="oq-field">' + gOpts + '</select></label>' + (g1 && rows.length ? '<button class="sel" data-act="rcrpsum">⬇ Export summary</button>' : '') + '</div></div>' + (rows.length ? sum : '<p class="mut" style="margin-top:8px">No calls in this range.</p>') + '</div>';
+    var cols = P.cols.filter(function (k) { return M[k]; });
+    var picker = P.pick ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding:10px;border:1px solid var(--line2);border-radius:10px;background:#FCFBF8">' + all.map(function (c) { var on = cols.indexOf(c[0]) >= 0; return '<label style="display:inline-flex;align-items:center;gap:4px;font-size:12.5px;padding:3px 8px;border:1px solid ' + (on ? '#1F5A41' : 'var(--line2)') + ';border-radius:999px;background:' + (on ? '#E6F0EA' : '#fff') + ';cursor:pointer"><input type="checkbox" data-rpcol="' + esc(c[0]) + '"' + (on ? ' checked' : '') + ' style="margin:0">' + esc(c[1]) + '</label>'; }).join('') + '</div>' : '';
+    var det = '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><div><h2 class="ttl" style="margin:0">Call details</h2><p class="sub" style="margin:2px 0 0">Choose the columns you want, then export. Click a row to open the call.</p></div><div style="display:flex;gap:8px"><button class="sel" data-act="rcrppick">' + (P.pick ? 'Done' : '☰ Columns (' + cols.length + ')') + '</button>' + (rows.length ? '<button class="sel btnd" data-act="rcrpcsv">⬇ Export CSV</button>' : '') + '</div></div>' + picker +
+      (rows.length ? '<div style="overflow-x:auto;margin-top:10px;max-height:560px;overflow-y:auto"><table class="tbl" style="font-size:12.5px"><thead><tr>' + cols.map(function (k) { return '<th style="white-space:nowrap">' + esc(M[k][1]) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        rows.slice(0, 500).map(function (r) { return '<tr style="cursor:pointer" data-act="rcview" data-id="' + esc(r.id) + '">' + cols.map(function (k) { var v = rcVal(M[k], r); return '<td' + (k === 'summary' || k === 'issue' || k === 'next_step' ? ' style="min-width:220px"' : ' style="white-space:nowrap"') + '>' + (v ? esc(k === 'date' ? fdate(v) : v) : '<span class="mut">—</span>') + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>' + (rows.length > 500 ? '<p class="mut" style="font-size:12px">Showing the first 500. The export has all ' + rows.length + '.</p>' : '') : '') + '</div>';
+    el.innerHTML = filt + sumCard + det;
+    var g1s = $('rpg1'), g2s = $('rpg2'); if (g1s) { g1s.value = P.g1; g1s.addEventListener('change', function () { P.g1 = g1s.value; drawRcReport(); }); } if (g2s) { g2s.value = P.g2; g2s.addEventListener('change', function () { P.g2 = g2s.value; drawRcReport(); }); }
+    var rb = $('rpbrand'); if (rb) rb.addEventListener('change', function () { P.brand = rb.value; P.loc = ''; rcRpLoad(); });
+    var rl = $('rploc'); if (rl) rl.addEventListener('change', function () { P.loc = rl.value; rcRpLoad(); });
+    [].forEach.call(el.querySelectorAll('[data-rpcol]'), function (cb) { cb.addEventListener('change', function () { var k = cb.getAttribute('data-rpcol'), i = P.cols.indexOf(k); if (cb.checked && i < 0) { var order = all.map(function (c) { return c[0]; }); P.cols.push(k); P.cols.sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); }); } if (!cb.checked && i >= 0) P.cols.splice(i, 1); try { localStorage.setItem('rcRpCols', JSON.stringify(P.cols)); } catch (e) {} drawRcReport(); }); });
+  }
+  function rcRpTag() { var P = RC.rp; return (P.brand ? '-' + short(P.brand).toLowerCase().replace(/[^a-z0-9]+/g, '-') : '') + (P.loc ? '-' + P.loc.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '') + '-' + P.start + '-to-' + P.end; }
+  function rcRpCsv() {
+    var P = RC.rp, M = rcColMap(P), cols = P.cols.filter(function (k) { return M[k]; }), rows = P.data.rows || [];
+    var lines = [cols.map(function (k) { return csvCell(M[k][1]); }).join(',')].concat(rows.map(function (r) { return cols.map(function (k) { return csvCell(rcVal(M[k], r)); }).join(','); }));
+    saveBlob('ai-receptionist-calls' + rcRpTag() + '.csv', new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
+  }
+  function rcRpSumCsv() {
+    var P = RC.rp; if (!P.sum) return;
+    var lines = [P.sum.head.map(csvCell).join(',')].concat(P.sum.rows.map(function (r) { return r.map(csvCell).join(','); }));
+    saveBlob('ai-receptionist-summary' + rcRpTag() + '.csv', new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
   }
   function rcStart() {
     if (RC.live) return; RC.err = null; RC.res = null;
@@ -1347,9 +1568,9 @@ export function mountOpsisQA(ROOT, cfg) {
     Promise.resolve().then(function () { if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser can’t use the microphone here. Try Chrome or Edge.'); return navigator.mediaDevices.getUserMedia({ audio: true }); })
       .then(function (s) { s.getTracks().forEach(function (t) { t.stop(); }); return Promise.all([api({ action: 'receptionist', op: 'start', brand: brand }), prSdk()]); })
       .then(function (rr) {
-        var st = rr[0], SDK = rr[1]; L.cid = st.call_id;
+        var st = rr[0], SDK = rr[1]; L.cid = st.call_id; L.agent = st.agent_name || 'Ava';
         return SDK.Conversation.startSession({ signedUrl: st.signed_url, connectionType: 'websocket', dynamicVariables: st.dynamic_variables,
-          onConnect: function () { L.state = 'live'; L.t0 = Date.now(); L.timer = setInterval(function () { L.secs = Math.round((Date.now() - L.t0) / 1000); var c = $('rcclock'); if (c) c.textContent = fsecs(L.secs); if (L.secs >= 600) rcEnd(); }, 1000); drawRecep(); },
+          onConnect: function () { L.state = 'live'; L.t0 = Date.now(); L.timer = setInterval(function () { L.secs = Math.round((Date.now() - L.t0) / 1000); var c = $('rcclock'); if (c) c.textContent = fsecs(L.secs); if (L.secs >= 3660) rcEnd(); }, 1000); drawRecep(); },
           onMessage: function (m) { var txt = (m && (m.message || m.text)) || ''; if (!txt) return; L.lines.push({ me: (m.source || m.role) === 'user', text: txt }); if (RC.live === L) drawRecep(); },
           onModeChange: function (m) { L.mode = (m && m.mode) || m; if (RC.live === L) drawRecep(); },
           onError: function (e) { console.warn('receptionist', e); },
@@ -3878,6 +4099,16 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rcstart') { rcStart(); }
       else if (a === 'rcend') { rcEnd(); }
       else if (a === 'rcback') { RC.res = null; RC.err = null; drawRecep(); }
+      else if (a === 'rctab') { if (RC.tab === 'settings' && RC.dirty && d.t !== 'settings' && !confirm('Discard unsaved settings changes?')) return; if (RC.tab === 'settings' && d.t !== 'settings') { RC.dirty = false; RC.sBrand = ''; } RC.tab = d.t; drawRecep(); }
+      else if (a === 'rcsec') { RC.open[d.id] = !RC.open[d.id]; drawRcSettings(); }
+      else if (a === 'rcadd') { rcListAdd(d.list); }
+      else if (a === 'rcdel') { rcGet(d.list).splice(+d.i, 1); RC.dirty = true; drawRcSettings(); }
+      else if (a === 'rcssave') { rcSave(); }
+      else if (a === 'rcsreset') { rcLoadSettings(RC.sBrand); }
+      else if (a === 'rcrprun') { var P0 = rcRpInit(); P0.start = ($('rpst') || {}).value || P0.start; P0.end = ($('rpen') || {}).value || P0.end; rcRpLoad(); }
+      else if (a === 'rcrppick') { RC.rp.pick = !RC.rp.pick; drawRcReport(); }
+      else if (a === 'rcrpcsv') { rcRpCsv(); }
+      else if (a === 'rcrpsum') { rcRpSumCsv(); }
       else if (a === 'rcview') { api({ action: 'receptionist', op: 'call', call_id: d.id }).then(function (r) { RC.res = r; drawRecep(); window.scrollTo(0, 0); }).catch(function (e) { toast(e.message); }); }
       else if (a === 'rcsetup') { api({ action: 'receptionist', op: 'setup' }).then(function () { toast('Ava is set up.'); render(); }).catch(function (e) { toast(e.message); }); }
       else if (a === 'prend') { prEnd(); }
