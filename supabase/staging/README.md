@@ -1,4 +1,5 @@
-[README (16).md](https://github.com/user-attachments/files/34446450/README.16.md)
+[README (17).md](https://github.com/user-attachments/files/34447043/README.17.md)
+are safe to run more than once. (Staging also has fictional @demo.test people + sample schedules for testing.) Ask Claude to re-add the demo company afterwards.
 # Staging setup scripts
 
 Run these in the **staging** database (Supabase → command-center-staging → SQL editor),
@@ -25,5 +26,6 @@ database section from live and removes anything that only exists in staging.
 14. `14_dashboard_settings.sql` — Configuration → Dashboard: what counts toward fill rate (internal default + per schedule), colors, needs-attention, default range.
 15. `15_schedule_team_view.sql` — Schedule Team/Internal view, interval locking, granular schedule permissions, server-side eligibility.
 16. `16_schedule_attendance.sql` — Check people in/out and mark/clear no-shows from Interval details (own permissions).
+17. `17_schedule_config.sql` — Configuration → Schedule: colors, layout, and custom schedule views (who sees each).
 
 All are safe to run more than once. (Staging also has fictional @demo.test people + sample schedules for testing.) Ask Claude to re-add the demo company afterwards.
