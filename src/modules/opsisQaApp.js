@@ -1,6 +1,7 @@
 // Opsis QA client portal — the app shown at garageco.opsiscx.com.
+// 2026-11-05: every on-screen "AI receptionist" label now says "AI CSR" (nav, page titles, settings, reports, Reporting, downloads).
 // 2026-11-05: Ask panel can hand out downloads (brand one-pager, CSR scorecard, executive summary, call lists, human vs AI) -> askDownload().
-// 2026-11-05: AI receptionist Settings gains a "Call alert emails" box (who gets the after-call email, per brand) -> ai-csr-alerts.
+// 2026-11-05: AI CSR Settings gains a "Call alert emails" box (who gets the after-call email, per brand) -> ai-csr-alerts.
 // 2026-10-22: hand-edited — wording points to the account's own admins (not Opsis CX), and QA settings
 // gains "Suggested scoring rules" (opsis-qa-portal action 'rulesugs' -> opsis-qa-rules).
 // Adds the Card capture page (2026-10-22). Built from the Opsis QA preview page by scratchpad/portal/build.py. All data comes from the
@@ -241,7 +242,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var k = rep.kpis || {}, p = rep.prev || {}, d = rep.daily || [];
     var daily = d.filter(function (x) { return x.calls >= 100; });
     var defs = [
-      ['Inbound calls handled', fmt((rep.funnel || {}).conversations || 0), (function (c0, p0) { return p0 ? delta(100 * (c0 - p0) / p0, 0, '%') : delta(null, null); })((rep.funnel || {}).conversations || 0, (rep.prev || {}).scored || 0), G, 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2', daily.map(function (x) { return x.calls; }), '<b>Inbound calls handled</b><br>Customer conversations on INBOUND calls answered by the front-line CSRs on the scorecard list (plus the AI receptionists), all of them scored.<br><br>Not counted: outbound calls, CSRs who aren’t on the list, voicemail, internal staff calls, phone-menu hang-ups, wrong numbers and spam.<br><br>Change = % vs the previous period of the same length. Click to see the calls.', 'allcalls'],
+      ['Inbound calls handled', fmt((rep.funnel || {}).conversations || 0), (function (c0, p0) { return p0 ? delta(100 * (c0 - p0) / p0, 0, '%') : delta(null, null); })((rep.funnel || {}).conversations || 0, (rep.prev || {}).scored || 0), G, 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2', daily.map(function (x) { return x.calls; }), '<b>Inbound calls handled</b><br>Customer conversations on INBOUND calls answered by the front-line CSRs on the scorecard list (plus the AI CSRs), all of them scored.<br><br>Not counted: outbound calls, CSRs who aren’t on the list, voicemail, internal staff calls, phone-menu hang-ups, wrong numbers and spam.<br><br>Change = % vs the previous period of the same length. Click to see the calls.', 'allcalls'],
       ['Avg QA score', k.avg != null ? k.avg.toFixed(1) : '—', delta(k.avg, p.avg, ''), G, 'M12 3l2.6 5.6 6 .7-4.5 4.1 1.3 6L12 16.4 6.6 19.4l1.3-6L3.4 9.3l6-.7z', daily.map(function (x) { return x.avg; }), '<b>Avg QA score</b><br>Average call-flow score (0–100) of the inbound calls handled. Each step the CSR did earns its points; a step that didn’t apply to the call counts as done.<br><br>Change = points vs the previous period. Click to see the lowest-scoring calls.', 'lowscore'],
       ['Booking rate', p1(k.booking_rate), delta(k.booking_rate, p.booking_rate, ' pts'), G, 'M5 5h14v15H5zM5 9h14M9 3v4M15 3v4M9 14l2 2 4-4', daily.map(function (x) { return x.decided ? x.booked / x.decided * 100 : null; }), '<b>Booking rate</b><br>Booked calls ÷ booking opportunities that ended booked or not booked. Opportunities transferred to another team are left out, and so are calls with no booking opportunity. The Insights cohort bar shows the same counts.<br><br>Change = points vs the previous period. Click to see calls that didn’t book.', 'notbooked'],
       ['Ask rate · not booked', '<span id="kpiasknb">…</span>', '', O, 'M21 12a9 9 0 1 1-4.2-7.6M21 4v5h-5', [], '<b>Ask rate · not booked</b><br>Of the booking opportunities that did NOT book, the share where the CSR still directly asked to put the customer on the schedule. Low = customers leaving without being asked.<br><br>Click to hear the ones where the CSR didn’t ask.', 'asknb'],
@@ -1182,7 +1183,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (PR.okChecked || OPSIS || CFG.csrSelf) return; PR.okChecked = true;
     api({ action: 'practice', op: 'access' }).then(function (r) {
       if (!r || !r.allowed) return;
-      var sec = NAV[0][1]; if (!sec.some(function (n) { return n[0] === 'practice'; })) { var i = sec.map(function (n) { return n[0]; }).indexOf('hub'); sec.splice(i >= 0 ? i + 1 : sec.length, 0, ['practice', 'Practice'], ['receptionist', 'AI receptionist']); }
+      var sec = NAV[0][1]; if (!sec.some(function (n) { return n[0] === 'practice'; })) { var i = sec.map(function (n) { return n[0]; }).indexOf('hub'); sec.splice(i >= 0 ? i + 1 : sec.length, 0, ['practice', 'Practice'], ['receptionist', 'AI CSR']); }
       renderNav();
     }).catch(function () { });
   }
@@ -1297,14 +1298,14 @@ export function mountOpsisQA(ROOT, cfg) {
   function prView(id) {
     api({ action: 'practice', op: 'session', session_id: id }).then(function (r) { var s = ((PR.d && PR.d.sessions) || []).filter(function (x) { return x.id === id; })[0]; var sc = s && ((PR.d.scenarios || []).filter(function (y) { return y.id === s.scenario_id; })[0]); r.title = sc ? sc.title : ''; r.scenario_id = sc ? sc.id : null; PR.result = r; drawPractice(); window.scrollTo(0, 0); }).catch(function (e) { toast(e.message); });
   }
-  // ---------- AI receptionist (Broccoli replacement, phase 1, pilot) ----------
+  // ---------- AI CSR (Broccoli replacement, phase 1, pilot) ----------
   var RC = { d: null, brand: '', live: null, res: null, err: null, tab: 'calls', s: null, sBrand: '', dirty: false, saving: false, open: { id: true }, rp: null };
   var RC_DAYS = [['sun', 'Sun'], ['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['fri', 'Fri'], ['sat', 'Sat']];
   var RC_TZ = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific']];
   function rcStrip(s) { return String(s || '').replace(/\[[a-z][a-z ,'-]{0,30}\]\s*/gi, '').replace(/\s{2,}/g, ' ').trim(); }
   function vRecep(tok) {
     if (!RC.live) RC.res = null;
-    setMain(crumb([['AI receptionist']]) + '<div id="rcwrap"><div class="oq-card">' + skel(30, 6) + '</div></div>');
+    setMain(crumb([['AI CSR']]) + '<div id="rcwrap"><div class="oq-card">' + skel(30, 6) + '</div></div>');
     api({ action: 'receptionist', op: 'list' }).then(function (r) { if (tok !== T) return; RC.d = r; if (!RC.brand) RC.brand = r.lock || 'Apple Door'; drawRecep(); })
       .catch(function (e) { if (tok === T && $('rcwrap')) $('rcwrap').innerHTML = errBox(e); });
   }
@@ -1316,7 +1317,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var li = function (a) { return (a || []).map(function (x) { return '<li style="margin:3px 0">' + esc(x) + '</li>'; }).join(''); };
     var tx = (r.transcript || []).map(function (t) { return '<div style="margin:4px 0;font-size:13px"><b style="color:' + (t.role !== 'Caller' ? '#1F5A41' : '#5F6763') + '">' + esc(t.role) + ':</b> ' + esc(rcStrip(t.text)) + '</div>'; }).join('');
     var ans = L.answers && typeof L.answers === 'object' ? Object.keys(L.answers) : [];
-    return '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><div class="mut" style="font-size:12px">AI receptionist · ' + esc(short(r.brand)) + (r.location ? ' · ' + esc(r.location) : '') + (r.duration_secs ? ' · ' + fsecs(r.duration_secs) : '') + '</div><h2 class="ttl" style="margin:2px 0 0">' + esc(L.summary || 'Service request') + '</h2></div>' +
+    return '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><div class="mut" style="font-size:12px">AI CSR · ' + esc(short(r.brand)) + (r.location ? ' · ' + esc(r.location) : '') + (r.duration_secs ? ' · ' + fsecs(r.duration_secs) : '') + '</div><h2 class="ttl" style="margin:2px 0 0">' + esc(L.summary || 'Service request') + '</h2></div>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (L.category ? '<span class="pill" style="background:#EEF2FB;color:#2B3A67">' + esc(L.category) + '</span>' : '') + (L.outcome ? '<span class="pill" style="background:#F3F1EC;color:#5F6763">' + esc(L.outcome) + '</span>' : '') + (L.urgent ? '<span class="pill" style="background:#FDECEC;color:#A61B1B">Urgent</span>' : '') + '</div></div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-top:14px">' + rcField('Name', L.name) + rcField('Phone', L.phone) + rcField('Email', L.email) + rcField('Address', L.address) + rcField('Location', r.location || L.location) + rcField('Home or business', L.home_or_business) + rcField('Approves the work', L.approver) + rcField('Preferred day', L.preferred_day) + rcField('Preferred window', L.preferred_window) + (L.transferred_to ? rcField('Transferred to', L.transferred_to) : '') +
       ans.map(function (k) { return rcField(k, L.answers[k]); }).join('') + '</div>' +
@@ -1345,7 +1346,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (RC.res) { w.innerHTML = rcResultHtml(RC.res); return; }
     if (RC.tab === 'settings') { w.innerHTML = rcTabs() + '<div id="rcset"></div>'; drawRcSettings(); return; }
     if (RC.tab === 'reports') { w.innerHTML = rcTabs() + '<div id="rcrep"></div>'; drawRcReport(); return; }
-    var intro = '<div class="oq-card" style="background:#FAF8F4"><h2 class="ttl" style="margin:0 0 4px">AI receptionist (test)</h2><p class="sub" style="line-height:1.55;margin:0">The AI receptionist answers the brand’s line like a top CSR: she follows the 5-step call flow, asks your required questions, offers the days and windows in Settings, and sends the team a ready-to-book request. Call her as a customer to test her. <b>Phase 1</b>: test calls only. Transfers are simulated, and a team member confirms the time. Pilot: only a few people can see this tab.</p>' +
+    var intro = '<div class="oq-card" style="background:#FAF8F4"><h2 class="ttl" style="margin:0 0 4px">AI CSR (test)</h2><p class="sub" style="line-height:1.55;margin:0">The AI CSR answers the brand’s line like a top CSR: she follows the 5-step call flow, asks your required questions, offers the days and windows in Settings, and sends the team a ready-to-book request. Call her as a customer to test her. <b>Phase 1</b>: test calls only. Transfers are simulated, and a team member confirms the time. Pilot: only a few people can see this tab.</p>' +
       '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' + rcBrandSel('rcbrand', RC.brand) +
       '<button class="sel btnd" data-act="rcstart"' + (d.ready ? '' : ' disabled') + '>☎ Call the ' + esc(short(LOCK || RC.brand)) + ' line</button></div>' +
       (RC.err ? '<div class="banner" style="margin-top:10px;background:#FDECEC;border-color:#F3C7C7;color:#A61B1B">' + esc(RC.err) + '</div>' : '') + '</div>';
@@ -1356,7 +1357,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var bs = $('rcbrand'); if (bs) bs.addEventListener('change', function () { RC.brand = bs.value; drawRecep(); });
   }
 
-  // ---------- AI receptionist · Settings ----------
+  // ---------- AI CSR · Settings ----------
   function rcLoadSettings(brand) {
     RC.s = null; RC.sBrand = brand; RC.dirty = false; drawRcSettings();
     api({ action: 'receptionist', op: 'settings', brand: brand }).then(function (r) { if (RC.sBrand !== brand) return; RC.s = r; drawRcSettings(); })
@@ -1392,7 +1393,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (RC.sBrand !== brand) { rcLoadSettings(brand); return; }
     if (!RC.s) { el.innerHTML = '<div class="oq-card">' + skel(30, 6) + '</div>'; return; }
     var R = RC.s, s = R.settings, pv = rcPreview(s);
-    var head = '<div class="oq-card" style="background:#FAF8F4"><div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;justify-content:space-between"><div><h2 class="ttl" style="margin:0">Receptionist settings</h2><p class="sub" style="margin:2px 0 0">Each brand has its own settings. Saving updates that brand’s line right away.' + (R.updated_by_name ? ' Last saved by ' + esc(R.updated_by_name) + (R.updated_at ? ' · ' + fdate(String(R.updated_at).slice(0, 10)) : '') + '.' : ' Not saved yet: these are the starting defaults.') + '</p></div>' + rcBrandSel('rcsbrand', brand) + '</div>' +
+    var head = '<div class="oq-card" style="background:#FAF8F4"><div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;justify-content:space-between"><div><h2 class="ttl" style="margin:0">AI CSR settings</h2><p class="sub" style="margin:2px 0 0">Each brand has its own settings. Saving updates that brand’s line right away.' + (R.updated_by_name ? ' Last saved by ' + esc(R.updated_by_name) + (R.updated_at ? ' · ' + fdate(String(R.updated_at).slice(0, 10)) : '') + '.' : ' Not saved yet: these are the starting defaults.') + '</p></div>' + rcBrandSel('rcsbrand', brand) + '</div>' +
       (!R.can_edit ? '<div class="banner" style="margin-top:10px">View only. Ask an admin to change these settings.</div>' : '') + '</div>';
     var id = rcRow('Assistant name', rcIn('agent_name', { w: 200 }), 'What she calls herself on the phone.') +
       rcRow('Company name as spoken', rcIn('company_name', { w: 320 }), 'Exactly how she says the company name, e.g. “Giel Doors” instead of “Thomas V Giel”.') +
@@ -1458,7 +1459,7 @@ export function mountOpsisQA(ROOT, cfg) {
     [].forEach.call(el.querySelectorAll('[data-days]'), function (cb) { cb.addEventListener('change', function () { var p = cb.getAttribute('data-days'), cur = (rcGet(p) || []).slice(), dd = cb.getAttribute('data-day'), ix = cur.indexOf(dd); if (cb.checked && ix < 0) cur.push(dd); if (!cb.checked && ix >= 0) cur.splice(ix, 1); rcSet(p, cur); }); });
     rcAlertsBox(brand);
   }
-  // Call alert emails (2026-11-05): per-brand list of who gets the email after every AI receptionist call.
+  // Call alert emails (2026-11-05): per-brand list of who gets the email after every AI CSR call.
   // Stored in qa_receptionist_alerts through the ai-csr-alerts function, separate from the receptionist settings save.
   var RA = { brand: null, d: null, err: null, busy: false, draft: null, dtest: null };
   function raCall(body) {
@@ -1531,7 +1532,7 @@ export function mountOpsisQA(ROOT, cfg) {
     }).catch(function (e) { RC.saving = false; drawRcSettings(); toast(e.message || 'Couldn’t save.'); });
   }
 
-  // ---------- AI receptionist · Reports ----------
+  // ---------- AI CSR · Reports ----------
   var RC_COLS = [
     ['date', 'Date', function (r) { return String(r.started_at).slice(0, 10); }],
     ['time', 'Time', function (r) { return new Date(r.started_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }],
@@ -1619,12 +1620,12 @@ export function mountOpsisQA(ROOT, cfg) {
   function rcRpCsv() {
     var P = RC.rp, M = rcColMap(P), cols = P.cols.filter(function (k) { return M[k]; }), rows = P.data.rows || [];
     var lines = [cols.map(function (k) { return csvCell(M[k][1]); }).join(',')].concat(rows.map(function (r) { return cols.map(function (k) { return csvCell(rcVal(M[k], r)); }).join(','); }));
-    saveBlob('ai-receptionist-calls' + rcRpTag() + '.csv', new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
+    saveBlob('ai-csr-calls' + rcRpTag() + '.csv', new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
   }
   function rcRpSumCsv() {
     var P = RC.rp; if (!P.sum) return;
     var lines = [P.sum.head.map(csvCell).join(',')].concat(P.sum.rows.map(function (r) { return r.map(csvCell).join(','); }));
-    saveBlob('ai-receptionist-summary' + rcRpTag() + '.csv', new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
+    saveBlob('ai-csr-summary' + rcRpTag() + '.csv', new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
   }
   function rcStart() {
     if (RC.live) return; RC.err = null; RC.res = null;
@@ -1925,7 +1926,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function bTeam(sc, brand) { var b = (sc.brands || []).filter(function (x) { return x.brand === brand; })[0] || {};
     var ag = (sc.agents || []).filter(function (a) { return a.brand === brand; }).sort(function (a, b2) { return (b2.avg || -1) - (a.avg || -1); });
     return [{ title: brand + ' — summary', sheet: 'Summary', cols: ['Metric', 'Value'], rows: [['Calls scored', b.calls || 0], ['Average QA score %', v1(b.avg)], ['Booking rate %', v1(b.conv)], ['Card asked %', v1(b.card_rate)], ['Not booked', b.missed || 0], ['CSRs', b.agents || 0]] },
-      { title: 'CSR leaderboard', sheet: 'CSRs', cols: ['#', 'CSR', 'AI receptionist', 'Calls', 'Avg QA %', 'Booking rate %', 'Asked for booking %', 'Card asked %', 'Coaching focus'],
+      { title: 'CSR leaderboard', sheet: 'CSRs', cols: ['#', 'CSR', 'AI CSR', 'Calls', 'Avg QA %', 'Booking rate %', 'Asked for booking %', 'Card asked %', 'Coaching focus'],
         rows: ag.map(function (a, i) { return [i + 1, a.name, a.ai ? 'yes' : '', a.calls, v1(a.avg), v1(a.conv), v1(a.ask_rate), v1(a.card_rate), a.focus || '']; }) },
       { title: 'Team coaching focus', sheet: 'Coaching', cols: ['Coaching focus', 'CSRs with this as #1'], rows: rpGaps(sc, brand) }];
   }
@@ -1939,7 +1940,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var L = Object.keys(m).sort().map(function (k) { return m[k]; }), T = { h: [0, 0, 0, 0], a: [0, 0, 0, 0] };
     L.forEach(function (o) { for (var i = 0; i < 4; i++) { T.h[i] += o.h[i]; T.a[i] += o.a[i]; } });
     var avg = function (t) { return t[0] ? t[1] / t[0] : null; }, cl = function (t) { return t[2] ? 100 * t[3] / t[2] : null; }, df = function (x, y) { return x == null || y == null ? '' : v1(y - x); };
-    return [{ title: 'Human vs AI — summary', sheet: 'Summary', cols: ['Metric', 'Human CSRs', 'AI receptionists', 'AI difference'], rows: [['Avg QA %', v1(avg(T.h)), v1(avg(T.a)), df(avg(T.h), avg(T.a))], ['Scored calls', T.h[0], T.a[0], ''], ['Booking rate %', v1(cl(T.h)), v1(cl(T.a)), df(cl(T.h), cl(T.a))], ['Decided opportunities', T.h[2], T.a[2], ''], ['Booked', T.h[3], T.a[3], '']] },
+    return [{ title: 'Human vs AI — summary', sheet: 'Summary', cols: ['Metric', 'Human CSRs', 'AI CSRs', 'AI difference'], rows: [['Avg QA %', v1(avg(T.h)), v1(avg(T.a)), df(avg(T.h), avg(T.a))], ['Scored calls', T.h[0], T.a[0], ''], ['Booking rate %', v1(cl(T.h)), v1(cl(T.a)), df(cl(T.h), cl(T.a))], ['Decided opportunities', T.h[2], T.a[2], ''], ['Booked', T.h[3], T.a[3], '']] },
       { title: 'By brand', sheet: 'By brand', cols: ['Brand', 'Human calls', 'Human avg QA %', 'Human booking %', 'AI calls', 'AI avg QA %', 'AI booking %'],
         rows: L.map(function (o) { return [o.brand, o.h[0], v1(avg(o.h)), v1(cl(o.h)), o.a[0], v1(avg(o.a)), v1(cl(o.a))]; }) }];
   }
@@ -1971,7 +1972,7 @@ export function mountOpsisQA(ROOT, cfg) {
       row(LOCK ? 'Executive summary' : 'Executive summary', 'One page: the headline, booking rate, QA score, controllable misses and upset customers vs the period before, why opportunities didn’t book, the CSRs leading and lagging, and the one thing to coach' + (LOCK ? '' : ', plus every brand side by side') + '.', '', 'exec') +
       (brands.length ? row('Brand one-pager', 'The executive summary for one brand, plus its call flow step by step and what callers wanted.', brands.length > 1 ? '<select class="oq-field" data-rpteam aria-label="Brand" style="margin-top:8px;max-width:280px">' + brands.map(function (b) { return '<option' + (RP.team === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select>' : '', 'team') : '') +
       (agents.length ? row('CSR scorecard', 'One CSR’s roll-up: headline numbers, the call flow step by step and what to coach. Excel and CSV also list every call.', '<select class="oq-field" data-rpcsr aria-label="CSR" style="margin-top:8px;max-width:280px">' + agents.map(function (a) { var k = a.name + '|||' + a.brand; return '<option value="' + esc(k) + '"' + (RP.csr === k ? ' selected' : '') + '>' + esc(a.name) + (LOCK ? '' : ' — ' + esc(a.brand)) + '</option>'; }).join('') + '</select>', 'csr') : '') +
-      row('Human vs AI receptionists', 'Your CSRs next to the AI receptionists, by brand.', '', 'hai') +
+      row('Human vs AI CSRs', 'Your CSRs next to the AI CSRs, by brand.', '', 'hai') +
       '<div style="padding:14px 0;border-top:1px solid var(--line2)"><b>Weekly call-flow scorecard</b><div class="mut" style="font-size:12.5px;margin-top:2px">Every CSR on every call-flow step for one week, colour-coded, with the change vs the week before. Pick the Monday the week starts.</div>' +
       '<div class="row" style="gap:8px;margin-top:8px;align-items:center"><label class="sr" for="rpwk">Week starting</label><input id="rpwk" type="date" class="oq-field" style="max-width:170px" value="' + esc(RP.week || lastMon()) + '">' + (brands.length > 1 ? '<select class="oq-field" id="rpwkb" aria-label="Brand" style="max-width:240px"><option value="">Every brand</option>' + brands.map(function (b) { return '<option' + (RP.wkb === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select>' : '') + '<button class="sel" data-act="rpweek"' + (RP.busy ? ' disabled' : '') + '>Preview PDF</button></div></div>' +
       '<div class="mut" style="font-size:12.5px;padding-top:14px;border-top:1px solid var(--line2)">Need one call? Open it in Call reviews and choose <b>Print / save PDF</b>.</div></div></div>';
@@ -2206,7 +2207,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function rpDownload(id, fmt) {
     var sc = RP.sc; if (!sc || RP.busy) return;
-    var title = id === 'exec' ? (LOCK ? LOCK + ' — Brand scorecard' : 'Executive scorecard') : id === 'team' ? RP.team + ' — Brand one-pager' : id === 'csr' ? RP.csr.split('|||')[0] + ' — CSR scorecard' : 'Human vs AI receptionists';
+    var title = id === 'exec' ? (LOCK ? LOCK + ' — Brand scorecard' : 'Executive scorecard') : id === 'team' ? RP.team + ' — Brand one-pager' : id === 'csr' ? RP.csr.split('|||')[0] + ' — CSR scorecard' : 'Human vs AI CSRs';
     var file = 'opsis-qa-' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + S.start + '-to-' + S.end, sub = rpFilterText();
     var w = fmt === 'pdf' ? pdfWin() : null; if (fmt === 'pdf' && !w) return;
     var go = function (sheets) { if (fmt === 'pdf') sheetsPdf(w, title, sub, sheets); else if (fmt === 'csv') sheetsCsv(file, sheets); else return sheetsXlsx(file, sheets); };
@@ -3025,7 +3026,7 @@ export function mountOpsisQA(ROOT, cfg) {
       var ca = (r.csr_after || []).slice(0, 5);
       if (ca.length) h += '<div class="cap" style="margin-top:14px">Who takes calls outside their brand’s hours</div>' + ca.map(function (a) { var rt = a.decided ? Math.round(a.booked / a.decided * 100) : null; return '<button class="click" data-agent="' + esc(a.agent) + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;justify-content:space-between;gap:10px;padding:7px 2px;border-top:1px solid var(--line2);font-size:12.5px"><span style="display:flex;gap:8px;align-items:center">' + avatar(a.agent, 22) + esc(a.agent) + '</span><span class="num mut">' + fmt(a.calls) + ' calls · ' + (rt != null ? rt + '% booked' : 'no decisions') + '</span></button>'; }).join('');
       var ai = (r.agents || []).reduce(function (t, a) { return t + (a.calls || 0); }, 0);
-      if (ai) h += '<p class="mut" style="font-size:11.5px;margin-top:10px">AI receptionists handled ' + fmt(ai) + ' recorded call' + (ai === 1 ? '' : 's') + ' in this period (not included above).</p>';
+      if (ai) h += '<p class="mut" style="font-size:11.5px;margin-top:10px">AI CSRs handled ' + fmt(ai) + ' recorded call' + (ai === 1 ? '' : 's') + ' in this period (not included above).</p>';
       var DN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], hr = function (x) { x = +x; var a = x >= 12 ? 'p' : 'a', v = x % 12 || 12; return v + a; };
       var hrsTxt = function (days) { var g = []; (days || []).forEach(function (d) { var k = hr(d.open) + '–' + hr(d.close), last = g[g.length - 1]; if (last && last.k === k && last.to === d.dow - 1) last.to = d.dow; else g.push({ k: k, from: d.dow, to: d.dow }); }); return g.map(function (x) { return DN[x.from] + (x.to !== x.from ? '–' + DN[x.to] : '') + ' ' + x.k; }).join(', '); };
       var known = (r.hours || []).filter(function (b) { return b.days && b.days.length; }), dflt = (r.hours || []).filter(function (b) { return !b.days || !b.days.length; });
