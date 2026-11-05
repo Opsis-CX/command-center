@@ -143,6 +143,9 @@ function RolesTab({ initialRoleId = null }) {
       if (!g) { g = { name: c.module_group, modules: [] }; out.push(g) }
       let m = g.modules.find(x => x.module === c.module)
       if (!m) { m = { module: c.module, label: c.module_label, cells: {}, items: [] }; g.modules.push(m) }
+      // a module whose checkboxes don't fit the grid (action-style permissions, or two sharing a
+      // column) is shown as a labeled list instead, so none get hidden (2026-11-05)
+      if (c.action === 'special' || m.cells[c.action]) m.list = true
       m.cells[c.action] = c; m.items.push(c)
     }
     return out
@@ -324,6 +327,24 @@ function RolesTab({ initialRoleId = null }) {
                       {g.modules.map(m => {
                         const keys = m.items.map(i => i.key)
                         const allOn = keys.every(has)
+                        if (m.list) return (
+                          <tr key={m.module}>
+                            <td style={{ verticalAlign: 'top', paddingTop: 12 }}>{m.label}</td>
+                            <td colSpan={ACTIONS.length} style={{ textAlign: 'left', padding: '8px 10px' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '4px 14px' }}>
+                                {m.items.map(c => (
+                                  <label key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: locked ? 'default' : 'pointer' }}
+                                    title={c.label + (c.scopeable ? ' · can be limited to projects/clients' : '')}>
+                                    <input type="checkbox" className="rm-cb" checked={!!has(c.key)} disabled={locked} onChange={() => toggle(c.key)} />
+                                    <span>{c.label}</span>
+                                    {c.min_level && c.min_level !== 'user' && <span className="rm-lvdot" style={{ background: LEVEL_STYLE[c.min_level][1] }} title={`${LEVEL_LABEL[c.min_level]} level and up`} />}
+                                  </label>
+                                ))}
+                              </div>
+                            </td>
+                            <td style={{ verticalAlign: 'top', paddingTop: 10 }}>{!locked && <button className="rm-row-all" onClick={() => setMany(keys, !allOn)}>{allOn ? 'None' : 'All'}</button>}</td>
+                          </tr>
+                        )
                         return (
                           <tr key={m.module}>
                             <td>{m.label}</td>
@@ -706,7 +727,7 @@ function PeopleTab({ onOpenRole }) {
       const bucket = c.scopeable ? mods.scoped : mods.personal
       if (!bucket.has(c.module_label)) bucket.set(c.module_label, [])
       const where = e.everywhere ? 'everywhere' : ([...e.where].join(', ') || 'nowhere yet')
-      bucket.get(c.module_label).push({ act: c.module === 'admin' ? c.label : c.action[0].toUpperCase() + c.action.slice(1), where, adj: e.adj })
+      bucket.get(c.module_label).push({ act: (c.module === 'admin' || c.action === 'special' || ['dashboard'].includes(c.module)) ? c.label : c.action[0].toUpperCase() + c.action.slice(1), where, adj: e.adj })
     }
     return { scoped: [...mods.scoped.entries()], personal: [...mods.personal.entries()], removed: [...removed].filter(() => !ownerHere) }
   }, [sel, mine, myAdj, roleById, catalog, clients, projects]) // eslint-disable-line react-hooks/exhaustive-deps
