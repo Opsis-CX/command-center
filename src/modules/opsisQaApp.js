@@ -125,7 +125,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (k === 'brandset') k = 'settings';
     return {
       overview: 'M4 5h16v14H4zM4 9h16M9 9v10', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
-      cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', practice: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2', pricetalk: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+      cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', receptionist: 'M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zM4 21v-1a8 8 0 0 1 16 0v1M19 9h2M3 9h2', practice: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2', pricetalk: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
       scorecards: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8 11h8M8 15h8M8 19h5', reporting: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3', money: 'M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5s-5 1.6-5 3.5 2.2 3.2 5 3.5 5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5', team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
@@ -1180,7 +1180,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (PR.okChecked || OPSIS || CFG.csrSelf) return; PR.okChecked = true;
     api({ action: 'practice', op: 'access' }).then(function (r) {
       if (!r || !r.allowed) return;
-      var sec = NAV[0][1]; if (!sec.some(function (n) { return n[0] === 'practice'; })) { var i = sec.map(function (n) { return n[0]; }).indexOf('hub'); sec.splice(i >= 0 ? i + 1 : sec.length, 0, ['practice', 'Practice']); }
+      var sec = NAV[0][1]; if (!sec.some(function (n) { return n[0] === 'practice'; })) { var i = sec.map(function (n) { return n[0]; }).indexOf('hub'); sec.splice(i >= 0 ? i + 1 : sec.length, 0, ['practice', 'Practice'], ['receptionist', 'AI receptionist']); }
       renderNav();
     }).catch(function () { });
   }
@@ -1294,6 +1294,81 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function prView(id) {
     api({ action: 'practice', op: 'session', session_id: id }).then(function (r) { var s = ((PR.d && PR.d.sessions) || []).filter(function (x) { return x.id === id; })[0]; var sc = s && ((PR.d.scenarios || []).filter(function (y) { return y.id === s.scenario_id; })[0]); r.title = sc ? sc.title : ''; r.scenario_id = sc ? sc.id : null; PR.result = r; drawPractice(); window.scrollTo(0, 0); }).catch(function (e) { toast(e.message); });
+  }
+  // ---------- AI receptionist (Broccoli replacement, phase 1, pilot) ----------
+  var RC = { d: null, brand: '', live: null, res: null, err: null };
+  function vRecep(tok) {
+    if (!RC.live) RC.res = null;
+    setMain(crumb([['AI receptionist']]) + '<div id="rcwrap"><div class="oq-card">' + skel(30, 6) + '</div></div>');
+    api({ action: 'receptionist', op: 'list' }).then(function (r) { if (tok !== T) return; RC.d = r; if (!RC.brand) RC.brand = r.lock || 'Quality Overhead Door'; drawRecep(); })
+      .catch(function (e) { if (tok === T && $('rcwrap')) $('rcwrap').innerHTML = errBox(e); });
+  }
+  function rcField(l, v) { return '<div><div class="cap">' + l + '</div><div style="font-size:13.5px;margin-top:2px">' + (v ? esc(String(v)) : '<span class="mut">—</span>') + '</div></div>'; }
+  function rcResultHtml(r) {
+    if (r.status === 'failed') return '<div class="oq-card"><p>' + esc(r.error || 'That call couldn’t be read.') + '</p><button class="sel btnd" data-act="rcback">Back</button></div>';
+    if (r.status !== 'done') return '<div class="oq-card"><h2 class="ttl">Reading the call…</h2><p class="mut">This usually takes under a minute.</p></div>';
+    var L = r.lead || {}, V = r.review || {};
+    var li = function (a) { return (a || []).map(function (x) { return '<li style="margin:3px 0">' + esc(x) + '</li>'; }).join(''); };
+    var tx = (r.transcript || []).map(function (t) { return '<div style="margin:4px 0;font-size:13px"><b style="color:' + (t.role === 'Ava' ? '#1F5A41' : '#5F6763') + '">' + esc(t.role) + ':</b> ' + esc(t.text) + '</div>'; }).join('');
+    return '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><div class="mut" style="font-size:12px">AI receptionist · ' + esc(short(r.brand)) + (r.duration_secs ? ' · ' + fsecs(r.duration_secs) : '') + '</div><h2 class="ttl" style="margin:2px 0 0">' + esc(L.summary || 'Service request') + '</h2></div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (L.category ? '<span class="pill" style="background:#EEF2FB;color:#2B3A67">' + esc(L.category) + '</span>' : '') + (L.urgent ? '<span class="pill" style="background:#FDECEC;color:#A61B1B">Urgent</span>' : '') + '</div></div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-top:14px">' + rcField('Name', L.name) + rcField('Phone', L.phone) + rcField('Email', L.email) + rcField('Address', L.address) + rcField('Home or business', L.home_or_business) + rcField('Approves the work', L.approver) + rcField('Preferred day', L.preferred_day) + rcField('Preferred window', L.preferred_window) + '</div>' +
+      '<div style="margin-top:12px">' + rcField('Issue', L.issue) + '</div>' +
+      '<div class="banner" style="margin-top:12px;background:#E6F0EA;border-color:#CFE5DF;color:#14302A"><b>Next step for the team:</b> ' + esc(L.next_step || '—') + '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="sel btnd" data-act="rcstart">☎ Call again</button><button class="sel" data-act="rcback">Back to the list</button></div></div>' +
+      '<div class="oq-card"><h2 class="ttl">How Ava did</h2><div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px"><div style="flex:1 1 260px"><div class="cap" style="color:#1F5A41">Handled well</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(V.handled_well) + '</ul></div><div style="flex:1 1 260px"><div class="cap" style="color:#A8441A">To fix</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + (li(V.issues) || '<li class="mut">Nothing flagged</li>') + '</ul>' + ((V.missing || []).length ? '<div class="mut" style="font-size:12.5px;margin-top:6px">Didn’t get: ' + esc(V.missing.join(', ')) + '</div>' : '') + '</div></div></div>' +
+      '<div class="oq-card"><details open><summary style="cursor:pointer;font-weight:600">Transcript</summary><div style="margin-top:8px">' + tx + '</div></details></div>';
+  }
+  function drawRecep() {
+    var w = $('rcwrap'); if (!w || !RC.d) return; var d = RC.d;
+    if (RC.live) {
+      var L = RC.live, lines = L.lines.slice(-16).map(function (m) { return '<div style="display:flex;' + (m.me ? 'justify-content:flex-end' : '') + '"><span style="max-width:78%;padding:8px 12px;border-radius:14px;font-size:13.5px;line-height:1.45;' + (m.me ? 'background:#F3F1EC' : 'background:#E6F0EA;color:#14302A') + '"><b style="font-size:11px;display:block;opacity:.7">' + (m.me ? 'You (caller)' : 'Ava') + '</b>' + esc(m.text) + '</span></div>'; }).join('');
+      w.innerHTML = '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><div class="mut" style="font-size:12px">Test call · you are the customer</div><h2 class="ttl" style="margin:2px 0 0">' + esc(L.brand) + ' line</h2></div><div style="display:flex;align-items:center;gap:12px"><span class="num" id="rcclock" style="font-size:20px;font-weight:600">' + fsecs(L.secs || 0) + '</span>' + (L.state === 'ending' ? '' : '<button class="sel" data-act="rcend" style="background:#A61B1B;border-color:#A61B1B;color:#fff">Hang up</button>') + '</div></div>' +
+        '<div style="margin-top:12px"><b>' + (L.state === 'connecting' ? 'Connecting…' : L.state === 'ending' ? 'Reading the call…' : (L.mode === 'speaking' ? 'Ava is talking…' : 'Listening')) + '</b></div><div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;min-height:120px">' + lines + '</div></div>';
+      return;
+    }
+    if (RC.res) { w.innerHTML = rcResultHtml(RC.res); return; }
+    var intro = '<div class="oq-card" style="background:#FAF8F4"><h2 class="ttl" style="margin:0 0 4px">AI receptionist (test)</h2><p class="sub" style="line-height:1.55;margin:0">Ava answers the brand’s line like a top CSR: she follows the 5-step call flow, collects the caller’s details and preferred day and window, and sends the team a ready-to-book request. Call her as a customer to test her. <b>Phase 1</b>: test calls only. She can’t see the live schedule or book in Acumatica yet, so a team member confirms the time. Pilot: only a few people can see this tab.</p>' +
+      (!d.ready ? '<div class="banner" style="margin-top:10px"><b>Not set up yet.</b> ' + (CFG.staff ? '<button class="lnk" data-act="rcsetup">Set up Ava</button>' : 'Opsis is finishing setup.') + '</div>' : '') +
+      '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' + (LOCK ? '' : '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Brand line<select id="rcbrand" class="oq-field" style="min-width:230px">' + PR_BRANDS.map(function (b) { return '<option' + (RC.brand === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select></label>') +
+      '<button class="sel btnd" data-act="rcstart"' + (d.ready ? '' : ' disabled') + '>☎ Call the ' + esc(short(LOCK || RC.brand)) + ' line</button></div>' +
+      (RC.err ? '<div class="banner" style="margin-top:10px;background:#FDECEC;border-color:#F3C7C7;color:#A61B1B">' + esc(RC.err) + '</div>' : '') + '</div>';
+    var rows = (d.calls || []).filter(function (c) { return c.status === 'done'; });
+    var tbl = '<div class="oq-card"><h2 class="ttl">Requests Ava took</h2><p class="sub">Test calls so far · click one to see the request and transcript.</p>' + (rows.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>When</th><th>Brand</th><th>Caller</th><th>Request</th><th style="text-align:right">Length</th><th>Tested by</th></tr></thead><tbody>' +
+      rows.map(function (c) { var L = c.lead || {}; return '<tr style="cursor:pointer" data-act="rcview" data-id="' + esc(c.id) + '"><td>' + fdate(String(c.started_at).slice(0, 10)) + '</td><td class="mut">' + esc(short(c.brand)) + '</td><td>' + esc(L.name || '—') + '</td><td>' + (L.urgent ? '<b style="color:#A61B1B">Urgent · </b>' : '') + esc(L.summary || L.issue || '') + '</td><td class="num" style="text-align:right">' + (c.duration_secs ? fsecs(c.duration_secs) : '—') + '</td><td class="mut">' + esc(c.user_name || '') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="mut" style="margin-top:8px">No test calls yet.</p>') + '</div>';
+    w.innerHTML = intro + tbl;
+    var bs = $('rcbrand'); if (bs) bs.addEventListener('change', function () { RC.brand = bs.value; drawRecep(); });
+  }
+  function rcStart() {
+    if (RC.live) return; RC.err = null; RC.res = null;
+    var brand = LOCK || RC.brand || 'Quality Overhead Door';
+    var L = RC.live = { brand: brand, lines: [], state: 'connecting', mode: 'listening', secs: 0 }; drawRecep();
+    var fail = function (e) { if (L.timer) clearInterval(L.timer); if (RC.live !== L) return; RC.live = null; RC.err = (e && e.message) || String(e); drawRecep(); };
+    Promise.resolve().then(function () { if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser can’t use the microphone here. Try Chrome or Edge.'); return navigator.mediaDevices.getUserMedia({ audio: true }); })
+      .then(function (s) { s.getTracks().forEach(function (t) { t.stop(); }); return Promise.all([api({ action: 'receptionist', op: 'start', brand: brand }), prSdk()]); })
+      .then(function (rr) {
+        var st = rr[0], SDK = rr[1]; L.cid = st.call_id;
+        return SDK.Conversation.startSession({ signedUrl: st.signed_url, connectionType: 'websocket', dynamicVariables: st.dynamic_variables,
+          onConnect: function () { L.state = 'live'; L.t0 = Date.now(); L.timer = setInterval(function () { L.secs = Math.round((Date.now() - L.t0) / 1000); var c = $('rcclock'); if (c) c.textContent = fsecs(L.secs); if (L.secs >= 600) rcEnd(); }, 1000); drawRecep(); },
+          onMessage: function (m) { var txt = (m && (m.message || m.text)) || ''; if (!txt) return; L.lines.push({ me: (m.source || m.role) === 'user', text: txt }); if (RC.live === L) drawRecep(); },
+          onModeChange: function (m) { L.mode = (m && m.mode) || m; if (RC.live === L) drawRecep(); },
+          onError: function (e) { console.warn('receptionist', e); },
+          onDisconnect: function () { if (RC.live === L) rcFinish(); }
+        }).then(function (conv) { L.conv = conv; });
+      }).catch(fail);
+  }
+  function rcEnd() { var L = RC.live; if (!L || L.state === 'ending') return; if (L.conv && L.conv.endSession) L.conv.endSession(); else rcFinish(); }
+  function rcFinish() {
+    var L = RC.live; if (!L || L.state === 'ending') return; L.state = 'ending'; if (L.timer) clearInterval(L.timer); drawRecep();
+    var conv = null; try { conv = L.conv && L.conv.getId ? L.conv.getId() : null; } catch (e) { }
+    if (!L.cid || !conv) { RC.live = null; RC.err = 'The call ended before it connected. Check your mic and try again.'; drawRecep(); return; }
+    var tries = 0, go = function () {
+      api({ action: 'receptionist', op: 'finish', call_id: L.cid, conversation_id: conv }).then(function (r) {
+        if (r.status === 'processing' && tries++ < 12) { setTimeout(go, 4000); return; }
+        RC.live = null; RC.res = r; api({ action: 'receptionist', op: 'list' }).then(function (d) { RC.d = d; drawRecep(); }).catch(function () { drawRecep(); });
+      }).catch(function (e) { RC.live = null; RC.err = e.message; drawRecep(); });
+    };
+    go();
   }
   // QA settings
   var QS = null, QSE = { ins: false, metric: false, req: false, del: null, busy: false };
@@ -3555,6 +3630,7 @@ export function mountOpsisQA(ROOT, cfg) {
     LASTH = h; BACKING = false;
   }
   function goBack() {
+    if (S.view === 'receptionist' && RC.res && !RC.live) { RC.res = null; drawRecep(); window.scrollTo(0, 0); return; }
     if (S.view === 'practice' && PR.result && !PR.live) { PR.result = null; PR.err = null; if (PR.d) drawPractice(); else render(); window.scrollTo(0, 0); return; }
     if (typeof CAL !== 'undefined' && CAL.item && S.view === 'calib') { calLeave(); EXT = null; S.pop = null; window.scrollTo(0, 0); render(); return; }
     var h = HIST.pop(); saveHist(); if (!h) return;
@@ -3605,7 +3681,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash(); trackHist();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
   }
@@ -3799,6 +3875,11 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rpweek') { var wk0 = ($('rpwk') || {}).value || lastMon(); RP.week = wk0; RP.wkb = ($('rpwkb') || {}).value || ''; var ww = pdfWin(); if (ww) { RP.busy = 'week'; drawReporting(); opWeek(ww, wk0, RP.wkb || (LOCK || null)).then(function () { RP.busy = ''; drawReporting(); }).catch(function (e) { try { ww.close(); } catch (x) {} RP.busy = ''; drawReporting(); toast(e.message || 'Couldn’t build that report.'); }); } }
       else if (a === 'qsinsedit') { QSE.ins = true; drawQs(); }
       else if (a === 'prstart') { prStart(d.id); }
+      else if (a === 'rcstart') { rcStart(); }
+      else if (a === 'rcend') { rcEnd(); }
+      else if (a === 'rcback') { RC.res = null; RC.err = null; drawRecep(); }
+      else if (a === 'rcview') { api({ action: 'receptionist', op: 'call', call_id: d.id }).then(function (r) { RC.res = r; drawRecep(); window.scrollTo(0, 0); }).catch(function (e) { toast(e.message); }); }
+      else if (a === 'rcsetup') { api({ action: 'receptionist', op: 'setup' }).then(function () { toast('Ava is set up.'); render(); }).catch(function (e) { toast(e.message); }); }
       else if (a === 'prend') { prEnd(); }
       else if (a === 'pranswer') { prAnswer(); }
       else if (a === 'prcancel') { prCancel(); }
