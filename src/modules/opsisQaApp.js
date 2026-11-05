@@ -1186,6 +1186,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function prDots(n) { return '<span title="' + (['', 'Easier', 'Normal', 'Tougher'][n] || '') + '" style="letter-spacing:2px;color:#E0662A">' + '●●●'.slice(0, n || 2) + '<span style="color:#E1DCD2">' + '●●●'.slice(0, 3 - (n || 2)) + '</span></span>'; }
   function vPractice(tok) {
+    if (!PR.live) PR.result = null;
     setMain(crumb([['Practice']]) + '<div id="prwrap"><div class="oq-card">' + skel(30, 6) + '</div></div>');
     api({ action: 'practice', op: 'list' }).then(function (r) { if (tok !== T) return; PR.d = r; if (!PR.brand) PR.brand = r.lock || 'Quality Overhead Door'; drawPractice(); })
       .catch(function (e) { if (tok === T && $('prwrap')) $('prwrap').innerHTML = errBox(e); });
@@ -1218,12 +1219,13 @@ export function mountOpsisQA(ROOT, cfg) {
   function prLiveHtml() {
     var L = PR.live, sc = L.sc;
     var lines = L.lines.slice(-14).map(function (m) { return '<div style="display:flex;' + (m.me ? 'justify-content:flex-end' : '') + '"><span style="max-width:78%;padding:8px 12px;border-radius:14px;font-size:13.5px;line-height:1.45;' + (m.me ? 'background:#E6F0EA;color:#14302A' : 'background:#F3F1EC;color:#1C2421') + '"><b style="font-size:11px;display:block;opacity:.7">' + (m.me ? 'You' : 'Customer') + '</b>' + esc(m.text) + '</span></div>'; }).join('');
+    if (L.state === 'ringing') return '<div class="oq-card" style="text-align:center;padding:40px 20px"><div class="mut" style="font-size:12px">Incoming call · ' + esc(short(L.brand)) + ' line</div><div style="font-size:42px;margin:14px 0;display:inline-block;animation:prring 1s ease-in-out infinite">☎</div><h2 class="ttl" style="margin:0">' + esc(sc.title) + '</h2><p class="mut" style="margin:8px 0 18px">Answer like a live call — greet the caller first.</p><div style="display:flex;gap:10px;justify-content:center"><button class="sel" data-act="pranswer" style="background:#2F7D5B;border-color:#2F7D5B;color:#fff;padding:10px 26px;font-size:15px"' + (L.ready ? '' : ' disabled') + '>' + (L.ready ? 'Answer' : 'Getting ready…') + '</button><button class="sel" data-act="prcancel">Cancel</button></div><style>@keyframes prring{0%,100%{transform:rotate(0)}25%{transform:rotate(-14deg)}75%{transform:rotate(14deg)}}</style></div>';
     var st = L.state === 'connecting' ? 'Connecting…' : L.state === 'ending' ? 'Scoring your call…' : (L.mode === 'speaking' ? 'Customer is talking…' : 'Listening — go ahead');
     return '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><div class="mut" style="font-size:12px">Practice call · ' + esc(short(L.brand)) + '</div><h2 class="ttl" style="margin:2px 0 0">' + esc(sc.title) + '</h2></div><div style="display:flex;align-items:center;gap:12px"><span class="num" id="prclock" style="font-size:20px;font-weight:600">' + fsecs(L.secs || 0) + '</span>' +
       (L.state === 'ending' ? '' : '<button class="sel" data-act="prend" style="background:#A61B1B;border-color:#A61B1B;color:#fff">End call</button>') + '</div></div>' +
       '<div style="margin-top:12px;display:flex;align-items:center;gap:10px"><span style="width:12px;height:12px;border-radius:999px;background:' + (L.mode === 'speaking' ? '#E0662A' : '#2F7D5B') + ';box-shadow:0 0 0 6px ' + (L.mode === 'speaking' ? '#FCEBDD' : '#E6F0EA') + '"></span><b>' + st + '</b></div>' +
       '<div class="banner" style="margin-top:12px;background:#FAF8F4;border-color:#E8E4DC;color:#3B4541;font-size:12.5px"><b>Your goal:</b> ' + esc(sc.goal) + '</div>' +
-      '<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;min-height:120px">' + (lines || '<div class="mut">The customer will start talking in a moment. Answer like a real call.</div>') + '</div></div>';
+      '<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;min-height:120px">' + (lines || '<div class="mut">You\u2019re connected \u2014 greet the caller.</div>') + '</div></div>';
   }
   function prResultHtml(r) {
     if (r.status === 'failed') return '<div class="oq-card"><h2 class="ttl">Practice call</h2><p>' + esc(r.error || 'That call couldn’t be scored.') + '</p><div style="display:flex;gap:8px;margin-top:10px"><button class="sel btnd" data-act="prback">Back to practice</button></div></div>';
@@ -1243,23 +1245,38 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   var PR_SDK = null;
   function prSdk() { if (!PR_SDK) PR_SDK = (new Function('u', 'return import(u)'))('https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.35.0/+esm'); return PR_SDK; }
+  var PR_RING = null;
+  function prRing(on) {
+    try {
+      if (!on) { if (PR_RING) { clearInterval(PR_RING.t); PR_RING.ctx.close(); } PR_RING = null; return; }
+      if (PR_RING) return; var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var burst = function () { [440, 480].forEach(function (f) { var o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = f; g.gain.value = 0.06; o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 2); }); };
+      burst(); PR_RING = { ctx: ctx, t: setInterval(burst, 4000) };
+    } catch (e) { }
+  }
   function prStart(id) {
     var sc = ((PR.d && PR.d.scenarios) || []).filter(function (s) { return s.id === id; })[0]; if (!sc || PR.busy) return;
     PR.busy = true; PR.err = null; PR.result = null;
     var brand = LOCK || PR.brand || 'Quality Overhead Door';
-    PR.live = { sc: sc, brand: brand, lines: [], state: 'connecting', mode: 'listening', secs: 0, conv: null, sid: null }; drawPractice();
-    var fail = function (e) { var L = PR.live; if (L && L.timer) clearInterval(L.timer); PR.live = null; PR.busy = false; PR.err = (e && e.message) || String(e); drawPractice(); };
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); return Promise.all([api({ action: 'practice', op: 'start', scenario_id: id, brand: brand }), prSdk()]); })
-      .then(function (rr) {
-        var st = rr[0], SDK = rr[1], L = PR.live; if (!L) return; L.sid = st.session_id;
-        return SDK.Conversation.startSession({ signedUrl: st.signed_url, connectionType: 'websocket', dynamicVariables: st.dynamic_variables,
-          onConnect: function () { L.state = 'live'; L.t0 = Date.now(); L.timer = setInterval(function () { L.secs = Math.round((Date.now() - L.t0) / 1000); var c = $('prclock'); if (c) c.textContent = fsecs(L.secs); if (L.secs >= 300) prEnd(); }, 1000); drawPractice(); },
-          onMessage: function (m) { var txt = (m && (m.message || m.text)) || ''; if (!txt) return; L.lines.push({ me: (m.source || m.role) === 'user', text: txt }); if (PR.live === L) drawPractice(); },
-          onModeChange: function (m) { L.mode = (m && m.mode) || m; if (PR.live === L) drawPractice(); },
-          onError: function (e) { console.warn('practice', e); },
-          onDisconnect: function () { if (PR.live === L) prFinish(); }
-        }).then(function (conv) { L.conv = conv; });
-      }).catch(fail);
+    var L = PR.live = { sc: sc, brand: brand, lines: [], state: 'ringing', mode: 'listening', secs: 0, conv: null, sid: null, ready: false };
+    drawPractice(); prRing(true);
+    L.prep = Promise.resolve().then(function () { if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser can\u2019t use the microphone here. Try Chrome or Edge.'); return navigator.mediaDevices.getUserMedia({ audio: true }); }).then(function (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); return Promise.all([api({ action: 'practice', op: 'start', scenario_id: id, brand: brand }), prSdk()]); })
+      .then(function (rr) { L.st = rr[0]; L.SDK = rr[1]; L.sid = rr[0].session_id; L.ready = true; if (PR.live === L && L.state === 'ringing') drawPractice(); })
+      .catch(function (e) { prFail(L, e); });
+    L.giveUp = setTimeout(function () { if (PR.live === L && L.state === 'ringing') { prRing(false); PR.live = null; PR.busy = false; PR.err = 'Missed call \u2014 click Start call to try again.'; drawPractice(); } }, 45000);
+  }
+  function prFail(L, e) { prRing(false); if (L && L.timer) clearInterval(L.timer); if (PR.live !== L) return; PR.live = null; PR.busy = false; PR.err = (e && e.message) || String(e); drawPractice(); }
+  function prCancel() { var L = PR.live; if (!L || L.state !== 'ringing') return; prRing(false); clearTimeout(L.giveUp); PR.live = null; PR.busy = false; drawPractice(); }
+  function prAnswer() {
+    var L = PR.live; if (!L || L.state !== 'ringing' || !L.ready) return;
+    prRing(false); clearTimeout(L.giveUp); L.state = 'connecting'; drawPractice();
+    L.SDK.Conversation.startSession({ signedUrl: L.st.signed_url, connectionType: 'websocket', dynamicVariables: L.st.dynamic_variables,
+      onConnect: function () { L.state = 'live'; L.t0 = Date.now(); L.timer = setInterval(function () { L.secs = Math.round((Date.now() - L.t0) / 1000); var c = $('prclock'); if (c) c.textContent = fsecs(L.secs); if (L.secs >= 300) prEnd(); }, 1000); drawPractice(); },
+      onMessage: function (m) { var txt = (m && (m.message || m.text)) || ''; if (!txt) return; L.lines.push({ me: (m.source || m.role) === 'user', text: txt }); if (PR.live === L) drawPractice(); },
+      onModeChange: function (m) { L.mode = (m && m.mode) || m; if (PR.live === L) drawPractice(); },
+      onError: function (e) { console.warn('practice', e); },
+      onDisconnect: function () { if (PR.live === L) prFinish(); }
+    }).then(function (conv) { L.conv = conv; }).catch(function (e) { prFail(L, e); });
   }
   function prEnd() { var L = PR.live; if (!L || L.state === 'ending') return; if (L.conv && L.conv.endSession) { L.conv.endSession(); } else prFinish(); }
   function prFinish() {
@@ -3538,6 +3555,7 @@ export function mountOpsisQA(ROOT, cfg) {
     LASTH = h; BACKING = false;
   }
   function goBack() {
+    if (S.view === 'practice' && PR.result && !PR.live) { PR.result = null; PR.err = null; if (PR.d) drawPractice(); else render(); window.scrollTo(0, 0); return; }
     if (typeof CAL !== 'undefined' && CAL.item && S.view === 'calib') { calLeave(); EXT = null; S.pop = null; window.scrollTo(0, 0); render(); return; }
     var h = HIST.pop(); saveHist(); if (!h) return;
     if ($('layer') && $('layer').innerHTML) closeLayer();
@@ -3584,6 +3602,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function render() {
     prCheckAccess();
+    if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash(); trackHist();
     var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
@@ -3781,6 +3800,8 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'qsinsedit') { QSE.ins = true; drawQs(); }
       else if (a === 'prstart') { prStart(d.id); }
       else if (a === 'prend') { prEnd(); }
+      else if (a === 'pranswer') { prAnswer(); }
+      else if (a === 'prcancel') { prCancel(); }
       else if (a === 'prback') { PR.result = null; PR.err = null; if (PR.d) drawPractice(); else render(); }
       else if (a === 'prview') { prView(d.id); }
       else if (a === 'prsetup') { api({ action: 'practice', op: 'setup' }).then(function () { toast('Practice caller is set up.'); PR.d = null; render(); }).catch(function (e) { toast(e.message); }); }
