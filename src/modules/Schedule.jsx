@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import ScheduleTeam from './ScheduleTeam'
+import ScheduleTeam, { ST_CSS } from './ScheduleTeam'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
@@ -836,73 +836,85 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
   const myHours = personWeekHours(me.id, weekBlocks, claims, isoDate(days[0]), isoDate(days[6]))
   const myOver = myHours > WEEKLY_HOUR_CAP
 
-  const dayHeads = days.map(d => {
-    const ds = isoDate(d)
-    const mine = weekBlocks.filter(b => b.block_date === ds && claims.some(c => c.shift_block_id === b.id && c.profile_id === me.id))
-    return <div key={ds} className={'wg-dayhead' + (ds === todayStr ? ' today' : '')}>
-      <div className="wg-dayname">{d.toLocaleDateString('en-US', { weekday: 'short' })}</div>
-      <div className="wg-daydate">{d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })}</div>
-      <div className="wg-daymeta">{mine.length} interval{mine.length !== 1 ? 's' : ''}</div>
-    </div>
-  })
-
-  const myCells = days.map(d => {
-    const ds = isoDate(d)
-    const items = weekBlocks.filter(b => b.block_date === ds && claims.some(c => c.shift_block_id === b.id && c.profile_id === me.id))
-      .sort((a, b) => a.start_time.localeCompare(b.start_time))
-      .map(b => {
-        const claim = claims.find(c => c.shift_block_id === b.id && c.profile_id === me.id)
-        let cls = 'mine'; if (claim?.checked_in_at) cls += ' checkedin'; if (claim?.status === 'no_show') cls = 'noshow'
-        return <Iv key={b.id} block={b} cls={cls} time={`${blockTimeInViewer(b.block_date, b.start_time, me?.timezone)}–${blockTimeInViewer(b.block_date, b.end_time, me?.timezone)}`} role={b.role} onPop={onPop} />
-      })
-    return <div key={ds} className={'wg-cell' + (ds === todayStr ? ' today' : '') + (items.length ? '' : ' dim')}>{items}</div>
-  })
-
   // An interval up for trade (offered by someone else) shows here as grabbable too —
   // so a released interval is available on BOTH the trade board and the schedule.
   const tradeFor = (bid) => (trades || []).find(tr => tr.shift_block_id === bid && tr.offered_by !== me.id && tr.status === 'open')
-  const openCells = days.map(d => {
-    const ds = isoDate(d)
-    const items = weekBlocks.filter(b => {
-      if (b.block_date !== ds) return false
-      if (b.block_date > horizonStr) return false   // beyond the rolling window — not visible yet
-      // (started/ended intervals stay claimable — late pickup is allowed)
+  // Compact look (2026-11-05) — same table, chips and colors as the Team view.
+  const nowEt = etNow()
+  const stateOf = (b) => {
+    const st = new Date(`${b.block_date}T${b.start_time}`), en = new Date(`${b.block_date}T${b.end_time}`)
+    return en <= nowEt ? 'past' : st <= nowEt ? 'current' : 'upcoming'
+  }
+  const tm = (b) => `${blockTimeInViewer(b.block_date, b.start_time, me?.timezone)} – ${blockTimeInViewer(b.block_date, b.end_time, me?.timezone)}`
+  const openFor = (ds) => {
+    // identical open intervals (same schedule + time) grouped into one card
+    const groups = {}
+    for (const b of weekBlocks) {
+      if (b.block_date !== ds || b.block_date > horizonStr) continue
       const cl = claims.filter(c => c.shift_block_id === b.id)
-      if (cl.some(c => c.profile_id === me.id)) return false   // I already hold it
-      const hasOpenSeat = cl.length < b.total_spots
-      return hasOpenSeat || !!tradeFor(b.id)   // open seat OR up for trade
-    }).sort((a, b) => a.start_time.localeCompare(b.start_time))
-      .map(b => {
-        const left = b.total_spots - claims.filter(c => c.shift_block_id === b.id).length
-        const traded = left <= 0 && tradeFor(b.id)
-        return <Iv key={b.id} block={b} cls="open" spots={traded ? '🔁 up for trade' : `${left} open`} time={`${blockTimeInViewer(b.block_date, b.start_time, me?.timezone)}–${blockTimeInViewer(b.block_date, b.end_time, me?.timezone)}`} role={b.role} onPop={onPop} />
-      })
-    return <div key={ds} className={'wg-cell' + (ds === todayStr ? ' today' : '') + (items.length ? '' : ' dim')}>{items}</div>
-  })
+      if (cl.some(c => c.profile_id === me.id)) continue
+      const left = b.total_spots - cl.length, tr = tradeFor(b.id)
+      if (left <= 0 && !tr) continue
+      const k = `${b.schedule_id}|${b.start_time}|${b.end_time}|${left > 0 ? 'o' : 't'}`
+      const g = groups[k] = groups[k] || { b, open: 0, trade: left <= 0 }
+      g.open += Math.max(left, 0)
+    }
+    return Object.values(groups).sort((x, y) => x.b.start_time.localeCompare(y.b.start_time))
+  }
+  const mineFor = (ds) => weekBlocks.filter(b => b.block_date === ds && claims.some(c => c.shift_block_id === b.id && c.profile_id === me.id))
+    .sort((a, b) => a.start_time.localeCompare(b.start_time))
+  const totalOpen = days.reduce((n, d) => n + openFor(isoDate(d)).reduce((s, g) => s + g.open, 0), 0)
 
-  return <div className="grid-scroll">
-    <div className="week-grid">
-      <div className="wg-corner">Schedule</div>
-      {dayHeads}
-
-      <div className="wg-rowlabel">
-        <div className="wg-avatar" style={{ background: avatarColor(me.full_name || 'You') }}>{initials(me.full_name || 'You')}</div>
-        <div style={{ minWidth: 0 }}>
-          <div className="wg-person-name">Your intervals</div>
-          <div className="wg-person-sub" style={{ color: myOver ? 'var(--failed)' : undefined, fontWeight: myOver ? 700 : undefined }}>
-            {fmtHours(myHours)} / {WEEKLY_HOUR_CAP} h
-          </div>
-        </div>
+  return (
+    <div className="st-client" style={{ marginBottom: 0 }}>
+      <style>{ST_CSS}</style>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="st-grid" style={{ minWidth: 860 }}>
+          <thead><tr>
+            <th style={{ textAlign: 'left', paddingLeft: 14, position: 'sticky', left: 0, zIndex: 2 }}>Schedule</th>
+            {days.map(d => { const ds = isoDate(d); const n = mineFor(ds).length
+              return <th key={ds} className={ds === todayStr ? 'today' : ''}>{d.toLocaleDateString('en-US', { weekday: 'short' })}
+                <div style={{ fontWeight: 500 }}>{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                <div style={{ fontWeight: 500, fontSize: 11, color: 'var(--ink-soft)' }}>{n} interval{n !== 1 ? 's' : ''}</div></th> })}
+          </tr></thead>
+          <tbody>
+            <tr className="openrow">
+              <td className="who"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 19v-6h12v6M5 13V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v5M8 19v2M16 19v2" /></svg>
+                <span>Open intervals<div className="page-sub" style={{ fontSize: 11.5, fontWeight: 500 }}>{totalOpen} available to claim</div></span></span></td>
+              {days.map(d => { const ds = isoDate(d); const gs = openFor(ds)
+                return <td key={ds}>{gs.length === 0 ? <span className="page-sub">—</span> : gs.map((g, i) => (
+                  <div key={i} className="st-chip stack open" onClick={() => onPop(g.b)} title={`${tm(g.b)}${g.b.role ? ' · ' + g.b.role : ''}`}>
+                    <span>{tm(g.b)}</span><span className="cnt">{g.trade ? '🔁 up for trade' : `${g.open} open`}</span>
+                  </div>
+                ))}</td> })}
+            </tr>
+            <tr>
+              <td className="who">
+                <span className="st-av" style={{ background: avatarColor(me.full_name || 'You'), color: '#fff' }}>{initials(me.full_name || 'You')}</span>
+                <span style={{ display: 'inline-block', verticalAlign: 'middle' }}>Your intervals
+                  <div className="page-sub" style={{ fontSize: 11.5, fontWeight: myOver ? 800 : 500, color: myOver ? 'var(--failed)' : undefined }}>{fmtHours(myHours)} / {WEEKLY_HOUR_CAP} h this week</div></span>
+              </td>
+              {days.map(d => { const ds = isoDate(d); const its = mineFor(ds)
+                return <td key={ds}>{its.length === 0 ? <span className="page-sub">—</span> : its.map(b => {
+                  const claim = claims.find(c => c.shift_block_id === b.id && c.profile_id === me.id)
+                  const st = stateOf(b), noshow = claim?.status === 'no_show', done = !!claim?.checked_out_at
+                  return (
+                    <div key={b.id} className={'st-chip ' + (b.locked_at && st !== 'past' ? 'locked' : st)} onClick={() => onPop(b)}
+                      style={noshow ? { background: 'var(--failed-bg)', color: 'var(--failed)', borderColor: 'var(--failed)' } : undefined}
+                      title={`${tm(b)}${b.role ? ' · ' + b.role : ''}${noshow ? ' · no-show' : ''}`}>
+                      {tm(b)}
+                      {claim?.checked_in_at && !done && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#16A34A', display: 'inline-block' }} />}
+                      {done && <span aria-hidden="true">✓</span>}
+                    </div>
+                  )
+                })}</td> })}
+            </tr>
+          </tbody>
+        </table>
       </div>
-      {myCells}
-
-      <div className="wg-rowlabel" style={{ background: 'var(--canvas)' }}>
-        <div className="wg-avatar" style={{ background: 'var(--ink-soft)' }}>+</div>
-        <div><div className="wg-person-name">Open intervals</div><div className="wg-person-sub">Available to claim</div></div>
-      </div>
-      {openCells}
     </div>
-  </div>
+  )
 }
 
 // ---------- ADMIN GRID ----------
