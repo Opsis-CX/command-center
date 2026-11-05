@@ -16,7 +16,7 @@ create table if not exists public.schedule_settings (
   id boolean primary key default true check (id),
   colors jsonb not null default '{"past":"#94A3B8","current":"#3B82F6","upcoming":"#8B5CF6","open":"#F59E0B","locked":"#64748B","noshow":"#DC2626","checkedin":"#16A34A"}',
   group_by text not null default 'client_project' check (group_by in ('client_project', 'client', 'project', 'none')),
-  default_range text not null default 'week' check (default_range in ('day', 'week', 'month')),
+  default_range text not null default 'week' check (default_range in ('week', 'month')),
   week_starts int not null default 1 check (week_starts in (0, 1)),
   time_format text not null default '12' check (time_format in ('12', '24')),
   density text not null default 'compact' check (density in ('compact', 'comfortable')),
@@ -44,7 +44,7 @@ create table if not exists public.schedule_views (
   roles text[] not null default '{}',              -- interval role contains any of these (case-insensitive)
   people text not null default 'all' check (people in ('all', 'agents', 'internal')),
   group_by text check (group_by in ('client_project', 'client', 'project', 'none')),   -- null = company default
-  default_range text check (default_range in ('day', 'week', 'month')),
+  default_range text check (default_range in ('week', 'month')),
   open_row text check (open_row in ('top', 'bottom', 'hidden')),
   everyone boolean not null default true,
   created_by uuid references public.profiles(id) on delete set null default auth.uid(),
@@ -89,3 +89,11 @@ do $$ declare d text; begin
     execute d;
   end if;
 end $$;
+
+-- The single-day view was retired (2026-11-05): the week view already highlights today.
+update public.schedule_settings set default_range = 'week' where default_range = 'day';
+update public.schedule_views set default_range = null where default_range = 'day';
+alter table public.schedule_settings drop constraint if exists schedule_settings_default_range_check;
+alter table public.schedule_settings add constraint schedule_settings_default_range_check check (default_range in ('week', 'month'));
+alter table public.schedule_views drop constraint if exists schedule_views_default_range_check;
+alter table public.schedule_views add constraint schedule_views_default_range_check check (default_range in ('week', 'month'));  -- retired single-day
