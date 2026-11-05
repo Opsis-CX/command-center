@@ -1,4 +1,4 @@
-[README (12).md](https://github.com/user-attachments/files/34384082/README.12.md)
+[README (13).md](https://github.com/user-attachments/files/34431580/README.13.md)
 # Staging setup scripts
 
 Run these in the **staging** database (Supabase → command-center-staging → SQL editor),
@@ -22,5 +22,6 @@ database section from live and removes anything that only exists in staging.
 11. `11_dashboard.sql` — Dashboard: project on schedules, dashboard checkboxes, and the secure dash_* functions.
 12. `12_dashboard_actions.sql` — nudge people who haven't checked in; alert available people about open intervals.
 13. `13_alert_settings.sql` — Configuration → Alerts: wording, cooldowns, automatic nudges/alerts (cron every 5 min), availability rules.
+14. `14_dashboard_settings.sql` — Configuration → Dashboard: what counts toward fill rate (internal default + per schedule), colors, needs-attention, default range.
 
 All are safe to run more than once. (Staging also has fictional @demo.test people + sample schedules for testing.) Ask Claude to re-add the demo company afterwards.
