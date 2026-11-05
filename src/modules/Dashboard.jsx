@@ -63,8 +63,10 @@ const CSS = `
 `
 
 // ---- small helpers ----
-const tone = (pct) => pct == null ? ['var(--canvas)', 'var(--ink-soft)'] : pct >= 85 ? ['#DCFCE7', '#166534'] : pct >= 70 ? ['#FEF3C7', '#92400E'] : ['#FEE2E2', '#991B1B']
-const barColor = (pct) => pct == null ? 'var(--line)' : pct >= 85 ? '#16A34A' : pct >= 70 ? '#EAB308' : '#DC2626'
+// color cutoffs come from Configuration → Dashboard (defaults 85 / 70)
+const TH = { good: 85, warn: 70 }
+const tone = (pct) => pct == null ? ['var(--canvas)', 'var(--ink-soft)'] : pct >= TH.good ? ['#DCFCE7', '#166534'] : pct >= TH.warn ? ['#FEF3C7', '#92400E'] : ['#FEE2E2', '#991B1B']
+const barColor = (pct) => pct == null ? 'var(--line)' : pct >= TH.good ? '#16A34A' : pct >= TH.warn ? '#EAB308' : '#DC2626'
 const Pct = ({ v }) => { const [bg, fg] = tone(v); return <span className="db-badge" style={{ background: bg, color: fg }}>{v == null ? '—' : `${v}%`}</span> }
 const fmtDay = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' })
 const fmtDayParts = (d) => { const x = new Date(d + 'T12:00:00'); return [x.toLocaleDateString('en-US', { weekday: 'short' }), x.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })] }
@@ -114,6 +116,15 @@ export default function Dashboard() {
   const [actQ, setActQ] = useState('')   // "View tasks / activity" from Team Attendance pre-fills Activity search
 
   const [flags, setFlags] = useState({ nudge: true, open: true })   // Configuration → Alerts on/off
+  const [, setSettingsTick] = useState(0)
+  useEffect(() => {
+    supabase.rpc('dash_settings').then(({ data }) => {
+      if (!data) return
+      TH.good = data.good_pct ?? 85; TH.warn = data.warn_pct ?? 70
+      if (data.default_days) setDays(data.default_days)
+      setSettingsTick(t => t + 1)
+    })
+  }, [])
   useEffect(() => { supabase.rpc('dash_alert_flags').then(({ data }) => { if (data) setFlags(data) }) }, [])
   useEffect(() => {
     supabase.rpc('dash_scope').then(({ data }) => {
@@ -231,7 +242,7 @@ function Operations({ f, days, from, T, overview }) {
         </div>
         <div className="db-card">
           <h3><span style={{ color: '#D97706', display: 'inline-flex' }}><Ico d={I.warn} size={18} /></span>Needs attention <small>({(data.attention || []).length})</small></h3>
-          {(data.attention || []).length === 0 ? <div className="db-empty">Nothing below 70% — nice. 🎉</div>
+          {(data.attention || []).length === 0 ? <div className="db-empty">Nothing needs attention — nice. 🎉</div>
             : data.attention.map((a, i) => (
               <div key={i} className="db-att">
                 <span style={{ color: '#DC2626', marginTop: 1 }}><Ico d={I.warn} size={16} /></span>
@@ -405,7 +416,7 @@ function Schedule({ f, days, from, setFrom, T, canNudge }) {
               </tbody>
             </table></div>
           )}
-          <div className="page-sub" style={{ fontSize: 12, marginTop: 10 }}>Colors show coverage: green 85%+, amber 70–84%, red under 70%. Hover a cell for filled vs. scheduled.</div>
+          <div className="page-sub" style={{ fontSize: 12, marginTop: 10 }}>Colors show coverage: green {TH.good}%+, amber {TH.warn}–{TH.good - 1}%, red under {TH.warn}%. Hover a cell for filled vs. scheduled.</div>
         </div>
       ) : (
         <OpenIntervals open={data.open || []} T={T} canNudge={canNudge} />
