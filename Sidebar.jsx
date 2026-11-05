@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { useBranding, logoFor } from '../lib/branding'
+import NavIcon from './NavIcon'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useUnread } from '../lib/unread'
@@ -33,18 +35,22 @@ import ChangePassword from './ChangePassword'
 // (so agents simply see fewer items in the same order). NAV_DEFAULT and
 // NAV_ADMIN both point at NAV_MAIN — kept as two names so the two orders can be
 // split again later without touching the component.
+
 const NAV_MAIN = [
   {
     group: '',
     items: [
+      // Top of the menu (2026-11-04): My Profile → My Tools → Dashboard.
+      // Opsis Weekly's content now lives on My Profile (quote, spotlight, updates, my week).
+      { type: 'link', to: '/profile', label: 'My Profile', ic: '👤', perm: null },
       {
-        type: 'section', key: 'opsis', label: 'Opsis Weekly', ic: '🏠',
+        type: 'section', key: 'my-tools', label: 'My Tools', ic: '🧰',
         children: [
-          { to: '/home', label: 'Opsis Weekly', perm: null },            // the page itself; everyone
-          { to: '/updates', label: 'Updates', perm: null },              // everyone; RLS gates audience
-          { to: '/', label: 'Dashboard', perm: 'dashboard', end: true }, // managers only (perm-gated)
+          { to: '/notes', label: 'My Notes', perm: null },
+          { to: '/calendar', label: 'Calendar', perm: null },
         ],
       },
+      { type: 'link', to: '/', label: 'Dashboard', ic: '📊', perm: 'dashboard', end: true }, // managers only (perm-gated)
       {
         type: 'section', key: 'schedule', label: 'Schedule', ic: '◷',
         children: [
@@ -71,9 +77,7 @@ const NAV_MAIN = [
           { to: '/inbound', label: 'Inbound', perm: '__caller' },
         ],
       },
-      { type: 'link', to: '/notes', label: 'My Notes', ic: '📝', perm: null },
       { type: 'link', to: '/projects', label: 'Project Management', ic: '🗂️', perm: 'project_management' },
-      { type: 'link', to: '/calendar', label: 'Calendar', ic: '📅', perm: null },
       { type: 'link', to: '/scorecard', label: 'Scorecard', ic: '🎯', perm: 'service_performance_scorecard' },
       { type: 'link', to: '/my-call-reviews', label: 'My Call Reviews', ic: '🎧', perm: 'call_reviews.mine' },
       { type: 'link', to: '/knowledge', label: 'Knowledge Base', ic: '📚', perm: null },
@@ -98,7 +102,14 @@ const NAV_MAIN = [
           { to: '/my-courses', label: 'My courses', perm: 'certifications.assigned_to_complete' },
         ],
       },
-      { type: 'link', to: '/weekly-sync', label: 'Weekly Sync', ic: '🔄', perm: 'weekly_sync' },
+      {
+        // Team Updates (2026-11-04): the team's regular check-ins
+        type: 'section', key: 'team-updates', label: 'Team Updates', ic: '📣',
+        children: [
+          { to: '/weekly-sync', label: 'Weekly Sync', perm: 'weekly_sync' },
+          { to: '/eod', label: 'End of Day Report', perm: '__eod' },   // non-agents submit; admins also see everyone's
+        ],
+      },
       { type: 'link', to: '/hiring', label: 'Hiring', ic: '🧲', perm: 'hiring' },
       { type: 'link', to: '/sales', label: 'Sales', ic: '📊', perm: 'sales' },
       { type: 'link', to: '/rsn', label: 'RSN Pipeline', ic: '🔗', perm: '__rsn' },
@@ -107,15 +118,28 @@ const NAV_MAIN = [
       { type: 'link', to: '/finance', label: 'Finance', ic: '💰', perm: '__finance' },                    // Admins and Owners only (enforced by the database)
       { type: 'link', to: '/submit-purchase', label: 'Submit a purchase', ic: '🧾', perm: '__finance_submit' }, // roles owners choose, plus Admins and Owners
       {
-        type: 'section', key: 'backend', label: 'Backend', ic: '⚙',
+        // Configuration: how Command Center works, who can access things, how the organization is structured
+        type: 'section', key: 'backend', label: 'Configuration', ic: '⚙',
         children: [
           { to: '/people', label: 'People & tags', perm: 'people_and_tags.view_only' },
           { to: '/clients', label: 'Clients', perm: 'clients.view_only' },
           { to: '/positions', label: 'Positions', perm: 'positions.view_only' },
-          { to: '/sms-consents', label: 'SMS Consent', perm: '__admin' },   // agent text opt-in report (admins only)
-          { to: '/roles', label: 'Roles & permissions', perm: '__admin' }, // admins/owners only
+          { to: '/branding', label: 'Branding', perm: '__admin' },          // company logo + colors
+          { to: '/dashboard-settings', label: 'Dashboard', perm: '__admin' }, // what counts toward fill rate, colors, default range
+          { to: '/alerts', label: 'Alerts', perm: '__admin' },              // nudges + open-interval alerts: wording, cooldowns, automatic
+          { to: '/roles', label: 'Access & Permissions', perm: '__admin' }, // admins/owners only
           { to: '/service-account', label: 'Service account', perm: '__admin' }, // the account automated posts use (Turri)
-          { to: '/survey', label: 'New Hire Survey', perm: '__admin' },   // results view; agents reach the form from their notification
+        ],
+      },
+      {
+        // Backend: the information, content and processes that power Command Center (2026-11-04)
+        type: 'section', key: 'content-backend', label: 'Backend', ic: '🗄️',
+        children: [
+          { to: '/updates', label: 'Updates', perm: '__updates_post' },    // posting/managing; everyone still READS updates on Opsis Weekly, their profile and links
+          { to: '/backend/quotes', label: 'Daily Quotes', perm: '__admin' },
+          { to: '/backend/spotlight', label: 'Spotlight', perm: '__admin' },
+          { to: '/sms-consents', label: 'SMS Consent', perm: '__admin' },   // agent text opt-in report (admins only)
+          { to: '/survey', label: 'New Hire Survey', perm: '__admin' },     // results view; agents reach the form from their notification
         ],
       },
     ],
@@ -142,7 +166,13 @@ function formatRole(raw) {
     .map(p => ROLE_LABELS[p] || p.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))
     .join(' & ')
 }
+// Pages this person can open (filled in by the sidebar on every render).
+let _navIndex = []
+export const getNavIndex = () => _navIndex
+
 export default function Sidebar({ open, onNavigate }) {
+  const branding = useBranding()   // company logo (Configuration → Branding)
+  const lineIcons = branding?.nav_icon_style === 'bw'   // "Line icons" option
   const { isAdmin, level, roles, user, signOut, appRole } = useAuth()
   const navigate = useNavigate()
   const { total: unreadTotal } = useUnread()
@@ -169,12 +199,12 @@ export default function Sidebar({ open, onNavigate }) {
   // Self-service permissions (2026-10-29): when the new roles system is on, pages that used to
   // be "everyone" or "admins only" follow the person's checkboxes too.
   const NEW_PAGE_PERMS = {
-    '/home': 'home.view', '/updates': 'updates.view', '/notes': 'notes.view', '/calendar': 'calendar.view',
-    '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': 'admin.roles', '/sms-consents': 'admin.settings',
+    '/home': 'home.view', '/': ['dashboard.overview', 'dashboard.client'], '/updates': 'updates.create', '/weekly-sync': 'team.weekly_sync', '/eod': ['team.eod_submit', 'team.eod_view'], '/notes': 'notes.view', '/calendar': 'calendar.view',
+    '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings', '/branding': 'admin.settings', '/alerts': 'admin.alerts', '/dashboard-settings': 'admin.settings', '/backend/quotes': 'content.quotes', '/backend/spotlight': 'content.spotlight',
     '/service-account': 'admin.settings', '/survey': 'people.edit', '/finance': 'finance.view', '/submit-purchase': 'finance.create',
   }
   const permOk = (p, to) => {
-    if (usingNewPermissions() && NEW_PAGE_PERMS[to]) return hasPerm(NEW_PAGE_PERMS[to])
+    if (usingNewPermissions() && NEW_PAGE_PERMS[to]) return [].concat(NEW_PAGE_PERMS[to]).some(k => hasPerm(k))
     return permOkOld(p)
   }
   const permOkOld = (p) =>
@@ -182,6 +212,8 @@ export default function Sidebar({ open, onNavigate }) {
     : p === '__finance' ? fin?.manager === true
     : p === '__finance_submit' ? fin?.submitter === true
     : p === '__admin' ? (isAdmin || isOwner)
+    : p === '__eod' ? (isAdmin || isOwner || !String(appRole || '').toLowerCase().split(',').map(r => r.trim()).every(r => r === 'agent'))
+    : p === '__updates_post' ? (isAdmin || isOwner || String(appRole || '').toLowerCase().split(',').map(r => r.trim()).some(r => ['admin', 'asc', 'certification'].includes(r)))
     : p === '__caller' ? !NO_CALL_ROLES.includes(appRole)
     : p === '__dialer' ? (!NO_CALL_ROLES.includes(appRole) || onCampaign)
     : (!p || canAny(appRole, p))
@@ -230,6 +262,11 @@ export default function Sidebar({ open, onNavigate }) {
     if (item.type === 'link') return permOk(item.perm, item.to)
     return item.children.some(c => permOk(c.perm, c.to))
   }
+  // Share this person's allowed pages with the universal search (so its "Pages" results
+  // always match their menu exactly). 2026-10-30
+  _navIndex = NAV.flatMap(grp => (grp.items || []).flatMap(item => item.type === 'link'
+    ? (permOk(item.perm, item.to) ? [{ label: item.label, to: item.to, ic: item.ic, group: grp.group || '' }] : [])
+    : (item.children || []).filter(c => permOk(c.perm, c.to)).map(c => ({ label: c.label, to: c.to, ic: c.ic || item.ic, group: item.label }))))
   // Render one nav item (link or collapsible section).
   const renderItem = (item) => {
     // --- single top-level link ---
@@ -239,7 +276,7 @@ export default function Sidebar({ open, onNavigate }) {
         <NavLink key={item.to} to={item.to} end={item.end}
           onClick={() => onNavigate && onNavigate()}
           className={({ isActive }) => 'nav-item' + (isActive ? ' on' : '')}>
-          <span className="ic">{item.ic}</span> {item.label}
+          <NavIcon ic={item.ic} line={lineIcons} /> {item.label}
           {item.to === '/chat' && unreadTotal > 0 && (
             <span style={{ marginLeft: 'auto', background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
               {unreadTotal > 99 ? '99+' : unreadTotal}
@@ -256,7 +293,7 @@ export default function Sidebar({ open, onNavigate }) {
       <div key={item.key} className="nav-section">
         <button type="button" className="nav-item nav-section-head" onClick={() => toggleSection(item.key)}
           aria-expanded={isOpen}>
-          <span className="ic">{item.ic}</span> {item.label}
+          <NavIcon ic={item.ic} line={lineIcons} /> {item.label}
           <span className="nav-caret" style={{ marginLeft: 'auto', transition: 'transform .15s ease', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
         </button>
         {isOpen && (
@@ -277,7 +314,7 @@ export default function Sidebar({ open, onNavigate }) {
   return (
     <aside className={'sidebar' + (open ? ' open' : '')}>
       <div className="brand">
-        <img src="/opsis-logo.png" alt="Opsis" style={{ width: '100%', height: 'auto', maxHeight: 64, objectFit: 'contain' }} />
+        <img className="brand-logo" src={logoFor(branding, true)} alt={branding?.company_name || 'Opsis'} />
       </div>
       {/* Only THIS region scrolls when the nav outgrows the window — the page
           itself never gets a scrollbar, and the user chip stays pinned below. */}
@@ -312,16 +349,11 @@ export default function Sidebar({ open, onNavigate }) {
       <div className="nav-section">
         <button className="nav-item nav-section-head" onClick={() => setSettingsOpen(o => !o)}
           style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-          <span className="ic">⚙️</span> Settings
+          <NavIcon ic="⚙️" line={lineIcons} /> Settings
           <span className="nav-caret" style={{ marginLeft: 'auto', transition: 'transform .15s ease', transform: settingsOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 11, opacity: .7 }}>▸</span>
         </button>
         {settingsOpen && (
           <div className="nav-section-body">
-            <NavLink to="/profile" onClick={() => onNavigate && onNavigate()}
-              className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
-              style={{ paddingLeft: 34 }}>
-              My profile
-            </NavLink>
             <NavLink to="/settings" onClick={() => onNavigate && onNavigate()}
               className={({ isActive }) => 'nav-item nav-subitem' + (isActive ? ' on' : '')}
               style={{ paddingLeft: 34 }}>
