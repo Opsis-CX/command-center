@@ -339,14 +339,14 @@ function Detail({ blockId, onClose, onChanged, onError }) {
     onChanged(typeof ok === 'function' ? ok(data) : ok)
     if (close) onClose(); else load()
   }
-  if (!d) return <Modal title="Interval details" onClose={onClose}><p className="page-sub">Loading…</p></Modal>
+  if (!d) return <Modal title="Interval details" onClose={onClose} width={660}><p className="page-sub">Loading…</p></Modal>
   const open = Math.max(d.total - d.filled, 0)
   const [sl, sbg, sfg] = STATE[d.state] || STATE.upcoming
   const can = d.can || {}
   const confirmThen = (key, fn) => { if (sure !== key) { setSure(key); return } setSure(null); fn() }
   return (
     <>
-      <Modal title="Interval details" onClose={onClose}>
+      <Modal title="Interval details" onClose={onClose} width={660}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <span style={{ background: sbg, color: sfg, fontWeight: 800, fontSize: 12.5, padding: '4px 11px', borderRadius: 999 }}>{sl}</span>
           {d.locked && <span style={{ background: '#F1F5F9', color: '#334155', fontWeight: 800, fontSize: 12.5, padding: '4px 11px', borderRadius: 999, display: 'inline-flex', gap: 5, alignItems: 'center' }}><Ico d={ICO.lock} size={13} />Locked</span>}
@@ -364,17 +364,40 @@ function Detail({ blockId, onClose, onChanged, onError }) {
         {d.people && (
           <div style={{ marginTop: 14 }}>
             <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 6 }}>Assigned ({d.people.length})</div>
-            {d.people.length === 0 ? <div className="page-sub" style={{ fontSize: 13 }}>Nobody yet.</div> : d.people.map(p => (
-              <div key={p.claim_id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--line)' }}>
-                <span className="st-av">{initials(p.name)}</span><span style={{ flex: 1, fontWeight: 600, fontSize: 13.5 }}>{p.name}</span>
-                {p.checked_in && <span style={{ fontSize: 12, color: '#16A34A', fontWeight: 700 }}>● checked in</span>}
-                {can.unassign && !p.checked_in && <button className="st-btn danger" style={{ padding: '4px 10px', fontSize: 12 }} disabled={busy}
-                  onClick={() => confirmThen('u' + p.claim_id, () => run(() => supabase.rpc('sched_unassign', { p_claims: [p.claim_id] }), (r) => r.done ? `Unassigned ${p.name}.` : `Couldn't unassign ${p.name}.`))}>{sure === 'u' + p.claim_id ? 'Confirm' : 'Unassign'}</button>}
-              </div>
-            ))}
+            {d.people.length === 0 ? <div className="page-sub" style={{ fontSize: 13 }}>Nobody yet.</div> : d.people.map(p => {
+              // attendance status + what can be done (server checks permission, scope, and "not yourself")
+              const noShow = p.status === 'no_show', out = !!p.checked_out_at, inn = !!p.checked_in_at
+              const at = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })
+              const [lbl, col] = noShow ? ['🚫 No-show', '#B91C1C'] : out ? [`✓ Done · ${at(p.checked_in_at)}–${at(p.checked_out_at)}`, '#64748B']
+                : inn ? [`● Checked in ${at(p.checked_in_at)}`, '#16A34A'] : can.started ? ['Not checked in', '#B45309'] : ['Scheduled', 'var(--ink-soft)']
+              const act = (a, msg) => run(() => supabase.rpc('sched_attendance', { p_claims: [p.claim_id], p_action: a }),
+                (r) => r.done ? msg : (r.reasons?.[0] || 'Nothing changed.'))
+              const small = { padding: '4px 9px', fontSize: 11.5 }
+              return (
+                <div key={p.claim_id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
+                  <span className="st-av">{initials(p.name)}</span>
+                  <span style={{ flex: 1, minWidth: 140 }}>
+                    <span style={{ display: 'block', fontWeight: 600, fontSize: 13.5 }}>{p.name}</span>
+                    <span style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: col }}>{lbl}</span>
+                  </span>
+                  {can.checkin && !inn && !noShow && can.started && <>
+                    <button className="st-btn" style={small} disabled={busy} onClick={() => act('in', `Checked ${p.name} in.`)}>✓ Check in</button>
+                    <button className="st-btn" style={small} disabled={busy} title="Check in as of the interval's start time" onClick={() => act('in_at_start', `Checked ${p.name} in as of ${fmtTT(d.start)}.`)}>✓ As of {fmtT(d.start)}</button>
+                  </>}
+                  {can.checkin && inn && !out && <button className="st-btn" style={small} disabled={busy}
+                    onClick={() => confirmThen('o' + p.claim_id, () => act('out', `Checked ${p.name} out.`))}>{sure === 'o' + p.claim_id ? 'Confirm' : '⏏ Check out'}</button>}
+                  {can.no_show && !inn && !noShow && can.started && <button className="st-btn danger" style={small} disabled={busy}
+                    onClick={() => confirmThen('n' + p.claim_id, () => act('no_show', `Marked ${p.name} as a no-show.`))}>{sure === 'n' + p.claim_id ? 'Confirm' : '🚫 No-show'}</button>}
+                  {can.no_show && noShow && <button className="st-btn" style={small} disabled={busy}
+                    onClick={() => act('clear_no_show', `Cleared ${p.name}'s no-show.`)}>↩ Clear no-show</button>}
+                  {can.unassign && !inn && <button className="st-btn danger" style={small} disabled={busy}
+                    onClick={() => confirmThen('u' + p.claim_id, () => run(() => supabase.rpc('sched_unassign', { p_claims: [p.claim_id] }), (r) => r.done ? `Unassigned ${p.name}.` : `Couldn't unassign ${p.name}.`))}>{sure === 'u' + p.claim_id ? 'Confirm' : 'Unassign'}</button>}
+                </div>
+              )
+            })}
           </div>
         )}
-        {Object.values(can).some(Boolean) && <div style={{ fontWeight: 800, fontSize: 13.5, margin: '16px 0 2px' }}>Actions</div>}
+        {['assign', 'edit', 'copy', 'move', 'delete', 'lock', 'unlock'].some(k => can[k]) && <div style={{ fontWeight: 800, fontSize: 13.5, margin: '16px 0 2px' }}>Actions</div>}
         <div className="st-acts">
           {can.assign && open > 0 && <button className="st-btn on" disabled={busy} onClick={() => setSub('assign')}><Ico d={ICO.user} />Assign shift</button>}
           {can.edit && <button className="st-btn" disabled={busy} onClick={() => setSub('edit')}><Ico d={ICO.edit} />Edit interval</button>}
