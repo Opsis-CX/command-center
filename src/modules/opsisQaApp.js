@@ -1438,7 +1438,7 @@ export function mountOpsisQA(ROOT, cfg) {
       rcSec('qs', 'Required questions', 'asked on every call, e.g. how did you hear about us', qs) +
       rcSec('tr', 'Transfers', 'emergency, sales, commercial… who and when', trs) +
       rcSec('sched', 'Scheduling', 'earliest day, job types, arrival windows', sc) +
-      rcSec('cal', 'Live booking calendar', 'real open times from the GarageCo booking page', rcRow('Offer real open times', '<label style="display:inline-flex;gap:6px;align-items:center;font-size:13.5px">' + rcIn('live_calendar', { type: 'check' }) + ' Check the GarageCo booking calendar for open days and windows</label>', 'She looks up the same open times your team sees on the booking page, applies the earliest-day rules under Scheduling, and only offers what’s open. <b>She does not book yet</b>: she holds the day and window and a team member confirms.')) +
+      rcSec('cal', 'Live booking calendar', 'real open times from the GarageCo booking page', rcRow('Offer real open times', '<label style="display:inline-flex;gap:6px;align-items:center;font-size:13.5px">' + rcIn('live_calendar', { type: 'check' }) + ' Check the GarageCo booking calendar for open days and windows</label>', 'She looks up the same open times your team sees on the booking page, applies the earliest-day rules under Scheduling, and only offers what’s open.') + rcBookHtml(R, s)) +
       rcSec('loc', 'Locations and service area', 'towns and zip codes each location covers', lc) +
       rcSec('web', 'Website', 'pages she can look up to answer questions', wb) +
       rcSec('beh', 'Call behavior', 'interruptions, silence, speed, call length', bh) +
@@ -1454,6 +1454,19 @@ export function mountOpsisQA(ROOT, cfg) {
     });
     [].forEach.call(el.querySelectorAll('[data-zips]'), function (ta) { ta.addEventListener('input', function () { rcSet('locations.' + ta.getAttribute('data-zips') + '.zips', rcZips(ta.value)); }); ta.addEventListener('blur', function () { drawRcSettings(); }); });
     [].forEach.call(el.querySelectorAll('[data-days]'), function (cb) { cb.addEventListener('change', function () { var p = cb.getAttribute('data-days'), cur = (rcGet(p) || []).slice(), dd = cb.getAttribute('data-day'), ix = cur.indexOf(dd); if (cb.checked && ix < 0) cur.push(dd); if (!cb.checked && ix >= 0) cur.splice(ix, 1); rcSet(p, cur); }); });
+  }
+  function rcBookHtml(R, s) {
+    if (!R.has_lc) return '';
+    var cals = RC.hlCals || null, calOpts = function (path) { var v = rcGet(path) || ''; if (!cals) return v ? '<code style="font-size:12px">' + esc(v) + '</code>' : '<span class="mut">—</span>'; return rcIn(path, { type: 'select', options: [['', 'Choose a calendar…']].concat(cals.map(function (c) { return [c.id, c.name + (c.type ? ' (' + c.type + ')' : '')]; })) }); };
+    var h = '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line2)"><div style="font-size:13px;font-weight:600">Book appointments on the calendar</div><div class="mut" style="font-size:12px;margin:2px 0 6px">When this is on, she books the open time on the GarageCo calendar (the same as submitting the booking form), then tells the caller they’re booked and the technician calls 30 minutes ahead. No “someone will call you back”.</div>';
+    if (!R.has_hl_token) {
+      h += '<div class="banner" style="margin-top:6px">Needs GarageCo’s HighLevel access token (a Private Integration token for the GarageCo sub-account with contacts and calendar-events write access). The public booking form has bot protection, so booking goes through HighLevel’s official API instead.</div>' +
+        (R.staff ? '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><input type="password" id="hltok" class="oq-field" placeholder="Paste the HighLevel token" style="flex:1 1 320px"><button class="sel btnd" data-act="rchltok">Save token</button></div>' : '');
+      return h + '</div>';
+    }
+    h += '<label style="display:inline-flex;gap:6px;align-items:center;font-size:13.5px">' + rcIn('book_live', { type: 'check' }) + ' Book the appointment during the call</label>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;align-items:flex-end"><div><div class="cap">Calendar for repair / maintenance</div>' + calOpts('lc_cal_repair') + '</div><div><div class="cap">Calendar for new door estimates</div>' + calOpts('lc_cal_install') + '</div>' + (cals ? '' : '<button class="sel" data-act="rchlcals">Load calendars</button>') + '</div>';
+    return h + '</div>';
   }
   function rcListAdd(list) {
     var s = RC.s.settings, arr = rcGet(list);
@@ -4107,6 +4120,8 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rcadd') { rcListAdd(d.list); }
       else if (a === 'rcdel') { rcGet(d.list).splice(+d.i, 1); RC.dirty = true; drawRcSettings(); }
       else if (a === 'rcssave') { rcSave(); }
+      else if (a === 'rchltok') { var tk = ($('hltok') || {}).value || ''; api({ action: 'receptionist', op: 'hl_token', token: tk }).then(function () { toast('Token saved.'); RC.s.has_hl_token = true; drawRcSettings(); }).catch(function (e) { toast(e.message); }); }
+      else if (a === 'rchlcals') { api({ action: 'receptionist', op: 'hl_calendars' }).then(function (r) { RC.hlCals = r.calendars || []; drawRcSettings(); }).catch(function (e) { toast(e.message); }); }
       else if (a === 'rcsreset') { rcLoadSettings(RC.sBrand); }
       else if (a === 'rcrprun') { var P0 = rcRpInit(); P0.start = ($('rpst') || {}).value || P0.start; P0.end = ($('rpen') || {}).value || P0.end; rcRpLoad(); }
       else if (a === 'rcrppick') { RC.rp.pick = !RC.rp.pick; drawRcReport(); }
