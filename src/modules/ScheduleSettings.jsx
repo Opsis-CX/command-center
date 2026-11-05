@@ -31,7 +31,7 @@ const CSS = `
 `
 const STATES = [['past', 'Past'], ['current', 'Happening now'], ['upcoming', 'Upcoming'], ['open', 'Open spots'], ['locked', 'Locked'], ['noshow', 'No-show'], ['checkedin', 'Checked-in dot']]
 const GROUPS = [['client_project', 'Client → Project'], ['client', 'Client'], ['project', 'Project'], ['none', 'No grouping']]
-const RANGES = [['day', 'Today'], ['week', 'Week'], ['month', 'Month']]
+const RANGES = [['week', 'Week'], ['month', 'Month']]
 const OPEN = [['top', 'Top'], ['bottom', 'Bottom'], ['hidden', 'Hidden']]
 const ICONS = ['🗓', '👥', '🎧', '📞', '💬', '🛠️', '⭐', '🌙', '☀️', '🏢', '📈', '🔥']
 
