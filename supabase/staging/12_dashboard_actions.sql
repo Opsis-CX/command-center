@@ -1,4 +1,3 @@
-
 -- ============================================================
 -- DASHBOARD ACTIONS (staging, 2026-11-04). Run after 11.
 --  • Nudge people who haven't checked in (notification type 'checkin_nudge' → in-app + push).
@@ -167,3 +166,40 @@ begin
   return jsonb_build_object('done', done, 'skipped', skipped);
 end $$;
 grant execute on function public.dash_on_now(uuid, uuid), public.dash_check(uuid[], text) to authenticated;
+
+-- ---------- Team Attendance: today's intervals with a status for each person (2026-11-04) ----------
+-- status: checked_in · late (started, not checked in) · scheduled (later today) · done · no_show
+create or replace function public.dash_attendance(p_client uuid default null, p_project uuid default null) returns jsonb
+language plpgsql stable security definer set search_path to 'public' as $$
+declare now_et timestamp := (now() at time zone 'America/New_York'); today date := (now() at time zone 'America/New_York')::date; res jsonb;
+  can_names boolean := public.is_access_owner() or public.has_perm('dashboard.names');
+begin
+  if not (public.is_access_owner() or public.has_perm('dashboard.staffing')) then raise exception 'not allowed'; end if;
+  if p_client is null and not (public.is_access_owner() or public.has_perm('dashboard.overview')) then raise exception 'not allowed'; end if;
+  select coalesce(jsonb_agg(x order by (x->>'sort')::int, x->>'start', x->>'name'), '[]'::jsonb) into res from (
+    select jsonb_build_object('claim_id', c.id, 'person_id', c.profile_id,
+      'name', case when public.is_access_owner() or (can_names and public.dash_person_visible(c.profile_id)) then pr.full_name else 'A team member' end,
+      'avatar', case when can_names then pr.avatar_url end,
+      'type', case when public.dash_is_agent(c.profile_id) then 'agent' else 'internal' end, 'title', pr.job_title,
+      'role', b.role, 'start', b.start_time, 'end', b.end_time, 'checked_in_at', c.checked_in_at, 'checked_out_at', c.checked_out_at,
+      'client_id', s.client_id, 'project_id', s.project_id,
+      'client', (select name from public.clients where id = s.client_id), 'project', (select name from public.projects where id = s.project_id),
+      'status', st.status, 'sort', st.sort,
+      'minutes_late', case when st.status = 'late' then floor(extract(epoch from (now_et - (b.block_date + b.start_time))) / 60)::int end,
+      'last_nudged', (select max(l.created_at) from public.schedule_activity_log l where l.action = 'nudged' and l.shift_block_id = b.id and l.affected_profile_id = c.profile_id)) x
+    from public.shift_claims c join public.shift_blocks b on b.id = c.shift_block_id
+    join public.dash_schedules(p_client, p_project) s on s.schedule_id = b.schedule_id
+    join public.profiles pr on pr.id = c.profile_id
+    cross join lateral (select case
+        when c.status = 'no_show' then 'no_show'
+        when c.checked_out_at is not null then 'done'
+        when c.checked_in_at is not null then 'checked_in'
+        when (b.block_date + b.start_time) <= now_et and (b.block_date + b.end_time) > now_et then 'late'
+        when (b.block_date + b.end_time) <= now_et then 'no_show'
+        else 'scheduled' end as status) st0
+    cross join lateral (select st0.status, case st0.status when 'late' then 1 when 'checked_in' then 2 when 'scheduled' then 3 when 'done' then 4 else 5 end as sort) st
+    where b.block_date = today
+      and (public.dash_is_agent(c.profile_id) or public.is_access_owner() or public.level_rank(public.my_level()) >= 3 or public.dash_reports_to_me(c.profile_id))) z;
+  return res;
+end $$;
+grant execute on function public.dash_attendance(uuid, uuid) to authenticated;
