@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { notifyChannelAdded } from '../lib/notify'
 import { supabase } from '../lib/supabase'
 import { useTerms } from '../lib/terms'
 
@@ -110,6 +111,7 @@ export default function Dashboard() {
   const [projectId, setProjectId] = useState('')
   const [days, setDays] = useState(7)
   const [from, setFrom] = useState(todayET())
+  const [actQ, setActQ] = useState('')   // "View tasks / activity" from Team Attendance pre-fills Activity search
 
   const [flags, setFlags] = useState({ nudge: true, open: true })   // Configuration → Alerts on/off
   useEffect(() => { supabase.rpc('dash_alert_flags').then(({ data }) => { if (data) setFlags(data) }) }, [])
@@ -174,9 +176,10 @@ export default function Dashboard() {
       </div>
 
       {view === 'operations' && <Operations key={`o${tab}${filter.c}${filter.p}${days}`} f={filter} days={days} from={from} T={T} overview={tab === 'overview'} />}
-      {view === 'staffing' && <Staffing key={`s${tab}${filter.c}${filter.p}`} f={filter} T={T} canNudge={!!scope.nudge && flags.nudge !== false} canCheck={!!scope.checkin} />}
+      {view === 'staffing' && <Staffing key={`s${tab}${filter.c}${filter.p}`} f={filter} T={T} canNudge={!!scope.nudge && flags.nudge !== false} canCheck={!!scope.checkin}
+        onViewActivity={scope.views?.activity ? (name) => { setActQ(name); setView('activity') } : null} />}
       {view === 'schedule' && <Schedule key={`c${tab}${filter.c}${filter.p}`} f={filter} days={days} from={from} setFrom={setFrom} T={T} canNudge={!!scope.nudge && flags.open !== false} />}
-      {view === 'activity' && <Activity key={`a${tab}${filter.c}${filter.p}`} f={filter} T={T} overview={tab === 'overview'} scope={scope} />}
+      {view === 'activity' && <Activity key={`a${tab}${filter.c}${filter.p}${actQ}`} f={filter} T={T} overview={tab === 'overview'} scope={scope} initialQ={actQ} />}
     </div>
   )
 }
@@ -287,20 +290,12 @@ function Donut({ parts }) {
     </div>
   )
 }
-function Staffing({ f, T, canNudge, canCheck }) {
+function Staffing({ f, T, canNudge, canCheck, onViewActivity }) {
   const { data, err } = useRpc('dash_staffing', { p_client: f.c, p_project: f.p })
   const [open, toggle] = useOpen()
-  const [who, setWho] = useState('all')       // all | agent | internal
-  const [ptab, setPtab] = useState('people')  // people | late | on  (check-ins live under People)
-  const [counts, setCounts] = useState({ late: 0, on: 0 })
-  const peopleRef = useRef(null)
-  const goLate = () => { setPtab('late'); setTimeout(() => peopleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }
-  const [onlyOn, setOnlyOn] = useState(false)
-  const [q, setQ] = useState('')
   if (err) return <Err msg={err} />
   if (!data) return <Loading />
   const t = data.totals || {}
-  const people = (data.people || []).filter(p => (who === 'all' || p.type === who) && (!onlyOn || p.on_now) && (!q.trim() || `${p.name} ${p.title || ''} ${p.where || ''}`.toLowerCase().includes(q.trim().toLowerCase())))
   const parts = [{ l: 'Agents', v: t.agents || 0, c: 'var(--accent)' }, ...(data.can_internal ? [{ l: 'Internal', v: t.internal || 0, c: '#94A3B8' }] : [])]
   return (
     <>
@@ -310,15 +305,6 @@ function Staffing({ f, T, canNudge, canCheck }) {
         {data.can_internal ? <Kpi icon={I.staff} value={t.internal ?? 0} label="Internal staff" /> : <Kpi icon={I.open} value={t.open_spots ?? 0} label="Open spots (next 7 days)" />}
         <Kpi icon={I.on} value={t.on_now ?? 0} label="On now"><div className="db-kpi-d" style={{ color: '#16A34A' }}>● checked in right now</div></Kpi>
       </div>
-      {data.can_names && counts.late > 0 && (
-        <div className="db-card" style={{ borderColor: '#FCD34D', background: 'color-mix(in srgb, #F59E0B 8%, var(--surface))', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', flexWrap: 'wrap' }}>
-          <span style={{ color: '#D97706', display: 'inline-flex' }}><Ico d={I.warn} size={20} /></span>
-          <span style={{ flex: 1, minWidth: 220, fontSize: 14 }}><b>{counts.late} {counts.late === 1 ? 'person hasn\'t' : 'people haven\'t'} checked in</b> for intervals that already started.</span>
-          <button className="btn btn-primary" style={{ fontSize: 13 }} onClick={goLate}>Review &amp; nudge →</button>
-        </div>
-      )}
-      {!data.can_names && <CheckIns f={f} T={T} canNudge={canNudge} canCheck={canCheck} />}
-      {data.can_names && ptab === 'people' && <CheckIns f={f} T={T} onCounts={setCounts} countsOnly />}
       <div className="db-split" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.7fr)' }}>
         <div className="db-card">
           <h3>Staff by type</h3>
@@ -355,41 +341,7 @@ function Staffing({ f, T, canNudge, canCheck }) {
           )}
         </div>
       </div>
-      {data.can_names && (
-        <div className="db-card" ref={peopleRef} style={{ scrollMarginTop: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
-            <h3 style={{ margin: 0 }}>People</h3>
-            <div className="db-pills" style={{ marginRight: 'auto' }}>
-              <button className={'db-pill' + (ptab === 'people' ? ' on' : '')} style={{ padding: '5px 14px', fontSize: 12.5 }} onClick={() => setPtab('people')}>Everyone</button>
-              <button className={'db-pill' + (ptab === 'late' ? ' on' : '')} style={{ padding: '5px 14px', fontSize: 12.5 }} onClick={() => setPtab('late')}>
-                {counts.late ? <span style={{ color: ptab === 'late' ? undefined : '#B45309' }}>⚠ </span> : null}Not checked in ({counts.late})</button>
-              <button className={'db-pill' + (ptab === 'on' ? ' on' : '')} style={{ padding: '5px 14px', fontSize: 12.5 }} onClick={() => setPtab('on')}>Checked in ({counts.on})</button>
-            </div>
-            {ptab === 'people' && <>
-            <div className="db-pills">
-              {[['all', 'All'], ['agent', 'Agents'], ...(data.can_internal ? [['internal', 'Internal']] : [])].map(([k, l]) => <button key={k} className={'db-pill' + (who === k ? ' on' : '')} style={{ padding: '5px 14px', fontSize: 12.5 }} onClick={() => setWho(k)}>{l}</button>)}
-            </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><input type="checkbox" checked={onlyOn} onChange={e => setOnlyOn(e.target.checked)} /> On now only</label>
-            <input className="db-sel" style={{ minWidth: 200, fontWeight: 400 }} placeholder="Search people…" value={q} onChange={e => setQ(e.target.value)} aria-label="Search people" />
-            </>}
-          </div>
-          {ptab !== 'people' ? <CheckIns f={f} T={T} canNudge={canNudge} canCheck={canCheck} tab={ptab} onCounts={setCounts} embedded />
-          : people.length === 0 ? <div className="db-empty">Nobody matches.</div> : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', columnGap: 24 }}>
-              {people.map(p => (
-                <a key={p.id} href={`/profile/${p.id}`} className="db-person" style={{ textDecoration: 'none', color: 'inherit' }}>
-                  <span className="db-av">{p.avatar ? <img src={p.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials(p.name)}</span>
-                  <span style={{ minWidth: 0, flex: 1 }}>
-                    <span style={{ display: 'block', fontWeight: 700, fontSize: 13.5 }}>{p.name}</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--ink-soft)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.type === 'agent' ? 'Agent' : (p.title || 'Internal')} · {p.where}</span>
-                  </span>
-                  {p.on_now && <span style={{ fontSize: 11.5, fontWeight: 800, color: '#16A34A', whiteSpace: 'nowrap' }}><span className="db-dot" style={{ background: '#16A34A', marginRight: 5 }} />On now</span>}
-                </a>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      <TeamAttendance f={f} T={T} people={data.people || []} canNudge={canNudge} canCheck={canCheck} canInternal={data.can_internal} onViewActivity={onViewActivity} />
     </>
   )
 }
@@ -467,12 +419,12 @@ const ACTION_TEXT = { claimed: 'picked up an interval', released: 'released an i
   assigned: 'was assigned an interval', unassigned: 'was unassigned from an interval', break_started: 'started a break', break_ended: 'ended a break', passed: 'passed a certification',
   nudged: 'was nudged to check in', open_alert: 'open-interval alert sent' }
 const ACTION_ICON = { checked_in: I.on, checked_out: I.on, passed: I.cert, marked_no_show: I.warn }
-function Activity({ f, T, overview, scope }) {
+function Activity({ f, T, overview, scope, initialQ = '' }) {
   const [clientF, setClientF] = useState('')
   const [projectF, setProjectF] = useState('')
   const [kind, setKind] = useState('')
-  const [q, setQ] = useState('')
-  const [debounced, setDebounced] = useState('')
+  const [q, setQ] = useState(initialQ)
+  const [debounced, setDebounced] = useState(initialQ)
   useEffect(() => { const h = setTimeout(() => setDebounced(q), 300); return () => clearTimeout(h) }, [q])
   const c = overview ? (clientF || null) : f.c, p = overview ? (projectF || null) : f.p
   const { data, err } = useRpc('dash_activity', { p_client: c, p_project: p, p_kind: kind || null, p_search: debounced || null, p_limit: 200 })
@@ -661,6 +613,216 @@ function OpenIntervals({ open, T, canNudge }) {
           </tr>
         ))}</tbody>
       </table></div>
+    </div>
+  )
+}
+
+// ============================================================
+// TEAM ATTENDANCE (Staffing, 2026-11-04) — today's check-ins for the selected scope.
+// Tabs: On now · Late / missing · All staff. Filters: client/project, staff type, status, search.
+// Each row's "View ▾" menu: profile, schedule, tasks/activity, check in/out, nudge, message —
+// each shown only when it applies and the person may do it (the database checks again).
+// ============================================================
+const STATUS = {
+  checked_in: ['Checked in', '#16A34A'], late: ['Late', '#DC2626'], scheduled: ['Scheduled', '#2563EB'],
+  done: ['Done for today', '#64748B'], no_show: ['No-show', '#B91C1C'], off: ['Not scheduled today', '#94A3B8'],
+}
+const MI = {
+  profile: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1', sched: 'M3 5h18v16H3zM16 3v4M8 3v4M3 10h18',
+  tasks: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01', in: 'M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3',
+  out: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9', bell: 'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0',
+  msg: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z', eye: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6',
+}
+const ATT_CSS = `
+.ta-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 50; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 14px 34px rgba(15,23,42,.16); padding: 6px; min-width: 210px; }
+.ta-mi { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; padding: 8px 10px; border-radius: 8px; font: inherit; font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer; text-align: left; white-space: nowrap; }
+.ta-mi:hover { background: var(--canvas); }
+.ta-mi.warn { color: #B45309; }
+.ta-view { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 5px 10px 5px 12px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.ta-view:hover { border-color: var(--accent); }
+.ta-tab { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 7px 14px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.ta-tab.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.ta-tab.warn:not(.on) { background: #FFF7ED; border-color: #FDBA74; color: #9A3412; }
+.ta-f { display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 10px; padding: 5px 10px; background: var(--surface); min-width: 150px; }
+.ta-f span { font-size: 11px; color: var(--ink-soft); font-weight: 600; }
+.ta-f select { border: 0; background: transparent; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink); padding: 0; outline: none; }
+`
+
+async function openDm(personId, navigate) {
+  const { data: u } = await supabase.auth.getUser()
+  const me = u?.user?.id
+  if (!me || me === personId) return
+  const { data: mine } = await supabase.from('channel_members').select('channel_id, channels!inner(is_dm)').eq('profile_id', me)
+  const dmIds = (mine || []).filter(r => r.channels?.is_dm).map(r => r.channel_id)
+  if (dmIds.length) {
+    const { data: mems } = await supabase.from('channel_members').select('channel_id, profile_id').in('channel_id', dmIds)
+    const by = {}; (mems || []).forEach(m => { (by[m.channel_id] = by[m.channel_id] || new Set()).add(m.profile_id) })
+    const hit = Object.entries(by).find(([, set]) => set.size === 2 && set.has(me) && set.has(personId))
+    if (hit) return navigate(`/chat?channel=${hit[0]}`)
+  }
+  const { data: ps } = await supabase.from('profiles').select('id, full_name').in('id', [me, personId])
+  const first = (id) => (ps || []).find(p => p.id === id)?.full_name?.split(' ')[0] || 'DM'
+  const { data: ch, error } = await supabase.from('channels').insert({ name: `${first(me)} / ${first(personId)}`, is_dm: true, created_by: me }).select().single()
+  if (error) return window.alert(error.message)
+  await supabase.from('channel_members').insert([me, personId].map(pid => ({ channel_id: ch.id, profile_id: pid })))
+  try { await notifyChannelAdded({ recipientIds: [personId], actorId: me, actorName: (ps || []).find(p => p.id === me)?.full_name, channelName: 'Direct message', isDm: true, channelId: ch.id }) } catch { /* not critical */ }
+  navigate(`/chat?channel=${ch.id}`)
+}
+
+function RowMenu({ r, canNudge, canCheck, onViewActivity, onAct, busy }) {
+  const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const k = (e) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', h); document.addEventListener('keydown', k)
+    return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', k) }
+  }, [open])
+  const go = (fn) => () => { setOpen(false); fn() }
+  const items = [
+    ['profile', 'View profile', () => navigate(`/profile/${r.person_id}`)],
+    ['sched', 'View schedule', () => navigate(`/profile/${r.person_id}`)],
+    ...(onViewActivity ? [['tasks', 'View tasks / activity', () => onViewActivity(r.name)]] : []),
+    ...(canCheck && r.status === 'late' && r.claim_id ? [['in', 'Check in now', () => onAct('in', r)], ['in', 'Check in as of shift start', () => onAct('in_at_start', r)]] : []),
+    ...(canCheck && r.status === 'checked_in' && r.claim_id ? [['out', 'Check out', () => { if (window.confirm(`Check ${r.name} out now?`)) onAct('out', r) }]] : []),
+    ...(canNudge && r.status === 'late' && r.claim_id ? [['bell', 'Send nudge', () => onAct('nudge', r)]] : []),
+    ['msg', 'Message', () => openDm(r.person_id, navigate)],
+  ]
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+      <button className="ta-view" disabled={busy} onClick={() => setOpen(o => !o)} aria-haspopup="menu" aria-expanded={open}>
+        <Ico d={MI.eye} size={15} />View <span style={{ fontSize: 10, opacity: .7 }}>▾</span>
+      </button>
+      {open && (
+        <div className="ta-menu" role="menu">
+          {items.map(([ic, label, fn], i) => (
+            <button key={i} className={'ta-mi' + (ic === 'bell' ? ' warn' : '')} role="menuitem" onClick={go(fn)}><Ico d={MI[ic]} size={16} />{label}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TeamAttendance({ f, T, people, canNudge, canCheck, canInternal, onViewActivity }) {
+  const [rows, setRows] = useState(null)
+  const [tab, setTab] = useState(null)        // on | late | all
+  const [cp, setCp] = useState('')            // "client:project" filter
+  const [type, setType] = useState('')
+  const [status, setStatus] = useState('')
+  const [q, setQ] = useState('')
+  const [all, setAll] = useState(false)
+  const [sortDir, setSortDir] = useState(1)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
+  const load = useCallback(() => supabase.rpc('dash_attendance', { p_client: f.c, p_project: f.p }).then(({ data }) => setRows(data || [])), [f.c, f.p])
+  useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t) }, [load])
+
+  // one row per person for "All staff" (their most relevant interval today), plus everyone not on today
+  const allStaff = useMemo(() => {
+    const best = {}
+    for (const r of rows || []) if (!best[r.person_id] || r.sort < best[r.person_id].sort) best[r.person_id] = r
+    const out = Object.values(best)
+    for (const p of people) if (!best[p.id]) out.push({ person_id: p.id, name: p.name, avatar: p.avatar, type: p.type, title: p.title, status: 'off', sort: 9, where: p.where })
+    return out
+  }, [rows, people])
+  if (!rows) return <Loading />
+  const onNow = rows.filter(r => r.status === 'checked_in')
+  const late = rows.filter(r => r.status === 'late' || r.status === 'no_show')
+  const t = tab || (late.length ? 'late' : 'on')
+  const base = t === 'on' ? onNow : t === 'late' ? late : allStaff
+  const cpOpts = [...new Map(rows.filter(r => r.client || r.project).map(r => [`${r.client_id || ''}:${r.project_id || ''}`, `${r.client || 'Internal'}${r.project ? ' · ' + r.project : ''}`])).entries()]
+  const ql = q.trim().toLowerCase()
+  const shown = base.filter(r => (!cp || `${r.client_id || ''}:${r.project_id || ''}` === cp) && (!type || r.type === type) && (!status || r.status === status)
+      && (!ql || `${r.name} ${r.title || ''} ${r.role || ''} ${r.client || ''} ${r.project || ''} ${r.where || ''}`.toLowerCase().includes(ql)))
+    .sort((a, b) => sortDir * (a.name || '').localeCompare(b.name || ''))
+  const visible = all ? shown : shown.slice(0, 8)
+  const label = t === 'on' ? 'checked in' : t === 'late' ? 'late or missing' : 'staff'
+
+  async function act(kind, r) {
+    setBusy(true); setMsg(null)
+    const { data, error } = kind === 'nudge' ? await supabase.rpc('dash_nudge', { p_claims: [r.claim_id] }) : await supabase.rpc('dash_check', { p_claims: [r.claim_id], p_action: kind })
+    setBusy(false)
+    if (error) return setMsg({ kind: 'err', text: error.message })
+    const ok = kind === 'nudge' ? data.sent : data.done
+    setMsg(ok ? { kind: 'ok', text: kind === 'nudge' ? `Nudged ${r.name} — notification + push sent.` : kind === 'out' ? `Checked ${r.name} out.` : `Checked ${r.name} in${kind === 'in_at_start' ? ' as of their shift start' : ''}. Noted on their record that you did it from the Dashboard.` }
+      : { kind: 'err', text: kind === 'nudge' ? `${r.name} was nudged in the last few minutes.` : 'Nothing changed — they may already be checked in/out.' })
+    load()
+  }
+  async function nudgeAll() {
+    setBusy(true); setMsg(null)
+    const { data, error } = await supabase.rpc('dash_nudge', { p_claims: late.filter(r => r.status === 'late').map(r => r.claim_id) })
+    setBusy(false)
+    if (error) return setMsg({ kind: 'err', text: error.message })
+    setMsg({ kind: 'ok', text: `Nudged ${data.sent} ${data.sent === 1 ? 'person' : 'people'}.${data.skipped ? ` ${data.skipped} skipped (nudged recently).` : ''}` }); load()
+  }
+  const lateNow = late.filter(r => r.status === 'late').length
+  return (
+    <div className="db-card">
+      <style>{ATT_CSS}</style>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
+        <span className="db-kpi-ic" style={{ width: 42, height: 42 }}><Ico d={I.staff} size={22} /></span>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 17, fontWeight: 800 }}>Team attendance</div>
+          <div className="page-sub" style={{ fontSize: 13 }}>Manage today's check-ins, status and coverage{f.c ? ` for this ${T.client.toLowerCase()}${f.p ? ` and ${T.project.toLowerCase()}` : ''}` : ''}.</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className={'ta-tab' + (t === 'on' ? ' on' : '')} onClick={() => { setTab('on'); setStatus(''); setAll(false) }}>On now ({onNow.length})</button>
+          <button className={'ta-tab warn' + (t === 'late' ? ' on' : '')} onClick={() => { setTab('late'); setStatus(''); setAll(false) }}>{late.length ? '⚠ ' : ''}Late / missing ({late.length})</button>
+          <button className={'ta-tab' + (t === 'all' ? ' on' : '')} onClick={() => { setTab('all'); setStatus(''); setAll(false) }}>All staff ({allStaff.length})</button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12, alignItems: 'stretch' }}>
+        {cpOpts.length > 1 && <label className="ta-f"><span>{T.client} / {T.project}</span>
+          <select value={cp} onChange={e => setCp(e.target.value)}><option value="">All</option>{cpOpts.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>}
+        {canInternal && <label className="ta-f"><span>Staff type</span>
+          <select value={type} onChange={e => setType(e.target.value)}><option value="">All staff</option><option value="agent">Agents</option><option value="internal">Internal</option></select></label>}
+        <label className="ta-f"><span>Status</span>
+          <select value={status} onChange={e => setStatus(e.target.value)}><option value="">Any</option>
+            {[...new Set(base.map(r => r.status))].map(st => <option key={st} value={st}>{STATUS[st]?.[0] || st}</option>)}</select></label>
+        <div style={{ position: 'relative', flex: '1 1 220px' }}>
+          <span style={{ position: 'absolute', left: 12, top: 13, color: 'var(--ink-soft)' }}><Ico d={I.search} size={16} /></span>
+          <input className="db-sel" style={{ width: '100%', height: '100%', paddingLeft: 36, fontWeight: 400, boxSizing: 'border-box' }} placeholder="Search people…" value={q} onChange={e => setQ(e.target.value)} aria-label="Search people" />
+        </div>
+        {t === 'late' && canNudge && lateNow > 1 && <button className="btn btn-primary" style={{ fontSize: 13 }} disabled={busy} onClick={nudgeAll}>🔔 Nudge all {lateNow}</button>}
+      </div>
+      <Flash msg={msg} />
+
+      {shown.length === 0 ? <div className="db-empty">{t === 'late' && !q && !cp && !type && !status ? 'Everyone who should be on has checked in. 🎉' : t === 'on' && !onNow.length ? 'Nobody is checked in right now.' : 'Nobody matches.'}</div> : (
+        <div className="db-tbl-wrap" style={{ overflow: 'visible' }}><table className="db-tbl">
+          <thead><tr>
+            <th><button className="db-exp" style={{ fontSize: 12, color: 'var(--ink-soft)' }} onClick={() => setSortDir(d => -d)}>Employee {sortDir > 0 ? '↑' : '↓'}</button></th>
+            <th>Role</th><th>{T.client} / {T.project}</th><th>Scheduled shift</th><th>Check-in time</th><th>Status</th><th className="num">Actions</th>
+          </tr></thead>
+          <tbody>{visible.map(r => {
+            const [sl, sc] = STATUS[r.status] || [r.status, 'var(--ink-soft)']
+            return (
+              <tr key={(r.claim_id || 'p') + r.person_id}>
+                <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                  <span className="db-av" style={{ width: 30, height: 30, fontSize: 11.5 }}>{r.avatar ? <img src={r.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials(r.name)}</span>
+                  <b>{r.name}</b></span></td>
+                <td>{r.type === 'agent' ? 'Agent' : (r.title || 'Internal')}</td>
+                <td>{r.claim_id ? <>{r.client || 'Internal'}{r.project ? <span className="page-sub"> · {r.project}</span> : null}</> : <span className="page-sub">{r.where || '—'}</span>}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>{r.start ? `${fmtTime(r.start)} – ${fmtTime(r.end)}` : <span className="page-sub">—</span>}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>{r.checked_in_at ? new Date(r.checked_in_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) : <span className="page-sub">—</span>}</td>
+                <td style={{ whiteSpace: 'nowrap' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontWeight: 700, color: sc, fontSize: 13 }}>
+                  <span className="db-dot" style={{ background: sc }} />{sl}{r.status === 'late' && r.minutes_late != null ? ` · ${r.minutes_late} min` : ''}</span>
+                  {r.last_nudged && r.status === 'late' && <div className="page-sub" style={{ fontSize: 11.5 }}>nudged {ago(r.last_nudged)}</div>}</td>
+                <td className="num"><RowMenu r={r} canNudge={canNudge} canCheck={canCheck} onViewActivity={onViewActivity} onAct={act} busy={busy} /></td>
+              </tr>
+            )
+          })}</tbody>
+        </table></div>
+      )}
+      {shown.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', marginTop: 12, gap: 10 }}>
+          <span className="page-sub" style={{ fontSize: 12.5 }}>Showing {visible.length} of {shown.length} {label}</span>
+          {shown.length > 8 && <button className="db-exp" style={{ marginLeft: 'auto', color: 'var(--accent)', fontSize: 13 }} onClick={() => setAll(v => !v)}>{all ? 'Show less ↑' : 'View full attendance →'}</button>}
+        </div>
+      )}
     </div>
   )
 }
