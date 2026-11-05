@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
+import ScheduleTeam from './ScheduleTeam'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
@@ -195,7 +196,16 @@ export default function Schedule() {
   // that the agent's own ‹ › navigation is left alone.
   const didAutoJump = React.useRef(false)
   const [toast, setToast] = useState('')
-  const [adminView, setAdminView] = useState('team') // team | mine (admins only)
+  const [adminView, setAdminView] = useState('team') // internal | team | mine
+  // New Team / Internal views (2026-11-05): available where the database has them (sched_scope).
+  const [schedScope, setSchedScope] = useState(null)
+  useEffect(() => {
+    supabase.rpc('sched_scope').then(({ data, error }) => {
+      if (error || !data) return
+      setSchedScope(data)
+      setAdminView(v => (v === 'team' && !data.team) ? (data.internal ? 'internal' : 'mine') : v)
+    })
+  }, [])
 
   // `silent` skips the loading spinner, so background polling doesn't flicker
   const load = useCallback(async (silent = false) => {
@@ -632,7 +642,7 @@ export default function Schedule() {
         <FillRateView />
       ) : tab === 'claim' ? (
         <ClaimView
-          isAdmin={isAdmin} adminView={adminView} setAdminView={setAdminView}
+          isAdmin={isAdmin} adminView={adminView} setAdminView={setAdminView} schedScope={schedScope}
           me={me} profiles={profiles} tiers={tiers}
           schedules={myVisibleSchedules(isAdmin && adminView === 'mine')} blocks={blocks} claims={claims}
           weekStart={weekStart} setWeekStart={setWeekStart}
@@ -686,7 +696,7 @@ function VtoBanner({ rows, schedules }) {
 }
 
 function ClaimView(props) {
-  const { isAdmin, adminView, setAdminView, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
+  const { isAdmin, adminView, setAdminView, schedScope, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
     claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow,
     canAssign, audience, onAssign, onUnassign,
     trades, onOfferTrade, onAcceptTrade, onCancelTrade, certOkForBlock, myOpenTradeFor, callable } = props
@@ -695,6 +705,16 @@ function ClaimView(props) {
   // Admins in 'team' view see the team grid; everyone else (agents, and
   // admins who switched to 'My view') see the personal claim grid.
   const teamMode = isAdmin && adminView === 'team'
+  // New views: Internal / Team / My — each shown only with its permission (server-checked too)
+  const views = schedScope ? [...(schedScope.internal ? [['internal', 'Internal view', '🗂']] : []), ...(schedScope.team ? [['team', 'Team view', '👥']] : []), ['mine', 'My view', '👤']] : null
+  const switcher = views && views.length > 1 && (
+    <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+      {views.map(([k, l, ic]) => <button key={k} className={'btn ' + (adminView === k ? 'btn-primary' : 'btn-ghost')} onClick={() => setAdminView(k)}>{ic} {l}</button>)}
+    </div>
+  )
+  if (views && (adminView === 'team' || adminView === 'internal') && views.some(v => v[0] === adminView)) {
+    return <div>{switcher}<ScheduleTeam key={adminView} mode={adminView} /></div>
+  }
 
   if (!schedules.length) {
     return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>
@@ -714,12 +734,12 @@ function ClaimView(props) {
     <div>
       {!teamMode && !isAdmin && releaseStatus?.releaseDate && <ReleaseBanner status={releaseStatus} />}
 
-      {isAdmin && (
+      {switcher || (isAdmin && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
           <button className={'btn ' + (adminView === 'team' ? 'btn-primary' : 'btn-ghost')} onClick={() => setAdminView('team')}>Team view</button>
           <button className={'btn ' + (adminView === 'mine' ? 'btn-primary' : 'btn-ghost')} onClick={() => setAdminView('mine')}>My view</button>
         </div>
-      )}
+      ))}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
