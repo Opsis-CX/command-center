@@ -29,11 +29,13 @@ const CSS = `
 .st-grid { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
 .st-grid th { background: var(--canvas); font-weight: 700; padding: 8px 6px; text-align: center; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .st-grid th.today { background: color-mix(in srgb, var(--accent) 14%, var(--canvas)); }
-.st-grid td { border-bottom: 1px solid var(--line); padding: 6px 5px; vertical-align: top; text-align: center; }
+.st-grid td { border-bottom: 1px solid var(--line); padding: 6px 8px; vertical-align: top; text-align: center; }
 .st-grid td.who { text-align: left; white-space: nowrap; font-weight: 700; font-size: 13px; padding-left: 14px; position: sticky; left: 0; background: var(--surface); z-index: 1; }
 .st-grid tr.openrow td { background: color-mix(in srgb, #FEF3C7 55%, var(--surface)); }
 .st-grid tr.openrow td.who { background: color-mix(in srgb, #FEF3C7 70%, var(--surface)); }
-.st-chip { display: flex; align-items: center; justify-content: center; gap: 5px; border-radius: 8px; padding: 5px 6px; margin: 0 auto 4px; font-size: 11.5px; font-weight: 700; cursor: pointer; border: 1px solid transparent; white-space: nowrap; max-width: 150px; }
+.st-chip { display: flex; align-items: center; justify-content: center; gap: 5px; border-radius: 8px; padding: 5px 6px; margin: 0 auto 4px; font-size: 11.5px; font-weight: 700; cursor: pointer; border: 1px solid transparent; white-space: nowrap; width: 100%; max-width: 150px; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; }
+.st-chip.stack { flex-direction: column; gap: 1px; line-height: 1.25; padding: 5px 4px; }
+.st-chip .cnt { font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; gap: 4px; }
 .st-chip.past { background: #F1F5F9; color: #64748B; border-color: #E2E8F0; }
 .st-chip.current { background: #DBEAFE; color: #1E3A8A; border-color: #93C5FD; }
 .st-chip.upcoming { background: #EDE9FE; color: #5B21B6; border-color: #C4B5FD; }
@@ -286,8 +288,10 @@ function ProjectGrid({ days, today, blocks, mode, showAll, onMore, onOpen }) {
             <td className="who"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Ico d={ICO.chair} size={18} /><span>Open intervals<div className="page-sub" style={{ fontSize: 11.5, fontWeight: 500 }}>{totalOpen} total open</div></span></span></td>
             {days.map(d => (
               <td key={d}>{(openByDay[d] || []).length === 0 ? <span className="page-sub">—</span> : (openByDay[d] || []).map((g, i) => (
-                <div key={i} className={'st-chip ' + (g.locked ? 'locked' : 'open')} onClick={() => onOpen(g.ids[0])} title={g.ids.length > 1 ? `${g.ids.length} intervals at this time` : ''}>
-                  {g.locked && <Ico d={ICO.lock} size={11} />}{compact ? fmtT(g.start) : `${fmtTT(g.start)} – ${fmtTT(g.end)}`} · {g.locked ? `${g.open} closed` : `${g.open} open`}
+                <div key={i} className={'st-chip stack ' + (g.locked ? 'locked' : 'open')} onClick={() => onOpen(g.ids[0])}
+                  title={`${fmtTT(g.start)} – ${fmtTT(g.end)} · ${g.open} ${g.locked ? 'closed (locked)' : 'open'}${g.ids.length > 1 ? ` · ${g.ids.length} intervals at this time` : ''}`}>
+                  <span>{compact ? fmtT(g.start) : `${fmtTT(g.start)} – ${fmtTT(g.end)}`}</span>
+                  <span className="cnt">{g.locked && <Ico d={ICO.lock} size={10} />}{g.open} {g.locked ? 'closed' : 'open'}</span>
                 </div>
               ))}</td>
             ))}
