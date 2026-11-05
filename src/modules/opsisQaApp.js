@@ -1,4 +1,5 @@
 // Opsis QA client portal — the app shown at garageco.opsiscx.com.
+// 2026-11-05: AI receptionist Settings gains a "Call alert emails" box (who gets the after-call email, per brand) -> ai-csr-alerts.
 // 2026-10-22: hand-edited — wording points to the account's own admins (not Opsis CX), and QA settings
 // gains "Suggested scoring rules" (opsis-qa-portal action 'rulesugs' -> opsis-qa-rules).
 // Adds the Card capture page (2026-10-22). Built from the Opsis QA preview page by scratchpad/portal/build.py. All data comes from the
@@ -1442,7 +1443,7 @@ export function mountOpsisQA(ROOT, cfg) {
       rcSec('loc', 'Locations and service area', 'towns and zip codes each location covers', lc) +
       rcSec('web', 'Website', 'pages she can look up to answer questions', wb) +
       rcSec('beh', 'Call behavior', 'interruptions, silence, speed, call length', bh) +
-      rcSec('notes', 'Extra instructions', 'optional', nt) +
+      rcSec('notes', 'Extra instructions', 'optional', nt) + '<div id="rcalerts"></div>' +
       (R.can_edit ? '<div id="rcsavebar" style="position:sticky;bottom:12px;display:' + (RC.dirty ? 'flex' : 'none') + ';gap:10px;align-items:center;justify-content:flex-end;padding:12px 16px;background:#14302A;color:#fff;border-radius:12px;margin-top:10px"><span style="margin-right:auto;font-size:13.5px">Unsaved changes for ' + esc(short(brand)) + '</span><button class="sel" data-act="rcsreset" style="background:transparent;color:#fff;border-color:#fff">Discard</button><button class="sel btnd" data-act="rcssave"' + (RC.saving ? ' disabled' : '') + '>' + (RC.saving ? 'Saving…' : 'Save') + '</button></div>' : '');
     var sb = $('rcsbrand'); if (sb) sb.addEventListener('change', function () { if (RC.dirty && !confirm('Discard unsaved changes?')) { sb.value = brand; return; } RC.brand = sb.value; rcLoadSettings(sb.value); });
     [].forEach.call(el.querySelectorAll('[data-k]'), function (inp) {
@@ -1454,6 +1455,54 @@ export function mountOpsisQA(ROOT, cfg) {
     });
     [].forEach.call(el.querySelectorAll('[data-zips]'), function (ta) { ta.addEventListener('input', function () { rcSet('locations.' + ta.getAttribute('data-zips') + '.zips', rcZips(ta.value)); }); ta.addEventListener('blur', function () { drawRcSettings(); }); });
     [].forEach.call(el.querySelectorAll('[data-days]'), function (cb) { cb.addEventListener('change', function () { var p = cb.getAttribute('data-days'), cur = (rcGet(p) || []).slice(), dd = cb.getAttribute('data-day'), ix = cur.indexOf(dd); if (cb.checked && ix < 0) cur.push(dd); if (!cb.checked && ix >= 0) cur.splice(ix, 1); rcSet(p, cur); }); });
+    rcAlertsBox(brand);
+  }
+  // Call alert emails (2026-11-05): per-brand list of who gets the email after every AI receptionist call.
+  // Stored in qa_receptionist_alerts through the ai-csr-alerts function, separate from the receptionist settings save.
+  var RA = { brand: null, d: null, err: null, busy: false, draft: null, dtest: null };
+  function raCall(body) {
+    var tok = null;
+    try { var raw = localStorage.getItem('sb-dqvuviyqrcrgapmxkoyx-auth-token'); if (!raw) { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (/^sb-.*-auth-token$/.test(k)) { raw = localStorage.getItem(k); break; } } } var j = raw && JSON.parse(raw); tok = j && (j.access_token || (j.currentSession && j.currentSession.access_token)); } catch (x) {}
+    if (!tok) return Promise.reject(new Error('Please sign in again.'));
+    if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
+    return fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/ai-csr-alerts', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) { var e = new Error(j.error || 'Couldn’t reach the alert settings.'); e.status = r.status; throw e; } return j; }); });
+  }
+  function rcAlertsBox(brand) {
+    var el = $('rcalerts'); if (!el) return;
+    if (RA.brand !== brand) {
+      RA.brand = brand; RA.d = null; RA.err = null; RA.draft = null; RA.dtest = null;
+      raCall({ op: 'settings_get', brand: brand }).then(function (r) { if (RA.brand !== brand) return; RA.d = r; rcAlertsBox(brand); }).catch(function (e) { if (RA.brand !== brand) return; RA.err = e.message; rcAlertsBox(brand); });
+    }
+    var card = function (inner) { return '<div class="oq-card" style="margin-top:10px"><div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><div><b style="font-size:15px">Call alert emails</b><span class="mut" style="font-size:12.5px;margin-left:8px">who gets an email after every call</span></div>' + inner; };
+    if (RA.err && !RA.d) { el.innerHTML = card('</div><div class="banner" style="margin-top:10px">' + esc(RA.err) + '</div></div>'); return; }
+    if (!RA.d) { el.innerHTML = card('</div><div style="margin-top:10px">' + skel(20, 2) + '</div></div>'); return; }
+    var d = RA.d, mode = d.mode || 'trial', on = mode !== 'off';
+    var emails = RA.draft != null ? RA.draft : (d.emails || []).join(', ');
+    var test = RA.dtest != null ? RA.dtest : !!d.test_calls;
+    var can = d.can_edit !== false;
+    var pill = !on ? '<span class="pill" style="background:#F3F1EC;color:#5F6763">Turned off</span>' : mode === 'live' ? '<span class="pill" style="background:#E6F0EA;color:#1F5A41">Sending</span>' : '<span class="pill" style="background:#FFF4DB;color:#7A5300">Trial: Opsis CX only</span>';
+    var h = card(pill + '</div>') +
+      '<p class="mut" style="font-size:12.5px;margin:6px 0 0">After each call she sends one email: booked (with the appointment), not booked (with when to call back) or hang-up. Each one links to the recording, the transcript and HighLevel.</p>' +
+      (on && mode !== 'live' ? '<div class="banner" style="margin-top:10px">Trial mode: emails go to Opsis CX for review only. The list below starts receiving them once Opsis CX turns alerts on.</div>' : '') +
+      '<div style="margin-top:12px"><div class="cap">Send alerts to</div><textarea id="raem" class="oq-field" rows="2" style="width:100%;resize:vertical" placeholder="name@company.com, manager@company.com"' + (can ? '' : ' disabled') + '>' + esc(emails) + '</textarea><div class="mut" style="font-size:12px;margin-top:2px">Separate addresses with commas. Up to 20.</div></div>' +
+      '<label style="display:inline-flex;gap:6px;align-items:center;font-size:13.5px;margin-top:10px"><input type="checkbox" id="ratest"' + (test ? ' checked' : '') + (can ? '' : ' disabled') + '> Also send test calls made from this page</label>' +
+      (can ? '<div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap"><button class="sel btnd" data-act="rasave"' + (RA.busy ? ' disabled' : '') + '>' + (RA.busy ? 'Saving…' : 'Save alert list') + '</button>' + (d.updated_by_name ? '<span class="mut" style="font-size:12.5px">Last saved by ' + esc(d.updated_by_name) + (d.updated_at ? ' · ' + fdate(String(d.updated_at).slice(0, 10)) : '') + '</span>' : '') + '</div>' : '<p class="mut" style="font-size:12.5px;margin-top:10px">Only admins can change this list.</p>') +
+      '</div>';
+    el.innerHTML = h;
+    var ta = $('raem'); if (ta) ta.addEventListener('input', function () { RA.draft = ta.value; });
+    var cb = $('ratest'); if (cb) cb.addEventListener('change', function () { RA.dtest = cb.checked; });
+  }
+  function rcAlertsSave() {
+    var brand = RA.brand; if (!brand || RA.busy) return;
+    var raw = ($('raem') || {}).value || '', list = raw.split(/[\s,;]+/).map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+    var bad = list.filter(function (x) { return !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x); });
+    if (bad.length) { toast('Check this address: ' + bad[0]); return; }
+    if (list.length > 20) { toast('Up to 20 addresses.'); return; }
+    var test = !!($('ratest') || {}).checked;
+    RA.busy = true; rcAlertsBox(brand);
+    raCall({ op: 'settings_set', brand: brand, emails: list, test_calls: test }).then(function (r) { RA.busy = false; RA.draft = null; RA.dtest = null; RA.d = Object.assign({}, RA.d, r || {}, { emails: (r && r.emails) || list, test_calls: r && r.test_calls != null ? r.test_calls : test }); toast('Alert list saved for ' + short(brand)); rcAlertsBox(brand); })
+      .catch(function (e) { RA.busy = false; toast(e.message || 'Couldn’t save the alert list.'); rcAlertsBox(brand); });
   }
   function rcBookHtml(R, s) {
     if (!R.has_lc) return '';
@@ -4120,6 +4169,7 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rcadd') { rcListAdd(d.list); }
       else if (a === 'rcdel') { rcGet(d.list).splice(+d.i, 1); RC.dirty = true; drawRcSettings(); }
       else if (a === 'rcssave') { rcSave(); }
+      else if (a === 'rasave') { rcAlertsSave(); }
       else if (a === 'rchltok') { var tk = ($('hltok') || {}).value || ''; api({ action: 'receptionist', op: 'hl_token', token: tk }).then(function () { toast('Token saved.'); RC.s.has_hl_token = true; drawRcSettings(); }).catch(function (e) { toast(e.message); }); }
       else if (a === 'rchlcals') { api({ action: 'receptionist', op: 'hl_calendars' }).then(function (r) { RC.hlCals = r.calendars || []; drawRcSettings(); }).catch(function (e) { toast(e.message); }); }
       else if (a === 'rcsreset') { rcLoadSettings(RC.sBrand); }
