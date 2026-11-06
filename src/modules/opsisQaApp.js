@@ -1886,12 +1886,12 @@ export function mountOpsisQA(ROOT, cfg) {
   var EXP = { sig: '', data: {}, order: [], bodies: {} };
   var EXP_SKIP = { me: 1, ask: 1, audio: 1, hubaudio: 1, branding: 1, call: 1, export: 1, rulesugs: 1, scorereq: 1, calledit: 1 };
   var EXP_LISTS = { calls: 1, bucketcalls: 1, factcalls: 1, xfercalls: 1, qaextras: 1 };
-  function expSig() { return [S.view, S.start, S.end, (S.brands || []).join(','), S.brand || '', S.agent || ''].join('|'); }
+  function expSig() { return [S.view, S.start, S.end, (S.brands || []).join(','), S.brand || '', S.agent || '', S.view === 'calls' ? JSON.stringify(S.calls || {}).replace(/"offset":\d+,?/, '') + (S.callsAgent || '') : ''].join('|'); }
   function expRec(body, pr) {
     if (!body || EXP_SKIP[body.action] || !pr || !pr.then) return;
     var sig = expSig(); if (EXP.sig !== sig) EXP = { sig: sig, data: {}, order: [], bodies: {} };
     var key = body.action + (body.op ? ':' + body.op : '') + (body.kind ? ':' + body.kind : '') + (EXP_LISTS[body.action] && body.limit ? ':l' + body.limit : '');
-    pr.then(function (r) { if (EXP.sig !== sig || r == null || typeof r !== 'object') return; if (!(key in EXP.data)) EXP.order.push(key); EXP.data[key] = r; EXP.bodies[key] = body; }, function () {});
+    pr.then(function (r) { if (EXP.sig !== sig || r == null || typeof r !== 'object') return; if (!(key in EXP.data)) EXP.order.push(key); EXP.data[key] = r; EXP.bodies[key] = body; if (EXP_LISTS[body.action] && body.op !== 'why' && (body.limit || 0) >= 20) EXP.list = key; }, function () {});
   }
   var EXP_NAMES = { agent: 'CSR', agents: 'CSRs', avg: 'Avg score', pavg: 'Previous avg score', prev_avg: 'Previous avg score', n: 'Calls', opps: 'Opportunities', xfer_out: 'Transferred out', xfer_in: 'Transferred in', xfer: 'Transfer', tta: 'Avg seconds to answer', tab: 'Avg seconds to abandon', per_wd: 'Calls per weekday', ai_score: 'AI score', asked_for_cc: 'Asked for card', collected_cc: 'Card collected', review_id: 'Review ID', call_id: 'Call ID', pn: 'Previous count', prev_rate: 'Previous rate', ivr: 'Hung up in IVR', kpis: 'KPIs', prev: 'Previous period', csr: 'CSR', csrs: 'CSRs', qa: 'QA', cc: 'Card', id: 'ID', url: 'Link', receptionist: 'AI CSR', focus: 'Details', cardcap: 'Card capture', pricetalk: 'Price talk', ai: 'Human vs AI', kb: 'Knowledge base', report: 'Report', calls: 'Calls', phone: 'Phone', repeat: 'Repeat callers', practice: 'Practice', scorecards: 'Scorecards', settings: 'QA settings', team: 'Team' };
   function expHum(k) { k = String(k); if (EXP_NAMES[k]) return EXP_NAMES[k]; var t = k.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim(); return t.charAt(0).toUpperCase() + t.slice(1); }
@@ -1953,7 +1953,7 @@ export function mountOpsisQA(ROOT, cfg) {
       return apiRaw(Object.assign({}, body, { limit: 100, offset: off })).then(function (r) {
         var rows = (r && r.rows) || []; all = all.concat(rows);
         if (rows.length === 100 && all.length < cap) { toast('Gathering calls… ' + all.length + (total ? ' of ' + total : '')); return page(off + 100); }
-        return all;
+        return total ? all.slice(0, total) : all;
       });
     };
     return page(0);
@@ -1975,7 +1975,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function pageExport(fmt) {
     var label = expPageName(), shown = expTables($('main')), data = [], lists = [];
     var filters = Array.prototype.map.call(($('main') || document).querySelectorAll('.chip.on'), function (c) { return (c.innerText || c.textContent || '').replace(/[✕×]/g, '').replace(/\s+/g, ' ').trim(); }).filter(Boolean);
-    if (EXP.sig === expSig()) EXP.order.forEach(function (k) { var r = EXP.data[k]; if (expIsCallList(k, r)) lists.push([k, r]); else if (!EXP_LISTS[k.split(':')[0]]) expFlat(r, expHum(k.split(':')[0]), data, 0); });
+    if (EXP.sig === expSig()) EXP.order.forEach(function (k) { var r = EXP.data[k]; if (expIsCallList(k, r)) { if (k === EXP.list) lists.push([k, r]); } else if (!EXP_LISTS[k.split(':')[0]]) expFlat(r, expHum(k.split(':')[0]), data, 0); });
     data = data.filter(function (s) { return !(s.cols[0] === 'Field' && s.rows.every(function (r) { return /^(Total|Can decide|Ok|Allowed)$/i.test(r[0]); })); });
     var finish = function (callSheets) {
       callSheets = callSheets.reduce(function (acc, cs) { return acc.concat([cs, expByCsr(cs)]); }, []);
