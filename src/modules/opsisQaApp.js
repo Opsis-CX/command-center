@@ -77,7 +77,8 @@ export function mountOpsisQA(ROOT, cfg) {
   // ---------------- data ----------------
   var cache = {};
   var CACHEABLE = { report: 1, focus: 1, calls: 1, phone: 1, repeat: 1, ai: 1, cardcap: 1, pricetalk: 1, qaextras: 1 };
-  function api(body) {
+  function api(body) { var pr = apiRaw(body); expRec(body, pr); return pr; }
+  function apiRaw(body) {
     if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
     var k = JSON.stringify(body), cacheable = !!CACHEABLE[body.action];
     if (cacheable && cache[k]) return cache[k];
@@ -164,12 +165,15 @@ export function mountOpsisQA(ROOT, cfg) {
       '<label for="askq" class="sr">Ask anything about your calls</label><input id="askq" autocomplete="off" placeholder="Ask anything — “' + esc(askEx()) + '”" style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-size:14px">' +
       '<button class="sel btnd" type="submit" style="min-height:36px;padding:6px 14px">Ask</button></form>' +
       '<div style="flex:1 1 0"></div>' +
+      (/^hub/.test(S.view) ? '' : '<button class="sel" data-pop="export" aria-haspopup="true" title="Download what this page shows">\u2913 Export</button>') +
       (LOCK ? '<span class="sel" style="cursor:default">' + esc(short(LOCK)) + '</span>' : '<button class="sel" data-pop="brands" aria-haspopup="true">' + esc(bl) + ' ▾</button>') +
       (/^hub/.test(S.view) ? (SELF ? '<span class="sel" style="cursor:default" title="The Coaching Hub runs week by week, Monday to Sunday">' + esc((HUB.roster && HUB.roster.week_label) || 'This week') + '</span>' : '<label class="sr" for="hubwk">Week</label><select id="hubwk" class="sel" data-hubweek="1" title="The Coaching Hub runs week by week, Monday to Sunday. Pick a past week to look back." style="cursor:pointer">' + hubWeeks().map(function (w) { return '<option value="' + w[0] + '"' + (HUB.week === w[0] ? ' selected' : '') + '>' + esc(w[1]) + '</option>'; }).join('') + '</select>') : '<button class="sel" data-pop="range" aria-haspopup="true">' + esc(rangeLabel()) + ' ▾</button>') +
       popHtml() + '</div>' +
       (CFG.staff ? '<div class="banner"><b>Opsis view</b> · You’re seeing ' + esc(CLIENT) + '’s portal as an account admin. Changes you make here are real and are logged.</div>' : '');
   }
   function popHtml() {
+    if (S.pop === 'export') return '<div class="pop" style="right:150px;top:52px;min-width:250px"><div class="cap" style="margin-bottom:6px">Export this page</div><div class="mut" style="font-size:12.5px;margin-bottom:10px">Everything this page shows for the dates and brands at the top.</div>' +
+      [['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV'], ['pdf', 'PDF']].map(function (f) { return '<button class="sel" data-act="pgexp" data-fmt="' + f[0] + '" style="width:100%;justify-content:flex-start;margin-bottom:6px">' + f[1] + '</button>'; }).join('') + '</div>';
     if (S.pop === 'range') {
       return '<div class="pop" style="right:0;top:52px"><div class="cap" style="margin-bottom:8px">Date range</div><div style="display:flex;flex-direction:column;gap:4px">' +
         RANGES.filter(function (r) { return r[0] !== 'custom'; }).map(function (r) { return '<button class="chip' + (S.range === r[0] ? ' on' : '') + '" data-range="' + r[0] + '">' + r[1] + '</button>'; }).join('') +
@@ -1877,6 +1881,82 @@ export function mountOpsisQA(ROOT, cfg) {
     pdfShell(w, title, sub, sheets.map(function (s) { return '<h2>' + esc(s.title || '') + '</h2><table><thead><tr>' + s.cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
       s.rows.map(function (r) { return '<tr>' + r.map(function (c) { return '<td>' + esc(c == null ? '' : c) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table>'; }).join(''));
   }
+  // ---------- Export what's on screen (Becky 11/5): every page gets an Export button (Excel, CSV, PDF) ----------
+  // Each page's data is what it loaded from the server for the current page + filters, plus any tables drawn on screen.
+  var EXP = { sig: '', data: {}, order: [] };
+  var EXP_SKIP = { me: 1, ask: 1, audio: 1, hubaudio: 1, branding: 1, call: 1, export: 1, rulesugs: 1 };
+  function expSig() { return [S.view, S.start, S.end, (S.brands || []).join(','), S.brand || '', S.agent || ''].join('|'); }
+  function expRec(body, pr) {
+    if (!body || EXP_SKIP[body.action] || !pr || !pr.then) return;
+    var sig = expSig(); if (EXP.sig !== sig) EXP = { sig: sig, data: {}, order: [] };
+    var key = body.action + (body.op ? ':' + body.op : '') + (body.kind ? ':' + body.kind : '');
+    pr.then(function (r) { if (EXP.sig !== sig || r == null || typeof r !== 'object') return; if (!(key in EXP.data)) EXP.order.push(key); EXP.data[key] = r; }, function () {});
+  }
+  var EXP_NAMES = { agent: 'CSR', agents: 'CSRs', avg: 'Avg score', pavg: 'Previous avg score', prev_avg: 'Previous avg score', n: 'Calls', opps: 'Opportunities', xfer_out: 'Transferred out', xfer_in: 'Transferred in', xfer: 'Transfer', tta: 'Avg seconds to answer', tab: 'Avg seconds to abandon', per_wd: 'Calls per weekday', ai_score: 'AI score', asked_for_cc: 'Asked for card', collected_cc: 'Card collected', review_id: 'Review ID', call_id: 'Call ID', pn: 'Previous count', prev_rate: 'Previous rate', ivr: 'Hung up in IVR', kpis: 'KPIs', prev: 'Previous period', csr: 'CSR', csrs: 'CSRs', qa: 'QA', cc: 'Card', id: 'ID', url: 'Link', receptionist: 'AI CSR', focus: 'Details', cardcap: 'Card capture', pricetalk: 'Price talk', ai: 'Human vs AI', kb: 'Knowledge base', report: 'Report', calls: 'Calls', phone: 'Phone', repeat: 'Repeat callers', practice: 'Practice', scorecards: 'Scorecards', settings: 'QA settings', team: 'Team' };
+  function expHum(k) { k = String(k); if (EXP_NAMES[k]) return EXP_NAMES[k]; var t = k.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim(); return t.charAt(0).toUpperCase() + t.slice(1); }
+  function expVal(v) { if (v == null) return ''; if (typeof v === 'object') { if (Array.isArray(v) && v.every(function (x) { return x == null || typeof x !== 'object'; })) return v.join(', '); var j = JSON.stringify(v); return j.length > 2000 ? j.slice(0, 2000) + '…' : j; } if (typeof v === 'string' && v.length > 32000) return v.slice(0, 32000) + '…'; return v; }
+  function expIsScalar(v) { return v == null || typeof v !== 'object'; }
+  function expArr(name, arr) {
+    if (!arr.length) return null;
+    if (arr.every(expIsScalar)) return { sheet: name, title: name, cols: [name], rows: arr.slice(0, 20000).map(function (x) { return [x]; }) };
+    var cols = []; arr.slice(0, 500).forEach(function (o) { if (o && typeof o === 'object') Object.keys(o).forEach(function (k) { if (cols.indexOf(k) < 0) cols.push(k); }); });
+    return { sheet: name, title: name, cols: cols.map(expHum), rows: arr.slice(0, 20000).map(function (o) { return cols.map(function (k) { return expVal(o && typeof o === 'object' ? o[k] : o); }); }) };
+  }
+  function expFlat(obj, name, out, depth) {
+    if (Array.isArray(obj)) { var a = expArr(name, obj); if (a) out.push(a); return; }
+    if (!obj || typeof obj !== 'object') return;
+    var sum = [], kids = [];
+    Object.keys(obj).forEach(function (k) {
+      var v = obj[k];
+      if (expIsScalar(v)) { if (v !== '' && v != null) sum.push([expHum(k), v]); }
+      else if (Array.isArray(v)) { if (v.every(expIsScalar)) { if (v.length) sum.push([expHum(k), v.join(', ')]); } else kids.push([k, v]); }
+      else if (Object.keys(v).every(function (sk) { return expIsScalar(v[sk]); })) Object.keys(v).forEach(function (sk) { if (v[sk] !== '' && v[sk] != null) sum.push([expHum(k) + ' – ' + expHum(sk), v[sk]]); });
+      else if (depth < 3) kids.push([k, v]);
+    });
+    if (sum.length) out.push({ sheet: name, title: name, cols: ['Field', 'Value'], rows: sum });
+    kids.forEach(function (kv) { expFlat(kv[1], name + ' – ' + expHum(kv[0]), out, depth + 1); });
+  }
+  function expPageName() {
+    var n = null; (NAV || []).forEach(function (sec) { (sec[1] || []).forEach(function (x) { if (x[0] === S.view) n = String(x[1]).replace(/<[^>]*>/g, '').trim(); }); });
+    if (S.view === 'brand') return 'Brand – ' + (S.brand || '');
+    if (S.view === 'csr') return 'CSR – ' + (S.agent || '');
+    return n || expHum(S.view || 'Page');
+  }
+  function expTables(root) {
+    var out = [];
+    Array.prototype.forEach.call((root || document).querySelectorAll('table'), function (t, i) {
+      if (t.closest('.pop') || !t.offsetParent) return;
+      var rows = Array.prototype.map.call(t.rows, function (tr) { return Array.prototype.map.call(tr.cells, function (td) { return (td.innerText || td.textContent || '').replace(/\s+/g, ' ').trim(); }); }).filter(function (r) { return r.join('') !== ''; });
+      if (rows.length < 2) return;
+      var card = t.closest('.oq-card'), h = card && card.querySelector('.cap, h2, h3, b');
+      var title = (h ? (h.innerText || h.textContent || '') : '').replace(/\s+/g, ' ').trim().slice(0, 60) || ('Table ' + (i + 1));
+      out.push({ sheet: title, title: title, cols: rows[0], rows: rows.slice(1) });
+    });
+    return out;
+  }
+  function expName(label) { return String(label).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'export'; }
+  function expRun(fmt, label, sheets, pdfSheets) {
+    if (!sheets.length) { toast('Nothing to export yet. Wait for the page to finish loading and try again.'); return; }
+    var info = { sheet: 'About', title: label, cols: ['', ''], rows: [['Export', label], ['Dates', rangeLabel() + ' (' + S.start + ' to ' + S.end + ')'], ['Brands', S.brands.length ? S.brands.join(', ') : (LOCK || 'All brands')], ['Exported', new Date().toLocaleString('en-US')]] };
+    var all = [info].concat(sheets), name = expName(label) + '-' + S.start + '-to-' + S.end;
+    if (fmt === 'csv') { sheetsCsv(name, all); return; }
+    if (fmt === 'pdf') { var ps = (pdfSheets || sheets).map(function (s) { return { title: s.title, cols: s.cols, rows: s.rows.slice(0, 400) }; }); sheetsPdf(pdfWin(), label, rpFilterText(), ps); return; }
+    toast('Preparing your Excel file…');
+    sheetsXlsx(name, all).catch(function (e) { toast((e && e.message) || 'Couldn’t build the Excel file. Try CSV.'); });
+  }
+  function pageExport(fmt) {
+    var label = expPageName(), shown = expTables($('main')), data = [];
+    if (EXP.sig === expSig()) EXP.order.forEach(function (k) { expFlat(EXP.data[k], expHum(k.split(':')[0]), data, 0); });
+    var sheets = shown.map(function (s) { s.sheet = 'Shown – ' + s.sheet; return s; }).concat(data);
+    expRun(fmt, label, sheets, shown.length ? shown.concat(data.filter(function (s) { return s.cols[0] === 'Field'; })) : null);
+  }
+  function callExport(fmt) {
+    var c = S.cur; if (!c) return;
+    var label = 'Call review – ' + (c.agent || 'CSR') + ' – ' + (c.call_date || c.date || '');
+    var sheets = []; expFlat(c, 'Call', sheets, 0);
+    expRun(fmt, label, sheets);
+  }
+  function expButtons(act) { return '<span class="mut" style="font-size:12.5px">Export</span>' + [['xlsx', 'Excel'], ['csv', 'CSV'], ['pdf', 'PDF']].map(function (f) { return '<button class="sel" data-act="' + act + '" data-fmt="' + f[0] + '" style="min-height:32px;padding:4px 12px;font-size:12.5px">' + f[1] + '</button>'; }).join(''); }
   // Reports open in an in-page preview (2026-10-27): a pop-up window's print dialog froze the portal until it was closed and reopened.
   // pdfWin() hands back a window-like object; whatever is written to it is shown in a full-screen frame with Save as PDF / Print and Close.
   function pdfWin() {
@@ -3276,7 +3356,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var steps = c.steps || [], changed = !!c.adjusted && c.ai_score != null;
     var who = steps.filter(function (s) { return s.adj; }).map(function (s) { return s.adj.by; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
     var noq = !OPSIS && c.counted === false, sc = noq ? null : c.score, col = sc == null ? '#CFC9BE' : (sc >= 80 ? G : (sc >= 60 ? '#E8A06A' : O)), yn = function (v) { return v === true ? '<b style="color:#1F5A41">Yes</b>' : (v === false ? '<b style="color:#A61B1B">No</b>' : (v === 'yes' ? '<b style="color:#1F5A41">Yes</b>' : (v === 'no' ? '<b style="color:#A61B1B">No</b>' : '<b class="mut">N/A</b>'))); };
-    var h = '' + (S.fromAsk ? '<button class="sel" data-backask="1" style="align-self:flex-start;min-height:34px;padding:4px 12px;font-size:12.5px">← Back to AI answer</button>' : '') + '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><div class="cap">Call review</div><div style="font-size:22px;font-weight:600;letter-spacing:-0.025em;margin-top:4px">' + esc(c.agent || 'Unknown CSR') + ' · ' + esc(short(c.brand)) + '</div><div class="mut" style="font-size:12.5px">' + fdate(c.date) + ' · ' + esc(c.direction || '') + ' · ' + fsecs(c.secs) + (c.phone ? ' · ' + esc(c.phone) : '') + '</div></div><div style="display:flex;gap:8px;flex-shrink:0"><button class="sel" data-act="copycall" data-v="' + esc(c.id || S.callId) + '" title="Copy a link that opens this call review" style="min-height:44px;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>Share</button><button class="sel" data-close="1" aria-label="Close" style="width:44px;justify-content:center">✕</button></div></div>' +
+    var h = '<div class="row" style="justify-content:flex-end;align-items:center;gap:6px">' + expButtons('callexp') + '</div>' + (S.fromAsk ? '<button class="sel" data-backask="1" style="align-self:flex-start;min-height:34px;padding:4px 12px;font-size:12.5px">← Back to AI answer</button>' : '') + '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><div class="cap">Call review</div><div style="font-size:22px;font-weight:600;letter-spacing:-0.025em;margin-top:4px">' + esc(c.agent || 'Unknown CSR') + ' · ' + esc(short(c.brand)) + '</div><div class="mut" style="font-size:12.5px">' + fdate(c.date) + ' · ' + esc(c.direction || '') + ' · ' + fsecs(c.secs) + (c.phone ? ' · ' + esc(c.phone) : '') + '</div></div><div style="display:flex;gap:8px;flex-shrink:0"><button class="sel" data-act="copycall" data-v="' + esc(c.id || S.callId) + '" title="Copy a link that opens this call review" style="min-height:44px;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>Share</button><button class="sel" data-close="1" aria-label="Close" style="width:44px;justify-content:center">✕</button></div></div>' +
       '<div class="oq-card" id="plr" style="position:sticky;top:-22px;z-index:3;padding:12px 14px;box-shadow:0 4px 14px rgba(20,48,42,.08)">' + playerInner() + '</div>' +
       '<div class="oq-card" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:96px;height:96px;flex-shrink:0"><svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="' + (sc == null ? 'Not scored' : 'Score ' + sc) + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + ((sc || 0) / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span class="num" style="font-size:' + (sc == null ? '15' : '24') + 'px;font-weight:600">' + (sc == null ? 'Not scored' : sc) + '</span><span class="mut" style="font-size:9.5px">brand avg ' + (c.brand_avg || '—') + '</span></div></div>' +
       '<div style="flex:1;min-width:220px"><div class="row" style="gap:6px"><span class="pill" style="' + chipOut(c.outcome) + '">' + esc(c.outcome || '—') + '</span>' + (c.winnable ? '<span class="pill" style="background:#FFF4E8;color:#9A4A0B">Winnable</span>' : '') + (c.reason ? '<span class="pill" style="background:#F3F1EC;color:#3B4541">' + esc(c.reason) + '</span>' : '') + (c.category ? [c.category] : (c.topics || []).filter(function (t) { return t !== 'General Inquiry'; }).slice(0, 3).map(tLab)).map(function (t) { return '<span class="pill" style="background:#E6F0EA;color:#1F5A41">' + esc(t) + '</span>'; }).join('') + '</div>' +
@@ -4138,6 +4218,8 @@ export function mountOpsisQA(ROOT, cfg) {
       var a = d.act;
       if (a === 'customrange') { var cs = $('cs').value, ce = $('ce').value; if (cs && ce && cs <= ce) { S.range = 'custom'; S.start = cs; S.end = ce; S.pop = null; render(); } else toast('Pick a start date before the end date.'); }
       else if (a === 'closepop') { S.pop = null; render(); }
+      else if (a === 'pgexp') { pageExport(el.getAttribute('data-fmt')); S.pop = null; render(); }
+      else if (a === 'callexp') { callExport(el.getAttribute('data-fmt')); }
       else if (a === 'huballbrands') { S.brands = []; render(); }
       else if (a === 'copycall') {
         var cid = d.v || S.callId, chref = location.origin + location.pathname + location.search + '#v=calls&call=' + encodeURIComponent(cid), cdone = function () { toast('Link to this call copied. Anyone with a portal login for this brand can open it.'); };
