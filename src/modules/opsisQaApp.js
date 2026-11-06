@@ -371,7 +371,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<span style="flex:1;min-width:0"><span style="display:flex;justify-content:space-between;gap:8px"><b style="font-weight:600">' + esc(r.agent || 'Unknown CSR') + '</b><span class="mut num" style="font-size:11.5px">' + fdate(r.date) + ' ' + fhour(r.hour) + ' · ' + fsecs(r.secs) + '</span></span>' +
       '<span class="mut" style="display:block;font-size:12px">' + esc(short(r.brand)) + (r.phone ? ' · ' + esc(r.phone) : '') + (r.topic ? ' · ' + esc(r.topic) : '') + '</span>' + xferPill(r) +
       '<span style="display:block;font-size:12.5px;line-height:1.45;margin-top:4px;color:#3B4541;white-space:normal">' + esc((r.summary || '').slice(0, 150)) + ((r.summary || '').length > 150 ? '…' : '') + '</span></span>' +
-      '<span class="pill num" style="' + chipScore(r.score) + ';font-size:13px">' + r.score + '</span></button>';
+      '<span class="pill num" style="' + chipScore(r.score) + ';font-size:13px"' + (r.score == null ? ' title="Not scored"' : '') + '>' + (r.score == null ? '—' : r.score) + '</span></button>';
   }
 
   function xferPill(r) {
@@ -1883,14 +1883,15 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   // ---------- Export what's on screen (Becky 11/5): every page gets an Export button (Excel, CSV, PDF) ----------
   // Each page's data is what it loaded from the server for the current page + filters, plus any tables drawn on screen.
-  var EXP = { sig: '', data: {}, order: [] };
-  var EXP_SKIP = { me: 1, ask: 1, audio: 1, hubaudio: 1, branding: 1, call: 1, export: 1, rulesugs: 1 };
+  var EXP = { sig: '', data: {}, order: [], bodies: {} };
+  var EXP_SKIP = { me: 1, ask: 1, audio: 1, hubaudio: 1, branding: 1, call: 1, export: 1, rulesugs: 1, scorereq: 1, calledit: 1 };
+  var EXP_LISTS = { calls: 1, bucketcalls: 1, factcalls: 1, xfercalls: 1, qaextras: 1 };
   function expSig() { return [S.view, S.start, S.end, (S.brands || []).join(','), S.brand || '', S.agent || ''].join('|'); }
   function expRec(body, pr) {
     if (!body || EXP_SKIP[body.action] || !pr || !pr.then) return;
-    var sig = expSig(); if (EXP.sig !== sig) EXP = { sig: sig, data: {}, order: [] };
-    var key = body.action + (body.op ? ':' + body.op : '') + (body.kind ? ':' + body.kind : '');
-    pr.then(function (r) { if (EXP.sig !== sig || r == null || typeof r !== 'object') return; if (!(key in EXP.data)) EXP.order.push(key); EXP.data[key] = r; }, function () {});
+    var sig = expSig(); if (EXP.sig !== sig) EXP = { sig: sig, data: {}, order: [], bodies: {} };
+    var key = body.action + (body.op ? ':' + body.op : '') + (body.kind ? ':' + body.kind : '') + (EXP_LISTS[body.action] && body.limit ? ':l' + body.limit : '');
+    pr.then(function (r) { if (EXP.sig !== sig || r == null || typeof r !== 'object') return; if (!(key in EXP.data)) EXP.order.push(key); EXP.data[key] = r; EXP.bodies[key] = body; }, function () {});
   }
   var EXP_NAMES = { agent: 'CSR', agents: 'CSRs', avg: 'Avg score', pavg: 'Previous avg score', prev_avg: 'Previous avg score', n: 'Calls', opps: 'Opportunities', xfer_out: 'Transferred out', xfer_in: 'Transferred in', xfer: 'Transfer', tta: 'Avg seconds to answer', tab: 'Avg seconds to abandon', per_wd: 'Calls per weekday', ai_score: 'AI score', asked_for_cc: 'Asked for card', collected_cc: 'Card collected', review_id: 'Review ID', call_id: 'Call ID', pn: 'Previous count', prev_rate: 'Previous rate', ivr: 'Hung up in IVR', kpis: 'KPIs', prev: 'Previous period', csr: 'CSR', csrs: 'CSRs', qa: 'QA', cc: 'Card', id: 'ID', url: 'Link', receptionist: 'AI CSR', focus: 'Details', cardcap: 'Card capture', pricetalk: 'Price talk', ai: 'Human vs AI', kb: 'Knowledge base', report: 'Report', calls: 'Calls', phone: 'Phone', repeat: 'Repeat callers', practice: 'Practice', scorecards: 'Scorecards', settings: 'QA settings', team: 'Team' };
   function expHum(k) { k = String(k); if (EXP_NAMES[k]) return EXP_NAMES[k]; var t = k.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim(); return t.charAt(0).toUpperCase() + t.slice(1); }
@@ -1935,20 +1936,57 @@ export function mountOpsisQA(ROOT, cfg) {
     return out;
   }
   function expName(label) { return String(label).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'export'; }
-  function expRun(fmt, label, sheets, pdfSheets) {
+  function expRun(fmt, label, sheets, pdfSheets, filters) {
     if (!sheets.length) { toast('Nothing to export yet. Wait for the page to finish loading and try again.'); return; }
-    var info = { sheet: 'About', title: label, cols: ['', ''], rows: [['Export', label], ['Dates', rangeLabel() + ' (' + S.start + ' to ' + S.end + ')'], ['Brands', S.brands.length ? S.brands.join(', ') : (LOCK || 'All brands')], ['Exported', new Date().toLocaleString('en-US')]] };
+    var info = { sheet: 'About', title: label, cols: ['About this export', ''], rows: [['Export', label], ['Dates', rangeLabel() + ' (' + S.start + ' to ' + S.end + ')'], ['Brands', S.brands.length ? S.brands.join(', ') : (LOCK || 'All brands')]].concat(filters && filters.length ? [['Filters', filters.join(' · ')]] : []).concat(sheets[0] && sheets[0].sheet === 'Calls' ? [['Calls', sheets[0].rows.length]] : []).concat([['Exported', new Date().toLocaleString('en-US')]]) };
     var all = [info].concat(sheets), name = expName(label) + '-' + S.start + '-to-' + S.end;
     if (fmt === 'csv') { sheetsCsv(name, all); return; }
     if (fmt === 'pdf') { var ps = (pdfSheets || sheets).map(function (s) { return { title: s.title, cols: s.cols, rows: s.rows.slice(0, 400) }; }); sheetsPdf(pdfWin(), label, rpFilterText(), ps); return; }
     toast('Preparing your Excel file…');
     sheetsXlsx(name, all).catch(function (e) { toast((e && e.message) || 'Couldn’t build the Excel file. Try CSV.'); });
   }
+  // A page's main call list (25 per page on screen) is re-fetched in full for the export, 100 at a time, as a clean sheet.
+  function expIsCallList(key, r) { var b = EXP.bodies[key]; return !!(b && EXP_LISTS[b.action] && b.op !== 'why' && (b.limit || 0) >= 20 && r && Array.isArray(r.rows)); }
+  function expAllCalls(body, total) {
+    var all = [], cap = Math.min(total || 2000, 2000);
+    var page = function (off) {
+      return apiRaw(Object.assign({}, body, { limit: 100, offset: off })).then(function (r) {
+        var rows = (r && r.rows) || []; all = all.concat(rows);
+        if (rows.length === 100 && all.length < cap) { toast('Gathering calls… ' + all.length + (total ? ' of ' + total : '')); return page(off + 100); }
+        return all;
+      });
+    };
+    return page(0);
+  }
+  function expCallSheet(rows) {
+    var base = location.origin + location.pathname + location.search + '#v=calls&call=';
+    var hr = function (h) { if (h == null || h === '') return ''; h = +h; return (h % 12 || 12) + (h < 12 ? ' AM' : ' PM'); };
+    var len = function (x) { x = +x; return x ? Math.floor(x / 60) + ':' + String(Math.round(x % 60)).padStart(2, '0') : ''; };
+    var cols = ['Date', 'Time', 'CSR', 'Brand', 'Customer phone', 'Length', 'Score', 'Outcome', 'Topic', 'Transfer', 'Summary', 'Open call in portal'];
+    return { sheet: 'Calls', title: 'Calls', cols: cols, rows: rows.map(function (r) {
+      var x = r.xfer_out ? 'Transferred out' + (r.xfer_to ? ' to ' + r.xfer_to : '') : r.xfer_in ? 'Transferred in' + (r.xfer_from ? ' from ' + r.xfer_from : '') : '';
+      return [r.date || r.call_date || '', hr(r.hour), r.agent || '', r.brand || '', r.phone || '', len(r.secs || r.length), r.score == null ? 'Not scored' : r.score, r.outcome || '', r.topic || r.category || '', x, r.summary || '', r.id ? base + encodeURIComponent(r.id) : ''];
+    }) };
+  }
+  function expByCsr(cs) {
+    var m = {}; cs.rows.forEach(function (r) { var k = r[2] || 'Unknown'; var x = m[k] || (m[k] = { n: 0, sum: 0, sc: 0 }); x.n++; if (typeof r[6] === 'number') { x.sum += r[6]; x.sc++; } });
+    return { sheet: 'By CSR', title: 'Calls by CSR', cols: ['CSR', 'Calls', 'Avg score'], rows: Object.keys(m).sort(function (a, b) { return m[b].n - m[a].n; }).map(function (k) { return [k, m[k].n, m[k].sc ? Math.round(m[k].sum / m[k].sc * 10) / 10 : '']; }) };
+  }
   function pageExport(fmt) {
-    var label = expPageName(), shown = expTables($('main')), data = [];
-    if (EXP.sig === expSig()) EXP.order.forEach(function (k) { expFlat(EXP.data[k], expHum(k.split(':')[0]), data, 0); });
-    var sheets = shown.map(function (s) { s.sheet = 'Shown – ' + s.sheet; return s; }).concat(data);
-    expRun(fmt, label, sheets, shown.length ? shown.concat(data.filter(function (s) { return s.cols[0] === 'Field'; })) : null);
+    var label = expPageName(), shown = expTables($('main')), data = [], lists = [];
+    var filters = Array.prototype.map.call(($('main') || document).querySelectorAll('.chip.on'), function (c) { return (c.innerText || c.textContent || '').replace(/[✕×]/g, '').replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+    if (EXP.sig === expSig()) EXP.order.forEach(function (k) { var r = EXP.data[k]; if (expIsCallList(k, r)) lists.push([k, r]); else if (!EXP_LISTS[k.split(':')[0]]) expFlat(r, expHum(k.split(':')[0]), data, 0); });
+    data = data.filter(function (s) { return !(s.cols[0] === 'Field' && s.rows.every(function (r) { return /^(Total|Can decide|Ok|Allowed)$/i.test(r[0]); })); });
+    var finish = function (callSheets) {
+      callSheets = callSheets.reduce(function (acc, cs) { return acc.concat([cs, expByCsr(cs)]); }, []);
+      var sheets = callSheets.concat(shown.map(function (s) { s.sheet = 'Shown – ' + s.sheet; return s; })).concat(data);
+      var pdf = callSheets.map(function (cs) { return cs.sheet !== 'Calls' ? cs : { title: cs.title, cols: cs.cols.slice(0, 11), rows: cs.rows.map(function (r) { return r.slice(0, 11); }) }; }).concat(shown).concat(data.filter(function (s) { return s.cols[0] === 'Field'; }));
+      expRun(fmt, label, sheets, pdf, filters);
+    };
+    if (!lists.length) return finish([]);
+    toast('Gathering every call for the export…');
+    Promise.all(lists.map(function (kr) { return expAllCalls(EXP.bodies[kr[0]], kr[1].total).then(expCallSheet); }))
+      .then(finish).catch(function (e) { toast((e && e.message) || 'Couldn’t gather the calls. Try again.'); });
   }
   function callExport(fmt) {
     var c = S.cur; if (!c) return;
