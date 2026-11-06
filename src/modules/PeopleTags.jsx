@@ -35,7 +35,13 @@ export default function PeopleTags() {
   const [newTagName, setNewTagName] = useState('')
   const [busyTag, setBusyTag] = useState(false)
   const [deletingTag, setDeletingTag] = useState(null)   // tag id being deleted
-  const [showInactive, setShowInactive] = useState(true) // People & Tags manages inactive people too
+  // People filters (2026-11-06) — status defaults to Active; inactive is one click away.
+  const [fSearch, setFSearch] = useState('')
+  const [fStatus, setFStatus] = useState('active')   // 'active' | 'inactive' | 'all'
+  const [fRole, setFRole] = useState('')             // role key or ''
+  const [fTag, setFTag] = useState('')               // tag id, '__none' for untagged, or ''
+  const [fFive9, setFFive9] = useState('')           // 'done' | 'todo' | ''
+  const [fReason, setFReason] = useState('')         // inactive reason or ''
   const [deactivating, setDeactivating] = useState(null) // person id in the deactivate flow
   const [deactReason, setDeactReason] = useState('')
   const [activeBusy, setActiveBusy] = useState(null)     // person id currently saving active state
@@ -323,6 +329,28 @@ export default function PeopleTags() {
     }
   }
   const initials = (n) => (n || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+  // ---- People filters ----
+  const filterStyle = { fontSize: 12.5, padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', fontFamily: 'inherit', background: 'var(--canvas)', color: 'var(--ink)' }
+  const activeCount = people.filter(x => x.is_active).length
+  const reasonOptions = [...new Set(people.filter(x => !x.is_active).map(x => x.inactive_reason || 'No reason given'))].sort()
+  const tagIdsFor = (pid) => taggables.filter(t => t.entity_id === pid).map(t => String(t.tag_id))
+  const q = fSearch.trim().toLowerCase()
+  const visiblePeople = people.filter(p => {
+    if (fStatus === 'active' && !p.is_active) return false
+    if (fStatus === 'inactive' && p.is_active) return false
+    if (fReason && (p.is_active || (p.inactive_reason || 'No reason given') !== fReason)) return false
+    if (q && !`${p.full_name || ''} ${p.email || ''}`.toLowerCase().includes(q)) return false
+    if (fRole && !personRoles(p).includes(fRole)) return false
+    if (fTag) {
+      const ids = tagIdsFor(p.id)
+      if (fTag === '__none' ? ids.length > 0 : !ids.includes(fTag)) return false
+    }
+    if (fFive9 === 'done' && !p.five9_sent_at) return false
+    if (fFive9 === 'todo' && p.five9_sent_at) return false
+    return true
+  })
+  const filtersOn = !!(q || fStatus !== 'active' || fRole || fTag || fFive9 || fReason)
+
   return (
     <div>
       <div className="page-head">
@@ -386,16 +414,52 @@ export default function PeopleTags() {
                 <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600 }}>People</h3>
                 <p className="page-sub" style={{ margin: 0 }}>Click a tag under each person to add or remove it.{voice ? ' Click 📞 to call someone.' : ''}</p>
               </div>
-              {people.some(x => !x.is_active) && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink-soft)', cursor: 'pointer', flex: 'none' }}>
-                  <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
-                  Show inactive ({people.filter(x => !x.is_active).length})
-                </label>
+              <span style={{ fontSize: 12.5, color: 'var(--ink-soft)', flex: 'none' }}>
+                Showing {visiblePeople.length} of {people.length}
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+              <input type="search" value={fSearch} onChange={e => setFSearch(e.target.value)} placeholder="Search name or email…"
+                style={{ ...filterStyle, flex: '1 1 200px', minWidth: 180 }} />
+              <div style={{ display: 'inline-flex', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', flex: 'none' }}>
+                {[['active', `Active (${activeCount})`], ['inactive', `Inactive (${people.length - activeCount})`], ['all', 'All']].map(([k, label]) => (
+                  <button key={k} type="button" onClick={() => { setFStatus(k); if (k === 'active') setFReason('') }}
+                    style={{ fontSize: 12.5, padding: '6px 10px', border: 'none', fontFamily: 'inherit', cursor: 'pointer',
+                      background: fStatus === k ? 'var(--accent)' : 'var(--canvas)', color: fStatus === k ? '#fff' : 'var(--ink)', fontWeight: fStatus === k ? 600 : 400 }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {fStatus !== 'active' && reasonOptions.length > 0 && (
+                <select value={fReason} onChange={e => setFReason(e.target.value)} style={filterStyle}>
+                  <option value="">Any reason</option>
+                  {reasonOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              )}
+              <select value={fRole} onChange={e => setFRole(e.target.value)} style={filterStyle}>
+                <option value="">All roles</option>
+                {ROLES.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+              </select>
+              <select value={fTag} onChange={e => setFTag(e.target.value)} style={filterStyle}>
+                <option value="">All tags</option>
+                <option value="__none">No tags</option>
+                {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <select value={fFive9} onChange={e => setFFive9(e.target.value)} style={filterStyle}>
+                <option value="">Five9: any</option>
+                <option value="done">Five9 set up</option>
+                <option value="todo">Five9 not set up</option>
+              </select>
+              {filtersOn && (
+                <button type="button" className="btn btn-ghost" style={{ fontSize: 12.5 }}
+                  onClick={() => { setFSearch(''); setFStatus('active'); setFRole(''); setFTag(''); setFFive9(''); setFReason('') }}>
+                  Clear filters
+                </button>
               )}
             </div>
-            {(showInactive ? people : people.filter(x => x.is_active)).length === 0 ? (
-              <p className="page-sub">No people to show.</p>
-            ) : (showInactive ? people : people.filter(x => x.is_active)).map(p => (
+            {visiblePeople.length === 0 ? (
+              <p className="page-sub">No people match these filters.</p>
+            ) : visiblePeople.map(p => (
               <div key={p.id} style={{ padding: '14px 0', borderBottom: '1px solid var(--line-soft)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                   <span style={{ width: 30, height: 30, borderRadius: '50%', background: p.color || 'var(--blue)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flex: 'none' }}>
