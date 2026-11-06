@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { commitmentText, loadScheduleRules } from '../lib/scheduleRules'
+loadScheduleRules()
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
@@ -6,7 +8,8 @@ import { COMPANY_TZ, wallTimeToViewer } from '../lib/tz'
 
 // Interval acceptance verbiage (Becky picked Option 2, 2026-09-03). Same text
 // as Schedule.jsx.
-const INTERVAL_COMMITMENT = "By accepting this interval, you are committing to service it. Once the 4-day (96-hour) schedule lock has passed, responsibility for the interval remains with you unless it is successfully transferred through the Trade Board."
+// follows Configuration → Schedule rules (commitment lock on/off + hours)
+const INTERVAL_COMMITMENT = { toString: () => commitmentText() }
 
 // ============================================================
 // TRADE BOARD CHANNEL
