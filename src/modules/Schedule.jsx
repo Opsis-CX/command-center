@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import ScheduleTeam, { ST_CSS, colorVars, useScheduleSettings } from './ScheduleTeam'
+import { useScheduleRules, capOn, capHours, lockOn, lockHours, graceOn, graceMin, commitmentText, lockLabel, releaseText } from '../lib/scheduleRules'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { can, hasPerm, usingNewPermissions } from '../lib/permissions'
@@ -12,7 +13,8 @@ import { useVoice, CallButton } from '../lib/voice'
 
 // Shown before an agent accepts an interval (Schedule + Trade Board). Keep in
 // step with TradeBoardChannel.jsx.
-export const INTERVAL_COMMITMENT = "By accepting this interval, you are committing to service it. Once the 4-day (96-hour) schedule lock has passed, responsibility for the interval remains with you unless it is successfully transferred through the Trade Board."
+// The acceptance message follows Configuration → Schedule rules (commitment lock on/off + hours).
+export const INTERVAL_COMMITMENT = { toString: () => commitmentText() }
 
 // Convert a company-zone wall time on a given date to the viewer's local "h:mm AM".
 function blockTimeInViewer(dateStr, timeStr, viewerTZ) {
@@ -33,7 +35,7 @@ function blockTimeInViewer(dateStr, timeStr, viewerTZ) {
 // bad claim through. claimBlock() surfaces those errors clearly.
 // ============================================================
 
-const WEEKLY_HOUR_CAP = 40
+// weekly cap + commitment lock come from Configuration → Schedule rules (see lib/scheduleRules)
 
 // While realtime postgres_changes delivery is unreliable, poll so the
 // grid doesn't go stale and agents rarely collide. Remove once realtime works.
@@ -79,7 +81,6 @@ function initials(name) {
 // Schedule Lock (per the Contractor Scheduling SOP): intervals lock 4 calendar
 // days (96 hours) before start. Before the lock, contractors freely release;
 // once locked, the interval is committed and can only move via the Trade Board.
-const RELEASE_CUTOFF_HOURS = 96
 function hoursUntilStart(block) {
   if (!block?.block_date || !block?.start_time) return Infinity
   const s = new Date(`${block.block_date}T${block.start_time.slice(0, 5)}:00`)
@@ -111,7 +112,7 @@ function vtoForBlock(block) {
 // 4-day (96h) schedule lock — unless VTO is open for that day, which waives it.
 function canReleaseBlock(block, started) {
   if (started) return false
-  return hoursUntilStart(block) >= RELEASE_CUTOFF_HOURS || !!vtoForBlock(block)
+  return !lockOn() || hoursUntilStart(block) >= lockHours() || !!vtoForBlock(block)
 }
 
 function avatarColor(name) {
@@ -200,6 +201,9 @@ export default function Schedule() {
   const [adminView, setAdminView] = useState('team') // internal | team | mine
   // New Team / Internal views (2026-11-05): available where the database has them (sched_scope).
   const [schedScope, setSchedScope] = useState(null)
+  useScheduleRules()   // weekly cap, commitment lock, grace window, release (Configuration → Schedule rules)
+  const [myWave, setMyWave] = useState(null)
+  useEffect(() => { supabase.rpc('my_release_wave').then(({ data }) => { if (Array.isArray(data) && data[0]) setMyWave(data[0]) }) }, [])
   const [savedViews, setSavedViews] = useState([])   // Configuration → Schedule → Views
   useEffect(() => {
     supabase.from('schedule_views').select('*').is('archived_at', null).order('sort').order('name')
@@ -318,26 +322,15 @@ export default function Schedule() {
   // and today+14 once the current time passes their tier release time today.
   // Tier release_time staggers WHEN each new day unlocks; no more weekly day.
   // No-tier (new) agents default to 11:45. Times are Eastern.
+  // Release status — follows Configuration → Schedule rules. Each interval carries its own release
+  // time (set by the database from the rules); agents see intervals once released, and their wave
+  // decides how soon after release they can pick them up (the database enforces both).
   function getMyReleaseStatus() {
     const tier = tiers.find(t => t.id === me?.tier_id)
-    // No-release-time roles (everyone except agents) see every interval on
-    // their schedules with no rolling-window cutoff at all.
-    if (noReleaseTimes) return { unlocked: true, tier, horizonDays: 3650, releaseDate: null, nextUnlock: null }
-    const now = etNow()
-
-    let h, m
-    if (tier && tier.release_time) { [h, m] = tier.release_time.split(':').map(Number) }
-    else { h = 11; m = 45 }   // no-tier default
-
-    const todayRelease = new Date(now); todayRelease.setHours(h, m, 0, 0)
-    const passedToday = now >= todayRelease
-    // horizon: +14 once today's release time has passed, else +13
-    const horizonDays = passedToday ? 14 : 13
-    // next unlock moment: today's release if not yet passed, else tomorrow's
-    const nextUnlock = new Date(todayRelease)
-    if (passedToday) nextUnlock.setDate(nextUnlock.getDate() + 1)
-
-    return { unlocked: true, tier, horizonDays, releaseDate: nextUnlock, nextUnlock, releaseTime: { h, m } }
+    if (noReleaseTimes) return { unlocked: true, tier, horizonDays: 3650, releaseDate: null, nextUnlock: null, showAll: true }
+    const now = Date.now()
+    const upcoming = blocks.map(b => b.release_at ? new Date(b.release_at).getTime() : 0).filter(t => t > now).sort((a, b) => a - b)[0]
+    return { unlocked: true, tier, horizonDays: 3650, releaseDate: upcoming ? new Date(upcoming) : null, nextUnlock: upcoming ? new Date(upcoming) : null, wave: myWave }
   }
 
   // ---------- claim helpers ----------
@@ -375,12 +368,8 @@ export default function Schedule() {
     }
     // Fast client-side checks: instant feedback, no round trip. These can be
     // wrong if the page is stale — the database trigger is the real guard.
-    if (!noReleaseTimes) {
-      const rs = getMyReleaseStatus()
-      const horizon = etNow(); horizon.setDate(horizon.getDate() + (rs.horizonDays ?? 13))
-      if (block.block_date > isoDate(horizon)) {
-        flash(`That interval isn't available yet — it unlocks at your release time.`); return
-      }
+    if (!noReleaseTimes && block.release_at && new Date(block.release_at).getTime() > Date.now()) {
+      flash(`That interval isn't released yet — it opens ${formatReleaseTime(new Date(block.release_at))}.`); return
     }
     const existing = claims.filter(c => c.shift_block_id === block.id)
     if (existing.length >= block.total_spots) { flash('That interval just filled up'); load(true); return }
@@ -390,12 +379,12 @@ export default function Schedule() {
     if (hasIntervalStarted(block)) { /* allowed: late pickup */ }
     if (overlapsExisting(me.id, block)) { flash('Overlaps an interval you already have that day'); return }
     const weekMonday = mondayOf(new Date(block.block_date + 'T00:00:00'))
-    if (claimedHoursInWeek(me.id, weekMonday) + blockHours(block) > WEEKLY_HOUR_CAP) {
-      flash(`No more than ${WEEKLY_HOUR_CAP} hours per week`); return
+    if (capOn() && claimedHoursInWeek(me.id, weekMonday) + blockHours(block) > capHours()) {
+      flash(`No more than ${capHours()} hours per week`); return
     }
 
     // Interval acceptance verbiage (Becky picked Option 2, 2026-09-03).
-    if (!window.confirm(INTERVAL_COMMITMENT + '\n\nAccept this interval?')) return
+    if (!window.confirm(commitmentText() + '\n\nAccept this interval?')) return
     const { error } = await supabase.from('shift_claims').insert({ shift_block_id: block.id, profile_id: me.id, status: 'claimed' })
     if (error) {
       // The database rejected it — it knows the truth even when this page
@@ -420,8 +409,8 @@ export default function Schedule() {
     // the interval is committed and the agent must use the Trade board. The RPC
     // re-checks this server-side.
     const vto = vtoForBlock(block)
-    if (!vto && hoursUntilStart(block) < RELEASE_CUTOFF_HOURS) {
-      flash("This interval is locked (within 4 days of start) — you can't release it. Put it up for trade instead."); return
+    if (!vto && lockOn() && hoursUntilStart(block) < lockHours()) {
+      flash(`This interval is locked (${lockLabel()}) — you can't release it. Put it up for trade instead.`); return
     }
     // Inside a VTO window the lock is waived and the hand-back is penalty-free.
     // Say so plainly, including the part people ask about: it is unpaid time.
@@ -529,7 +518,6 @@ export default function Schedule() {
 
   // Grace window (minutes) on each side of scheduled end. Within → clean 'completed'.
   // Outside (early or late) → requires a note, lands as 'pending_review' for admin approval.
-  const GRACE_MIN = 15
 
   async function checkOut(claimId, block, note) {
     const nowISO = new Date().toISOString()
@@ -537,7 +525,7 @@ export default function Schedule() {
     if (block) {
       const end = new Date(`${block.block_date}T${block.end_time.slice(0, 5)}:00`)
       const diffMin = Math.abs((etNow() - end) / 60000)
-      if (diffMin > GRACE_MIN) status = 'pending_review'
+      if (graceOn() && diffMin > graceMin()) status = 'pending_review'   // grace window: Configuration → Schedule rules
     }
     if (status === 'pending_review' && !(note && note.trim())) {
       flash('A note is required when checking out well outside your scheduled time.')
@@ -565,8 +553,8 @@ export default function Schedule() {
     if (existing.some(c => c.profile_id === profileId)) { flash(`${target.full_name} is already on this interval`); return }
     if (overlapsExisting(profileId, block)) { flash(`${target.full_name} already has an overlapping interval that day`); return }
     const weekMonday = mondayOf(new Date(block.block_date + 'T00:00:00'))
-    if (claimedHoursInWeek(profileId, weekMonday) + blockHours(block) > WEEKLY_HOUR_CAP) {
-      flash(`That would put ${target.full_name} over ${WEEKLY_HOUR_CAP} hours this week`); return
+    if (capOn() && claimedHoursInWeek(profileId, weekMonday) + blockHours(block) > capHours()) {
+      flash(`That would put ${target.full_name} over ${capHours()} hours this week`); return
     }
 
     const { error } = await supabase.from('shift_claims').insert({ shift_block_id: block.id, profile_id: profileId, status: 'claimed' })
@@ -768,7 +756,7 @@ function ClaimView(props) {
 
       {teamMode
         ? <AdminGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} profiles={profiles} me={me} onPop={setPopBlock} />
-        : <AgentGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} me={me} hasIntervalStarted={hasIntervalStarted} horizonDays={releaseStatus.horizonDays} onPop={setPopBlock} trades={trades} />}
+        : <AgentGrid days={days} todayStr={todayStr} weekBlocks={weekBlocks} claims={claims} me={me} hasIntervalStarted={hasIntervalStarted} showAll={!!releaseStatus?.showAll} horizonDays={releaseStatus.horizonDays} onPop={setPopBlock} trades={trades} />}
 
       {popBlock && <IntervalPopover
         block={popBlock} claims={claims} profiles={profiles} me={me} canClaim={!teamMode} isAdmin={isAdmin}
@@ -793,11 +781,11 @@ function ClaimView(props) {
 }
 
 function HoursCap({ hours }) {
-  const pct = Math.min(100, Math.round((hours / WEEKLY_HOUR_CAP) * 100))
-  const over = hours >= WEEKLY_HOUR_CAP
+  const pct = Math.min(100, Math.round((hours / capHours()) * 100))
+  const over = capOn() && hours >= capHours()
   return (
     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ fontSize: 12, fontWeight: 600, color: over ? 'var(--failed)' : 'var(--ink-soft)' }}>{fmtHours(hours)} / {WEEKLY_HOUR_CAP} h</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: over ? 'var(--failed)' : 'var(--ink-soft)' }}>{fmtHours(hours)}{capOn() ? ` / ${capHours()}` : ''} h</span>
       <div style={{ width: 120, height: 6, background: 'var(--line)', borderRadius: 3, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: pct + '%', background: over ? 'var(--failed)' : 'var(--accent)', borderRadius: 3 }} />
       </div>
@@ -811,43 +799,31 @@ function ReleaseBanner({ status }) {
     const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t)
   }, [])
 
-  const noTier = !status.tier
   const relStr = status.releaseDate ? formatReleaseTime(status.releaseDate) : ''
-
-  // New-agent welcome (no tier assigned)
-  if (noTier) {
-    return <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent)', borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
-      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--accent)', marginBottom: 3 }}>Welcome to the team!</div>
-      <div style={{ fontSize: 13, color: 'var(--accent)' }}>
-        As a new agent, your schedule releases at 11:45 AM EST each day. Intervals are first come, first served, so be here on time to select your schedule. Your next release is {relStr}.
-      </div>
-    </div>
-  }
-
-  // Countdown to the next daily unlock
+  const w = status.wave
+  const waveLine = w && w.offset_min > 0 ? ` You're in the ${w.wave_name} wave — you can pick up intervals ${w.offset_min} minutes after each release.` : ''
   const diff = status.releaseDate ? status.releaseDate.getTime() - now : 0
   const h = String(Math.max(0, Math.floor(diff / 3600000))).padStart(2, '0')
   const m = String(Math.max(0, Math.floor((diff % 3600000) / 60000))).padStart(2, '0')
   const s = String(Math.max(0, Math.floor((diff % 60000) / 1000))).padStart(2, '0')
-
-  return <div style={{ background: 'var(--passed-bg)', border: '1px solid var(--passed)', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-    <div style={{ fontSize: 13, color: 'var(--passed)' }}>
-      <div style={{ fontWeight: 700, fontSize: 14 }}>Open intervals are available now</div>
-      As a {status.tier?.name}, a new day of intervals unlocks daily at your release time. Next release: {relStr}.
+  return <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent)', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+    <div style={{ fontSize: 13, color: 'var(--accent)', flex: 1, minWidth: 260 }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{!status.tier ? 'Welcome to the team!' : 'Next release'}</div>
+      New intervals are released {releaseText()}. Intervals are first come, first served, so be here on time.{waveLine} Next release: {relStr}.
     </div>
-    <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--passed)' }}>{h}:{m}:{s}</div>
+    <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--accent)' }}>{h}:{m}:{s}</div>
   </div>
 }
 
 // ---------- AGENT GRID ----------
-function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted, horizonDays, onPop, trades }) {
+function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted, horizonDays, onPop, trades, showAll }) {
   // Rolling-window cutoff: open intervals are visible only through today + horizonDays.
   const horizonStr = (() => {
     const d = etNow(); d.setDate(d.getDate() + (horizonDays ?? 13)); return isoDate(d)
   })()
   // Mon–Sun total for the week on screen. Shown under "Your intervals".
   const myHours = personWeekHours(me.id, weekBlocks, claims, isoDate(days[0]), isoDate(days[6]))
-  const myOver = myHours > WEEKLY_HOUR_CAP
+  const myOver = capOn() && myHours > capHours()
 
   // An interval up for trade (offered by someone else) shows here as grabbable too —
   // so a released interval is available on BOTH the trade board and the schedule.
@@ -866,6 +842,7 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
     const groups = {}
     for (const b of weekBlocks) {
       if (b.block_date !== ds || b.block_date > horizonStr) continue
+      if (!showAll && b.release_at && new Date(b.release_at).getTime() > Date.now()) continue   // not released yet
       const cl = claims.filter(c => c.shift_block_id === b.id)
       if (cl.some(c => c.profile_id === me.id)) continue
       const left = b.total_spots - cl.length, tr = tradeFor(b.id)
@@ -908,7 +885,7 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
               <td className="who">
                 <span className="st-av" style={{ background: avatarColor(me.full_name || 'You'), color: '#fff' }}>{initials(me.full_name || 'You')}</span>
                 <span style={{ display: 'inline-block', verticalAlign: 'middle' }}>Your intervals
-                  <div className="page-sub" style={{ fontSize: 11.5, fontWeight: myOver ? 800 : 500, color: myOver ? 'var(--failed)' : undefined }}>{fmtHours(myHours)} / {WEEKLY_HOUR_CAP} h this week</div></span>
+                  <div className="page-sub" style={{ fontSize: 11.5, fontWeight: myOver ? 800 : 500, color: myOver ? 'var(--failed)' : undefined }}>{fmtHours(myHours)}{capOn() ? ` / ${capHours()}` : ''} h this week</div></span>
               </td>
               {days.map(d => { const ds = isoDate(d); const its = mineFor(ds)
                 return <td key={ds}>{its.length === 0 ? <span className="page-sub">—</span> : its.map(b => {
@@ -953,7 +930,7 @@ function AdminGrid({ days, todayStr, weekBlocks, claims, profiles, me, onPop }) 
     // Mon–Sun total for this person, in the week currently on screen.
     // Counts claimed + checked_in + no_show: a no-show still held the seat.
     const hrs = person.__open ? 0 : personWeekHours(person.id, inWeek, claims, wkStart, wkEnd)
-    const over = hrs > WEEKLY_HOUR_CAP
+    const over = capOn() && hrs > capHours()
 
     const label = person.__open
       ? <div className="wg-rowlabel" style={{ background: 'var(--canvas)' }}>
@@ -965,7 +942,7 @@ function AdminGrid({ days, todayStr, weekBlocks, claims, profiles, me, onPop }) 
           <div style={{ minWidth: 0 }}>
             <div className="wg-person-name">{person.full_name}</div>
             <div className="wg-person-sub" style={{ color: over ? 'var(--failed)' : undefined, fontWeight: over ? 700 : undefined }}>
-              {fmtHours(hrs)} / {WEEKLY_HOUR_CAP} h
+              {fmtHours(hrs)}{capOn() ? ` / ${capHours()}` : ''} h
             </div>
           </div>
         </div>
@@ -1086,8 +1063,8 @@ function IntervalPopover({ block, claims, profiles, me, canClaim, isAdmin, canAs
               ? <button className="btn btn-ghost" onClick={() => onCancelTrade(myTrade)} title="Take it back off the trade board — you keep the interval.">Take off trade board</button>
               : <>
                   {canReleaseBlock(block, started) && <button className="btn btn-ghost" onClick={() => onUnclaim(block)} title="Release this interval back to the schedule for anyone to claim. Allowed until the 4-day schedule lock; after it locks you must trade it.">Release</button>}
-                  {!canReleaseBlock(block, started) && <span title="This interval is locked (within 4 days of start). It's part of your committed schedule — you can only move it through the Trade Board, and you stay responsible until someone claims it." style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: 700, color: 'var(--cta)', padding: '0 4px' }}>🔒 Locked</span>}
-                  {!started && vtoForBlock(block) && hoursUntilStart(block) < RELEASE_CUTOFF_HOURS && <span title="VTO is open for this day — you can release this interval with no attendance consequence. It's unpaid." style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: 700, color: 'var(--passed, #16A34A)', padding: '0 4px' }}>🟢 VTO</span>}
+                  {!canReleaseBlock(block, started) && <span title={`This interval is locked (${lockLabel()}). It's part of your committed schedule — you can only move it through the Trade Board, and you stay responsible until someone claims it.`} style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: 700, color: 'var(--cta)', padding: '0 4px' }}>🔒 Locked</span>}
+                  {!started && vtoForBlock(block) && lockOn() && hoursUntilStart(block) < lockHours() && <span title="VTO is open for this day — you can release this interval with no attendance consequence. It's unpaid." style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: 700, color: 'var(--passed, #16A34A)', padding: '0 4px' }}>🟢 VTO</span>}
                   <button className="btn btn-ghost" style={{ color: 'var(--accent)' }} onClick={() => onOfferTrade(block)} title="Can't make it? Put it up for trade. You still hold it (and stay accountable) until someone takes it.">🔁 Put up for trade</button>
                 </>
           )}
@@ -1186,7 +1163,7 @@ function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onC
   const dayStrs = days.map(isoDate)
   const inWeek = (ds) => entries.filter(e => e.block.block_date === ds).sort((a, b) => a.block.start_time.localeCompare(b.block.start_time))
   const weekHours = personWeekHours(me.id, blocks, claims, dayStrs[0], dayStrs[6])
-  const over = weekHours > WEEKLY_HOUR_CAP
+  const over = capOn() && weekHours > capHours()
   const shift = (n) => { const d = new Date(weekStart); d.setDate(d.getDate() + n * 7); setWeekStart(d) }
   // where's the next interval, if this week is empty?
   const next = entries.filter(e => e.block.block_date > dayStrs[6]).sort((a, b) => a.block.block_date.localeCompare(b.block.block_date))[0]
@@ -1221,7 +1198,7 @@ function MyScheduleView({ me, blocks, claims, hasIntervalStarted, onUnclaim, onC
               <td className="who" style={{ verticalAlign: 'top' }}>
                 <span className="st-av" style={{ background: avatarColor(me.full_name || 'You'), color: '#fff' }}>{initials(me.full_name || 'You')}</span>
                 <span style={{ display: 'inline-block', verticalAlign: 'middle' }}>Your intervals
-                  <div className="page-sub" style={{ fontSize: 11.5, fontWeight: over ? 800 : 500, color: over ? 'var(--failed)' : undefined }}>{fmtHours(weekHours)} / {WEEKLY_HOUR_CAP} h this week</div></span>
+                  <div className="page-sub" style={{ fontSize: 11.5, fontWeight: over ? 800 : 500, color: over ? 'var(--failed)' : undefined }}>{fmtHours(weekHours)}{capOn() ? ` / ${capHours()}` : ''} h this week</div></span>
               </td>
               {dayStrs.map(ds => { const its = inWeek(ds); const isPast = ds < todayStr
                 return <td key={ds} className={ds === todayStr ? 'ms-today' : ''}>
@@ -1333,8 +1310,8 @@ function ShiftCard({ block, claim, isPast, started, viewerTZ, onUnclaim, onCheck
             <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12, border: '1px solid var(--line)' }} onClick={() => onCancelTrade(myTrade)}>Take back from trade board</button>
           </div>
         : <div style={{ marginTop: 6 }}>
-            {!canReleaseBlock(block, started) && <div title="This interval is locked (within 4 days of start). It's part of your committed schedule — you can only move it through the Trade Board, and you stay responsible until someone claims it." style={{ fontSize: 11, color: 'var(--cta)', fontWeight: 700, marginBottom: 4 }}>🔒 Locked — trade only</div>}
-            {!started && vtoForBlock(block) && hoursUntilStart(block) < RELEASE_CUTOFF_HOURS && <div title="VTO is open for this day — you can release this interval with no attendance consequence. It's unpaid." style={{ fontSize: 11, color: 'var(--passed, #16A34A)', fontWeight: 700, marginBottom: 4 }}>🟢 VTO open — Release is penalty-free (unpaid)</div>}
+            {!canReleaseBlock(block, started) && <div title={`This interval is locked (${lockLabel()}). It's part of your committed schedule — you can only move it through the Trade Board, and you stay responsible until someone claims it.`} style={{ fontSize: 11, color: 'var(--cta)', fontWeight: 700, marginBottom: 4 }}>🔒 Locked — trade only</div>}
+            {!started && vtoForBlock(block) && lockOn() && hoursUntilStart(block) < lockHours() && <div title="VTO is open for this day — you can release this interval with no attendance consequence. It's unpaid." style={{ fontSize: 11, color: 'var(--passed, #16A34A)', fontWeight: 700, marginBottom: 4 }}>🟢 VTO open — Release is penalty-free (unpaid)</div>}
             <div style={{ display: 'flex', gap: 6 }}>
               {canReleaseBlock(block, started) && onUnclaim && <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12, border: '1px solid var(--line)' }} onClick={() => onUnclaim(block)} title="Release this interval back to the schedule for anyone to claim. Allowed until the 4-day schedule lock.">Release</button>}
               <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12, border: '1px solid var(--line)' }} onClick={() => onOfferTrade(block)} title="Can't make it? Put it up for trade. You still hold it (and stay accountable) until someone takes it — it shows on the Trade board and the Schedule.">🔁 {canReleaseBlock(block, started) ? 'Put up for trade' : "Can't make it? Put up for trade"}</button>
