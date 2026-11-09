@@ -1,4 +1,4 @@
-[README (20).md](https://github.com/user-attachments/files/34487110/README.20.md)
+[README (21).md](https://github.com/user-attachments/files/34585844/README.21.md)
 [README (19).md](https://github.com/user-attachments/files/34448460/README.19.md)
 # Staging setup scripts
 
@@ -29,5 +29,6 @@ database section from live and removes anything that only exists in staging.
 17. `17_schedule_config.sql` — Configuration → Schedule: colors, layout, and custom schedule views (who sees each).
 18. `18_fill_rate_config.sql` — Schedule → Fill Rate tab: own permission (client-scoped), follows Dashboard's what-counts rules, configurable colors + Copy update.
 19. `19_schedule_rules.sql` — Configuration → Schedule rules: release schedule, release waves, weekly cap, commitment lock, check-out grace & auto check-out (each with its own permission).
+20. `20_schedule_rules_per_schedule.sql` — Schedule rules per schedule: any schedule can override whole sections of the company rules.
 
 All are safe to run more than once. (Staging also has fictional @demo.test people + sample schedules for testing.) Ask Claude to re-add the demo company afterwards.
