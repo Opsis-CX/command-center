@@ -12,15 +12,28 @@
 // Calibration (2026-10-22): actions starting with "calib" go to the edge function opsis-qa-calibration;
 // "qaextras" (first contact resolution + sentiment on the Overview) goes to opsis-qa-insights.
 // csrSelf = a CSR login: the portal shows only their own Coaching Hub (Home / Ask my coach / My wins).
+// Workforce + AI Speed to Lead (2026-11-09): the same Command Center pages, mounted inside the portal shell
+// (mountExt) in portal colors. Their data actions ("pwfm", "ps2l") go to the edge function opsis-portal-ops,
+// which scopes everything to the login's client and brand.
 import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { supabase } from '../lib/supabase'
 import CsrScorecard from './CsrScorecard'
 import { mountOpsisQA } from './opsisQaApp'
+import Workforce, { portalWfmData } from './Workforce'
+import AiSpeedToLead, { portalS2lData } from './AiSpeedToLead'
+
+// Portal palette for the mounted Command Center pages (they read these CSS variables).
+const PORTAL_THEME = {
+  '--accent': '#2F7D5B', '--accent-bg': '#E6F0EA', '--accent-ink': '#FFFFFF', '--ink': '#1C2421', '--ink-soft': '#5F6763',
+  '--line': '#E8E4DC', '--line-soft': '#F1EEE8', '--surface': '#FFFFFF', '--canvas': '#F5F3EE', '--bg-soft': '#F7F5F0',
+  '--passed': '#2F7D5B', '--passed-bg': '#E6F0EA', '--failed': '#A8441A', '--failed-bg': '#FCEBDD',
+  fontFamily: 'Montserrat, Arial, sans-serif', color: '#1C2421',
+}
 
 async function invoke(body) {
   // Reporting (call export + scorecard reports) is served by its own read-only function.
-  const fn = body?.action === 'qaextras' ? 'opsis-qa-insights' : String(body?.action || '').startsWith('calib') ? 'opsis-qa-calibration' : String(body?.action || '').startsWith('hub') ? 'opsis-coaching-hub' : ['export', 'scorecards', 'money', 'excused', 'billing', 'jobvalues', 'invoices', 'bucketcalls', 'callchat', 'scorereq', 'xfercalls', 'factcalls', 'rubric', 'teaminvite', 'calledit', 'callmetrics'].includes(body?.action) ? 'opsis-qa-reports' : 'opsis-qa-portal'
+  const fn = (body?.action === 'pwfm' || body?.action === 'ps2l') ? 'opsis-portal-ops' : body?.action === 'qaextras' ? 'opsis-qa-insights' : String(body?.action || '').startsWith('calib') ? 'opsis-qa-calibration' : String(body?.action || '').startsWith('hub') ? 'opsis-coaching-hub' : ['export', 'scorecards', 'money', 'excused', 'billing', 'jobvalues', 'invoices', 'bucketcalls', 'callchat', 'scorereq', 'xfercalls', 'factcalls', 'rubric', 'teaminvite', 'calledit', 'callmetrics'].includes(body?.action) ? 'opsis-qa-reports' : 'opsis-qa-portal'
   const { data, error } = await supabase.functions.invoke(fn, { body })
   if (error) {
     let msg = 'Something went wrong loading that.'
@@ -62,6 +75,17 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       phone: !csrSelf && me.client === 'c7c50cda-92a6-4665-baa3-3e207f853326',
       onSignOut,
       onClassic,
+      // Workforce (Erlang C) and AI Speed to Lead, scoped to this login's client through opsis-portal-ops.
+      mountExt: (kind, el) => {
+        const root = createRoot(el)
+        const scoped = (b) => invoke(clientId ? { ...b, client_id: clientId } : b)
+        root.render(
+          <div style={PORTAL_THEME}>
+            {kind === 'wfm' ? <Workforce data={portalWfmData(scoped)} portal /> : <AiSpeedToLead data={portalS2lData(scoped)} portal />}
+          </div>
+        )
+        return () => setTimeout(() => root.unmount(), 0)
+      },
       mountCsr: (el) => {
         const root = createRoot(el)
         root.render(<CsrScorecard supabase={supabase} mode={csrMode} accent="#14302A" />)
