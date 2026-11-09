@@ -257,7 +257,7 @@ export default function ScheduleRules() {
 
 // One wave condition. The choices come from each company's own data (Performance tiers, team tags,
 // certifications, people) — nothing about the categories is built in.
-const COND_TYPES = [['tier', 'Performance tier is'], ['no_tier', 'Has no performance tier'], ['tag', 'Has tag'], ['cert', 'Has passed certification'],
+const COND_TYPES = [['tier', 'Scorecard tier is'], ['no_tier', 'Has no Scorecard tier'], ['tag', 'Has tag'], ['cert', 'Has passed certification'],
   ['hours', 'Hours worked'], ['tenure', 'Time since starting'], ['people', 'Is one of these people'], ['everyone', 'Everyone']]
 const LIST_FOR = { tier: 'tiers', tag: 'tags', cert: 'certs', people: 'people' }
 // older saved forms → today's form
@@ -284,7 +284,7 @@ function Condition({ c: raw, first, join, opts, onChange, onRemove }) {
         {ids.map(id => <span key={id} style={{ background: 'var(--canvas)', borderRadius: 999, padding: '3px 9px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
           onClick={() => onChange({ ids: ids.filter(x => x !== id) })} title="Remove">{nameOf(id)} ✕</span>)}
         {c.tier && !ids.length && <span className="page-sub" style={{ fontSize: 12 }}>(was “{c.tier}” — pick it from the list)</span>}
-        {list.length === 0 ? <span className="page-sub" style={{ fontSize: 12 }}>None set up yet{c.type === 'tier' ? ' — add Performance tiers first' : c.type === 'tag' ? ' — add tags in People & tags' : c.type === 'cert' ? ' — add certifications first' : ''}.</span>
+        {list.length === 0 ? <span className="page-sub" style={{ fontSize: 12 }}>None set up yet{c.type === 'tier' ? ' — tiers come from the Scorecard' : c.type === 'tag' ? ' — add tags in People & tags' : c.type === 'cert' ? ' — add certifications first' : ''}.</span>
           : <select className="sr-in" value="" onChange={e => e.target.value && onChange({ ids: [...ids, e.target.value], tier: undefined })}>
               <option value="">＋ {ids.length ? 'or…' : 'Choose…'}</option>
               {list.filter(x => !ids.includes(x.id)).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
