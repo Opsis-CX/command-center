@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { loadScheduleRules } from '../lib/scheduleRules'
@@ -29,7 +28,6 @@ const CSS = `
 .sr-cond { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; padding: 4px 0; }
 `
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-const TIERS = ['Top Performer', 'High Performer', 'Developing Performer']
 const clock = (t, add = 0) => { const [h, m] = String(t || '11:00').split(':').map(Number); const x = h * 60 + m + add; const hh = Math.floor(x / 60) % 24, mm = x % 60; return `${((hh + 11) % 12) + 1}:${String(mm).padStart(2, '0')} ${hh < 12 ? 'AM' : 'PM'}` }
 
 // group = which section a setting belongs to (same as the database)
@@ -72,6 +70,8 @@ export default function ScheduleRules() {
   const [overrides, setOverrides] = useState({})     // schedule_id → rules
   const [custom, setCustom] = useState({})           // section → true (custom for the target schedule)
   const [schedules, setSchedules] = useState([])
+  const [opts, setOpts] = useState({ tiers: [], tags: [], certs: [], people: [] })   // each company's own lists, for wave conditions
+  useEffect(() => { supabase.rpc('sched_wave_options').then(({ data }) => { if (data) setOpts(data) }) }, [])
   const norm = (d) => ({ ...d, release_time: String(d.release_time || '11:00').slice(0, 5), cap_hours: Number(d.cap_hours) })
   const load = useCallback(async () => {
     const [a, d, ov, sc] = await Promise.all([supabase.rpc('sched_rules_access'), supabase.from('schedule_rules').select('*').maybeSingle(),
@@ -135,7 +135,11 @@ export default function ScheduleRules() {
   const waves = r.waves || []
   const setWaves = (w) => set('waves', w)
   const upd = (i, patch) => setWaves(waves.map((w, j) => j === i ? { ...w, ...patch } : w))
-  const updCond = (i, ci, patch) => upd(i, { match: waves[i].match.map((c, k) => k === ci ? { ...c, ...patch } : c) })
+  const updCond = (i, ci, patch) => upd(i, { match: waves[i].match.map((c, k) => {
+    if (k !== ci) return c
+    const base = c.type === 'new' ? { type: 'hours', op: 'lt', hours: c.hours ?? 10, days: null } : c.type === 'recent' ? { type: 'hours', op: 'gte', hours: 0.01, days: c.days ?? 14 } : c
+    return Object.fromEntries(Object.entries({ ...base, ...patch }).filter(([, v]) => v !== undefined))
+  }) })
   const move = (i, d) => { const j = i + d; if (j < 0 || j >= waves.length) return; const w = [...waves]; [w[i], w[j]] = [w[j], w[i]]; setWaves(w) }
 
   return (
@@ -185,7 +189,7 @@ export default function ScheduleRules() {
       </Section>
 
       <Section sched={sch('waves')} title="🌊 Release waves" enabledKey="waves_enabled" r={r} set={set} can={acc.waves && (!target || acc.per_schedule)}
-        sub="Who gets first pick after each release. Each person lands in the first wave that matches — checked in this order: new agents, then performance tier, then recently active, then everyone else. Off = everyone at once.">
+        sub="Who gets first pick after each release. Waves are checked top to bottom — each person lands in the first wave they match (use ↑ ↓ to set the order). Anyone who matches none goes in the last wave. Off = everyone at once.">
         {waves.map((w, i) => (
           <div key={i} className="sr-wave">
             <div className="sr-line" style={{ margin: 0 }}>
@@ -198,27 +202,20 @@ export default function ScheduleRules() {
               <button className="btn btn-ghost" style={{ padding: '3px 8px', color: '#B91C1C' }} onClick={() => setWaves(waves.filter((_, j) => j !== i))} aria-label="Remove wave">✕</button>
             </div>
             <div style={{ marginTop: 6, paddingLeft: 28 }}>
-              {(w.match || []).map((c, ci) => (
-                <div key={ci} className="sr-cond">
-                  <span className="page-sub">{ci === 0 ? 'Who:' : 'or'}</span>
-                  <select className="sr-in" value={c.type} onChange={e => updCond(i, ci, { type: e.target.value })}>
-                    <option value="new">New agents (fewer than … hours worked)</option>
-                    <option value="tier">Performance tier</option>
-                    <option value="recent">Active recently (no tier yet)</option>
-                    <option value="everyone">Everyone else</option>
-                  </select>
-                  {c.type === 'new' && <><input type="number" className="sr-num" min={1} value={c.hours ?? 10} onChange={e => updCond(i, ci, { hours: Number(e.target.value) })} /> hours</>}
-                  {c.type === 'tier' && <><input className="sr-in" list="sr-tiers" value={c.tier || ''} onChange={e => updCond(i, ci, { tier: e.target.value })} placeholder="Tier name" /></>}
-                  {c.type === 'recent' && <>worked in the last <input type="number" className="sr-num" min={1} value={c.days ?? 14} onChange={e => updCond(i, ci, { days: Number(e.target.value) })} /> days</>}
-                  <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 12 }} onClick={() => upd(i, { match: w.match.filter((_, k) => k !== ci) })} aria-label="Remove">✕</button>
+              {(w.match || []).length > 1 && (
+                <div className="sr-cond"><span className="page-sub">Match</span>
+                  <div className="sr-seg">{[['any', 'any of these'], ['all', 'all of these']].map(([k, l]) => <button key={k} className={(w.join || 'any') === k ? 'on' : ''} onClick={() => upd(i, { join: k })}>{l}</button>)}</div>
                 </div>
+              )}
+              {(w.match || []).map((c, ci) => (
+                <Condition key={ci} c={c} first={ci === 0} join={w.join || 'any'} opts={opts}
+                  onChange={(patch) => updCond(i, ci, patch)} onRemove={() => upd(i, { match: w.match.filter((_, k) => k !== ci) })} />
               ))}
-              <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px', marginTop: 4 }} onClick={() => upd(i, { match: [...(w.match || []), { type: 'tier', tier: '' }] })}>＋ or…</button>
+              <button className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 9px', marginTop: 4 }} onClick={() => upd(i, { match: [...(w.match || []), { type: 'tier', ids: [] }] })}>＋ Add condition</button>
             </div>
           </div>
         ))}
-        <datalist id="sr-tiers">{TIERS.map(t => <option key={t} value={t} />)}</datalist>
-        <button className="btn btn-ghost" onClick={() => setWaves([...waves, { name: `Wave ${waves.length + 1}`, delay: (Number(waves[waves.length - 1]?.delay) || 0) + 15, match: [{ type: 'everyone' }] }])}>＋ Add wave</button>
+        <button className="btn btn-ghost" onClick={() => setWaves([...waves, { name: `Wave ${waves.length + 1}`, delay: (Number(waves[waves.length - 1]?.delay) || 0) + 15, join: 'any', match: [{ type: 'everyone' }] }])}>＋ Add wave</button>
       </Section>
 
       <Section sched={sch('cap')} title="⏱ Weekly hour cap" enabledKey="cap_enabled" r={r} set={set} can={acc.cap && (!target || acc.per_schedule)}
@@ -253,6 +250,65 @@ export default function ScheduleRules() {
           <button className="btn btn-primary" disabled={busy || !dirty} onClick={save}>{busy ? 'Saving…' : target ? 'Save rules for this schedule' : 'Save rules'}</button>
         </div>
       )}
+    </div>
+  )
+}
+
+
+// One wave condition. The choices come from each company's own data (Performance tiers, team tags,
+// certifications, people) — nothing about the categories is built in.
+const COND_TYPES = [['tier', 'Performance tier is'], ['no_tier', 'Has no performance tier'], ['tag', 'Has tag'], ['cert', 'Has passed certification'],
+  ['hours', 'Hours worked'], ['tenure', 'Time since starting'], ['people', 'Is one of these people'], ['everyone', 'Everyone']]
+const LIST_FOR = { tier: 'tiers', tag: 'tags', cert: 'certs', people: 'people' }
+// older saved forms → today's form
+function normalize(c) {
+  if (c.type === 'new') return { type: 'hours', op: 'lt', hours: c.hours ?? 10, days: null }
+  if (c.type === 'recent') return { type: 'hours', op: 'gte', hours: 0.01, days: c.days ?? 14 }
+  if (c.type === 'team') return { ...c, type: 'tag' }
+  return c
+}
+function Condition({ c: raw, first, join, opts, onChange, onRemove }) {
+  const c = normalize(raw)
+  const list = LIST_FOR[c.type] ? (opts[LIST_FOR[c.type]] || []) : null
+  const ids = c.ids || []
+  const nameOf = (id) => list?.find(x => x.id === id)?.name || '(removed)'
+  const setType = (type) => onChange({ type, ids: LIST_FOR[type] ? [] : undefined, tier: undefined,
+    ...(type === 'hours' ? { op: 'lt', hours: 10, days: null } : type === 'tenure' ? { op: 'within', days: 14, hours: undefined } : { op: undefined, hours: undefined, days: undefined }) })
+  // time since starting is stored in days; shown in weeks when it divides evenly
+  const [unit, setUnit] = useState(c.type === 'tenure' && c.days && c.days % 7 === 0 ? 'weeks' : 'days')
+  return (
+    <div className="sr-cond">
+      <span className="page-sub" style={{ minWidth: 34 }}>{first ? 'Who:' : join === 'all' ? 'and' : 'or'}</span>
+      <select className="sr-in" value={c.type} onChange={e => setType(e.target.value)}>{COND_TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+      {list && <>
+        {ids.map(id => <span key={id} style={{ background: 'var(--canvas)', borderRadius: 999, padding: '3px 9px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+          onClick={() => onChange({ ids: ids.filter(x => x !== id) })} title="Remove">{nameOf(id)} ✕</span>)}
+        {c.tier && !ids.length && <span className="page-sub" style={{ fontSize: 12 }}>(was “{c.tier}” — pick it from the list)</span>}
+        {list.length === 0 ? <span className="page-sub" style={{ fontSize: 12 }}>None set up yet{c.type === 'tier' ? ' — add Performance tiers first' : c.type === 'tag' ? ' — add tags in People & tags' : c.type === 'cert' ? ' — add certifications first' : ''}.</span>
+          : <select className="sr-in" value="" onChange={e => e.target.value && onChange({ ids: [...ids, e.target.value], tier: undefined })}>
+              <option value="">＋ {ids.length ? 'or…' : 'Choose…'}</option>
+              {list.filter(x => !ids.includes(x.id)).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>}
+      </>}
+      {c.type === 'hours' && <>
+        <select className="sr-in" value={c.op || 'lt'} onChange={e => onChange({ type: 'hours', op: e.target.value })}>
+          <option value="lt">fewer than</option><option value="lte">or fewer (at most)</option><option value="gte">at least</option><option value="gt">more than</option></select>
+        <input type="number" className="sr-num" min={0} step="0.5" value={c.hours ?? 0} onChange={e => onChange({ type: 'hours', hours: Number(e.target.value) })} /> hours
+        <select className="sr-in" value={c.days ? 'recent' : 'all'} onChange={e => onChange({ type: 'hours', days: e.target.value === 'all' ? null : (c.days || 14) })}>
+          <option value="all">all-time</option><option value="recent">in the last…</option></select>
+        {c.days ? <><input type="number" className="sr-num" min={1} max={365} value={c.days} onChange={e => onChange({ type: 'hours', days: Number(e.target.value) })} /> days</> : null}
+      </>}
+      {c.type === 'tenure' && <>
+        <select className="sr-in" value={c.op || 'within'} onChange={e => onChange({ type: 'tenure', op: e.target.value })}>
+          <option value="within">started within the last</option><option value="over">started more than</option></select>
+        <input type="number" className="sr-num" min={1} max={unit === 'weeks' ? 104 : 730}
+          value={unit === 'weeks' ? Math.round((c.days ?? 14) / 7) : (c.days ?? 14)}
+          onChange={e => onChange({ type: 'tenure', days: Number(e.target.value) * (unit === 'weeks' ? 7 : 1) })} />
+        <select className="sr-in" value={unit} onChange={e => setUnit(e.target.value)}><option value="days">days</option><option value="weeks">weeks</option></select>
+        {c.op === 'over' ? 'ago' : ''}
+        <span className="page-sub" style={{ fontSize: 11.5 }} title="Uses the person's start date. If that's blank: their first interval worked, then when their account was created.">ⓘ start date</span>
+      </>}
+      <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 12 }} onClick={onRemove} aria-label="Remove condition">✕</button>
     </div>
   )
 }
