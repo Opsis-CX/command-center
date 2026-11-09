@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { loadScheduleRules } from '../lib/scheduleRules'
@@ -31,18 +32,30 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 const TIERS = ['Top Performer', 'High Performer', 'Developing Performer']
 const clock = (t, add = 0) => { const [h, m] = String(t || '11:00').split(':').map(Number); const x = h * 60 + m + add; const hh = Math.floor(x / 60) % 24, mm = x % 60; return `${((hh + 11) % 12) + 1}:${String(mm).padStart(2, '0')} ${hh < 12 ? 'AM' : 'PM'}` }
 
-function Section({ title, sub, enabledKey, r, set, can, children }) {
+// group = which section a setting belongs to (same as the database)
+const groupOf = (k) => k.startsWith('release_') ? 'release' : k.startsWith('waves') ? 'waves' : k.startsWith('cap_') ? 'cap'
+  : k.startsWith('lock_') ? 'lock' : (k.startsWith('grace_') || k.startsWith('auto_checkout_')) ? 'checkout' : null
+const GROUP_LABEL = { release: 'release', waves: 'waves', cap: 'weekly cap', lock: 'commitment lock', checkout: 'check-out' }
+
+function Section({ title, sub, enabledKey, r, set, can, children, sched }) {
+  // sched (when editing one schedule): { custom, onToggle } — "Company default" sections are read-only here
+  const usingDefault = sched && !sched.custom
+  const editable = can && !usingDefault
   const on = enabledKey ? r[enabledKey] !== false : true
   return (
-    <div className="sr-card">
+    <div className="sr-card" style={sched?.custom ? { borderColor: 'var(--accent)' } : undefined}>
       <div className="sr-head">
         <h2>{title}</h2>
         {!can && <span className="sr-ro">🔒 View only</span>}
-        {enabledKey && <label className="sr-switch" style={can ? undefined : { pointerEvents: 'none' }}>
-          <input type="checkbox" disabled={!can} checked={on} onChange={e => set(enabledKey, e.target.checked)} />{on ? 'On' : 'Off'}</label>}
+        {sched && <div className="sr-seg" style={can ? undefined : { pointerEvents: 'none', opacity: .6 }}>
+          <button className={!sched.custom ? 'on' : ''} onClick={() => sched.onToggle(false)}>Company default</button>
+          <button className={sched.custom ? 'on' : ''} onClick={() => sched.onToggle(true)}>Custom for this schedule</button>
+        </div>}
+        {enabledKey && <label className="sr-switch" style={editable ? undefined : { pointerEvents: 'none', opacity: usingDefault ? .6 : 1 }}>
+          <input type="checkbox" disabled={!editable} checked={on} onChange={e => set(enabledKey, e.target.checked)} />{on ? 'On' : 'Off'}</label>}
       </div>
-      <p className="sr-sub">{sub}</p>
-      <div className={on ? '' : 'sr-off'} style={can ? undefined : { pointerEvents: 'none' }}>{children}</div>
+      <p className="sr-sub">{sub}{usingDefault ? ' — this schedule follows the company rule.' : ''}</p>
+      <div className={on ? '' : 'sr-off'} style={editable ? undefined : { pointerEvents: 'none', opacity: usingDefault ? .6 : 1 }}>{children}</div>
     </div>
   )
 }
@@ -53,31 +66,69 @@ export default function ScheduleRules() {
   const [saved, setSaved] = useState(null)
   const [msg, setMsg] = useState(null)
   const [busy, setBusy] = useState(false)
+  // "Rules for": company default (null) or one schedule
+  const [target, setTarget] = useState(null)
+  const [company, setCompany] = useState(null)
+  const [overrides, setOverrides] = useState({})     // schedule_id → rules
+  const [custom, setCustom] = useState({})           // section → true (custom for the target schedule)
+  const [schedules, setSchedules] = useState([])
+  const norm = (d) => ({ ...d, release_time: String(d.release_time || '11:00').slice(0, 5), cap_hours: Number(d.cap_hours) })
   const load = useCallback(async () => {
-    const [a, d] = await Promise.all([supabase.rpc('sched_rules_access'), supabase.from('schedule_rules').select('*').maybeSingle()])
+    const [a, d, ov, sc] = await Promise.all([supabase.rpc('sched_rules_access'), supabase.from('schedule_rules').select('*').maybeSingle(),
+      supabase.from('schedule_rule_overrides').select('schedule_id, rules'),
+      supabase.from('schedules').select('id, title, status, client_id, clients(name)').neq('status', 'archived').order('title')])
     setAcc(a.data || {})
     if (d.error || !d.data) { setMsg({ kind: 'err', text: "Schedule rules aren't set up in this environment yet." }); return }
-    const v = { ...d.data, release_time: String(d.data.release_time).slice(0, 5), cap_hours: Number(d.data.cap_hours) }
-    setR(v); setSaved(v)
+    const base = norm(d.data)
+    const map = Object.fromEntries((ov.data || []).map(o => [o.schedule_id, o.rules || {}]))
+    setCompany(base); setOverrides(map); setSchedules(sc.data || [])
+    return { base, map }
   }, [])
-  useEffect(() => { load() }, [load])
+  const show = useCallback((tgt, base, map) => {
+    const ov = tgt ? (map[tgt] || {}) : {}
+    const v = norm({ ...base, ...ov })
+    setR(v); setSaved(v)
+    setCustom(Object.fromEntries([...new Set(Object.keys(ov).map(groupOf).filter(Boolean))].map(g => [g, true])))
+  }, [])
+  useEffect(() => { load().then(x => { if (x) show(null, x.base, x.map) }) }, [load, show])
+  const pick = (tgt) => { setTarget(tgt); setMsg(null); show(tgt, company, overrides) }
+  // Custom ↔ default for one section (schedule mode): default puts the company values back
+  const toggleSection = (g, on) => {
+    setCustom(c => ({ ...c, [g]: on }))
+    if (!on) setR(x => ({ ...x, ...Object.fromEntries(Object.keys(company).filter(k => groupOf(k) === g).map(k => [k, company[k]])) }))
+  }
   const set = (k, v) => setR(x => ({ ...x, [k]: v }))
   if (!acc) return <p className="page-sub">Loading…</p>
   if (!acc.view) return <div className="card"><div className="page-sub" style={{ padding: 20 }}>You don't have access to the schedule rules.</div></div>
   if (!r) return <div><style>{CSS}</style>{msg && <div className="card" style={{ color: '#B91C1C' }}>{msg.text}</div>}</div>
   const changed = Object.keys(r).filter(k => !['updated_at', 'updated_by', 'id'].includes(k) && JSON.stringify(r[k]) !== JSON.stringify(saved[k]))
-  const anyEdit = acc.release || acc.waves || acc.cap || acc.lock || acc.checkout
+  const savedCustom = target ? [...new Set(Object.keys(overrides[target] || {}).map(groupOf).filter(Boolean))] : []
+  const customChanged = target && (savedCustom.some(g => !custom[g]) || Object.keys(custom).some(g => custom[g] && !savedCustom.includes(g)))
+  const dirty = changed.length > 0 || customChanged
+  const anyEdit = (acc.release || acc.waves || acc.cap || acc.lock || acc.checkout) && (!target || acc.per_schedule)
+  const NUMS = ['cap_hours', 'lock_hours', 'grace_min', 'auto_checkout_min', 'release_weekday', 'release_weeks_before', 'release_days_before', 'release_now_days']
+  const schedName = (id) => { const x = schedules.find(s => s.id === id); return x ? `${x.title}${x.clients?.name ? ` · ${x.clients.name}` : ''}` : 'Schedule' }
+  const sch = (g) => target ? { custom: !!custom[g], onToggle: (on) => toggleSection(g, on) } : undefined
 
   async function save() {
     if (r.waves_enabled && !(r.waves || []).length) return setMsg({ kind: 'err', text: 'Add at least one wave, or turn waves off.' })
     setBusy(true); setMsg(null)
-    const patch = Object.fromEntries(changed.map(k => [k, ['cap_hours', 'lock_hours', 'grace_min', 'auto_checkout_min', 'release_weekday', 'release_weeks_before', 'release_days_before', 'release_now_days'].includes(k) ? Number(r[k]) : r[k]]))
-    const { data, error } = await supabase.rpc('sched_rules_save', { p: patch })
+    const val = (k) => NUMS.includes(k) ? Number(r[k]) : r[k]
+    let res
+    if (target) {
+      // this schedule: send the full values of its custom sections; clear sections that went back to default
+      const set = Object.fromEntries(Object.keys(r).filter(k => custom[groupOf(k)]).map(k => [k, val(k)]))
+      const clear = savedCustom.filter(g => !custom[g])
+      res = await supabase.rpc('sched_rules_save_schedule', { p_schedule: target, p_set: set, p_clear: clear })
+    } else {
+      res = await supabase.rpc('sched_rules_save', { p: Object.fromEntries(changed.map(k => [k, val(k)])) })
+    }
+    const { data, error } = res
     setBusy(false)
     if (error) return setMsg({ kind: 'err', text: /check constraint/i.test(error.message) ? 'One of the numbers is outside the allowed range.' : error.message })
     loadScheduleRules(true)
-    setMsg({ kind: 'ok', text: `Saved.${data?.retimed ? ` ${data.retimed} interval${data.retimed === 1 ? '' : 's'} not yet released were re-timed to the new release schedule.` : ''} These rules apply right away.` })
-    load()
+    setMsg({ kind: 'ok', text: `Saved${target ? ` for ${schedName(target)}` : ''}.${data?.retimed ? ` ${data.retimed} interval${data.retimed === 1 ? '' : 's'} not yet released were re-timed to the new release schedule.` : ''} These rules apply right away.` })
+    const x = await load(); if (x) show(target, x.base, x.map)
   }
 
   // ---- waves helpers ----
@@ -92,9 +143,29 @@ export default function ScheduleRules() {
       <style>{CSS}</style>
       <h1 className="page-title">🕑 Schedule rules</h1>
       <p className="page-sub">The rules Command Center enforces when people pick up, release and check out of intervals. Turn each one on or off and set your own numbers.</p>
+      <div className="sr-card" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '14px 18px' }}>
+        <b style={{ fontSize: 14 }}>Rules for</b>
+        <select className="sr-in" style={{ minWidth: 280, fontWeight: 700 }} value={target || ''} disabled={dirty} title={dirty ? 'Save or discard your changes first' : ''}
+          onChange={e => pick(e.target.value || null)} aria-label="Rules for">
+          <option value="">🏢 Company default (all schedules)</option>
+          {schedules.map(sc => <option key={sc.id} value={sc.id}>{overrides[sc.id] ? '★ ' : ''}{sc.title}{sc.clients?.name ? ` · ${sc.clients.name}` : ''}{sc.status === 'draft' ? ' (draft)' : ''}</option>)}
+        </select>
+        {target && !acc.per_schedule && <span className="sr-ro">🔒 You can view, but not set, rules for individual schedules</span>}
+        {!target && Object.keys(overrides).length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 12.5 }}>
+            <span className="page-sub">Schedules with their own rules:</span>
+            {Object.entries(overrides).map(([id, rl]) => (
+              <button key={id} className="btn btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => pick(id)} title="Open this schedule's rules">
+                ★ {schedName(id)} <span className="page-sub">({[...new Set(Object.keys(rl).map(groupOf).filter(Boolean))].map(g => GROUP_LABEL[g]).join(', ')})</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {target && <span className="page-sub" style={{ fontSize: 12.5 }}>Each section can follow the company rule or be custom for this schedule.</span>}
+      </div>
       {msg && <div style={{ padding: '9px 12px', borderRadius: 9, fontSize: 13, marginBottom: 12, background: msg.kind === 'ok' ? '#ECFDF5' : '#FEF2F2', color: msg.kind === 'ok' ? '#047857' : '#B91C1C' }}>{msg.text}</div>}
 
-      <Section title="📅 Release schedule" enabledKey="release_enabled" r={r} set={set} can={acc.release}
+      <Section sched={sch('release')} title="📅 Release schedule" enabledKey="release_enabled" r={r} set={set} can={acc.release && (!target || acc.per_schedule)}
         sub="When new intervals become available to pick up. Off = intervals are available as soon as they're published. Changing this re-times intervals that haven't been released yet.">
         <div className="sr-line">
           <div className="sr-seg">{[['weekly', 'Weekly'], ['daily', 'Daily (rolling)']].map(([k, l]) => <button key={k} className={r.release_mode === k ? 'on' : ''} onClick={() => set('release_mode', k)}>{l}</button>)}</div>
@@ -113,7 +184,7 @@ export default function ScheduleRules() {
         <div className="sr-line">Intervals starting within <input type="number" className="sr-num" min={0} max={30} value={r.release_now_days} onChange={e => set('release_now_days', e.target.value)} /> days are released immediately.</div>
       </Section>
 
-      <Section title="🌊 Release waves" enabledKey="waves_enabled" r={r} set={set} can={acc.waves}
+      <Section sched={sch('waves')} title="🌊 Release waves" enabledKey="waves_enabled" r={r} set={set} can={acc.waves && (!target || acc.per_schedule)}
         sub="Who gets first pick after each release. Each person lands in the first wave that matches — checked in this order: new agents, then performance tier, then recently active, then everyone else. Off = everyone at once.">
         {waves.map((w, i) => (
           <div key={i} className="sr-wave">
@@ -150,18 +221,18 @@ export default function ScheduleRules() {
         <button className="btn btn-ghost" onClick={() => setWaves([...waves, { name: `Wave ${waves.length + 1}`, delay: (Number(waves[waves.length - 1]?.delay) || 0) + 15, match: [{ type: 'everyone' }] }])}>＋ Add wave</button>
       </Section>
 
-      <Section title="⏱ Weekly hour cap" enabledKey="cap_enabled" r={r} set={set} can={acc.cap}
+      <Section sched={sch('cap')} title="⏱ Weekly hour cap" enabledKey="cap_enabled" r={r} set={set} can={acc.cap && (!target || acc.per_schedule)}
         sub="The most hours one person can pick up in a week (Monday–Sunday). Applies to picking up, trades and assignments. Off = no limit.">
         <div className="sr-line">No more than <input type="number" className="sr-num" min={1} max={168} step="0.5" value={r.cap_hours} onChange={e => set('cap_hours', e.target.value)} /> hours per person per week.</div>
       </Section>
 
-      <Section title="📌 Commitment lock" enabledKey="lock_enabled" r={r} set={set} can={acc.lock}
+      <Section sched={sch('lock')} title="📌 Commitment lock" enabledKey="lock_enabled" r={r} set={set} can={acc.lock && (!target || acc.per_schedule)}
         sub="Once an interval is this close, the person who picked it up can't release it — only trade it (or release during an open VTO window). Different from locking an interval's open spots in Team view. Off = people can release any time before it starts.">
         <div className="sr-line">Lock intervals <input type="number" className="sr-num" min={1} max={720} value={r.lock_hours} onChange={e => set('lock_hours', e.target.value)} /> hours before they start
           <span className="page-sub" style={{ fontSize: 12 }}>{Number(r.lock_hours) % 24 === 0 ? `(${Number(r.lock_hours) / 24} day${Number(r.lock_hours) === 24 ? '' : 's'})` : ''}</span></div>
       </Section>
 
-      <Section title="✅ Check-out" r={r} set={set} can={acc.checkout}
+      <Section sched={sch('checkout')} title="✅ Check-out" r={r} set={set} can={acc.checkout && (!target || acc.per_schedule)}
         sub="How check-outs are reviewed and cleaned up.">
         <div className="sr-line">
           <label className="sr-switch"><input type="checkbox" checked={r.grace_enabled !== false} onChange={e => set('grace_enabled', e.target.checked)} />Grace window</label>
@@ -177,9 +248,9 @@ export default function ScheduleRules() {
 
       {anyEdit && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', position: 'sticky', bottom: 0, padding: '12px 16px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14 }}>
-          <span className="page-sub" style={{ fontSize: 12.5, marginRight: 'auto' }}>{changed.length ? `You have unsaved changes.` : 'All rules saved.'}</span>
-          {changed.length > 0 && <button className="btn btn-ghost" onClick={() => { setR(saved); setMsg(null) }}>Discard</button>}
-          <button className="btn btn-primary" disabled={busy || !changed.length} onClick={save}>{busy ? 'Saving…' : 'Save rules'}</button>
+          <span className="page-sub" style={{ fontSize: 12.5, marginRight: 'auto' }}>{target ? <b>{schedName(target)}: </b> : <b>Company default: </b>}{dirty ? 'You have unsaved changes.' : 'All rules saved.'}</span>
+          {dirty && <button className="btn btn-ghost" onClick={() => { show(target, company, overrides); setMsg(null) }}>Discard</button>}
+          <button className="btn btn-primary" disabled={busy || !dirty} onClick={save}>{busy ? 'Saving…' : target ? 'Save rules for this schedule' : 'Save rules'}</button>
         </div>
       )}
     </div>
