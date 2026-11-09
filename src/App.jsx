@@ -128,6 +128,10 @@ import Inbound from './modules/Inbound'
 import Scripts from './modules/Scripts'
 // Call Reports = Five9-style custom reports (Call Log, Agent Occupancy, List Details) + scheduled emails.
 import CallReports from './modules/CallReports'
+// Workforce = Erlang C forecasting, staffing and capacity planning (inbound, outbound, speed to lead). 2026-11-09
+import Workforce from './modules/Workforce'
+// AI Speed to Lead = the AI agent that calls new leads in seconds, books, and hands off to live agents. 2026-11-09
+import AiSpeedToLead from './modules/AiSpeedToLead'
 const NO_CALL_ROLES = ['agent', 'client', 'csr']
 const canPlaceCalls = appRole => !NO_CALL_ROLES.includes(appRole)
 // Wraps the signed-in app in the calling provider. The Twilio library only loads on a
@@ -524,6 +528,8 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {/* Test a web lead — any signed-in team member can submit themselves as an Opsis Overhead Doors (made-up brand) test lead. */}
               <Route path="/test-lead" element={<TestLead />} />
               {/* Call Reports — managers (report_data RPC checks can_manage_dialer()). */}
+              <Route path="/workforce" element={canPlaceCalls(appRole) ? <Workforce /> : <NoAccess />} />
+              <Route path="/ai-speed-to-lead" element={canPlaceCalls(appRole) ? <AiSpeedToLead /> : <NoAccess />} />
               <Route path="/reporting/calls" element={canPlaceCalls(appRole) ? <CallReports /> : <NoAccess />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/knowledge" element={<KnowledgeBase />} />
