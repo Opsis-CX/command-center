@@ -2,8 +2,8 @@
 -- RELEASE WAVES FROM THE COMPANY'S OWN DATA (staging 2026-11-06). Run after 20.
 -- Nothing hard-coded: each wave = a name + a delay + conditions (any / all), checked top to bottom,
 -- first match wins. Conditions:
---   {type:'tier', ids:[performance_tiers.id]}   person's Performance tier (profiles.tier_id)
---   {type:'no_tier'}                              person has no Performance tier
+--   {type:'tier', ids:[tier names]}             person's SCORECARD tier (calculated from performance; e.g. Top Performer)
+--   {type:'no_tier'}                              person has no Scorecard tier
 --   {type:'tag', ids:[tags.id]}                   person has one of these tags (any kind: team, access, …)  ('team' = older name)
 --   {type:'tenure', op:'within'|'over', days:n}   time since starting (start date → first interval worked → account created)
 --   {type:'cert', ids:[certifications.id]}        person passed one of these certifications
@@ -11,20 +11,26 @@
 --   {type:'people', ids:[profiles.id]}            specific people
 --   {type:'everyone'}
 -- Older stored types ('new', 'tier' by name, 'recent') are still understood.
--- Also fixes: tier waves read the Scorecard tier, which is empty on live — now Performance tiers.
+-- Tiers come from the Scorecard (sc_scorecard.performance_tier, calculated automatically) — the same source
+-- waves always used. (The older "assigned tier" list, profiles.tier_id, is not used: nothing keeps it current.)
 -- ============================================================
-create or replace function public.sched_wave_matches(p_profile uuid, c jsonb) returns boolean
+drop function if exists public.sched_wave_matches(uuid, jsonb);   -- replaced by the 3-input version below
+create or replace function public.sched_wave_matches(p_profile uuid, c jsonb, p_tier text default null) returns boolean
 language plpgsql stable security definer set search_path to 'public' as $$
-declare ty text := c->>'type'; v_tier uuid; hrs numeric;
+declare ty text := c->>'type'; v_tier text := p_tier; hrs numeric;
 begin
-  select tier_id into v_tier from public.profiles where id = p_profile;
+  -- Scorecard tier (the Scorecard shows each person their own row, so this works when they claim)
+  if v_tier is null and ty in ('tier', 'no_tier', 'recent') then
+    select s.performance_tier into v_tier from public.sc_scorecard s where s.profile_id = p_profile limit 1;
+  end if;
   if ty = 'everyone' then return true; end if;
   if ty = 'no_tier' then return v_tier is null; end if;
   if ty = 'tier' then
-    if c ? 'ids' then return v_tier is not null and v_tier::text in (select jsonb_array_elements_text(c->'ids')); end if;
-    -- older form: tier by name
-    return exists (select 1 from public.performance_tiers t where t.id = v_tier and lower(btrim(t.name)) = lower(btrim(c->>'tier')))
-        or exists (select 1 from public.sc_scorecard s where s.profile_id = p_profile and lower(btrim(s.performance_tier)) = lower(btrim(c->>'tier')));
+    if c ? 'ids' then
+      return v_tier is not null and (lower(btrim(v_tier)) in (select lower(btrim(x)) from jsonb_array_elements_text(c->'ids') x)
+        or exists (select 1 from public.performance_tiers t where t.id::text in (select jsonb_array_elements_text(c->'ids')) and lower(btrim(t.name)) = lower(btrim(v_tier))));
+    end if;
+    return v_tier is not null and lower(btrim(v_tier)) = lower(btrim(c->>'tier'));
   end if;
   if ty = 'tenure' then
     return (select case when coalesce(c->>'op', 'within') = 'within' then started >= current_date - coalesce((c->>'days')::int, 14)
@@ -62,7 +68,7 @@ begin
   for i in 0 .. n - 1 loop                          -- top to bottom; first match wins
     w := r.waves -> i; any_ok := false; all_ok := true; cnt := 0;
     for c in select * from jsonb_array_elements(coalesce(w->'match', '[]'::jsonb)) loop
-      cnt := cnt + 1; ok := public.sched_wave_matches(p_profile, c);
+      cnt := cnt + 1; ok := public.sched_wave_matches(p_profile, c, p_tier);
       any_ok := any_ok or ok; all_ok := all_ok and ok;
     end loop;
     if cnt > 0 and ((coalesce(w->>'join', 'any') = 'all' and all_ok) or (coalesce(w->>'join', 'any') <> 'all' and any_ok)) then hit := i; exit; end if;
@@ -78,7 +84,11 @@ end $$;
 -- lists for the wave editor (each company's own data)
 create or replace function public.sched_wave_options() returns jsonb language sql stable security definer set search_path to 'public' as $$
   select jsonb_build_object(
-    'tiers', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'name', name) order by sort_order, name) from public.performance_tiers), '[]'::jsonb),
+    'tiers', (select jsonb_agg(jsonb_build_object('id', n, 'name', n) order by o, n) from (
+               select n, min(o) o from (
+                 select x.n, x.o from (values ('Top Performer', 1), ('High Performer', 2), ('Developing Performer', 3), ('Improvement Opportunity', 4),
+                                              ('Onboarding', 5), ('Unrated', 6), ('Not Working', 7)) x(n, o)
+                 union all select distinct performance_tier, 50 from public.sc_scorecard where performance_tier is not null) y group by n) z),
     'tags', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'name', initcap(replace(namespace, '_', ' ')) || ': ' || name) order by namespace, name) from public.tags), '[]'::jsonb),
     'certs', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'name', name) order by name) from public.certifications), '[]'::jsonb),
     'people', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'name', full_name) order by full_name) from public.profiles where is_active and client_id is null), '[]'::jsonb))
@@ -86,30 +96,25 @@ create or replace function public.sched_wave_options() returns jsonb language sq
 $$;
 grant execute on function public.sched_wave_options() to authenticated;
 
--- Rebuild the company's waves from these blocks — same behavior as before, using Performance tiers:
---   New agents (hours < 10, all-time) +0 · each Performance tier (Top +30, High +45, Developing +60,
---   any other tier +90) · Active recently (worked in last 14 days AND no tier) +45 · Everyone else +90.
--- Only replaces waves still on the original default; customized waves are converted in place.
+-- Rebuild the company's waves from these blocks — same behavior as before (Scorecard tiers):
+--   New agents (hours < 10, all-time) +0 · Top Performer +30 · High Performer +45 · Developing Performer +60 ·
+--   Active recently (worked in last 14 days AND no Scorecard tier) +45 · Everyone else +90.
+-- Replaces waves still on the original default, or on the interim version that used the assigned-tier list.
 do $$ declare old_default jsonb := '[
     {"name": "New agents", "delay": 0, "match": [{"type": "new", "hours": 10}]},
     {"name": "Top Performer", "delay": 30, "match": [{"type": "tier", "tier": "Top Performer"}]},
     {"name": "High Performer", "delay": 45, "match": [{"type": "tier", "tier": "High Performer"}, {"type": "recent", "days": 14}]},
     {"name": "Developing Performer", "delay": 60, "match": [{"type": "tier", "tier": "Developing Performer"}]},
     {"name": "Everyone else", "delay": 90, "match": [{"type": "everyone"}]}]';
-  nw jsonb;
+  nw jsonb := '[
+    {"name": "New agents", "delay": 0, "join": "any", "match": [{"type": "hours", "op": "lt", "hours": 10}]},
+    {"name": "Top Performer", "delay": 30, "join": "any", "match": [{"type": "tier", "ids": ["Top Performer"]}]},
+    {"name": "High Performer", "delay": 45, "join": "any", "match": [{"type": "tier", "ids": ["High Performer"]}]},
+    {"name": "Developing Performer", "delay": 60, "join": "any", "match": [{"type": "tier", "ids": ["Developing Performer"]}]},
+    {"name": "Active recently (no tier yet)", "delay": 45, "join": "all", "match": [{"type": "hours", "op": "gte", "hours": 0.01, "days": 14}, {"type": "no_tier"}]},
+    {"name": "Everyone else", "delay": 90, "join": "any", "match": [{"type": "everyone"}]}]';
 begin
-  select jsonb_agg(x order by ord) into nw from (
-    select 0 ord, jsonb_build_object('name', 'New agents', 'delay', 0, 'join', 'any', 'match', jsonb_build_array(jsonb_build_object('type', 'hours', 'op', 'lt', 'hours', 10))) x
-    union all
-    select 1 + t.sort_order, jsonb_build_object('name', t.name, 'join', 'any',
-      'delay', case lower(t.name) when 'top performer' then 30 when 'high performer' then 45 when 'developing performer' then 60 else 90 end,
-      'match', jsonb_build_array(jsonb_build_object('type', 'tier', 'ids', jsonb_build_array(t.id))))
-      from public.performance_tiers t
-    union all
-    select 1000, jsonb_build_object('name', 'Active recently (no tier yet)', 'delay', 45, 'join', 'all',
-      'match', jsonb_build_array(jsonb_build_object('type', 'hours', 'op', 'gte', 'hours', 0.01, 'days', 14), jsonb_build_object('type', 'no_tier')))
-    union all
-    select 1001, jsonb_build_object('name', 'Everyone else', 'delay', 90, 'join', 'any', 'match', jsonb_build_array(jsonb_build_object('type', 'everyone')))) z;
-  update public.schedule_rules set waves = nw where id and waves = old_default;
+  update public.schedule_rules set waves = nw where id and (waves = old_default
+     or exists (select 1 from jsonb_array_elements(waves) w, jsonb_array_elements(w->'match') m where m->>'type' = 'tier' and m ? 'ids'
+                and (m->'ids'->>0) ~ '^[0-9a-f]{8}-'));   -- interim version (assigned-tier ids)
 end $$;
-
