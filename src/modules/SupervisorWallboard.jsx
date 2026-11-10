@@ -49,7 +49,65 @@ const TILES = [
   ['avg_acw', 'Avg after-call work', 'Handling', d => mmss(n(d.totals.wrap_secs) / (n(d.totals.handled) || 1))],
 ]
 function n(v) { return Number(v || 0) }
-function loadTiles() { try { const v = JSON.parse(localStorage.getItem(LS) || 'null'); if (Array.isArray(v)) return v } catch { /* ignore */ } return TILES.map(t => t[0]) }
+function loadTiles() { try { const v = JSON.parse(localStorage.getItem(LS) || 'null'); if (Array.isArray(v)) return v.includes('leaders') || localStorage.getItem(LS + '-lb') ? v : [...v, 'leaders'] } catch { /* ignore */ } return [...TILES.map(t => t[0]), 'leaders'] }
+
+// ---------- Leaderboard ----------
+const BOARDS = [
+  ['bookings', 'Most bookings', 'Booked appointments'],
+  ['cards', 'Most cards asked for', 'Asked for a card on file'],
+  ['book_rate', 'Best booking rate', 'Booked ÷ decided, at least 10 decided'],
+  ['qa', 'Top QA score', 'Average score, at least 10 reviewed calls'],
+]
+const MEDAL = ['#D4A017', '#9CA3AF', '#B7793E']
+function Leaderboard({ data, tv }) {
+  const [tab, setTab] = useState('bookings')
+  // TV mode: rotate through the boards every 12 seconds
+  useEffect(() => {
+    if (!tv) return
+    const t = setInterval(() => setTab(k => BOARDS[(BOARDS.findIndex(b => b[0] === k) + 1) % BOARDS.length][0]), 12000)
+    return () => clearInterval(t)
+  }, [tv])
+  const b = BOARDS.find(x => x[0] === tab)
+  const rows = (data && data[tab]) || []
+  const top = rows.length ? Number(String(rows[0].value).replace('%', '')) || 1 : 1
+  return (
+    <div style={{ ...S.card, display: 'flex', flexDirection: 'column', minHeight: 420 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+        <div style={{ fontSize: tv ? 22 : 17, fontWeight: 800, color: '#14302A' }}>🏆 Leaderboard</div>
+        <div style={{ fontSize: 11.5, color: '#8a918d' }}>from reviewed calls</div>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '10px 0 4px' }}>
+        {BOARDS.map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)} style={{ ...S.btn, padding: '6px 10px', fontSize: 12.5, ...(tab === k ? { background: '#14302A', color: '#fff', borderColor: '#14302A' } : {}) }}>{l}</button>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: '#5F6763', marginBottom: 8 }}>{b[2]}</div>
+      {!data ? <div style={S.mut}>Loading…</div> : rows.length === 0 ? <div style={{ ...S.mut, padding: '24px 0', textAlign: 'center' }}>No reviewed calls in this range yet.</div> : (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {rows.map((r, i) => {
+            const v = Number(String(r.value).replace('%', '')) || 0
+            return (
+              <div key={r.name} style={{ display: 'grid', gridTemplateColumns: '34px minmax(0,1fr) auto', gap: 10, alignItems: 'center', padding: tv ? '10px 4px' : '6px 2px', borderTop: i ? '1px solid #F1EEE8' : 'none' }}>
+                <div style={{ width: 30, height: 30, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 13,
+                  background: i < 3 ? MEDAL[i] : '#F3F1EC', color: i < 3 ? '#fff' : '#5F6763' }}>{i + 1}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: tv ? 18 : 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>
+                  <div style={{ height: 6, borderRadius: 999, background: '#EEEBE4', marginTop: 5, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.max(4, Math.round((v / top) * 100))}%`, background: i === 0 ? '#2F7D5B' : '#7FB59A', borderRadius: 999 }} />
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: 800, fontSize: tv ? 24 : 18 }}>{r.value}</div>
+                  <div style={{ fontSize: 11, color: '#8a918d', whiteSpace: 'nowrap' }}>{r.sub}</div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function SupervisorWallboard({ clientId = null }) {
   const [range, setRange] = useState('today')
@@ -61,6 +119,7 @@ export default function SupervisorWallboard({ clientId = null }) {
   const [custom, setCustom] = useState(false)
   const [tv, setTv] = useState(false)
   const [sort, setSort] = useState(['state', 1])
+  const [leaders, setLeaders] = useState(null)
   const [, tick] = useState(0)
 
   const dates = useMemo(() => {
@@ -80,8 +139,16 @@ export default function SupervisorWallboard({ clientId = null }) {
     if (error) setErr(error.message); else { setD(data); setErr('') }
   }, [dates, clientId])
   useEffect(() => { load(); const t = setInterval(load, tv ? 10000 : 20000); return () => clearInterval(t) }, [load, tv])
+  // Leaderboards (2026-11-10, Becky): from reviewed calls, refreshed every minute.
+  const loadLeaders = useCallback(async () => {
+    const args = { p_start: dates[0], p_end: dates[1], p_tz: TZ }
+    if (clientId) args.p_client = clientId
+    const { data, error } = await supabase.rpc('sup_leaders', args)
+    if (!error) setLeaders(data)
+  }, [dates, clientId])
+  useEffect(() => { loadLeaders(); const t = setInterval(loadLeaders, 60000); return () => clearInterval(t) }, [loadLeaders])
   useEffect(() => { const t = setInterval(() => tick(x => x + 1), 1000); return () => clearInterval(t) }, [])
-  useEffect(() => { try { localStorage.setItem(LS, JSON.stringify(tiles)) } catch { /* ignore */ } }, [tiles])
+  useEffect(() => { try { localStorage.setItem(LS, JSON.stringify(tiles)); localStorage.setItem(LS + '-lb', '1') } catch { /* ignore */ } }, [tiles])
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape') setTv(false) }
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey)
@@ -139,11 +206,17 @@ export default function SupervisorWallboard({ clientId = null }) {
               </label>
             ))}
           </div>
-          <button onClick={() => setTiles(TILES.map(t => t[0]))} style={{ ...S.btn, marginTop: 10 }}>Show all</button>
+          <label style={{ ...S.chip, marginTop: 10, background: tiles.includes('leaders') ? '#E6F0EA' : '#fff' }}>
+            <input type="checkbox" checked={tiles.includes('leaders')} onChange={() => setTiles(x => x.includes('leaders') ? x.filter(y => y !== 'leaders') : [...x, 'leaders'])} /> Leaderboard
+          </label>
+          <button onClick={() => setTiles([...TILES.map(t => t[0]), 'leaders'])} style={{ ...S.btn, marginTop: 10, marginLeft: 8 }}>Show all</button>
         </div>
       )}
 
-      {/* widgets */}
+      {/* widgets (left) + leaderboard (right) */}
+      <style>{'@media (max-width: 1000px){.wb-split{grid-template-columns:minmax(0,1fr) !important}}'}</style>
+      <div className="wb-split" style={{ display: 'grid', gridTemplateColumns: tiles.includes('leaders') ? 'minmax(0,1.35fr) minmax(300px,1fr)' : 'minmax(0,1fr)', gap: 14, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gap: 14 }}>
       {groups.map(g => (
         <div key={g}>
           <div style={S.cap}>{g}</div>
@@ -158,6 +231,9 @@ export default function SupervisorWallboard({ clientId = null }) {
           </div>
         </div>
       ))}
+      </div>
+      {tiles.includes('leaders') && <Leaderboard data={leaders} tv={tv} />}
+      </div>
 
       {/* CSR board */}
       <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
