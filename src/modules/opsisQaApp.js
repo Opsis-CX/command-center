@@ -155,7 +155,19 @@ export function mountOpsisQA(ROOT, cfg) {
     var w = $('oqwho'); if (!w) return;
     w.innerHTML = '<b>' + esc(CFG.userName || '') + '</b><span>' + esc(RNAME[ROLE] || '') + (LOCK ? ' · ' + esc(short(LOCK)) : '') + '</span>' +
       (CFG.staff ? '<a href="' + esc(location.pathname + (OPSIS ? '' : '?portal=opsiscx')) + '" style="color:#9CC6B2;font-size:12px;font-weight:600;text-decoration:none">Switch to ' + (OPSIS ? 'GarageCo' : 'Opsis CX') + ' →</a>' : '') + '<span style="display:flex;gap:14px;flex-wrap:wrap">' + (CFG.onClassic ? '<button data-act="classic">Classic view</button>' : '') + (CFG.onSignOut ? '<button data-act="signout">Sign out</button>' : '') + '</span>';
+      // "View as" Admin / RM / GM / CSR (2026-11-10): your own +rm / +gm / +csr logins
+    if (CFG.accounts && CFG.accounts.length > 1 && CFG.onSwitchAccount) {
+      var cur = CFG.accounts.filter(function (x) { return x.current; })[0] || {};
+      var box = document.createElement('label');
+      box.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:12px;color:#BFD1C8;margin-top:2px';
+      box.innerHTML = 'View as <select style="flex:1;background:#234840;color:#fff;border:1px solid #3B6158;border-radius:8px;padding:6px 8px;font:inherit;font-weight:700;cursor:pointer">' +
+        CFG.accounts.map(function (x) { return '<option value="' + esc(x.email) + '"' + (x.current ? ' selected' : '') + '>' + esc(x.label) + '</option>'; }).join('') + '</select>';
+      w.insertBefore(box, w.children[2] || null);
+      var sel = box.querySelector('select');
+      sel.onchange = function () { var v = sel.value; if (!v || v === cur.email) return; sel.disabled = true; toast('Switching…'); Promise.resolve(CFG.onSwitchAccount(v)).catch(function (e) { sel.disabled = false; sel.value = cur.email; toast((e && e.message) || 'Couldn\u2019t switch accounts.'); }); };
+    }
   }
+
   function renderNav() {
     var cur = S.view === 'brand' ? 'brands' : (S.view === 'csr' ? 'csrs' : (S.view === 'repeat' ? 'insights' : (S.view === 'hubqs' ? 'hub' : S.view)));
     $('nav').innerHTML = NAV.map(function (sec) {
