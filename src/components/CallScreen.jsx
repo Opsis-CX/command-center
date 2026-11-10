@@ -52,6 +52,11 @@ export function prettyPhone(p) {
   const d = String(p || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '')
   return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : (p || '')
 }
+const DISPO_GROUPS = [
+  { key: 'sales', label: 'Wanted service or a new door', color: '#15803d' },
+  { key: 'service', label: 'Existing customer', color: '#0e7490' },
+  { key: 'none', label: 'Not a customer / no answer', color: '#64748b' },
+]
 const TONES = {
   info: { bg: 'rgba(8,145,178,0.08)', border: 'rgba(8,145,178,0.35)', chip: '#0e7490', text: '#0e7490' },
   warn: { bg: 'rgba(234,179,8,0.10)', border: 'rgba(202,138,4,0.4)', chip: '#a16207', text: '#a16207' },
@@ -261,14 +266,21 @@ export default function CallScreen({
           {!preview && dispositions.length > 0 && (
             <div style={{ ...S.card, borderColor: canSave ? 'rgba(14,116,144,0.5)' : undefined }}>
               <div style={S.cardTitle}>Disposition {!canSave && <span style={S.cardHint}>{saveHint || 'pick now, save after the call'}</span>}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {dispositions.map(d => (
-                  <button key={d.code} onClick={() => setCode(d.code)}
-                    style={{ ...S.chip, ...(code === d.code ? { background: d.color || '#0e7490', borderColor: d.color || '#0e7490', color: '#fff' } : {}) }}>
-                    {d.label}
-                  </button>
-                ))}
-              </div>
+              {/* Grouped (2026-11-10): GarageCo dispositions carry a group — sales / service / none —
+                  so one tap records both what the caller wanted and how it ended (intent → booking rates). */}
+              {(dispositions.some(d => d.group) ? DISPO_GROUPS.filter(g => dispositions.some(d => (d.group || 'none') === g.key)) : [{ key: null }]).map(g => (
+                <div key={g.key || 'all'} style={{ marginBottom: g.key ? 8 : 0 }}>
+                  {g.key && <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: g.color, margin: '2px 0 5px' }}>{g.label}</div>}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {dispositions.filter(d => !g.key || (d.group || 'none') === g.key).map(d => (
+                      <button key={d.code} onClick={() => setCode(d.code)}
+                        style={{ ...S.chip, ...(code === d.code ? { background: d.color || g.color || '#0e7490', borderColor: d.color || g.color || '#0e7490', color: '#fff' } : {}) }}>
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
               {dispo?.outcome === 'callback' && (
                 <label style={{ ...S.fieldLbl, marginTop: 10 }}>Callback date & time (your time)
                   <input type="datetime-local" value={callbackAt} onChange={e => setCallbackAt(e.target.value)} style={S.input} />
