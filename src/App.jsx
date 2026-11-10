@@ -526,7 +526,7 @@ function AuthedApp({ session, isAdmin, appRole, navOpen, setNavOpen, location })
               {/* Backend (2026-11-04): content that powers Command Center */}
               <Route path="/schedule-rules" element={(usingNewPermissions() ? hasPerm('schedule.rules_view') : isAdmin) ? <ScheduleRules /> : <NoAccess />} />
               <Route path="/schedule-settings" element={(usingNewPermissions() ? hasPerm('schedule.manage_views') : isAdmin) ? <ScheduleSettings /> : <NoAccess />} />
-              <Route path="/dashboard-settings" element={(usingNewPermissions() ? hasPerm('admin.settings') : isAdmin) ? <DashboardSettings /> : <NoAccess />} />
+              <Route path="/dashboard-settings" element={(usingNewPermissions() ? hasPerm('admin.dashboard_settings') : isAdmin) ? <DashboardSettings /> : <NoAccess />} />
               <Route path="/alerts" element={(usingNewPermissions() ? hasPerm('admin.alerts') : isAdmin) ? <AlertSettings /> : <NoAccess />} />
               <Route path="/branding" element={(usingNewPermissions() ? hasPerm('admin.settings') : isAdmin) ? <Branding /> : <NoAccess />} />
               <Route path="/backend/quotes" element={(usingNewPermissions() ? hasPerm('content.quotes') : isAdmin) ? <DailyQuotes /> : <NoAccess />} />
