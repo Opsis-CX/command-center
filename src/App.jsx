@@ -64,6 +64,8 @@ import NewHireSurvey from './modules/NewHireSurvey'
 import CsrScorecard from './modules/CsrScorecard'
 // GarageCo CSR phone (log in/out for the day, take and make calls) — 2026-11-10
 import CsrPhone from './modules/CsrPhone'
+// "View as" Admin / RM / GM / CSR (your own +rm/+gm/+csr logins) — 2026-11-10
+import AccountSwitcher from './components/AccountSwitcher'
 // --- Who's On: live check-ins (LiveStatus) + Slack-style team presence board ---
 import LiveStatus from './modules/LiveStatus'
 import { usePresenceHeartbeat, TeamStatus } from './components/Presence'
@@ -292,6 +294,7 @@ function CsrPortal({ session }) {
             : <span style={{ fontSize: 13, opacity: 0.85 }}>My Coaching Scorecard</span>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <AccountSwitcher />
           <span style={{ fontSize: 13, opacity: 0.9 }}>{session.user.email}</span>
           <button onClick={() => signOut()} style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Sign out</button>
         </div>
