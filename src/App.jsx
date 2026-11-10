@@ -62,6 +62,8 @@ import NewHireSurvey from './modules/NewHireSurvey'
 // GarageCo CSR coaching scorecards (2026-09-27). One module, three views:
 // CSR (own only), client manager (their brand / all brands), Opsis QA staff (edit).
 import CsrScorecard from './modules/CsrScorecard'
+// GarageCo CSR phone (log in/out for the day, take and make calls) — 2026-11-10
+import CsrPhone from './modules/CsrPhone'
 // --- Who's On: live check-ins (LiveStatus) + Slack-style team presence board ---
 import LiveStatus from './modules/LiveStatus'
 import { usePresenceHeartbeat, TeamStatus } from './components/Presence'
@@ -244,12 +246,19 @@ function CsrPortal({ session }) {
   const { signOut } = useAuth()
   const [brand, setBrand] = useState(null)          // { portal_name, portal_accent, portal_logo_url }
   const [mustChange, setMustChange] = useState(null) // null = still checking
+  // Phone tab (2026-11-10): CSRs set up to take or make calls get the phone first.
+  const [hasPhone, setHasPhone] = useState(false)
+  const [tab, setTab] = useState(() => { try { return localStorage.getItem('csr-tab') || 'phone' } catch { return 'phone' } })
+  const pickTab = (t) => { setTab(t); try { localStorage.setItem('csr-tab', t) } catch { /* private mode */ } }
 
   useEffect(() => {
     let active = true
     supabase.from('profiles').select('must_change_password').eq('id', session.user.id).single()
       .then(({ data }) => { if (active) setMustChange(!!data?.must_change_password) })
       .catch(() => { if (active) setMustChange(false) })
+    supabase.rpc('csr_phone_get')
+      .then(({ data }) => { if (active) setHasPhone(!!(data && (data.manual || (data.lines || []).length))) })
+      .catch(() => {})
     return () => { active = false }
   }, [session.user.id])
 
@@ -274,14 +283,26 @@ function CsrPortal({ session }) {
           {brand.portal_logo_url
             ? <img src={brand.portal_logo_url} alt={name} style={{ height: 32, width: 'auto', borderRadius: 4, background: '#fff', padding: 2 }} />
             : <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: 0.3 }}>{name}</div>}
-          <span style={{ fontSize: 13, opacity: 0.85 }}>My Coaching Scorecard</span>
+          {hasPhone
+            ? <div style={{ display: 'flex', gap: 6 }}>
+                {[['phone', 'Phone'], ['scorecard', 'My Scorecard']].map(([k, l]) => (
+                  <button key={k} onClick={() => pickTab(k)} style={{ background: tab === k ? '#fff' : 'rgba(255,255,255,0.12)', color: tab === k ? accent : '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>{l}</button>
+                ))}
+              </div>
+            : <span style={{ fontSize: 13, opacity: 0.85 }}>My Coaching Scorecard</span>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <span style={{ fontSize: 13, opacity: 0.9 }}>{session.user.email}</span>
           <button onClick={() => signOut()} style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Sign out</button>
         </div>
       </header>
-      <CsrScorecard supabase={supabase} mode="csr" accent={accent} />
+      {hasPhone
+        ? <MaybeVoice enabled canCallPeople={false} canDialNumbers={false}>
+            {/* keep the phone mounted while on the Scorecard so calls still ring */}
+            <div style={{ display: tab === 'phone' ? 'block' : 'none' }}><CsrPhone accent={accent} /></div>
+            {tab !== 'phone' && <CsrScorecard supabase={supabase} mode="csr" accent={accent} />}
+          </MaybeVoice>
+        : <CsrScorecard supabase={supabase} mode="csr" accent={accent} />}
       <footer style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: '24px 0 32px' }}>Powered by Opsis CX</footer>
     </div>
   )
