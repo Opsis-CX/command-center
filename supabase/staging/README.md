@@ -1,3 +1,4 @@
+[README (25).md](https://github.com/user-attachments/files/34651928/README.25.md)
 [README (24).md](https://github.com/user-attachments/files/34595605/README.24.md)
 [README (21).md](https://github.com/user-attachments/files/34585844/README.21.md)
 [README (19).md](https://github.com/user-attachments/files/34448460/README.19.md)
@@ -32,5 +33,6 @@ database section from live and removes anything that only exists in staging.
 19. `19_schedule_rules.sql` — Configuration → Schedule rules: release schedule, release waves, weekly cap, commitment lock, check-out grace & auto check-out (each with its own permission).
 20. `20_schedule_rules_per_schedule.sql` — Schedule rules per schedule: any schedule can override whole sections of the company rules.
 21. `21_release_wave_conditions.sql` — Release waves built from each company's own data (tiers, teams, certifications, hours, people), any/all, top-to-bottom.
+22. `22_dashboard_whos_on_by_hour.sql` — Dashboard: "Who's on" view (Who's On + Time combined) and Schedule → By hour + Mix.
 
 All are safe to run more than once. (Staging also has fictional @demo.test people + sample schedules for testing.) Ask Claude to re-add the demo company afterwards.
