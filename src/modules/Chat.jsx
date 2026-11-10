@@ -4,6 +4,18 @@ import { supabase } from '../lib/supabase'
 import { seasonalHat, WitchHat, celebrate } from '../components/Seasonal'
 import { useAuth } from '../lib/auth'
 import { can } from '../lib/permissions'
+
+// What this person may do in Chat (2026-11-10). The server answers with the same rules it enforces
+// (Access & Permissions → Chat); null while loading, then the screens show only what's allowed.
+let chatPowersPromise = null
+function useChatPowers() {
+  const [p, setP] = useState(null)
+  useEffect(() => {
+    if (!chatPowersPromise) chatPowersPromise = supabase.rpc('chat_powers').then(({ data }) => data || null).catch(() => null)
+    let alive = true; chatPowersPromise.then(d => { if (alive) setP(d) }); return () => { alive = false }
+  }, [])
+  return p
+}
 import { notifyAckNudge, notifyChannelAdded, notifyIncomingCall } from '../lib/notify'
 import { useUnread } from '../lib/unread'
 import { CUSTOM_RE, AnimatedEmoji, EmojiGlyph, loadEmojiNames, emojiLabel, emojiNamesNow, ReactionPicker, EmojiPanel, FloatingLayer, loadCustomEmojis, useCustomEmojis, preloadEmoji, StatusEmoji, withCustomEmojis } from '../components/EmojiPanel'
@@ -816,8 +828,9 @@ export default function Chat() {
   const { isAdmin, level, appRole } = useAuth()
   const isOwner = (level || 0) >= 100
   // Matrix-driven: who can start new channels / DMs (see lib/permissions.js).
-  const canCreateChannels = isAdmin || can(appRole, 'chat.create_channels')
-  const canCreateDMs = isAdmin || can(appRole, 'chat.create_dms')
+  const powers = useChatPowers()
+  const canCreateChannels = powers ? !!powers.create : (isAdmin || can(appRole, 'chat.create_channels'))
+  const canCreateDMs = powers ? !!(powers.dm || powers.group_dm) : (isAdmin || can(appRole, 'chat.create_dms'))
   const isMobile = useIsMobile()
   const { counts: unreadCounts, markRead } = useUnread()
   const [me, setMe] = useState(null)
@@ -1337,7 +1350,7 @@ export default function Chat() {
           })()}
           {c.is_dm && menuItem('✕ Remove conversation', () => { close(); deleteDmForMe(c) })}
           {isOwner && !c.is_dm && <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />}
-          {isOwner && menuItem(c.is_dm ? '⚠ Delete for everyone' : '🗑 Delete channel for everyone', () => { close(); deleteChannel(c) }, { danger: true })}
+          {(powers ? (c.is_dm ? powers.delete_dm : powers.delete_channel) : isOwner) && menuItem(c.is_dm ? '⚠ Delete for everyone' : '🗑 Delete channel for everyone', () => { close(); deleteChannel(c) }, { danger: true })}
         </>)
       }
     } else {
@@ -2166,6 +2179,7 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
     if (!plain && pending.length === 0) return
 
     const isHere = /(^|\s)@here(\s|$)/i.test(plain)
+    if (isHere && chatPowers && !chatPowers.here) { window.alert("You don't have permission to use @here. Remove it to send your message."); return }
     const willRequireAck = canPostUpdate && requireAck
     const filesToSend = pending
 
@@ -2318,7 +2332,9 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
   // would reject a delete that this let the user attempt.
   // Delete rule: the author, or anyone whose role isn't 'agent'
   // (asc / support / certification / marketing / admin can moderate).
-  const canModerate = String(appRole || 'agent').trim().toLowerCase() !== 'agent'
+  const chatPowers = useChatPowers()
+  const canModerate = chatPowers ? !!chatPowers.moderate : String(appRole || 'agent').trim().toLowerCase() !== 'agent'
+  const canPinMsgs = chatPowers ? !!chatPowers.pin : canModerate
 
   // Read receipts render on the newest message only; a line under every one is noise.
   const newestId = topLevel.length
@@ -2425,7 +2441,7 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
             const canDelete = !m._optimistic && (m.sender_id === me.id || canModerate)
             // @update posts can be edited too (2026-10-28). Confirmations are kept and the post shows "(edited)".
             const canEdit = !m._optimistic && m.sender_id === me.id
-            const canPin = !m._optimistic && canModerate
+            const canPin = !m._optimistic && canPinMsgs
             const readerIds = m._optimistic ? [] : readersOf(m, readState, members, me.id)
             const readerNames = readerIds.map(pid => senders[pid] || profiles.find(p => p.id === pid)?.full_name).filter(Boolean)
             const isNewest = m.id === newestId
@@ -2707,7 +2723,7 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
       {showPrefs && <NotificationPrefsPanel channelId={channelId} channelName={channel?.name}
         isDm={channel?.is_dm} dmName={dmName} meId={me.id} profiles={profiles}
         onClose={() => setShowPrefs(false)} />}
-      {showMembers && <ChannelMembersPanel channelId={channelId} channelName={channel?.name} profiles={profiles} meId={me.id} isOwner={isOwner} onClose={() => setShowMembers(false)} onChanged={async () => {
+      {showMembers && <ChannelMembersPanel channelId={channelId} channelName={channel?.name} profiles={profiles} meId={me.id} isOwner={isOwner} isDm={!!channel?.is_dm} onClose={() => setShowMembers(false)} onChanged={async () => {
         const { data } = await supabase.from('channel_members').select('profile_id').eq('channel_id', channelId)
         setMembers((data || []).map(m => m.profile_id))
       }} />}
@@ -2933,7 +2949,10 @@ const NP = {
 }
 
 // Channel members panel: lists everyone in the channel; owners can remove.
-function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, onClose, onChanged }) {
+function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, isDm = false, onClose, onChanged }) {
+  const pw = useChatPowers()
+  const canRemove = !isDm && (pw ? !!pw.remove : isOwner)   // Access & Permissions → "Remove people from channels"
+  const canAdd = !isDm && (pw ? !!pw.add : isOwner)          // → "Add people to channels"
   const [memberIds, setMemberIds] = useState([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
@@ -3002,14 +3021,14 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
                   <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.full_name}{p.id === meId ? ' (you)' : ''}</span>
                   {effStatus(p) && (effStatus(p).emoji || effStatus(p).text) && <span title={effStatus(p).text || ''} style={{ fontSize: 12.5, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 3, minWidth: 0 }}>{effStatus(p).emoji && <span>{effStatus(p).emoji}</span>}{effStatus(p).type === 'ooo' ? <span style={{ fontWeight: 700, color: '#7c3aed' }}>OOO</span> : <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140 }}>{effStatus(p).text}</span>}</span>}
                 </span>
-                {isOwner && p.id !== meId && (
+                {canRemove && p.id !== meId && (
                   <button onClick={() => removeMember(p.id)} title="Remove from channel"
                     style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--failed)', fontSize: 12, fontWeight: 600, padding: '4px 8px' }}>Remove</button>
                 )}
               </div>
             ))}
 
-            {isOwner && (
+            {canAdd && (
               <div style={{ marginTop: 14, borderTop: '1px solid var(--line-soft)', paddingTop: 12 }}>
                 {!adding ? (
                   <button className="btn btn-ghost" onClick={() => setAdding(true)}>+ Add people</button>
@@ -3864,12 +3883,17 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
     ? others.filter(p => p.full_name?.toLowerCase().includes(search.toLowerCase()))
     : others
 
+  // "Start group messages" unchecked → pick one person; "Start direct messages" unchecked → pick 2+ (a group)
+  const dmPw = useChatPowers()
+  const oneOnly = dmPw ? !dmPw.group_dm : false
   const toggle = (id) => setPicked(prev => {
+    if (oneOnly) return prev.has(id) ? new Set() : new Set([id])
     const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
   })
 
   async function start() {
     const personIds = [...picked]
+    if (dmPw && personIds.length === 1 && !dmPw.dm) { setErr("You can start group messages, but not 1-on-1 direct messages. Pick at least two people."); return }
     if (!personIds.length) return
     setSaving(true); setErr('')
     try {
