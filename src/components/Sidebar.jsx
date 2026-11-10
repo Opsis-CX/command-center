@@ -202,7 +202,7 @@ export default function Sidebar({ open, onNavigate }) {
   // be "everyone" or "admins only" follow the person's checkboxes too.
   const NEW_PAGE_PERMS = {
     '/home': 'home.view', '/': ['dashboard.overview', 'dashboard.client'], '/updates': 'updates.create', '/weekly-sync': 'team.weekly_sync', '/eod': ['team.eod_submit', 'team.eod_view'], '/notes': 'notes.view', '/calendar': 'calendar.view',
-    '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings', '/branding': 'admin.settings', '/alerts': 'admin.alerts', '/dashboard-settings': 'admin.settings', '/schedule-settings': 'schedule.manage_views', '/schedule-rules': 'schedule.rules_view', '/backend/quotes': 'content.quotes', '/backend/spotlight': 'content.spotlight',
+    '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings', '/branding': 'admin.settings', '/alerts': 'admin.alerts', '/dashboard-settings': 'admin.dashboard_settings', '/schedule-settings': 'schedule.manage_views', '/schedule-rules': 'schedule.rules_view', '/backend/quotes': 'content.quotes', '/backend/spotlight': 'content.spotlight',
     '/service-account': 'admin.settings', '/survey': 'people.edit', '/finance': 'finance.view', '/submit-purchase': 'finance.create',
   }
   const permOk = (p, to) => {
