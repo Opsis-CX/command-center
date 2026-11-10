@@ -1414,12 +1414,14 @@ export function mountOpsisQA(ROOT, cfg) {
     var R = RC.s, s = R.settings, pv = rcPreview(s);
     var head = '<div class="oq-card" style="background:#FAF8F4"><div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;justify-content:space-between"><div><h2 class="ttl" style="margin:0">AI CSR settings</h2><p class="sub" style="margin:2px 0 0">Each brand has its own settings. Saving updates that brand’s line right away.' + (R.updated_by_name ? ' Last saved by ' + esc(R.updated_by_name) + (R.updated_at ? ' · ' + fdate(String(R.updated_at).slice(0, 10)) : '') + '.' : ' Not saved yet: these are the starting defaults.') + '</p></div>' + rcBrandSel('rcsbrand', brand) + '</div>' +
       (!R.can_edit ? '<div class="banner" style="margin-top:10px">View only. Ask an admin to change these settings.</div>' : '') + '</div>';
-    var id = rcRow('Assistant name', rcIn('agent_name', { w: 200 }), 'What she calls herself on the phone.') +
-      rcRow('Company name as spoken', rcIn('company_name', { w: 320 }), 'Exactly how she says the company name, e.g. “Giel Doors” instead of “Thomas V Giel”.') +
-      rcRow('Other names callers use', rcIn('aka', { ph: 'e.g. TVG, Thomas V Giel' }), 'So she knows these are the same company.') +
-      rcRow('Voice', rcIn('voice', { type: 'select', options: [['female', 'Female (Rachel)'], ['male', 'Male (Adam)']] })) +
-      rcRow('Greeting', rcIn('greeting', { type: 'textarea' }), 'Use {agent} and {company} to fill in the names. She’ll say: <i>“' + esc(pv(s.greeting)) + '”</i>') +
-      rcRow('Closing line', rcIn('end_greeting', { type: 'textarea' }), 'Said at the end of every call, then she hangs up. She’ll say: <i>“' + esc(pv(s.end_greeting)) + '”</i>');
+    // ▶ Hear it (2026-11-10, Becky): plays each line in her voice with the brand's pronunciations, no test call needed
+    var say = function (ctl, k) { return '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1 1 auto;min-width:0">' + ctl + '</div><button class="sel" data-act="rcsay" data-say="' + k + '" title="Hear how she says it" style="min-height:38px;padding:6px 12px;flex:none">▶ Hear it</button></div>'; };
+    var id = rcRow('Assistant name', say(rcIn('agent_name', { w: 200 }), 'agent_name'), 'What she calls herself on the phone.') +
+      rcRow('Company name as spoken', say(rcIn('company_name', { w: 320 }), 'company_name'), 'Exactly how she says the company name, e.g. “Giel Doors” instead of “Thomas V Giel”.') +
+      rcRow('Other names callers use', say(rcIn('aka', { ph: 'e.g. TVG, Thomas V Giel' }), 'aka'), 'So she knows these are the same company.') +
+      rcRow('Voice', say(rcIn('voice', { type: 'select', options: [['female', 'Female (Rachel)'], ['male', 'Male (Adam)']] }), 'voice')) +
+      rcRow('Greeting', say(rcIn('greeting', { type: 'textarea' }), 'greeting'), 'Use {agent} and {company} to fill in the names. She’ll say: <i>“' + esc(pv(s.greeting)) + '”</i>') +
+      rcRow('Closing line', say(rcIn('end_greeting', { type: 'textarea' }), 'end_greeting'), 'Said at the end of every call, then she hangs up. She’ll say: <i>“' + esc(pv(s.end_greeting)) + '”</i>');
     var oh = rcRow('Time zone', rcIn('timezone', { type: 'select', options: RC_TZ })) +
       '<table class="tbl" style="font-size:13px;margin-top:12px;max-width:520px"><thead><tr><th>Day</th><th>Open</th><th>From</th><th>To</th></tr></thead><tbody>' +
       RC_DAYS.map(function (x) { return '<tr><td>' + x[1] + '</td><td>' + rcIn('office_hours.' + x[0] + '.open', { type: 'check' }) + '</td><td>' + rcIn('office_hours.' + x[0] + '.from', { type: 'time' }) + '</td><td>' + rcIn('office_hours.' + x[0] + '.to', { type: 'time' }) + '</td></tr>'; }).join('') + '</tbody></table>' +
@@ -4336,6 +4338,22 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rcstart') { rcStart(); }
       else if (a === 'rcend') { rcEnd(); }
       else if (a === 'rcback') { RC.res = null; RC.err = null; drawRecep(); }
+      else if (a === 'rcsay') {
+        if (RC.sayAudio) { try { RC.sayAudio.pause(); } catch (x) { } var was = RC.sayBtn; RC.sayAudio = null; RC.sayBtn = null; if (was) was.textContent = '▶ Hear it'; if (was === el) return; }
+        var ss = (RC.s && RC.s.settings) || {}, fill = rcPreview(ss), k2 = d.say, txt = '';
+        if (k2 === 'agent_name') txt = 'This is ' + (ss.agent_name || 'Ava') + '.';
+        else if (k2 === 'company_name') txt = 'Thank you for calling ' + (ss.company_name || '') + '.';
+        else if (k2 === 'aka') txt = String(ss.aka || '').split(/[,;]+/).map(function (x) { return x.trim(); }).filter(Boolean).join('. ');
+        else if (k2 === 'voice') txt = 'Hi, this is ' + (ss.agent_name || 'Ava') + ', the digital assistant. How can I help you today?';
+        else txt = fill(ss[k2]);
+        if (!String(txt).replace(/[\s.]/g, '')) { toast('Type something first.'); return; }
+        var tk2 = null; try { var rw2 = localStorage.getItem('sb-dqvuviyqrcrgapmxkoyx-auth-token'); if (!rw2) { for (var i2 = 0; i2 < localStorage.length; i2++) { var kk2 = localStorage.key(i2); if (/^sb-.*-auth-token$/.test(kk2)) { rw2 = localStorage.getItem(kk2); break; } } } var jj2 = rw2 && JSON.parse(rw2); tk2 = jj2 && (jj2.access_token || (jj2.currentSession && jj2.currentSession.access_token)); } catch (x) { }
+        var bt = el; bt.disabled = true; bt.textContent = 'Loading…';
+        fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/ai-csr-say', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (tk2 || '') }, body: JSON.stringify(Object.assign(CFG.clientId ? { client_id: CFG.clientId } : {}, { brand: RC.sBrand || RC.brand, text: txt, voice: ss.voice || 'female' })) })
+          .then(function (r) { if (r.ok) return r.blob(); return r.json().catch(function () { return {}; }).then(function (j) { throw new Error(j.error || 'Couldn’t play it.'); }); })
+          .then(function (b) { var au = new Audio(URL.createObjectURL(b)); RC.sayAudio = au; RC.sayBtn = bt; bt.disabled = false; bt.textContent = '■ Stop'; au.onended = function () { if (RC.sayBtn === bt) { RC.sayAudio = null; RC.sayBtn = null; } bt.textContent = '▶ Hear it'; }; return au.play(); })
+          .catch(function (e) { bt.disabled = false; bt.textContent = '▶ Hear it'; toast(e.message); });
+      }
       else if (a === 'rcplay') { var slot = $('rcaudio'); if (!slot || el.disabled) return; el.disabled = true; el.textContent = 'Loading…';
         var tk = null; try { var rw = localStorage.getItem('sb-dqvuviyqrcrgapmxkoyx-auth-token'); if (!rw) { for (var ii = 0; ii < localStorage.length; ii++) { var kk = localStorage.key(ii); if (/^sb-.*-auth-token$/.test(kk)) { rw = localStorage.getItem(kk); break; } } } var jj = rw && JSON.parse(rw); tk = jj && (jj.access_token || (jj.currentSession && jj.currentSession.access_token)); } catch (x) { }
         fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/ai-csr-audio', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (tk || '') }, body: JSON.stringify({ call_id: d.id }) })
