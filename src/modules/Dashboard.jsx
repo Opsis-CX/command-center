@@ -856,6 +856,7 @@ function ByHour({ f, T, canNudge }) {
   const [open, toggle] = useOpen()
   const [msg, setMsg] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [pin, setPin] = useState(null)   // tapped hour (touch screens) — hover shows it on desktop
   async function alertHour(ids) {
     if (!ids?.length) return
     setBusy(true); setMsg(null)
@@ -875,6 +876,7 @@ function ByHour({ f, T, canNudge }) {
         {day !== todayET() && <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setDay(todayET())}>Today</button>}
       </div>
       <Flash msg={msg} />
+      <style>{BH_CSS}</style>
       {err ? <Err msg={err} /> : !data ? <Loading /> : (
         <div className="db-split">
           <div>
@@ -888,7 +890,7 @@ function ByHour({ f, T, canNudge }) {
                     <h3 style={{ margin: 0 }}>{c.client}</h3>{c.project && <span className="page-sub" style={{ fontSize: 13 }}>· {c.project}</span>}
                     <span style={{ marginLeft: 'auto' }}><Pct v={c.pct} /></span>
                   </div>
-                  {isOpen && <div className="db-tbl-wrap" style={{ marginTop: 10 }}><table className="db-tbl">
+                  {isOpen && <div className="db-tbl-wrap" style={{ marginTop: 10, overflow: 'visible' }}><table className="db-tbl">
                     <thead><tr><th style={{ width: 90 }}>Hour</th><th>Spots</th><th>Coverage</th><th>Who's on</th><th className="num">Open</th></tr></thead>
                     <tbody>{c.hours.map(h => { const pct = h.spots ? Math.round(100 * h.filled / h.spots) : null; const named = h.people.filter(p => p.name), hidden = h.people.length - named.length
                       return (
@@ -896,7 +898,12 @@ function ByHour({ f, T, canNudge }) {
                           <td style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{hourLabel(h.hour)}</td>
                           <td style={{ whiteSpace: 'nowrap' }}>{h.filled} of {h.spots}</td>
                           <td style={{ whiteSpace: 'nowrap' }}><span className="db-bar-track" style={{ display: 'inline-block', width: 120, verticalAlign: 'middle', marginRight: 8 }}><span className="db-bar-fill" style={{ display: 'block', width: `${pct || 0}%`, background: barColor(pct) }} /></span><Pct v={pct} /></td>
-                          <td style={{ fontSize: 12.5 }}>{named.map(p => p.name).join(', ')}{hidden > 0 ? `${named.length ? ', ' : ''}${hidden} more` : ''}{!h.people.length && <span className="page-sub">—</span>}</td>
+                          <td style={{ fontSize: 12.5 }}>
+                            <div className={'bh-cell' + (pin === `${id}|${h.hour}` ? ' pinned' : '')} tabIndex={0} onClick={() => setPin(x => x === `${id}|${h.hour}` ? null : `${id}|${h.hour}`)}>
+                              <span className="bh-names">{named.map(p => p.name).join(', ')}{hidden > 0 ? `${named.length ? ', ' : ''}${hidden} more` : ''}{!h.people.length && <span className="page-sub">—</span>}</span>
+                              <HourPeek h={h} day={day} canNudge={canNudge} busy={busy} onAlert={() => alertHour(h.open_ids)} />
+                            </div>
+                          </td>
                           <td className="num" style={{ whiteSpace: 'nowrap' }}>{h.open > 0 ? <><b style={{ color: pct >= TH.warn ? '#B45309' : '#DC2626' }}>{h.open}</b>{canNudge && <button className="btn btn-ghost" style={{ padding: '2px 8px', marginLeft: 6, fontSize: 12 }} disabled={busy} title="Alert available people about this hour's open spots" onClick={() => alertHour(h.open_ids)}>🔔</button>}</> : <span className="page-sub">—</span>}</td>
                         </tr>
                       ) })}</tbody>
@@ -1168,5 +1175,58 @@ function EditTimeModal({ r, canDelete, onClose }) {
         </table>
       )}
     </WoModal>
+  )
+}
+
+
+// Hover (or tap) an hour's "Who's on" to see everyone assigned that hour: their interval and status.
+const BH_CSS = `
+.bh-cell { position: relative; cursor: default; outline: none; }
+.bh-names { border-bottom: 1px dashed color-mix(in srgb, var(--ink-soft) 55%, transparent); }
+.bh-peek { display: none; position: absolute; z-index: 40; top: calc(100% + 6px); left: -10px; width: 380px; max-width: 80vw; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 36px rgba(15,23,42,.18); padding: 12px 14px; text-align: left; }
+.bh-cell:hover .bh-peek, .bh-cell:focus-within .bh-peek, .bh-cell.pinned .bh-peek { display: block; }
+.bh-peek-row { display: flex; align-items: center; gap: 9px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.bh-peek-row:last-of-type { border-bottom: 0; }
+`
+function HourPeek({ h, day, canNudge, busy, onAlert }) {
+  const now = new Date()
+  const today = todayET() === day
+  const nowMin = today ? (() => { const t = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' })); return t.getHours() * 60 + t.getMinutes() })() : null
+  const mins = (t) => { const [a, b] = String(t || '0:0').split(':').map(Number); return a * 60 + b }
+  const statusOf = (p) => {
+    if (p.status === 'no_show') return ['No-show', '#B91C1C']
+    if (p.checked_out_at) return [`Done · ${atET(p.checked_in_at || p.checked_out_at)}–${atET(p.checked_out_at)}`, '#64748B']
+    if (p.checked_in_at) return [`● In at ${atET(p.checked_in_at)}`, '#16A34A']
+    if (day < todayET() || (today && nowMin >= mins(p.end))) return ['Never checked in', '#B91C1C']
+    if (today && nowMin >= mins(p.start)) return [`Not checked in · ${nowMin - mins(p.start)} min`, '#DC2626']
+    return ['Scheduled', '#2563EB']
+  }
+  return (
+    <div className="bh-peek" role="tooltip" onClick={e => e.stopPropagation()}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+        <b style={{ fontSize: 13.5 }}>{hourLabel(h.hour)}</b>
+        <span className="page-sub" style={{ fontSize: 12 }}>{h.filled} of {h.spots} spots filled</span>
+      </div>
+      {h.people.length === 0 ? <div className="page-sub" style={{ fontSize: 12.5, padding: '4px 0' }}>Nobody assigned yet.</div> : h.people.map((p, i) => {
+        const [st, col] = statusOf(p)
+        return (
+          <div key={p.id + i} className="bh-peek-row">
+            <span className="db-av" style={{ width: 26, height: 26, fontSize: 10.5 }}>{p.name ? initials(p.name) : '·'}</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <b style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name || 'A team member'}</b>
+              <span className="page-sub" style={{ fontSize: 11.5 }}>{fmtTime(p.start)} – {fmtTime(p.end)}{p.role ? ` · ${p.role}` : ''}</span>
+            </span>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: col, whiteSpace: 'nowrap' }}>{st}</span>
+          </div>
+        )
+      })}
+      {h.open > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--line)' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#B45309', flex: 1 }}>{h.open} open spot{h.open === 1 ? '' : 's'}</span>
+          {canNudge && <button className="btn btn-ghost" style={{ padding: '3px 10px', fontSize: 12 }} disabled={busy} onClick={onAlert}>🔔 Alert available</button>}
+        </div>
+      )}
+    </div>
   )
 }
