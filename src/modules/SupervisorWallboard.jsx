@@ -51,37 +51,47 @@ const TILES = [
 function n(v) { return Number(v || 0) }
 function loadTiles() { try { const v = JSON.parse(localStorage.getItem(LS) || 'null'); if (Array.isArray(v)) return v.includes('leaders') || localStorage.getItem(LS + '-lb') ? v : [...v, 'leaders'] } catch { /* ignore */ } return [...TILES.map(t => t[0]), 'leaders'] }
 
-// ---------- Leaderboard (2026-11-10, Becky: top 3 per board, side by side, "First L.") ----------
+// ---------- Leaderboard (2026-11-10, Becky): 2 x 2 boards, top 3 each, "First L." ----------
 const BOARDS = [
-  ['bookings', 'Most bookings', 'booked'],
-  ['cards', 'Most cards asked', 'asked for a card'],
-  ['book_rate', 'Best booking rate', 'min. 10 decided'],
-  ['qa', 'Top QA score', 'min. 10 reviewed'],
+  ['bookings', 'Most bookings', 'appointments booked'],
+  ['cards', 'Most cards asked', 'asked for a card on file'],
+  ['book_rate', 'Best booking rate', 'booked ÷ decided · min. 10'],
+  ['qa', 'Top QA score', 'average score · min. 10 calls'],
 ]
-const MEDAL = ['#D4A017', '#9CA3AF', '#B7793E']
+const MEDAL = ['#D4A017', '#A8B0B8', '#C08552']
 const shortName = (n) => { const p = String(n || '').trim().split(/\s+/); return p.length > 1 ? `${p[0]} ${p[p.length - 1][0]}.` : (p[0] || '') }
 function Leaderboard({ data, failed, tv }) {
   return (
-    <div style={{ ...S.card }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
-        <div style={{ fontSize: tv ? 22 : 17, fontWeight: 800, color: '#14302A' }}>🏆 Leaderboard</div>
+    <div style={{ ...S.card, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+        <div style={{ fontSize: tv ? 22 : 18, fontWeight: 800, color: '#14302A' }}>🏆 Leaderboard</div>
         <div style={{ fontSize: 11.5, color: '#8a918d' }}>from reviewed calls</div>
       </div>
       {!data ? <div style={S.mut}>{failed ? 'Couldn’t load the leaderboard.' : 'Loading…'}</div> : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
+        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gridAutoRows: '1fr', gap: 12 }}>
           {BOARDS.map(([k, label, hint]) => {
             const rows = (data[k] || []).slice(0, 3)
             return (
-              <div key={k} style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: '#2F7D5B' }}>{label}</div>
-                <div style={{ fontSize: 10.5, color: '#8a918d', marginBottom: 6 }}>{hint}</div>
-                {rows.length === 0 ? <div style={{ ...S.mut, fontSize: 12 }}>No calls yet</div> : rows.map((r, i) => (
-                  <div key={r.name} title={`${r.name} · ${r.sub}`} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: tv ? '8px 0' : '5px 0', borderTop: i ? '1px solid #F1EEE8' : 'none' }}>
-                    <span style={{ width: 18, height: 18, flex: 'none', borderRadius: 999, background: MEDAL[i], color: '#fff', fontSize: 10, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
-                    <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: tv ? 15 : 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortName(r.name)}</span>
-                    <span style={{ fontWeight: 800, fontSize: tv ? 17 : 13, flex: 'none' }}>{r.value}</span>
-                  </div>
-                ))}
+              <div key={k} style={{ background: '#FAF8F4', border: '1px solid #EEEAE2', borderRadius: 12, padding: '12px 14px', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.07em', textTransform: 'uppercase', color: '#2F7D5B' }}>{label}</div>
+                <div style={{ fontSize: 11, color: '#8a918d', marginBottom: 8 }}>{hint}</div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4 }}>
+                {rows.length === 0 ? <div style={{ ...S.mut, fontSize: 12, textAlign: 'center' }}>No reviewed calls yet</div> : rows.map((r, i) => {
+                  const lead = i === 0
+                  return (
+                    <div key={r.name} title={r.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: lead ? '10px 12px' : '8px 12px', borderRadius: 10,
+                      background: lead ? '#fff' : 'transparent', border: lead ? '1px solid #E8E4DC' : '1px solid transparent', boxShadow: lead ? '0 1px 3px rgba(20,48,42,0.06)' : 'none' }}>
+                      <span style={{ width: lead ? 26 : 20, height: lead ? 26 : 20, flex: 'none', borderRadius: 999, background: MEDAL[i], color: '#fff',
+                        fontSize: lead ? 12.5 : 10.5, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontWeight: lead ? 800 : 700, fontSize: lead ? (tv ? 17 : 14.5) : (tv ? 15 : 13), color: '#1C2421', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortName(r.name)}</span>
+                        <span style={{ display: 'block', fontSize: 11, color: '#8a918d', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.sub}</span>
+                      </span>
+                      <span style={{ flex: 'none', fontWeight: 800, fontSize: lead ? (tv ? 24 : 20) : (tv ? 18 : 15), color: lead ? '#14302A' : '#33403A', fontVariantNumeric: 'tabular-nums' }}>{r.value}</span>
+                    </div>
+                  )
+                })}
+                </div>
               </div>
             )
           })}
@@ -198,7 +208,7 @@ export default function SupervisorWallboard({ clientId = null }) {
 
       {/* widgets (left) + leaderboard (right) */}
       <style>{'@media (max-width: 1000px){.wb-split{grid-template-columns:minmax(0,1fr) !important}}'}</style>
-      <div className="wb-split" style={{ display: 'grid', gridTemplateColumns: tiles.includes('leaders') ? 'minmax(0,1.35fr) minmax(300px,1fr)' : 'minmax(0,1fr)', gap: 14, alignItems: 'start' }}>
+      <div className="wb-split" style={{ display: 'grid', gridTemplateColumns: tiles.includes('leaders') ? 'minmax(0,1.35fr) minmax(300px,1fr)' : 'minmax(0,1fr)', gap: 14, alignItems: 'stretch' }}>
       <div style={{ display: 'grid', gap: 14 }}>
       {groups.map(g => (
         <div key={g}>
@@ -309,3 +319,4 @@ const S = {
   tdn: { padding: '9px 10px', borderTop: '1px solid #F1EEE8', textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
   pill: { display: 'inline-block', padding: '3px 9px', borderRadius: 999, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' },
 }
+export { Leaderboard }
