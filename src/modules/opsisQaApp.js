@@ -1342,7 +1342,7 @@ export function mountOpsisQA(ROOT, cfg) {
       ans.map(function (k) { return rcField(k, L.answers[k]); }).join('') + '</div>' +
       '<div style="margin-top:12px">' + rcField('Issue', L.issue) + '</div>' +
       '<div class="banner" style="margin-top:12px;background:#E6F0EA;border-color:#CFE5DF;color:#14302A"><b>Next step for the team:</b> ' + esc(L.next_step || '—') + '</div>' +
-      '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="sel btnd" data-act="rcstart">☎ Call again</button><button class="sel" data-act="rcback">Back to the list</button></div></div>' +
+      '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center">' + (r.call_id ? '<span id="rcaudio" style="display:inline-flex;flex:0 1 auto"><button class="sel btnd" data-act="rcplay" data-id="' + esc(r.call_id) + '">▶ Listen' + (r.duration_secs ? ' (' + fsecs(r.duration_secs) + ')' : '') + '</button></span>' : '') + '<button class="sel" data-act="rcstart">☎ Call again</button><button class="sel" data-act="rcback">Back to the list</button></div></div>' +
       '<div class="oq-card"><h2 class="ttl">How ' + esc(who) + ' did</h2><div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px"><div style="flex:1 1 260px"><div class="cap" style="color:#1F5A41">Handled well</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(V.handled_well) + '</ul></div><div style="flex:1 1 260px"><div class="cap" style="color:#A8441A">To fix</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + (li(V.issues) || '<li class="mut">Nothing flagged</li>') + '</ul>' + ((V.missing || []).length ? '<div class="mut" style="font-size:12.5px;margin-top:6px">Didn’t get: ' + esc(V.missing.join(', ')) + '</div>' : '') + '</div></div></div>' +
       '<div class="oq-card"><details open><summary style="cursor:pointer;font-weight:600">Transcript</summary><div style="margin-top:8px">' + tx + '</div></details></div>';
   }
@@ -4336,6 +4336,12 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rcstart') { rcStart(); }
       else if (a === 'rcend') { rcEnd(); }
       else if (a === 'rcback') { RC.res = null; RC.err = null; drawRecep(); }
+      else if (a === 'rcplay') { var slot = $('rcaudio'); if (!slot || el.disabled) return; el.disabled = true; el.textContent = 'Loading…';
+        var tk = null; try { var rw = localStorage.getItem('sb-dqvuviyqrcrgapmxkoyx-auth-token'); if (!rw) { for (var ii = 0; ii < localStorage.length; ii++) { var kk = localStorage.key(ii); if (/^sb-.*-auth-token$/.test(kk)) { rw = localStorage.getItem(kk); break; } } } var jj = rw && JSON.parse(rw); tk = jj && (jj.access_token || (jj.currentSession && jj.currentSession.access_token)); } catch (x) { }
+        fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/ai-csr-audio', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (tk || '') }, body: JSON.stringify({ call_id: d.id }) })
+          .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || 'Couldn’t load the recording.'); return j; }); })
+          .then(function (j) { if (!j.url) { el.disabled = false; el.textContent = '▶ Listen'; toast('No recording is available for this call.'); return; } slot.innerHTML = '<audio controls autoplay src="' + esc(j.url) + '" style="width:min(460px,80vw);height:44px"></audio>'; })
+          .catch(function (e) { el.disabled = false; el.textContent = '▶ Listen'; toast(e.message); }); }
       else if (a === 'rctab') { if (RC.tab === 'settings' && RC.dirty && d.t !== 'settings' && !confirm('Discard unsaved settings changes?')) return; if (RC.tab === 'settings' && d.t !== 'settings') { RC.dirty = false; RC.sBrand = ''; } RC.tab = d.t; drawRecep(); }
       else if (a === 'rcsec') { RC.open[d.id] = !RC.open[d.id]; drawRcSettings(); }
       else if (a === 'rcadd') { rcListAdd(d.list); }
