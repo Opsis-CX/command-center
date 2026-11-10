@@ -24,7 +24,7 @@ const Swatch = ({ c, l }) => <span style={{ display: 'inline-flex', alignItems: 
 
 export default function DashboardSettings() {
   const { isAdmin } = useAuth()
-  const canEdit = usingNewPermissions() ? hasPerm('admin.settings') : isAdmin
+  const canEdit = usingNewPermissions() ? hasPerm('admin.dashboard_settings') : isAdmin
   const [s, setS] = useState(null)
   const [saved, setSaved] = useState(null)
   const [list, setList] = useState(null)
