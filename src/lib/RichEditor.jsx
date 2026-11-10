@@ -560,8 +560,8 @@ function Toolbar({ editor, items, onSpellCheck }) {
       case 'h1':       return <Btn key={i} title="Heading 1" active={editor.isActive('heading', { level: 1 })} onClick={() => c().toggleHeading({ level: 1 }).run()}>H1</Btn>
       case 'h2':       return <Btn key={i} title="Heading 2" active={editor.isActive('heading', { level: 2 })} onClick={() => c().toggleHeading({ level: 2 }).run()}>H2</Btn>
       case 'h3':       return <Btn key={i} title="Heading 3" active={editor.isActive('heading', { level: 3 })} onClick={() => c().toggleHeading({ level: 3 }).run()}>H3</Btn>
-      case 'bullet':   return <Btn key={i} title="Bulleted list" active={editor.isActive('bulletList')}  onClick={() => c().toggleBulletList().run()}>•</Btn>
-      case 'ordered':  return <Btn key={i} title="Numbered list" active={editor.isActive('orderedList')} onClick={() => c().toggleOrderedList().run()}>1.</Btn>
+      case 'bullet':   return <Btn key={i} title="Bulleted list" active={editor.isActive('bulletList')}  onClick={() => { if (!editor.isActive('bulletList')) splitSelectedLines(editor); c().toggleBulletList().run() }}>•</Btn>
+      case 'ordered':  return <Btn key={i} title="Numbered list" active={editor.isActive('orderedList')} onClick={() => { if (!editor.isActive('orderedList')) splitSelectedLines(editor); c().toggleOrderedList().run() }}>1.</Btn>
       case 'quote':    return <Btn key={i} title="Quote" active={editor.isActive('blockquote')} onClick={() => c().toggleBlockquote().run()}>❝</Btn>
       case 'link':     return <LinkMenu key={i} editor={editor} />
       case 'color':    return <ColorMenu key={i} editor={editor} kind="color" />
@@ -578,6 +578,29 @@ function Toolbar({ editor, items, onSpellCheck }) {
   return <div className="re-toolbar">{items.map(render)}</div>
 }
 
+// Bullets / numbers on highlighted lines (2026-11-10, Becky): Shift+Enter lines are one paragraph with line
+// breaks, so the list used to swallow the whole block (including the line above the highlight). Before
+// making a list, turn the line breaks inside the highlighted paragraph(s) into real lines, so only the
+// highlighted lines get bullets.
+function splitSelectedLines(editor) {
+  try {
+    const { state, view } = editor
+    const { from, to } = state.selection
+    const breaks = []
+    state.doc.nodesBetween(from, to, (node, pos) => {
+      if (node.type.name === 'paragraph') {
+        node.forEach((child, offset) => { if (child.type.name === 'hardBreak') breaks.push(pos + 1 + offset) })
+        return false
+      }
+      return true
+    })
+    if (!breaks.length) return
+    let tr = state.tr
+    for (let k = breaks.length - 1; k >= 0; k--) { const p = breaks[k]; tr = tr.delete(p, p + 1).split(p) }
+    view.dispatch(tr)
+  } catch (e) { /* fall back to the normal list toggle */ }
+}
+
 /**
  * RichEditor
  *
@@ -588,6 +611,8 @@ function Toolbar({ editor, items, onSpellCheck }) {
  * @param editorRef    optional; receives { clear, focus, insertText, getHTML, isEmpty }
  * @param submitOnEnter  Enter submits, Shift+Enter is a newline (chat behaviour)
  */
+
+
 export function RichEditor({
   value = '', onChange, onSubmit, onPasteFiles,
   placeholder = 'Write something…', variant = 'full',
