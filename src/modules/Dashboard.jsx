@@ -77,6 +77,7 @@ const initials = (n) => (n || '?').split(' ').map(w => w[0]).slice(0, 2).join(''
 
 // line icons (24×24, currentColor)
 const I = {
+  eye: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6', clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M12 6v6l4 2',
   ops: 'M3 3v18h18M8 16v-5M13 16V8M18 16v-3', staff: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
   sched: 'M3 5h18v16H3zM16 3v4M8 3v4M3 10h18', act: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01', fill: 'M3 17l6-6 4 4 8-8M15 7h6v6',
   open: 'M3 5h18v16H3zM3 10h18M12 14v4M10 16h4', agents: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8', cert: 'M12 2l7 4v6c0 5-3 8-7 10-4-2-7-5-7-10V6zM9 12l2 2 4-4',
@@ -145,7 +146,7 @@ export default function Dashboard() {
   )
   const client = scope.clients?.find(c => c.id === clientId)
   const filter = tab === 'overview' ? { c: null, p: null } : { c: clientId || null, p: projectId || null }
-  const VIEWS = [['operations', 'Operations', I.ops], ['staffing', 'Staffing', I.staff], ['schedule', 'Schedule', I.sched], ['activity', 'Activity', I.act]].filter(([k]) => scope.views?.[k])
+  const VIEWS = [['operations', 'Operations', I.ops], ['staffing', 'Staffing', I.staff], ['schedule', 'Schedule', I.sched], ['activity', 'Activity', I.act], ['whos_on', "Who's on", I.eye]].filter(([k]) => scope.views?.[k])
 
   return (
     <div className="db-wrap">
@@ -190,6 +191,8 @@ export default function Dashboard() {
       {view === 'staffing' && <Staffing key={`s${tab}${filter.c}${filter.p}`} f={filter} T={T} canNudge={!!scope.nudge && flags.nudge !== false} canCheck={!!scope.checkin}
         onViewActivity={scope.views?.activity ? (name) => { setActQ(name); setView('activity') } : null} />}
       {view === 'schedule' && <Schedule key={`c${tab}${filter.c}${filter.p}`} f={filter} days={days} from={from} setFrom={setFrom} T={T} canNudge={!!scope.nudge && flags.open !== false} />}
+      {view === 'whos_on' && <WhosOn key={`w${tab}${filter.c}${filter.p}`} f={filter} T={T} canNudge={!!scope.nudge && flags.nudge !== false} canCheck={!!scope.checkin}
+        canTimeEdit={!!scope.time_edit} canTimeDelete={!!scope.time_delete} overview={tab === 'overview'} />}
       {view === 'activity' && <Activity key={`a${tab}${filter.c}${filter.p}${actQ}`} f={filter} T={T} overview={tab === 'overview'} scope={scope} initialQ={actQ} />}
     </div>
   )
@@ -375,21 +378,22 @@ function Schedule({ f, days, from, setFrom, T, canNudge }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         <div className="db-pills">
           <button className={'db-pill' + (sub === 'overview' ? ' on' : '')} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setSub('overview')}>Schedule overview</button>
+          <button className={'db-pill' + (sub === 'hour' ? ' on' : '')} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setSub('hour')}>By hour</button>
           <button className={'db-pill' + (sub === 'open' ? ' on' : '')} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setSub('open')}>Open intervals ({(data.open || []).length})</button>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+        {sub !== 'hour' && <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
           <button className="btn btn-ghost" style={{ padding: '6px 10px' }} onClick={() => setFrom(addDays(from, -days))} aria-label="Earlier">‹</button>
           <span style={{ fontWeight: 700, fontSize: 13.5, minWidth: 150, textAlign: 'center' }}>{fmtDayParts(data.from)[1]} – {fmtDayParts(data.to)[1]}</span>
           <button className="btn btn-ghost" style={{ padding: '6px 10px' }} onClick={() => setFrom(addDays(from, days))} aria-label="Later">›</button>
           {from !== todayET() && <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setFrom(todayET())}>Today</button>}
-        </div>
+        </div>}
         {sub === 'overview' && (
           <select className="db-sel" style={{ minWidth: 150 }} value={mode} onChange={e => setMode(e.target.value)} aria-label="Show">
             <option value="filled">Show: filled spots</option><option value="open">Show: open spots</option><option value="pct">Show: fill rate %</option>
           </select>
         )}
       </div>
-      {sub === 'overview' ? (
+      {sub === 'hour' ? <ByHour f={f} T={T} canNudge={canNudge} /> : sub === 'overview' ? (
         <div className="db-card">
           {(data.rows || []).length === 0 ? <div className="db-empty">Nothing scheduled in this range.</div> : (
             <div className="db-tbl-wrap"><table className="db-tbl" style={{ minWidth: 760 }}>
@@ -835,5 +839,334 @@ function TeamAttendance({ f, T, people, canNudge, canCheck, canInternal, onViewA
         </div>
       )}
     </div>
+  )
+}
+
+
+// ============================================================
+// SCHEDULE → BY HOUR (2026-11-06; from Schedule insights): each client/project's day hour by hour —
+// spots, coverage, who's on, open spots (🔔 alerts available people) — plus the day's Mix
+// (by Scorecard tier, by role). Data: dash_by_hour (server-scoped, same visibility rules).
+// ============================================================
+const hourLabel = (h) => `${((h + 11) % 12) + 1}:00 ${h < 12 ? 'AM' : 'PM'}`
+const TIER_COLOR = { 'Top Performer': '#015974', 'High Performer': '#0E7490', 'Developing Performer': '#38BDF8', 'Improvement Opportunity': '#F59E0B', 'Onboarding': '#A78BFA', 'Not Working': '#94A3B8', 'Unrated': '#CBD5E1', 'No tier': '#E2E8F0' }
+function ByHour({ f, T, canNudge }) {
+  const [day, setDay] = useState(todayET())
+  const { data, err } = useRpc('dash_by_hour', { p_client: f.c, p_project: f.p, p_day: day })
+  const [open, toggle] = useOpen()
+  const [msg, setMsg] = useState(null)
+  const [busy, setBusy] = useState(false)
+  async function alertHour(ids) {
+    if (!ids?.length) return
+    setBusy(true); setMsg(null)
+    const { data: r, error } = await supabase.rpc('dash_alert_open', { p_blocks: ids, p_note: null })
+    setBusy(false)
+    setMsg(error ? { kind: 'err', text: error.message } : { kind: 'ok', text: r.people ? `Alerted ${r.people} available ${r.people === 1 ? 'person' : 'people'}.` : 'Nobody new to alert for that hour.' })
+  }
+  const longDay = new Date(day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const tiers = data?.tiers || [], roles = data?.roles || []
+  const tierTotal = tiers.reduce((n, t) => n + t.people, 0) || 1, roleMax = Math.max(1, ...roles.map(r => r.people))
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+        <button className="btn btn-ghost" style={{ padding: '6px 10px' }} onClick={() => setDay(addDays(day, -1))} aria-label="Previous day">‹</button>
+        <span style={{ fontWeight: 700, fontSize: 13.5, minWidth: 120, textAlign: 'center' }}>{longDay}</span>
+        <button className="btn btn-ghost" style={{ padding: '6px 10px' }} onClick={() => setDay(addDays(day, 1))} aria-label="Next day">›</button>
+        {day !== todayET() && <button className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={() => setDay(todayET())}>Today</button>}
+      </div>
+      <Flash msg={msg} />
+      {err ? <Err msg={err} /> : !data ? <Loading /> : (
+        <div className="db-split">
+          <div>
+            {(data.clients || []).length === 0 && <div className="db-card"><div className="db-empty">Nothing scheduled this day.</div></div>}
+            {(data.clients || []).map((c, ci) => {
+              const id = `${c.client_id || 'i'}|${c.project_id || 'n'}`, isOpen = open[id] ?? ci === 0
+              return (
+                <div key={id} className="db-card">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => toggle(id)}>
+                    <span className="db-chev" style={{ transform: isOpen ? 'rotate(90deg)' : 'none' }}><Ico d={I.chev} size={15} /></span>
+                    <h3 style={{ margin: 0 }}>{c.client}</h3>{c.project && <span className="page-sub" style={{ fontSize: 13 }}>· {c.project}</span>}
+                    <span style={{ marginLeft: 'auto' }}><Pct v={c.pct} /></span>
+                  </div>
+                  {isOpen && <div className="db-tbl-wrap" style={{ marginTop: 10 }}><table className="db-tbl">
+                    <thead><tr><th style={{ width: 90 }}>Hour</th><th>Spots</th><th>Coverage</th><th>Who's on</th><th className="num">Open</th></tr></thead>
+                    <tbody>{c.hours.map(h => { const pct = h.spots ? Math.round(100 * h.filled / h.spots) : null; const named = h.people.filter(p => p.name), hidden = h.people.length - named.length
+                      return (
+                        <tr key={h.hour}>
+                          <td style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{hourLabel(h.hour)}</td>
+                          <td style={{ whiteSpace: 'nowrap' }}>{h.filled} of {h.spots}</td>
+                          <td style={{ whiteSpace: 'nowrap' }}><span className="db-bar-track" style={{ display: 'inline-block', width: 120, verticalAlign: 'middle', marginRight: 8 }}><span className="db-bar-fill" style={{ display: 'block', width: `${pct || 0}%`, background: barColor(pct) }} /></span><Pct v={pct} /></td>
+                          <td style={{ fontSize: 12.5 }}>{named.map(p => p.name).join(', ')}{hidden > 0 ? `${named.length ? ', ' : ''}${hidden} more` : ''}{!h.people.length && <span className="page-sub">—</span>}</td>
+                          <td className="num" style={{ whiteSpace: 'nowrap' }}>{h.open > 0 ? <><b style={{ color: pct >= TH.warn ? '#B45309' : '#DC2626' }}>{h.open}</b>{canNudge && <button className="btn btn-ghost" style={{ padding: '2px 8px', marginLeft: 6, fontSize: 12 }} disabled={busy} title="Alert available people about this hour's open spots" onClick={() => alertHour(h.open_ids)}>🔔</button>}</> : <span className="page-sub">—</span>}</td>
+                        </tr>
+                      ) })}</tbody>
+                  </table></div>}
+                </div>
+              )
+            })}
+          </div>
+          <div className="db-card" style={{ alignSelf: 'start' }}>
+            <h3>Mix <small>— {longDay}</small></h3>
+            <div style={{ fontSize: 12.5, fontWeight: 800, margin: '4px 0 6px' }}>By Scorecard tier</div>
+            {tiers.length === 0 ? <div className="page-sub" style={{ fontSize: 12.5 }}>Nobody scheduled.</div> : <>
+              <div style={{ display: 'flex', height: 20, borderRadius: 7, overflow: 'hidden' }}>{tiers.map(t => <span key={t.tier} title={`${t.tier}: ${t.people}`} style={{ width: `${100 * t.people / tierTotal}%`, background: TIER_COLOR[t.tier] || '#CBD5E1' }} />)}</div>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11.5, marginTop: 8 }}>{tiers.map(t => <span key={t.tier} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span className="db-dot" style={{ background: TIER_COLOR[t.tier] || '#CBD5E1', borderRadius: 3 }} />{t.tier} {t.people}</span>)}</div>
+              <div style={{ marginTop: 12 }}>{tiers.filter(t => t.worked_pct != null).map(t => (
+                <div key={t.tier} className="db-bar" style={{ gridTemplateColumns: '150px 1fr 46px' }}><span>{t.tier}</span><span className="db-bar-track"><span className="db-bar-fill" style={{ display: 'block', width: `${t.worked_pct}%`, background: barColor(t.worked_pct) }} /></span><b className="num" style={{ textAlign: 'right' }}>{t.worked_pct}%</b></div>
+              ))}</div>
+              <div className="page-sub" style={{ fontSize: 11.5, marginTop: 4 }}>How often each tier actually works the intervals it picks up (last 30 days)</div>
+            </>}
+            <div style={{ fontSize: 12.5, fontWeight: 800, margin: '16px 0 6px' }}>By role</div>
+            {roles.length === 0 ? <div className="page-sub" style={{ fontSize: 12.5 }}>—</div> : roles.map(r => (
+              <div key={r.role} className="db-bar" style={{ gridTemplateColumns: '150px 1fr 46px' }}><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.role}</span><span className="db-bar-track"><span className="db-bar-fill" style={{ display: 'block', width: `${100 * r.people / roleMax}%`, background: 'var(--accent)' }} /></span><b className="num" style={{ textAlign: 'right' }}>{r.people}</b></div>
+            ))}
+            <div className="page-sub" style={{ fontSize: 11.5, marginTop: 4 }}>People scheduled, by interval role</div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ============================================================
+// WHO'S ON (2026-11-06) — the old Who's On page + Time page in one view, organized by
+// client → project. Who's scheduled today, status (in / break / late …), what task they're
+// working on right now, hours tracked today; check in/out, adjust check-in, nudge, stop the
+// task timer, edit/delete task time. Everything is checked again on the server.
+// ============================================================
+const elapsed = (iso) => { const m = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000)); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m` }
+const hm = (mins) => { const m = Math.round(mins || 0); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m` }
+const atET = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })
+// "HH:MM today in Eastern" → ISO instant
+function etToIso(dateStr, hhmm) {
+  const guess = new Date(`${dateStr}T${hhmm}:00Z`)
+  const asET = new Date(guess.toLocaleString('en-US', { timeZone: 'America/New_York' })), asUTC = new Date(guess.toLocaleString('en-US', { timeZone: 'UTC' }))
+  return new Date(guess.getTime() + (asUTC - asET)).toISOString()
+}
+const WO_STATUS = { checked_in: ['Checked in', '#16A34A'], break: ['On break', '#B45309'], late: ['Late', '#DC2626'], scheduled: ['Scheduled', '#2563EB'], done: ['Done', '#64748B'], no_show: ['No-show', '#B91C1C'], working: ['Working (no interval)', '#0E7490'] }
+
+function WhosOn({ f, T, canNudge, canCheck, canTimeEdit, canTimeDelete, overview }) {
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState('')
+  const [, setTick] = useState(0)
+  const [q, setQ] = useState('')
+  const [status, setStatus] = useState('')
+  const [open, toggle] = useOpen()
+  const [msg, setMsg] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [timeFor, setTimeFor] = useState(null)     // person row → Edit time modal
+  const [adjustFor, setAdjustFor] = useState(null) // row → Adjust check-in modal
+  const load = useCallback(() => supabase.rpc('dash_whos_on', { p_client: f.c, p_project: f.p }).then(({ data, error }) => { if (error) setErr(error.message); else { setErr(''); setData(data) } }), [f.c, f.p])
+  useEffect(() => { load(); const a = setInterval(load, 30000), b = setInterval(() => setTick(t => t + 1), 30000); return () => { clearInterval(a); clearInterval(b) } }, [load])
+  if (err) return <Err msg={err} />
+  if (!data) return <Loading />
+  const P = data.people || {}
+  const rows = (data.rows || []).map(r => ({ ...r, st: r.status === 'checked_in' && r.break_started ? 'break' : r.status, person: P[r.person_id] || {} }))
+  const onInterval = new Set(rows.map(r => r.person_id))
+  const extra = Object.entries(P).filter(([id, p]) => !onInterval.has(id) && p.timer).map(([id, p]) => ({ person_id: id, person: p, st: 'working' }))
+  const all = [...rows, ...extra]
+  const ql = q.trim().toLowerCase()
+  const shown = all.filter(r => (!status || r.st === status) && (!ql || `${r.person.name} ${r.person.timer?.task || ''} ${r.client || ''} ${r.project || ''} ${r.role || ''}`.toLowerCase().includes(ql)))
+  const count = (st) => all.filter(r => r.st === st).length
+  const working = all.filter(r => r.person.timer).length
+  // group: client → project, then "Working, not on an interval"
+  const groups = []
+  for (const r of shown) {
+    const key = r.st === 'working' ? 'zz-working' : `${r.client || 'Internal'}|${r.project || ''}`
+    let g = groups.find(x => x.key === key)
+    if (!g) { g = { key, title: r.st === 'working' ? 'Working, not on an interval' : (r.client || 'Internal'), sub: r.st === 'working' ? 'Running a task timer without an interval today' : r.project, rows: [] }; groups.push(g) }
+    g.rows.push(r)
+  }
+  groups.sort((a, b) => a.key.localeCompare(b.key))
+
+  async function run(fn, ok) {
+    setBusy(true); setMsg(null)
+    const { data: r, error } = await fn()
+    setBusy(false)
+    if (error) { setMsg({ kind: 'err', text: error.message }); return }
+    setMsg({ kind: 'ok', text: typeof ok === 'function' ? ok(r) : ok }); load()
+  }
+  const act = (kind, r) => {
+    if (kind === 'nudge') return run(() => supabase.rpc('dash_nudge', { p_claims: [r.claim_id] }), (x) => x.sent ? `Nudged ${r.person.name}.` : `${r.person.name} was nudged in the last few minutes.`)
+    if (kind === 'stop') return run(() => supabase.rpc('dash_time_action', { p_entry: r.person.timer.entry_id, p_action: 'stop' }), `Stopped ${r.person.name}'s task timer.`)
+    if (kind === 'out' && !window.confirm(`Check ${r.person.name} out now? This also ends any break and stops their task timer.`)) return
+    return run(() => supabase.rpc('dash_check', { p_claims: [r.claim_id], p_action: kind }), (x) => x.done ? (kind === 'out' ? `Checked ${r.person.name} out.` : `Checked ${r.person.name} in${kind === 'in_at_start' ? ' as of their start time' : ''}.`) : 'Nothing changed.')
+  }
+  return (
+    <div className="db-card">
+      <style>{ATT_CSS}</style>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <span className="db-kpi-ic" style={{ width: 40, height: 40 }}><Ico d={I.eye} size={20} /></span>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 17, fontWeight: 800 }}>Who's on</div>
+          <div className="page-sub" style={{ fontSize: 13 }}>Live check-ins, what everyone's working on, and their time today. Updates every 30 seconds.</div>
+        </div>
+        {[['checked_in', `● ${count('checked_in')} checked in`, '#16A34A'], ['break', `☕ ${count('break')} on break`, '#B45309'], ['late', `⚠ ${count('late')} late`, '#DC2626']].map(([k, l, c]) => (
+          <button key={k} className={'ta-tab' + (status === k ? ' on' : '')} style={status === k ? undefined : { color: c }} onClick={() => setStatus(s => s === k ? '' : k)}>{l}</button>
+        ))}
+        <span className="ta-tab" style={{ cursor: 'default' }}>⏱ {working} working on a task</span>
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        <label className="ta-f"><span>Status</span><select value={status} onChange={e => setStatus(e.target.value)}><option value="">Everyone</option>
+          {Object.entries(WO_STATUS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</select></label>
+        <div style={{ position: 'relative', flex: '1 1 240px' }}>
+          <span style={{ position: 'absolute', left: 12, top: 13, color: 'var(--ink-soft)' }}><Ico d={I.search} size={16} /></span>
+          <input className="db-sel" style={{ width: '100%', height: '100%', paddingLeft: 36, fontWeight: 400, boxSizing: 'border-box' }} placeholder="Search people, tasks, clients…" value={q} onChange={e => setQ(e.target.value)} aria-label="Search" />
+        </div>
+      </div>
+      <Flash msg={msg} />
+      {groups.length === 0 ? <div className="db-empty">{all.length ? 'Nobody matches.' : 'Nobody is scheduled today.'}</div> : groups.map((g, gi) => {
+        const isOpen = open[g.key] ?? true
+        return (
+          <div key={g.key} style={{ marginTop: gi ? 14 : 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }} onClick={() => toggle(g.key)}>
+              <span className="db-chev" style={{ transform: isOpen ? 'rotate(90deg)' : 'none' }}><Ico d={I.chev} size={15} /></span>
+              <b style={{ fontSize: 15 }}>{g.title}</b>{g.sub && <span className="page-sub" style={{ fontSize: 13 }}>· {g.sub}</span>}
+              <span className="page-sub" style={{ fontSize: 12.5, marginLeft: 'auto' }}>{g.rows.filter(r => r.st === 'checked_in' || r.st === 'break' || r.st === 'working').length} on{g.key === 'zz-working' ? '' : ` · ${g.rows.length} today`}</span>
+            </div>
+            {isOpen && <div className="db-tbl-wrap" style={{ overflow: 'visible' }}><table className="db-tbl" style={{ tableLayout: 'fixed' }}>
+              <colgroup><col style={{ width: '20%' }} /><col style={{ width: '15%' }} /><col style={{ width: '17%' }} /><col style={{ width: '28%' }} /><col style={{ width: '8%' }} /><col style={{ width: '12%' }} /></colgroup>
+              <thead><tr><th>Person</th><th>Interval</th><th>Status</th><th>Working on</th><th className="num">Today</th><th className="num">Actions</th></tr></thead>
+              <tbody>{g.rows.map(r => { const [sl, sc] = WO_STATUS[r.st] || [r.st, 'var(--ink-soft)']
+                return (
+                  <tr key={(r.claim_id || 'w') + r.person_id}>
+                    <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                      <span className="db-av" style={{ width: 30, height: 30, fontSize: 11.5 }}>{r.person.avatar ? <img src={r.person.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials(r.person.name)}</span>
+                      <span><b>{r.person.name}</b><div className="page-sub" style={{ fontSize: 11.5 }}>{r.person.type === 'agent' ? 'Agent' : (r.person.title || 'Internal')}</div></span></span></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{r.start ? <>{fmtTime(r.start)} – {fmtTime(r.end)}{r.role && <div className="page-sub" style={{ fontSize: 11.5 }}>{r.role}</div>}</> : <span className="page-sub">—</span>}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: sc, fontSize: 13 }}><span className="db-dot" style={{ background: sc, marginRight: 6 }} />{sl}</span>
+                      <div className="page-sub" style={{ fontSize: 11.5 }}>{r.st === 'break' ? `for ${elapsed(r.break_started)}` : r.checked_in_at ? `in at ${atET(r.checked_in_at)}${r.checked_out_at ? ` · out ${atET(r.checked_out_at)}` : ''}` : r.st === 'late' ? `${r.minutes_late} min${r.last_nudged ? ` · nudged ${ago(r.last_nudged)}` : ''}` : ''}</div></td>
+                    <td style={{ minWidth: 180 }}>{r.person.timer ? <><b style={{ fontSize: 13 }}>{r.person.timer.task || 'A task'}</b><div className="page-sub" style={{ fontSize: 11.5 }}>{r.person.timer.project ? `${r.person.timer.project} · ` : ''}<span style={{ color: '#16A34A', fontWeight: 700 }}>⏱ {elapsed(r.person.timer.started_at)}</span></div></> : <span className="page-sub">—</span>}</td>
+                    <td className="num" style={{ whiteSpace: 'nowrap' }}>{hm(r.person.today_min)}</td>
+                    <td className="num"><WoMenu r={r} canNudge={canNudge} canCheck={canCheck} canTimeEdit={canTimeEdit} busy={busy} onAct={act} onEditTime={() => setTimeFor(r)} onAdjust={() => setAdjustFor(r)} /></td>
+                  </tr>
+                ) })}</tbody>
+            </table></div>}
+          </div>
+        )
+      })}
+      {timeFor && <EditTimeModal r={timeFor} canDelete={canTimeDelete} onClose={() => { setTimeFor(null); load() }} />}
+      {adjustFor && <AdjustCheckinModal r={adjustFor} onClose={() => setAdjustFor(null)} onSaved={(m) => { setAdjustFor(null); setMsg({ kind: 'ok', text: m }); load() }} onError={(m) => setMsg({ kind: 'err', text: m })} />}
+    </div>
+  )
+}
+
+function WoMenu({ r, canNudge, canCheck, canTimeEdit, busy, onAct, onEditTime, onAdjust }) {
+  const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h)
+  }, [open])
+  const go = (fn) => () => { setOpen(false); fn() }
+  const st = r.st
+  const items = [
+    ...(canCheck && r.claim_id && (st === 'late' || st === 'scheduled') ? [['in', 'Check in now', () => onAct('in', r)]] : []),
+    ...(canCheck && r.claim_id && st === 'late' ? [['in', 'Check in as of start time', () => onAct('in_at_start', r)]] : []),
+    ...(canCheck && r.claim_id && (st === 'checked_in' || st === 'break' || st === 'done') ? [['clock', 'Adjust check-in time…', onAdjust]] : []),
+    ...(canCheck && r.claim_id && (st === 'checked_in' || st === 'break') ? [['out', 'Check out', () => onAct('out', r)]] : []),
+    ...(canNudge && r.claim_id && st === 'late' ? [['bell', 'Send nudge', () => onAct('nudge', r)]] : []),
+    ...(canTimeEdit && r.person.timer ? [['stop', 'Stop task timer', () => onAct('stop', r)]] : []),
+    ...(canTimeEdit ? [['clock', 'Edit task time…', onEditTime]] : []),
+    ['msg', 'Message', () => openDm(r.person_id, navigate)],
+    ['profile', 'View profile', () => navigate(`/profile/${r.person_id}`)],
+  ]
+  const IC = { ...MI, clock: I.clock, stop: 'M6 6h12v12H6z' }
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+      <button className="ta-view" disabled={busy} onClick={() => setOpen(o => !o)} aria-haspopup="menu" aria-expanded={open}>Manage <span style={{ fontSize: 10, opacity: .7 }}>▾</span></button>
+      {open && <div className="ta-menu" role="menu">{items.map(([ic, label, fn], i) => <button key={i} className={'ta-mi' + (ic === 'bell' ? ' warn' : '')} role="menuitem" onClick={go(fn)}><Ico d={IC[ic]} size={16} />{label}</button>)}</div>}
+    </div>
+  )
+}
+
+function WoModal({ title, onClose, children, width = 560 }) {
+  return (
+    <div onMouseDown={e => { if (e.target === e.currentTarget) onClose() }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.42)', zIndex: 3000, display: 'grid', placeItems: 'center', padding: 14 }}>
+      <div role="dialog" aria-label={title} style={{ width: `min(${width}px, 100%)`, maxHeight: '88vh', overflow: 'auto', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 16, boxShadow: '0 24px 60px rgba(0,0,0,.25)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid var(--line)' }}><b style={{ fontSize: 16, flex: 1 }}>{title}</b><button className="btn btn-ghost" style={{ padding: '2px 8px' }} onClick={onClose} aria-label="Close">✕</button></div>
+        <div style={{ padding: '16px 20px' }}>{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function AdjustCheckinModal({ r, onClose, onSaved, onError }) {
+  const cur = r.checked_in_at ? new Date(r.checked_in_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' }) : String(r.start || '08:00').slice(0, 5)
+  const [t, setT] = useState(cur)
+  const [busy, setBusy] = useState(false)
+  async function save() {
+    setBusy(true)
+    const { error } = await supabase.rpc('dash_adjust_checkin', { p_claim: r.claim_id, p_at: etToIso(todayET(), t) })
+    setBusy(false)
+    if (error) return onError(error.message)
+    onSaved(`${r.person.name}'s check-in time is now ${fmtTime(t + ':00')}. Noted on their record.`)
+  }
+  return (
+    <WoModal title={`Adjust check-in · ${r.person.name}`} onClose={onClose} width={420}>
+      <div className="page-sub" style={{ fontSize: 13, marginBottom: 10 }}>Interval {fmtTime(r.start)} – {fmtTime(r.end)}. Times are Eastern.</div>
+      <label style={{ fontSize: 13, fontWeight: 700 }}>Checked in at<input type="time" className="db-sel" style={{ display: 'block', marginTop: 6, width: 160 }} value={t} onChange={e => setT(e.target.value)} /></label>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={busy || !t} onClick={save}>Save</button></div>
+    </WoModal>
+  )
+}
+
+function EditTimeModal({ r, canDelete, onClose }) {
+  const [day, setDay] = useState(todayET())
+  const [list, setList] = useState(null)
+  const [err, setErr] = useState('')
+  const [edit, setEdit] = useState(null)   // { id, hours, date, note }
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(() => supabase.rpc('dash_time_entries', { p_person: r.person_id, p_day: day }).then(({ data, error }) => { if (error) setErr(error.message); else { setErr(''); setList(data || []) } }), [r.person_id, day])
+  useEffect(() => { load() }, [load])
+  async function act(e, action, extra = {}) {
+    if (action === 'delete' && !window.confirm(`Delete ${hm(e.minutes)} on "${e.task || 'this task'}"? This can't be undone.`)) return
+    setBusy(true)
+    const { error } = await supabase.rpc('dash_time_action', { p_entry: e.id, p_action: action, p_minutes: extra.minutes ?? null, p_date: extra.date ?? null, p_note: extra.note ?? null })
+    setBusy(false)
+    if (error) return setErr(error.message)
+    setEdit(null); load()
+  }
+  const total = (list || []).reduce((n, e) => n + (e.minutes || 0), 0)
+  return (
+    <WoModal title={`Task time · ${r.person.name}`} onClose={onClose} width={640}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+        <button className="btn btn-ghost" style={{ padding: '4px 9px' }} onClick={() => setDay(addDays(day, -1))} aria-label="Previous day">‹</button>
+        <b style={{ minWidth: 130, textAlign: 'center', fontSize: 13.5 }}>{new Date(day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</b>
+        <button className="btn btn-ghost" style={{ padding: '4px 9px' }} onClick={() => setDay(addDays(day, 1))} aria-label="Next day">›</button>
+        <span className="page-sub" style={{ marginLeft: 'auto', fontSize: 13 }}>Total <b>{hm(total)}</b></span>
+      </div>
+      {err && <div style={{ background: '#FEF2F2', color: '#B91C1C', borderRadius: 9, padding: '8px 12px', fontSize: 13, marginBottom: 10 }}>{err}</div>}
+      {!list ? <div className="db-empty">Loading…</div> : list.length === 0 ? <div className="db-empty">No task time this day.</div> : (
+        <table className="db-tbl">
+          <thead><tr><th>Task</th><th>Started</th><th className="num">Time</th><th className="num"></th></tr></thead>
+          <tbody>{list.map(e => edit?.id === e.id ? (
+            <tr key={e.id}><td colSpan={4}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>{e.task || 'Task'}</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <label style={{ fontSize: 12, fontWeight: 700 }}>Hours<input type="number" step="0.25" min="0.25" className="db-sel" style={{ display: 'block', width: 90, minWidth: 0 }} value={edit.hours} onChange={x => setEdit({ ...edit, hours: x.target.value })} /></label>
+                <label style={{ fontSize: 12, fontWeight: 700 }}>Date<input type="date" className="db-sel" style={{ display: 'block', minWidth: 0 }} value={edit.date} onChange={x => setEdit({ ...edit, date: x.target.value })} /></label>
+                <label style={{ fontSize: 12, fontWeight: 700, flex: 1 }}>Note<input className="db-sel" style={{ display: 'block', width: '100%', minWidth: 0, boxSizing: 'border-box' }} value={edit.note} onChange={x => setEdit({ ...edit, note: x.target.value })} /></label>
+                <button className="btn btn-primary" disabled={busy} onClick={() => act(e, 'edit', { minutes: Math.round(parseFloat(edit.hours) * 60), date: edit.date, note: edit.note })}>Save</button>
+                <button className="btn btn-ghost" onClick={() => setEdit(null)}>Cancel</button>
+              </div>
+            </td></tr>
+          ) : (
+            <tr key={e.id}>
+              <td><b>{e.task || 'Task'}</b>{e.project && <div className="page-sub" style={{ fontSize: 11.5 }}>{e.project}</div>}{e.note && <div className="page-sub" style={{ fontSize: 11.5 }}>“{e.note}”</div>}</td>
+              <td style={{ whiteSpace: 'nowrap' }}>{atET(e.started_at)}</td>
+              <td className="num" style={{ whiteSpace: 'nowrap' }}>{e.running ? <b style={{ color: '#16A34A' }}>⏱ {hm(e.minutes)}</b> : hm(e.minutes)}</td>
+              <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                {e.running && <button className="btn btn-ghost" style={{ padding: '3px 9px', fontSize: 12 }} disabled={busy} onClick={() => act(e, 'stop')}>⏹ Stop</button>}
+                <button className="btn btn-ghost" style={{ padding: '3px 9px', fontSize: 12, marginLeft: 4 }} disabled={busy} onClick={() => setEdit({ id: e.id, hours: String(Math.round((e.minutes / 60) * 100) / 100), date: String(e.started_at).slice(0, 10), note: e.note || '' })}>Edit</button>
+                {canDelete && <button className="btn btn-ghost" style={{ padding: '3px 9px', fontSize: 12, marginLeft: 4, color: '#B91C1C' }} disabled={busy} onClick={() => act(e, 'delete')}>Delete</button>}
+              </td>
+            </tr>
+          ))}</tbody>
+        </table>
+      )}
+    </WoModal>
   )
 }
