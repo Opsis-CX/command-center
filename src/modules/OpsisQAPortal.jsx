@@ -28,6 +28,7 @@ import SupervisorWallboard from './SupervisorWallboard'
 import CsrPhone from './CsrPhone'
 import Softphone from '../components/Softphone'
 import { VoiceProvider } from '../lib/voice'
+import { loadAccounts, switchAccount } from '../components/AccountSwitcher'
 
 // Portal palette for the mounted Command Center pages (they read these CSS variables).
 const PORTAL_THEME = {
@@ -56,6 +57,9 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
   const [err, setErr] = useState('')
   // portal_role rm / gm / admin / manager (client logins) or Opsis staff → supervisor tools
   const [sup, setSup] = useState(null)
+  // "View as" Admin / RM / GM / CSR — your own +rm/+gm/+csr logins (2026-11-10)
+  const [accounts, setAccounts] = useState(null)
+  useEffect(() => { let on = true; loadAccounts().then(a => { if (on) setAccounts(a) }); return () => { on = false } }, [])
   useEffect(() => {
     let active = true
     if (csrSelf) { setSup(false); return }
@@ -78,9 +82,11 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
   }, [clientId])
 
   useEffect(() => {
-    if (!me || !ref.current || sup === null) return
+    if (!me || !ref.current || sup === null || accounts === null) return
     const destroy = mountOpsisQA(ref.current, {
       supervisor: !!sup,
+      accounts,
+      onSwitchAccount: switchAccount,
       invoke,
       clientId,
       role: csrSelf ? 'csr' : me.role,
@@ -119,7 +125,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       },
     })
     return destroy
-  }, [me, sup]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [me, sup, accounts]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (err) {
     return (
