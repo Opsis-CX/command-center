@@ -68,7 +68,7 @@ function Leaderboard({ data, failed, tv }) {
         <div style={{ fontSize: 11.5, color: '#8a918d' }}>from reviewed calls</div>
       </div>
       {!data ? <div style={S.mut}>{failed ? 'Couldn’t load the leaderboard.' : 'Loading…'}</div> : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(118px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
           {BOARDS.map(([k, label, hint]) => {
             const rows = (data[k] || []).slice(0, 3)
             return (
@@ -76,10 +76,10 @@ function Leaderboard({ data, failed, tv }) {
                 <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: '#2F7D5B' }}>{label}</div>
                 <div style={{ fontSize: 10.5, color: '#8a918d', marginBottom: 6 }}>{hint}</div>
                 {rows.length === 0 ? <div style={{ ...S.mut, fontSize: 12 }}>No calls yet</div> : rows.map((r, i) => (
-                  <div key={r.name} title={`${r.name} · ${r.sub}`} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: tv ? '8px 0' : '5px 0', borderTop: i ? '1px solid #F1EEE8' : 'none' }}>
-                    <span style={{ width: 22, height: 22, flex: 'none', borderRadius: 999, background: MEDAL[i], color: '#fff', fontSize: 11.5, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
-                    <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: tv ? 17 : 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortName(r.name)}</span>
-                    <span style={{ fontWeight: 800, fontSize: tv ? 20 : 15 }}>{r.value}</span>
+                  <div key={r.name} title={`${r.name} · ${r.sub}`} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: tv ? '8px 0' : '5px 0', borderTop: i ? '1px solid #F1EEE8' : 'none' }}>
+                    <span style={{ width: 18, height: 18, flex: 'none', borderRadius: 999, background: MEDAL[i], color: '#fff', fontSize: 10, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
+                    <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: tv ? 15 : 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortName(r.name)}</span>
+                    <span style={{ fontWeight: 800, fontSize: tv ? 17 : 13, flex: 'none' }}>{r.value}</span>
                   </div>
                 ))}
               </div>
