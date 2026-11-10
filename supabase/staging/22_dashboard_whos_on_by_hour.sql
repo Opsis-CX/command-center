@@ -185,3 +185,19 @@ do $$ declare d text; begin
     execute d;
   end if;
 end $$;
+
+-- By hour: each hour's people also carry their interval + check-in status (for the hover card)
+do $$ declare d text; begin
+  d := pg_get_functiondef('public.dash_by_hour(uuid,uuid,date)'::regprocedure);
+  if position('''checked_in_at'', c.checked_in_at' in d) = 0 then
+    d := regexp_replace(d,
+      '''people'', \(select coalesce\(jsonb_agg\(distinct jsonb_build_object\(''id'', c\.profile_id,\s+''name'', case when can_names and public\.dash_can_see\(c\.profile_id\) then pr\.full_name else null end\)\), ''\[\]''::jsonb\)\s+from public\.shift_claims c join public\.profiles pr on pr\.id = c\.profile_id where c\.shift_block_id = any \(cl\.ids\)\)',
+      '''people'', (select coalesce(jsonb_agg(jsonb_build_object(''id'', c.profile_id,
+                 ''name'', case when can_names and public.dash_can_see(c.profile_id) then pr.full_name else null end,
+                 ''start'', bb.start_time, ''end'', bb.end_time, ''role'', bb.role, ''status'', c.status,
+                 ''checked_in_at'', c.checked_in_at, ''checked_out_at'', c.checked_out_at) order by bb.start_time, pr.full_name), ''[]''::jsonb)
+              from public.shift_claims c join public.profiles pr on pr.id = c.profile_id join public.shift_blocks bb on bb.id = c.shift_block_id where c.shift_block_id = any (cl.ids))');
+    if position('''checked_in_at'', c.checked_in_at' in d) = 0 then raise exception 'dash_by_hour not updated (text did not match)'; end if;
+    execute d;
+  end if;
+end $$;
