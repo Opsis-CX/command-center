@@ -22,6 +22,12 @@ import CsrScorecard from './CsrScorecard'
 import { mountOpsisQA } from './opsisQaApp'
 import Workforce, { portalWfmData } from './Workforce'
 import AiSpeedToLead, { portalS2lData } from './AiSpeedToLead'
+// Supervisor tools (2026-11-10): Wallboard + the phone for RMs, GMs, admins and Opsis staff.
+import { MemoryRouter } from 'react-router-dom'
+import SupervisorWallboard from './SupervisorWallboard'
+import CsrPhone from './CsrPhone'
+import Softphone from '../components/Softphone'
+import { VoiceProvider } from '../lib/voice'
 
 // Portal palette for the mounted Command Center pages (they read these CSS variables).
 const PORTAL_THEME = {
@@ -48,6 +54,20 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
   const ref = useRef(null)
   const [me, setMe] = useState(null)
   const [err, setErr] = useState('')
+  // portal_role rm / gm / admin / manager (client logins) or Opsis staff → supervisor tools
+  const [sup, setSup] = useState(null)
+  useEffect(() => {
+    let active = true
+    if (csrSelf) { setSup(false); return }
+    supabase.auth.getUser().then(({ data }) => {
+      const uid = data?.user?.id
+      if (!uid) { if (active) setSup(false); return }
+      supabase.from('profiles').select('role, portal_role').eq('id', uid).maybeSingle()
+        .then(({ data: p }) => { if (active) setSup(!!p && (String(p.role || '').toLowerCase() !== 'client' || ['admin', 'manager', 'rm', 'gm'].includes(p.portal_role || 'manager'))) })
+        .catch(() => { if (active) setSup(false) })
+    })
+    return () => { active = false }
+  }, [csrSelf])
 
   useEffect(() => {
     let active = true
@@ -58,8 +78,9 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
   }, [clientId])
 
   useEffect(() => {
-    if (!me || !ref.current) return
+    if (!me || !ref.current || sup === null) return
     const destroy = mountOpsisQA(ref.current, {
+      supervisor: !!sup,
       invoke,
       clientId,
       role: csrSelf ? 'csr' : me.role,
@@ -81,7 +102,12 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         const scoped = (b) => invoke(clientId ? { ...b, client_id: clientId } : b)
         root.render(
           <div style={PORTAL_THEME}>
-            {kind === 'wfm' ? <Workforce data={portalWfmData(scoped)} portal /> : <AiSpeedToLead data={portalS2lData(scoped)} portal />}
+            {kind === 'wallboard' ? <SupervisorWallboard clientId={clientId} />
+              : kind === 'myphone' ? (
+                <MemoryRouter>
+                  <VoiceProvider canCallPeople={false} canDialNumbers={false}><CsrPhone accent="#14302A" /><Softphone /></VoiceProvider>
+                </MemoryRouter>)
+              : kind === 'wfm' ? <Workforce data={portalWfmData(scoped)} portal /> : <AiSpeedToLead data={portalS2lData(scoped)} portal />}
           </div>
         )
         return () => setTimeout(() => root.unmount(), 0)
@@ -93,7 +119,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       },
     })
     return destroy
-  }, [me]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [me, sup]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (err) {
     return (
