@@ -139,7 +139,17 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   // ---------------- nav + top bar ----------------
-  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview'], ['insights', 'Insights']].concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', W_BRANDS]]).concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['pricetalk', 'Price talk'], ['money', 'Revenue']]).concat([['reporting', 'Reporting']]).concat(CFG.mountExt && CFG.supervisor ? [['wallboard', 'Wallboard'], ['myphone', 'Phone']] : []).concat(CFG.mountExt ? [['aistl', 'AI Speed to Lead'], ['wfm', 'Workforce']] : []).concat(OPSIS ? [] : [['hub', 'Coaching Hub']]).concat(!OPSIS && (!LOCK || CFG.supervisor) && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])],
+  // Menu order (Becky 2026-11-10): Overview, [Wallboard, Phone for supervisors], Insights, Phone stats, Brands, CSRs, Call reviews,
+  // Card capture, Price talk, Revenue, Calibration, Coaching Hub, Practice, Reporting, AI CSR, AI Speed to Lead, Workforce.
+  // Practice + AI CSR are added after the pilot check (see vPractice access below).
+  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview']]
+    .concat(CFG.mountExt && CFG.supervisor ? [['wallboard', 'Wallboard'], ['myphone', 'Phone']] : [])
+    .concat([['insights', 'Insights']]).concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', W_BRANDS]])
+    .concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['pricetalk', 'Price talk'], ['money', 'Revenue']])
+    .concat(!OPSIS && (!LOCK || CFG.supervisor) && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])
+    .concat(OPSIS ? [] : [['hub', 'Coaching Hub']])
+    .concat([['reporting', 'Reporting']])
+    .concat(CFG.mountExt ? [['aistl', 'AI Speed to Lead'], ['wfm', 'Workforce']] : [])],
     ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(IS_ADMIN ? [['team', 'Team & access'], ['brandset', 'Portal settings']] : [])]];
   function renderWho() {
     var w = $('oqwho'); if (!w) return;
@@ -1202,7 +1212,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (PR.okChecked || OPSIS || CFG.csrSelf) return; PR.okChecked = true;
     api({ action: 'practice', op: 'access' }).then(function (r) {
       if (!r || !r.allowed) return;
-      var sec = NAV[0][1]; if (!sec.some(function (n) { return n[0] === 'practice'; })) { var i = sec.map(function (n) { return n[0]; }).indexOf('hub'); sec.splice(i >= 0 ? i + 1 : sec.length, 0, ['practice', 'Practice'], ['receptionist', 'AI CSR']); }
+      var sec = NAV[0][1]; if (!sec.some(function (n) { return n[0] === 'practice'; })) { var keys = function () { return sec.map(function (n) { return n[0]; }); }; var i = keys().indexOf('hub'); sec.splice(i >= 0 ? i + 1 : sec.length, 0, ['practice', 'Practice']); var j = keys().indexOf('reporting'); sec.splice(j >= 0 ? j + 1 : sec.length, 0, ['receptionist', 'AI CSR']); }
       renderNav();
     }).catch(function () { });
   }
