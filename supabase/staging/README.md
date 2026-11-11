@@ -1,3 +1,4 @@
+[README (27).md](https://github.com/user-attachments/files/34699378/README.27.md)
 [README (26).md](https://github.com/user-attachments/files/34653181/README.26.md)
 [README (25).md](https://github.com/user-attachments/files/34651928/README.25.md)
 [README (24).md](https://github.com/user-attachments/files/34595605/README.24.md)
@@ -36,5 +37,6 @@ database section from live and removes anything that only exists in staging.
 21. `21_release_wave_conditions.sql` — Release waves built from each company's own data (tiers, teams, certifications, hours, people), any/all, top-to-bottom.
 22. `22_dashboard_whos_on_by_hour.sql` — Dashboard: "Who's on" view (Who's On + Time combined) and Schedule → By hour + Mix.
 23. `23_permission_gaps.sql` — Enforces "Pick up open intervals"; Configuration → Dashboard gets its own checkbox.
+25. `25_kb_foundation.sql` — Knowledge Base v2 foundation: sections, client/project folders, granular permissions with inheritance (server-enforced), favorites, follows, templates, permission-aware search. Moves existing content into starter sections and keeps today's access.
 
 All are safe to run more than once. (Staging also has fictional @demo.test people + sample schedules for testing.) Ask Claude to re-add the demo company afterwards.
