@@ -224,6 +224,10 @@ function OutboundWork({ me }) {
   const callStarted = useRef(false)
   const wasReady = useRef(false)
   const busyFetch = useRef(false)
+  // After-call work target (location's blending setting) + when wrap-up started
+  const [wrapLimit, setWrapLimit] = useState(60)
+  const [wrapStart, setWrapStart] = useState(null)
+  const [, setTick] = useState(0)
 
   const ready = voice.agent.state === 'ready'
   const campaign = (campaigns || []).find(c => c.id === (contact?.campaign_id || sel)) || null
@@ -248,18 +252,21 @@ function OutboundWork({ me }) {
     busyFetch.current = true
     setErr(''); setMsg('')
     try {
-      const list = sel === 'all' ? [...campaigns].sort((a, b) => b.ready_now - a.ready_now) : campaigns.filter(c => c.id === sel)
-      for (const c of list) {
-        const { data, error } = await supabase.rpc('dialer_next', { p_campaign: c.id })
-        if (error) continue
-        const row = Array.isArray(data) ? data[0] : data
-        if (row) {
-          setContact({ ...row, campaign_id: c.id }); setInfo(null); callStarted.current = false
-          // Progressive with a 0-second countdown = auto-dial: the call goes out the moment the
-          // lead is handed over — no Call, Pause or Skip for the agent.
-          if (c.mode === 'progressive') { setPhase('countdown'); setCountdown(Number(c.progressive_delay_sec ?? 3)) } else setPhase('preview')
-          return
-        }
+      // Blended (2026-11-10): the server picks the next contact across all my campaigns in the
+      // location's chosen order (missed calls, speed to lead, callbacks, lifecycle, not booked…) and
+      // holds outbound while a customer is waiting on one of my inbound lines.
+      const { data: nx, error: nxErr } = await supabase.rpc('csr_dialer_next', sel === 'all' ? {} : { p_campaign: sel })
+      if (nxErr) { setErr(nxErr.message); return }
+      if (nx?.wrap_limit) setWrapLimit(Number(nx.wrap_limit))
+      if (nx?.held) { setContact(null); setPhase('idle'); setMsg(nx.reason || 'Outbound is paused right now.'); return }
+      const row = nx?.contact
+      const c = row && campaigns.find(x => x.id === row.campaign_id)
+      if (row && c) {
+        setContact(row); setInfo(null); callStarted.current = false
+        // Progressive with a 0-second countdown = auto-dial: the call goes out the moment the
+        // lead is handed over — no Call, Pause or Skip for the agent.
+        if (c.mode === 'progressive') { setPhase('countdown'); setCountdown(Number(c.progressive_delay_sec ?? 3)) } else setPhase('preview')
+        return
       }
       setContact(null); setPhase('idle'); setMsg('No one to call right now. Checking again every few seconds…')
     } finally { busyFetch.current = false }
@@ -311,10 +318,12 @@ function OutboundWork({ me }) {
     if (phase !== 'calling') return
     if (voice.status === 'in-call') setLastTalk(voice.seconds)
     if ((voice.status === 'ended' || voice.status === 'error') && callStarted.current) {
-      setPhase('dispo')
+      setPhase('dispo'); setWrapStart(Date.now())
       supabase.rpc('dialer_set_state', { p_state: 'wrap', p_campaign: contact?.campaign_id || null })
     }
   }, [voice.status, voice.seconds, phase]) // eslint-disable-line
+  // wrap-up clock ticks once a second while the disposition is open
+  useEffect(() => { if (phase !== 'dispo') return; const t = setInterval(() => setTick(x => x + 1), 1000); return () => clearInterval(t) }, [phase])
 
   function placeCall() {
     if (!contact) return
@@ -349,7 +358,7 @@ function OutboundWork({ me }) {
     if (fields && Object.keys(fields).length) await supabase.rpc('dialer_save_fields', { p_queue: contact.queue_id, p_fields: fields })
     setSaving(false)
     voice.reset()
-    setContact(null); setPhase('idle'); setInfo(null); setMsg('Saved.')
+    setContact(null); setPhase('idle'); setInfo(null); setWrapStart(null); setMsg('Saved.')
     const back = wasReady.current
     wasReady.current = false
     await voice.setStatus(back ? 'ready' : 'not_ready', back ? null : 'Other')
@@ -436,6 +445,10 @@ function OutboundWork({ me }) {
         </>}
         {phase === 'dispo' && <>
           <div style={{ width: '100%', fontWeight: 700 }}>Call ended{lastTalk ? ` · talked ${mmss(lastTalk)}` : ''}</div>
+          {wrapStart && (() => { const w = Math.floor((Date.now() - wrapStart) / 1000), over = w > wrapLimit; return (
+            <div style={{ width: '100%', fontSize: 13, fontWeight: 700, color: over ? '#b91c1c' : '#475569' }}>
+              Wrap-up {mmss(w)} / {mmss(wrapLimit)}{over ? ' — over your wrap-up time, save the disposition' : ''}
+            </div>) })()}
           {voice.status === 'error' && voice.error && <div style={{ ...S.small, width: '100%' }}>{voice.error}</div>}
           <button onClick={placeCall} style={{ ...S.btn, flex: 1 }} title="Call again (e.g. dropped call) — counts as another attempt">Redial</button>
           {voice.status === 'error' && <button onClick={() => { voice.reset(); skip() }} style={{ ...S.btn, flex: 1 }} title="The call never went through — put this contact back in the queue">Skip</button>}
