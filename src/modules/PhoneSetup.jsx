@@ -62,14 +62,14 @@ export default function PhoneSetup({ clientId = null }) {
           <div style={S.mut}>{can ? 'Build the lines your customers call and the lists your CSRs call out to.' : 'View only. Ask an admin or your RM to make changes.'}</div>
         </div>
         <div style={S.seg}>
-          {[['in', `Inbound lines (${d.lines.length})`], ['out', `Outbound campaigns (${d.campaigns.length})`], ['blend', 'Blending']].map(([k, l]) => (
+          {[['in', `Inbound lines (${d.lines.length})`], ['out', `Outbound campaigns (${d.campaigns.length})`], ['blend', 'Blending']].concat(!d.scope.brand && can ? [['central', 'Central team']] : []).map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)} style={{ ...S.segBtn, ...(tab === k ? S.segOn : {}) }}>{l}</button>
           ))}
         </div>
       </div>
       {msg && <div style={S.ok}>{msg}</div>}
 
-      {tab === 'blend' ? <Blending d={d} args={args} /> : tab === 'in' ? (
+      {tab === 'central' ? <CentralTeam args={args} onChange={load} /> : tab === 'blend' ? <Blending d={d} args={args} /> : tab === 'in' ? (
         <>
           {can && <div><button style={S.primary} onClick={() => setEdit({ kind: 'line', row: null })}>+ New inbound line</button></div>}
           {d.lines.length === 0 && <div style={S.card}><p style={S.mut}>No inbound lines yet.</p></div>}
@@ -150,8 +150,18 @@ function Hours({ value, onChange, disabled }) {
     </div>
   )
 }
-function People({ people, selected, onChange, disabled, filter }) {
-  const list = people.filter(p => !filter || filter(p))
+// Only people from the line's / campaign's brand (and location, when one is set) — 2026-11-10, Becky.
+// Anyone already picked stays visible so they can be unchecked.
+// Centralized CSRs approved for this brand (Central team tab) show too, tagged "Central".
+// Admins can flip "Show everyone" to pick from every CSR.
+function People({ people, selected, onChange, disabled, filter, brand, location, allowAll }) {
+  const [all, setAll] = useState(false)
+  const loc = String(location || '').trim().toLowerCase()
+  const central = p => !!brand && p.brand !== brand && (p.approved || []).includes(brand)
+  const list = people.filter(p => selected.includes(p.id) || all || (
+    (!filter || filter(p)) && (
+      central(p) ||
+      ((brand ? p.brand === brand : false) && (!loc || !p.location || String(p.location).toLowerCase() === loc)))))
   const groups = [['CSR', 'CSRs'], ['GM', 'GMs'], ['RM', 'RMs'], ['ADMIN', 'Admins'], ['MANAGER', 'Managers']]
   return (
     <div style={{ display: 'grid', gap: 8 }}>
@@ -166,7 +176,8 @@ function People({ people, selected, onChange, disabled, filter }) {
                 return (
                   <label key={p.id} style={{ ...S.chip, background: on ? '#E6F0EA' : '#fff', borderColor: on ? '#2F7D5B' : '#E1DCD2' }}>
                     <input type="checkbox" disabled={disabled} checked={on} onChange={() => onChange(on ? selected.filter(x => x !== p.id) : [...selected, p.id])} />
-                    {p.name}{p.location ? <span style={{ color: '#8a918d' }}> · {p.location}</span> : ''}
+                    {p.name}{p.brand && p.brand !== brand ? <span style={{ color: '#8a918d' }}> · {p.brand}</span> : ''}{p.location ? <span style={{ color: '#8a918d' }}> · {p.location}</span> : ''}
+                    {central(p) && <span style={{ ...S.pill, padding: '1px 7px', fontSize: 10.5, background: '#E0E7FF', color: '#3730A3' }}>Central</span>}
                   </label>
                 )
               })}
@@ -174,7 +185,9 @@ function People({ people, selected, onChange, disabled, filter }) {
           </div>
         )
       })}
-      {list.length === 0 && <span style={S.mut}>No people in your view yet.</span>}
+      {list.length === 0 && <span style={S.mut}>{brand ? `No ${brand}${loc ? ' ' + location : ''} people yet.` : 'Pick a brand first.'}</span>}
+      {allowAll && !disabled && <label style={{ fontSize: 12.5, color: '#5F6763', display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+        <input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)} /> Show every CSR (all brands)</label>}
     </div>
   )
 }
@@ -241,7 +254,7 @@ function LineForm({ d, row, can, saving, msg, onCancel, onSave }) {
         {queues.map(q => (
           <div key={q} style={{ marginBottom: 12 }}>
             {queues.length > 1 && <div style={{ fontWeight: 700, marginBottom: 6 }}>{q === 'main' ? 'Everyone else / no option picked' : (f.menu.find(m => m.queue === q)?.label || q)}</div>}
-            <People people={d.people} selected={membersOf(q)} onChange={ids => setMembers(q, ids)} disabled={dis} />
+            <People people={d.people} allowAll={!d.scope.brand} brand={d.scope.brand || f.brand} location={d.scope.location || f.location} selected={membersOf(q)} onChange={ids => setMembers(q, ids)} disabled={dis} />
           </div>
         ))}
       </Section>
@@ -331,7 +344,7 @@ function CampForm({ d, row, can, saving, msg, args, reload, onCancel, onSave }) 
           <option value="">No script</option>{d.scripts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </Section>
-      <Section title="CSRs on this campaign"><People people={d.people} selected={f.agents || []} onChange={v => set('agents', v)} disabled={dis} /></Section>
+      <Section title="CSRs on this campaign"><People people={d.people} allowAll={!d.scope.brand} brand={d.scope.brand || f.brand} location={d.scope.location || f.location} selected={f.agents || []} onChange={v => set('agents', v)} disabled={dis} /></Section>
       <Section title="Dispositions" hint="What CSRs pick at the end of each call. Grouped so intent and booking rates calculate automatically.">
         {['sales', 'service', 'none'].map(g => (
           <div key={g} style={{ marginBottom: 6 }}>
@@ -374,6 +387,41 @@ function Copy({ label, value, secret }) {
     </div>
   )
 }
+// ---------- Central team (2026-11-10, Becky): approve CSRs to answer for other brands ----------
+function CentralTeam({ args, onChange }) {
+  const [a, setA] = useState(null)
+  const [err, setErr] = useState('')
+  const [q, setQ] = useState('')
+  useEffect(() => { supabase.rpc('pc_approvals_get', args({})).then(({ data, error }) => { if (error) setErr(error.message); else setA(data) }) }, [args])
+  async function toggle(id, brand, on) {
+    const { data, error } = await supabase.rpc('pc_approval_set', args({ p_profile: id, p_brand: brand, p_on: on }))
+    if (error) setErr(error.message); else { setA(data); onChange && onChange() }
+  }
+  if (!a) return <div style={S.card}>{err || 'Loading…'}</div>
+  const rows = a.csrs.filter(c => !q || `${c.name} ${c.brand || ''} ${c.location || ''}`.toLowerCase().includes(q.toLowerCase()))
+  return (
+    <Section title="Central team" hint="Approve CSRs to answer for brands other than their own. Approved CSRs show up (tagged Central) when you pick who answers a line or works a campaign for that brand.">
+      {err && <div style={{ ...S.mut, color: '#b91c1c', marginBottom: 8 }}>{err}</div>}
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search CSRs" style={{ ...S.input, maxWidth: 320, marginBottom: 10 }} />
+      <div style={{ display: 'grid', gap: 8 }}>
+        {rows.map(c => (
+          <div key={c.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', border: '1px solid #EEEAE2', borderRadius: 10 }}>
+            <div style={{ width: 230, minWidth: 0 }}><b>{c.name}</b><div style={S.mut}>{[c.brand || 'No home brand', c.location].filter(Boolean).join(' · ')}</div></div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1 }}>
+              {a.brands.filter(b => b !== c.brand).map(b => {
+                const on = (c.approved || []).includes(b)
+                return <label key={b} style={{ ...S.chip, background: on ? '#E0E7FF' : '#fff', borderColor: on ? '#6366F1' : '#E1DCD2' }}>
+                  <input type="checkbox" checked={on} onChange={() => toggle(c.id, b, !on)} /> {b}</label>
+              })}
+            </div>
+          </div>
+        ))}
+        {rows.length === 0 && <span style={S.mut}>No CSRs found.</span>}
+      </div>
+    </Section>
+  )
+}
+
 // ---------- Blending (2026-11-10, Becky) ----------
 // Inbound always comes first. Outbound fills the gaps in this order; outbound pauses while a
 // customer is waiting on the location's line. GMs/RMs can set CSRs to inbound only.
