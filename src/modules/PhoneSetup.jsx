@@ -7,6 +7,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
+// Speed-to-lead "middle ground" cadence (Becky's doc, Sept 2026): 8 dials over 5 dialing days, 5 in the first two days.
+const WHEN = [['asap', 'Right away (within 15 seconds)'], ['after_hours', 'Hours after the last dial'], ['morning', 'Morning (8–11 am)'], ['late_morning', 'Late morning (10 am–12 pm)'],
+  ['evening', 'Evening (5:30–7:30 pm)'], ['late_morning_or_evening', 'Late morning or evening'], ['any', 'Any open time']]
+const VMS = [['leave', 'Leave VM'], ['none', 'No VM'], ['final', 'Final VM, then retire']]
+const S2L_CADENCE = [
+  { day: 1, when: 'asap', vm: 'leave' }, { day: 1, when: 'after_hours', hours: 3, vm: 'none' }, { day: 1, when: 'evening', vm: 'none' },
+  { day: 2, when: 'morning', vm: 'leave' }, { day: 2, when: 'evening', vm: 'none' },
+  { day: 3, when: 'late_morning_or_evening', vm: 'none' }, { day: 4, when: 'late_morning_or_evening', vm: 'leave' }, { day: 5, when: 'any', vm: 'final' },
+]
+const S2L_HOURS = { 1: ['08:00', '19:30'], 2: ['08:00', '19:30'], 3: ['08:00', '19:30'], 4: ['08:00', '19:30'], 5: ['08:00', '19:30'], 6: ['08:00', '14:00'], 0: ['10:00', '14:00'] }
 const DAYS = [['1', 'Mon'], ['2', 'Tue'], ['3', 'Wed'], ['4', 'Thu'], ['5', 'Fri'], ['6', 'Sat'], ['0', 'Sun']]
 const TZS = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific']]
 const MODES = [
@@ -36,6 +46,12 @@ export default function PhoneSetup({ clientId = null }) {
     if (error) setErr(error.message); else { setD(data); setErr('') }
   }, [args])
   useEffect(() => { load() }, [load])
+  // The portal's ← Back button closes an open form first, so you land back on the list/tab you came from (2026-11-10, Becky).
+  useEffect(() => {
+    if (!edit) return
+    window.__oqExtBack = () => { setEdit(null); setMsg(''); return true }
+    return () => { delete window.__oqExtBack }
+  }, [edit])
 
   async function save(kind, row) {
     setSaving(true); setMsg('')
@@ -128,6 +144,48 @@ export default function PhoneSetup({ clientId = null }) {
 function Stat({ v, l, warn }) { return <div><div style={{ fontSize: 18, fontWeight: 800, color: warn ? '#b91c1c' : '#1C2421' }}>{v}</div><div style={{ fontSize: 11, color: '#5F6763' }}>{l}</div></div> }
 
 // ---------- shared bits ----------
+// Dial-by-dial plan (2026-11-10, Becky): each dial gets a day, a time window and a voicemail rule.
+function Cadence({ value, onChange, disabled }) {
+  const rows = value || []
+  const upd = (i, k, v) => onChange(rows.map((r, j) => j === i ? { ...r, [k]: v } : r))
+  const vmCount = rows.filter(r => r.vm !== 'none').length
+  const days = rows.reduce((m, r) => Math.max(m, Number(r.day) || 1), 1)
+  return (
+    <div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr style={{ textAlign: 'left', color: '#5F6763', fontSize: 11.5, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            <th style={{ padding: '6px 8px' }}>Dial</th><th style={{ padding: '6px 8px' }}>Day</th><th style={{ padding: '6px 8px' }}>Timing</th><th style={{ padding: '6px 8px' }}>Voicemail</th><th />
+          </tr></thead>
+          <tbody>{rows.map((r, i) => (
+            <tr key={i} style={{ borderTop: '1px solid #EEEAE2', background: Number(r.day) <= 2 ? '#F4F8F5' : 'transparent' }}>
+              <td style={{ padding: '6px 8px', fontWeight: 800 }}>{i + 1}</td>
+              <td style={{ padding: '6px 8px' }}><select disabled={disabled} value={r.day || 1} onChange={e => upd(i, 'day', Number(e.target.value))} style={S.inSm}>
+                {Array.from({ length: 14 }, (_, k) => k + 1).map(n => <option key={n} value={n}>Day {n}</option>)}</select></td>
+              <td style={{ padding: '6px 8px' }}>
+                <select disabled={disabled || i === 0} value={i === 0 ? 'asap' : (r.when || 'any')} onChange={e => upd(i, 'when', e.target.value)} style={S.inSm}>
+                  {WHEN.filter(w => i === 0 || w[0] !== 'asap').map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+                {r.when === 'after_hours' && i > 0 && <select disabled={disabled} value={r.hours || 3} onChange={e => upd(i, 'hours', Number(e.target.value))} style={{ ...S.inSm, marginLeft: 6 }}>
+                  {[1, 2, 3, 4, 6, 8, 24].map(n => <option key={n} value={n}>{n} hr{n > 1 ? 's' : ''}</option>)}</select>}
+              </td>
+              <td style={{ padding: '6px 8px' }}><select disabled={disabled} value={r.vm || 'none'} onChange={e => upd(i, 'vm', e.target.value)} style={S.inSm}>
+                {VMS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></td>
+              <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{!disabled && <>
+                <button style={S.link} disabled={i === 0} onClick={() => { const n = [...rows]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; onChange(n) }}>↑</button>
+                <button style={S.link} disabled={i === rows.length - 1} onClick={() => { const n = [...rows]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; onChange(n) }}>↓</button>
+                {rows.length > 1 && <button style={S.link} onClick={() => onChange(rows.filter((_, j) => j !== i))}>Remove</button>}
+              </>}</td>
+            </tr>))}</tbody>
+        </table>
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+        {!disabled && rows.length < 20 && <button style={S.btn} onClick={() => onChange([...rows, { day: Math.min(14, (Number(rows[rows.length - 1]?.day) || 1) + 1), when: 'any', vm: 'none' }])}>+ Add a dial</button>}
+        {!disabled && <button style={S.link} onClick={() => onChange(S2L_CADENCE.map(x => ({ ...x })))}>Reset to the speed-to-lead plan</button>}
+        <span style={S.mut}>{rows.length} dials over {days} dialing day{days > 1 ? 's' : ''} · {vmCount} voicemail{vmCount === 1 ? '' : 's'} · weekends count as dialing days · retired after the last dial</span>
+      </div>
+    </div>
+  )
+}
 function Hours({ value, onChange, disabled }) {
   const h = value || {}
   return (
@@ -309,16 +367,21 @@ function CampForm({ d, row, can, saving, msg, args, reload, onCancel, onSave }) 
   const [f, setF] = useState(() => row ? { ...JSON.parse(JSON.stringify(row)), _mode: modeOf(row) } : {
     name: '', brand: d.scope.brand || '', location: d.scope.location || '', status: 'draft', kind: 'other', _mode: 'preview', delay: 3, timezone: 'America/Chicago', max_attempts: 4,
     retry_minutes: [60, 240, 1440], record_calls: true, script_id: null, agents: [],
-    hours: { 1: ['09:00', '19:00'], 2: ['09:00', '19:00'], 3: ['09:00', '19:00'], 4: ['09:00', '19:00'], 5: ['09:00', '19:00'], 6: ['10:00', '16:00'] },
+    scheduling_mode: 'cadence', scheduling: { cadence: S2L_CADENCE, skip_afternoon: true, vary_hour: true },
+    hours: { ...S2L_HOURS },
   })
   const [csv, setCsv] = useState('')
   const [upMsg, setUpMsg] = useState('')
   const set = (k, v) => setF(x => ({ ...x, [k]: v }))
   const dis = !can
+  const sch = f.scheduling || {}
+  const cad = Array.isArray(sch.cadence) && sch.cadence.length ? sch.cadence : S2L_CADENCE
+  const setSch = (k, v) => set('scheduling', { ...sch, cadence: cad, [k]: v })
   function payload() {
     const m = f._mode
     return { id: f.id, name: f.name, brand: f.brand, location: f.location, status: f.status, kind: f.kind || 'other', timezone: f.timezone, hours: f.hours, max_attempts: f.max_attempts,
       retry_minutes: f.retry_minutes, record_calls: f.record_calls, script_id: f.script_id, agents: f.agents, dispositions: f.dispositions || d.dispositions,
+      scheduling_mode: f.scheduling_mode || 'smart', ...(f.scheduling_mode === 'cadence' ? { scheduling: { cadence: cad, skip_afternoon: sch.skip_afternoon !== false, vary_hour: sch.vary_hour !== false } } : {}),
       is_manual: false, mode: m === 'auto' ? 'progressive' : m, delay: m === 'auto' ? 0 : (m === 'progressive' ? Math.max(1, Number(f.delay) || 3) : f.delay) }
   }
   async function upload() {
@@ -355,15 +418,36 @@ function CampForm({ d, row, can, saving, msg, args, reload, onCancel, onSave }) 
         {f._mode === 'progressive' && <Field label="Countdown before each call"><select disabled={dis} value={f.delay} onChange={e => set('delay', Number(e.target.value))} style={{ ...S.input, width: 160 }}>{[2, 3, 5, 8, 10, 15].map(s => <option key={s} value={s}>{s} seconds</option>)}</select></Field>}
       </Section>
       {f._mode !== 'manual' && (
-        <Section title="Calling rules" hint="Calls only go out inside these hours in the customer's time zone.">
-          <div style={S.form}>
-            <Field label="Tries per contact"><select disabled={dis} value={f.max_attempts} onChange={e => set('max_attempts', Number(e.target.value))} style={S.input}>{[1, 2, 3, 4, 5, 6, 8, 10].map(n => <option key={n} value={n}>{n}</option>)}</select></Field>
-            <Field label="Wait between tries (minutes)" hint="e.g. 60, 240, 1440 = 1 hour, 4 hours, next day">
-              <input disabled={dis} value={(f.retry_minutes || []).join(', ')} onChange={e => set('retry_minutes', e.target.value.split(/[,\s]+/).map(Number).filter(n => n > 0))} style={S.input} /></Field>
+        <Section title="Calling rules" hint="Calls only go out inside these hours in the customer's time zone. Booked, Not interested and Callback stop the cadence; No answer moves to the next dial.">
+          <Field label="How redials are timed">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, marginTop: 4 }}>
+              {[['cadence', 'Dial-by-dial plan', 'Set the day, time window and voicemail for every dial'], ['smart', 'Smart timing', 'Picks the hours people answer most'], ['fixed', 'Simple wait times', 'Waits a set number of minutes between tries']].map(([k, l, h]) => (
+                <label key={k} style={{ ...S.choice, borderColor: (f.scheduling_mode || 'smart') === k ? '#2F7D5B' : '#E1DCD2', background: (f.scheduling_mode || 'smart') === k ? '#E6F0EA' : '#fff' }}>
+                  <input type="radio" disabled={dis} checked={(f.scheduling_mode || 'smart') === k} onChange={() => setF(x => ({ ...x, scheduling_mode: k, scheduling: k === 'cadence' ? { ...(x.scheduling || {}), cadence: cad } : x.scheduling }))} /> <b>{l}</b><div style={S.mut}>{h}</div>
+                </label>))}
+            </div>
+          </Field>
+          {f.scheduling_mode === 'cadence' && (
+            <div style={{ marginTop: 12 }}>
+              <Cadence value={cad} disabled={dis} onChange={v => setSch('cadence', v)} />
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 10, fontSize: 13 }}>
+                <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" disabled={dis} checked={sch.skip_afternoon !== false} onChange={e => setSch('skip_afternoon', e.target.checked)} /> Skip weekday 2–5 pm for redials (Dial 1 always goes out)</label>
+                <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" disabled={dis} checked={sch.vary_hour !== false} onChange={e => setSch('vary_hour', e.target.checked)} /> Don't redial at the same hour twice in a row</label>
+              </div>
+            </div>
+          )}
+          <div style={{ ...S.form, marginTop: 12 }}>
+            {f.scheduling_mode !== 'cadence' && <Field label="Tries per contact"><select disabled={dis} value={f.max_attempts} onChange={e => set('max_attempts', Number(e.target.value))} style={S.input}>{[1, 2, 3, 4, 5, 6, 8, 10].map(n => <option key={n} value={n}>{n}</option>)}</select></Field>}
+            {f.scheduling_mode === 'fixed' && <Field label="Wait between tries (minutes)" hint="e.g. 60, 240, 1440 = 1 hour, 4 hours, next day">
+              <input disabled={dis} value={(f.retry_minutes || []).join(', ')} onChange={e => set('retry_minutes', e.target.value.split(/[,\s]+/).map(Number).filter(n => n > 0))} style={S.input} /></Field>}
             <Field label="Default time zone"><select disabled={dis} value={f.timezone} onChange={e => set('timezone', e.target.value)} style={S.input}>{TZS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
             <Field label="Record calls"><select disabled={dis} value={f.record_calls ? '1' : '0'} onChange={e => set('record_calls', e.target.value === '1')} style={S.input}><option value="1">Yes (for QA)</option><option value="0">No</option></select></Field>
           </div>
-          <div style={{ marginTop: 12 }}><Hours value={f.hours} onChange={v => set('hours', v)} disabled={dis} /></div>
+          <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <b style={{ fontSize: 13.5 }}>Dialing hours</b>
+            {!dis && <button style={S.link} onClick={() => set('hours', { ...S2L_HOURS })}>Use speed-to-lead hours (weekdays to 7:30 pm · Sat 8 am–2 pm · Sun 10 am–2 pm)</button>}
+          </div>
+          <div style={{ marginTop: 8 }}><Hours value={f.hours} onChange={v => set('hours', v)} disabled={dis} /></div>
         </Section>
       )}
       <Section title="Call script" hint="What CSRs see on the call screen.">
