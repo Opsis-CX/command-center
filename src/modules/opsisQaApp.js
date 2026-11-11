@@ -183,7 +183,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function askEx() { var b = askBrand(); return b ? 'Who is the top performer at ' + b + '?' : 'Which brand has the best booking rate?'; }
   function topbar() {
     var bl = S.view === 'brand' && S.brand ? short(S.brand) : S.brands.length ? (S.brands.length === 1 ? short(S.brands[0]) : S.brands.length + ' ' + W_BRANDS.toLowerCase()) : 'All ' + W_BRANDS.toLowerCase();
-    return '<div class="row" style="align-items:center;position:relative">' + ((HIST.length || (typeof CAL !== 'undefined' && CAL.item && S.view === 'calib')) ? '<button class="sel" data-oqback="1" aria-label="Back to the previous page" title="Back to the previous page" style="min-height:46px">\u2190 Back</button>' : '') +
+    return '<div class="row" style="align-items:center;position:relative">' + ((HIST.length || typeof window.__oqExtBack === 'function' || (typeof CAL !== 'undefined' && CAL.item && S.view === 'calib')) ? '<button class="sel" data-oqback="1" aria-label="Back to the previous page" title="Back to the previous page" style="min-height:46px">\u2190 Back</button>' : '') +
       '<form id="askform" style="flex:1 1 360px;max-width:620px;display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #CFE3D8;border-radius:12px;padding:0 6px 0 14px;min-height:46px">' +
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>' +
       '<label for="askq" class="sr">Ask anything about your calls</label><input id="askq" autocomplete="off" placeholder="Ask anything — “' + esc(askEx()) + '”" style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-size:14px">' +
@@ -4109,6 +4109,8 @@ export function mountOpsisQA(ROOT, cfg) {
     LASTH = h; BACKING = false;
   }
   function goBack() {
+    // React pages inside the portal (Phone setup etc.) can step back inside themselves first — e.g. a campaign form → the campaign list (2026-11-10, Becky).
+    if (typeof window.__oqExtBack === 'function') { try { if (window.__oqExtBack()) { window.scrollTo(0, 0); return; } } catch (x) {} }
     if (S.view === 'receptionist' && RC.res && !RC.live) { RC.res = null; drawRecep(); window.scrollTo(0, 0); return; }
     if (S.view === 'practice' && PR.result && !PR.live) { PR.result = null; PR.err = null; if (PR.d) drawPractice(); else render(); window.scrollTo(0, 0); return; }
     if (typeof CAL !== 'undefined' && CAL.item && S.view === 'calib') { calLeave(); EXT = null; S.pop = null; window.scrollTo(0, 0); render(); return; }
