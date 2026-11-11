@@ -242,14 +242,18 @@ export default function SupervisorWallboard({ clientId = null }) {
             <tbody>
               {rows.length === 0 && <tr><td colSpan={13} style={{ ...S.td, textAlign: 'center', color: '#5F6763' }}>No CSRs in your view yet.</td></tr>}
               {rows.map(r => {
-                const st = STATE[r.state] || STATE.offline
                 const since = r.since ? Math.floor((Date.now() - new Date(r.since).getTime()) / 1000) : 0
+                // wrap-up over the location's target shows red (Blending → wrap-up time)
+                const wrapOver = r.state === 'wrap' && since > Number(d.wrap_limit || 60)
+                const st = wrapOver ? { label: 'Wrap-up over', color: '#b91c1c', bg: '#fee2e2' } : (STATE[r.state] || STATE.offline)
+                const inOnly = (d.inbound_only || []).includes(r.id)
                 return (
                   <tr key={r.id}>
                     <td style={{ ...S.td, fontWeight: 700 }}>{r.full_name}<div style={{ fontWeight: 400, fontSize: 11.5, color: '#8a918d' }}>{[r.brand, r.location].filter(Boolean).join(' · ')}</div></td>
                     <td style={S.td}>
                       <span style={{ ...S.pill, color: st.color, background: st.bg }}>{st.label}{r.state === 'not_ready' && r.reason ? ` · ${r.reason}` : ''}</span>
                       {r.state !== 'offline' && <div style={{ fontSize: 11.5, color: '#5F6763', marginTop: 3 }}>{mmss(since)}{r.on_call_src ? ` · ${r.on_call_src}` : ''}</div>}
+                      {inOnly && <div style={{ fontSize: 11, fontWeight: 700, color: '#a16207', marginTop: 2 }}>Inbound only</div>}
                     </td>
                     <td style={S.tdn}>{r.calls_in}</td><td style={S.tdn}>{r.calls_out}</td><td style={S.tdn}>{r.handled}</td>
                     <td style={S.tdn}>{r.intent}</td><td style={{ ...S.tdn, fontWeight: 800, color: '#15803d' }}>{r.booked}</td>
