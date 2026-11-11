@@ -10,7 +10,6 @@ import { supabase } from '../lib/supabase'
 const DAYS = [['1', 'Mon'], ['2', 'Tue'], ['3', 'Wed'], ['4', 'Thu'], ['5', 'Fri'], ['6', 'Sat'], ['0', 'Sun']]
 const TZS = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific']]
 const MODES = [
-  ['manual', 'Manual dialing', 'CSRs type the number themselves (dial pad)'],
   ['preview', 'Preview', 'CSR sees the contact, then clicks Call'],
   ['progressive', 'Progressive', 'Calls automatically after a short countdown'],
   ['auto', 'Auto-dial (speed to lead)', 'Calls the moment a lead arrives — no countdown'],
@@ -20,7 +19,8 @@ const KINDS = [['missed', 'Missed calls'], ['s2l', 'Speed to lead'], ['callback'
 const kindLabel = k => (KINDS.find(x => x[0] === k) || KINDS[5])[1]
 const STATUS = { active: ['Live', '#15803d', '#dcfce7'], paused: ['Paused', '#b45309', '#fef3c7'], draft: ['Draft', '#475569', '#f1f5f9'] }
 const fmtPhone = v => { const d = String(v || '').replace(/\D/g, '').slice(-10); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : (v || '') }
-const modeOf = c => c.is_manual ? 'manual' : c.mode === 'progressive' && Number(c.delay) === 0 ? 'auto' : c.mode
+// Manual dialing isn't a campaign choice (2026-11-10, Becky) — CSRs use the dial pad on their Phone page.
+const modeOf = c => c.is_manual ? 'preview' : c.mode === 'progressive' && Number(c.delay) === 0 ? 'auto' : c.mode
 
 export default function PhoneSetup({ clientId = null }) {
   const [d, setD] = useState(null)
@@ -62,7 +62,7 @@ export default function PhoneSetup({ clientId = null }) {
           <div style={S.mut}>{can ? 'Build the lines your customers call and the lists your CSRs call out to.' : 'View only. Ask an admin or your RM to make changes.'}</div>
         </div>
         <div style={S.seg}>
-          {[['in', `Inbound lines (${d.lines.length})`], ['out', `Outbound campaigns (${d.campaigns.length})`], ['blend', 'Blending']].concat(!d.scope.brand && can ? [['central', 'Central team']] : []).map(([k, l]) => (
+          {[['in', `Inbound lines (${d.lines.length})`], ['out', `Outbound campaigns (${d.campaigns.filter(c => !c.is_manual).length})`], ['blend', 'Blending']].concat(!d.scope.brand && can ? [['central', 'Central team']] : []).map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)} style={{ ...S.segBtn, ...(tab === k ? S.segOn : {}) }}>{l}</button>
           ))}
         </div>
@@ -94,9 +94,9 @@ export default function PhoneSetup({ clientId = null }) {
       ) : (
         <>
           {can && <div><button style={S.primary} onClick={() => setEdit({ kind: 'camp', row: null })}>+ New outbound campaign</button></div>}
-          {d.campaigns.length === 0 && <div style={S.card}><p style={S.mut}>No campaigns yet.</p></div>}
+          {d.campaigns.filter(c => !c.is_manual).length === 0 && <div style={S.card}><p style={S.mut}>No campaigns yet.</p></div>}
           <div style={S.grid}>
-            {d.campaigns.map(c => {
+            {d.campaigns.filter(c => !c.is_manual).map(c => {
               const st = STATUS[c.status] || STATUS.draft
               const m = MODES.find(x => x[0] === modeOf(c))
               return (
@@ -319,7 +319,7 @@ function CampForm({ d, row, can, saving, msg, args, reload, onCancel, onSave }) 
     const m = f._mode
     return { id: f.id, name: f.name, brand: f.brand, location: f.location, status: f.status, kind: f.kind || 'other', timezone: f.timezone, hours: f.hours, max_attempts: f.max_attempts,
       retry_minutes: f.retry_minutes, record_calls: f.record_calls, script_id: f.script_id, agents: f.agents, dispositions: f.dispositions || d.dispositions,
-      is_manual: m === 'manual', mode: m === 'manual' ? 'preview' : m === 'auto' ? 'progressive' : m, delay: m === 'auto' ? 0 : (m === 'progressive' ? Math.max(1, Number(f.delay) || 3) : f.delay) }
+      is_manual: false, mode: m === 'auto' ? 'progressive' : m, delay: m === 'auto' ? 0 : (m === 'progressive' ? Math.max(1, Number(f.delay) || 3) : f.delay) }
   }
   async function upload() {
     setUpMsg('')
