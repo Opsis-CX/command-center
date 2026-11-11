@@ -187,6 +187,7 @@ export default function CsrPhone({ accent = '#14302A' }) {
           </div>
 
           <div style={{ display: 'grid', gap: 12, alignContent: 'start' }}>
+            {d.inbound_only && <div style={{ ...S.card, background: '#FFF8E8', borderColor: '#F0DDB0' }}><b>Inbound only.</b> <span style={S.mut}>Your manager has you taking incoming calls only right now, so no list calls will come to you.</span></div>}
             <div style={S.card}>
               <div style={S.h}>Taking calls</div>
               {(d.lines || []).length === 0 ? <p style={S.mut}>No phone line is assigned to you yet.</p> : (d.lines || []).map((l, i) => (
@@ -222,6 +223,14 @@ export default function CsrPhone({ accent = '#14302A' }) {
               )}
             </div>
           </div>
+        </div>
+      )}
+      {/* Calls from your lists (2026-11-10): blended outbound — next contact comes in the location's order
+          (missed calls, speed to lead, callbacks…), paused while a customer is waiting on your line. */}
+      {loggedIn && (d.queue_campaigns || 0) > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ ...S.h, margin: '4px 2px 8px' }}>Calls from your lists</div>
+          <Dialer />
         </div>
       )}
     </div>
