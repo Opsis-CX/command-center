@@ -15,6 +15,9 @@ const MODES = [
   ['progressive', 'Progressive', 'Calls automatically after a short countdown'],
   ['auto', 'Auto-dial (speed to lead)', 'Calls the moment a lead arrives — no countdown'],
 ]
+// Campaign types (2026-11-10): outbound is worked in the location's chosen order (Blending tab).
+const KINDS = [['missed', 'Missed calls'], ['s2l', 'Speed to lead'], ['callback', 'Callbacks'], ['lifecycle', 'Lifecycle'], ['not_booked', 'Not booked / open quotes'], ['other', 'Other']]
+const kindLabel = k => (KINDS.find(x => x[0] === k) || KINDS[5])[1]
 const STATUS = { active: ['Live', '#15803d', '#dcfce7'], paused: ['Paused', '#b45309', '#fef3c7'], draft: ['Draft', '#475569', '#f1f5f9'] }
 const fmtPhone = v => { const d = String(v || '').replace(/\D/g, '').slice(-10); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : (v || '') }
 const modeOf = c => c.is_manual ? 'manual' : c.mode === 'progressive' && Number(c.delay) === 0 ? 'auto' : c.mode
@@ -59,14 +62,14 @@ export default function PhoneSetup({ clientId = null }) {
           <div style={S.mut}>{can ? 'Build the lines your customers call and the lists your CSRs call out to.' : 'View only. Ask an admin or your RM to make changes.'}</div>
         </div>
         <div style={S.seg}>
-          {[['in', `Inbound lines (${d.lines.length})`], ['out', `Outbound campaigns (${d.campaigns.length})`]].map(([k, l]) => (
+          {[['in', `Inbound lines (${d.lines.length})`], ['out', `Outbound campaigns (${d.campaigns.length})`], ['blend', 'Blending']].map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)} style={{ ...S.segBtn, ...(tab === k ? S.segOn : {}) }}>{l}</button>
           ))}
         </div>
       </div>
       {msg && <div style={S.ok}>{msg}</div>}
 
-      {tab === 'in' ? (
+      {tab === 'blend' ? <Blending d={d} args={args} /> : tab === 'in' ? (
         <>
           {can && <div><button style={S.primary} onClick={() => setEdit({ kind: 'line', row: null })}>+ New inbound line</button></div>}
           {d.lines.length === 0 && <div style={S.card}><p style={S.mut}>No inbound lines yet.</p></div>}
@@ -102,7 +105,7 @@ export default function PhoneSetup({ clientId = null }) {
                     <div style={{ fontWeight: 800, fontSize: 15 }}>{c.name}</div>
                     <span style={{ ...S.pill, color: st[1], background: st[2] }}>{st[0]}</span>
                   </div>
-                  <div style={S.mut}>{[c.brand, c.location].filter(Boolean).join(' · ')} · {m ? m[1] : c.mode}</div>
+                  <div style={S.mut}>{[c.brand, c.location].filter(Boolean).join(' · ')} · {kindLabel(c.kind)} · {m ? m[1] : c.mode}</div>
                   <div style={S.statRow}>
                     <Stat v={c.stats?.pending || 0} l="Waiting to call" /><Stat v={c.stats?.done || 0} l="Finished" />
                     <Stat v={(c.agents || []).length} l="CSRs" /><Stat v={c.max_attempts} l="Max tries" />
@@ -264,7 +267,7 @@ const slug = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').repl
 // ---------- outbound campaign ----------
 function CampForm({ d, row, can, saving, msg, args, reload, onCancel, onSave }) {
   const [f, setF] = useState(() => row ? { ...JSON.parse(JSON.stringify(row)), _mode: modeOf(row) } : {
-    name: '', brand: d.scope.brand || '', location: d.scope.location || '', status: 'draft', _mode: 'preview', delay: 3, timezone: 'America/Chicago', max_attempts: 4,
+    name: '', brand: d.scope.brand || '', location: d.scope.location || '', status: 'draft', kind: 'other', _mode: 'preview', delay: 3, timezone: 'America/Chicago', max_attempts: 4,
     retry_minutes: [60, 240, 1440], record_calls: true, script_id: null, agents: [],
     hours: { 1: ['09:00', '19:00'], 2: ['09:00', '19:00'], 3: ['09:00', '19:00'], 4: ['09:00', '19:00'], 5: ['09:00', '19:00'], 6: ['10:00', '16:00'] },
   })
@@ -274,7 +277,7 @@ function CampForm({ d, row, can, saving, msg, args, reload, onCancel, onSave }) 
   const dis = !can
   function payload() {
     const m = f._mode
-    return { id: f.id, name: f.name, brand: f.brand, location: f.location, status: f.status, timezone: f.timezone, hours: f.hours, max_attempts: f.max_attempts,
+    return { id: f.id, name: f.name, brand: f.brand, location: f.location, status: f.status, kind: f.kind || 'other', timezone: f.timezone, hours: f.hours, max_attempts: f.max_attempts,
       retry_minutes: f.retry_minutes, record_calls: f.record_calls, script_id: f.script_id, agents: f.agents,
       is_manual: m === 'manual', mode: m === 'manual' ? 'preview' : m === 'auto' ? 'progressive' : m, delay: m === 'auto' ? 0 : (m === 'progressive' ? Math.max(1, Number(f.delay) || 3) : f.delay) }
   }
@@ -295,6 +298,8 @@ function CampForm({ d, row, can, saving, msg, args, reload, onCancel, onSave }) 
           <Field label="Brand">{d.scope.brand ? <input disabled value={d.scope.brand} style={S.input} /> :
             <select disabled={dis} value={f.brand || ''} onChange={e => set('brand', e.target.value)} style={S.input}><option value="">Pick a brand</option>{d.brands.map(b => <option key={b}>{b}</option>)}</select>}</Field>
           <Field label="Location (optional)"><input disabled={dis || !!d.scope.location} value={f.location || ''} onChange={e => set('location', e.target.value)} style={S.input} /></Field>
+          <Field label="Type" hint="Sets where it falls in the calling order (Blending)."><select disabled={dis} value={f.kind || 'other'} onChange={e => set('kind', e.target.value)} style={S.input}>
+            {KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
           <Field label="Status"><select disabled={dis} value={f.status} onChange={e => set('status', e.target.value)} style={S.input}>
             <option value="draft">Draft (not calling)</option><option value="active">Live</option><option value="paused">Paused</option><option value="archived">Archived (hide)</option></select></Field>
         </div>
@@ -369,6 +374,112 @@ function Copy({ label, value, secret }) {
     </div>
   )
 }
+// ---------- Blending (2026-11-10, Becky) ----------
+// Inbound always comes first. Outbound fills the gaps in this order; outbound pauses while a
+// customer is waiting on the location's line. GMs/RMs can set CSRs to inbound only.
+function Blending({ d, args }) {
+  const [brand, setBrand] = useState(d.scope.brand || d.brands[0] || '')
+  const [loc, setLoc] = useState(d.scope.location || '')
+  const [b, setB] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  const locs = useMemo(() => [...new Set([...d.lines, ...d.campaigns].filter(x => x.brand === brand && x.location).map(x => x.location))], [d, brand])
+  const load = useCallback(async () => {
+    if (!brand) return
+    const { data, error } = await supabase.rpc('pc_blend_get', args({ p_brand: brand, p_location: loc || null }))
+    if (error) setMsg(error.message); else setB(data)
+  }, [brand, loc, args])
+  useEffect(() => { load() }, [load])
+  if (!b) return <div style={S.card}>{msg || 'Loading…'}</div>
+  const can = !!b.can_edit
+  const order = b.kind_order || []
+  const move = (i, dir) => { const n = [...order]; const j = i + dir; if (j < 0 || j >= n.length) return; [n[i], n[j]] = [n[j], n[i]]; setB({ ...b, kind_order: n }) }
+  async function save() {
+    setBusy(true); setMsg('')
+    const { data, error } = await supabase.rpc('pc_blend_save', args({ p: { brand, location: loc || null, kind_order: order, guard_waiting: b.guard_waiting, guard_missed_30m: b.guard_missed_30m, wrap_limit_secs: b.wrap_limit_secs } }))
+    setBusy(false)
+    if (error) setMsg(error.message); else { setB(data); setMsg('Saved.'); setTimeout(() => setMsg(''), 2500) }
+  }
+  async function inboundOnly(pid, on) {
+    const { error } = await supabase.rpc('pc_inbound_only_set', args({ p_profile: pid, p_on: on, p_until: null }))
+    if (error) setMsg(error.message); else load()
+  }
+  const io = new Set((b.inbound_only || []).map(x => x.profile_id))
+  const csrs = d.people.filter(p => p.role === 'CSR' && (!brand || p.brand === brand || !p.brand) && (!loc || (p.location || '').toLowerCase() === loc.toLowerCase()))
+  const campsOf = k => d.campaigns.filter(c => !c.is_manual && (c.kind || 'other') === k && c.brand === brand && (!loc || !c.location || c.location.toLowerCase() === loc.toLowerCase()))
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <div style={{ ...S.card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <Field label="Brand">{d.scope.brand ? <input disabled value={brand} style={S.input} /> :
+            <select value={brand} onChange={e => { setBrand(e.target.value); setLoc('') }} style={S.input}>{d.brands.map(x => <option key={x}>{x}</option>)}</select>}</Field>
+          <Field label="Location">{d.scope.location ? <input disabled value={loc} style={S.input} /> :
+            <select value={loc} onChange={e => setLoc(e.target.value)} style={S.input}><option value="">All locations (brand default)</option>{locs.map(x => <option key={x}>{x}</option>)}</select>}</Field>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {msg && <span style={{ fontSize: 13, color: /Saved/.test(msg) ? '#15803d' : '#b91c1c' }}>{msg}</span>}
+          {can && <button style={S.primary} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>}
+        </div>
+      </div>
+      {b.inherited && <div style={S.ok}>This location uses the {brand} brand default until you save settings for it.</div>}
+
+      <Section title="1. Inbound always comes first" hint="A customer calling in rings the location's Ready CSRs before any list call goes out.">
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5 }}>
+          <input type="checkbox" disabled={!can} checked={!!b.guard_waiting} onChange={e => setB({ ...b, guard_waiting: e.target.checked })} />
+          Pause list calls while a customer is waiting on this location's line
+        </label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5, marginTop: 10, flexWrap: 'wrap' }}>
+          Also pause list calls when
+          <select disabled={!can} value={b.guard_missed_30m} onChange={e => setB({ ...b, guard_missed_30m: Number(e.target.value) })} style={{ ...S.inSm }}>
+            <option value={0}>— (off)</option>{[1, 2, 3, 5, 8].map(n => <option key={n} value={n}>{n}+</option>)}
+          </select>
+          calls were missed in the last 30 minutes
+        </div>
+      </Section>
+
+      <Section title="2. Then list calls, in this order" hint="When nobody is waiting, each Ready CSR gets the next contact from the first type that has someone to call.">
+        {order.map((k, i) => {
+          const cs = campsOf(k)
+          return (
+            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid #EEEAE2', borderRadius: 12, marginBottom: 8, background: i === 0 ? '#FAF8F4' : '#fff' }}>
+              <span style={{ width: 26, height: 26, borderRadius: 999, background: '#14302A', color: '#fff', fontWeight: 800, fontSize: 13, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{i + 1}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800 }}>{kindLabel(k)}</div>
+                <div style={S.mut}>{cs.length ? cs.map(c => `${c.name}${c.status !== 'active' ? ' (' + (STATUS[c.status] || STATUS.draft)[0].toLowerCase() + ')' : ''}`).join(' · ') : 'No campaign of this type yet'}</div>
+              </div>
+              {can && <div style={{ display: 'flex', gap: 4 }}>
+                <button style={S.btn} disabled={i === 0} onClick={() => move(i, -1)} title="Move up">↑</button>
+                <button style={S.btn} disabled={i === order.length - 1} onClick={() => move(i, 1)} title="Move down">↓</button>
+              </div>}
+            </div>
+          )
+        })}
+      </Section>
+
+      <Section title="3. Wrap-up time" hint="After each call the CSR picks a disposition. Over this time, their timer turns red and the wallboard flags it.">
+        <select disabled={!can} value={b.wrap_limit_secs} onChange={e => setB({ ...b, wrap_limit_secs: Number(e.target.value) })} style={{ ...S.input, width: 200 }}>
+          {[30, 45, 60, 90, 120, 180, 300].map(n => <option key={n} value={n}>{n < 60 ? `${n} seconds` : `${n / 60} minute${n === 60 ? '' : 's'}`}</option>)}
+        </select>
+      </Section>
+
+      <Section title="4. Inbound-only CSRs" hint="Keep some phones free for busy times — these CSRs only take incoming calls, no list calls. GMs can change this too.">
+        {csrs.length === 0 ? <p style={S.mut}>No CSRs here yet.</p> : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {csrs.map(p => {
+              const on = io.has(p.id)
+              return (
+                <label key={p.id} style={{ ...S.chip, background: on ? '#FFF8E8' : '#fff', borderColor: on ? '#E0B85C' : '#E1DCD2' }}>
+                  <input type="checkbox" checked={on} onChange={() => inboundOnly(p.id, !on)} /> {p.name}{on ? ' · inbound only' : ''}
+                </label>
+              )
+            })}
+          </div>
+        )}
+      </Section>
+    </div>
+  )
+}
+
 function parseCsv(text) {
   const lines = String(text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean)
   if (!lines.length) return []
