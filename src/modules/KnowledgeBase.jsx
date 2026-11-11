@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { RichEditor, RichContent, isEmptyHtml } from '../lib/RichEditor'
@@ -117,6 +117,60 @@ const KB_CSS = `
 .kb-in { width: 100%; box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; font: inherit; font-size: 14px; background: var(--surface); color: var(--ink); }
 .kb-lbl { display: block; font-size: 12.5px; font-weight: 700; color: var(--ink-soft); margin: 12px 0 5px; }
 @media (max-width: 700px) { .kb-hide-sm { display: none; } .kb-hero h2 { font-size: 21px; } }
+/* ---------- homepage (2026-11-11, per mockup) ---------- */
+.kbh-hero { position: relative; overflow: hidden; border-radius: 22px; padding: 30px 24px 34px; margin: 6px 0 18px; color: #fff; text-align: center;
+  background: radial-gradient(900px 260px at 12% 0%, rgba(56,189,248,.18), transparent 60%), radial-gradient(700px 260px at 85% 40%, rgba(45,212,191,.28), transparent 60%),
+              linear-gradient(115deg, #04222b 0%, #073946 32%, #0b5a66 62%, #0a6c75 80%, #063540 100%);
+  box-shadow: 0 14px 34px rgba(4,34,43,.28); }
+.kbh-hero h2 { position: relative; z-index: 2; margin: 0 0 16px; font-size: clamp(24px, 3.4vw, 40px); font-weight: 800; letter-spacing: -.01em; text-shadow: 0 2px 14px rgba(0,0,0,.35); }
+.kbh-search { position: relative; z-index: 2; max-width: 820px; margin: 0 auto; display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 999px; padding: 6px 8px 6px 20px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.kbh-search input { flex: 1; border: 0; outline: none; font: inherit; font-size: 15.5px; color: #0F2A33; background: transparent; padding: 10px 0; min-width: 0; }
+.kbh-search kbd { font: inherit; font-size: 12.5px; font-weight: 700; color: #0F2A33; background: #E8F1F3; border: 1px solid #D3E3E7; border-radius: 9px; padding: 5px 10px; white-space: nowrap; }
+.kbh-art { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.kbh-nav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.kbh-tab { display: inline-flex; align-items: center; gap: 9px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 14px; padding: 10px 20px;
+  font: inherit; font-size: 14.5px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 6px rgba(15,23,42,.05); }
+.kbh-tab:hover { border-color: var(--accent); }
+.kbh-tab.on { background: #0b4a57; border-color: #0b4a57; color: #fff; box-shadow: 0 6px 16px rgba(11,74,87,.28); }
+.kbh-new { display: inline-flex; align-items: center; gap: 8px; border: 0; background: #0b4a57; color: #fff; border-radius: 14px; padding: 11px 20px; font: inherit; font-size: 14.5px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 16px rgba(11,74,87,.28); }
+.kbh-sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; margin-bottom: 18px; }
+.kbh-sec { position: relative; overflow: hidden; display: flex; align-items: center; gap: 18px; text-align: left; cursor: pointer; border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  border-radius: 20px; padding: 20px 56px 20px 20px; min-height: 110px; color: var(--ink); font: inherit;
+  background: linear-gradient(110deg, color-mix(in srgb, #2dd4bf 10%, var(--surface)) 0%, color-mix(in srgb, #0e7490 14%, var(--surface)) 100%); box-shadow: 0 4px 14px rgba(15,23,42,.06); }
+.kbh-sec:hover { box-shadow: 0 10px 26px rgba(15,23,42,.12); transform: translateY(-1px); }
+.kbh-sec .ic { width: 74px; height: 74px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 34px; background: color-mix(in srgb, #fff 70%, transparent); box-shadow: inset 0 0 0 1px rgba(14,116,144,.15); }
+.kbh-sec b { display: block; font-size: 28px; font-weight: 800; letter-spacing: -.01em; }
+.kbh-sec p { margin: 4px 0 0; font-size: 14px; line-height: 1.45; color: color-mix(in srgb, var(--ink) 80%, transparent); max-width: 520px; }
+.kbh-sec .deco { position: absolute; right: 52px; top: 50%; transform: translateY(-50%); font-size: 74px; opacity: .22; filter: saturate(.6); pointer-events: none; }
+.kbh-sec .chev, .kbh-fc .chev { position: absolute; right: 18px; top: 50%; transform: translateY(-50%); font-size: 26px; color: #0b4a57; }
+.kbh-card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 18px 20px; box-shadow: 0 4px 14px rgba(15,23,42,.05); }
+.kbh-hd { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.kbh-hd h3 { margin: 0; font-size: 21px; font-weight: 800; flex: 1; letter-spacing: -.01em; }
+.kbh-link { border: 0; background: none; color: #0b4a57; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; font-size: 14px; }
+.kbh-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.kbh-fc { position: relative; display: flex; align-items: center; gap: 14px; text-align: left; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 14px;
+  padding: 16px 40px 16px 16px; min-height: 72px; cursor: pointer; font: inherit; box-shadow: 0 2px 8px rgba(15,23,42,.05); }
+.kbh-fc:hover { border-color: var(--accent); box-shadow: 0 8px 20px rgba(15,23,42,.1); }
+.kbh-fc b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 15px; font-weight: 800; line-height: 1.25; overflow: hidden; overflow-wrap: anywhere; }
+.kbh-fc small { color: var(--ink-soft); font-size: 13px; }
+.kbh-fc .chev { font-size: 22px; right: 14px; }
+.kbh-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 18px; }
+.kbh-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); cursor: pointer; font-size: 14px; }
+.kbh-row:first-of-type { border-top: 0; }
+.kbh-row:hover b { color: var(--accent); }
+.kbh-row b { font-weight: 600; flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
+.kbh-tag { font-size: 11.5px; font-weight: 800; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.kbh-tag.up { background: #DCFCE7; color: #166534; } .kbh-tag.new { background: #EDE9FE; color: #5B21B6; }
+.kbh-help-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; border: 2px solid #0b4a57; background: color-mix(in srgb, #2dd4bf 8%, var(--surface)); color: #0b4a57;
+  border-radius: 16px; padding: 14px; font: inherit; font-size: 17px; font-weight: 800; cursor: pointer; margin-top: 16px; }
+.kbh-help-btn:hover { background: color-mix(in srgb, #2dd4bf 18%, var(--surface)); }
+.kbh-empty { color: var(--ink-soft); font-size: 13.5px; padding: 8px 0; }
+/* folder view: roomier cards to match the homepage */
+.kb-folders { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.kb-fcard { border-radius: 16px; padding: 18px 18px 16px; min-height: 118px; }
+.kb-fcard .ic { font-size: 34px; }
+.kb-fcard b { font-size: 16.5px; margin-top: 10px; }
+@media (max-width: 760px) { .kbh-sections { grid-template-columns: 1fr; } .kbh-sec { padding-right: 44px; } .kbh-sec .deco { display: none; } .kbh-sec b { font-size: 22px; } .kbh-search kbd { display: none; } }
 `
 const fmtShort = (iso) => iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
 const shortName = (n) => { if (!n) return ''; const p = n.trim().split(/\s+/); return p.length > 1 ? `${p[0]} ${p[p.length - 1][0]}.` : p[0] }
@@ -212,7 +266,7 @@ function useKb() {
     const [s, f, a, x, fav, admin, cl, pj] = await Promise.all([
       supabase.from('kb_sections').select('*').is('archived_at', null).order('sort_order').order('created_at'),
       supabase.from('kb_folders').select('id, name, description, icon, parent_id, section_id, client_id, project_id, restricted, sort_order, updated_at, created_by'),
-      supabase.from('kb_articles').select('id, title, folder_id, status, restricted, author_id, updated_at, view_count'),
+      supabase.from('kb_articles').select('id, title, folder_id, status, restricted, author_id, updated_at, created_at, view_count'),
       supabase.from('kb_files').select('id, name, folder_id, article_id, kind, mime_type, size_bytes, restricted, uploaded_by, created_at'),
       user ? supabase.from('kb_favorites').select('object_type, object_id, created_at').eq('profile_id', user.id) : Promise.resolve({ data: [] }),
       supabase.rpc('kb_admin_powers'),
@@ -231,42 +285,63 @@ function useKb() {
 
 export default function KnowledgeBase() {
   const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
   const view = params.get('view') || (params.get('id') ? 'article' : params.get('folder') ? 'folder' : 'home')
   const folderId = params.get('folder') || null
   const articleId = params.get('id') || null
-  const go = (next) => setParams(next, { replace: false })
+  const sectionId = params.get('section') || null
+  const tab = params.get('tab')
+  const go = (next) => { setParams(next, { replace: false }); window.scrollTo({ top: 0 }) }
   const [kb, reload] = useKb()
   const [modal, setModal] = useState(null)   // { kind, ...props }
   const [q, setQ] = useState(params.get('q') || '')
+  const searchRef = useRef(null)
   const openNode = (c) => !c ? go({}) : c.type === 'section' ? go({ section: c.id }) : go({ view: 'folder', folder: c.id })
   const openItem = (x) => x.kind === 'article' ? go({ view: 'article', id: x.id, ...(x.folder_id ? { folder: x.folder_id } : {}) })
     : x.kind === 'folder' ? go({ view: 'folder', folder: x.id }) : x.kind === 'section' ? go({ section: x.id }) : downloadKbFile(x.id).catch(e => window.alert(e.message))
-  const ctx = { kb, reload, go, openNode, openItem, setModal }
+  const ctx = { kb, reload, go, navigate, openNode, openItem, setModal }
+  const isHome = view === 'home' && !sectionId && !tab
+  const onSearch = (text) => go({ view: 'search', q: text })
+  // Ctrl K on the Knowledge Base homepage / search jumps to the big search (press again for the global search)
+  useEffect(() => {
+    if (!(isHome || view === 'search')) return
+    const h = (e) => {
+      if ((e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey) && searchRef.current && document.activeElement !== searchRef.current) {
+        e.preventDefault(); e.stopImmediatePropagation(); searchRef.current.focus(); searchRef.current.select()
+      }
+    }
+    window.addEventListener('keydown', h, true); return () => window.removeEventListener('keydown', h, true)
+  }, [isHome, view])
+  const navActive = sectionId || tab || (view === 'folders' ? null : 'all')
+  const showNav = kb && (isHome || (view === 'home' && (sectionId || tab)) || view === 'folders')
 
   return (
     <div>
       <style>{KB_CSS}</style>
-      <div className="page-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <div>
-          <h1 className="page-title">Knowledge Base</h1>
-          <p className="page-sub">Guides, SOPs, processes, call flows and resources — all in one place.</p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <form className="kb-search" style={{ minWidth: 260 }} onSubmit={e => { e.preventDefault(); go({ view: 'search', q }) }} role="search">
-            <span>🔍</span><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search the Knowledge Base…" aria-label="Search the Knowledge Base" />
-          </form>
-          {kb?.admin?.sections && <button className="btn btn-ghost" onClick={() => setModal({ kind: 'sections' })}>⚙ Sections</button>}
-          {kb?.admin?.templates && <button className="btn btn-ghost" onClick={() => setModal({ kind: 'templates' })}>📝 Templates</button>}
-          {kb?.admin?.restore && view !== 'trash' && <button className="btn btn-ghost" onClick={() => go({ view: 'trash' })}>🗑 Trash</button>}
-        </div>
+      <div className="page-head">
+        <h1 className="page-title">Knowledge Base</h1>
+        <p className="page-sub">Guides, SOPs, processes, call flows, and resources — all in one place.</p>
       </div>
       {kb?.err && <div className="card" style={{ color: 'var(--failed)', marginBottom: 12 }}>{kb.err}</div>}
+      {(isHome || view === 'search') && <KbHero q={q} setQ={setQ} onSearch={onSearch} inputRef={searchRef} />}
+      {!kb && (view === 'home' || view === 'folder' || view === 'folders') && <p className="page-sub">Loading…</p>}
+      {showNav && <KbNav ctx={ctx} active={navActive} hideNew={!!sectionId && !tab} />}
+
+      {kb && isHome && <Home ctx={ctx} />}
+      {kb && view === 'home' && sectionId && !tab && (kb.sections.some(s => s.id === sectionId)
+        ? <Scope ctx={ctx} key={sectionId} type="section" id={sectionId} />
+        : <div className="kbh-card" style={{ textAlign: 'center' }}>This section isn't available. <button className="kbh-link" onClick={() => go({})}>Back to the Knowledge Base</button></div>)}
+      {kb && view === 'home' && tab === 'favorites' && <><div className="kbh-hd"><h3>⭐ My Favorites</h3></div><FavoritesView ctx={ctx} /></>}
+      {kb && view === 'home' && tab === 'recent' && <><div className="kbh-hd"><h3>🕑 Recently Updated</h3></div><RecentView ctx={ctx} /></>}
+      {kb && view === 'folders' && <AllFoldersView ctx={ctx} />}
+      {kb && view === 'folder' && (kb.folders.some(f => f.id === folderId)
+        ? <Scope ctx={ctx} key={folderId} type="folder" id={folderId} />
+        : <div className="kbh-card" style={{ textAlign: 'center' }}>This folder doesn't exist, or isn't shared with you. <button className="kbh-link" onClick={() => go({})}>Back to the Knowledge Base</button></div>)}
+      {view === 'search' && kb && <SearchView ctx={ctx} initialQ={params.get('q') || ''} onQ={setQ} hideBox />}
 
       {view === 'trash' && kb?.admin?.restore && <TrashView onBack={() => go({})}
         onOpenArticle={(aid, fid) => go({ view: 'article', id: aid, ...(fid ? { folder: fid } : {}) })}
         onOpenFolder={(fid) => go(fid ? { view: 'folder', folder: fid } : {})} />}
-      {view === 'search' && <SearchView ctx={ctx} initialQ={params.get('q') || ''} onQ={setQ} />}
-      {(view === 'home' || view === 'folder') && (!kb ? <p className="page-sub">Loading…</p> : <Browse ctx={ctx} view={view} sectionId={params.get('section')} folderId={folderId} tab={params.get('tab')} />)}
       {view === 'article' && <ArticleReader id={articleId} onOpenFolder={openNode}
         onBack={() => go(folderId ? { view: 'folder', folder: folderId } : {})}
         onEdit={(aid) => go({ view: 'edit', id: aid, ...(folderId ? { folder: folderId } : {}) })} />}
@@ -280,32 +355,9 @@ export default function KnowledgeBase() {
       {modal?.kind === 'sections' && <SectionsModal ctx={ctx} onClose={() => setModal(null)} />}
       {modal?.kind === 'templates' && <TemplatesModal ctx={ctx} onClose={() => setModal(null)} />}
       {modal?.kind === 'pickTemplate' && <PickTemplateModal ctx={ctx} {...modal} onClose={() => setModal(null)} />}
+      {modal?.kind === 'pickFolder' && <PickFolderModal ctx={ctx} {...modal} onClose={() => setModal(null)} />}
       {modal?.kind === 'rename' && <RenameModal ctx={ctx} {...modal} onClose={() => setModal(null)} />}
     </div>
-  )
-}
-
-// ---------- browsing: section tabs → a section or folder page ----------
-function Browse({ ctx, view, sectionId, folderId, tab }) {
-  const { kb, go } = ctx
-  const sections = kb.sections
-  const folder = folderId ? kb.folders.find(f => f.id === folderId) : null
-  const special = tab === 'favorites' || tab === 'recent' ? tab : null
-  const sid = folder ? folder.section_id : (sectionId || (special ? null : sections[0]?.id))
-  if (folderId && !folder) return <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--ink-soft)' }}>This folder doesn't exist, or isn't shared with you. <button className="btn btn-ghost" onClick={() => go({})}>← Knowledge Base home</button></div>
-  if (!sections.length) return <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--ink-soft)' }}>
-    {kb.admin.sections ? <>No sections yet. <button className="btn btn-primary" onClick={() => ctx.setModal({ kind: 'sections' })}>⚙ Create your first section</button></> : 'Nothing has been shared with you yet.'}</div>
-  return (
-    <>
-      <div className="kb-bar" role="tablist" aria-label="Sections">
-        {sections.map(s => <button key={s.id} role="tab" aria-selected={!special && s.id === sid} className={'kb-pill' + (!special && s.id === sid ? ' on' : '')} onClick={() => go({ section: s.id })}>{s.icon} {s.name}</button>)}
-        <span style={{ flex: 1 }} />
-        <button className={'kb-pill' + (special === 'favorites' ? ' on' : '')} onClick={() => go({ tab: 'favorites' })}>⭐ Favorites</button>
-        <button className={'kb-pill' + (special === 'recent' ? ' on' : '')} onClick={() => go({ tab: 'recent' })}>🕑 Recently updated</button>
-      </div>
-      {special === 'favorites' ? <FavoritesView ctx={ctx} /> : special === 'recent' ? <RecentView ctx={ctx} />
-        : <Scope ctx={ctx} key={folder ? folder.id : sid} type={folder ? 'folder' : 'section'} id={folder ? folder.id : sid} />}
-    </>
   )
 }
 
@@ -357,7 +409,7 @@ function Scope({ ctx, type, id }) {
     <div>
       <Crumbs items={crumbs} onOpen={ctx.openNode} />
       <div className="kb-hero">
-        <div className="kb-hero-ic">{node.icon || '📁'}</div>
+        <div className="kb-hero-ic">{type === 'folder' && (!node.icon || node.icon === '📁') ? <FolderGlyph size={38} /> : (node.icon || '📚')}</div>
         <div style={{ flex: 1, minWidth: 220 }}>
           <h2>{node.name}{node.restricted && <span className="kb-lock" title="Restricted — only the people in its access list">🔒</span>}</h2>
           {node.description && <p>{node.description}</p>}
@@ -405,7 +457,7 @@ function Scope({ ctx, type, id }) {
               <div className="kb-folders">{fShown.map(f => (
                 <div key={f.id} className="kb-fcard" role="button" tabIndex={0} onClick={() => go({ view: 'folder', folder: f.id })} onKeyDown={e => e.key === 'Enter' && go({ view: 'folder', folder: f.id })}>
                   <span className="kb-dots"><ItemMenu ctx={ctx} item={{ kind: 'folder', ...f }} /></span>
-                  <span className="ic">{f.icon && f.icon !== '📁' ? f.icon : '📁'}</span>
+                  <span className="ic">{f.icon && f.icon !== '📁' ? f.icon : <FolderGlyph size={40} />}</span>
                   <b title={f.name}>{f.name}{f.restricted && <span className="kb-lock">🔒</span>}</b>
                   <small>{countIn(f.id)} item{countIn(f.id) === 1 ? '' : 's'}{client(f.client_id) ? ` · ${client(f.client_id)}` : ''}</small>
                 </div>))}</div>
@@ -531,7 +583,7 @@ function RecentView({ ctx }) {
 }
 
 // ---------- global search (server-filtered to what you may view) ----------
-function SearchView({ ctx, initialQ, onQ }) {
+function SearchView({ ctx, initialQ, onQ, hideBox }) {
   const { kb } = ctx
   const [q, setQ] = useState(initialQ)
   const [f, setF] = useState({ section: '', client: '', project: '', type: '', folder: '' })
@@ -544,6 +596,7 @@ function SearchView({ ctx, initialQ, onQ }) {
     setBusy(false); setRows(error ? [] : (data || []))
   }, [q, f])
   useEffect(() => { setQ(initialQ) }, [initialQ])
+  useEffect(() => { if (hideBox) run() }, [initialQ]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (q.trim() || Object.values(f).some(Boolean)) run(); else setRows(null) }, [f, initialQ]) // eslint-disable-line react-hooks/exhaustive-deps
   const sel = (k, label, opts) => (
     <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)' }}>{label}
@@ -555,10 +608,10 @@ function SearchView({ ctx, initialQ, onQ }) {
     mime_type: kb.files.find(x => x.id === r.id)?.mime_type, status: kb.articles.find(a => a.id === r.id)?.status, folder_id: r.kind === 'folder' ? undefined : r.folder_id, parent_id: r.kind === 'folder' ? r.folder_id : undefined, section_id: r.section_id }))
   return (
     <div>
-      <form className="kb-bar" onSubmit={e => { e.preventDefault(); onQ(q); run() }}>
+      {!hideBox && <form className="kb-bar" onSubmit={e => { e.preventDefault(); onQ(q); run() }}>
         <div className="kb-search" style={{ maxWidth: 'none', flex: '1 1 320px' }}><span>🔍</span><input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search articles, files, recordings and folders…" aria-label="Search" /></div>
         <button className="btn btn-primary" type="submit">Search</button>
-      </form>
+      </form>}
       <div className="kb-bar" style={{ alignItems: 'flex-end' }}>
         {sel('section', 'Section', kb.sections)}
         {kb.clients.length > 0 && sel('client', 'Client', kb.clients)}
@@ -1182,5 +1235,202 @@ function ArticleEditor({ id, folderId, templateId, onDone, onCancel }) {
         }}>Delete article</button>}
       </div>
     </div>
+  )
+}
+
+// ============================================================
+// HOMEPAGE (2026-11-11, per the approved mockup): banner + big search · section cards ·
+// Browse by Client · Recent Updates · My Favorites · Need help. Everything shown comes from what the
+// server lets this person view, and the sections are whatever the organization configured.
+// ============================================================
+function FolderGlyph({ size = 34 }) {
+  return (
+    <svg width={size} height={size * 0.82} viewBox="0 0 48 39" aria-hidden="true" style={{ flex: 'none' }}>
+      <path d="M3 6.5C3 4.6 4.6 3 6.5 3h11.2c1 0 2 .4 2.6 1.2l2.4 2.9c.7.8 1.6 1.2 2.6 1.2H41.5c1.9 0 3.5 1.6 3.5 3.5v21.7c0 1.9-1.6 3.5-3.5 3.5h-35C4.6 37 3 35.4 3 33.5v-27z" fill="#F7B53B" />
+      <path d="M3 13.5c0-1.9 1.6-3.5 3.5-3.5h35c1.9 0 3.5 1.6 3.5 3.5v20c0 1.9-1.6 3.5-3.5 3.5h-35C4.6 37 3 35.4 3 33.5v-20z" fill="#FCCB5A" />
+    </svg>
+  )
+}
+// the teal jellyfish banner art (pure SVG — no images to load)
+function HeroArt() {
+  const dots = [[6, 30, 2], [14, 70, 1.4], [22, 20, 1.2], [31, 82, 1.6], [42, 14, 1], [55, 88, 1.3], [63, 22, 1.8], [72, 76, 1.1], [79, 12, 1.5], [91, 64, 1.2], [96, 26, 1.7], [48, 60, .9], [36, 40, 1]]
+  return (
+    <svg className="kbh-art" viewBox="0 0 1000 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs>
+        <radialGradient id="kbjBell" cx="45%" cy="35%" r="70%"><stop offset="0%" stopColor="#E0FFFC" stopOpacity=".95" /><stop offset="45%" stopColor="#5EEAD4" stopOpacity=".55" /><stop offset="100%" stopColor="#0E7490" stopOpacity=".05" /></radialGradient>
+        <radialGradient id="kbjGlow" cx="50%" cy="50%" r="50%"><stop offset="0%" stopColor="#67E8F9" stopOpacity=".55" /><stop offset="100%" stopColor="#67E8F9" stopOpacity="0" /></radialGradient>
+        <linearGradient id="kbjWave" x1="0" x2="1"><stop offset="0%" stopColor="#5EEAD4" stopOpacity="0" /><stop offset="50%" stopColor="#5EEAD4" stopOpacity=".35" /><stop offset="100%" stopColor="#5EEAD4" stopOpacity="0" /></linearGradient>
+      </defs>
+      <path d="M0 170 C 180 120, 320 210, 520 160 S 860 110, 1000 150" fill="none" stroke="url(#kbjWave)" strokeWidth="2" />
+      <path d="M0 190 C 220 150, 360 230, 560 185 S 880 140, 1000 175" fill="none" stroke="url(#kbjWave)" strokeWidth="1.2" />
+      <path d="M0 60 C 160 20, 300 90, 470 50" fill="none" stroke="url(#kbjWave)" strokeWidth="1" opacity=".7" />
+      <circle cx="870" cy="70" r="130" fill="url(#kbjGlow)" />
+      <g transform="translate(805 18) rotate(-14 70 60)">
+        <path d="M8 70 C 8 18, 132 6, 140 62 C 120 74, 98 66, 74 74 C 52 80, 30 70, 8 70 Z" fill="url(#kbjBell)" stroke="#A5F3FC" strokeOpacity=".7" strokeWidth="1.4" />
+        <path d="M24 66 C 40 40, 96 30, 124 58" fill="none" stroke="#ECFEFF" strokeOpacity=".55" strokeWidth="1.2" />
+        {[20, 40, 60, 80, 100, 120].map((x, i) => (
+          <path key={x} d={`M${x} ${72 + (i % 2) * 3} C ${x - 14} ${110 + i * 4}, ${x + 18} ${140 + i * 3}, ${x - 6} ${190 + i * 6}`} fill="none" stroke="#99F6E4" strokeOpacity={0.55 - i * 0.05} strokeWidth={1.6 - i * 0.12} />
+        ))}
+      </g>
+      {dots.map(([x, y, r], i) => <circle key={i} cx={x * 10} cy={y * 2.2} r={r * 2} fill="#CCFBF1" opacity={0.35 + (i % 4) * 0.12} />)}
+    </svg>
+  )
+}
+function KbHero({ q, setQ, onSearch, inputRef }) {
+  return (
+    <section className="kbh-hero" aria-label="Search the Knowledge Base">
+      <HeroArt />
+      <h2>Find what you need, fast.</h2>
+      <form className="kbh-search" role="search" onSubmit={e => { e.preventDefault(); onSearch(q) }}>
+        <span aria-hidden="true" style={{ fontSize: 18, color: '#0b4a57' }}>🔍</span>
+        <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)} placeholder="Search the Knowledge Base (guides, SOPs, call flows, files, and more…)" aria-label="Search the Knowledge Base" />
+        <kbd>Ctrl K</kbd>
+      </form>
+    </section>
+  )
+}
+// the row under the banner: All Resources · your sections · Favorites · Recently Updated · + New
+function KbNav({ ctx, active, hideNew = false }) {
+  const { kb, go, setModal } = ctx
+  const [secPw, setSecPw] = useState({})
+  useEffect(() => { kb.sections.forEach(s => supabase.rpc('kb_can', { p_action: 'create', p_type: 'section', p_id: s.id }).then(({ data }) => setSecPw(p => ({ ...p, [s.id]: !!data })))) }, [kb.sections])
+  const canFolder = kb.sections.filter(s => secPw[s.id])
+  const anyWrite = canFolder.length > 0 || kb.admin.sections || kb.admin.templates || kb.admin.restore || kb.folders.length > 0
+  return (
+    <div className="kbh-nav">
+      <button className={'kbh-tab' + (active === 'all' ? ' on' : '')} onClick={() => go({})}>🗂 All Resources</button>
+      {kb.sections.map(s => <button key={s.id} className={'kbh-tab' + (active === s.id ? ' on' : '')} onClick={() => go({ section: s.id })}>{s.icon} {s.name}</button>)}
+      <span style={{ flex: 1 }} />
+      <button className={'kbh-tab' + (active === 'favorites' ? ' on' : '')} onClick={() => go({ tab: 'favorites' })}>☆ Favorites</button>
+      <button className={'kbh-tab' + (active === 'recent' ? ' on' : '')} onClick={() => go({ tab: 'recent' })}>🕑 Recently Updated</button>
+      {anyWrite && !hideNew && (
+        <Drop label={<>＋ New ▾</>} className="kbh-new">
+          {canFolder.map(s => <MI key={s.id} icon="📁" onClick={() => setModal({ kind: 'folder', parentType: 'section', parentId: s.id })} sub={`A top-level folder in ${s.name}`}>Folder in {s.name}</MI>)}
+          {kb.folders.length > 0 && <>
+            <MI icon="📄" onClick={() => go({ view: 'new' })} sub="Pick the folder as you write">Article</MI>
+            <MI icon="📝" onClick={() => setModal({ kind: 'pickFolder', then: 'template' })} sub="Start from one of your templates">Article from a template</MI>
+            <MI icon="⬆" onClick={() => setModal({ kind: 'pickFolder', then: 'file' })} sub="PDFs, docs, images, spreadsheets…">Upload files</MI>
+            <MI icon="🎬" onClick={() => setModal({ kind: 'pickFolder', then: 'recording' })} sub="Audio or video">Upload a recording</MI>
+          </>}
+          {(kb.admin.sections || kb.admin.templates || kb.admin.restore) && <div style={{ borderTop: '1px solid var(--line)', margin: '6px 0', padding: '8px 10px 2px', fontSize: 11.5, fontWeight: 800, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Manage</div>}
+          {kb.admin.sections && <MI icon="⚙" onClick={() => setModal({ kind: 'sections' })} sub="Add, rename, reorder">Sections</MI>}
+          {kb.admin.templates && <MI icon="📝" onClick={() => setModal({ kind: 'templates' })} sub="Your article templates">Templates</MI>}
+          {kb.admin.restore && <MI icon="🗑" onClick={() => go({ view: 'trash' })} sub="Restore deleted items">Trash</MI>}
+        </Drop>
+      )}
+    </div>
+  )
+}
+const DAY = 864e5
+function Home({ ctx }) {
+  const { kb, go, openItem } = ctx
+  const [layout, setLayout] = useState(() => { try { return localStorage.getItem('kb-home-layout') || 'grid' } catch { return 'grid' } })
+  const items = allItems(kb)
+  const countIn = (fid) => kb.folders.filter(f => f.parent_id === fid).length + items.filter(x => x.folder_id === fid).length
+  const tops = kb.folders.filter(f => !f.parent_id).sort((a, b) => a.name.localeCompare(b.name))
+  const recent = items.filter(x => x.status !== 'draft').sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)).slice(0, 5)
+  const favRows = kb.favs.map(f => f.object_type === 'folder' ? (() => { const x = kb.folders.find(y => y.id === f.object_id); return x && { kind: 'folder', ...x } })()
+    : f.object_type === 'section' ? null : items.find(y => y.id === f.object_id)).filter(Boolean).slice(0, 5)
+  const created = (x) => x.kind === 'article' ? kb.articles.find(a => a.id === x.id)?.created_at : x.updated_at
+  const badge = (x) => { const c = created(x); if (c && Date.now() - new Date(c) < 7 * DAY) return <span className="kbh-tag new">New</span>
+    return Date.now() - new Date(x.updated_at) < 14 * DAY ? <span className="kbh-tag up">Updated</span> : null }
+  const unfav = async (x) => { const t = x.kind === 'recording' ? 'file' : x.kind; await supabase.from('kb_favorites').delete().eq('object_type', t).eq('object_id', x.id).eq('profile_id', (await supabase.auth.getUser()).data.user?.id); ctx.reload() }
+  const deco = (s) => s.icon || '📚'
+  return (
+    <>
+      {kb.sections.length > 0 && (
+        <div className="kbh-sections">
+          {kb.sections.map(s => (
+            <button key={s.id} className="kbh-sec" onClick={() => go({ section: s.id })}>
+              <span className="ic">{s.icon || '📚'}</span>
+              <span><b>{s.name}</b>{s.description && <p>{s.description}</p>}</span>
+              <span className="deco">{deco(s)}</span><span className="chev">›</span>
+            </button>))}
+        </div>
+      )}
+      {kb.sections.length === 0 && <div className="kbh-card" style={{ textAlign: 'center', marginBottom: 18 }}>{kb.admin.sections ? <>No sections yet. <button className="btn btn-primary" onClick={() => ctx.setModal({ kind: 'sections' })}>⚙ Create your first section</button></> : 'Nothing has been shared with you yet.'}</div>}
+
+      {tops.length > 0 && (
+        <div className="kbh-card">
+          <div className="kbh-hd">
+            <span style={{ fontSize: 22 }} aria-hidden="true">🗀</span><h3>Browse by Client</h3>
+            <button className="kbh-link" onClick={() => go({ view: 'folders' })}>View All</button>
+            <div className="kb-seg" role="group" aria-label="Layout">
+              <button className={layout === 'grid' ? 'on' : ''} onClick={() => { setLayout('grid'); try { localStorage.setItem('kb-home-layout', 'grid') } catch { /* ok */ } }} aria-label="Grid">▦</button>
+              <button className={layout === 'list' ? 'on' : ''} onClick={() => { setLayout('list'); try { localStorage.setItem('kb-home-layout', 'list') } catch { /* ok */ } }} aria-label="List">☰</button>
+            </div>
+          </div>
+          {layout === 'grid' ? (
+            <div className="kbh-folders">{tops.slice(0, 15).map(f => (
+              <button key={f.id} className="kbh-fc" onClick={() => go({ view: 'folder', folder: f.id })} title={f.name}>
+                <FolderGlyph /><span style={{ minWidth: 0 }}><b>{f.name}{f.restricted && <span className="kb-lock">🔒</span>}</b><small>{countIn(f.id)} item{countIn(f.id) === 1 ? '' : 's'}</small></span><span className="chev">›</span>
+              </button>))}</div>
+          ) : <ItemTable ctx={ctx} rows={tops.map(f => ({ kind: 'folder', ...f }))} countIn={countIn} showWhere />}
+          {tops.length > 15 && layout === 'grid' && <div style={{ textAlign: 'center', marginTop: 10 }}><button className="kbh-link" onClick={() => go({ view: 'folders' })}>View all {tops.length} folders</button></div>}
+        </div>
+      )}
+
+      <div className="kbh-panels">
+        <div className="kbh-card">
+          <div className="kbh-hd"><span style={{ fontSize: 22 }} aria-hidden="true">🕑</span><h3>Recent Updates</h3><button className="kbh-link" onClick={() => go({ tab: 'recent' })}>View All</button></div>
+          {recent.length === 0 ? <div className="kbh-empty">Nothing yet.</div> : recent.map(x => (
+            <div key={x.kind + x.id} className="kbh-row" role="button" tabIndex={0} onClick={() => openItem(x)} onKeyDown={e => e.key === 'Enter' && openItem(x)}>
+              <span style={{ fontSize: 18 }}>{itemIcon(x)}</span><b title={x.name}>{x.name}</b>{badge(x)}<span style={{ color: 'var(--ink-soft)', fontSize: 13, whiteSpace: 'nowrap' }}>{fmtShort(x.updated_at)}</span>
+            </div>))}
+        </div>
+        <div className="kbh-card">
+          <div className="kbh-hd"><span style={{ fontSize: 22, color: '#F59E0B' }} aria-hidden="true">☆</span><h3>My Favorites</h3><button className="kbh-link" onClick={() => go({ tab: 'favorites' })}>View All</button></div>
+          {favRows.length === 0 ? <div className="kbh-empty">Tap ☆ on any article, file or folder to keep it here.</div> : favRows.map(x => (
+            <div key={x.kind + x.id} className="kbh-row" role="button" tabIndex={0} onClick={() => openItem(x)} onKeyDown={e => e.key === 'Enter' && openItem(x)}>
+              <span style={{ fontSize: 18 }}>{x.kind === 'folder' ? '📁' : itemIcon(x)}</span><b title={x.name}>{x.name}</b>
+              <button className="kb-star on" onClick={e => { e.stopPropagation(); unfav(x) }} aria-label="Remove from favorites">★</button>
+            </div>))}
+        </div>
+        <div className="kbh-card">
+          <div className="kbh-hd" style={{ alignItems: 'flex-start' }}><span style={{ fontSize: 26 }} aria-hidden="true">❔</span>
+            <div style={{ flex: 1 }}><h3>Need Help Finding Something?</h3>
+              <p style={{ margin: '6px 0 0', color: 'var(--ink-soft)', fontSize: 14.5, lineHeight: 1.5 }}>Try a search, browse by {kb.sections.length ? 'section or client' : 'folder'}, or {kb.sections[1] ? `check the ${kb.sections[1].name} resources` : 'open a ticket'}.</p></div></div>
+          <button className="kbh-help-btn" onClick={() => ctx.navigate('/help')}>💬 Open a Help Ticket</button>
+        </div>
+      </div>
+    </>
+  )
+}
+function AllFoldersView({ ctx }) {
+  const { kb } = ctx
+  const items = allItems(kb)
+  const countIn = (fid) => kb.folders.filter(f => f.parent_id === fid).length + items.filter(x => x.folder_id === fid).length
+  const tops = kb.folders.filter(f => !f.parent_id).sort((a, b) => a.name.localeCompare(b.name))
+  return <div className="kbh-card"><div className="kbh-hd"><span style={{ fontSize: 22 }}>🗀</span><h3>All folders</h3></div>
+    <div className="kbh-folders">{tops.map(f => (
+      <button key={f.id} className="kbh-fc" onClick={() => ctx.go({ view: 'folder', folder: f.id })} title={f.name}>
+        <FolderGlyph /><span style={{ minWidth: 0 }}><b>{f.name}{f.restricted && <span className="kb-lock">🔒</span>}</b>
+          <small>{countIn(f.id)} item{countIn(f.id) === 1 ? '' : 's'} · {kb.sections.find(s => s.id === f.section_id)?.name}</small></span><span className="chev">›</span>
+      </button>))}</div></div>
+}
+// "+ New" from the homepage: choose the folder first
+function PickFolderModal({ ctx, then, onClose }) {
+  const { kb, go, setModal, reload } = ctx
+  const [dest, setDest] = useState(''), [busy, setBusy] = useState('')
+  const fileRef = useRef(null)
+  const { user } = useAuth()
+  const opts = folderOptions(kb.folders.map(x => ({ ...x, kb_sections: kb.sections.find(s => s.id === x.section_id) })))
+  async function onFiles(e) {
+    const picked = Array.from(e.target.files || []); e.target.value = ''
+    if (!picked.length) return
+    setBusy(`Uploading ${picked.length}…`)
+    try { for (const f of picked) await uploadKbFile(f, { folder_id: dest, article_id: null, kind: then === 'recording' ? 'recording' : 'file' }, user?.id); await reload(); onClose(); go({ view: 'folder', folder: dest }) }
+    catch (err) { setBusy(''); window.alert(/row-level|policy/i.test(err.message) ? "You can't upload to that folder." : 'Upload failed: ' + err.message) }
+  }
+  const next = () => { if (!dest) return; if (then === 'template') setModal({ kind: 'pickTemplate', folderId: dest }); else fileRef.current?.click() }
+  return (
+    <KbModal title={then === 'template' ? 'New article from a template' : then === 'recording' ? 'Upload a recording' : 'Upload files'} onClose={onClose} width={520}
+      footer={<><span style={{ fontSize: 13, marginRight: 'auto' }}>{busy}</span><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={!dest || !!busy} onClick={next}>{then === 'template' ? 'Next' : 'Choose files…'}</button></>}>
+      <label className="kb-lbl" style={{ marginTop: 0 }}>Which folder?</label>
+      <select className="kb-in" value={dest} onChange={e => setDest(e.target.value)} size={10} style={{ height: 'auto' }}>
+        {opts.map(g => <optgroup key={g.section} label={g.section}>{g.items.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}</optgroup>)}
+      </select>
+      <input ref={fileRef} type="file" multiple hidden accept={then === 'recording' ? 'audio/*,video/*' : undefined} onChange={onFiles} />
+    </KbModal>
   )
 }
