@@ -261,6 +261,9 @@ function LineForm({ d, row, can, saving, msg, onCancel, onSave }) {
       <Section title="Hours" hint="When CSRs answer. Outside these hours the after-hours option below takes over.">
         <Hours value={f.hours} onChange={v => set('hours', v)} disabled={dis} />
       </Section>
+      <Section title="Dispositions" hint="What CSRs pick after an incoming call on this line. Add, remove, rename or reorder them.">
+        <DispoEditor value={f.dispositions || d.dispositions} standard={d.dispositions} disabled={dis} onChange={v => set('dispositions', v)} />
+      </Section>
       <Section title="When nobody answers">
         <div style={S.form}>
           <Field label="Ring CSRs for"><select disabled={dis} value={f.ring_seconds} onChange={e => set('ring_seconds', Number(e.target.value))} style={S.input}>{[15, 20, 25, 30, 45, 60].map(s => <option key={s} value={s}>{s} seconds</option>)}</select></Field>
@@ -291,7 +294,7 @@ function CampForm({ d, row, can, saving, msg, args, reload, onCancel, onSave }) 
   function payload() {
     const m = f._mode
     return { id: f.id, name: f.name, brand: f.brand, location: f.location, status: f.status, kind: f.kind || 'other', timezone: f.timezone, hours: f.hours, max_attempts: f.max_attempts,
-      retry_minutes: f.retry_minutes, record_calls: f.record_calls, script_id: f.script_id, agents: f.agents,
+      retry_minutes: f.retry_minutes, record_calls: f.record_calls, script_id: f.script_id, agents: f.agents, dispositions: f.dispositions || d.dispositions,
       is_manual: m === 'manual', mode: m === 'manual' ? 'preview' : m === 'auto' ? 'progressive' : m, delay: m === 'auto' ? 0 : (m === 'progressive' ? Math.max(1, Number(f.delay) || 3) : f.delay) }
   }
   async function upload() {
@@ -345,13 +348,8 @@ function CampForm({ d, row, can, saving, msg, args, reload, onCancel, onSave }) 
         </select>
       </Section>
       <Section title="CSRs on this campaign"><People people={d.people} allowAll={!d.scope.brand} brand={d.scope.brand || f.brand} location={d.scope.location || f.location} selected={f.agents || []} onChange={v => set('agents', v)} disabled={dis} /></Section>
-      <Section title="Dispositions" hint="What CSRs pick at the end of each call. Grouped so intent and booking rates calculate automatically.">
-        {['sales', 'service', 'none'].map(g => (
-          <div key={g} style={{ marginBottom: 6 }}>
-            <span style={S.cap}>{g === 'sales' ? 'Wanted service or a new door' : g === 'service' ? 'Existing customer' : 'Not a customer / no answer'}</span>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>{(f.dispositions || d.dispositions).filter(x => (x.group || 'none') === g).map(x => <span key={x.code} style={S.chip}>{x.label}</span>)}</div>
-          </div>
-        ))}
+      <Section title="Dispositions" hint="What CSRs pick at the end of each call. Add, remove, rename or reorder them. The group decides Rob's intent and booking rates.">
+        <DispoEditor value={f.dispositions || d.dispositions} standard={d.dispositions} disabled={dis} onChange={v => set('dispositions', v)} />
       </Section>
       {row && f._mode !== 'manual' && (
         <Section title="Contacts to call" hint={`${row.stats?.pending || 0} waiting · ${row.stats?.done || 0} finished`}>
@@ -387,6 +385,80 @@ function Copy({ label, value, secret }) {
     </div>
   )
 }
+// ---------- Disposition editor (2026-11-10, Becky: 100% customizable) ----------
+// Each disposition: label, group (sales / service / none), result (done / try again / call back / do not call),
+// booked (sales only) and "talked to the customer". The code is made from the group so reporting keeps working:
+// s_booked_* = booked, s_* = wanted service / new door, c_* = existing customer, n_* = not a customer / no answer.
+const DGROUPS = [['sales', 'Wanted service or a new door', '#15803d'], ['service', 'Existing customer', '#0e7490'], ['none', 'Not a customer / no answer', '#64748b']]
+const OUTCOMES = [['final', 'Done'], ['retry', 'Try again later'], ['callback', 'Call back at a set time'], ['dnc', 'Do not call']]
+const KEEP = ['no_answer', 'voicemail', 'busy', 'dnc', 'booked', 's_booked']
+function dispoCode(x) {
+  if (KEEP.includes(x.code) && (x.code === 's_booked' || x.code === 'booked' ? x.group === 'sales' && x.is_success : x.group === 'none')) return x.code
+  const base = slug(x.label) || 'item'
+  const pre = x.group === 'sales' ? (x.is_success ? 's_booked_' : 's_') : x.group === 'service' ? 'c_' : 'n_'
+  const cur = String(x.code || '')
+  if (cur.startsWith(pre) && !(pre === 's_' && cur.startsWith('s_booked'))) return cur
+  return pre + base
+}
+function DispoEditor({ value, standard, onChange, disabled }) {
+  const list = Array.isArray(value) ? value : []
+  const upd = (i, patch) => {
+    const n = list.map((x, j) => {
+      if (j !== i) return x
+      const y = { ...x, ...patch }
+      if (y.group !== 'sales') y.is_success = false
+      if (y.outcome === 'dnc') y.is_contact = true
+      y.code = dispoCode(y)
+      return y
+    })
+    onChange(n)
+  }
+  const move = (i, dir) => { const j = i + dir; if (j < 0 || j >= list.length) return; const n = [...list]; [n[i], n[j]] = [n[j], n[i]]; onChange(n) }
+  const add = (group) => {
+    const label = 'New disposition'
+    let x = { label, group, outcome: 'final', is_contact: group !== 'none', is_success: false }
+    x.code = dispoCode(x) + '_' + Math.random().toString(36).slice(2, 6)
+    onChange([...list, x])
+  }
+  const dupes = new Set(list.map(x => x.code).filter((c, i, a) => a.indexOf(c) !== i))
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      {DGROUPS.map(([g, gl, color]) => {
+        const rows = list.map((x, i) => [x, i]).filter(([x]) => (x.group || 'none') === g)
+        return (
+          <div key={g}>
+            <div style={{ ...S.cap, color }}>{gl}</div>
+            <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
+              {rows.length === 0 && <span style={S.mut}>None</span>}
+              {rows.map(([x, i]) => (
+                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', padding: '6px 8px', border: '1px solid #EEEAE2', borderRadius: 10, background: x.is_success ? '#F0FBF4' : '#fff' }}>
+                  <input disabled={disabled} value={x.label} onChange={e => upd(i, { label: e.target.value })} style={{ ...S.input, width: 220, marginTop: 0 }} />
+                  <select disabled={disabled} value={x.group || 'none'} onChange={e => upd(i, { group: e.target.value })} style={{ ...S.inSm }}>
+                    {DGROUPS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </select>
+                  <select disabled={disabled} value={x.outcome || 'final'} onChange={e => upd(i, { outcome: e.target.value })} style={{ ...S.inSm }}>
+                    {OUTCOMES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </select>
+                  {g === 'sales' && <label style={{ fontSize: 12.5, display: 'inline-flex', gap: 4, alignItems: 'center' }}><input type="checkbox" disabled={disabled} checked={!!x.is_success} onChange={e => upd(i, { is_success: e.target.checked })} /> Counts as booked</label>}
+                  <label style={{ fontSize: 12.5, display: 'inline-flex', gap: 4, alignItems: 'center' }} title="Used to stop 'no answer' style results on long calls"><input type="checkbox" disabled={disabled} checked={!!x.is_contact} onChange={e => upd(i, { is_contact: e.target.checked })} /> Talked to the customer</label>
+                  {dupes.has(x.code) && <span style={{ fontSize: 12, color: '#b91c1c' }}>Same name as another one</span>}
+                  {!disabled && <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 4 }}>
+                    <button style={S.link} onClick={() => move(i, -1)} title="Move up">↑</button>
+                    <button style={S.link} onClick={() => move(i, 1)} title="Move down">↓</button>
+                    <button style={{ ...S.link, color: '#b91c1c' }} onClick={() => onChange(list.filter((_, j) => j !== i))}>Remove</button>
+                  </span>}
+                </div>
+              ))}
+              {!disabled && <div><button style={S.btn} onClick={() => add(g)}>+ Add to “{gl}”</button></div>}
+            </div>
+          </div>
+        )
+      })}
+      {!disabled && <div><button style={S.link} onClick={() => { if (window.confirm('Put back the standard GarageCo dispositions? Your changes here will be replaced.')) onChange(standard) }}>Reset to the standard list</button></div>}
+    </div>
+  )
+}
+
 // ---------- Central team (2026-11-10, Becky): approve CSRs to answer for other brands ----------
 function CentralTeam({ args, onChange }) {
   const [a, setA] = useState(null)
