@@ -25,6 +25,8 @@ import AiSpeedToLead, { portalS2lData } from './AiSpeedToLead'
 // Supervisor tools (2026-11-10): Wallboard + the phone for RMs, GMs, admins and Opsis staff.
 import { MemoryRouter } from 'react-router-dom'
 import SupervisorWallboard from './SupervisorWallboard'
+// Phone setup (2026-11-10): clients build their own inbound lines + outbound campaigns
+import PhoneSetup from './PhoneSetup'
 import CsrPhone from './CsrPhone'
 import Softphone from '../components/Softphone'
 import { VoiceProvider } from '../lib/voice'
@@ -109,6 +111,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         root.render(
           <div style={PORTAL_THEME}>
             {kind === 'wallboard' ? <SupervisorWallboard clientId={clientId} />
+              : kind === 'phonesetup' ? <PhoneSetup clientId={clientId} />
               : kind === 'myphone' ? (
                 <MemoryRouter>
                   <VoiceProvider canCallPeople={false} canDialNumbers={false}><CsrPhone accent="#14302A" /><Softphone /></VoiceProvider>
