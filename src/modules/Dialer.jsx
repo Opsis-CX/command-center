@@ -422,6 +422,11 @@ function OutboundWork({ me }) {
       <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: '#0e7490' }}>{campaign?.name}</div>
       <div style={{ fontSize: 19, fontWeight: 800, marginTop: 2 }}>{contact.contact_name || 'Unknown name'}</div>
       <div style={S.small}>{info?.phone ? prettyPhone(info.phone) : `Phone ending ${contact.phone_last4}`} · their time {contact.customer_local_time}</div>
+      {contact.dial_no && <div style={{ marginTop: 6, display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#E6F0EA', color: '#14532d' }}>Dial {contact.dial_no} of {contact.dial_total}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: contact.voicemail === 'none' ? '#F3F4F6' : '#FEF3C7', color: contact.voicemail === 'none' ? '#374151' : '#92400E' }}>
+          {contact.voicemail === 'leave' ? 'Leave a voicemail' : contact.voicemail === 'final' ? 'Leave the final voicemail' : 'No voicemail — hang up'}</span>
+      </div>}
       {contact.last_disposition && <div style={{ ...S.small, marginTop: 2 }}>Last result: {(campaign?.dispositions || []).find(x => x.code === contact.last_disposition)?.label || contact.last_disposition}</div>}
       <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
         {phase === 'preview' && <>
