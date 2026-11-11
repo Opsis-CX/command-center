@@ -353,10 +353,8 @@ create policy kb_files_bucket_delete on storage.objects for delete to authentica
   or (public.kb_admin_powers()->>'restore')::boolean));
 -- downloading a file needs "download" on that file (same rules as everything else)
 drop policy if exists kb_files_bucket_select on storage.objects;
-create policy kb_files_bucket_select on storage.objects for select to authenticated using (bucket_id = 'kb-files' and (
-  exists (select 1 from public.kb_files f where f.storage_path = storage.objects.name and public.kb_can('download', 'file', f.id))
-  or exists (select 1 from public.kb_files f where f.storage_path = storage.objects.name and f.uploaded_by = auth.uid())
-  or not exists (select 1 from public.kb_files f where f.storage_path = storage.objects.name)));   -- images embedded in articles (no file record)
+create policy kb_files_bucket_select on storage.objects for select to authenticated using (bucket_id = 'kb-files' and
+  exists (select 1 from public.kb_files f where f.storage_path = storage.objects.name and (public.kb_can('download', 'file', f.id) or f.uploaded_by = auth.uid())));
 
 -- ---------- bring existing content in ----------
 -- starter sections (just examples — rename, reorder, add or remove them any time)
