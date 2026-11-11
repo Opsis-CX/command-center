@@ -51,7 +51,7 @@ export default function PhoneSetup({ clientId = null }) {
   const can = !!d.can_edit
   const scope = d.scope.location ? `${d.scope.brand} · ${d.scope.location}` : d.scope.brand || 'All brands'
 
-  if (edit?.kind === 'line') return <LineForm d={d} row={edit.row} can={can} saving={saving} msg={msg} onCancel={() => { setEdit(null); setMsg('') }} onSave={r => save('line', r)} />
+  if (edit?.kind === 'line') return <LineForm d={d} row={edit.row} can={can} saving={saving} msg={msg} args={args} onData={setD} onCancel={() => { setEdit(null); setMsg('') }} onSave={r => save('line', r)} />
   if (edit?.kind === 'camp') return <CampForm d={d} row={edit.row} can={can} saving={saving} msg={msg} args={args} reload={load} onCancel={() => { setEdit(null); setMsg('') }} onSave={r => save('camp', r)} />
 
   return (
@@ -209,7 +209,7 @@ function FormBar({ title, onCancel, onSave, saving, can, msg }) {
 }
 
 // ---------- inbound line ----------
-function LineForm({ d, row, can, saving, msg, onCancel, onSave }) {
+function LineForm({ d, row, can, saving, msg, args, onData, onCancel, onSave }) {
   const [f, setF] = useState(() => row ? JSON.parse(JSON.stringify(row)) : {
     name: '', brand: d.scope.brand || '', location: d.scope.location || '', active: true, timezone: 'America/Chicago', ring_seconds: 25, record_calls: true, ai_enabled: true,
     greeting: '', menu: [], members: [], hours: { 1: ['08:00', '17:00'], 2: ['08:00', '17:00'], 3: ['08:00', '17:00'], 4: ['08:00', '17:00'], 5: ['08:00', '17:00'] }, callback_campaign_id: null,
@@ -219,6 +219,28 @@ function LineForm({ d, row, can, saving, msg, onCancel, onSave }) {
   const membersOf = q => (f.members || []).filter(m => (m.queue || 'main') === q).map(m => m.profile_id)
   const setMembers = (q, ids) => set('members', [...(f.members || []).filter(m => (m.queue || 'main') !== q), ...ids.map(id => ({ profile_id: id, queue: q }))])
   const dis = !can
+  // Missed-call campaigns: this line's brand (and location, if the campaign has one). Missed-call campaigns first.
+  const [mcBusy, setMcBusy] = useState(false)
+  const [mcMsg, setMcMsg] = useState('')
+  const kindLabel = k => (KINDS.find(x => x[0] === (k || 'other')) || [, 'Other'])[1]
+  const missedCamps = d.campaigns
+    .filter(c => !c.is_manual && (!f.brand || c.brand === f.brand) && (!f.location || !c.location || String(c.location).toLowerCase() === String(f.location).toLowerCase()))
+    .sort((a, b) => ((a.kind === 'missed') ? 0 : 1) - ((b.kind === 'missed') ? 0 : 1) || a.name.localeCompare(b.name))
+  async function createMissed() {
+    if (!f.brand) { setMcMsg('Pick a brand first.'); return }
+    setMcBusy(true); setMcMsg('')
+    const name = `${f.brand}${f.location ? ' ' + f.location : ''} — Missed calls`
+    const agents = [...new Set((f.members || []).map(m => m.profile_id))]
+    const { data, error } = await supabase.rpc('pc_campaign_save', args({ p: {
+      name, brand: f.brand, location: f.location || null, status: 'active', kind: 'missed', timezone: f.timezone || 'America/Chicago',
+      hours: f.hours, max_attempts: 3, retry_minutes: [15, 120, 1440], record_calls: true, script_id: null, agents,
+      dispositions: d.dispositions, is_manual: false, mode: 'preview', delay: 3 } }))
+    setMcBusy(false)
+    if (error) { setMcMsg(error.message); return }
+    onData(data)
+    const made = (data.campaigns || []).filter(c => c.name === name && c.kind === 'missed').pop()
+    if (made) { set('callback_campaign_id', made.id); setMcMsg('Created. Save the line to keep it.') }
+  }
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <FormBar title={row ? `Edit: ${row.name}` : 'New inbound line'} onCancel={onCancel} onSave={() => onSave(f)} saving={saving} can={can} msg={msg} />
@@ -268,10 +290,12 @@ function LineForm({ d, row, can, saving, msg, onCancel, onSave }) {
         <div style={S.form}>
           <Field label="Ring CSRs for"><select disabled={dis} value={f.ring_seconds} onChange={e => set('ring_seconds', Number(e.target.value))} style={S.input}>{[15, 20, 25, 30, 45, 60].map(s => <option key={s} value={s}>{s} seconds</option>)}</select></Field>
           <Field label="Then"><select disabled={dis} value={f.ai_enabled ? 'ai' : 'vm'} onChange={e => set('ai_enabled', e.target.value === 'ai')} style={S.input}><option value="ai">The AI CSR answers</option><option value="vm">Voicemail</option></select></Field>
-          <Field label="Missed calls go to" hint="Missed and hung-up callers are added to this campaign so a CSR calls them back.">
-            <select disabled={dis} value={f.callback_campaign_id || ''} onChange={e => set('callback_campaign_id', e.target.value || null)} style={S.input}>
-              <option value="">Don't call them back automatically</option>{d.campaigns.filter(c => !c.is_manual).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select></Field>
+          <Field label="Missed calls go to" hint={mcMsg || (missedCamps.length ? 'Missed and hung-up callers are added to this campaign so a CSR calls them back.' : `No ${f.brand || ''} campaigns yet — pick "Create a missed calls campaign" and we'll set one up with this line's CSRs.`)}>
+            <select disabled={dis || mcBusy} value={f.callback_campaign_id || ''} onChange={e => { const v = e.target.value; if (v === '__new') { createMissed(); return } set('callback_campaign_id', v || null) }} style={S.input}>
+              <option value="">Don't call them back automatically</option>
+              {missedCamps.map(c => <option key={c.id} value={c.id}>{c.name}{c.kind === 'missed' ? '' : ` (${kindLabel(c.kind)})`}{c.status !== 'active' ? ` · ${c.status}` : ''}</option>)}
+              {!dis && <option value="__new">+ Create a missed calls campaign</option>}
+            </select>{mcBusy && <span style={S.mut}> Creating…</span>}</Field>
           <Field label="Record calls"><select disabled={dis} value={f.record_calls ? '1' : '0'} onChange={e => set('record_calls', e.target.value === '1')} style={S.input}><option value="1">Yes (for QA)</option><option value="0">No</option></select></Field>
         </div>
       </Section>
