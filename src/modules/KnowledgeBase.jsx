@@ -118,15 +118,13 @@ const KB_CSS = `
 .kb-lbl { display: block; font-size: 12.5px; font-weight: 700; color: var(--ink-soft); margin: 12px 0 5px; }
 @media (max-width: 700px) { .kb-hide-sm { display: none; } .kb-hero h2 { font-size: 21px; } }
 /* ---------- homepage (2026-11-11, per mockup) ---------- */
-.kbh-hero { position: relative; overflow: hidden; border-radius: 22px; padding: 30px 24px 34px; margin: 6px 0 18px; color: #fff; text-align: center;
-  background: radial-gradient(900px 260px at 12% 0%, rgba(56,189,248,.18), transparent 60%), radial-gradient(700px 260px at 85% 40%, rgba(45,212,191,.28), transparent 60%),
-              linear-gradient(115deg, #04222b 0%, #073946 32%, #0b5a66 62%, #0a6c75 80%, #063540 100%);
-  box-shadow: 0 14px 34px rgba(4,34,43,.28); }
-.kbh-hero h2 { position: relative; z-index: 2; margin: 0 0 16px; font-size: clamp(24px, 3.4vw, 40px); font-weight: 800; letter-spacing: -.01em; text-shadow: 0 2px 14px rgba(0,0,0,.35); }
-.kbh-search { position: relative; z-index: 2; max-width: 820px; margin: 0 auto; display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 999px; padding: 6px 8px 6px 20px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.kbh-hero { position: relative; overflow: hidden; border-radius: 22px; padding: 34px 24px 40px; margin: 6px 0 18px; color: #0b3b46; text-align: center;
+  background: #f4fbfc url('/kb-hero.jpg') center 62% / cover no-repeat; border: 1px solid color-mix(in srgb, #2dd4bf 22%, transparent);
+  box-shadow: 0 14px 34px rgba(11,74,87,.12); }
+.kbh-hero h2 { position: relative; z-index: 2; margin: 0 0 18px; font-size: clamp(24px, 3.4vw, 40px); font-weight: 800; letter-spacing: -.01em; color: #0b3b46; text-shadow: 0 1px 0 rgba(255,255,255,.8), 0 0 24px rgba(255,255,255,.9); }
+.kbh-search { position: relative; z-index: 2; max-width: 820px; margin: 0 auto; display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 999px; padding: 6px 8px 6px 20px; border: 1px solid rgba(11,74,87,.12); box-shadow: 0 10px 30px rgba(11,74,87,.18); }
 .kbh-search input { flex: 1; border: 0; outline: none; font: inherit; font-size: 15.5px; color: #0F2A33; background: transparent; padding: 10px 0; min-width: 0; }
 .kbh-search kbd { font: inherit; font-size: 12.5px; font-weight: 700; color: #0F2A33; background: #E8F1F3; border: 1px solid #D3E3E7; border-radius: 9px; padding: 5px 10px; white-space: nowrap; }
-.kbh-art { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
 .kbh-nav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .kbh-tab { display: inline-flex; align-items: center; gap: 9px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 14px; padding: 10px 20px;
   font: inherit; font-size: 14.5px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 6px rgba(15,23,42,.05); }
@@ -1251,35 +1249,9 @@ function FolderGlyph({ size = 34 }) {
     </svg>
   )
 }
-// the teal jellyfish banner art (pure SVG — no images to load)
-function HeroArt() {
-  const dots = [[6, 30, 2], [14, 70, 1.4], [22, 20, 1.2], [31, 82, 1.6], [42, 14, 1], [55, 88, 1.3], [63, 22, 1.8], [72, 76, 1.1], [79, 12, 1.5], [91, 64, 1.2], [96, 26, 1.7], [48, 60, .9], [36, 40, 1]]
-  return (
-    <svg className="kbh-art" viewBox="0 0 1000 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-      <defs>
-        <radialGradient id="kbjBell" cx="45%" cy="35%" r="70%"><stop offset="0%" stopColor="#E0FFFC" stopOpacity=".95" /><stop offset="45%" stopColor="#5EEAD4" stopOpacity=".55" /><stop offset="100%" stopColor="#0E7490" stopOpacity=".05" /></radialGradient>
-        <radialGradient id="kbjGlow" cx="50%" cy="50%" r="50%"><stop offset="0%" stopColor="#67E8F9" stopOpacity=".55" /><stop offset="100%" stopColor="#67E8F9" stopOpacity="0" /></radialGradient>
-        <linearGradient id="kbjWave" x1="0" x2="1"><stop offset="0%" stopColor="#5EEAD4" stopOpacity="0" /><stop offset="50%" stopColor="#5EEAD4" stopOpacity=".35" /><stop offset="100%" stopColor="#5EEAD4" stopOpacity="0" /></linearGradient>
-      </defs>
-      <path d="M0 170 C 180 120, 320 210, 520 160 S 860 110, 1000 150" fill="none" stroke="url(#kbjWave)" strokeWidth="2" />
-      <path d="M0 190 C 220 150, 360 230, 560 185 S 880 140, 1000 175" fill="none" stroke="url(#kbjWave)" strokeWidth="1.2" />
-      <path d="M0 60 C 160 20, 300 90, 470 50" fill="none" stroke="url(#kbjWave)" strokeWidth="1" opacity=".7" />
-      <circle cx="870" cy="70" r="130" fill="url(#kbjGlow)" />
-      <g transform="translate(805 18) rotate(-14 70 60)">
-        <path d="M8 70 C 8 18, 132 6, 140 62 C 120 74, 98 66, 74 74 C 52 80, 30 70, 8 70 Z" fill="url(#kbjBell)" stroke="#A5F3FC" strokeOpacity=".7" strokeWidth="1.4" />
-        <path d="M24 66 C 40 40, 96 30, 124 58" fill="none" stroke="#ECFEFF" strokeOpacity=".55" strokeWidth="1.2" />
-        {[20, 40, 60, 80, 100, 120].map((x, i) => (
-          <path key={x} d={`M${x} ${72 + (i % 2) * 3} C ${x - 14} ${110 + i * 4}, ${x + 18} ${140 + i * 3}, ${x - 6} ${190 + i * 6}`} fill="none" stroke="#99F6E4" strokeOpacity={0.55 - i * 0.05} strokeWidth={1.6 - i * 0.12} />
-        ))}
-      </g>
-      {dots.map(([x, y, r], i) => <circle key={i} cx={x * 10} cy={y * 2.2} r={r * 2} fill="#CCFBF1" opacity={0.35 + (i % 4) * 0.12} />)}
-    </svg>
-  )
-}
 function KbHero({ q, setQ, onSearch, inputRef }) {
   return (
     <section className="kbh-hero" aria-label="Search the Knowledge Base">
-      <HeroArt />
       <h2>Find what you need, fast.</h2>
       <form className="kbh-search" role="search" onSubmit={e => { e.preventDefault(); onSearch(q) }}>
         <span aria-hidden="true" style={{ fontSize: 18, color: '#0b4a57' }}>🔍</span>
