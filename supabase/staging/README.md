@@ -1,3 +1,4 @@
+[README (29).md](https://github.com/user-attachments/files/34766204/README.29.md)
 [README (27).md](https://github.com/user-attachments/files/34699378/README.27.md)
 [README (26).md](https://github.com/user-attachments/files/34653181/README.26.md)
 [README (25).md](https://github.com/user-attachments/files/34651928/README.25.md)
@@ -38,5 +39,9 @@ database section from live and removes anything that only exists in staging.
 22. `22_dashboard_whos_on_by_hour.sql` — Dashboard: "Who's on" view (Who's On + Time combined) and Schedule → By hour + Mix.
 23. `23_permission_gaps.sql` — Enforces "Pick up open intervals"; Configuration → Dashboard gets its own checkbox.
 25. `25_kb_foundation.sql` — Knowledge Base v2 foundation: sections, client/project folders, granular permissions with inheritance (server-enforced), favorites, follows, templates, permission-aware search. Moves existing content into starter sections and keeps today's access.
+
+26. `26_kb_client_scoping.sql` — Knowledge Base: client/project folders only seen by people working on them (+ "See every client's and project's resources"); Administrators no longer get full control by default.
+
+27. `27_kb_precise_grants.sql` — Knowledge Base: old "Job role" entries only apply to people without a role; on client/project content, Everyone/Role/Team entries only count for people working on it (a named person is an exception). Fixes editing folders.
 
 All are safe to run more than once. (Staging also has fictional @demo.test people + sample schedules for testing.) Ask Claude to re-add the demo company afterwards.
