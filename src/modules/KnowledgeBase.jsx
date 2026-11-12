@@ -300,16 +300,19 @@ export default function KnowledgeBase() {
   const ctx = { kb, reload, go, navigate, openNode, openItem, setModal }
   const isHome = view === 'home' && !sectionId && !tab
   const onSearch = (text) => go({ view: 'search', q: text })
-  // Ctrl K on the Knowledge Base homepage / search jumps to the big search (press again for the global search)
+  // the big search stays on every tab: All Resources, each section, Favorites, Recently Updated, all folders
+  const onTabs = view === 'home' || view === 'folders'
+  const showHero = onTabs || view === 'search'
+  // Ctrl K there jumps to the big search (press again for the global search)
   useEffect(() => {
-    if (!(isHome || view === 'search')) return
+    if (!showHero) return
     const h = (e) => {
       if ((e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey) && searchRef.current && document.activeElement !== searchRef.current) {
         e.preventDefault(); e.stopImmediatePropagation(); searchRef.current.focus(); searchRef.current.select()
       }
     }
     window.addEventListener('keydown', h, true); return () => window.removeEventListener('keydown', h, true)
-  }, [isHome, view])
+  }, [showHero])
   const navActive = sectionId || tab || (view === 'folders' ? null : 'all')
   const showNav = kb && (isHome || (view === 'home' && (sectionId || tab)) || view === 'folders')
 
@@ -321,7 +324,7 @@ export default function KnowledgeBase() {
         <p className="page-sub">Guides, SOPs, processes, call flows, and resources — all in one place.</p>
       </div>
       {kb?.err && <div className="card" style={{ color: 'var(--failed)', marginBottom: 12 }}>{kb.err}</div>}
-      {(isHome || view === 'search') && <KbHero q={q} setQ={setQ} onSearch={onSearch} inputRef={searchRef} />}
+      {showHero && <KbHero q={q} setQ={setQ} onSearch={onSearch} inputRef={searchRef} />}
       {!kb && (view === 'home' || view === 'folder' || view === 'folders') && <p className="page-sub">Loading…</p>}
       {showNav && <KbNav ctx={ctx} active={navActive} hideNew={!!sectionId && !tab} />}
 
