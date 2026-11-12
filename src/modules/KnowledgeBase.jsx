@@ -665,7 +665,7 @@ function FolderModal({ ctx, parentType, parentId, editId, onClose }) {
         <div style={{ flex: '1 1 200px' }}><label className="kb-lbl">Project <span style={{ fontWeight: 400 }}>(optional)</span></label>
           <select className="kb-in" value={v.project_id} onChange={e => set('project_id', e.target.value)}><option value="">None</option>{kb.projects.filter(p => !v.client_id || p.client_id === v.client_id).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
       </div>
-      <p className="page-sub" style={{ fontSize: 12, marginTop: 10 }}>Everything inside belongs to this client/project too — so client- or project-scoped roles can work here, and search can filter by it. {ex ? '' : 'New folders get the same access as where you create them; change it after with ⋯ → Manage access.'}</p>
+      <p className="page-sub" style={{ fontSize: 12, marginTop: 10 }}>🔒 Linked to a client or project, this folder (and everything inside) is only seen by <b>people working on it</b> — on its schedules, assigned its tasks, or with a role scoped to it — plus anyone with “See every client's and project's resources.” Share it with others any time via ⋯ → Manage access. {ex ? '' : 'Otherwise, new folders get the same access as where you create them.'}</p>
     </KbModal>
   )
 }
@@ -736,8 +736,15 @@ function AccessModal({ ctx, objType, objId, name, onClose }) {
     setOpts({ role: (r.data || []).map(x => ({ id: x.id, name: x.name })), team: (t.data || []).map(x => ({ id: x.id, name: `${x.namespace ? x.namespace[0].toUpperCase() + x.namespace.slice(1) + ': ' : ''}${x.name}` })),
       person: (p.data || []).map(x => ({ id: x.id, name: x.full_name })), client: kb.clients, project: kb.projects })
   })() }, [objType, objId]) // eslint-disable-line react-hooks/exhaustive-deps
-  const label = (g) => g.principal_type === 'everyone' ? 'Everyone' : g.principal_type === 'legacy_role' ? `Job role: ${g.principal_id}` :
+  const label = (g) => g.principal_type === 'everyone' ? 'Everyone' : g.principal_type === 'legacy_role' ? `Old job role: ${g.principal_id}` :
     `${PTYPES.find(x => x[0] === g.principal_type)?.[1]}: ${(opts[g.principal_type] || []).find(o => o.id === g.principal_id)?.name || '…'}`
+  const scopeOf = () => {
+    let fid = objType === 'folder' ? objId : objType === 'article' ? kb.articles.find(a => a.id === objId)?.folder_id : objType === 'file' ? kb.files.find(f => f.id === objId)?.folder_id : null
+    let c = null, pr = null, guard = 0
+    while (fid && guard++ < 40) { const f = kb.folders.find(x => x.id === fid); if (!f) break; c = c || f.client_id; pr = pr || f.project_id; fid = f.parent_id }
+    return [kb.clients.find(x => x.id === c)?.name, kb.projects.find(x => x.id === pr)?.name].filter(Boolean).join(' / ')
+  }
+  const scopeName = scopeOf()
   const parentName = objType === 'section' ? null : objType === 'folder' ? (() => { const f = kb.folders.find(x => x.id === objId); return f?.parent_id ? kb.folders.find(x => x.id === f.parent_id)?.name : kb.sections.find(s => s.id === f?.section_id)?.name })() : 'its folder'
   function addRow() {
     if (add.type !== 'everyone' && !add.id) return
@@ -773,7 +780,9 @@ function AccessModal({ ctx, objType, objId, name, onClose }) {
           </label>
         </div>
         <div style={{ fontWeight: 800, margin: '16px 0 8px' }}>People and groups</div>
-        {rows.length === 0 ? <div className="page-sub" style={{ fontSize: 13, marginBottom: 8 }}>{restricted ? 'Nobody yet — add people below.' : 'No extra permissions here.'}</div> : rows.map((r, i) => (
+        {scopeName && <div style={{ background: 'color-mix(in srgb, #2dd4bf 10%, var(--surface))', border: '1px solid color-mix(in srgb, #2dd4bf 30%, var(--line))', borderRadius: 10, padding: '8px 12px', fontSize: 12.5, marginBottom: 8 }}>
+          🏢 This is a <b>{scopeName}</b> {objType}: <b>Everyone, Roles and Teams</b> below only apply to people <b>working on {scopeName}</b>. Add a <b>person by name</b> to make an exception.</div>}
+        {rows.filter(r => r.principal_type !== 'legacy_role').length === 0 ? <div className="page-sub" style={{ fontSize: 13, marginBottom: 8 }}>{restricted ? 'Nobody yet — add people below.' : 'No extra permissions here.'}</div> : rows.map((r, i) => r.principal_type === 'legacy_role' ? null : (
           <div key={r.principal_type + r.principal_id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '8px 10px', marginBottom: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <b style={{ flex: '1 1 200px', fontSize: 13.5 }}>{label(r)}</b>
@@ -787,6 +796,17 @@ function AccessModal({ ctx, objType, objId, name, onClose }) {
               <label key={k} style={{ display: 'inline-flex', gap: 5, alignItems: 'center', fontSize: 12.5 }}><input type="checkbox" checked={r.actions.includes(k)}
                 onChange={e => setRows(rs => rs.map((x, j) => j === i ? { ...x, actions: e.target.checked ? [...x.actions, k] : x.actions.filter(a => a !== k) } : x))} />{l}</label>))}</div>}
           </div>))}
+        {rows.some(r => r.principal_type === 'legacy_role') && (
+          <details style={{ border: '1px dashed var(--line)', borderRadius: 10, padding: '8px 10px', marginTop: 8 }}>
+            <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>From the old system ({rows.filter(r => r.principal_type === 'legacy_role').length}) — only for people who don't have a role yet</summary>
+            <div className="page-sub" style={{ fontSize: 12, margin: '6px 0' }}>Carried over so nobody lost access during the switch. Once someone has a role, these don't apply to them. Remove them when everyone has a role.</div>
+            {rows.map((r, i) => r.principal_type !== 'legacy_role' ? null : (
+              <div key={r.principal_type + r.principal_id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 13 }}>
+                <span style={{ flex: 1 }}>{label(r)} · <span className="page-sub">{(PRESETS.find(p => p[0] === presetOf(r.actions)) || [0, 'Custom'])[1]}</span></span>
+                <button className="btn btn-ghost" style={{ fontSize: 12, color: '#B91C1C' }} onClick={() => setRows(rs => rs.filter((_, j) => j !== i))} aria-label="Remove">✕</button>
+              </div>))}
+          </details>
+        )}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 10, padding: 10, background: 'var(--canvas)', borderRadius: 10 }}>
           <select className="kb-in" style={{ width: 'auto' }} value={add.type} onChange={e => setAdd({ ...add, type: e.target.value, id: '' })}>{PTYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
           {add.type !== 'everyone' && <select className="kb-in" style={{ flex: '1 1 200px', width: 'auto' }} value={add.id} onChange={e => setAdd({ ...add, id: e.target.value })}>
