@@ -1,205 +1,222 @@
 import { sanitizeHtml } from './sanitize'
-import { safeUrl, videoLink, fmtSize } from './courseExport'
 
 // ============================================================
-// COURSE PDF (2026-11-13): a real PDF file that downloads with one click (no print window).
-// Built in the browser with pdfmake. The libraries are loaded ONLY when someone clicks Download, so the rest of the
-// app never pays for them. Same content and the same safety rules as the print version in courseExport.js:
-// lesson text goes through the same sanitizer, unsafe links and images are dropped, quiz answers only when asked for.
+// COURSE EXPORT (2026-11-10): download a certification course as a PDF.
+// For admins and course builders only (the database enforces it: course_log_export() refuses everyone else, and quiz
+// answers are only readable by course authors). Every download is recorded in course_export_log.
+//
+// How it works: build a clean, print-ready document, open it in a hidden frame and open the browser's print window,
+// where "Save as PDF" makes the file. The browser does the page layout, so long lessons, images and tables paginate properly.
+// Lessons are always included. The quiz (with the correct answers marked) is only included when asked for.
 // ============================================================
 
-const PAGE_W = 612, MARGIN = 50, CONTENT_W = PAGE_W - MARGIN * 2   // US Letter, in points
-const WIDTHS = { small: 0.3, medium: 0.55, large: 0.8, full: 1 }
-const TEAL = '#015974', INK = '#17252B', SOFT = '#4A5C63', LINK = '#0B6E99'
+const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const WIDTHS = { small: '30%', medium: '55%', large: '80%', full: '100%' }
+// print-friendly fixed colours (a white page, not the app theme)
 const TONES = {
-  info: { label: 'INFO', bg: '#E8F4FA', fg: '#0B6E99' },
-  tip: { label: 'TIP', bg: '#E7F5EC', fg: '#1F8A53' },
-  warning: { label: 'IMPORTANT', bg: '#FDECEC', fg: '#C0392B' },
-}
-const BORDER = { hLineWidth: () => 0.6, vLineWidth: () => 0.6, hLineColor: () => '#C9D5DA', vLineColor: () => '#C9D5DA', paddingLeft: () => 5, paddingRight: () => 5, paddingTop: () => 3, paddingBottom: () => 3 }
-
-// The PDF's built-in font draws normal text and punctuation but NOT arrows, check marks, stars, circles, triangles or emoji
-// (a missing symbol prints as a blank). Common ones are swapped for readable stand-ins, and the rest are removed.
-const SYMBOL_SWAPS = [
-  [/[\u2192\u27A1\u27A4\u2794\u279C]/g, '->'], [/\u2190/g, '<-'], [/\u2191/g, '^'], [/\u2193/g, 'v'], [/\u21D2/g, '=>'],
-  [/[\u2713\u2714\u2611\u2705]/g, '[x]'], [/[\u2717\u2718\u274C\u274E]/g, '[ ]'],
-  [/[\u25CF\u25AA\u25E6]/g, '-'], [/\u25CB/g, 'o'], [/[\u2605\u2B50]/g, '*'], [/[\u25B6\u25BA\u25B8]/g, '>'], [/\u26A0/g, '!'],
-]
-export function stripEmoji(s) {
-  let t = String(s ?? '')
-  for (const [re, to] of SYMBOL_SWAPS) t = t.replace(re, to)
-  return t.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, '')
-}
-export function fileSafeName(title) {
-  const s = String(title || 'Course').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90)
-  return (s || 'Course') + '.pdf'
+  info: { icon: '💡', label: 'Info', bg: '#E8F4FA', fg: '#0B6E99' },
+  tip: { icon: '✅', label: 'Tip', bg: '#E7F5EC', fg: '#1F8A53' },
+  warning: { icon: '⚠️', label: 'Important', bg: '#FDECEC', fg: '#C0392B' },
 }
 
-// ---- images ---------------------------------------------------------------------------------------------------
-// PDFs only take JPEG and PNG. Fetch each image, keep JPEG/PNG as they are (shrinking very large ones), and convert
-// anything else (WebP, GIF…) through a canvas. An image that cannot be read (blocked by the other site, deleted)
-// becomes a short note instead of breaking the whole download.
-export async function fetchImageAsDataUrl(url, { maxWidth = 1400, timeoutMs = 15000 } = {}) {
-  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), timeoutMs)
-  try {
-    const res = await fetch(url, { signal: ctrl.signal })
-    if (!res.ok) return null
-    const blob = await res.blob()
-    const bmp = await createImageBitmap(blob)
-    const keep = (blob.type === 'image/png' || blob.type === 'image/jpeg') && bmp.width <= maxWidth
-    if (keep) return await new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.onerror = reject; fr.readAsDataURL(blob) })
-    const scale = Math.min(1, maxWidth / bmp.width)
-    const canvas = document.createElement('canvas'); canvas.width = Math.round(bmp.width * scale); canvas.height = Math.round(bmp.height * scale)
-    const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height)
-    return canvas.toDataURL('image/jpeg', 0.88)
-  } catch { return null } finally { clearTimeout(timer) }
+export function fmtSize(bytes) {
+  if (!bytes && bytes !== 0) return ''
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB'
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB'
 }
 
-function makeImageLoader(fetchImage) {
-  const cache = new Map()
-  return (url) => { if (!cache.has(url)) cache.set(url, Promise.resolve(fetchImage(url)).catch(() => null)); return cache.get(url) }
+// only ordinary web links go into the document
+export function safeUrl(u) {
+  const s = String(u || '').trim()
+  return /^https?:\/\//i.test(s) ? s : ''
 }
 
-// ---- rich text -------------------------------------------------------------------------------------------------
-// Turn a lesson's HTML into PDF content: sanitize, bring in images, convert, then tidy what the converter produces so
-// nothing runs off the page (images fitted to the page width, table columns shared out evenly).
-async function richNodes(html, ctx) {
-  const clean = sanitizeHtml(html || '')
-  const doc = new ctx.window.DOMParser().parseFromString('<body>' + clean + '</body>', 'text/html')
-  for (const img of [...doc.body.querySelectorAll('img')]) {
-    const src = safeUrl(img.getAttribute('src'))
-    const data = src ? await ctx.loadImage(src) : null
-    if (data) { img.setAttribute('src', data); img.removeAttribute('width'); img.removeAttribute('height'); img.removeAttribute('style') }
-    else { const note = doc.createElement('p'); note.textContent = '[An image in this lesson could not be included. View it in Command Center.]'; img.replaceWith(note) }
+// a video block stores an embed address; in a document a person needs a normal link they can open
+export function videoLink(embed) {
+  const u = safeUrl(embed)
+  if (!u) return ''
+  let m = u.match(/youtube(?:-nocookie)?\.com\/embed\/([\w-]+)/i); if (m) return `https://www.youtube.com/watch?v=${m[1]}`
+  m = u.match(/player\.vimeo\.com\/video\/(\d+)/i); if (m) return `https://vimeo.com/${m[1]}`
+  m = u.match(/loom\.com\/embed\/([\w-]+)/i); if (m) return `https://www.loom.com/share/${m[1]}`
+  return u
+}
+
+function blockHtml(b, origin) {
+  if (!b) return ''
+  if (b.type === 'heading') {
+    if (!b.text) return ''
+    return (b.level || 2) === 2 ? `<h3 class="bh">${esc(b.text)}</h3>` : `<h4 class="bh">${esc(b.text)}</h4>`
   }
-  const out = ctx.htmlToPdfmake(stripEmoji(doc.body.innerHTML), {
-    window: ctx.window, tableAutoSize: true,
-    defaultStyles: { a: { color: LINK, decoration: 'underline' }, b: { bold: true }, strong: { bold: true }, p: { margin: [0, 0, 0, 5] }, li: { margin: [0, 1, 0, 1] }, h1: { fontSize: 13, bold: true, margin: [0, 10, 0, 4] }, h2: { fontSize: 13, bold: true, margin: [0, 10, 0, 4] }, h3: { fontSize: 11.5, bold: true, margin: [0, 8, 0, 3] }, blockquote: { italics: true, color: SOFT, margin: [14, 4, 0, 6] }, code: { background: '#F1F5F7' }, pre: { background: '#F1F5F7', margin: [0, 4, 0, 6], preserveLeadingSpaces: true }, th: { bold: true, fillColor: '#EEF3F5' } },
-  })
-  const nodes = Array.isArray(out) ? out : [out]
-  tidy(nodes)
-  return nodes
-}
-
-function tidy(nodes) {
-  for (const n of nodes) {
-    if (!n || typeof n !== 'object') continue
-    if (n.image) { const w = Number.isFinite(+n.width) && +n.width > 0 ? Math.min(+n.width, CONTENT_W) : CONTENT_W; n.fit = [w, 560]; delete n.width; delete n.height; n.margin = n.margin || [0, 4, 0, 6] }
-    if (n.table) {
-      const body = n.table.body || []
-      const cols = Math.max(1, ...body.map(r => r.reduce((a, c) => a + ((c && c.colSpan) || 1), 0)))
-      if (!n.table.widths) n.table.widths = Array(cols).fill('*')
-      n.layout = n.layout || BORDER
-      n.margin = n.margin || [0, 4, 0, 8]
-      for (const row of body) for (const cell of row) if (cell) { if (Array.isArray(cell)) tidy(cell); else tidy([cell]) }
-    }
-    for (const k of ['stack', 'ul', 'ol', 'text']) if (Array.isArray(n[k])) tidy(n[k])
-    if (Array.isArray(n.table && n.table.body)) { /* handled above */ }
-  }
-}
-
-// ---- blocks ----------------------------------------------------------------------------------------------------
-async function blockNodes(b, ctx) {
-  if (!b) return []
-  if (b.type === 'heading') return b.text ? [{ text: stripEmoji(b.text), fontSize: (b.level || 2) === 2 ? 13 : 11.5, bold: true, margin: [0, 10, 0, 3], color: INK }] : []
-  if (b.type === 'text') return richNodes(b.html, ctx)
+  if (b.type === 'text') return `<div class="rich">${sanitizeHtml(b.html || '')}</div>`
   if (b.type === 'callout') {
     const t = TONES[b.tone] || TONES.info
-    const inner = await richNodes(b.html, ctx)
-    return [{ table: { widths: ['*'], dontBreakRows: true, body: [[{ stack: [{ text: t.label, bold: true, fontSize: 7.5, color: t.fg, margin: [0, 0, 0, 3] }, ...inner], fillColor: t.bg, margin: [8, 5, 8, 3] }]] }, layout: { hLineWidth: () => 0, vLineWidth: (i) => (i === 0 ? 3 : 0), vLineColor: () => t.fg, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 }, margin: [0, 6, 0, 8] }]
+    return `<div class="callout" style="border-left-color:${t.fg};background:${t.bg}"><div class="callout-label" style="color:${t.fg}">${t.icon} ${esc(t.label)}</div><div class="rich">${sanitizeHtml(b.html || '')}</div></div>`
   }
   if (b.type === 'image') {
-    const src = safeUrl(b.url); if (!src) return []
-    const data = await ctx.loadImage(src)
-    if (!data) return [{ text: '[An image in this lesson could not be included. View it in Command Center.]', italics: true, color: SOFT, margin: [0, 4, 0, 6] }]
-    return [{ image: data, fit: [CONTENT_W * (WIDTHS[b.width || 'full'] || 1), 560], alignment: b.align === 'center' ? 'center' : b.align === 'right' ? 'right' : 'left', margin: [0, 6, 0, 8] }]
+    const src = safeUrl(b.url)
+    if (!src) return ''
+    const justify = b.align === 'center' ? 'center' : b.align === 'right' ? 'right' : 'left'
+    return `<div class="img" style="text-align:${justify}"><img src="${esc(src)}" alt="" style="width:${WIDTHS[b.width || 'full'] || '100%'}"></div>`
   }
   if (b.type === 'video') {
-    const link = videoLink(b.embed); if (!link) return []
-    return [card([{ text: 'Video (watch online): ', bold: true }, { text: link, link, color: LINK, decoration: 'underline' }])]
+    const link = videoLink(b.embed)
+    if (!link) return ''
+    return `<div class="card"><b>▶ Video</b> (watch online): <a href="${esc(link)}">${esc(link)}</a></div>`
   }
   if (b.type === 'file') {
-    const link = safeUrl(b.url); if (!link) return []
-    return [card([{ text: 'Attached file: ', bold: true }, { text: stripEmoji(b.name || 'File') + (b.size ? ' (' + fmtSize(b.size) + ')' : '') + '\n' }, { text: link, link, color: LINK, decoration: 'underline' }])]
+    const link = safeUrl(b.url)
+    if (!link) return ''
+    return `<div class="card"><b>📎 Attached file:</b> ${esc(b.name || 'File')}${b.size ? ` (${esc(fmtSize(b.size))})` : ''}<br><a href="${esc(link)}">${esc(link)}</a></div>`
   }
   if (b.type === 'kb' && b.article_id) {
-    const link = `${ctx.origin || ''}/knowledge?view=article&id=${encodeURIComponent(b.article_id)}`
-    return [card([{ text: 'Knowledge Base article: ', bold: true }, { text: stripEmoji(b.title || 'Article') + '\n' }, ...(b.note ? [{ text: stripEmoji(b.note) + '\n', color: SOFT }] : []), { text: link, link, color: LINK, decoration: 'underline' }])]
+    const link = `${origin || ''}/knowledge?view=article&id=${encodeURIComponent(b.article_id)}`
+    return `<div class="card"><b>📚 Knowledge Base article:</b> ${esc(b.title || 'Article')}${b.note ? `<div class="note">${esc(b.note)}</div>` : ''}<a href="${esc(link)}">${esc(link)}</a></div>`
   }
-  return []
+  return ''
 }
-function card(text) { return { table: { widths: ['*'], body: [[{ text, fontSize: 9.5, margin: [6, 4, 6, 4] }]] }, layout: BORDER, margin: [0, 6, 0, 8], dontBreakRows: true } }
 
-// ---- the whole document ------------------------------------------------------------------------------------------
-export async function buildCoursePdfDoc({ course, certName = '', lessons = [], questions = [], withQuiz = false, origin = '', generatedBy = '', generatedAt = new Date(), htmlToPdfmake, window: win, fetchImage = fetchImageAsDataUrl }) {
-  const ctx = { htmlToPdfmake, window: win, origin, loadImage: makeImageLoader(fetchImage) }
+const CSS = `
+@page { size: Letter; margin: 0.7in 0.7in 0.85in; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11pt; line-height: 1.55; color: #17252B; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+h1 { font-size: 25pt; line-height: 1.2; margin: 0 0 6pt; color: #015974; }
+.sub { font-size: 12pt; color: #4A5C63; margin: 0 0 10pt; }
+.meta { font-size: 10pt; color: #4A5C63; margin: 0 0 4pt; }
+.cover { padding-bottom: 14pt; margin-bottom: 14pt; border-bottom: 2px solid #15B8CF; }
+.toc { margin: 0 0 18pt; padding: 0; list-style: none; columns: 1; }
+.toc li { padding: 2pt 0; font-size: 10.5pt; }
+.toc-title { font-size: 13pt; font-weight: 700; margin: 0 0 6pt; color: #015974; }
+.lesson { margin: 0 0 22pt; }
+.kicker { font-size: 9pt; letter-spacing: .06em; text-transform: uppercase; color: #6B7C83; font-weight: 600; }
+h2 { font-size: 16pt; line-height: 1.3; margin: 2pt 0 8pt; padding-bottom: 4pt; border-bottom: 1px solid #D5DEE2; break-after: avoid; page-break-after: avoid; color: #0E1B20; }
+.bh { margin: 14pt 0 4pt; break-after: avoid; page-break-after: avoid; }
+h3.bh { font-size: 13pt; } h4.bh { font-size: 11.5pt; }
+.rich { margin: 8pt 0; }
+.rich p { margin: 0 0 7pt; } .rich ul, .rich ol { margin: 0 0 8pt; padding-left: 20pt; } .rich li { margin: 2pt 0; }
+.rich h1, .rich h2, .rich h3 { font-size: 13pt; margin: 12pt 0 4pt; border: 0; padding: 0; }
+.rich blockquote { margin: 8pt 0; padding: 4pt 12pt; border-left: 3px solid #C9D5DA; color: #3B4B52; }
+.rich table { border-collapse: collapse; margin: 8pt 0; width: 100%; }
+.rich td, .rich th { border: 1px solid #C9D5DA; padding: 4pt 7pt; vertical-align: top; }
+.rich pre, .rich code { font-family: Consolas, 'Courier New', monospace; font-size: 9.5pt; background: #F1F5F7; border-radius: 3px; } .rich pre { padding: 7pt; white-space: pre-wrap; }
+.rich img, .img img { max-width: 100%; height: auto; border-radius: 6px; }
+.img { margin: 10pt 0; break-inside: avoid; page-break-inside: avoid; }
+a { color: #0B6E99; word-break: break-all; }
+.callout { margin: 10pt 0; padding: 8pt 12pt; border-left: 4px solid; border-radius: 4px; break-inside: avoid; page-break-inside: avoid; }
+.callout-label { font-size: 9pt; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.callout .rich { margin: 3pt 0 0; }
+.card { margin: 10pt 0; padding: 8pt 12pt; border: 1px solid #D5DEE2; border-radius: 6px; font-size: 10pt; break-inside: avoid; page-break-inside: avoid; }
+.card .note { color: #4A5C63; margin: 2pt 0; }
+.quiz { break-before: page; page-break-before: always; }
+.q { margin: 0 0 12pt; break-inside: avoid; page-break-inside: avoid; }
+.q-text { font-weight: 600; } .q-hint { font-size: 9.5pt; color: #6B7C83; font-weight: 400; }
+.opts { list-style: none; margin: 4pt 0 0; padding: 0; } .opts li { padding: 2pt 0 2pt 18pt; position: relative; }
+.opts li::before { content: '○'; position: absolute; left: 2pt; color: #6B7C83; }
+.opts li.correct { font-weight: 700; color: #1F8A53; } .opts li.correct::before { content: '✓'; color: #1F8A53; }
+.keynote { margin: 0 0 12pt; padding: 8pt 12pt; background: #FFF7E6; border: 1px solid #F0D9A8; border-radius: 6px; font-size: 10pt; }
+.foot { position: fixed; left: 0; right: 0; bottom: 0; font-size: 8pt; color: #7A8A91; border-top: 1px solid #D5DEE2; padding-top: 4pt; background: #fff; }
+@media screen { body { max-width: 780px; margin: 24px auto; padding: 0 20px 60px; } .foot { position: static; margin-top: 30px; } }
+`
+
+// The whole printable document, as one HTML string.
+export function buildCourseHtml({ course, certName = '', lessons = [], questions = [], withQuiz = false, origin = '', generatedBy = '', generatedAt = new Date() }) {
   const when = generatedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
   const ls = [...lessons].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
   const qs = [...questions].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
   const typing = course.course_type === 'typing_test'
-  const meta = []
-  meta.push(certName ? 'Grants: ' + certName : 'Standalone course (grants no certification)')
-  if (typing) meta.push(`Typing test: ${course.typing_min_wpm ?? 35} WPM / ${course.typing_min_accuracy ?? 95}% accuracy in ${course.typing_duration_seconds ?? 60} seconds`)
-  else if (course.quiz_required === false) meta.push('No quiz (informational)')
-  else meta.push(`Pass mark ${course.pass_threshold ?? 80}%`)
-  if (course.course_type === 'timed_quiz' && course.time_limit_seconds) meta.push(`Timed: ${Math.round(course.time_limit_seconds / 60)} minutes`)
+  const metaBits = []
+  if (certName) metaBits.push(`Grants: <b>${esc(certName)}</b>`)
+  else metaBits.push('Standalone course (grants no certification)')
+  if (typing) metaBits.push(`Typing test: ${esc(course.typing_min_wpm ?? 35)} WPM / ${esc(course.typing_min_accuracy ?? 95)}% accuracy in ${esc(course.typing_duration_seconds ?? 60)} seconds`)
+  else if (course.quiz_required === false) metaBits.push('No quiz (informational)')
+  else metaBits.push(`Pass mark ${esc(course.pass_threshold ?? 80)}%`)
+  if (course.course_type === 'timed_quiz' && course.time_limit_seconds) metaBits.push(`Timed: ${Math.round(course.time_limit_seconds / 60)} minutes`)
+  const foot = `Internal training material, Opsis CX. Downloaded${generatedBy ? ' by ' + esc(generatedBy) : ''} on ${esc(when)}. Please don't share outside the company.`
 
-  const content = [
-    { text: 'CERTIFICATION COURSE', fontSize: 8.5, bold: true, color: '#6B7C83', characterSpacing: 1 },
-    { text: stripEmoji(course.title || 'Course'), fontSize: 24, bold: true, color: TEAL, margin: [0, 2, 0, 6] },
-    ...(course.description ? [{ text: stripEmoji(course.description), fontSize: 12, color: SOFT, margin: [0, 0, 0, 8] }] : []),
-    { text: meta.join('   |   '), fontSize: 9.5, color: SOFT, margin: [0, 0, 0, 3] },
-    { text: `${ls.length} lesson${ls.length === 1 ? '' : 's'}${withQuiz ? `   |   ${qs.length} quiz question${qs.length === 1 ? '' : 's'} (answer key included)` : ''}`, fontSize: 9.5, color: SOFT, margin: [0, 0, 0, 8] },
-    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: CONTENT_W, y2: 0, lineWidth: 2, lineColor: '#15B8CF' }], margin: [0, 0, 0, 14] },
-  ]
-  if (ls.length > 1) content.push({ text: 'Contents', fontSize: 13, bold: true, color: TEAL, margin: [0, 0, 0, 5] }, { ol: ls.map(l => ({ text: stripEmoji(l.title || 'Untitled lesson'), margin: [0, 1, 0, 1] })), fontSize: 10.5, margin: [0, 0, 0, 14] })
+  const lessonHtml = ls.length === 0
+    ? '<p class="sub">This course has no lessons yet.</p>'
+    : ls.map((l, i) => `<section class="lesson"><div class="kicker">Lesson ${i + 1} of ${ls.length}</div><h2>${esc(l.title || 'Untitled lesson')}</h2>${(Array.isArray(l.content_blocks) ? l.content_blocks : []).map(b => blockHtml(b, origin)).join('')}</section>`).join('')
 
-  if (ls.length === 0) content.push({ text: 'This course has no lessons yet.', italics: true, color: SOFT })
-  for (let i = 0; i < ls.length; i++) {
-    const l = ls[i]
-    content.push({ text: `LESSON ${i + 1} OF ${ls.length}`, fontSize: 8, bold: true, color: '#6B7C83', characterSpacing: 0.8, margin: [0, i === 0 ? 0 : 12, 0, 0], headlineLevel: 1 })
-    content.push({ text: stripEmoji(l.title || 'Untitled lesson'), fontSize: 16, bold: true, color: INK, margin: [0, 2, 0, 3], headlineLevel: 1 })
-    content.push({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: CONTENT_W, y2: 0, lineWidth: 0.7, lineColor: '#D5DEE2' }], margin: [0, 0, 0, 6] })
-    for (const b of (Array.isArray(l.content_blocks) ? l.content_blocks : [])) content.push(...await blockNodes(b, ctx))
-  }
-
+  let quizHtml = ''
   if (withQuiz) {
-    content.push({ text: 'Quiz and answer key', fontSize: 16, bold: true, color: INK, pageBreak: 'before', margin: [0, 0, 0, 4] })
-    content.push({ table: { widths: ['*'], body: [[{ text: 'Answer key. Do not share with learners. The correct answers are marked.', bold: true, fontSize: 9.5, margin: [6, 4, 6, 4], fillColor: '#FFF7E6' }]] }, layout: BORDER, margin: [0, 0, 0, 10] })
-    if (qs.length === 0) content.push({ text: 'This course has no quiz questions.', italics: true, color: SOFT })
-    qs.forEach((q, i) => {
-      const opts = [...(q.options || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-      const hint = (q.kind === 'single' || !q.kind ? 'choose one' : 'select all that apply') + (q.points ? `, ${q.points} pt${q.points === 1 ? '' : 's'}` : '')
-      content.push({ unbreakable: true, margin: [0, 0, 0, 10], stack: [
-        { text: [{ text: `${i + 1}. ${stripEmoji(q.prompt)} `, bold: true }, { text: `(${hint})`, fontSize: 8.5, color: '#6B7C83' }] },
-        ...opts.map((o, k) => ({ text: [{ text: `${String.fromCharCode(65 + (k % 26))}.  ` }, { text: stripEmoji(o.label) }, ...(o.is_correct ? [{ text: '   <-- correct answer' }] : [])], bold: !!o.is_correct, color: o.is_correct ? '#1F8A53' : INK, margin: [14, 2, 0, 0] })),
-      ] })
-    })
+    quizHtml = `<section class="quiz"><h2>Quiz and answer key</h2><div class="keynote"><b>Answer key. Do not share with learners.</b> Correct answers are marked with a check.</div>` + (qs.length === 0
+      ? '<p class="sub">This course has no quiz questions.</p>'
+      : qs.map((q, i) => {
+          const opts = [...(q.options || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+          const hint = q.kind === 'single' || !q.kind ? 'choose one' : 'select all that apply'
+          return `<div class="q"><div class="q-text">${i + 1}. ${esc(q.prompt)} <span class="q-hint">(${esc(hint)}${q.points ? ', ' + esc(q.points) + ' pt' + (q.points === 1 ? '' : 's') : ''})</span></div><ul class="opts">${opts.map(o => `<li class="${o.is_correct ? 'correct' : ''}">${esc(o.label)}</li>`).join('')}</ul></div>`
+        }).join('')) + '</section>'
   }
 
-  return {
-    pageSize: 'LETTER', pageMargins: [MARGIN, 54, MARGIN, 58],
-    info: { title: course.title || 'Course', author: generatedBy || 'Opsis CX Command Center', subject: 'Certification course' },
-    defaultStyle: { font: 'Roboto', fontSize: 10.5, lineHeight: 1.3, color: INK },
-    content,
-    footer: (cur, total) => ({ margin: [MARGIN, 14, MARGIN, 0], columns: [{ width: '*', stack: [{ text: `Internal training material, Opsis CX. Downloaded${generatedBy ? ' by ' + generatedBy : ''} on ${when}.`, fontSize: 7, color: '#7A8A91' }, { text: "Please don't share outside the company.", fontSize: 7, color: '#7A8A91' }] }, { width: 48, text: `${cur} / ${total}`, fontSize: 8, color: '#7A8A91', alignment: 'right', noWrap: true }] }),
-    // keep a lesson heading together with what follows it (no heading stranded at the bottom of a page)
-    pageBreakBefore: (node, following) => !!node.headlineLevel && following.length <= 1 && node.startPosition && node.startPosition.verticalRatio > 0.8,
-  }
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(course.title)}${withQuiz ? ' (with quiz answers)' : ''}</title><style>${CSS}</style></head><body>
+<div class="cover"><div class="kicker">Certification course</div><h1>${esc(course.title)}</h1>${course.description ? `<p class="sub">${esc(course.description)}</p>` : ''}<p class="meta">${metaBits.join(' &nbsp;·&nbsp; ')}</p><p class="meta">${ls.length} lesson${ls.length === 1 ? '' : 's'}${withQuiz ? ` &nbsp;·&nbsp; ${qs.length} quiz question${qs.length === 1 ? '' : 's'} (answer key included)` : ''}</p></div>
+${ls.length > 1 ? `<div class="toc-title">Contents</div><ol class="toc">${ls.map((l, i) => `<li>${i + 1}. ${esc(l.title || 'Untitled lesson')}</li>`).join('')}</ol>` : ''}
+${lessonHtml}${quizHtml}
+<div class="foot">${foot}</div></body></html>`
 }
 
-// ---- download ---------------------------------------------------------------------------------------------------
-// Load the PDF libraries (only now), build the file, and save it. Resolves when the browser has been handed the file.
-export async function downloadCoursePdf(args) {
-  const [pm, fonts, h2p] = await Promise.all([import('pdfmake/build/pdfmake'), import('pdfmake/build/vfs_fonts'), import('html-to-pdfmake')])
-  const pdfMake = pm.default || pm
-  // the fonts file exports the font data itself (older versions wrapped it as pdfMake.vfs); accept either
-  const f = fonts.default || fonts
-  const vfs = (f && f.pdfMake && f.pdfMake.vfs) || (f && f.vfs) || f
-  if (!vfs || !vfs['Roboto-Regular.ttf']) throw new Error('The PDF fonts could not be loaded.')
-  if (typeof pdfMake.addVirtualFileSystem === 'function') pdfMake.addVirtualFileSystem(vfs); else pdfMake.vfs = vfs
-  const docDef = await buildCoursePdfDoc({ ...args, htmlToPdfmake: h2p.default || h2p, window })
-  const name = fileSafeName(args.course.title + (args.withQuiz ? ' (with quiz answers)' : ''))
-  await new Promise((resolve, reject) => { try { pdfMake.createPdf(docDef).download(name, resolve) } catch (e) { reject(e) } })
-  return { fileName: name }
+// Read what the document needs. The quiz and its answers are only fetched when asked for (and the database only
+// returns the answers to course authors).
+export async function loadCourseForExport(supabase, courseId, withQuiz) {
+  const lr = await supabase.from('lessons').select('id, title, sort_order, content_blocks').eq('course_id', courseId).order('sort_order')
+  if (lr.error) throw new Error('Could not read the lessons: ' + lr.error.message)
+  let questions = []
+  if (withQuiz) {
+    const qr = await supabase.from('quiz_questions').select('id, prompt, kind, sort_order, points').eq('course_id', courseId).order('sort_order')
+    if (qr.error) throw new Error('Could not read the quiz: ' + qr.error.message)
+    questions = qr.data || []
+    if (questions.length) {
+      const or = await supabase.from('quiz_options').select('id, question_id, label, is_correct, sort_order').in('question_id', questions.map(q => q.id)).order('sort_order')
+      if (or.error) throw new Error('Could not read the quiz answers: ' + or.error.message)
+      questions = questions.map(q => ({ ...q, options: (or.data || []).filter(o => o.question_id === q.id) }))
+    }
+  }
+  return { lessons: lr.data || [], questions }
+}
+
+// Open the browser's print window for a finished document (choose "Save as PDF" there).
+// A hidden frame is used so nothing pops up and the app page itself is never printed.
+export function printHtml(html, title) {
+  return new Promise((resolve, reject) => {
+    const iframe = document.createElement('iframe')
+    iframe.setAttribute('aria-hidden', 'true')
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
+    const prevTitle = document.title
+    let finished = false
+    const cleanup = () => { if (finished) return; finished = true; document.title = prevTitle; setTimeout(() => iframe.remove(), 800); resolve() }
+    iframe.onload = async () => {
+      try {
+        const w = iframe.contentWindow, d = iframe.contentDocument
+        // give the images time to load first (but never wait forever)
+        const waits = [...d.images].filter(im => !im.complete).map(im => new Promise(r => { im.onload = im.onerror = r }))
+        await Promise.race([Promise.all(waits), new Promise(r => setTimeout(r, 12000))])
+        document.title = title   // suggests the file name in the Save dialog
+        w.focus()
+        w.addEventListener('afterprint', cleanup)
+        w.print()
+        setTimeout(cleanup, 180000)
+      } catch (e) { cleanup(); reject(e) }
+    }
+    document.body.appendChild(iframe)
+    iframe.srcdoc = html
+  })
+}
+
+// The whole download: record it, read the course, then either SAVE A PDF FILE (the default: one click, no print window)
+// or open the print window (mode 'print').
+export async function exportCoursePdf({ supabase, course, certName = '', withQuiz = false, origin = (typeof window !== 'undefined' ? window.location.origin : ''), generatedBy = '', mode = 'download', print = printHtml, download = null, now = new Date() }) {
+  // log first: it also refuses anyone who is not a course author, so nothing is produced for them
+  const { error } = await supabase.rpc('course_log_export', { p_course: course.id, p_with_quiz: !!withQuiz })
+  if (error) throw new Error(error.message)
+  const { lessons, questions } = await loadCourseForExport(supabase, course.id, withQuiz)
+  if (mode === 'print') {
+    const html = buildCourseHtml({ course, certName, lessons, questions, withQuiz, origin, generatedBy, generatedAt: now })
+    await print(html, `${course.title}${withQuiz ? ' (with quiz answers)' : ''}`)
+  } else {
+    // the PDF libraries are loaded here, only when someone actually downloads (they are not part of the normal app)
+    const dl = download || (await import('./courseExportPdf')).downloadCoursePdf
+    await dl({ course, certName, lessons, questions, withQuiz, origin, generatedBy, generatedAt: now })
+  }
+  return { lessons: lessons.length, questions: questions.length }
 }
