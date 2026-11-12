@@ -117,6 +117,37 @@ const KB_CSS = `
 .kb-in { width: 100%; box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; font: inherit; font-size: 14px; background: var(--surface); color: var(--ink); }
 .kb-lbl { display: block; font-size: 12.5px; font-weight: 700; color: var(--ink-soft); margin: 12px 0 5px; }
 @media (max-width: 700px) { .kb-hide-sm { display: none; } .kb-hero h2 { font-size: 21px; } }
+/* ---------- folder / section page (2026-11-12): one header card + one content card ---------- */
+.kbf-head { position: relative; overflow: hidden; border-radius: 20px; padding: 16px 22px 20px; margin: 2px 0 14px; border: 1px solid color-mix(in srgb, #2dd4bf 22%, var(--line));
+  background: linear-gradient(90deg, var(--surface) 0%, color-mix(in srgb, var(--surface) 92%, transparent) 45%, color-mix(in srgb, var(--surface) 40%, transparent) 100%), url('/kb-hero.jpg') right 60% / cover no-repeat, var(--surface);
+  box-shadow: 0 6px 20px rgba(11,74,87,.08); }
+.kbf-head .kb-crumbs { margin-bottom: 12px; font-size: 13px; }
+.kbf-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.kbf-ic { width: 76px; height: 76px; border-radius: 22px; flex: none; display: grid; place-items: center; font-size: 36px; background: #fff; border: 1px solid color-mix(in srgb, #2dd4bf 25%, var(--line)); box-shadow: 0 6px 16px rgba(11,74,87,.10); }
+.kbf-title { flex: 1; min-width: 240px; }
+.kbf-title h2 { margin: 0; font-size: clamp(22px, 2.6vw, 30px); font-weight: 800; letter-spacing: -.01em; line-height: 1.15; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.kbf-title p { margin: 5px 0 0; color: color-mix(in srgb, var(--ink) 75%, transparent); font-size: 14.5px; max-width: 720px; }
+.kbf-chips { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+.kbf-chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 4px 11px; font-size: 12px; font-weight: 700; background: #fff; border: 1px solid var(--line); color: var(--ink); }
+.kbf-chip.lock { background: #FFF7ED; border-color: #FED7AA; color: #9A3412; }
+.kbf-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.kbf-actions .btn { background: #fff; }
+.kbf-actions .btn-primary { background: #0b4a57; border-color: #0b4a57; color: #fff; }
+.kbf-body { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 14px 18px 18px; box-shadow: 0 4px 14px rgba(15,23,42,.05); }
+.kbf-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.kbf-tabs { display: inline-flex; gap: 2px; background: var(--canvas); border-radius: 12px; padding: 4px; flex-wrap: wrap; }
+.kbf-tabs button { border: 0; background: none; border-radius: 9px; padding: 7px 14px; font: inherit; font-size: 13.5px; font-weight: 700; color: var(--ink-soft); cursor: pointer; }
+.kbf-tabs button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 4px rgba(15,23,42,.12); }
+.kbf-tabs button span { font-weight: 600; opacity: .7; margin-left: 4px; }
+.kbf-toolbar .kb-search { max-width: 340px; }
+.kbf-toolbar .kb-search input { padding-top: 8px; padding-bottom: 8px; border-radius: 10px; }
+.kbf-h { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 800; margin: 16px 0 10px; cursor: pointer; user-select: none; }
+.kbf-h .n { font-size: 12px; font-weight: 800; background: var(--canvas); color: var(--ink-soft); border-radius: 999px; padding: 2px 9px; }
+.kbf-h .tw { width: 16px; color: var(--ink-soft); font-size: 13px; }
+.kbf-body .kb-table { border-radius: 12px; }
+.kbf-empty { display: flex; align-items: center; gap: 14px; border: 1.5px dashed var(--line); border-radius: 14px; padding: 16px 18px; color: var(--ink-soft); font-size: 13.5px; flex-wrap: wrap; }
+.kbf-empty .big { font-size: 26px; }
+@media (max-width: 700px) { .kbf-ic { width: 58px; height: 58px; font-size: 28px; border-radius: 16px; } .kbf-toolbar .kb-search { max-width: none; flex: 1 1 100%; } }
 /* ---------- homepage (2026-11-11, per mockup) ---------- */
 .kbh-hero { position: relative; overflow: hidden; border-radius: 22px; padding: 34px 24px 40px; margin: 6px 0 18px; color: #0b3b46; text-align: center;
   background: #f4fbfc url('/kb-hero.jpg') center 62% / cover no-repeat; border: 1px solid color-mix(in srgb, #2dd4bf 22%, transparent);
@@ -163,11 +194,12 @@ const KB_CSS = `
   border-radius: 16px; padding: 14px; font: inherit; font-size: 17px; font-weight: 800; cursor: pointer; margin-top: 16px; }
 .kbh-help-btn:hover { background: color-mix(in srgb, #2dd4bf 18%, var(--surface)); }
 .kbh-empty { color: var(--ink-soft); font-size: 13.5px; padding: 8px 0; }
-/* folder view: roomier cards to match the homepage */
-.kb-folders { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
-.kb-fcard { border-radius: 16px; padding: 18px 18px 16px; min-height: 118px; }
-.kb-fcard .ic { font-size: 34px; }
-.kb-fcard b { font-size: 16.5px; margin-top: 10px; }
+/* folder view: same compact cards as the homepage's Browse by Client */
+.kb-folders { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.kbf-body .kb-fcard { display: flex; align-items: center; gap: 14px; border-radius: 14px; padding: 14px 46px 14px 16px; min-height: 74px; }
+.kbf-body .kb-fcard .ic { font-size: 30px; line-height: 1; flex: none; }
+.kbf-body .kb-fcard b { margin-top: 0; font-size: 15px; font-weight: 800; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.25; }
+.kbf-body .kb-fcard .kb-dots { top: 50%; transform: translateY(-50%); right: 10px; }
 @media (max-width: 760px) { .kbh-sections { grid-template-columns: 1fr; } .kbh-sec { padding-right: 44px; } .kbh-sec .deco { display: none; } .kbh-sec b { font-size: 22px; } .kbh-search kbd { display: none; } }
 `
 const fmtShort = (iso) => iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
@@ -321,7 +353,7 @@ export default function KnowledgeBase() {
       <style>{KB_CSS}</style>
       <div className="page-head">
         <h1 className="page-title">Knowledge Base</h1>
-        <p className="page-sub">Guides, SOPs, processes, call flows, and resources — all in one place.</p>
+        {(view === 'home' || view === 'search' || view === 'folders') && <p className="page-sub">Guides, SOPs, processes, call flows, and resources — all in one place.</p>}
       </div>
       {kb?.err && <div className="card" style={{ color: 'var(--failed)', marginBottom: 12 }}>{kb.err}</div>}
       {showHero && <KbHero q={q} setQ={setQ} onSearch={onSearch} inputRef={searchRef} />}
@@ -408,40 +440,48 @@ function Scope({ ctx, type, id }) {
   const canNewHere = type === 'folder' ? (pw.create || pw.upload) : pw.create
   return (
     <div>
-      <Crumbs items={crumbs} onOpen={ctx.openNode} />
-      <div className="kb-hero">
-        <div className="kb-hero-ic">{type === 'folder' && (!node.icon || node.icon === '📁') ? <FolderGlyph size={38} /> : (node.icon || '📚')}</div>
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <h2>{node.name}{node.restricted && <span className="kb-lock" title="Restricted — only the people in its access list">🔒</span>}</h2>
-          {node.description && <p>{node.description}</p>}
-          <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-            {type === 'folder' && client(node.client_id) && <span className="kb-chip">🏢 {client(node.client_id)}</span>}
-            {type === 'folder' && node.project_id && <span className="kb-chip">📁 {kb.projects.find(p => p.id === node.project_id)?.name || 'Project'}</span>}
+      <div className="kbf-head">
+        <Crumbs items={crumbs} onOpen={ctx.openNode} />
+        <div className="kbf-row">
+          <div className="kbf-ic">{type === 'folder' && (!node.icon || node.icon === '📁') ? <FolderGlyph size={44} /> : (node.icon || '📚')}</div>
+          <div className="kbf-title">
+            <h2>{node.name}</h2>
+            {node.description && <p>{node.description}</p>}
+            <div className="kbf-chips">
+              {type === 'section' && <span className="kbf-chip">🗂 Section</span>}
+              {type === 'folder' && client(node.client_id) && <span className="kbf-chip">🏢 {client(node.client_id)}</span>}
+              {type === 'folder' && node.project_id && <span className="kbf-chip">📁 {kb.projects.find(p => p.id === node.project_id)?.name || 'Project'}</span>}
+              {node.restricted && <span className="kbf-chip lock" title="Only the people in its access list can see it">🔒 Restricted</span>}
+              <span className="kbf-chip">{counts.folders} folder{counts.folders === 1 ? '' : 's'}{type === 'folder' ? ` · ${counts.articles + counts.files} item${counts.articles + counts.files === 1 ? '' : 's'}` : ''}</span>
+            </div>
           </div>
-        </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <FavFollow type={type} id={id} />
-          {canNewHere && (
-            <Drop label={<>＋ New ▾</>} className="btn btn-primary">
-              {pw.create && <MI icon="📁" onClick={() => setModal({ kind: 'folder', parentType: type, parentId: id })} sub={type === 'section' ? 'A top-level folder in this section' : 'A sub-folder here'}>Folder</MI>}
-              {pw.create && type === 'folder' && <MI icon="📄" onClick={() => go({ view: 'new', folder: id })} sub="Start from a blank page">Article</MI>}
-              {pw.create && type === 'folder' && <MI icon="📝" onClick={() => setModal({ kind: 'pickTemplate', folderId: id })} sub="Start from one of your templates">Article from a template</MI>}
-              {pw.upload && type === 'folder' && <MI icon="⬆" onClick={() => fileRef.current?.click()} sub="PDFs, docs, images, spreadsheets…">Upload files</MI>}
-              {pw.upload && type === 'folder' && <MI icon="🎬" onClick={() => recRef.current?.click()} sub="Audio or video (call examples, trainings)">Upload a recording</MI>}
-              {type === 'section' && pw.create && <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', padding: '6px 10px' }}>Articles, files and recordings go inside folders.</div>}
-            </Drop>
-          )}
-          <input ref={fileRef} type="file" multiple hidden onChange={e => upload(e, 'file')} />
-          <input ref={recRef} type="file" multiple hidden accept="audio/*,video/*" onChange={e => upload(e, 'recording')} />
-          <NodeMenu ctx={ctx} type={type} node={node} pw={pw} />
+          <div className="kbf-actions">
+            <FavFollow type={type} id={id} />
+            {canNewHere && (
+              <Drop label={<>＋ New ▾</>} className="btn btn-primary">
+                {pw.create && <MI icon="📁" onClick={() => setModal({ kind: 'folder', parentType: type, parentId: id })} sub={type === 'section' ? 'A top-level folder in this section' : 'A sub-folder here'}>Folder</MI>}
+                {pw.create && type === 'folder' && <MI icon="📄" onClick={() => go({ view: 'new', folder: id })} sub="Start from a blank page">Article</MI>}
+                {pw.create && type === 'folder' && <MI icon="📝" onClick={() => setModal({ kind: 'pickTemplate', folderId: id })} sub="Start from one of your templates">Article from a template</MI>}
+                {pw.upload && type === 'folder' && <MI icon="⬆" onClick={() => fileRef.current?.click()} sub="PDFs, docs, images, spreadsheets…">Upload files</MI>}
+                {pw.upload && type === 'folder' && <MI icon="🎬" onClick={() => recRef.current?.click()} sub="Audio or video (call examples, trainings)">Upload a recording</MI>}
+                {type === 'section' && pw.create && <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', padding: '6px 10px' }}>Articles, files and recordings go inside folders.</div>}
+              </Drop>
+            )}
+            <input ref={fileRef} type="file" multiple hidden onChange={e => upload(e, 'file')} />
+            <input ref={recRef} type="file" multiple hidden accept="audio/*,video/*" onChange={e => upload(e, 'recording')} />
+            <NodeMenu ctx={ctx} type={type} node={node} pw={pw} />
+          </div>
         </div>
       </div>
       {uploading && <div className="card" style={{ padding: '8px 14px', marginBottom: 10, fontSize: 13 }}>{uploading}</div>}
 
-      <div className="kb-bar">
-        {[['all', `All Items (${counts.articles + counts.files + counts.folders})`], ['articles', `Articles (${counts.articles})`], ['files', `Files (${counts.files})`], ['folders', `Folders (${counts.folders})`]]
-          .filter(([k]) => type === 'folder' || k === 'all' || k === 'folders')
-          .map(([k, l]) => <button key={k} className={'kb-pill' + (show === k ? ' on' : '')} onClick={() => setShow(k)}>{l}</button>)}
+      <div className="kbf-body">
+      <div className="kbf-toolbar">
+        <div className="kbf-tabs" role="tablist">
+          {[['all', 'All', counts.articles + counts.files + counts.folders], ['articles', 'Articles', counts.articles], ['files', 'Files', counts.files], ['folders', 'Folders', counts.folders]]
+            .filter(([k]) => type === 'folder' || k === 'all' || k === 'folders')
+            .map(([k, l, n]) => <button key={k} role="tab" aria-selected={show === k} className={show === k ? 'on' : ''} onClick={() => setShow(k)}>{l}<span>{n}</span></button>)}
+        </div>
         <span style={{ flex: 1 }} />
         <div className="kb-seg" role="group" aria-label="Layout">
           <button className={layout === 'grid' ? 'on' : ''} onClick={() => { setLayout('grid'); try { localStorage.setItem('kb-layout', 'grid') } catch { /* private mode */ } }} aria-label="Grid">▦</button>
@@ -452,23 +492,26 @@ function Scope({ ctx, type, id }) {
 
       {(show === 'all' || show === 'folders') && (
         <>
-          <div className="kb-h" onClick={() => setOpenF(o => !o)}><span>{openF ? '⌄' : '›'}</span>Folders</div>
-          {openF && (fShown.length === 0 ? <div className="page-sub" style={{ fontSize: 13 }}>{ql ? 'No folders match.' : 'No folders here yet.'}</div>
+          <div className="kbf-h" onClick={() => setOpenF(o => !o)}><span className="tw">{openF ? '▾' : '▸'}</span>Folders<span className="n">{fShown.length}</span></div>
+          {openF && (fShown.length === 0 ? <div className="kbf-empty"><span className="big">🗂</span><span style={{ flex: 1 }}>{ql ? 'No folders match your search.' : 'No folders here yet.'}</span>
+              {!ql && pw.create && <button className="btn btn-ghost" onClick={() => setModal({ kind: 'folder', parentType: type, parentId: id })}>＋ New folder</button>}</div>
             : layout === 'grid' ? (
               <div className="kb-folders">{fShown.map(f => (
                 <div key={f.id} className="kb-fcard" role="button" tabIndex={0} onClick={() => go({ view: 'folder', folder: f.id })} onKeyDown={e => e.key === 'Enter' && go({ view: 'folder', folder: f.id })}>
                   <span className="kb-dots"><ItemMenu ctx={ctx} item={{ kind: 'folder', ...f }} /></span>
-                  <span className="ic">{f.icon && f.icon !== '📁' ? f.icon : <FolderGlyph size={40} />}</span>
-                  <b title={f.name}>{f.name}{f.restricted && <span className="kb-lock">🔒</span>}</b>
-                  <small>{countIn(f.id)} item{countIn(f.id) === 1 ? '' : 's'}{client(f.client_id) ? ` · ${client(f.client_id)}` : ''}</small>
+                  <span className="ic">{f.icon && f.icon !== '📁' ? f.icon : <FolderGlyph size={36} />}</span>
+                  <span style={{ minWidth: 0 }}><b title={f.name}>{f.name}{f.restricted && <span className="kb-lock">🔒</span>}</b>
+                  <small>{countIn(f.id)} item{countIn(f.id) === 1 ? '' : 's'}{client(f.client_id) ? ` · ${client(f.client_id)}` : ''}</small></span>
                 </div>))}</div>
             ) : <ItemTable ctx={ctx} rows={fShown.map(f => ({ kind: 'folder', ...f, updated_at: f.updated_at }))} countIn={countIn} />)}
         </>
       )}
       {type === 'folder' && show !== 'folders' && (
         <>
-          <div className="kb-h" onClick={() => setOpenI(o => !o)}><span>{openI ? '⌄' : '›'}</span>Articles & Files</div>
-          {openI && (iShown.length === 0 ? <div className="page-sub" style={{ fontSize: 13 }}>{ql ? 'Nothing matches.' : 'No articles or files here yet.'}</div> : <>
+          <div className="kbf-h" onClick={() => setOpenI(o => !o)}><span className="tw">{openI ? '▾' : '▸'}</span>Articles & Files<span className="n">{iShown.length}</span></div>
+          {openI && (iShown.length === 0 ? <div className="kbf-empty"><span className="big">📄</span><span style={{ flex: 1 }}>{ql ? 'Nothing matches your search.' : 'No articles or files here yet.'}</span>
+              {!ql && pw.create && <button className="btn btn-ghost" onClick={() => go({ view: 'new', folder: id })}>＋ New article</button>}
+              {!ql && pw.upload && <button className="btn btn-ghost" onClick={() => fileRef.current?.click()}>⬆ Upload files</button>}</div> : <>
             <ItemTable ctx={ctx} rows={iShown.slice((pg - 1) * PAGE, pg * PAGE)} sort={sort} onSort={(by) => setSort(s => ({ by, dir: s.by === by ? -s.dir : (by === 'name' ? 1 : -1) }))} />
             <div className="kb-pager">
               <span>Showing {(pg - 1) * PAGE + 1}–{Math.min(pg * PAGE, iShown.length)} of {iShown.length} items</span>
@@ -482,11 +525,13 @@ function Scope({ ctx, type, id }) {
             </div></>)}
         </>
       )}
+      </div>
     </div>
   )
 }
 
 function ItemTable({ ctx, rows, sort, onSort, countIn, showWhere }) {
+  const showBy = rows.some(x => x.by)
   const { kb } = ctx
   const favSet = new Set(kb.favs.map(f => f.object_type + ':' + f.object_id))
   const { user } = useAuth()
@@ -506,7 +551,7 @@ function ItemTable({ ctx, rows, sort, onSort, countIn, showWhere }) {
           <th>Type</th>
           {showWhere && <th className="kb-hide-sm">Where</th>}
           <th style={{ cursor: onSort ? 'pointer' : 'default' }} onClick={() => onSort && onSort('updated')}>Updated{arrow('updated')}</th>
-          <th className="kb-hide-sm">Updated by</th><th style={{ width: 40 }} /><th style={{ width: 40 }} />
+          {showBy && <th className="kb-hide-sm">Updated by</th>}<th style={{ width: 40 }} /><th style={{ width: 40 }} />
         </tr></thead>
         <tbody>{rows.map(x => { const [tl, tc] = x.kind === 'folder' ? ['Folder', ''] : typeOf(x); const t = x.kind === 'recording' ? 'file' : x.kind
           return (
@@ -516,7 +561,7 @@ function ItemTable({ ctx, rows, sort, onSort, countIn, showWhere }) {
               <td><span className={'kb-badge ' + tc}>{tl}</span></td>
               {showWhere && <td className="kb-hide-sm" style={{ color: 'var(--ink-soft)', fontSize: 12.5 }}>{where(x)}</td>}
               <td style={{ whiteSpace: 'nowrap' }}>{fmtShort(x.updated_at)}</td>
-              <td className="kb-hide-sm">{shortName(kb.names[x.by] || '')}</td>
+              {showBy && <td className="kb-hide-sm">{shortName(kb.names[x.by] || '')}</td>}
               <td onClick={e => e.stopPropagation()}><button className={'kb-star' + (favSet.has(t + ':' + x.id) ? ' on' : '')} onClick={() => toggleFav(x)} aria-label={favSet.has(t + ':' + x.id) ? 'Remove from favorites' : 'Add to favorites'}>{favSet.has(t + ':' + x.id) ? '★' : '☆'}</button></td>
               <td onClick={e => e.stopPropagation()}><ItemMenu ctx={ctx} item={x} /></td>
             </tr>) })}</tbody>
