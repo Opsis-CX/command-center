@@ -166,3 +166,41 @@ export async function buildCoursePdfDoc({ course, certName = '', lessons = [], q
   if (withQuiz) {
     content.push({ text: 'Quiz and answer key', fontSize: 16, bold: true, color: INK, pageBreak: 'before', margin: [0, 0, 0, 4] })
     content.push({ table: { widths: ['*'], body: [[{ text: 'Answer key. Do not share with learners. The correct answers are marked.', bold: true, fontSize: 9.5, margin: [6, 4, 6, 4], fillColor: '#FFF7E6' }]] },
+    content.push({ table: { widths: ['*'], body: [[{ text: 'Answer key. Do not share with learners. The correct answers are marked.', bold: true, fontSize: 9.5, margin: [6, 4, 6, 4], fillColor: '#FFF7E6' }]] }, layout: BORDER, margin: [0, 0, 0, 10] })
+    if (qs.length === 0) content.push({ text: 'This course has no quiz questions.', italics: true, color: SOFT })
+    qs.forEach((q, i) => {
+      const opts = [...(q.options || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+      const hint = (q.kind === 'single' || !q.kind ? 'choose one' : 'select all that apply') + (q.points ? `, ${q.points} pt${q.points === 1 ? '' : 's'}` : '')
+      content.push({ unbreakable: true, margin: [0, 0, 0, 10], stack: [
+        { text: [{ text: `${i + 1}. ${stripEmoji(q.prompt)} `, bold: true }, { text: `(${hint})`, fontSize: 8.5, color: '#6B7C83' }] },
+        ...opts.map((o, k) => ({ text: [{ text: `${String.fromCharCode(65 + (k % 26))}.  ` }, { text: stripEmoji(o.label) }, ...(o.is_correct ? [{ text: '   <-- correct answer' }] : [])], bold: !!o.is_correct, color: o.is_correct ? '#1F8A53' : INK, margin: [14, 2, 0, 0] })),
+      ] })
+    })
+  }
+
+  return {
+    pageSize: 'LETTER', pageMargins: [MARGIN, 54, MARGIN, 58],
+    info: { title: course.title || 'Course', author: generatedBy || 'Opsis CX Command Center', subject: 'Certification course' },
+    defaultStyle: { font: 'Roboto', fontSize: 10.5, lineHeight: 1.3, color: INK },
+    content,
+    footer: (cur, total) => ({ margin: [MARGIN, 14, MARGIN, 0], columns: [{ width: '*', stack: [{ text: `Internal training material, Opsis CX. Downloaded${generatedBy ? ' by ' + generatedBy : ''} on ${when}.`, fontSize: 7, color: '#7A8A91' }, { text: "Please don't share outside the company.", fontSize: 7, color: '#7A8A91' }] }, { width: 48, text: `${cur} / ${total}`, fontSize: 8, color: '#7A8A91', alignment: 'right', noWrap: true }] }),
+    // keep a lesson heading together with what follows it (no heading stranded at the bottom of a page)
+    pageBreakBefore: (node, following) => !!node.headlineLevel && following.length <= 1 && node.startPosition && node.startPosition.verticalRatio > 0.8,
+  }
+}
+
+// ---- download ---------------------------------------------------------------------------------------------------
+// Load the PDF libraries (only now), build the file, and save it. Resolves when the browser has been handed the file.
+export async function downloadCoursePdf(args) {
+  const [pm, fonts, h2p] = await Promise.all([import('pdfmake/build/pdfmake'), import('pdfmake/build/vfs_fonts'), import('html-to-pdfmake')])
+  const pdfMake = pm.default || pm
+  // the fonts file exports the font data itself (older versions wrapped it as pdfMake.vfs); accept either
+  const f = fonts.default || fonts
+  const vfs = (f && f.pdfMake && f.pdfMake.vfs) || (f && f.vfs) || f
+  if (!vfs || !vfs['Roboto-Regular.ttf']) throw new Error('The PDF fonts could not be loaded.')
+  if (typeof pdfMake.addVirtualFileSystem === 'function') pdfMake.addVirtualFileSystem(vfs); else pdfMake.vfs = vfs
+  const docDef = await buildCoursePdfDoc({ ...args, htmlToPdfmake: h2p.default || h2p, window })
+  const name = fileSafeName(args.course.title + (args.withQuiz ? ' (with quiz answers)' : ''))
+  await new Promise((resolve, reject) => { try { pdfMake.createPdf(docDef).download(name, resolve) } catch (e) { reject(e) } })
+  return { fileName: name }
+}
