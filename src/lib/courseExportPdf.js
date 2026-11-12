@@ -165,7 +165,6 @@ export async function buildCoursePdfDoc({ course, certName = '', lessons = [], q
 
   if (withQuiz) {
     content.push({ text: 'Quiz and answer key', fontSize: 16, bold: true, color: INK, pageBreak: 'before', margin: [0, 0, 0, 4] })
-    content.push({ table: { widths: ['*'], body: [[{ text: 'Answer key. Do not share with learners. The correct answers are marked.', bold: true, fontSize: 9.5, margin: [6, 4, 6, 4], fillColor: '#FFF7E6' }]] },
     content.push({ table: { widths: ['*'], body: [[{ text: 'Answer key. Do not share with learners. The correct answers are marked.', bold: true, fontSize: 9.5, margin: [6, 4, 6, 4], fillColor: '#FFF7E6' }]] }, layout: BORDER, margin: [0, 0, 0, 10] })
     if (qs.length === 0) content.push({ text: 'This course has no quiz questions.', italics: true, color: SOFT })
     qs.forEach((q, i) => {
