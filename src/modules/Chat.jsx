@@ -831,6 +831,10 @@ export default function Chat() {
   const powers = useChatPowers()
   const canCreateChannels = powers ? !!powers.create : (isAdmin || can(appRole, 'chat.create_channels'))
   const canCreateDMs = powers ? !!(powers.dm || powers.group_dm) : (isAdmin || can(appRole, 'chat.create_dms'))
+  // agents message their project's support team instead of individuals (support lines)
+  const [supportOpts, setSupportOpts] = useState([])
+  const [showSupport, setShowSupport] = useState(false)
+  useEffect(() => { supabase.rpc('chat_support_options').then(({ data }) => setSupportOpts(Array.isArray(data) ? data : [])) }, [])
   const isMobile = useIsMobile()
   const { counts: unreadCounts, markRead } = useUnread()
   const [me, setMe] = useState(null)
@@ -983,7 +987,24 @@ export default function Chat() {
           const nameById = {}; (profs || []).forEach(p => nameById[p.id] = p.full_name)
           const map = {}
           const peers = {}
+          // support-line conversations (2026-11-12): the agent sees the line ("Northwind Support");
+          // support staff see the agent + the line ("Sarah Lee · Northwind Support")
+          const supportCh = dmChannels.filter(c => c.support_line_id)
+          const lineName = {}
+          if (supportCh.length) {
+            const { data: lines } = await supabase.from('chat_support_lines').select('id, name').in('id', [...new Set(supportCh.map(c => c.support_line_id))])
+            ;(lines || []).forEach(l => { lineName[l.id] = l.name })
+            const agentIds = supportCh.map(c => c.support_agent_id).filter(id => id && !nameById[id])
+            if (agentIds.length) { const { data: ap } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', agentIds); registerPhotos(ap); (ap || []).forEach(p => { nameById[p.id] = p.full_name }) }
+          }
           Object.entries(othersByChannel).forEach(([cid, pids]) => {
+            const sc = supportCh.find(c => c.id === cid)
+            if (sc) {
+              const ln = lineName[sc.support_line_id] || sc.name || 'Support'
+              if (sc.support_agent_id === meRes.data.id) map[cid] = ln
+              else { map[cid] = `${nameById[sc.support_agent_id] || 'Agent'} · ${ln}`; peers[cid] = sc.support_agent_id }
+              return
+            }
             if (pids.length === 0) map[cid] = 'Just you'
             else if (pids.length === 1) { map[cid] = nameById[pids[0]] || 'Unknown'; peers[cid] = pids[0] }
             else map[cid] = pids.map(pid => (nameById[pid] || 'Unknown').split(' ')[0]).sort().join(', ')
@@ -1422,9 +1443,10 @@ export default function Chat() {
             )}
             {whenCollapsed(channelList, builtinCollapsed.channels).map(c => renderRow(c))}
 
-            {(dmList.length > 0 || canCreateDMs) && renderHeader({
+            {(dmList.length > 0 || canCreateDMs || supportOpts.length > 0) && renderHeader({
               key: 'h-dm', label: 'Direct messages', icon: '💬', collapsed: builtinCollapsed.dms, onToggle: () => toggleBuiltin('dms'),
-              right: canCreateDMs ? <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button> : null,
+              right: canCreateDMs ? <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button>
+        : supportOpts.length ? <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowSupport(true)} title="Message your project's support team">+ Support</button> : null,
             })}
             {whenCollapsed(dmList, builtinCollapsed.dms).map(c => renderRow(c))}
 
@@ -1455,6 +1477,9 @@ export default function Chat() {
       {showCreate && <CreateChannelModal me={me} profiles={profiles}
         onClose={() => setShowCreate(false)}
         onCreated={(id) => { setShowCreate(false); load(); openChannel(id) }} />}
+      {showSupport && <SupportLineModal lines={supportOpts} title="Message support" onClose={() => setShowSupport(false)}
+        onPick={async (line) => { const { data, error } = await supabase.rpc('chat_support_open', { p_line: line.id }); if (error) { window.alert(error.message); return }
+          setShowSupport(false); await load(); setActiveId(data) }} />}
       {showDM && <CreateDMModal me={me} profiles={profiles}
         onClose={() => setShowDM(false)}
         onCreated={(id) => {
@@ -3895,6 +3920,17 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
     const personIds = [...picked]
     if (dmPw && personIds.length === 1 && !dmPw.dm) { setErr("You can start group messages, but not 1-on-1 direct messages. Pick at least two people."); return }
     if (!personIds.length) return
+    // agents are messaged through their support line (the support team sees it too)
+    const agentsPicked = personIds.filter(id => String(profiles.find(p => p.id === id)?.role || '').trim().toLowerCase() === 'agent')
+    if (agentsPicked.length) {
+      if (personIds.length > 1) { setErr('Agents are messaged one at a time, through their support line — pick just the agent.'); return }
+      setSaving(true); setErr('')
+      const { data: opts } = await supabase.rpc('chat_support_options', { p_agent: agentsPicked[0] })
+      setSaving(false)
+      if (!opts?.length) { setErr(`${profiles.find(p => p.id === agentsPicked[0])?.full_name || 'This agent'} isn't on a support line yet. Ask an admin to set one up (Configuration → Chat support lines).`); return }
+      if (opts.length > 1) { setLineChoices({ agent: agentsPicked[0], opts }); return }
+      return openLine(opts[0], agentsPicked[0])
+    }
     setSaving(true); setErr('')
     try {
       // Look for an existing DM whose member set is EXACTLY me + the picked
@@ -3937,9 +3973,18 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
     } catch (e) { setErr(e.message); setSaving(false) }
   }
 
+  const [lineChoices, setLineChoices] = useState(null)
+  async function openLine(line, agentId) {
+    setSaving(true); setErr('')
+    const { data, error } = await supabase.rpc('chat_support_open', { p_line: line.id, p_agent: agentId })
+    if (error) { setErr(error.message); setSaving(false); return }
+    onCreated(data)
+  }
   const pickedNames = [...picked].map(id => profiles.find(p => p.id === id)?.full_name?.split(' ')[0]).filter(Boolean)
 
   return (
+    lineChoices ? <SupportLineModal lines={lineChoices.opts} title="Message an agent" agentName={profiles.find(p => p.id === lineChoices.agent)?.full_name}
+      onClose={() => setLineChoices(null)} onPick={(l) => openLine(l, lineChoices.agent)} /> :
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal" style={{ width: 440 }}>
         <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>New direct message</h3>
@@ -4053,6 +4098,25 @@ function CreateChannelModal({ me, profiles, onClose, onCreated }) {
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={create} disabled={saving}>{saving ? 'Creating…' : 'Create channel'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+// Pick a support line (agents: "+ Support"; internal: which line to message an agent on)
+function SupportLineModal({ lines, title, onClose, onPick, agentName }) {
+  const [busy, setBusy] = useState(false)
+  return (
+    <div onMouseDown={e => { if (e.target === e.currentTarget) onClose() }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.42)', zIndex: 3000, display: 'grid', placeItems: 'center', padding: 14 }}>
+      <div role="dialog" aria-label={title} style={{ width: 'min(440px, 100%)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 16, boxShadow: '0 24px 60px rgba(0,0,0,.25)', padding: '18px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}><b style={{ fontSize: 16, flex: 1 }}>{title}</b><button className="btn btn-ghost" style={{ padding: '2px 8px' }} onClick={onClose} aria-label="Close">✕</button></div>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--ink-soft)' }}>{agentName ? `Which project is this about? ${agentName} and that project's support team will see the conversation.` : 'Your message goes to the support team for that project — anyone on the team can answer.'}</p>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {lines.map(l => (
+            <button key={l.id} className="btn btn-ghost" disabled={busy} style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '12px 14px', fontSize: 14, fontWeight: 700 }}
+              onClick={async () => { setBusy(true); await onPick(l); setBusy(false) }}>💬 {l.name}{l.channel_id ? <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: 'var(--ink-soft)' }}>open</span> : null}</button>))}
         </div>
       </div>
     </div>
