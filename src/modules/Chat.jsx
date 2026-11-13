@@ -1451,7 +1451,7 @@ export default function Chat() {
             {(dmList.length > 0 || canCreateDMs || supportOpts.length > 0) && renderHeader({
               key: 'h-dm', label: 'Direct messages', icon: '💬', collapsed: builtinCollapsed.dms, onToggle: () => toggleBuiltin('dms'),
               right: canCreateDMs ? <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button>
-        : supportOpts.length ? <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowSupport(true)} title="Message your project's support team">+ Support</button> : null,
+        : supportOpts.length ? <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowSupport(true)} title="Start a direct message — choose your project">+ DM</button> : null,
             })}
             {whenCollapsed(dmList, builtinCollapsed.dms).map(c => renderRow(c))}
 
@@ -1482,7 +1482,7 @@ export default function Chat() {
       {showCreate && <CreateChannelModal me={me} profiles={profiles}
         onClose={() => setShowCreate(false)}
         onCreated={(id) => { setShowCreate(false); load(); openChannel(id) }} />}
-      {showSupport && <SupportLineModal lines={supportOpts} title="Message support" onClose={() => setShowSupport(false)}
+      {showSupport && <SupportLineModal lines={supportOpts} title="New direct message" onClose={() => setShowSupport(false)}
         onPick={async (line) => { const { data, error } = await supabase.rpc('chat_support_open', { p_line: line.id }); if (error) { window.alert(error.message); return }
           setShowSupport(false); await load(); setActiveId(data) }} />}
       {showDM && <CreateDMModal me={me} profiles={profiles}
@@ -4118,7 +4118,7 @@ function SupportLineModal({ lines, title, onClose, onPick, agentName }) {
     <div onMouseDown={e => { if (e.target === e.currentTarget) onClose() }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.42)', zIndex: 3000, display: 'grid', placeItems: 'center', padding: 14 }}>
       <div role="dialog" aria-label={title} style={{ width: 'min(440px, 100%)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 16, boxShadow: '0 24px 60px rgba(0,0,0,.25)', padding: '18px 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}><b style={{ fontSize: 16, flex: 1 }}>{title}</b><button className="btn btn-ghost" style={{ padding: '2px 8px' }} onClick={onClose} aria-label="Close">✕</button></div>
-        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--ink-soft)' }}>{agentName ? `Which project is this about? ${agentName} and that project's support team will see the conversation.` : 'Your message goes to the support team for that project — anyone on the team can answer.'}</p>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--ink-soft)' }}>{agentName ? `Which project is this about? ${agentName} and that project's support team will see the conversation.` : 'Choose your project. Your message goes to that project\'s support team — anyone on the team can answer.'}</p>
         <div style={{ display: 'grid', gap: 8 }}>
           {lines.map(l => (
             <button key={l.id} className="btn btn-ghost" disabled={busy} style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '12px 14px', fontSize: 14, fontWeight: 700 }}
