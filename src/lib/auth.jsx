@@ -21,7 +21,7 @@ export function AuthProvider({ children }) {
     for (let i = 0; i < attempts; i++) {
       try {
         const { data, error } = await supabase
-          .from('profiles').select('role, client_id, timezone, in_training').eq('id', uid).maybeSingle()
+          .from('profiles').select('role, client_id, timezone, in_training, is_admin').eq('id', uid).maybeSingle()
         // supabase-js returns errors, it does not throw them — checking `error`
         // is what stops a failed read from looking like an empty profile.
         if (!error) return { ok: true, data }
@@ -50,6 +50,11 @@ export function AuthProvider({ children }) {
     // moment as the role, so menus and pages are right from the first screen.
     await loadPermissions(supabase)
     setAppRole(data?.role || 'agent')
+    // Admin flag normally comes from the sign-in token (access-token hook). If an environment's hook
+    // isn't switched on (e.g. staging), fall back to the account's own is_admin so admin-only menus
+    // like "View as" still appear. Purely a display decision — every admin action is re-checked on
+    // the server (e.g. role-preview checks profiles.is_admin itself).
+    if (data?.is_admin) setRole(r => (r.isAdmin ? r : { ...r, isAdmin: true, level: Math.max(r.level || 0, 90), roles: (r.roles && r.roles.length) ? r.roles : ['admin'] }))
     setClientId(data?.client_id || null)
     setInTraining(!!data?.in_training)
     setPermsVersion(v => v + 1)
