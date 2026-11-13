@@ -6,6 +6,7 @@
 // ============================================================
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import CxEngineSetup from '../components/CxEngineSetup'
 
 // Speed-to-lead "middle ground" cadence (Becky's doc, Sept 2026): 8 dials over 5 dialing days, 5 in the first two days.
 const WHEN = [['asap', 'Right away (within 15 seconds)'], ['after_hours', 'Hours after the last dial'], ['morning', 'Morning (8–11 am)'], ['late_morning', 'Late morning (10 am–12 pm)'],
@@ -78,14 +79,14 @@ export default function PhoneSetup({ clientId = null }) {
           <div style={S.mut}>{can ? 'Build the lines your customers call and the lists your CSRs call out to.' : 'View only. Ask an admin or your RM to make changes.'}</div>
         </div>
         <div style={S.seg}>
-          {[['in', `Inbound lines (${d.lines.length})`], ['out', `Outbound campaigns (${d.campaigns.filter(c => !c.is_manual).length})`], ['blend', 'Blending']].concat(!d.scope.brand && can ? [['central', 'Central team']] : []).map(([k, l]) => (
+          {[['in', `Inbound lines (${d.lines.length})`], ['out', `Outbound campaigns (${d.campaigns.filter(c => !c.is_manual).length})`], ['blend', 'Blending']].concat(!d.scope.brand && can ? [['central', 'Central team']] : []).concat([['cx', 'Advanced engine']]).map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)} style={{ ...S.segBtn, ...(tab === k ? S.segOn : {}) }}>{l}</button>
           ))}
         </div>
       </div>
       {msg && <div style={S.ok}>{msg}</div>}
 
-      {tab === 'central' ? <CentralTeam args={args} onChange={load} /> : tab === 'blend' ? <Blending d={d} args={args} /> : tab === 'in' ? (
+      {tab === 'cx' ? <CxEngineSetup args={args} people={d.people || []} can={can} /> : tab === 'central' ? <CentralTeam args={args} onChange={load} /> : tab === 'blend' ? <Blending d={d} args={args} /> : tab === 'in' ? (
         <>
           {can && <div><button style={S.primary} onClick={() => setEdit({ kind: 'line', row: null })}>+ New inbound line</button></div>}
           {d.lines.length === 0 && <div style={S.card}><p style={S.mut}>No inbound lines yet.</p></div>}
@@ -324,6 +325,11 @@ function LineForm({ d, row, can, saving, msg, args, onData, onCancel, onSave }) 
             <input disabled={dis} value={m.label || ''} onChange={e => { const n = [...f.menu]; n[i] = { ...m, label: e.target.value, queue: (m.queue && m.queue !== slug(m.label)) ? m.queue : slug(e.target.value) }; set('menu', n) }} placeholder="e.g. Schedule service" style={{ ...S.input, width: 220, marginTop: 0 }} />
             <select disabled={dis} value={m.script_id || ''} onChange={e => { const n = [...f.menu]; n[i] = { ...m, script_id: e.target.value || null }; set('menu', n) }} style={{ ...S.input, width: 240, marginTop: 0 }}>
               <option value="">No script</option>{d.scripts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            {/* Advanced engine (2026-11-13): only CSRs with this skill get these calls; priority jumps the line */}
+            <input disabled={dis} value={m.skill || ''} onChange={e => { const n = [...f.menu]; n[i] = { ...m, skill: e.target.value.trim() ? e.target.value : null }; set('menu', n) }} placeholder="Skill (optional)" title="Advanced engine: only CSRs with this skill get these calls" style={{ ...S.input, width: 140, marginTop: 0 }} />
+            <select disabled={dis} value={m.priority || 0} onChange={e => { const n = [...f.menu]; n[i] = { ...m, priority: Number(e.target.value) || 0 }; set('menu', n) }} title="Advanced engine: higher priority callers are answered first" style={{ ...S.input, width: 130, marginTop: 0 }}>
+              <option value={0}>Normal priority</option><option value={10}>High priority</option><option value={20}>Urgent</option>
             </select>
             {!dis && <button style={S.link} onClick={() => set('menu', f.menu.filter((_, j) => j !== i).map((x, j) => ({ ...x, key: String(j + 1) })))}>Remove</button>}
           </div>
