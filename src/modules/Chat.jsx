@@ -856,6 +856,7 @@ export default function Chat() {
   const [showCreate, setShowCreate] = useState(false)
   const [showDM, setShowDM] = useState(false)
   const [dmNames, setDmNames] = useState({}) // channelId -> other person's name
+  const [supportMeta, setSupportMeta] = useState({}) // channelId -> { clientId, client, line, agent } (staff side only)
   const [dmPeers, setDmPeers] = useState({}) // channelId -> the other person's profile_id (1:1 DMs only)
   // Who's typing in which DM right now (for the ••• in the sidebar). channelId -> { profileId: lastSeenMs }
   const [dmTyping, setDmTyping] = useState({})
@@ -996,9 +997,24 @@ export default function Chat() {
           // support staff see the agent + the line ("Sarah Lee · Northwind Support")
           const supportCh = dmChannels.filter(c => c.support_line_id)
           const lineName = {}
+          let supportMetaTmp = {}
           if (supportCh.length) {
-            const { data: lines } = await supabase.from('chat_support_lines').select('id, name').in('id', [...new Set(supportCh.map(c => c.support_line_id))])
+            const { data: lines } = await supabase.from('chat_support_lines').select('id, name, client_id, project_id').in('id', [...new Set(supportCh.map(c => c.support_line_id))])
             ;(lines || []).forEach(l => { lineName[l.id] = l.name })
+            // Agent Support section (2026-11-13): group staff-side support chats by client
+            const projIds = [...new Set((lines || []).filter(l => !l.client_id && l.project_id).map(l => l.project_id))]
+            const { data: projs } = projIds.length ? await supabase.from('projects').select('id, client_id').in('id', projIds) : { data: [] }
+            const projClient = {}; (projs || []).forEach(pr => { projClient[pr.id] = pr.client_id })
+            const lineClient = {}; (lines || []).forEach(l => { lineClient[l.id] = l.client_id || projClient[l.project_id] || null })
+            const cIds = [...new Set(Object.values(lineClient).filter(Boolean))]
+            const { data: cls } = cIds.length ? await supabase.from('clients').select('id, name').in('id', cIds) : { data: [] }
+            const clientName = {}; (cls || []).forEach(c => { clientName[c.id] = c.name })
+            supportMetaTmp = {}
+            supportCh.forEach(c => {
+              if (c.support_agent_id === meRes.data.id) return
+              const cl = lineClient[c.support_line_id]
+              supportMetaTmp[c.id] = { clientId: cl || 'line:' + c.support_line_id, client: (cl && clientName[cl]) || lineName[c.support_line_id] || 'Other', line: lineName[c.support_line_id] || 'Support', agentId: c.support_agent_id }
+            })
             const agentIds = supportCh.map(c => c.support_agent_id).filter(id => id && !nameById[id])
             if (agentIds.length) { const { data: ap } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', agentIds); registerPhotos(ap); (ap || []).forEach(p => { nameById[p.id] = p.full_name }) }
           }
@@ -1014,8 +1030,10 @@ export default function Chat() {
             else if (pids.length === 1) { map[cid] = nameById[pids[0]] || 'Unknown'; peers[cid] = pids[0] }
             else map[cid] = pids.map(pid => (nameById[pid] || 'Unknown').split(' ')[0]).sort().join(', ')
           })
+          Object.values(supportMetaTmp).forEach(m => { m.agent = nameById[m.agentId] || 'Agent' })
           setDmNames(map)
           setDmPeers(peers)
+          setSupportMeta(supportMetaTmp)
         }
       }
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
@@ -1267,7 +1285,17 @@ export default function Chat() {
   const groupOf = (c) => (!isFav(c) && sectionIds.has(prefs[c.id]?.section_id)) ? prefs[c.id].section_id : null
   const favList = visible.filter(isFav).sort(byPinThenActivity)
   const channelList = visible.filter(c => !c.is_dm && !isFav(c) && !groupOf(c)).sort(byPinThenActivity)
-  const dmList = visible.filter(c => c.is_dm && !isFav(c) && !groupOf(c)).sort(byPinThenActivity)
+  // Staff: agent support chats get their own "Agent Support" section, grouped by client.
+  // Direct messages stays for internal DMs. (Agents still see their support chats under Direct messages.)
+  const isSupportForStaff = (c) => !!supportMeta[c.id]
+  const dmList = visible.filter(c => c.is_dm && !isFav(c) && !groupOf(c) && !isSupportForStaff(c)).sort(byPinThenActivity)
+  const supportList = visible.filter(c => c.is_dm && !isFav(c) && !groupOf(c) && isSupportForStaff(c)).sort(byPinThenActivity)
+  const supportGroups = (() => {
+    const g = {}
+    supportList.forEach(c => { const m = supportMeta[c.id]; (g[m.clientId] ||= { id: m.clientId, name: m.client, items: [], lines: new Set() }); g[m.clientId].items.push(c); g[m.clientId].lines.add(m.line) })
+    return Object.values(g).sort((a, b) => a.name.localeCompare(b.name))
+  })()
+  const supportUnread = supportList.reduce((n, c) => n + (unreadCounts[c.id] || 0), 0)
   const hiddenUnread = hiddenList.reduce((n, c) => n + (unreadCounts[c.id] || 0), 0)
 
   // A collapsed section still shows anything unread (and whatever is open).
@@ -1277,19 +1305,19 @@ export default function Chat() {
     <span style={{ background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', flex: 'none' }}>{n > 99 ? '99+' : n}</span>
   )
 
-  const renderRow = (c, { dim = false } = {}) => {
+  const renderRow = (c, { dim = false, labelOverride = null, sub = null, indent = 0 } = {}) => {
     const typingHere = c.is_dm && Object.keys(dmTyping[c.id] || {}).length > 0
     const active = c.id === activeId && !isMobile
     const unread = unreadCounts[c.id] || 0
     const pinnedHere = !!prefs[c.id]?.pinned_at
     const peer = c.is_dm && dmPeers[c.id] ? profiles.find(p => p.id === dmPeers[c.id]) : null
     const st = peer && effStatus(peer)
-    const label = c.is_dm ? (dmNames[c.id] || c.name || 'Direct message') : c.name
+    const label = labelOverride || (c.is_dm ? (dmNames[c.id] || c.name || 'Direct message') : c.name)
     const isGroupDm = c.is_dm && !peer
     return (
       <div key={c.id} className={'chat-side-row' + (active ? ' is-active' : '')} style={{ opacity: dim ? 0.7 : 1 }}>
         <button onClick={() => openChannel(c.id)} className="chat-side-btn"
-          style={{ color: active ? 'var(--accent)' : unread ? 'var(--ink)' : 'var(--ink-soft)', fontWeight: unread ? 700 : 500, padding: isMobile ? '9px 10px' : '4px 8px', fontSize: isMobile ? 15 : 13.5 }}>
+          style={{ color: active ? 'var(--accent)' : unread ? 'var(--ink)' : 'var(--ink-soft)', fontWeight: unread ? 700 : 500, padding: isMobile ? '9px 10px' : '4px 8px', paddingLeft: indent ? (isMobile ? 10 : 8) + indent : undefined, fontSize: isMobile ? 15 : 13.5 }}>
           {c.is_dm ? (
             <span style={{ position: 'relative', width: 20, height: 20, flex: 'none' }}>
               {isGroupDm ? (
@@ -1304,6 +1332,7 @@ export default function Chat() {
           )}
           <span style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
             <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+            {sub && <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--ink-soft)', opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '0 1 auto' }}>· {sub}</span>}
             {st && st.emoji ? <span title={st.text || ''} style={{ fontSize: 12, flex: 'none' }}><StatusEmoji emoji={st.emoji} size={12} /></span> : null}
             {pinnedHere && <span title="Pinned" style={{ fontSize: 10, flex: 'none' }}>📌</span>}
             {amStaff && peer && isAgentProfile(peer) && agentBlocked(peer.id) && <span title="Messages from this agent are turned off" style={{ fontSize: 10.5, flex: 'none' }}>🔕</span>}
@@ -1454,6 +1483,32 @@ export default function Chat() {
         : supportOpts.length ? <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowSupport(true)} title="Start a direct message — choose your project">+ DM</button> : null,
             })}
             {whenCollapsed(dmList, builtinCollapsed.dms).map(c => renderRow(c))}
+
+            {supportList.length > 0 && (<>
+              {renderHeader({ key: 'h-sup', label: 'Agent Support', icon: '🎧', collapsed: builtinCollapsed.support, onToggle: () => toggleBuiltin('support'), unread: builtinCollapsed.support ? supportUnread : 0 })}
+              {supportGroups.map(g => {
+                const k = 'sup:' + g.id
+                const gCollapsed = !!builtinCollapsed[k]
+                const gUnread = g.items.reduce((n, c) => n + (unreadCounts[c.id] || 0), 0)
+                const rows = whenCollapsed(g.items, builtinCollapsed.support || gCollapsed)
+                if (builtinCollapsed.support && rows.length === 0) return null
+                const multiLine = g.lines.size > 1
+                return (
+                  <React.Fragment key={k}>
+                    {!builtinCollapsed.support && (
+                      <button onClick={() => toggleBuiltin(k)} className="chat-side-head-btn"
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '5px 8px 3px 26px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--ink-soft)' }}>
+                        <span style={{ fontSize: 10, width: 9, flex: 'none', opacity: 0.8 }}>{gCollapsed ? '▸' : '▾'}</span>
+                        <span style={{ flex: 1, minWidth: 0, textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.name}</span>
+                        <span style={{ fontWeight: 600, opacity: 0.7 }}>{g.items.length}</span>
+                        {gCollapsed && gUnread ? unreadBadge(gUnread) : null}
+                      </button>
+                    )}
+                    {rows.map(c => renderRow(c, { labelOverride: supportMeta[c.id].agent, sub: multiLine ? supportMeta[c.id].line : null, indent: 10 }))}
+                  </React.Fragment>
+                )
+              })}
+            </>)}
 
             {hiddenList.length > 0 && (<>
               {renderHeader({ key: 'h-hidden', label: 'Hidden', icon: '🙈', count: hiddenList.length, collapsed: !showHidden, onToggle: () => setShowHidden(v => !v), unread: hiddenUnread })}
