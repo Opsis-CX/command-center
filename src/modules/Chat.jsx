@@ -2329,6 +2329,8 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
   const iConfirmed = (messageId) => acks.some(a => a.message_id === messageId && a.profile_id === me.id)
   const confirmCount = (messageId) => acks.filter(a => a.message_id === messageId).length
 
+  // (hooks must run before any early return — React error #310 otherwise)
+  const chatPowers = useChatPowers()
   if (loading) return <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}><span className="page-sub">Loading messages…</span></div>
 
   const topLevel = messages.filter(x => !x.parent_id)
@@ -2357,7 +2359,6 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
   // would reject a delete that this let the user attempt.
   // Delete rule: the author, or anyone whose role isn't 'agent'
   // (asc / support / certification / marketing / admin can moderate).
-  const chatPowers = useChatPowers()
   const canModerate = chatPowers ? !!chatPowers.moderate : String(appRole || 'agent').trim().toLowerCase() !== 'agent'
   const canPinMsgs = chatPowers ? !!chatPowers.pin : canModerate
 
