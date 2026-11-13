@@ -12,6 +12,7 @@ import { useState, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useVoice } from '../lib/voice'
 import AgentStatus, { statusLook } from './AgentStatus'
+import CxCallPanel from './CxCallPanel'
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#']
 const STATUS_TEXT = { connecting: 'Connecting…', ringing: 'Ringing…', 'in-call': 'Connected', ended: 'Call ended' }
@@ -51,6 +52,7 @@ export default function Softphone() {
 
   return (
     <>
+      <CxCallPanel />
       <button onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onDoubleClick={resetPos}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); v.setOpen(!v.open) } }}
         aria-label="Phone" title="Phone (drag to move, double-click to reset)"
