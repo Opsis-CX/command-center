@@ -124,6 +124,12 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
       sub: ['Inbound', p.get('queueLabel')].filter(Boolean).join(' · '),
     })
     setOpen(true)
+    // CX engine calls ring by REST (no custom parameters): look the caller up (2026-11-13)
+    if (!p.get('inboundId')) {
+      supabase.rpc('csr_cx_my_call').then(({ data }) => {
+        if (data && incomingRef.current === call) patch({ label: data.customer_name || 'Caller', sub: ['Inbound', data.queue, data.line_name].filter(Boolean).join(' · ') })
+      })
+    }
     const clear = () => {
       if (incomingRef.current !== call) return
       incomingRef.current = null
@@ -247,6 +253,12 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
     start({ QueueId: queueId }, name || 'Customer')
   }, [start])
 
+  // Supervisors: join a live CX call to listen, whisper or barge (2026-11-13)
+  const monitorCall = useCallback((interactionId, mode = 'listen', label = 'Live call') => {
+    if (!interactionId) return
+    start({ CxI: interactionId, CxMode: mode }, `${mode === 'listen' ? 'Listening' : mode === 'whisper' ? 'Whispering' : 'Joined'} · ${label}`)
+  }, [start])
+
   const callNumber = useCallback((number) => {
     const to = toE164(number)
     setOpen(true)
@@ -272,6 +284,21 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
       inboundRef.current = info
       setInboundCall(info)
       setAgent(a => ({ ...a, state: 'on_call', since: new Date().toISOString() }))
+      if (!info.id) {
+        // CX engine call: find its inbound call record once the server has connected it
+        ;(async () => {
+          for (let n = 0; n < 8; n++) {
+            await new Promise(r => setTimeout(r, 900))
+            const { data } = await supabase.rpc('csr_cx_my_call')
+            if (data?.inbound_call_id && inboundRef.current === info) {
+              const next = { ...info, id: data.inbound_call_id, cxId: data.interaction_id, callerName: data.customer_name || info.callerName, queueLabel: data.queue || info.queueLabel, lineName: data.line_name || info.lineName }
+              inboundRef.current = next
+              setInboundCall(next)
+              return
+            }
+          }
+        })()
+      }
     } catch (e) {
       callRef.current = null
       const msg = /Permission|NotAllowed/i.test(e?.message || '') ? 'Microphone access is blocked. Allow the mic for this site and try again.' : (e?.message || 'Could not answer.')
@@ -318,7 +345,7 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
   const worksCalls = agent.inbound_member || agent.campaigns > 0
   const value = {
     ...state, open, setOpen, canDialNumbers, canCallPeople,
-    callPerson, callQueue, callNumber, hangUp, toggleMute, sendDigit, reset,
+    callPerson, callQueue, callNumber, monitorCall, hangUp, toggleMute, sendDigit, reset,
     acceptIncoming, declineIncoming,
     agent, setStatus, refreshStatus, statusBusy, registered, worksCalls,
     inboundCall, clearInbound,
