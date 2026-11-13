@@ -139,17 +139,19 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   // ---------------- nav + top bar ----------------
-  // Menu order (Becky 2026-11-10): Overview, [Wallboard, Phone for supervisors], Insights, Phone stats, Brands, CSRs, Call reviews,
-  // Card capture, Price talk, Revenue, Calibration, Coaching Hub, Practice, Reporting, AI CSR, AI Speed to Lead, Workforce.
+  // Menu order (Becky 2026-11-12): Overview, Insights, Phone stats, Brands, CSRs, Call reviews, Card capture, Price talk,
+  // Revenue, Calibration, Coaching Hub, Practice, Reporting, AI CSR, AI Speed to Lead, [Wallboard, Phone for supervisors], Workforce.
+  // Wallboard + Phone sit under AI Speed to Lead until the CCaaS phone system is finished and ready for use.
   // Practice + AI CSR are added after the pilot check (see vPractice access below).
   var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview']]
-    .concat(CFG.mountExt && CFG.supervisor ? [['wallboard', 'Wallboard'], ['myphone', 'Phone']] : [])
     .concat([['insights', 'Insights']]).concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', W_BRANDS]])
     .concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['pricetalk', 'Price talk'], ['money', 'Revenue']])
     .concat(!OPSIS && (!LOCK || CFG.supervisor) && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])
     .concat(OPSIS ? [] : [['hub', 'Coaching Hub']])
     .concat([['reporting', 'Reporting']])
-    .concat(CFG.mountExt ? [['aistl', 'AI Speed to Lead'], ['wfm', 'Workforce']] : [])],
+    .concat(CFG.mountExt ? [['aistl', 'AI Speed to Lead']] : [])
+    .concat(CFG.mountExt && CFG.supervisor ? [['wallboard', 'Wallboard'], ['myphone', 'Phone']] : [])
+    .concat(CFG.mountExt ? [['wfm', 'Workforce']] : [])],
     ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(CFG.mountExt && CFG.supervisor ? [['phonesetup', 'Phone setup']] : []).concat(IS_ADMIN ? [['team', 'Team & access'], ['brandset', 'Portal settings']] : [])]];
   function renderWho() {
     var w = $('oqwho'); if (!w) return;
