@@ -830,11 +830,16 @@ export default function Chat() {
   // Matrix-driven: who can start new channels / DMs (see lib/permissions.js).
   const powers = useChatPowers()
   const canCreateChannels = powers ? !!powers.create : (isAdmin || can(appRole, 'chat.create_channels'))
-  const canCreateDMs = powers ? !!(powers.dm || powers.group_dm) : (isAdmin || can(appRole, 'chat.create_dms'))
   // agents message their project's support team instead of individuals (support lines)
   const [supportOpts, setSupportOpts] = useState([])
   const [showSupport, setShowSupport] = useState(false)
-  useEffect(() => { supabase.rpc('chat_support_options').then(({ data }) => setSupportOpts(Array.isArray(data) ? data : [])) }, [])
+  const [isAgent, setIsAgent] = useState(false)
+  useEffect(() => {
+    supabase.rpc('chat_support_options').then(({ data }) => setSupportOpts(Array.isArray(data) ? data : []))
+    supabase.rpc('chat_support_powers').then(({ data }) => setIsAgent(!!data?.agent))
+  }, [])
+  // agents never start private DMs (the server refuses them) — they get "+ Support" instead
+  const canCreateDMs = !isAgent && (powers ? !!(powers.dm || powers.group_dm) : (isAdmin || can(appRole, 'chat.create_dms')))
   const isMobile = useIsMobile()
   const { counts: unreadCounts, markRead } = useUnread()
   const [me, setMe] = useState(null)
