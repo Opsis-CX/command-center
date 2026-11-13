@@ -128,6 +128,7 @@ const NAV_MAIN = [
           { to: '/dashboard-settings', label: 'Dashboard', perm: '__admin' }, // what counts toward fill rate, colors, default range
           { to: '/schedule-settings', label: 'Schedule', perm: '__admin' },   // schedule colors, layout, custom views
           { to: '/schedule-rules', label: 'Schedule rules', perm: '__admin' }, // release, waves, weekly cap, commitment lock, check-out
+          { to: '/chat-support', label: 'Chat support lines', perm: '__admin' }, // agents message project support teams instead of DMs
           { to: '/alerts', label: 'Alerts', perm: '__admin' },              // nudges + open-interval alerts: wording, cooldowns, automatic
           { to: '/roles', label: 'Access & Permissions', perm: '__admin' }, // admins/owners only
           { to: '/service-account', label: 'Service account', perm: '__admin' }, // the account automated posts use (Turri)
@@ -202,7 +203,7 @@ export default function Sidebar({ open, onNavigate }) {
   // be "everyone" or "admins only" follow the person's checkboxes too.
   const NEW_PAGE_PERMS = {
     '/home': 'home.view', '/': ['dashboard.overview', 'dashboard.client'], '/updates': 'updates.create', '/weekly-sync': 'team.weekly_sync', '/eod': ['team.eod_submit', 'team.eod_view'], '/notes': 'notes.view', '/calendar': 'calendar.view',
-    '/knowledge': 'kb.view', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings', '/branding': 'admin.settings', '/alerts': 'admin.alerts', '/dashboard-settings': 'admin.dashboard_settings', '/schedule-settings': 'schedule.manage_views', '/schedule-rules': 'schedule.rules_view', '/backend/quotes': 'content.quotes', '/backend/spotlight': 'content.spotlight',
+    '/knowledge': 'kb.view', '/chat-support': 'chat.support_manage', '/time': 'time.edit', '/roles': ['admin.roles', 'admin.assign'], '/sms-consents': 'admin.settings', '/branding': 'admin.settings', '/alerts': 'admin.alerts', '/dashboard-settings': 'admin.dashboard_settings', '/schedule-settings': 'schedule.manage_views', '/schedule-rules': 'schedule.rules_view', '/backend/quotes': 'content.quotes', '/backend/spotlight': 'content.spotlight',
     '/service-account': 'admin.settings', '/survey': 'people.edit', '/finance': 'finance.view', '/submit-purchase': 'finance.create',
   }
   const permOk = (p, to) => {
