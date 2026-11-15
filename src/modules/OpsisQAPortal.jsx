@@ -28,6 +28,11 @@ import SupervisorWallboard from './SupervisorWallboard'
 // Phone setup (2026-11-10): clients build their own inbound lines + outbound campaigns
 import PhoneSetup from './PhoneSetup'
 import CsrPhone from './CsrPhone'
+// Call trends, coaching clips, intraday staffing and the call flow builder (2026-11-15)
+import CxTrends from '../components/CxTrends'
+import { CoachingDesk, CoachingInbox } from '../components/Coaching'
+import WfmIntraday from '../components/WfmIntraday'
+import CallFlowBuilder from '../components/CallFlowBuilder'
 import Softphone from '../components/Softphone'
 import { VoiceProvider } from '../lib/voice'
 import { loadAccounts, switchAccount } from '../components/AccountSwitcher'
@@ -112,6 +117,11 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
           <div style={PORTAL_THEME}>
             {kind === 'wallboard' ? <SupervisorWallboard clientId={clientId} />
               : kind === 'phonesetup' ? <PhoneSetup clientId={clientId} />
+              : kind === 'trends' ? <CxTrends clientId={clientId} />
+              : kind === 'coachclips' ? <CoachingDesk />
+              : kind === 'mycoach' ? <CoachingInbox />
+              : kind === 'intraday' ? <WfmIntraday clientId={clientId} />
+              : kind === 'callflow' ? <CallFlowBuilder clientId={clientId} />
               : kind === 'myphone' ? (
                 <MemoryRouter>
                   <VoiceProvider canCallPeople={false} canDialNumbers={false}><CsrPhone accent="#14302A" /><Softphone /></VoiceProvider>

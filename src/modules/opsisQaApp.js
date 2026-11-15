@@ -144,16 +144,16 @@ export function mountOpsisQA(ROOT, cfg) {
   // Revenue, Calibration, Coaching Hub, Practice, Reporting, AI CSR, AI Speed to Lead, [Wallboard, Phone for supervisors], Workforce.
   // Wallboard + Phone sit under AI Speed to Lead until the CCaaS phone system is finished and ready for use.
   // Practice + AI CSR are added after the pilot check (see vPractice access below).
-  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview']]
-    .concat([['insights', 'Insights']]).concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', W_BRANDS]])
+  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']].concat(CFG.mountExt ? [['mycoach', 'My coaching']] : [])]] : [['', [['overview', 'Overview']]
+    .concat([['insights', 'Insights']]).concat(CFG.mountExt ? [['trends', 'Call trends']] : []).concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', W_BRANDS]])
     .concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['pricetalk', 'Price talk'], ['money', 'Revenue']])
     .concat(!OPSIS && (!LOCK || CFG.supervisor) && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])
-    .concat(OPSIS ? [] : [['hub', 'Coaching Hub']])
+    .concat(OPSIS ? [] : [['hub', 'Coaching Hub']]).concat(CFG.mountExt && CFG.supervisor ? [['coachclips', 'Coaching clips']] : [])
     .concat([['reporting', 'Reporting']])
     .concat(CFG.mountExt ? [['aistl', 'AI Speed to Lead']] : [])
     .concat(CFG.mountExt && CFG.supervisor ? [['wallboard', 'Wallboard'], ['myphone', 'Phone']] : [])
-    .concat(CFG.mountExt ? [['wfm', 'Workforce']] : [])],
-    ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(CFG.mountExt && CFG.supervisor ? [['phonesetup', 'Phone setup']] : []).concat(IS_ADMIN ? [['team', 'Team & access'], ['brandset', 'Portal settings']] : [])]];
+    .concat(CFG.mountExt ? [['wfm', 'Workforce']] : []).concat(CFG.mountExt && CFG.supervisor ? [['intraday', 'Intraday']] : [])],
+    ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(CFG.mountExt && CFG.supervisor ? [['phonesetup', 'Phone setup'], ['callflow', 'Call flow']] : []).concat(IS_ADMIN ? [['team', 'Team & access'], ['brandset', 'Portal settings']] : [])]];
   function renderWho() {
     var w = $('oqwho'); if (!w) return;
     w.innerHTML = '<b>' + esc(CFG.userName || '') + '</b><span>' + esc(RNAME[ROLE] || '') + (LOCK ? ' · ' + esc(short(LOCK)) : '') + '</span>' +
@@ -1878,7 +1878,7 @@ export function mountOpsisQA(ROOT, cfg) {
   var EXT = null;
   // Workforce (Erlang C) + AI Speed to Lead (2026-11-09): Command Center pages mounted inside this shell (CFG.mountExt).
   function vExt(kind) {
-    setMain(crumb([[kind === 'wfm' ? 'Workforce' : kind === 'wallboard' ? 'Wallboard' : kind === 'myphone' ? 'Phone' : kind === 'phonesetup' ? 'Phone setup' : 'AI Speed to Lead']]) + '<div id="extmount" style="min-height:300px"></div>');
+    setMain(crumb([[({ wfm: 'Workforce', wallboard: 'Wallboard', myphone: 'Phone', phonesetup: 'Phone setup', trends: 'Call trends', coachclips: 'Coaching clips', mycoach: 'My coaching', intraday: 'Intraday', callflow: 'Call flow' })[kind] || 'AI Speed to Lead']]) + '<div id="extmount" style="min-height:300px"></div>');
     if (CFG.mountExt) EXT = CFG.mountExt(kind, $('extmount'));
   }
   function vScorecards() {
@@ -4167,7 +4167,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash(); trackHist();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
   }
