@@ -95,6 +95,14 @@ export default function CxCallPanel() {
     const { error } = await supabase.rpc('csr_cx_raise_hand', { p_interaction: iid, p_note: null })
     setBusy(''); if (error) setErr(error.message); else setErr('Your supervisor was notified.')
   }
+  async function reportSpam() {
+    if (!window.confirm('Block this number as spam and end the call?')) return
+    setBusy('spam')
+    const { error } = await supabase.rpc('cx_block_from_call', { p_interaction: iid, p_reason: null })
+    if (error) { setBusy(''); setErr(error.message); return }
+    try { await cxControl('end', iid, {}) } catch { /* already ended */ }
+    setBusy(''); setErr('Number blocked for 30 days.'); load()
+  }
   const talk = i.answered_at ? Math.round((Date.now() - new Date(i.answered_at).getTime()) / 1000) : 0
   const holdSecs = i.hold_started_at ? Math.round((Date.now() - new Date(i.hold_started_at).getTime()) / 1000) : 0
 
@@ -126,6 +134,8 @@ export default function CxCallPanel() {
           {i.recording_paused ? <span style={{ ...S.badge, background: '#fef3c7', color: '#92400e' }}>⏸ Recording paused</span> : i.recording_sid ? <span style={S.badge}>● Recording</span> : null}
           {i.transcribing ? <span style={S.badge}>Live transcript on</span> : <button style={S.badgeBtn} onClick={() => act('transcribe_on', {}, 'tr')}>Turn on live transcript</button>}
           {i.status === 'held' && <span style={{ ...S.badge, background: '#fee2e2', color: '#991b1b' }}>Caller on hold {mmss(holdSecs)}</span>}
+          {/^machine|^fax/.test(i.pending?.answered_by || '') && <span style={{ ...S.badge, background: '#e0f2fe', color: '#075985' }}>{i.pending?.vm_dropped ? '📼 Voicemail left' : '📼 Answering machine'}</span>}
+          {i.pending?.answered_by === 'human' && <span style={{ ...S.badge, background: '#dcfce7', color: '#166534' }}>Live person</span>}
           {parts.filter(p => p.kind === 'supervisor' && !p.left_at && p.mode !== 'listen').map(p => <span key={p.id} style={{ ...S.badge, background: '#ede9fe', color: '#5b21b6' }}>{p.label} {p.mode === 'whisper' ? 'is coaching you' : 'joined'}</span>)}
         </div>
       )}
@@ -136,6 +146,8 @@ export default function CxCallPanel() {
           <button disabled={!!busy} onClick={() => setXfer(x => !x)} style={S.ctl}>⇄ Transfer</button>
           <button disabled={!!busy || !i.recording_sid} onClick={() => act(i.recording_paused ? 'resume_recording' : 'pause_recording', {}, 'rec')} style={S.ctl} title="Pause while the customer reads card details">{i.recording_paused ? '● Resume rec' : '💳 Pause rec'}</button>
           <button disabled={!!busy || i.needs_help} onClick={raiseHand} style={S.ctl}>✋ {i.needs_help ? 'Help asked' : 'Need help'}</button>
+          {i.direction === 'out' && <button disabled={!!busy || i.pending?.vm_dropped} onClick={() => act('vm_drop', {}, 'vm')} style={S.ctl} title="Plays the campaign’s voicemail message to the machine and frees you for the next call">📼 Leave voicemail</button>}
+          {i.direction === 'in' && <button disabled={!!busy} onClick={reportSpam} style={S.ctl} title="Block this number and end the call">🚫 Spam</button>}
           <button disabled={!!busy} onClick={() => { if (window.confirm('End this call for everyone?')) act('end', {}, 'end') }} style={{ ...S.ctl, background: '#dc2626', color: '#fff', borderColor: '#dc2626' }}>End</button>
         </div>
       )}
@@ -154,7 +166,7 @@ export default function CxCallPanel() {
         </div>
       )}
       {xfer && liveNow && <TransferBox iid={iid} onDone={() => { setXfer(false); load() }} onErr={setErr} inbound={i.direction === 'in'} />}
-      {err && <div style={{ ...S.note, color: /notified/.test(err) ? '#166534' : '#b91c1c' }}>{err}</div>}
+      {err && <div style={{ ...S.note, color: /notified|blocked/.test(err) ? '#166534' : '#b91c1c' }}>{err}</div>}
 
       {alerts.length > 0 && liveNow && (
         <div style={S.alert}>⚠ {alerts[0].payload?.text}</div>

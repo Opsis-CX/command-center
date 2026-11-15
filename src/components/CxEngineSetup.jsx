@@ -5,13 +5,16 @@
 //  "keep my place" callback, max wait → AI CSR / voicemail), overflow to other
 //  locations, sticky CSR, skills, survey, service-level target, transfer numbers,
 //  local-presence caller IDs, consent + state calling rules.
+//  2026-11-14: hold options at 60s (digital assistant / keep my place), spam + robocall
+//  protection and blocked numbers, storm / emergency closure switch, outbound
+//  answering-machine detection + voicemail drop.
 // ============================================================
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 const G = '#14302A'
-const LINE_DEFAULTS = { transcribe: false, pci_auto: true, announce_position: true, callback_offer: true, callback_offer_after_secs: 45, max_wait_secs: 300, overflow: false, overflow_after_secs: 60, sticky: true, sticky_secs: 20, ring_seconds: 20, missed_not_ready: true, whisper: true, survey: false, sla_secs: 20, alert_wait_secs: 90, ai_number: '', hold_music_url: '', transfer_numbers: [] }
-const CAMP_DEFAULTS = { transcribe: false, pci_auto: true, local_presence: false, require_consent: false, transfer_numbers: [] }
+const LINE_DEFAULTS = { transcribe: false, pci_auto: true, announce_position: true, callback_offer: true, hold_offer_ai: true, hold_options_after_secs: 60, block_spam: true, robo_gate: false, nl_greeting: false, survey_sms: false, auto_qa: true, max_wait_secs: 300, overflow: false, overflow_after_secs: 60, sticky: true, sticky_secs: 20, ring_seconds: 20, missed_not_ready: true, whisper: true, survey: false, sla_secs: 20, alert_wait_secs: 90, ai_number: '', hold_music_url: '', transfer_numbers: [] }
+const CAMP_DEFAULTS = { transcribe: false, pci_auto: true, local_presence: false, require_consent: false, amd: false, vm_drop: false, auto_qa: true, vm_drop_text: '', vm_drop_audio: '', transfer_numbers: [] }
 
 export default function CxEngineSetup({ args, people = [], can }) {
   const [d, setD] = useState(null)
@@ -46,6 +49,8 @@ export default function CxEngineSetup({ args, people = [], can }) {
         {err && <div style={{ color: '#b91c1c', fontSize: 13, marginTop: 8 }}>{err}</div>}
       </div>
 
+      <EmergencySwitch args={args} can={can} flash={flash} onErr={setErr} />
+
       <div style={S.card}>
         <div style={S.h3}>Inbound lines</div>
         {d.lines.length === 0 && <div style={S.mut}>No lines.</div>}
@@ -70,6 +75,7 @@ export default function CxEngineSetup({ args, people = [], can }) {
 
       <Skills d={d} people={people} args={args} can={can} reload={load} onErr={setErr} />
       <CallerIds d={d} args={args} can={can} reload={load} onErr={setErr} flash={flash} />
+      {can && <BlockedNumbers args={args} flash={flash} onErr={setErr} />}
 
       <div style={S.card}>
         <div style={S.h3}>State calling rules (outbound, Advanced engine)</div>
@@ -149,13 +155,17 @@ function LineForm({ l, can, onSave }) {
             <Toggle label="Pause recording for card numbers" hint="When a card number or CVV is heard, the recording pauses (PCI). CSRs can also pause by hand." v={cx.pci_auto} on={v => set('pci_auto', v)} disabled={off} />
             <Toggle label="Post-call survey (1–5)" hint="After the CSR hangs up, the caller is asked to rate the call." v={cx.survey} on={v => set('survey', v)} disabled={off} />
             <Toggle label="Whisper the call type to the CSR" hint="CSR hears “Sales call from Jane” before the caller is connected." v={cx.whisper} on={v => set('whisper', v)} disabled={off} />
+            <Toggle label="Score every call in CallQA" hint="Answered calls go straight to CallQA with the live transcript — same scorecard as your other calls." v={cx.auto_qa} on={v => set('auto_qa', v)} disabled={off || !cx.transcribe} />
+            <Toggle label="Understand what callers say (AI greeting)" hint="“In a few words, tell me what you’re calling about.” AI picks the menu option and tells the CSR why they’re calling (“Broken spring, urgent”). Keys still work." v={cx.nl_greeting} on={v => set('nl_greeting', v)} disabled={off} />
+            <Toggle label="Text a survey link after the call" hint="Sends a 1–5 rating link by text a few minutes after the call (once a week per caller). Needs texting approval (10DLC) on the line’s number." v={cx.survey_sms} on={v => set('survey_sms', v)} disabled={off} />
           </div>
           <div>
             <div style={S.cap}>Hold queue</div>
             <Toggle label="Tell callers their place in line and wait time" v={cx.announce_position} on={v => set('announce_position', v)} disabled={off} />
-            <Toggle label="Offer “press 1 to keep your place and get a call back”" hint="Needs a missed-calls campaign on the line." v={cx.callback_offer} on={v => set('callback_offer', v)} disabled={off} />
+            <Toggle label="Offer the digital assistant while on hold" hint="“To schedule service or a new installation now with our digital assistant, press 1.” Needs the AI CSR number below." v={cx.hold_offer_ai} on={v => set('hold_offer_ai', v)} disabled={off} />
+            <Toggle label="Offer “keep your place and get a call back”" hint="Needs a missed-calls campaign on the line." v={cx.callback_offer} on={v => set('callback_offer', v)} disabled={off} />
             <div style={S.two}>
-              <Num label="Offer call back after" v={cx.callback_offer_after_secs} on={v => set('callback_offer_after_secs', v)} disabled={off} />
+              <Num label="Offer hold options after" v={cx.hold_options_after_secs} on={v => set('hold_options_after_secs', v)} disabled={off} />
               <Num label="Longest wait before AI / voicemail" v={cx.max_wait_secs} on={v => set('max_wait_secs', v)} disabled={off} />
             </div>
             <label style={{ fontSize: 13, display: 'grid', gap: 3, marginTop: 6 }}>AI CSR number (when nobody answers or after hours)
@@ -176,6 +186,11 @@ function LineForm({ l, can, onSave }) {
               <Num label="Alert supervisors after a wait of" v={cx.alert_wait_secs} on={v => set('alert_wait_secs', v)} disabled={off} />
             </div>
             <div style={S.mut}>Skills: add a “skill” to a phone-menu option (for example Spanish) and only CSRs with that skill get those calls.</div>
+          </div>
+          <div>
+            <div style={S.cap}>Spam protection</div>
+            <Toggle label="Block spam and robocalls" hint="Blocked numbers are rejected, a number that calls 5 times in 10 minutes is blocked for a day, and callers whose caller ID fails carrier checks must press 1." v={cx.block_spam} on={v => set('block_spam', v)} disabled={off} />
+            <Toggle label="Ask new callers to press 1" hint="Stops most robocalls. Callers we’ve spoken with in the last year skip it." v={cx.robo_gate} on={v => set('robo_gate', v)} disabled={off} />
           </div>
           <div><TransferNumbers list={cx.transfer_numbers} set={v => set('transfer_numbers', v)} disabled={off} /></div>
         </div>
@@ -200,8 +215,18 @@ function CampForm({ c, can, onSave }) {
           <div>
             <Toggle label="Live transcript + agent assist" v={cx.transcribe} on={v => set('transcribe', v)} disabled={off} />
             <Toggle label="Pause recording for card numbers" v={cx.pci_auto} on={v => set('pci_auto', v)} disabled={off} />
+            <Toggle label="Score every call in CallQA" v={cx.auto_qa} on={v => set('auto_qa', v)} disabled={off || !cx.transcribe} />
             <Toggle label="Local caller ID" hint="Calls show a number from the customer’s area code when we have one (Caller IDs below)." v={cx.local_presence} on={v => set('local_presence', v)} disabled={off} />
             <Toggle label="Require consent on file" hint="Leads without a consent date are not dialed (missed-call and callback campaigns are exempt)." v={cx.require_consent} on={v => set('require_consent', v)} disabled={off} />
+          </div>
+          <div>
+            <div style={S.cap}>Answering machines</div>
+            <Toggle label="Detect answering machines" hint="The CSR sees “Voicemail” as soon as the system knows. Adds a few cents per call." v={cx.amd} on={v => set('amd', v)} disabled={off} />
+            <Toggle label="Leave a voicemail automatically" hint="When a machine answers, the message below plays after the beep and the CSR moves on. CSRs can also drop it with one click." v={cx.vm_drop} on={v => set('vm_drop', v)} disabled={off || !cx.amd} />
+            <label style={{ fontSize: 13, display: 'grid', gap: 3, marginTop: 6 }}>Voicemail message (read aloud)
+              <textarea value={cx.vm_drop_text || ''} disabled={off} rows={3} onChange={e => set('vm_drop_text', e.target.value)} placeholder="Hi, this is Cheney Door returning your call. Please call us back at …" style={{ ...S.input, resize: 'vertical' }} /></label>
+            <label style={{ fontSize: 13, display: 'grid', gap: 3, marginTop: 6 }}>…or a recorded message (link to an MP3)
+              <input value={cx.vm_drop_audio || ''} disabled={off} onChange={e => set('vm_drop_audio', e.target.value)} placeholder="Optional — used instead of the text" style={S.input} /></label>
           </div>
           <div><TransferNumbers list={cx.transfer_numbers} set={v => set('transfer_numbers', v)} disabled={off} /></div>
         </div>
@@ -285,6 +310,131 @@ function CallerIds({ d, args, can, reload, onErr, flash }) {
         <div style={{ marginTop: 10 }}>
           <div style={S.cap}>Requests</div>
           {d.number_requests.slice(0, 10).map(r => <div key={r.id} style={{ fontSize: 12.5 }}>{new Date(r.created_at).toLocaleDateString()} · {r.purpose} · area {r.area_code} · <b>{r.status}</b></div>)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------- storm / emergency closure (works on every line, Standard or Advanced) ----------
+function EmergencySwitch({ args, can, flash, onErr }) {
+  const [rows, setRows] = useState(null)
+  const [pick, setPick] = useState({})
+  const [msg, setMsg] = useState('')
+  const [through, setThrough] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.rpc('cx_emergency_status', args({}))
+    if (error) onErr(error.message); else setRows(data || [])
+  }, [args, onErr])
+  useEffect(() => { load() }, [load])
+  if (!rows) return null
+  const closed = rows.filter(r => r.closure)
+  const chosen = Object.keys(pick).filter(k => pick[k])
+  async function close() {
+    if (!chosen.length) return
+    if (!window.confirm(`Close ${chosen.length} line${chosen.length === 1 ? '' : 's'} now? Callers will hear your message and go to the AI CSR or voicemail.`)) return
+    setBusy(true)
+    const { data, error } = await supabase.rpc('cx_emergency_close', args({ p_lines: chosen, p_message: msg || null, p_through: through || null }))
+    setBusy(false)
+    if (error) onErr(error.message); else { flash(`Closed ${data?.closed || 0} line(s).`); setPick({}); load() }
+  }
+  async function lift(ids) {
+    setBusy(true)
+    const { data, error } = await supabase.rpc('cx_emergency_lift', args({ p_lines: ids }))
+    setBusy(false)
+    if (error) onErr(error.message); else { flash(`Reopened ${data?.reopened || 0} line(s).`); load() }
+  }
+  return (
+    <div style={{ ...S.card, borderColor: closed.length ? '#fca5a5' : '#e2e8f0', background: closed.length ? '#fef2f2' : '#fff' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div>
+          <div style={S.h3}>Storm / emergency closure</div>
+          <div style={S.mut}>Close lines right now (weather, power outage, emergency). Callers hear your message, then go to the AI CSR or voicemail. Works on every line.</div>
+        </div>
+        {closed.length > 0 && can && <button disabled={busy} style={{ ...S.primary, background: '#15803d' }} onClick={() => lift(closed.map(r => r.line_id))}>Reopen all ({closed.length})</button>}
+      </div>
+      {closed.length > 0 && (
+        <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
+          {closed.map(r => (
+            <div key={r.line_id} style={{ fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <b style={{ color: '#b91c1c' }}>CLOSED</b> {r.name} · through {r.closure.ends_on}
+              {can && <button disabled={busy} style={S.small} onClick={() => lift([r.line_id])}>Reopen</button>}
+            </div>
+          ))}
+        </div>
+      )}
+      {can && (
+        <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <button style={S.small} onClick={() => setPick(Object.fromEntries(rows.filter(r => !r.closure).map(r => [r.line_id, true])))}>Select all open</button>
+            {rows.filter(r => !r.closure).map(r => (
+              <label key={r.line_id} style={{ ...S.chip, cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!pick[r.line_id]} onChange={e => setPick(p => ({ ...p, [r.line_id]: e.target.checked }))} />{r.name}
+              </label>
+            ))}
+          </div>
+          <textarea value={msg} onChange={e => setMsg(e.target.value)} rows={2} style={{ ...S.input, resize: 'vertical' }}
+            placeholder="Message (optional). Default: “Due to severe weather, our office is closed right now. Please leave a message, or stay on the line for our digital assistant…”" />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ fontSize: 13 }}>Closed through <input type="date" value={through} onChange={e => setThrough(e.target.value)} style={S.input} /></label>
+            <span style={S.mut}>Blank = today only.</span>
+            <button disabled={busy || !chosen.length} style={{ ...S.primary, background: '#b91c1c' }} onClick={close}>Close {chosen.length || ''} line{chosen.length === 1 ? '' : 's'} now</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------- blocked numbers (spam) ----------
+function BlockedNumbers({ args, flash, onErr }) {
+  const [rows, setRows] = useState([])
+  const [num, setNum] = useState('')
+  const [why, setWhy] = useState('')
+  const [days, setDays] = useState('')
+  const [show, setShow] = useState(false)
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.rpc('cx_blocked_list', args({}))
+    if (error) onErr(error.message); else setRows(data || [])
+  }, [args, onErr])
+  useEffect(() => { if (show) load() }, [show, load])
+  async function add() {
+    const { error } = await supabase.rpc('cx_block_number', args({ p_phone: num, p_reason: why || null, p_days: days ? Number(days) : null }))
+    if (error) onErr(error.message); else { flash('Number blocked.'); setNum(''); setWhy(''); setDays(''); load() }
+  }
+  async function unblock(id) {
+    const { error } = await supabase.rpc('cx_unblock_number', args({ p_id: id }))
+    if (error) onErr(error.message); else load()
+  }
+  const src = { manual: 'Added by hand', auto: 'Auto (too many calls)', report: 'Reported by CSR' }
+  return (
+    <div style={S.card}>
+      <button onClick={() => setShow(v => !v)} style={S.rowBtn}>
+        <span><b style={{ fontSize: 15, color: G }}>Blocked numbers</b><div style={S.mut}>Spam and robocallers that can’t reach your lines.</div></span>
+        <span style={S.mut}>{show ? '▴' : '▾'}</span>
+      </button>
+      {show && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <input value={num} onChange={e => setNum(e.target.value)} placeholder="(555) 555-5555" style={{ ...S.input, width: 150 }} />
+            <input value={why} onChange={e => setWhy(e.target.value)} placeholder="Reason (optional)" style={{ ...S.input, flex: 1, minWidth: 160 }} />
+            <input value={days} onChange={e => setDays(e.target.value)} type="number" placeholder="Days (blank = forever)" style={{ ...S.input, width: 170 }} />
+            <button disabled={num.replace(/\D/g, '').length < 10} style={S.primary} onClick={add}>Block</button>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginTop: 10 }}>
+            <thead><tr>{['Number', 'Why', 'How', 'Until', 'Calls stopped', ''].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.id}>
+                  <td style={S.td}><b>{r.phone}</b></td><td style={S.td}>{r.reason || '—'}</td><td style={S.td}>{src[r.source] || r.source}</td>
+                  <td style={S.td}>{r.expires_at ? new Date(r.expires_at).toLocaleString() : 'Forever'}</td><td style={S.td}>{r.blocked_calls || 0}</td>
+                  <td style={S.td}><button style={S.small} onClick={() => unblock(r.id)}>Unblock</button></td>
+                </tr>
+              ))}
+              {rows.length === 0 && <tr><td colSpan={6} style={{ ...S.td, color: '#64748b' }}>No blocked numbers.</td></tr>}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
