@@ -625,7 +625,7 @@ export default function Settings() {
 
       <SoundCard userId={user?.id} />
 
-      {isStaffProfile({ role: appRole, is_admin: isAdmin }) && <AgentDmCard userId={user?.id} />}
+      {isAdmin && <AgentDmCard userId={user?.id} />}
     </div>
   )
 }
