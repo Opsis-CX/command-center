@@ -234,6 +234,7 @@ export function mountOpsisQA(ROOT, cfg) {
   // card asks on card-eligible bookings, QA score, sentiment. Data: RPC qa_brand_dash via CFG.brandDash.
   var DASHC = {}, DASH = { d: null, sort: 'answered', dir: -1, open: null };
   var DASHON = function () { return !!CFG.brandDash && !OPSIS; };
+  var QAFLOW = function () { return !!($('fsteps') && $('dtrend')); }; // brand page: Call Flow opens from the QA score tile
   function loadDash(brands) {
     brands = brands || S.brands;
     var k = [S.start, S.end, brands.join('|')].join('~');
@@ -278,7 +279,7 @@ export function mountOpsisQA(ROOT, cfg) {
       dTile('Conversion', dPct(c.conv), 'Booked ÷ booked + not booked', delta(c.conv != null ? +c.conv : null, p.conv != null ? +p.conv : null, ' pts'), 'Same booking rate as the Overview and Brands pages.') +
       dTile('Booking ask rate', dPct(c.ask_rate), 'Opportunities where the CSR asked to book', delta(c.ask_rate != null ? +c.ask_rate : null, p.ask_rate != null ? +p.ask_rate : null, ' pts'), 'Share of opportunities where the CSR directly asked to book the appointment.') +
       dTile('Card asks', dPct(cr), cd.booked ? fmt(cd.asked) + ' of ' + fmt(cd.booked) + ' card-eligible bookings' : 'No card-eligible bookings', delta(cr, pcr, ' pts'), 'Booked residential service calls where the CSR asked for a card. Same numbers as Card capture.') +
-      dTile('QA score', dNum(c.qa, 1), fmt(c.scored) + ' calls scored', delta(c.qa != null ? +c.qa : null, p.qa != null ? +p.qa : null, ''), 'Average call-flow score, 0–100.') +
+      (function (h) { return QAFLOW() ? h.replace('<div class="oq-card" style="', '<div class="oq-card click" data-qaflow="1" role="button" tabindex="0" aria-expanded="false" style="border-color:#CFE3D8;') : h; })(dTile('QA score', dNum(c.qa, 1), fmt(c.scored) + ' calls scored' + (QAFLOW() ? ' · <span style="color:#1F5A41;font-weight:600">click for call flow ▾</span>' : ''), delta(c.qa != null ? +c.qa : null, p.qa != null ? +p.qa : null, ''), 'Average call-flow score, 0–100.')) +
       dTile('Sentiment', dNum(c.sentiment, 2), 'Customer mood at the end, 1–5', delta(c.sentiment != null ? +c.sentiment : null, p.sentiment != null ? +p.sentiment : null, ''), 'Average customer sentiment at the end of the call (1 = upset, 5 = happy).') + '</div>';
     drawDashTrend(); drawDashTable();
   }
@@ -594,10 +595,10 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div class="oq-card" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:14px">' + (kind === 'brand' ? bbadge(name).replace('26px;height:26px', '44px;height:44px').replace('10.5px', '15px') : avatar(name, 44)) +
       '<div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.025em">' + esc(kind === 'brand' ? name : name) + '</h1><div class="mut" style="font-size:12.5px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' vs the ' + daysBetween(S.start, S.end) + ' days before</div></div></div>' +
       '<div class="row"><button class="sel" data-callsfor="' + kind + '">All calls →</button><button class="sel btnd" data-ask="' + esc(kind === 'brand' ? 'What should we focus on at ' + name + ' this week?' : 'How should we coach ' + name + ' this week?') + '">Ask about ' + esc(title) + '</button></div></div>' +
-      (kind === 'brand' && DASHON() ? '<div id="dphone">' + skel(110, 1) + '</div><div id="dbook">' + skel(110, 1) + '</div><div class="oq-card" id="dtrend">' + skel(180, 1) + '</div><div class="oq-card" id="dcsr">' + skel(30, 8) + '</div>' : '') +
-      '<div class="ai" id="why"><div style="display:flex;gap:10px;align-items:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><b>Why ' + esc(title) + ' is trending this way</b></div><div class="md" style="margin-top:10px"><span class="dots"><span></span><span></span><span></span></span> <span class="mut">Reading this period’s calls…</span></div></div>' +
+      (kind === 'brand' && DASHON() ? '<div id="dphone">' + skel(110, 1) + '</div><div id="dbook">' + skel(110, 1) + '</div><div class="oq-card" id="fsteps" style="display:none">' + skel(18, 9) + '</div><div class="oq-card" id="dtrend">' + skel(180, 1) + '</div><div class="oq-card" id="dcsr">' + skel(30, 8) + '</div>' : '') +
+      '<div class="ai" id="why"><div class="click" data-whytog="1" role="button" tabindex="0" aria-expanded="false" style="display:flex;gap:10px;align-items:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><b>Why ' + esc(title) + ' is trending this way</b><span class="mut" style="margin-left:auto;font-size:12.5px">Show</span><svg id="whychev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="2" style="transition:transform .15s" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></div><div class="md" style="margin-top:10px;display:none"><span class="dots"><span></span><span></span><span></span></span> <span class="mut">Reading this period’s calls…</span></div></div>' +
       '<div id="fk" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))' + (kind === 'brand' && DASHON() ? ';display:none' : '') + '">' + skel(90, 1).repeat(4) + '</div>' +
-      '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 520px" id="fweek">' + skel(200, 1) + '</div><div class="oq-card" style="flex:1 1 360px" id="fsteps">' + skel(18, 9) + '</div></div>' +
+      (kind === 'brand' && DASHON() ? '<div class="oq-card" id="fweek">' + skel(200, 1) + '</div>' : '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 520px" id="fweek">' + skel(200, 1) + '</div><div class="oq-card" style="flex:1 1 360px" id="fsteps">' + skel(18, 9) + '</div></div>') +
       (kind === 'brand' ? '<div class="oq-card" id="fmovers">' + skel(30, 8) + '</div>' : '<div class="oq-card" id="fcalls">' + skel(50, 5) + '</div>') +
       '<div class="oq-card" id="feff">' + skel(30, 5) + '</div>' +
       '<div class="row" style="align-items:flex-start" id="fmix">' + skel(20, 10) + '</div>' +
@@ -4380,6 +4381,10 @@ export function mountOpsisQA(ROOT, cfg) {
     if (pm) { S.pmode = pm.getAttribute('data-pmode'); loadPhone().then(phoneChart); return; }
     var ps = t.closest('[data-psort]');
     if (ps) { var pk = ps.getAttribute('data-psort').split('|'); S['pd' + pk[0]] = S['ps' + pk[0]] === pk[1] ? -(S['pd' + pk[0]] || 1) : 1; S['ps' + pk[0]] = pk[1]; loadPhone().then(pk[0] === 'b' ? phoneBrands : phoneCsrs); return; }
+    var wt = t.closest('[data-whytog]');
+    if (wt) { var wb = document.querySelector('#why .md'), wo = wb && wb.style.display === 'none'; if (wb) wb.style.display = wo ? '' : 'none'; wt.setAttribute('aria-expanded', wo ? 'true' : 'false'); var ws = wt.querySelector('span.mut'); if (ws) ws.textContent = wo ? 'Hide' : 'Show'; var wc = $('whychev'); if (wc) wc.style.transform = wo ? 'rotate(180deg)' : ''; return; }
+    var qf = t.closest('[data-qaflow]');
+    if (qf) { var fs = $('fsteps'); if (fs) { var fo = fs.style.display === 'none'; fs.style.display = fo ? '' : 'none'; qf.setAttribute('aria-expanded', fo ? 'true' : 'false'); if (fo) fs.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } return; }
     var dsr = t.closest('[data-dsort]');
     if (dsr) { var dk = dsr.getAttribute('data-dsort'); DASH.dir = DASH.sort === dk ? -DASH.dir : (dk === 'name' || dk === 'brand' || dk === 'tta' ? 1 : -1); DASH.sort = dk; drawDashTable(); return; }
     var dcl = t.closest('[data-dcalls]');
