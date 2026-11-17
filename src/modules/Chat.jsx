@@ -1,3 +1,4 @@
+// 2026-11-16: in-app confirm/prompt dialogs replace window.confirm/prompt (Delete did nothing when the browser blocked dialogs).
 import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo, useSyncExternalStore } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -14,6 +15,36 @@ import LsaTracker from './LsaTracker'
 import { PresenceDot, effStatus, isOnline } from '../components/Presence'
 import TaskModal from './TaskModal'
 import { ProjectsDataProvider } from './projectsData'
+
+// In-app confirm / prompt (2026-11-16). Chat used the browser's window.confirm/prompt; when a browser has
+// "block dialogs from this page" turned on (or the app runs in a frame), those return false/null instantly
+// with nothing on screen, so Delete silently did nothing. These draw our own dialog instead.
+function uiDialog({ message, input = false, okLabel = 'OK', danger = false }) {
+  return new Promise(resolve => {
+    const wrap = document.createElement('div')
+    wrap.setAttribute('role', 'dialog'); wrap.setAttribute('aria-modal', 'true')
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px'
+    const box = document.createElement('div')
+    box.style.cssText = 'background:#fff;border-radius:14px;max-width:440px;width:100%;padding:20px 20px 16px;box-shadow:0 20px 50px rgba(0,0,0,.25);font:14px/1.5 Montserrat,Arial,sans-serif;color:#1C2421'
+    const msg = document.createElement('div'); msg.style.cssText = 'white-space:pre-wrap;margin-bottom:14px'; msg.textContent = message
+    box.appendChild(msg)
+    let field = null
+    if (input) { field = document.createElement('textarea'); field.rows = 3; field.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid #CBD5E1;border-radius:10px;padding:8px 10px;font:inherit;margin-bottom:14px;resize:vertical'; box.appendChild(field) }
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;justify-content:flex-end;gap:8px'
+    const btn = (label, primary) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.style.cssText = 'border-radius:10px;padding:8px 16px;font:inherit;font-weight:600;cursor:pointer;border:1px solid ' + (primary ? (danger ? '#B4231A' : '#14302A') : '#CBD5E1') + ';background:' + (primary ? (danger ? '#B4231A' : '#14302A') : '#fff') + ';color:' + (primary ? '#fff' : '#1C2421'); return b }
+    const cancel = btn('Cancel', false), ok = btn(okLabel, true)
+    row.appendChild(cancel); row.appendChild(ok); box.appendChild(row); wrap.appendChild(box); document.body.appendChild(wrap)
+    const done = v => { document.removeEventListener('keydown', onKey, true); wrap.remove(); resolve(v) }
+    const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); done(input ? null : false) } else if (e.key === 'Enter' && !input) { e.preventDefault(); done(true) } }
+    document.addEventListener('keydown', onKey, true)
+    cancel.onclick = () => done(input ? null : false)
+    ok.onclick = () => done(input ? (field.value || '') : true)
+    wrap.onclick = e => { if (e.target === wrap) done(input ? null : false) }
+    setTimeout(() => (field || ok).focus(), 0)
+  })
+}
+const uiConfirm = (message) => uiDialog({ message, okLabel: /delete|remove/i.test(message) ? 'Delete' : 'OK', danger: /delete|remove/i.test(message) })
+const uiPrompt = (message) => uiDialog({ message, input: true, okLabel: 'Continue' })
 
 // The #GarageCo: Appointment Setters channel is rendered as an interactive
 // Trade Board instead of a normal chat feed.
@@ -1089,7 +1120,7 @@ export default function Chat() {
   async function deleteDmForMe(c) {
     const who = dmNames[c.id] || 'this person'
     const many = who.includes(',')
-    if (!window.confirm(`Remove your conversation with ${who}?\n\nIt's removed from your list only. ${who} ${many ? 'still have' : 'still has'} it. If a new message comes in, it comes back with the full history.`)) return
+    if (!await uiConfirm(`Remove your conversation with ${who}?\n\nIt's removed from your list only. ${who} ${many ? 'still have' : 'still has'} it. If a new message comes in, it comes back with the full history.`)) return
     await savePref(c.id, { hidden_at: new Date().toISOString(), pinned_at: null, favorite: false, section_id: null })
     markRead(c.id)
     if (activeId === c.id) { setActiveId(null); setMobileView('list') }
@@ -1109,7 +1140,7 @@ export default function Chat() {
     if (error) window.alert('Could not update group: ' + error.message)
   }
   async function deleteSection(sec) {
-    if (!window.confirm(`Delete the group "${sec.name}"? Its chats move back to Channels / Direct messages. Nothing is deleted.`)) return
+    if (!await uiConfirm(`Delete the group "${sec.name}"? Its chats move back to Channels / Direct messages. Nothing is deleted.`)) return
     setSections(prev => prev.filter(s => s.id !== sec.id))
     setPrefs(prev => {
       const n = { ...prev }
@@ -1146,7 +1177,7 @@ export default function Chat() {
 
   async function deleteChannel(ch) {
     const label = ch.is_dm ? (dmNames[ch.id] || 'this direct message') : `#${ch.name}`
-    if (!window.confirm(`Delete ${label}? This permanently removes the conversation and all its messages for everyone. This cannot be undone.`)) return
+    if (!await uiConfirm(`Delete ${label}? This permanently removes the conversation and all its messages for everyone. This cannot be undone.`)) return
     const { error } = await supabase.from('channels').delete().eq('id', ch.id)
     if (error) { window.alert('Could not delete: ' + error.message); return }
     if (activeId === ch.id) { setActiveId(null); setMobileView('list') }
@@ -1994,11 +2025,11 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
   async function deleteMessage(m) {
     const isMine = m.sender_id === me.id
     const who = isMine ? 'your message' : `${senders[m.sender_id] || 'this person'}'s message`
-    if (!window.confirm(`Delete ${who}? It disappears for everyone. This can't be undone from the app.`)) return
+    if (!await uiConfirm(`Delete ${who}? It disappears for everyone. This can't be undone from the app.`)) return
 
     let reason = null
     if (!isMine) {
-      reason = window.prompt('Reason for removing this message? (optional, saved to the audit trail)')
+      reason = await uiPrompt('Reason for removing this message? (optional, saved to the audit trail)')
       if (reason === null) return   // cancelled
     }
 
@@ -2954,7 +2985,7 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
 
   async function removeMember(pid) {
     const p = profiles.find(x => x.id === pid)
-    if (!window.confirm(`Remove ${p?.full_name || 'this person'} from #${channelName}? They'll lose access to the channel and stop seeing new messages. Their past messages stay.`)) return
+    if (!await uiConfirm(`Remove ${p?.full_name || 'this person'} from #${channelName}? They'll lose access to the channel and stop seeing new messages. Their past messages stay.`)) return
     const { error } = await supabase.from('channel_members').delete().eq('channel_id', channelId).eq('profile_id', pid)
     if (error) { window.alert('Could not remove: ' + error.message); return }
     setMemberIds(prev => prev.filter(id => id !== pid))
@@ -3198,7 +3229,7 @@ function CustomEmojiModal({ onClose }) {
   }
 
   async function remove(c) {
-    if (!window.confirm(`Remove :${c.shortcode}:? Reactions that used it will show as text.`)) return
+    if (!await uiConfirm(`Remove :${c.shortcode}:? Reactions that used it will show as text.`)) return
     const { error } = await supabase.from('custom_emojis').delete().eq('id', c.id)
     if (error) { setErr(error.message); return }
     await supabase.storage.from('custom-emojis').remove([c.storage_path])
@@ -3466,9 +3497,9 @@ function ThreadPanel({ parentId, channelId, me, senders, profiles = [], channel,
   async function deleteReply(r) {
     const isMine = r.sender_id === me.id
     const who = isMine ? 'your reply' : `${nameFor(r.sender_id)}'s reply`
-    if (!window.confirm(`Delete ${who}? It disappears for everyone. This can't be undone from the app.`)) return
+    if (!await uiConfirm(`Delete ${who}? It disappears for everyone. This can't be undone from the app.`)) return
     let reason = null
-    if (!isMine) { reason = window.prompt('Reason for removing this reply? (optional, saved to the audit trail)'); if (reason === null) return }
+    if (!isMine) { reason = await uiPrompt('Reason for removing this reply? (optional, saved to the audit trail)'); if (reason === null) return }
     const prev = replies
     setReplies(cur => cur.filter(x => x.id !== r.id))   // optimistic
     const { error } = await supabase.from('messages').update({ deleted_at: new Date().toISOString(), deleted_by: me.id, deleted_reason: reason || null }).eq('id', r.id)
