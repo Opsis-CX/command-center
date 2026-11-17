@@ -1,3 +1,4 @@
+// 2026-11-16: new Dashboard page (brand phone + booking tiles, daily trend, sortable CSR table with drill-down) from RPC qa_brand_dash via cfg.brandDash.
 // 2026-11-13: Card capture — clicking a CSR/brand row opens its calls with no card ask (or the calls behind the number clicked) and scrolls to them.
 // 2026-11-09: Revenue Leaderboard brand/CSR column is left-aligned (lbtbl).
 // 2026-11-09: nav gains "AI Speed to Lead" and "Workforce" (Erlang C) when the host passes mountExt (OpsisQAPortal.jsx).
@@ -131,7 +132,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function iconPath(k) {
     if (k === 'brandset') k = 'settings';
     return {
-      overview: 'M4 5h16v14H4zM4 9h16M9 9v10', wallboard: 'M3 4h18v12H3zM8 20h8M12 16v4M7 12V9M11 12V7M15 12v-2', phonesetup: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4', myphone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', aistl: 'M13 2L4 14h7l-1 8 9-12h-7z', wfm: 'M4 20V10M10 20V4M16 20v-7M22 20H2', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
+      overview: 'M4 5h16v14H4zM4 9h16M9 9v10', dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', wallboard: 'M3 4h18v12H3zM8 20h8M12 16v4M7 12V9M11 12V7M15 12v-2', phonesetup: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4', myphone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', aistl: 'M13 2L4 14h7l-1 8 9-12h-7z', wfm: 'M4 20V10M10 20V4M16 20v-7M22 20H2', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
       cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', receptionist: 'M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zM4 21v-1a8 8 0 0 1 16 0v1M19 9h2M3 9h2', practice: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2', pricetalk: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
@@ -144,7 +145,7 @@ export function mountOpsisQA(ROOT, cfg) {
   // Revenue, Calibration, Coaching Hub, Practice, Reporting, AI CSR, AI Speed to Lead, [Wallboard, Phone for supervisors], Workforce.
   // Wallboard + Phone sit under AI Speed to Lead until the CCaaS phone system is finished and ready for use.
   // Practice + AI CSR are added after the pilot check (see vPractice access below).
-  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']].concat(CFG.mountExt ? [['mycoach', 'My coaching']] : [])]] : [['', [['overview', 'Overview']]
+  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']].concat(CFG.mountExt ? [['mycoach', 'My coaching']] : [])]] : [['', [['overview', 'Overview']].concat(!OPSIS && CFG.brandDash ? [['dash', 'Dashboard']] : [])
     .concat([['insights', 'Insights']]).concat(CFG.mountExt ? [['trends', 'Call trends']] : []).concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', W_BRANDS]])
     .concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['pricetalk', 'Price talk'], ['money', 'Revenue']])
     .concat(!OPSIS && (!LOCK || CFG.supervisor) && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])
@@ -227,6 +228,108 @@ export function mountOpsisQA(ROOT, cfg) {
     var side = Math.abs(r.getBoundingClientRect().top - s.getBoundingClientRect().top) < 4;
     r.style.maxHeight = side ? Math.max(260, s.offsetHeight) + 'px' : '470px';
   }
+  // ---------------- Brand Dashboard (2026-11-16, Rob + Brian spec) ----------------
+  // Brand view: calls, abandon %, avg time to answer, avg time to abandon, avg talk time.
+  // CSR drill-down: calls answered, time to answer, talk time, opportunities, booked, conversion,
+  // card asks on card-eligible bookings, QA score, sentiment. Data: RPC qa_brand_dash via CFG.brandDash.
+  var DASHC = {}, DASH = { d: null, sort: 'answered', dir: -1, open: null };
+  function loadDash() {
+    var k = [S.start, S.end, S.brands.join('|')].join('~');
+    if (!DASHC[k]) { DASHC[k] = CFG.brandDash({ start: S.start, end: S.end, brands: S.brands.length ? S.brands : null }); DASHC[k].catch(function () { delete DASHC[k]; }); }
+    return DASHC[k];
+  }
+  function dSec(v) { if (v == null || isNaN(v)) return '—'; v = +v; return v < 60 ? v.toFixed(1) + 's' : fsecs(Math.round(v)); }
+  function dTalk(v) { return v == null || isNaN(v) ? '—' : fsecs(Math.round(+v)); }
+  function dPct(v) { return v == null || isNaN(v) ? '—' : (+v).toFixed(1) + '%'; }
+  function dNum(v, n) { return v == null || isNaN(v) ? '—' : (+v).toFixed(n); }
+  function dTile(label, val, sub, dl, tip) {
+    return '<div class="oq-card" style="padding:16px 18px 14px;min-width:0" title="' + esc(tip || '') + '"><span class="cap">' + label + '</span><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px 8px;margin-top:12px"><span class="num" style="font-size:30px;font-weight:600;letter-spacing:-0.03em;line-height:1">' + val + '</span>' + (dl || '') + '</div><div class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.45">' + sub + '</div></div>';
+  }
+  function dNeutral(cur, prev, f) { return cur == null || prev == null ? '' : '<span class="pill num" style="background:#F3F1EC;color:#56605B" title="Previous period">was ' + f(prev) + '</span>'; }
+  function vDash(tok) {
+    if (!CFG.brandDash || OPSIS) { S.view = 'overview'; vOverview(tok); return; }
+    setMain(crumb([['Dashboard']]) + '<div id="dhead"></div><div id="dphone">' + skel(110, 1) + '</div><div id="dbook">' + skel(110, 1) + '</div><div class="oq-card" id="dtrend">' + skel(180, 1) + '</div><div class="oq-card" id="dcsr">' + skel(30, 8) + '</div>');
+    loadDash().then(function (d) { if (tok !== T) return; DASH.d = d || {}; drawDash(); })
+      .catch(function (e) { if (tok === T) $('dphone').innerHTML = errBox(e); ['dbook', 'dtrend', 'dcsr'].forEach(function (id) { var x = $(id); if (x) x.remove(); }); });
+  }
+  function drawDash() {
+    var d = DASH.d || {}, c = d.cur || {}, p = d.prev || {}, x = d.cdr, xp = d.cdr_prev || {}, cd = d.card || {}, n = (d.range || {}).days || daysBetween(S.start, S.end);
+    var stale = d.cdr_latest && d.cdr_latest < S.end;
+    var bl = (d.brands || []).length === 1 ? (d.brands[0]) : (d.brands || []).length ? (d.brands.length + ' ' + W_BRANDS.toLowerCase()) : 'All ' + W_BRANDS.toLowerCase();
+    $('dhead').innerHTML = '<h2 class="ttl" style="font-size:20px">' + esc(bl) + '</h2><p class="sub">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · compared with the ' + n + ' days before</p>' +
+      (stale || !x ? '<div class="banner" style="margin-top:10px">Phone numbers (calls, abandons, time to answer and time to abandon) ' + (d.cdr_latest ? 'run through <b>' + fdate(d.cdr_latest) + '</b>' : 'aren’t available for these dates') + '. The LightSpeed daily phone summary from Switchboard hasn’t come in for later days yet. Talk time, bookings, card asks, QA and sentiment are current.</div>' : '');
+    var abd = x && x.abandon_pct != null ? delta(+x.abandon_pct, xp.abandon_pct != null ? +xp.abandon_pct : null, ' pts', false) : '';
+    $('dphone').innerHTML = '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">' +
+      dTile('Calls', x ? fmt(x.offered) : '—', x ? fmt(x.answered) + ' answered · ' + fmt(Math.round(x.offered / Math.max(1, x.days))) + ' per day' : 'No phone data for these dates', '', 'Inbound calls that reached a CSR queue (LightSpeed).') +
+      dTile('Abandon rate', x ? dPct(x.abandon_pct) : '—', x ? fmt(x.abandoned) + ' callers hung up before a CSR answered' : '', abd, 'Abandoned ÷ calls that reached a CSR queue.') +
+      dTile('Avg time to answer', x ? dSec(x.tta) : '—', 'Queue to pickup, answered calls', x && x.tta != null && xp.tta != null ? delta(+x.tta, +xp.tta, 's', false) : '', 'Seconds from reaching the CSR queue to a CSR picking up.') +
+      dTile('Avg time to abandon', x ? dSec(x.tab) : '—', 'Minimum: rollover calls only', '', 'Average wait of abandoned callers before they hung up. LightSpeed only times callers who rolled over to the queue, so treat this as a minimum.') +
+      dTile('Avg talk time', dTalk(c.aht), fmt(c.answered) + ' customer conversations', dNeutral(c.aht, p.aht, dTalk), 'Average talk time on inbound customer conversations answered by CSRs.') + '</div>';
+    var cr = cd.ask_rate != null ? +cd.ask_rate : null, pcr = cd.prev_ask_rate != null ? +cd.prev_ask_rate : null;
+    $('dbook').innerHTML = '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">' +
+      dTile('Opportunities', fmt(c.opps), fmt(c.decided) + ' ended booked or not booked', '', 'Calls where the customer could have been booked.') +
+      dTile('Booked', fmt(c.booked), 'vs ' + fmt(p.booked) + ' the period before', '', 'Booking opportunities that ended booked.') +
+      dTile('Conversion', dPct(c.conv), 'Booked ÷ booked + not booked', delta(c.conv != null ? +c.conv : null, p.conv != null ? +p.conv : null, ' pts'), 'Same booking rate as the Overview and Brands pages.') +
+      dTile('Card asks', dPct(cr), cd.booked ? fmt(cd.asked) + ' of ' + fmt(cd.booked) + ' card-eligible bookings' : 'No card-eligible bookings', delta(cr, pcr, ' pts'), 'Booked residential service calls where the CSR asked for a card. Same numbers as Card capture.') +
+      dTile('QA score', dNum(c.qa, 1), fmt(c.scored) + ' calls scored', delta(c.qa != null ? +c.qa : null, p.qa != null ? +p.qa : null, ''), 'Average call-flow score, 0–100.') +
+      dTile('Sentiment', dNum(c.sentiment, 2), 'Customer mood at the end, 1–5', delta(c.sentiment != null ? +c.sentiment : null, p.sentiment != null ? +p.sentiment : null, ''), 'Average customer sentiment at the end of the call (1 = upset, 5 = happy).') + '</div>';
+    drawDashTrend(); drawDashTable();
+  }
+  function drawDashTrend() {
+    var el = $('dtrend'); if (!el) return;
+    var rows = (DASH.d.daily || []).filter(function (r) { return r.answered > 0 || r.offered > 0; });
+    if (rows.length < 2) { el.innerHTML = '<h2 class="ttl">Daily trend</h2><p class="sub">Not enough days in this range to draw a trend.</p>'; return; }
+    var W = Math.max(320, (el.clientWidth || 760) - 40), H = 170, pad = 22, bw = W / rows.length, bwid = Math.min(bw * 0.64, 46), mx = Math.max.apply(null, rows.map(function (r) { return +r.answered || 0; })) || 1;
+    var step = Math.ceil(rows.length / Math.max(2, Math.floor(W / 64))), bars = '', pts = [], labs = '';
+    rows.forEach(function (r, i) {
+      var h = (H - pad) * (+r.answered || 0) / mx, xx = i * bw;
+      bars += '<rect x="' + (xx + (bw - bwid) / 2).toFixed(1) + '" y="' + (H - h).toFixed(1) + '" width="' + bwid.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="3" fill="#DCE5DD"><title>' + fdate(r.day) + ': ' + fmt(r.answered) + ' conversations · ' + fmt(r.booked) + ' booked · ' + dPct(r.conv) + ' conversion' + (r.abandon_pct != null ? ' · ' + dPct(r.abandon_pct) + ' abandoned' : '') + '</title></rect>';
+      if (r.conv != null) pts.push([(xx + bw / 2).toFixed(1), (H - (H - pad) * Math.min(100, +r.conv) / 100).toFixed(1)]);
+      if (i % step === 0) labs += '<text x="' + (xx + bw / 2).toFixed(1) + '" y="' + (H + 14) + '" text-anchor="middle" font-size="10.5" fill="#5F6763">' + fdate(r.day) + '</text>';
+    });
+    var line = pts.map(function (q, i) { return (i ? 'L' : 'M') + q[0] + ' ' + q[1]; }).join(' ');
+    el.innerHTML = '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Daily trend</h2><p class="sub">Bars: customer conversations answered. Line: conversion. Hover a day for details.</p></div>' +
+      '<div class="mut" style="font-size:12px;display:flex;gap:14px;align-items:center"><span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#DCE5DD;margin-right:6px"></span>Conversations</span><span><span style="display:inline-block;width:14px;height:2px;background:' + G + ';margin-right:6px;vertical-align:middle"></span>Conversion</span></div></div>' +
+      '<svg viewBox="0 -4 ' + W + ' ' + (H + 22) + '" width="' + W + '" height="' + (H + 22) + '" style="display:block;margin-top:10px" role="img" aria-label="Daily conversations and conversion">' + bars +
+      '<path d="' + line + '" fill="none" stroke="' + G + '" stroke-width="2" stroke-linejoin="round"/>' + pts.map(function (q) { return '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="2.6" fill="' + G + '"/>'; }).join('') + labs + '</svg>';
+  }
+  var DCOLS = [['name', W_CSR, 'Sort A–Z'], ['brand', W_BRAND, 'Sort by brand'], ['answered', 'Calls answered', 'Inbound customer conversations answered'], ['tta', 'Time to answer', 'Average seconds from queue to pickup (LightSpeed)'], ['aht', 'Avg talk time', 'Average talk time per conversation'],
+    ['opps', 'Opportunities', 'Calls that could have been booked'], ['booked', 'Booked', 'Opportunities that ended booked'], ['conv', 'Conversion', 'Booked ÷ booked + not booked'], ['card_rate', 'Card asks', 'Card-eligible bookings where the CSR asked for a card'], ['qa', 'QA score', 'Average call-flow score, 0–100'], ['sentiment', 'Sentiment', 'Customer mood at the end, 1–5']];
+  function drawDashTable() {
+    var el = $('dcsr'); if (!el) return;
+    var multi = (DASH.d.brands || []).length !== 1, cols = DCOLS.filter(function (c) { return multi || c[0] !== 'brand'; });
+    var rows = (DASH.d.agents || []).slice(), k = DASH.sort, dir = DASH.dir;
+    rows.sort(function (a, b) { if (k === 'name' || k === 'brand') return dir * String(a[k] || '').localeCompare(String(b[k] || '')); var av = a[k] == null ? -1e9 : +a[k], bv = b[k] == null ? -1e9 : +b[k]; return dir * (av - bv); });
+    var th = function (c) { var on = k === c[0], asc = dir === 1; return '<th class="sortable" data-dsort="' + c[0] + '" title="' + esc(c[2]) + ' · click again to reverse" aria-sort="' + (on ? (asc ? 'ascending' : 'descending') : 'none') + '">' + c[1] + (on ? (asc ? ' ↑' : ' ↓') : '') + '</th>'; };
+    var c0 = DASH.d.cur || {}, cd = DASH.d.card || {};
+    var cell = function (a, key) {
+      if (key === 'name') return '<td><div style="display:flex;align-items:center;gap:10px">' + avatar(a.name, 28) + '<span style="font-weight:600">' + esc(a.name) + '</span></div></td>';
+      if (key === 'brand') return '<td>' + esc(short(a.brand)) + '</td>';
+      if (key === 'answered' || key === 'opps' || key === 'booked') return '<td class="num">' + fmt(a[key]) + '</td>';
+      if (key === 'tta') return '<td class="num">' + dSec(a.tta) + '</td>';
+      if (key === 'aht') return '<td class="num">' + dTalk(a.aht) + '</td>';
+      if (key === 'conv') return '<td class="num" style="color:' + (a.conv == null ? 'inherit' : +a.conv >= 60 ? '#1F5A41' : '#A8441A') + ';font-weight:600">' + dPct(a.conv) + '</td>';
+      if (key === 'card_rate') return '<td class="num" title="' + (a.card_booked ? fmt(a.card_asked) + ' of ' + fmt(a.card_booked) + ' card-eligible bookings' : 'No card-eligible bookings') + '">' + (a.card_booked ? dPct(a.card_rate) + ' <span class="mut" style="font-size:11.5px">(' + fmt(a.card_asked) + '/' + fmt(a.card_booked) + ')</span>' : '—') + '</td>';
+      if (key === 'qa') return '<td class="num"><span class="pill" style="' + (a.qa == null ? 'background:#F3F1EC' : chipScore(+a.qa)) + '">' + dNum(a.qa, 1) + '</span></td>';
+      if (key === 'sentiment') return '<td class="num">' + dNum(a.sentiment, 2) + '</td>';
+      return '<td></td>';
+    };
+    var cmp = function (label, v, tot, f, upGood) { var good = v == null || tot == null || upGood == null ? null : upGood ? +v >= +tot : +v <= +tot; return '<div style="flex:1 1 150px;min-width:140px;padding:10px 12px;background:#fff;border:1px solid #E8E4DC;border-radius:10px"><div class="cap">' + label + '</div><div class="num" style="font-size:18px;font-weight:600;margin-top:6px;color:' + (good == null ? 'inherit' : good ? '#1F5A41' : '#A8441A') + '">' + f(v) + '</div><div class="mut" style="font-size:11.5px;margin-top:2px">' + W_BRAND.toLowerCase() + ' ' + f(tot) + '</div></div>'; };
+    var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">By ' + W_CSR + '</h2><p class="sub">Click a ' + W_CSR + ' to compare them with the ' + W_BRAND.toLowerCase() + ' and open their calls.</p></div></div>' +
+      '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:12px"><table class="tbl"><thead><tr>' + cols.map(th).join('') + '</tr></thead><tbody>';
+    if (!rows.length) h += '<tr><td colspan="' + cols.length + '" class="mut">No ' + W_CSRS.toLowerCase() + ' with calls in this range.</td></tr>';
+    rows.forEach(function (a) {
+      var id = a.name + '|' + a.brand, open = DASH.open === id;
+      h += '<tr class="click" data-dopen="' + esc(id) + '" tabindex="0" aria-expanded="' + open + '"' + (open ? ' style="background:#FAF8F3"' : '') + '>' + cols.map(function (c) { return cell(a, c[0]); }).join('') + '</tr>';
+      if (open) h += '<tr><td colspan="' + cols.length + '" style="white-space:normal;background:#F7F5F0;padding:14px"><div style="display:flex;flex-wrap:wrap;gap:10px">' +
+        cmp('Time to answer', a.tta, DASH.d.cdr && DASH.d.cdr.tta, dSec, false) + cmp('Avg talk time', a.aht, c0.aht, dTalk, null) + cmp('Conversion', a.conv, c0.conv, dPct, true) +
+        cmp('Card asks', a.card_rate, cd.ask_rate, dPct, true) + cmp('QA score', a.qa, c0.qa, function (v) { return dNum(v, 1); }, true) + cmp('Sentiment', a.sentiment, c0.sentiment, function (v) { return dNum(v, 2); }, true) +
+        '</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="sel btnd" data-agent="' + esc(a.name) + '">Open ' + esc(a.name.split(' ')[0]) + '’s page</button><button class="sel" data-dcalls="' + esc(a.name) + '">Hear their calls</button>' +
+        (a.card_booked ? '<button class="sel" data-dcalls="' + esc(a.name) + '" data-dnocard="1">Bookings with no card ask</button>' : '') + '</div></td></tr>';
+    });
+    el.innerHTML = h + '</tbody></table></div>';
+  }
+
   function vOverview(tok) {
     setMain('<div class="hero" style="position:relative;overflow:hidden;border-radius:16px;padding:16px 8px 8px;min-height:120px">' +
       '<svg viewBox="0 0 700 180" preserveAspectRatio="xMaxYMid slice" style="position:absolute;right:0;top:0;width:60%;height:100%" aria-hidden="true"><path d="M0 180 C120 150 180 70 300 90 C420 110 470 20 560 30 C620 36 660 10 700 0 L700 180 Z" fill="#DCE5DD"/><path d="M80 180 C200 140 260 110 360 120 C470 132 520 60 610 70 C650 75 680 60 700 50 L700 180 Z" fill="#C6D5C9"/><path d="M200 180 C300 160 360 140 450 146 C540 152 600 110 700 100 L700 180 Z" fill="#A9C0AF"/><path d="M330 180 C420 170 500 160 580 164 C640 167 680 150 700 146 L700 180 Z" fill="#8AAA93"/></svg>' +
@@ -4167,7 +4270,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash(); trackHist();
-    var v = { overview: vOverview, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
   }
@@ -4265,6 +4368,12 @@ export function mountOpsisQA(ROOT, cfg) {
     if (pm) { S.pmode = pm.getAttribute('data-pmode'); loadPhone().then(phoneChart); return; }
     var ps = t.closest('[data-psort]');
     if (ps) { var pk = ps.getAttribute('data-psort').split('|'); S['pd' + pk[0]] = S['ps' + pk[0]] === pk[1] ? -(S['pd' + pk[0]] || 1) : 1; S['ps' + pk[0]] = pk[1]; loadPhone().then(pk[0] === 'b' ? phoneBrands : phoneCsrs); return; }
+    var dsr = t.closest('[data-dsort]');
+    if (dsr) { var dk = dsr.getAttribute('data-dsort'); DASH.dir = DASH.sort === dk ? -DASH.dir : (dk === 'name' || dk === 'brand' || dk === 'tta' ? 1 : -1); DASH.sort = dk; drawDashTable(); return; }
+    var dcl = t.closest('[data-dcalls]');
+    if (dcl) { openCalls(dcl.getAttribute('data-dnocard') ? { nocard: true } : {}, dcl.getAttribute('data-dcalls')); return; }
+    var dop = t.closest('[data-dopen]');
+    if (dop && !t.closest('button')) { var di = dop.getAttribute('data-dopen'); DASH.open = DASH.open === di ? null : di; drawDashTable(); return; }
     var tm = t.closest('[data-tmode]');
     if (tm) { S.tmode = tm.getAttribute('data-tmode'); loadReport().then(trendCard); return; }
     var el = t.closest('[data-go],[data-brand],[data-agent],[data-call],[data-close],[data-kpi],[data-step],[data-ask],[data-pop],[data-range],[data-act],[data-bsort],[data-csort],[data-mix],[data-page],[data-unfilter],[data-callsfor],[data-needs],[data-xferlist],[data-change],[data-q],[data-outcome],[data-brandcb],[data-allbrands]');
