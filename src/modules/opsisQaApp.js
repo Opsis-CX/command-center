@@ -73,7 +73,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.range === 'month') { S.end = t; S.start = t.slice(0, 8) + '01'; return; }
     if (S.range === 'lastmonth') { var f = t.slice(0, 8) + '01'; S.end = addDays(f, -1); S.start = S.end.slice(0, 8) + '01'; return; }
     // Last 7 / 30 / 90 days = completed days, today left out (2026-10-26, matches LightSpeed and Switchboard)
-    var n = +S.range || 30; S.end = addDays(t, -1); S.start = addDays(t, -n);
+    var n = +S.range || 7; S.end = addDays(t, -1); S.start = addDays(t, -n);
   }
   applyRange();
   function prevWin() { var n = daysBetween(S.start, S.end); return { start: addDays(S.start, -n), end: addDays(S.start, -1) }; }
@@ -3071,7 +3071,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   // ----- What CSRs are asking (managers) -----
-  var HQ = { days: 30, brand: LOCK || '', topic: null, csr: null, data: null, themes: {}, key: '' };
+  var HQ = { days: 7, brand: LOCK || '', topic: null, csr: null, data: null, themes: {}, key: '' };
   var TOPIC_COL = { 'Pricing & fees': ['#FFF1E6', '#8A3D0C'], 'Card & payment': ['#E8F3EC', '#1F5A41'], 'Warranty': ['#EEF2FB', '#2B3A67'], 'Scheduling': ['#F1ECFB', '#52308F'], 'Objections': ['#FDECEC', '#A61B1B'], 'Commercial': ['#EAF4F6', '#1E5F6B'], 'Products & repairs': ['#F6F1E3', '#6B5410'], 'My score': ['#F3F1EC', '#3B4541'], 'How-to & process': ['#F3F1EC', '#56605B'], 'Other': ['#F3F1EC', '#56605B'] };
   function tpill(t) { var c = TOPIC_COL[t] || TOPIC_COL.Other; return '<span class="pill" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(t) + '</span>'; }
   function vHubQs(tok) {
@@ -4466,9 +4466,9 @@ export function mountOpsisQA(ROOT, cfg) {
     var h = '#' + Object.keys(o).map(function (k) { return k + '=' + encodeURIComponent(o[k]); }).join('&');
     if (location.hash !== h) history.replaceState(null, '', h);
   }
-  function readHash() {
+  function readHash(first) {
     var q = {}; location.hash.replace(/^#/, '').split('&').forEach(function (p) { var kv = p.split('='); if (kv[0]) q[kv[0]] = decodeURIComponent(kv[1] || ''); });
-    if (q.v) S.view = q.v; if (q.k) S.kpi = q.k; if (q.r) S.range = q.r; if (q.s && q.e) { S.start = q.s; S.end = q.e; }
+    if (q.v) S.view = q.v; if (q.k) S.kpi = q.k; if (q.r && !first) S.range = q.r; if (q.s && q.e && !first) { S.start = q.s; S.end = q.e; }  // fresh page load always opens at 7 days (Becky 11/17)
     if (q.bucket && /^(upset|low|ctrl|other)$/.test(q.bucket)) { S.calls.bucket = q.bucket; S.calls.offset = 0; }
     if (q.v === 'calls' && !q.bucket) { if (q.q) S.calls.q = q.q.slice(0, 120); if (q.out && OUTCOMES.some(function (o) { return o[0] === q.out; })) S.calls.outcome = q.out; if (q.step && STEPNAMES[q.step]) S.calls.step = q.step; S.calls.offset = 0; }
     if (q.csr && /^[0-9a-f-]{36}$/i.test(q.csr)) S.hubCsr = q.csr; if (q.t && /^(home|ask|wins)$/.test(q.t)) HUB.tab = q.t;
@@ -4833,7 +4833,7 @@ export function mountOpsisQA(ROOT, cfg) {
   try { var bc0 = JSON.parse(localStorage.getItem('oqa_brand_' + (CFG.clientId || 'own')) || 'null'); if (bc0) applyBranding(bc0); } catch (x) {}
   if (!CFG.csrSelf) api({ action: 'branding' }).then(function (b) { try { localStorage.setItem('oqa_brand_' + (CFG.clientId || 'own'), JSON.stringify(b)); } catch (x) {} var g0 = G; applyBranding(b); if (G !== g0) render(); }).catch(function () {});
   var DEEP_CALL = (location.hash.match(/(?:^#|&)call=([0-9a-f-]{36})/i) || [])[1];
-  readHash(); render();
+  readHash(true); render();
   if (DEEP_CALL && !CFG.csrSelf) { S.callId = DEEP_CALL; callDrawer(); }
   return function destroy() {
     LISTENERS.forEach(function (l) { l[0].removeEventListener(l[1], l[2]); }); LISTENERS = [];
