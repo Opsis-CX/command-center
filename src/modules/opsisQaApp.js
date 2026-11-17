@@ -132,7 +132,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function iconPath(k) {
     if (k === 'brandset') k = 'settings';
     return {
-      overview: 'M4 5h16v14H4zM4 9h16M9 9v10', dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', wallboard: 'M3 4h18v12H3zM8 20h8M12 16v4M7 12V9M11 12V7M15 12v-2', phonesetup: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4', myphone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', aistl: 'M13 2L4 14h7l-1 8 9-12h-7z', wfm: 'M4 20V10M10 20V4M16 20v-7M22 20H2', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
+      overview: 'M4 5h16v14H4zM4 9h16M9 9v10', dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', wallboard: 'M3 4h18v12H3zM8 20h8M12 16v4M7 12V9M11 12V7M15 12v-2', trends: 'M3 17l5-5 4 4 8-8M15 8h5v5', coachclips: 'M4 5h16v11H8l-4 4zM10 8.5v4l3.5-2z', phonesetup: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4', myphone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', aistl: 'M13 2L4 14h7l-1 8 9-12h-7z', wfm: 'M4 20V10M10 20V4M16 20v-7M22 20H2', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
       cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', receptionist: 'M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zM4 21v-1a8 8 0 0 1 16 0v1M19 9h2M3 9h2', practice: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2', pricetalk: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
@@ -155,6 +155,13 @@ export function mountOpsisQA(ROOT, cfg) {
     .concat(CFG.mountExt && CFG.supervisor ? [['wallboard', 'Wallboard'], ['myphone', 'Phone']] : [])
     .concat(CFG.mountExt ? [['wfm', 'Workforce']] : []).concat(CFG.mountExt && CFG.supervisor ? [['intraday', 'Intraday']] : [])],
     ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(CFG.mountExt && CFG.supervisor ? [['phonesetup', 'Phone setup'], ['callflow', 'Call flow']] : []).concat(IS_ADMIN ? [['team', 'Team & access'], ['brandset', 'Portal settings']] : [])]];
+  // RM / GM logins (Becky 11/16): Overview (their dashboard), Call trends, Coaching Hub, Coaching clips, AI CSR. Nothing else.
+  var MGR = !CFG.csrSelf && !OPSIS && (CFG.portalRole === 'rm' || CFG.portalRole === 'gm');
+  var MGR_NAV = ['overview', 'trends', 'hub', 'coachclips', 'receptionist'];
+  // reachable by drilling down from the dashboard, but not in the sidebar
+  var MGR_OK = MGR_NAV.concat(['brand', 'csr', 'calls', 'hubqs', 'repeat']);
+  function mgrNav() { if (!MGR) return; NAV = [['', NAV[0][1].filter(function (n) { return MGR_NAV.indexOf(n[0]) >= 0; })]]; }
+  mgrNav();
   function renderWho() {
     var w = $('oqwho'); if (!w) return;
     w.innerHTML = '<b>' + esc(CFG.userName || '') + '</b><span>' + esc(RNAME[ROLE] || '') + (LOCK ? ' · ' + esc(short(LOCK)) : '') + '</span>' +
@@ -356,12 +363,11 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   function vOverview(tok) {
-    setMain('<div class="hero" style="position:relative;overflow:hidden;border-radius:16px;padding:16px 8px 8px;min-height:120px">' +
-      '<svg viewBox="0 0 700 180" preserveAspectRatio="xMaxYMid slice" style="position:absolute;right:0;top:0;width:60%;height:100%" aria-hidden="true"><path d="M0 180 C120 150 180 70 300 90 C420 110 470 20 560 30 C620 36 660 10 700 0 L700 180 Z" fill="#DCE5DD"/><path d="M80 180 C200 140 260 110 360 120 C470 132 520 60 610 70 C650 75 680 60 700 50 L700 180 Z" fill="#C6D5C9"/><path d="M200 180 C300 160 360 140 450 146 C540 152 600 110 700 100 L700 180 Z" fill="#A9C0AF"/><path d="M330 180 C420 170 500 160 580 164 C640 167 680 150 700 146 L700 180 Z" fill="#8AAA93"/></svg>' +
-      '<div style="position:relative"><div class="cap" style="letter-spacing:.3em">' + (OPSIS ? 'Opsis CX' : 'GarageCo') + ' · Call quality intelligence</div><h1 style="margin:10px 0 0;font-size:34px;font-weight:600;line-height:1.1;letter-spacing:-0.03em">Turn every conversation<br>into a booked job.</h1></div></div>' +
+    if (MGR && LOCK && DASHON()) { S.brand = LOCK; vFocus(tok, 'brand', true); return; }
+    var ovBrand = LOCK ? short(LOCK) : S.brands.length === 1 ? short(S.brands[0]) : S.brands.length ? S.brands.length + ' ' + W_BRANDS.toLowerCase() : 'All ' + W_BRANDS.toLowerCase();
+    setMain('<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">' + esc(ovBrand) + '</h1><span class="mut" style="font-size:13px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · vs the ' + daysBetween(S.start, S.end) + ' days before</span></div>' +
       (DASHON() ? '<div id="dphone">' + skel(110, 1) + '</div>' : '') +
       '<div id="kpis" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">' + skel(118, 1).repeat(5) + '</div>' +
-      '<div class="oq-card" id="needscard">' + skel(60, 1) + '</div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:3 1 520px;min-width:0" id="fcrcard">' + skel(24, 6) + '</div><div class="oq-card" style="flex:2 1 420px;min-width:0" id="sentcard">' + skel(24, 6) + '</div></div>' +
       '<div class="oq-card" id="tempcard">' + skel(24, 4) + '</div>' +
       '<div class="row"><div class="oq-card" style="flex:999 1 520px" id="brandcard">' + skel(30, 8) + '</div><div class="oq-card" style="flex:1 1 320px" id="coachcard">' + skel(40, 5) + '</div></div>' +
@@ -605,10 +611,10 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   // ---------- Brand / CSR drill-down ----------
-  function vFocus(tok, kind) {
+  function vFocus(tok, kind, asOverview) {
     var name = kind === 'brand' ? S.brand : S.agent;
     var title = kind === 'brand' ? short(name) : name;
-    setMain(crumb(kind === 'brand' ? [[W_BRANDS, 'brands'], [title]] : [[W_CSRS, 'csrs'], [title]]) +
+    setMain(crumb(asOverview ? [['Overview']] : MGR ? (kind === 'brand' ? [['Overview', 'overview'], [title]] : [['Overview', 'overview'], [title]]) : kind === 'brand' ? [[W_BRANDS, 'brands'], [title]] : [[W_CSRS, 'csrs'], [title]]) +
       '<div class="oq-card" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:14px">' + (kind === 'brand' ? bbadge(name).replace('26px;height:26px', '44px;height:44px').replace('10.5px', '15px') : avatar(name, 44)) +
       '<div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.025em">' + esc(kind === 'brand' ? name : name) + '</h1><div class="mut" style="font-size:12.5px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' vs the ' + daysBetween(S.start, S.end) + ' days before</div></div></div>' +
       '<div class="row"><button class="sel" data-callsfor="' + kind + '">All calls →</button><button class="sel btnd" data-ask="' + esc(kind === 'brand' ? 'What should we focus on at ' + name + ' this week?' : 'How should we coach ' + name + ' this week?') + '">Ask about ' + esc(title) + '</button></div></div>' +
@@ -1371,7 +1377,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (PR.okChecked || OPSIS || CFG.csrSelf) return; PR.okChecked = true;
     api({ action: 'practice', op: 'access' }).then(function (r) {
       if (!r || !r.allowed) return;
-      var sec = NAV[0][1]; if (!sec.some(function (n) { return n[0] === 'practice'; })) { var keys = function () { return sec.map(function (n) { return n[0]; }); }; var i = keys().indexOf('hub'); sec.splice(i >= 0 ? i + 1 : sec.length, 0, ['practice', 'Practice']); var j = keys().indexOf('reporting'); sec.splice(j >= 0 ? j + 1 : sec.length, 0, ['receptionist', 'AI CSR']); }
+      var sec = NAV[0][1]; if (!sec.some(function (n) { return n[0] === 'practice'; })) { var keys = function () { return sec.map(function (n) { return n[0]; }); }; var i = keys().indexOf('hub'); sec.splice(i >= 0 ? i + 1 : sec.length, 0, ['practice', 'Practice']); var j = keys().indexOf('reporting'); sec.splice(j >= 0 ? j + 1 : sec.length, 0, ['receptionist', 'AI CSR']); mgrNav(); }
       renderNav();
     }).catch(function () { });
   }
@@ -4308,7 +4314,7 @@ export function mountOpsisQA(ROOT, cfg) {
     prCheckAccess();
     if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
-    T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; renderNav(); renderWho(); writeHash(); trackHist();
+    T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; if (MGR && MGR_OK.indexOf(S.view) < 0) S.view = 'overview'; renderNav(); renderWho(); writeHash(); trackHist();
     var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
