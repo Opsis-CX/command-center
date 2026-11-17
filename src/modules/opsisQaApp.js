@@ -132,7 +132,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function iconPath(k) {
     if (k === 'brandset') k = 'settings';
     return {
-      overview: 'M4 5h16v14H4zM4 9h16M9 9v10', dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', wallboard: 'M3 4h18v12H3zM8 20h8M12 16v4M7 12V9M11 12V7M15 12v-2', trends: 'M3 17l5-5 4 4 8-8M15 8h5v5', coachclips: 'M4 5h16v11H8l-4 4zM10 8.5v4l3.5-2z', phonesetup: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4', myphone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', aistl: 'M13 2L4 14h7l-1 8 9-12h-7z', wfm: 'M4 20V10M10 20V4M16 20v-7M22 20H2', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
+      overview: 'M4 5h16v14H4zM4 9h16M9 9v10', leadtime: 'M4 5h16v15H4zM4 10h16M9 3v4M15 3v4M8 14h3', dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', wallboard: 'M3 4h18v12H3zM8 20h8M12 16v4M7 12V9M11 12V7M15 12v-2', trends: 'M3 17l5-5 4 4 8-8M15 8h5v5', coachclips: 'M4 5h16v11H8l-4 4zM10 8.5v4l3.5-2z', phonesetup: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4', myphone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', aistl: 'M13 2L4 14h7l-1 8 9-12h-7z', wfm: 'M4 20V10M10 20V4M16 20v-7M22 20H2', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
       cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', receptionist: 'M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zM4 21v-1a8 8 0 0 1 16 0v1M19 9h2M3 9h2', practice: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2', pricetalk: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
@@ -147,7 +147,7 @@ export function mountOpsisQA(ROOT, cfg) {
   // Practice + AI CSR are added after the pilot check (see vPractice access below).
   var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']].concat(CFG.mountExt ? [['mycoach', 'My coaching']] : [])]] : [['', [['overview', 'Overview']]
     .concat([['insights', 'Insights']]).concat(CFG.mountExt ? [['trends', 'Call trends']] : []).concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', W_BRANDS]])
-    .concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['pricetalk', 'Price talk'], ['money', 'Revenue']])
+    .concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['pricetalk', 'Price talk'], ['money', 'Revenue']].concat(CFG.leadTime ? [['leadtime', 'Booking lead time']] : []))
     .concat(!OPSIS && (!LOCK || CFG.supervisor) && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])
     .concat(OPSIS ? [] : [['hub', 'Coaching Hub']]).concat(CFG.mountExt && CFG.supervisor ? [['coachclips', 'Coaching clips']] : [])
     .concat([['reporting', 'Reporting']])
@@ -157,7 +157,7 @@ export function mountOpsisQA(ROOT, cfg) {
     ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(CFG.mountExt && CFG.supervisor ? [['phonesetup', 'Phone setup'], ['callflow', 'Call flow']] : []).concat(IS_ADMIN ? [['team', 'Team & access'], ['brandset', 'Portal settings']] : [])]];
   // Tile navigation (Becky 11/17): these pages also open from Overview / brand tiles.
   // They stay in the sidebar too (Becky 11/17 pm: removing them caused confusion).
-  var TILE_VIEWS = ['phone', 'csrs', 'calls', 'cardcap', 'pricetalk', 'money'];
+  var TILE_VIEWS = ['phone', 'csrs', 'calls', 'cardcap', 'pricetalk', 'money', 'leadtime'];
   // RM / GM logins (Becky 11/16): Overview (their dashboard), Call trends, Coaching Hub, Coaching clips, AI CSR. Nothing else.
   var MGR = !CFG.csrSelf && !OPSIS && (CFG.portalRole === 'rm' || CFG.portalRole === 'gm');
   var MGR_NAV = ['overview', 'trends', 'hub', 'coachclips', 'receptionist'];
@@ -293,6 +293,7 @@ export function mountOpsisQA(ROOT, cfg) {
       tGo(dTile('Booking ask rate', dPct(c.ask_rate), 'Opportunities where the CSR asked to book', delta(c.ask_rate != null ? +c.ask_rate : null, p.ask_rate != null ? +p.ask_rate : null, ' pts'), 'Share of opportunities where the CSR directly asked to book the appointment.'), 'calls:noask', 'Calls with no ask') +
       tGo(dTile('Card asks', dPct(cr), cd.booked ? fmt(cd.asked) + ' of ' + fmt(cd.booked) + ' card-eligible bookings' : 'No card-eligible bookings', delta(cr, pcr, ' pts'), 'Booked residential service calls where the CSR asked for a card. Same numbers as Card capture.'), 'cardcap', 'Card capture') +
       tGo(dTile('Avg order value', '<span id="daov">…</span>', '<span id="daovs">Booked jobs, from Acumatica</span>', '', 'Average value of a booked job, from Acumatica invoices (or the brand’s Acumatica average for that job type when the invoice isn’t matched yet).'), 'money', 'Revenue') +
+      (CFG.leadTime ? tGo(dTile('Booking lead time', '<span id="dlead">…</span>', '<span id="dleads">Residential service, business days</span>', '', LT_TIP), 'leadtime', 'Booking lead time') : '') +
       tGo(dTile('Price talk', '<span id="dprice">…</span>', '<span id="dprices">Calls where price came up</span>', '', 'Share of read calls where price or a fee came up, whether the caller asked or the CSR brought it up.'), 'pricetalk', 'Price talk') +
       '</div>' + '<div class="cap" style="margin:4px 0 8px 2px;font-size:11px;letter-spacing:.14em">Quality</div><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));max-width:calc(2 * (100% / 6) + 10px);min-width:330px">' +
       (function (h) { return QAFLOW() ? h.replace('<div class="oq-card" style="', '<div class="oq-card click" data-qaflow="1" role="button" tabindex="0" aria-expanded="false" style="border-color:#CFE3D8;') : h; })(dTile('QA score', dNum(c.qa, 1), fmt(c.scored) + ' calls scored' + (QAFLOW() ? ' · <span style="color:#1F5A41;font-weight:600">click for call flow ▾</span>' : ''), delta(c.qa != null ? +c.qa : null, p.qa != null ? +p.qa : null, ''), 'Average call-flow score (0–100) on opportunity calls. Click the tile to see each step of the call flow.')) +
@@ -302,11 +303,71 @@ export function mountOpsisQA(ROOT, cfg) {
   // AOV + price-talk tiles fill in after the main numbers (separate data).
   function dashLate() {
     var br = (DASH.d && DASH.d.brands && DASH.d.brands.length) ? DASH.d.brands : (S.brands.length ? S.brands : null);
+    fillLead('dlead', 'dleads', br || []);
     var set = function (id, v) { var e = $(id); if (e) e.innerHTML = v; };
     api({ action: 'money', start: S.start, end: S.end, brands: br }).then(function (m) { var t = (m || {}).totals || {}, n = (+t.booked || 0) - (+t.booked_unvalued || 0);
       set('daov', n > 0 && +t.booked_value ? '$' + Math.round(t.booked_value / n).toLocaleString() : '—'); set('daovs', n > 0 ? fmt(n) + ' booked jobs' + (+t.booked_actual_n ? ', ' + fmt(t.booked_actual_n) + ' matched to invoices' : ', estimated from brand averages') : 'No valued bookings in this range'); }).catch(function () { set('daov', '—'); });
     api({ action: 'pricetalk', start: S.start, end: S.end, brands: br }).then(function (r) { var K = (r || {}).kinds || {}, g = function (k) { return +((K[k] || {}).n) || 0; }, read = +(r || {}).read || 0, talk = g('asked_answered') + g('asked_no_number') + g('volunteered');
       set('dprice', read ? Math.round(100 * talk / read) + '%' : '—'); set('dprices', read ? fmt(talk) + ' of ' + fmt(read) + ' calls · ' + fmt(g('volunteered')) + ' brought up by the CSR' : 'No calls read in this range'); }).catch(function () { set('dprice', '—'); });
+  }
+  // ---------- Booking lead time (Rob 11/17) ----------
+  // Business days (Mon–Fri) from the day a service order was booked in Acumatica to its first scheduled appointment.
+  // Booked Friday for Monday = 1 day. Data: RPC qa_lead_time_report via CFG.leadTime (daily copy from Switchboard).
+  var LT_TIP = 'Business days from booking to the first scheduled appointment, residential service orders (repairs, springs, openers, tune-ups). Weekends are not counted: booked Friday for Monday = 1 day. From Acumatica, through Switchboard. Lower is better; same or next business day is the goal.';
+  var LTC = {};
+  function loadLead(brands) {
+    brands = brands || S.brands;
+    var k = [S.start, S.end, brands.join('|')].join('~');
+    if (!LTC[k]) { LTC[k] = CFG.leadTime({ start: S.start, end: S.end, brands: brands.length ? brands : null }); LTC[k].catch(function () { delete LTC[k]; }); }
+    return LTC[k];
+  }
+  function ltColor(v) { return v == null ? 'inherit' : +v <= 1.5 ? '#1F5A41' : +v <= 3 ? '#9A6A00' : '#A8441A'; }
+  function ltDays(v) { return v == null || isNaN(v) ? '—' : (+v).toFixed(1) + (+v === 1 ? ' day' : ' days'); }
+  function fillLead(idVal, idSub, brands) {
+    if (!CFG.leadTime) return;
+    var set = function (id, v) { var e = $(id); if (e) e.innerHTML = v; };
+    loadLead(brands).then(function (r) { var o = (r || {}).overall || {};
+      set(idVal, o.avg != null ? '<span style="color:' + ltColor(o.avg) + '">' + ltDays(o.avg) + '</span>' : '—');
+      set(idSub, o.orders ? dPct(o.le1) + ' same or next business day · ' + fmt(o.orders) + ' orders' : 'No Acumatica service orders for these brands'); })
+      .catch(function () { set(idVal, '—'); });
+  }
+  function vLeadTime(tok) {
+    setMain(crumb([['Booking lead time']]) + '<div id="ltwrap"><div class="oq-card">' + skel(36, 6) + '</div></div>');
+    loadLead().then(function (r) { if (tok !== T) return; drawLead(r || {}); })
+      .catch(function (e) { if (tok === T && $('ltwrap')) $('ltwrap').innerHTML = errBox(e); });
+  }
+  function drawLead(r) {
+    var el = $('ltwrap'); if (!el) return;
+    var o = r.overall || {}, rows = r.by_brand || [], locs = r.by_location || [];
+    var cell = function (v, pct) { return '<td class="num" style="' + (pct ? '' : 'color:' + ltColor(v) + ';font-weight:600') + '">' + (pct ? dPct(v) : ltDays(v)) + '</td>'; };
+    var h = '<div class="oq-card"><h2 class="ttl">Booking Lead Time: Days From Booking to Appointment</h2><p class="sub">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · business days from the day a job was booked in Acumatica to its first scheduled appointment. Weekends don’t count, so booked Friday for Monday is 1 day. Lower is better.' + (r.thru ? ' Acumatica data through ' + fdate(r.thru) + '.' : '') + '</p>' +
+      '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:12px">' +
+      dTile('Residential service', '<span style="color:' + ltColor(o.avg) + '">' + ltDays(o.avg) + '</span>', 'Average business days to the appointment', '', LT_TIP) +
+      dTile('Same or next business day', dPct(o.le1), 'Share of residential service orders', '', 'Residential service orders whose first appointment is the same business day or the next one.') +
+      dTile('Orders', fmt(o.orders), 'Residential service orders booked', '', 'Residential service orders created in Acumatica in this date range that have a scheduled appointment.') + '</div></div>';
+    h += '<div class="oq-card"><h2 class="ttl">By ' + W_BRAND + '</h2><p class="sub">Service = repairs, springs, openers, gates and entry-door service. Install = new doors, replacements and new builds, which naturally book further out.</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl"><thead><tr><th>' + W_BRAND + '</th>' +
+      '<th>Resi service' + itip('Average business days from booking to the first appointment, residential service orders.') + '</th>' +
+      '<th>Same / next day' + itip('Residential service orders scheduled the same or the next business day.') + '</th>' +
+      '<th>2–3 days' + itip('Residential service orders scheduled 2 or 3 business days out.') + '</th>' +
+      '<th>Orders' + itip('Residential service orders with a scheduled appointment.') + '</th>' +
+      '<th>Commercial service' + itip('Average business days, commercial service orders.') + '</th>' +
+      '<th>Install / replace' + itip('Average business days, new doors, replacements and new builds (residential and commercial).') + '</th>' +
+      '<th>Maintenance' + itip('Average business days, maintenance agreement visits.') + '</th></tr></thead><tbody>';
+    if (!rows.length) h += '<tr><td colspan="8" class="mut">No Acumatica service orders for these ' + W_BRANDS.toLowerCase() + ' in this range. PDQ and Dan’s Doors aren’t in Acumatica.</td></tr>';
+    rows.forEach(function (b) { var rs = b.resi_service || {};
+      h += '<tr><td style="font-weight:600">' + esc(b.brand) + '</td>' + cell(rs.avg) + cell(rs.le1, 1) + cell(rs.d2_3, 1) + '<td class="num">' + fmt(rs.orders || 0) + '</td>' + cell((b.comm_service || {}).avg) + cell((b.install || {}).avg) + cell((b.maint || {}).avg) + '</tr>'; });
+    h += '</tbody></table></div></div>';
+    h += '<div class="oq-card"><h2 class="ttl">Residential Service by Location</h2><p class="sub">Same measure, by the Acumatica branch that took the order.</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl"><thead><tr><th>' + W_BRAND + '</th><th>Location</th><th>Avg days' + itip('Average business days from booking to the first appointment.') + '</th><th>Same / next day' + itip('Share scheduled the same or the next business day.') + '</th><th>Orders</th></tr></thead><tbody>' +
+      (locs.length ? locs.map(function (l) { return '<tr><td>' + esc(l.brand) + '</td><td style="font-weight:600">' + esc(l.location) + '</td>' + cell(l.avg) + cell(l.le1, 1) + '<td class="num">' + fmt(l.orders) + '</td></tr>'; }).join('') : '<tr><td colspan="5" class="mut">No orders in this range.</td></tr>') + '</tbody></table></div></div>';
+    var wk = r.weekly || [], weeks = [], byB = {};
+    wk.forEach(function (w) { if (weeks.indexOf(w.week) < 0) weeks.push(w.week); (byB[w.brand] = byB[w.brand] || {})[w.week] = w; });
+    weeks.sort(); weeks = weeks.slice(-8);
+    if (weeks.length > 1) {
+      h += '<div class="oq-card"><h2 class="ttl">Residential Service Lead Time, Week by Week</h2><p class="sub">Average business days, weeks starting Monday. The latest week may be partial.</p><div style="overflow-x:auto;margin-top:10px"><table class="tbl"><thead><tr><th>' + W_BRAND + '</th>' + weeks.map(function (w) { return '<th class="num">' + fdate(w) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        Object.keys(byB).sort().map(function (b) { return '<tr><td style="font-weight:600">' + esc(b) + '</td>' + weeks.map(function (w) { var x = byB[b][w]; return x ? '<td class="num" title="' + fmt(x.orders) + ' orders" style="color:' + ltColor(x.avg) + ';font-weight:600">' + (+x.avg).toFixed(1) + '</td>' : '<td class="num mut">—</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div></div>';
+    }
+    h += '<p class="mut" style="font-size:12px;margin:4px 2px">Colors: green 1.5 days or less, amber up to 3, red over 3. The booking day is when the service order was created in Acumatica, which is usually the day of the call. PDQ and Dan’s Doors aren’t in Acumatica, so they don’t show here.</p>';
+    el.innerHTML = h;
   }
   function drawDashTrend() {
     var el = $('dtrend'); if (!el) return;
@@ -339,9 +400,13 @@ export function mountOpsisQA(ROOT, cfg) {
     ['answered', 'Customer conversations', 'Answered inbound calls with a real customer on the line. Internal/staff calls, voicemail, spam, wrong numbers, hang-ups in the phone menu and calls with no one on the line are left out, so this is lower than the phone system’s inbound count in Call Center Efficiency.'],
     ['tta', 'Time to answer', 'Average seconds from the call reaching this CSR’s queue to the CSR picking up. From the LightSpeed phone system.'],
     ['aht', 'Avg talk time', 'Average length of this CSR’s customer conversations, minutes:seconds.'],
+    ['talk_all', 'Total talk time', 'All phone time this CSR spent on calls, inbound and outbound, hours:minutes. From the LightSpeed phone system.'],
+    ['out_calls', 'Outbound calls', 'Calls this CSR dialed out in LightSpeed, with how many connected.'],
     ['opps', 'Opportunities', 'Customer conversations where a sales or service job could be booked. Follow-ups on existing work (billing, status checks, reschedules, warranty) are not opportunities. Only opportunities get a QA score.'],
     ['booked', 'Booked', 'Opportunities that ended with the job booked.'],
     ['conv', 'Conversion', 'Booked ÷ (booked + not booked). Opportunities handed to another team or still undecided are left out. Green = 60% or higher.'],
+    ['svc_conv', 'Resi service conv.', 'Booking conversion on residential service calls (repairs, springs, openers, tune-ups): booked ÷ booked + not booked.'],
+    ['sales_conv', 'Resi sales conv.', 'Booking conversion on residential sales calls (new doors, installs, entry-door sales): booked ÷ booked + not booked.'],
     ['card_rate', 'Card asks', 'Share of this CSR’s booked residential service calls where they asked for a card to hold the appointment (asked ÷ eligible bookings). Commercial, PDQ and Dan’s Doors are left out.'],
     ['cap_rate', 'Card captured', 'When the CSR asked for a card, how often the customer gave one (captured ÷ asked). Same numbers as the Card capture page.'],
     ['qa', 'QA score', 'Average call-flow score (0–100) on this CSR’s opportunity calls: introduce, listen, collect info, tech is the expert, offer and ask for the booking, card on file, overcome the objection, confirm and thank.'],
@@ -350,7 +415,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var el = $('dcsr'); if (!el) return;
     var multi = (DASH.d.brands || []).length !== 1, cols = DCOLS.filter(function (c) { return multi || c[0] !== 'brand'; });
     var rows = (DASH.d.agents || []).slice(), k = DASH.sort, dir = DASH.dir;
-    rows.forEach(function (a) { a.cap_rate = +a.card_asked ? 100 * (+a.card_captured || 0) / +a.card_asked : null; });
+    rows.forEach(function (a) { a.cap_rate = +a.card_asked ? 100 * (+a.card_captured || 0) / +a.card_asked : null; a.talk_all = a.talk_all_sec; });
     rows.sort(function (a, b) { if (k === 'name' || k === 'brand') return dir * String(a[k] || '').localeCompare(String(b[k] || '')); var av = a[k] == null ? -1e9 : +a[k], bv = b[k] == null ? -1e9 : +b[k]; return dir * (av - bv); });
     var th = function (c) { var on = k === c[0], asc = dir === 1; return '<th class="sortable" data-dsort="' + c[0] + '" aria-sort="' + (on ? (asc ? 'ascending' : 'descending') : 'none') + '"><span style="display:inline-flex;align-items:center;white-space:nowrap">' + c[1] + (on ? (asc ? ' ↑' : ' ↓') : '') + (c[2] ? itip(c[2]) : '') + '</span></th>'; };
     var c0 = DASH.d.cur || {}, cd = DASH.d.card || {};
@@ -360,6 +425,9 @@ export function mountOpsisQA(ROOT, cfg) {
       if (key === 'answered' || key === 'opps' || key === 'booked') return '<td class="num">' + fmt(a[key]) + '</td>';
       if (key === 'tta') return '<td class="num">' + dSec(a.tta) + '</td>';
       if (key === 'aht') return '<td class="num">' + dTalk(a.aht) + '</td>';
+      if (key === 'talk_all') return '<td class="num">' + (a.talk_all_sec ? Math.floor(+a.talk_all_sec / 3600) + ':' + ('0' + Math.floor((+a.talk_all_sec % 3600) / 60)).slice(-2) : '—') + '</td>';
+      if (key === 'out_calls') return '<td class="num">' + (a.out_calls != null ? fmt(a.out_calls) + (a.out_answered != null ? ' <span class="mut" style="font-size:11.5px">(' + fmt(a.out_answered) + ' connected)</span>' : '') : '—') + '</td>';
+      if (key === 'svc_conv' || key === 'sales_conv') { var dk = key === 'svc_conv' ? 'svc' : 'sales', dd = +a[dk + '_dec'] || 0; return '<td class="num" title="' + (dd ? fmt(a[dk + '_booked'] || 0) + ' booked of ' + fmt(dd) + ' decided' : 'No decided calls') + '">' + (dd ? dPct(a[key]) + ' <span class="mut" style="font-size:11.5px">(' + fmt(a[dk + '_booked'] || 0) + '/' + fmt(dd) + ')</span>' : '—') + '</td>'; }
       if (key === 'conv') return '<td class="num" style="color:' + (a.conv == null ? 'inherit' : +a.conv >= 60 ? '#1F5A41' : '#A8441A') + ';font-weight:600">' + dPct(a.conv) + '</td>';
       if (key === 'card_rate') return '<td class="num" title="' + (a.card_booked ? fmt(a.card_asked) + ' of ' + fmt(a.card_booked) + ' card-eligible bookings' : 'No card-eligible bookings') + '">' + (a.card_booked ? dPct(a.card_rate) + ' <span class="mut" style="font-size:11.5px">(' + fmt(a.card_asked) + '/' + fmt(a.card_booked) + ')</span>' : '—') + '</td>';
       if (key === 'cap_rate') return '<td class="num">' + (+a.card_asked ? dPct(100 * (+a.card_captured || 0) / +a.card_asked) + ' <span class="mut" style="font-size:11.5px">(' + fmt(a.card_captured || 0) + '/' + fmt(a.card_asked) + ')</span>' : '—') + '</td>';
@@ -372,10 +440,11 @@ export function mountOpsisQA(ROOT, cfg) {
       '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:12px"><table class="tbl"><thead><tr>' + cols.map(th).join('') + '</tr></thead><tbody>';
     if (!rows.length) h += '<tr><td colspan="' + cols.length + '" class="mut">No ' + W_CSRS.toLowerCase() + ' with calls in this range.</td></tr>';
     // Roll-up (Rob 11/16): brand total on top, then a subtotal row for each location.
-    var agg = function (list) { var t = { answered: 0, opps: 0, booked: 0, decided: 0, card_booked: 0, card_asked: 0, card_captured: 0 }, w = { tta: [0, 0], aht: [0, 0], qa: [0, 0], sentiment: [0, 0] };
-      list.forEach(function (a) { var n = +a.answered || 0; ['answered', 'opps', 'booked', 'decided', 'card_booked', 'card_asked', 'card_captured'].forEach(function (f) { t[f] += +a[f] || 0; });
+    var agg = function (list) { var t = { answered: 0, opps: 0, booked: 0, decided: 0, card_booked: 0, card_asked: 0, card_captured: 0, talk_all_sec: 0, out_calls: 0, out_answered: 0, svc_dec: 0, svc_booked: 0, sales_dec: 0, sales_booked: 0 }, w = { tta: [0, 0], aht: [0, 0], qa: [0, 0], sentiment: [0, 0] };
+      list.forEach(function (a) { var n = +a.answered || 0; ['answered', 'opps', 'booked', 'decided', 'card_booked', 'card_asked', 'card_captured', 'talk_all_sec', 'out_calls', 'out_answered', 'svc_dec', 'svc_booked', 'sales_dec', 'sales_booked'].forEach(function (f) { t[f] += +a[f] || 0; });
         if (a.tta != null) { w.tta[0] += a.tta * n; w.tta[1] += n; } if (a.aht != null) { w.aht[0] += a.aht * n; w.aht[1] += n; } if (a.qa != null) { var sc = +a.scored || +a.opps || 0; w.qa[0] += a.qa * sc; w.qa[1] += sc; } if (a.sentiment != null) { w.sentiment[0] += a.sentiment * n; w.sentiment[1] += n; } });
       Object.keys(w).forEach(function (f) { t[f] = w[f][1] ? w[f][0] / w[f][1] : null; });
+      t.svc_conv = t.svc_dec ? 100 * t.svc_booked / t.svc_dec : null; t.sales_conv = t.sales_dec ? 100 * t.sales_booked / t.sales_dec : null;
       t.conv = t.decided ? 100 * t.booked / t.decided : null; t.card_rate = t.card_booked ? 100 * t.card_asked / t.card_booked : null; return t; };
     var totRow = function (label, sub, t, top) { return '<tr style="background:' + (top ? '#E6F0EA' : '#F1EEE8') + ';font-weight:700"><td style="font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#14302A">' + esc(label) + ' <span class="mut" style="font-weight:500;text-transform:none;letter-spacing:0">· ' + sub + '</span></td>' + cols.slice(1).map(function (c) { return c[0] === 'brand' ? '<td></td>' : cell(t, c[0]); }).join('') + '</tr>'; };
     var groups = !multi && LROSTER && rows.length ? byLoc(LROSTER, rows, function (a) { return a.name; }) : [['', rows]];
@@ -478,7 +547,9 @@ export function mountOpsisQA(ROOT, cfg) {
         xTile('Abandon rate', x ? dPct(x.abandon_pct) : '—', xUp(x ? +x.abandon_pct : null, xp.abandon_pct != null ? +xp.abandon_pct : null, ' pts', false) + 'target: under ' + EXEC_RULES.abYel + '%', 'phone', 'Phone stats ›') +
         xTile('QA score', dNum(c.qa, 1), xUp(c.qa != null ? +c.qa : null, p.qa != null ? +p.qa : null, '', true) + fmt(c.scored) + ' calls scored', '#fsteps', 'Call flow ▾') +
         xTile('Card asks', dPct(cr), xUp(cr, pcr, ' pts', true) + (cd.booked ? fmt(cd.asked) + ' of ' + fmt(cd.booked) + ' bookings' : ''), 'cardcap', 'Card capture ›') +
-        xTile('Customer sentiment', dNum(c.sentiment, 2), xUp(c.sentiment != null ? +c.sentiment : null, p.sentiment != null ? +p.sentiment : null, '', true, false, 2) + '1–5 scale', '#fmood', 'Sentiment ▾');
+        xTile('Customer sentiment', dNum(c.sentiment, 2), xUp(c.sentiment != null ? +c.sentiment : null, p.sentiment != null ? +p.sentiment : null, '', true, false, 2) + '1–5 scale', '#fmood', 'Sentiment ▾') +
+        (CFG.leadTime ? xTile('Booking lead time', '<span id="xlead">…</span>', '<span id="xleads">Residential service, business days</span>', 'leadtime', 'Booking lead time ›', false, LT_TIP) : '');
+      fillLead('xlead', 'xleads');
       // Brand scorecard
       var ab = {}; (d.cdr_by_brand || []).forEach(function (r) { ab[r.brand] = r; });
       var mb = {}; (m.by_brand || []).forEach(function (r) { mb[r.brand] = r; });
@@ -4480,7 +4551,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; if (MGR && MGR_OK.indexOf(S.view) < 0) S.view = 'overview'; renderNav(); renderWho(); writeHash(); trackHist();
-    var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
   }

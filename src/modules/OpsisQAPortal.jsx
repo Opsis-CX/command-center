@@ -120,6 +120,12 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         if (error) { const e = new Error(error.message || 'Could not load the dashboard.'); e.status = 400; throw e }
         return data
       },
+      // Booking lead time (Rob 11/17): RPC qa_lead_time_report with the user's own session (same access + brand lock).
+      leadTime: csrSelf ? null : async ({ start, end, brands }) => {
+        const { data, error } = await supabase.rpc('qa_lead_time_report', { p_client: clientId || me.client, p_start: start, p_end: end, p_brands: brands && brands.length ? brands : null })
+        if (error) { const e = new Error(error.message || 'Could not load booking lead time.'); e.status = 400; throw e }
+        return data
+      },
       // Workforce (Erlang C) and AI Speed to Lead, scoped to this login's client through opsis-portal-ops.
       mountExt: (kind, el) => {
         const root = createRoot(el)
