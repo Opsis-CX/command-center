@@ -45,6 +45,25 @@ export function abandonEst(N, A, aht, patience) {
   return Math.max(0, Math.min(1, erlangC(N, A) * Math.exp(-(N - A) * (patience / aht))))
 }
 
+// Erlang A (2026-11-17, matches the Switchboard perfect-world model): birth-death chain with caller patience.
+// States 0..N+40. Arrivals λ = calls / interval; service μ = 1/aht per agent; impatient callers leave at θ = 1/patience.
+// Abandon probability = θ × expected number waiting ÷ λ.
+export function erlangAAbandon(N, calls, aht, patience, intervalSec = 1800) {
+  if (!(calls > 0) || !(aht > 0)) return 0
+  if (!(N > 0)) return 1
+  const lam = calls / intervalSec, mu = 1 / aht, th = 1 / Math.max(1, patience)
+  const K = N + 40
+  let p = 1, sum = 1, q = 0
+  for (let k = 1; k <= K; k++) {
+    const death = k <= N ? k * mu : N * mu + (k - N) * th
+    p = p * lam / death
+    sum += p
+    if (k > N) q += (k - N) * p
+    if (sum > 1e250) { p /= 1e200; sum /= 1e200; q /= 1e200 }
+  }
+  return Math.max(0, Math.min(1, (th * (q / sum)) / lam))
+}
+
 // One interval's staffing answer.
 //   calls        forecast calls in the interval
 //   aht          average handle time in seconds (talk + hold + wrap)
@@ -55,7 +74,9 @@ export function abandonEst(N, A, aht, patience) {
 //   shrink       share of paid time agents are NOT on the phones (breaks, coaching, absence)
 //   patience     seconds a caller waits before hanging up (for the abandon estimate)
 //   minAgents    floor (e.g. 1 agent whenever the line is open)
-export function staffInterval({ calls, aht, intervalSec = 1800, slPct = 0.8, slSec = 30, maxOcc = 0.85, shrink = 0.3, patience = 90, minAgents = 0 }) {
+//   abandonMax   optional abandon limit (e.g. 0.03): after the service-level count, add agents (up to +15) until the
+//                Erlang A abandon rate is at or under it — the same rule as the Switchboard perfect-world model
+export function staffInterval({ calls, aht, intervalSec = 1800, slPct = 0.8, slSec = 30, maxOcc = 0.85, shrink = 0.3, patience = 90, minAgents = 0, abandonMax = null }) {
   const A = calls > 0 && aht > 0 ? (calls * aht) / intervalSec : 0
   if (A <= 0) {
     const N0 = minAgents
@@ -67,6 +88,10 @@ export function staffInterval({ calls, aht, intervalSec = 1800, slPct = 0.8, slS
     if (sl >= slPct && A / N <= maxOcc) break
     N++
   }
+  if (abandonMax != null && abandonMax > 0) {
+    const base = N
+    while (N < base + 15 && erlangAAbandon(N, calls, aht, patience, intervalSec) > abandonMax) N++
+  }
   return {
     A,
     N,
@@ -75,7 +100,7 @@ export function staffInterval({ calls, aht, intervalSec = 1800, slPct = 0.8, slS
     asa: asa(N, A, aht),
     occ: A / N,
     pWait: erlangC(N, A),
-    abandon: abandonEst(N, A, aht, patience),
+    abandon: erlangAAbandon(N, calls, aht, patience, intervalSec),
   }
 }
 
@@ -84,7 +109,7 @@ export function performance({ calls, aht, N, intervalSec = 1800, slSec = 30, pat
   const A = calls > 0 && aht > 0 ? (calls * aht) / intervalSec : 0
   if (A <= 0) return { A: 0, N, sl: 1, asa: 0, occ: 0, pWait: 0, abandon: 0 }
   if (!N || N <= 0) return { A, N: 0, sl: 0, asa: Infinity, occ: 1, pWait: 1, abandon: 1 }
-  return { A, N, sl: serviceLevel(N, A, aht, slSec), asa: asa(N, A, aht), occ: Math.min(1, A / N), pWait: erlangC(N, A), abandon: abandonEst(N, A, aht, patience) }
+  return { A, N, sl: serviceLevel(N, A, aht, slSec), asa: asa(N, A, aht), occ: Math.min(1, A / N), pWait: erlangC(N, A), abandon: erlangAAbandon(N, calls, aht, patience, intervalSec) }
 }
 
 // Sensitivity table: how SL / ASA / occupancy move as agents are added.

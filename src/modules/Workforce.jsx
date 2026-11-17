@@ -210,7 +210,42 @@ export default function Workforce({ data = supabaseData, portal = false }) {
 // ============================================================
 // INBOUND — history (or demo profile) → forecast → Erlang C per interval → schedule fit
 // ============================================================
-const IN_DEFAULTS = { mode: 'history', brands: [], weeks: 6, tz: 'America/New_York', growth: 0, slPct: 80, slSec: 30, wrap: 30, ahtOverride: '', shrink: 30, maxOcc: 85, patience: 90, open: 16, close: 40, minAgents: 1, demoWeekly: 6000, demoAht: 240, days: [1, 2, 3, 4, 5, 6] }
+// GarageCo official open hours (2026-11-06, same as the Switchboard perfect-world model). Slots are 30-minute
+// indexes in the brand's own time zone: 14 = 7:00, 34 = 5:00 PM. Keyed by the first word of the brand name.
+const BRAND_HOURS = {
+  apple: { tz: 'America/New_York', wk: [14, 34], sat: [18, 24] },
+  cedar: { tz: 'America/Chicago', wk: [15, 36], sat: [16, 30] },
+  cheney: { tz: 'America/Chicago', wk: [14, 34] },
+  cunningham: { tz: 'America/New_York', wk: [14, 34] },
+  dans: { tz: 'America/Chicago', wk: [15, 33], fri: [15, 32] },
+  genson: { tz: 'America/New_York', wk: [14, 34] },
+  omaha: { tz: 'America/Chicago', wk: [16, 34], sat: [18, 26] },
+  pdq: { tz: 'America/New_York', wk: [14, 34], sat: [16, 24] },
+  quality: { tz: 'America/New_York', wk: [14, 34], sat: [16, 24] },
+  tvg: { tz: 'America/New_York', wk: [14, 34], sat: [16, 24] },
+}
+const brandKey = b => String(b || '').split(' ')[0].toLowerCase().replace(/['’]s$/, 's')
+const TZ_OFF = { 'America/New_York': 0, 'America/Chicago': -2, 'America/Denver': -4, 'America/Phoenix': -6, 'America/Los_Angeles': -6 }
+// Open slots per weekday (0=Sun) for the selected brands, shown in time zone `tz`. Several brands = earliest open to latest close.
+function brandHoursByDay(brands, tz) {
+  const out = {}
+  for (const b of brands) {
+    const h = BRAND_HOURS[brandKey(b)]; if (!h) continue
+    const shift = (TZ_OFF[tz] ?? 0) - (TZ_OFF[h.tz] ?? 0)
+    for (let d = 1; d <= 6; d++) {
+      const w = d === 6 ? h.sat : d === 5 && h.fri ? h.fri : h.wk
+      if (!w) continue
+      const o = w[0] + shift, c = w[1] + shift
+      out[d] = out[d] ? [Math.min(out[d][0], o), Math.max(out[d][1], c)] : [o, c]
+    }
+  }
+  return Object.keys(out).length ? out : null
+}
+const hoursText = h => { if (!h) return ''; const f = s => slotLabel(s, true); const wk = h[1] ? `Mon-Fri ${f(h[1][0])}-${f(h[1][1])}` : ''; return [wk, h[5] && h[1] && (h[5][0] !== h[1][0] || h[5][1] !== h[1][1]) ? `Fri ${f(h[5][0])}-${f(h[5][1])}` : '', h[6] ? `Sat ${f(h[6][0])}-${f(h[6][1])}` : ''].filter(Boolean).join(' · ') }
+
+// Defaults = the perfect-world standards (Switchboard, 2026-11-17): 90% in 15s, 3% abandon (Erlang A, ~11s patience),
+// 30s after-call work, 25% shrinkage, 80% occupancy cap, enterprise handle time, each brand's official hours.
+const IN_DEFAULTS = { mode: 'history', brands: [], weeks: 6, tz: 'America/New_York', growth: 0, slPct: 90, slSec: 15, wrap: 30, ahtOverride: '', ahtMode: 'enterprise', shrink: 25, maxOcc: 80, patience: 11, abandonMax: 3, hoursMode: 'brand', open: 16, close: 40, minAgents: 1, demoWeekly: 6000, demoAht: 240, days: [1, 2, 3, 4, 5, 6] }
 
 function InboundPlanner({ brands, clients, onSave, preset }) {
   const data = useContext(DataCtx)
@@ -224,7 +259,19 @@ function InboundPlanner({ brands, clients, onSave, preset }) {
   const [weekStart, setWeekStart] = useState(mondayOf())
   const [sched, setSched] = useState([])
 
+  const [tgt, setTgt] = useState(null)
   useEffect(() => { if (preset) setP({ ...IN_DEFAULTS, ...preset.params }) }, [preset])
+  useEffect(() => { data.target?.().then(setTgt).catch(() => {}) }, [])
+  // Enterprise handle time = latest full month in the Switchboard snapshot (talk + 30s ACW) → talk part.
+  const entAht = tgt?.aht_by_month?.length ? tgt.aht_by_month[tgt.aht_by_month.length - 1] : null
+  const entMonth = tgt?.months?.length ? new Date(tgt.months[tgt.months.length - 1] + '-15T12:00:00Z').toLocaleString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : ''
+  const entTalk = entAht ? Math.round(entAht - 30) : null
+  const brandHrs = p.mode === 'history' && p.hoursMode === 'brand' ? brandHoursByDay(p.brands, p.tz) : null
+  // Brand time zone follows the first selected brand (only when using brand hours).
+  useEffect(() => { if (p.hoursMode === 'brand' && p.brands.length) { const h = BRAND_HOURS[brandKey(p.brands[0])]; if (h && h.tz !== p.tz) set('tz', h.tz) } }, [p.brands.join('|'), p.hoursMode])
+  const openFor = d => brandHrs ? (brandHrs[d] || null) : (p.days.includes(d) ? [p.open, p.close] : null)
+  const tgtBrands = (tgt?.brands || []).filter(b => p.brands.some(x => brandKey(x) === brandKey(b.brand)))
+  const targetFte = tgtBrands.length ? tgtBrands.reduce((a, b) => a + (b.fte || 0), 0) : null
   const inboundBrands = brands.filter(b => b.direction === 'inbound')
   useEffect(() => { if (!p.brands.length && inboundBrands.length && p.mode === 'history') set('brands', [inboundBrands[0].brand]) }, [inboundBrands.length])
 
@@ -256,37 +303,44 @@ function InboundPlanner({ brands, clients, onSave, preset }) {
     for (const r of source) {
       const calls = num(r.calls) * (1 + g)
       total += calls
-      const open = p.days.includes(r.dow) && r.slot >= p.open && r.slot < p.close
+      const oh = openFor(r.dow), open = !!oh && r.slot >= oh[0] && r.slot < oh[1]
       if (!open) { outside += calls; continue }
-      const baseAht = p.ahtOverride !== '' && p.ahtOverride != null ? num(p.ahtOverride) : num(r.aht_sec, 180)
+      const baseAht = p.ahtMode === 'enterprise' && entTalk ? entTalk : p.ahtMode === 'override' && p.ahtOverride !== '' && p.ahtOverride != null ? num(p.ahtOverride) : num(r.aht_sec, 180)
       out[`${r.dow}-${r.slot}`] = { calls, aht: baseAht + num(p.wrap) }
     }
     const rows = {}
     for (let d = 0; d < 7; d++) {
       rows[d] = []
-      if (!p.days.includes(d)) continue
-      for (let s = p.open; s < p.close; s++) {
-        const c = out[`${d}-${s}`] || { calls: 0, aht: (p.ahtOverride !== '' ? num(p.ahtOverride) : 180) + num(p.wrap) }
-        const need = staffInterval({ calls: c.calls, aht: c.aht, slPct: num(p.slPct) / 100, slSec: num(p.slSec), maxOcc: num(p.maxOcc) / 100, shrink: num(p.shrink) / 100, patience: num(p.patience), minAgents: num(p.minAgents) })
+      const oh = openFor(d)
+      if (!oh) continue
+      for (let s = oh[0]; s < oh[1]; s++) {
+        const c = out[`${d}-${s}`] || { calls: 0, aht: (p.ahtMode === 'enterprise' && entTalk ? entTalk : p.ahtMode === 'override' && p.ahtOverride !== '' ? num(p.ahtOverride) : 180) + num(p.wrap) }
+        const need = staffInterval({ calls: c.calls, aht: c.aht, slPct: num(p.slPct) / 100, slSec: num(p.slSec), maxOcc: num(p.maxOcc) / 100, shrink: num(p.shrink) / 100, patience: num(p.patience), minAgents: num(p.minAgents), abandonMax: p.abandonMax !== '' && p.abandonMax != null && num(p.abandonMax) > 0 ? num(p.abandonMax) / 100 : null })
         const sch = schedClient ? (schedMap[`${d}-${s}`] ?? 0) : null
         const perf = sch != null ? performance({ calls: c.calls, aht: c.aht, N: Math.floor(sch * (1 - num(p.shrink) / 100)), slSec: num(p.slSec), patience: num(p.patience) }) : null
         rows[d].push({ slot: s, calls: c.calls, aht: c.aht, need, sched: sch, perf })
       }
     }
     return { rows, outside, total }
-  }, [source, p, schedMap, schedClient])
+  }, [source, p, schedMap, schedClient, entTalk, JSON.stringify(brandHrs)])
 
   const all = Object.values(grid.rows).flat()
   const weekCalls = all.reduce((a, r) => a + r.calls, 0)
   const wAht = weekCalls ? all.reduce((a, r) => a + r.calls * r.aht, 0) / weekCalls : 0
   const peak = all.reduce((m, r) => Math.max(m, r.need.scheduled), 0)
   const agentHours = all.reduce((a, r) => a + r.need.scheduled * 0.5, 0)
+  // FTE the Switchboard way: on-phone agent hours ÷ phone hours per FTE (40 × (1 − shrinkage)).
+  const phoneHours = all.reduce((a, r) => a + r.need.N * 0.5, 0)
+  const planFte = phoneHours / (40 * Math.max(0.05, 1 - num(p.shrink) / 100))
+  const abW = weekCalls ? all.reduce((a, r) => a + r.calls * r.need.abandon, 0) / weekCalls : 0
   const slW = weekCalls ? all.reduce((a, r) => a + r.calls * r.need.sl, 0) / weekCalls : 1
   const schedHours = schedClient ? all.reduce((a, r) => a + (r.sched || 0) * 0.5, 0) : null
   const under = schedClient ? all.filter(r => r.calls > 0 && (r.sched || 0) < r.need.scheduled).length : null
   const slAtSched = schedClient && weekCalls ? all.reduce((a, r) => a + r.calls * (r.perf?.sl ?? 0), 0) / weekCalls : null
   const maxCell = Math.max(1, ...all.map(r => (metric === 'calls' ? r.calls : metric === 'gap' ? Math.abs((r.sched || 0) - r.need.scheduled) : r.need.scheduled)))
-  const slots = Array.from({ length: Math.max(0, p.close - p.open) }, (_, i) => p.open + i)
+  const opens = [0, 1, 2, 3, 4, 5, 6].map(openFor).filter(Boolean)
+  const sMin = opens.length ? Math.min(...opens.map(o => o[0])) : p.open, sMax = opens.length ? Math.max(...opens.map(o => o[1])) : p.close
+  const slots = Array.from({ length: Math.max(0, sMax - sMin) }, (_, i) => sMin + i)
   const dayRows = grid.rows[day] || []
   const target = num(p.slPct) / 100
 
@@ -310,7 +364,8 @@ function InboundPlanner({ brands, clients, onSave, preset }) {
               <Field label="History"><select style={S.input} value={p.weeks} onChange={e => set('weeks', Number(e.target.value))}>{[4, 6, 8, 12].map(w => <option key={w} value={w}>{w} weeks</option>)}</select></Field>
               <Field label="Time zone"><select style={{ ...S.input, width: 190 }} value={p.tz} onChange={e => set('tz', e.target.value)}>{TZS.map(t => <option key={t}>{t}</option>)}</select></Field>
               <Field label="Growth %" hint="Seasonal lift or a new program ramp"><NumIn value={p.growth} onChange={v => set('growth', v)} min={-90} /></Field>
-              <Field label="AHT override (s)" hint="Leave blank to use each interval's own talk time"><NumIn value={p.ahtOverride} onChange={v => set('ahtOverride', v)} /></Field>
+              <Field label="Talk time" hint="Enterprise = the average talk time across all 10 GarageCo brands for the latest full month (Switchboard perfect-world standard). Brand history = each interval's own talk time."><select style={{ ...S.input, width: 230 }} value={p.ahtMode} onChange={e => set('ahtMode', e.target.value)}><option value="enterprise">Enterprise{entTalk ? ` · ${entTalk}s (${entMonth})` : ''}</option><option value="history">Brand call history</option><option value="override">Enter a number</option></select></Field>
+              {p.ahtMode === 'override' && <Field label="Talk time (s)"><NumIn value={p.ahtOverride} onChange={v => set('ahtOverride', v)} /></Field>}
               {loading && <span style={S.note}>Loading history…</span>}
             </div>
           </>
@@ -331,14 +386,25 @@ function InboundPlanner({ brands, clients, onSave, preset }) {
           <Field label="Wrap-up (s)" hint="After-call work added to talk time"><NumIn value={p.wrap} onChange={v => set('wrap', v)} /></Field>
           <Field label="Shrinkage %" hint="Breaks, coaching, absence: paid time not on the phones"><NumIn value={p.shrink} onChange={v => set('shrink', v)} max={80} /></Field>
           <Field label="Max occupancy %"><NumIn value={p.maxOcc} onChange={v => set('maxOcc', v)} max={98} /></Field>
-          <Field label="Caller patience (s)"><NumIn value={p.patience} onChange={v => set('patience', v)} /></Field>
+          <Field label="Abandon limit %" hint="Add agents until the Erlang A abandon rate is at or under this in every half-hour (every abandon counted). Blank or 0 = no abandon rule."><NumIn value={p.abandonMax} onChange={v => set('abandonMax', v)} step={0.5} max={50} /></Field>
+          <Field label="Caller patience (s)" hint="Average seconds a caller waits before hanging up. 11s gives the ~9s abandoner wait seen in GarageCo's calls."><NumIn value={p.patience} onChange={v => set('patience', v)} /></Field>
           <Field label="Min agents open"><NumIn value={p.minAgents} onChange={v => set('minAgents', v)} /></Field>
-          <Field label="Open"><select style={S.input} value={p.open} onChange={e => set('open', Number(e.target.value))}>{Array.from({ length: 48 }, (_, s) => <option key={s} value={s}>{slotLabel(s)}</option>)}</select></Field>
-          <Field label="Close"><select style={S.input} value={p.close} onChange={e => set('close', Number(e.target.value))}>{Array.from({ length: 48 }, (_, s) => <option key={s + 1} value={s + 1}>{slotLabel((s + 1) % 48)}</option>)}</select></Field>
+          {!brandHrs && <>
+            <Field label="Open"><select style={S.input} value={p.open} onChange={e => set('open', Number(e.target.value))}>{Array.from({ length: 48 }, (_, s) => <option key={s} value={s}>{slotLabel(s)}</option>)}</select></Field>
+            <Field label="Close"><select style={S.input} value={p.close} onChange={e => set('close', Number(e.target.value))}>{Array.from({ length: 48 }, (_, s) => <option key={s + 1} value={s + 1}>{slotLabel((s + 1) % 48)}</option>)}</select></Field>
+          </>}
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={S.note}>Days open:</span>
-          {DAYS.map((d, i) => <button key={d} style={S.chip(p.days.includes(i))} onClick={() => toggleDay(i)}>{d}</button>)}
+          <span style={S.note}>Open hours:</span>
+          {p.mode === 'history' && <button style={S.chip(p.hoursMode === 'brand')} onClick={() => set('hoursMode', 'brand')}>Brand's official hours</button>}
+          <button style={S.chip(!brandHrs)} onClick={() => set('hoursMode', 'custom')}>Custom</button>
+          {brandHrs && <span style={S.note}>{hoursText(brandHrs)} ({p.tz.replace('America/', '').replace('_', ' ')} time) · closed Sunday</span>}
+          {p.hoursMode === 'brand' && p.mode === 'history' && p.brands.length > 0 && !brandHrs && <span style={S.note}>No official hours on file for this brand; using custom hours.</span>}
+          {!brandHrs && <>
+            <span style={{ ...S.note, marginLeft: 8 }}>Days open:</span>
+            {DAYS.map((d, i) => <button key={d} style={S.chip(p.days.includes(i))} onClick={() => toggleDay(i)}>{d}</button>)}
+          </>}
+          <button style={{ ...S.chip(false), marginLeft: 'auto' }} onClick={() => setP(x => ({ ...x, slPct: 90, slSec: 15, wrap: 30, shrink: 25, maxOcc: 80, patience: 11, abandonMax: 3, minAgents: 1, ahtMode: 'enterprise', hoursMode: 'brand' }))} title="90% in 15s, 3% abandon, 30s wrap, 25% shrinkage, 80% occupancy, enterprise talk time, official hours">Reset to perfect-world standards</button>
         </div>
       </Card>
 
@@ -346,8 +412,11 @@ function InboundPlanner({ brands, clients, onSave, preset }) {
         <Kpi n={n0(weekCalls)} l="Forecast calls / week" />
         <Kpi n={secs(wAht)} l="Avg handle time (talk + wrap)" />
         <Kpi n={n0(peak)} l="Peak agents scheduled (incl. shrinkage)" tone="var(--accent)" />
-        <Kpi n={n0(agentHours)} l={`Agent hours / week · ${n1(agentHours / 40)} FTE`} />
+        <Kpi n={n1(planFte)} l={`FTE needed · ${n0(phoneHours)} phone hours / week`} tone="var(--accent)" />
+        {targetFte != null && <Kpi n={n1(targetFte)} l="Perfect-world target FTE (Switchboard, May–Oct)" />}
+        {schedClient && <Kpi n={n1((schedHours || 0) / 40)} l={`FTE scheduled this week${targetFte != null ? ` · ${(schedHours || 0) / 40 - targetFte >= 0 ? '+' : ''}${n1((schedHours || 0) / 40 - targetFte)} vs target` : ''}`} tone={targetFte != null ? ((schedHours || 0) / 40 >= targetFte ? 'var(--passed)' : 'var(--failed)') : undefined} />}
         <Kpi n={pct(slW)} l={`Planned service level (${p.slPct}/${p.slSec})`} tone={slColor(slW, target)} />
+        <Kpi n={pct(abW, 1)} l={`Planned abandon rate${p.abandonMax ? ` (limit ${p.abandonMax}%)` : ''}`} tone={p.abandonMax && abW > num(p.abandonMax) / 100 ? 'var(--failed)' : 'var(--passed)'} />
         {schedClient && <Kpi n={pct(slAtSched)} l={`SL with today's schedule · ${under} short intervals`} tone={slColor(slAtSched, target)} />}
       </div>
       {grid.total > 0 && grid.outside / grid.total > 0.03 && <div style={S.note}>⚠ {pct(grid.outside / grid.total)} of forecast calls fall outside the open hours above and aren't staffed.</div>}
@@ -391,14 +460,14 @@ function InboundPlanner({ brands, clients, onSave, preset }) {
         <DayChart rows={dayRows} target={target} />
         <div style={{ display: 'flex', gap: 16, ...S.note }}>
           <span><span style={{ display: 'inline-block', width: 12, height: 12, background: 'var(--accent-bg)', border: '1px solid var(--accent)', borderRadius: 3, verticalAlign: -2 }} /> Calls</span>
-          <span><span style={{ display: 'inline-block', width: 14, height: 3, background: 'var(--accent)', verticalAlign: 3 }} /> Agents to schedule (Erlang C + shrinkage)</span>
+          <span><span style={{ display: 'inline-block', width: 14, height: 3, background: 'var(--accent)', verticalAlign: 3 }} /> Agents to schedule (service goal + abandon limit + shrinkage)</span>
           {schedClient && <span><span style={{ display: 'inline-block', width: 14, height: 0, borderTop: '2px dashed #c98a12', verticalAlign: 3 }} /> Scheduled</span>}
         </div>
         <div style={{ overflowX: 'auto', maxHeight: 520 }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead><tr>
               <th style={{ ...S.th, textAlign: 'left' }}>Interval</th><th style={S.th}>Calls</th><th style={S.th}>AHT</th><th style={S.th}>Erlangs</th>
-              <th style={S.th}>On phones</th><th style={S.th}>To schedule</th><th style={S.th}>Service level</th><th style={S.th}>ASA</th><th style={S.th}>Occupancy</th><th style={S.th}>Est. abandon</th>
+              <th style={S.th}>On phones</th><th style={S.th}>To schedule</th><th style={S.th}>Service level</th><th style={S.th}>ASA</th><th style={S.th}>Occupancy</th><th style={S.th} title="Erlang A, with the caller patience above">Abandon</th>
               {schedClient && <><th style={S.th}>Scheduled</th><th style={S.th}>Gap</th><th style={S.th}>SL as scheduled</th></>}
             </tr></thead>
             <tbody>
@@ -419,7 +488,7 @@ function InboundPlanner({ brands, clients, onSave, preset }) {
             </tbody>
           </table>
         </div>
-        <div style={S.note}>Erlang C assumes callers wait in queue and calls arrive at random within each 30-minute interval. "To schedule" divides agents on the phones by (1 − shrinkage). Scheduled agents come from claimed intervals in Schedule (no-shows excluded).</div>
+        <div style={S.note}>Agents on the phones = the larger of the Erlang C count for the service goal and the Erlang A count for the abandon limit, at least the minimum per open half-hour (the Switchboard perfect-world rule). "To schedule" divides agents on the phones by (1 − shrinkage). FTE = on-phone hours ÷ (40 × (1 − shrinkage)). Scheduled agents come from claimed intervals in Schedule (no-shows excluded).</div>
       </Card>
     </div>
   )
