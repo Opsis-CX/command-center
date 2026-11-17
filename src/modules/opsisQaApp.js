@@ -272,10 +272,11 @@ export function mountOpsisQA(ROOT, cfg) {
       dTile('Avg time to abandon', x ? dSec(x.tab) : '—', 'Minimum: rollover calls only', '', 'Average wait of abandoned callers before they hung up. LightSpeed only times callers who rolled over to the queue, so treat this as a minimum.') +
       dTile('Avg talk time', dTalk(c.aht), fmt(c.answered) + ' customer conversations', dNeutral(c.aht, p.aht, dTalk), 'Average talk time on inbound customer conversations answered by CSRs.') + '</div>';
     var cr = cd.ask_rate != null ? +cd.ask_rate : null, pcr = cd.prev_ask_rate != null ? +cd.prev_ask_rate : null;
-    if ($('dbook')) $('dbook').innerHTML = '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">' +
+    if ($('dbook')) $('dbook').innerHTML = '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(128px,1fr))">' +
       dTile('Opportunities', fmt(c.opps), fmt(c.decided) + ' ended booked or not booked', '', 'Calls where the customer could have been booked.') +
       dTile('Booked', fmt(c.booked), 'vs ' + fmt(p.booked) + ' the period before', '', 'Booking opportunities that ended booked.') +
       dTile('Conversion', dPct(c.conv), 'Booked ÷ booked + not booked', delta(c.conv != null ? +c.conv : null, p.conv != null ? +p.conv : null, ' pts'), 'Same booking rate as the Overview and Brands pages.') +
+      dTile('Booking ask rate', dPct(c.ask_rate), 'Opportunities where the CSR asked to book', delta(c.ask_rate != null ? +c.ask_rate : null, p.ask_rate != null ? +p.ask_rate : null, ' pts'), 'Share of opportunities where the CSR directly asked to book the appointment.') +
       dTile('Card asks', dPct(cr), cd.booked ? fmt(cd.asked) + ' of ' + fmt(cd.booked) + ' card-eligible bookings' : 'No card-eligible bookings', delta(cr, pcr, ' pts'), 'Booked residential service calls where the CSR asked for a card. Same numbers as Card capture.') +
       dTile('QA score', dNum(c.qa, 1), fmt(c.scored) + ' calls scored', delta(c.qa != null ? +c.qa : null, p.qa != null ? +p.qa : null, ''), 'Average call-flow score, 0–100.') +
       dTile('Sentiment', dNum(c.sentiment, 2), 'Customer mood at the end, 1–5', delta(c.sentiment != null ? +c.sentiment : null, p.sentiment != null ? +p.sentiment : null, ''), 'Average customer sentiment at the end of the call (1 = upset, 5 = happy).') + '</div>';
@@ -593,11 +594,10 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div class="oq-card" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:14px">' + (kind === 'brand' ? bbadge(name).replace('26px;height:26px', '44px;height:44px').replace('10.5px', '15px') : avatar(name, 44)) +
       '<div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.025em">' + esc(kind === 'brand' ? name : name) + '</h1><div class="mut" style="font-size:12.5px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' vs the ' + daysBetween(S.start, S.end) + ' days before</div></div></div>' +
       '<div class="row"><button class="sel" data-callsfor="' + kind + '">All calls →</button><button class="sel btnd" data-ask="' + esc(kind === 'brand' ? 'What should we focus on at ' + name + ' this week?' : 'How should we coach ' + name + ' this week?') + '">Ask about ' + esc(title) + '</button></div></div>' +
-      (kind === 'brand' && DASHON() ? '<div id="dphone">' + skel(110, 1) + '</div>' : '') +
+      (kind === 'brand' && DASHON() ? '<div id="dphone">' + skel(110, 1) + '</div><div id="dbook">' + skel(110, 1) + '</div><div class="oq-card" id="dtrend">' + skel(180, 1) + '</div><div class="oq-card" id="dcsr">' + skel(30, 8) + '</div>' : '') +
       '<div class="ai" id="why"><div style="display:flex;gap:10px;align-items:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><b>Why ' + esc(title) + ' is trending this way</b></div><div class="md" style="margin-top:10px"><span class="dots"><span></span><span></span><span></span></span> <span class="mut">Reading this period’s calls…</span></div></div>' +
-      '<div id="fk" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">' + skel(90, 1).repeat(4) + '</div>' +
+      '<div id="fk" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))' + (kind === 'brand' && DASHON() ? ';display:none' : '') + '">' + skel(90, 1).repeat(4) + '</div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 520px" id="fweek">' + skel(200, 1) + '</div><div class="oq-card" style="flex:1 1 360px" id="fsteps">' + skel(18, 9) + '</div></div>' +
-      (kind === 'brand' && DASHON() ? '<div class="oq-card" id="dcsr">' + skel(30, 8) + '</div>' : '') +
       (kind === 'brand' ? '<div class="oq-card" id="fmovers">' + skel(30, 8) + '</div>' : '<div class="oq-card" id="fcalls">' + skel(50, 5) + '</div>') +
       '<div class="oq-card" id="feff">' + skel(30, 5) + '</div>' +
       '<div class="row" style="align-items:flex-start" id="fmix">' + skel(20, 10) + '</div>' +
@@ -605,7 +605,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var brand = kind === 'brand' ? name : null, agent = kind === 'csr' ? name : null;
     focusEff(tok, kind, brand, agent); focusMood(tok, kind, brand, agent);
     if (kind === 'brand' && DASHON()) { DASH.open = null; loadDash([brand]).then(function (d) { if (tok !== T) return; DASH.d = d || {}; drawDash(); })
-      .catch(function () { ['dphone', 'dcsr'].forEach(function (id) { var x = $(id); if (x) x.remove(); }); }); }
+      .catch(function () { ['dphone', 'dbook', 'dtrend', 'dcsr'].forEach(function (id) { var x = $(id); if (x) x.remove(); }); var k = $('fk'); if (k) k.style.display = ''; }); }
     loadFocus(brand, agent).then(function (f) {
       if (tok !== T) return;
       if (FOCUSWHY) FOCUSWHY(f); focusKpis(f, brand, agent); focusWeekly(f); stepCard(f, 'fsteps', brand, agent); focusMix(f, brand, agent);
