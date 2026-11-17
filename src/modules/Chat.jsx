@@ -860,8 +860,8 @@ export default function Chat() {
     supabase.rpc('chat_support_powers').then(({ data }) => { if (data) setSupPw({ agent: !!data.agent, owner: !!data.owner, admin: !!data.admin }) })
     supabase.rpc('chat_support_options').then(({ data }) => setSupportOpts(Array.isArray(data) ? data : []))
   }, [])
-  const canLeaveSupport = isOwner || supPw.owner      // Owners can leave agent support chats
-  const canMuteSupport = isAdmin || supPw.admin       // only admins can mute them
+  const canMuteSupport = isAdmin || isOwner || supPw.admin   // only admins + owners can mute agent chats
+  const canLeaveSupport = canMuteSupport                      // ...or leave them
   const isMobile = useIsMobile()
   const { counts: unreadCounts, markRead } = useUnread()
   const [me, setMe] = useState(null)
@@ -1135,7 +1135,7 @@ export default function Chat() {
   }
   const amStaff = isStaffProfile(me)
   const agentBlocked = (agentId) => {
-    if (!amStaff || !agentId) return false
+    if (!amStaff || !canMuteSupport || !agentId) return false
     const o = agentDm.overrides[agentId]
     return o === undefined ? agentDm.blockAll : o
   }
@@ -1467,7 +1467,7 @@ export default function Chat() {
             ? menuItem('👁 Unhide', () => { unhideItem(c); close() })
             : menuItem('🙈 Hide', () => { hideItem(c); close() })}
           {c.is_dm && <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />}
-          {amStaff && agentPeer(c) && (() => {
+          {amStaff && canMuteSupport && agentPeer(c) && (() => {
             const ag = agentPeer(c), off = agentBlocked(ag.id), first = (ag.full_name || 'this agent').split(' ')[0]
             return menuItem(off ? `🔔 Turn on messages from ${first}` : `🔕 Turn off messages from ${first}`, () => { setAgentBlocked(ag.id, !off); close() })
           })()}
@@ -1476,7 +1476,7 @@ export default function Chat() {
             return menuItem(c.support_muted_at ? `🔔 Turn on messages from ${first}` : `🔕 Turn off messages from ${first}`, () => { setSupportMuted(c, !c.support_muted_at); close() })
           })()}
           {c.support_line_id && supportMeta[c.id] && canLeaveSupport && menuItem('🚪 Leave conversation', () => { close(); leaveSupport(c) })}
-          {c.is_dm && !supportMeta[c.id] && menuItem('✕ Remove conversation', () => { close(); deleteDmForMe(c) })}
+          {c.is_dm && !supportMeta[c.id] && (!agentPeer(c) || canMuteSupport) && menuItem('✕ Remove conversation', () => { close(); deleteDmForMe(c) })}
           {isOwner && !c.is_dm && <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />}
           {isOwner && menuItem(c.is_dm ? '⚠ Delete for everyone' : '🗑 Delete channel for everyone', () => { close(); deleteChannel(c) }, { danger: true })}
         </>)
