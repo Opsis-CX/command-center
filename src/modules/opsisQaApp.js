@@ -437,7 +437,8 @@ export function mountOpsisQA(ROOT, cfg) {
 
   // Executive summary (Becky 11/17): the admin Overview for C-level readers. Money first, then operations,
   // a brand scorecard with status dots, plain-English highlights and the week-by-week trend.
-  var EXEC_RULES = { convRed: 50, convYel: 55, abRed: 7, abYel: 5.5, cardRed: 70, cardYel: 78 };
+  // Becky 11/17: targets = conversion 75%+, abandon under 3%, card asks 75%+. Red = conversion under 50%, abandon over 5%, card asks under 70%. Yellow = between target and red.
+  var EXEC_RULES = { convRed: 50, convYel: 75, abRed: 5, abYel: 3, cardRed: 70, cardYel: 75 };
   function xTile(label, val, sub, to, linkLbl, dark, tip) {
     var at = to ? (to.charAt(0) === '#' ? ' data-ddrill="' + to.slice(1) + '" role="button" aria-expanded="false"' : ' data-tgo="' + to + '" role="link"') + ' tabindex="0"' : '';
     return '<div class="oq-card' + (to ? ' click' : '') + '"' + at + ' style="padding:16px 18px 14px;min-width:0;' + (dark ? 'background:#14302A;border-color:#14302A;color:#fff' : (to ? 'border-color:#CFE3D8' : '')) + '">' +
@@ -471,7 +472,7 @@ export function mountOpsisQA(ROOT, cfg) {
       var cr = cd.ask_rate != null ? +cd.ask_rate : null, pcr = cd.prev_ask_rate != null ? +cd.prev_ask_rate : null;
       $('xops').innerHTML =
         xTile('Calls', x ? fmt(x.offered) : '—', (x && xp.offered ? xUp(100 * (x.offered - xp.offered) / xp.offered, 0, '%', true) : '') + (x ? fmt(Math.round(x.offered / Math.max(1, x.days))) + ' per day' : 'no phone data'), 'phone', 'Phone stats ›') +
-        xTile('Abandon rate', x ? dPct(x.abandon_pct) : '—', xUp(x ? +x.abandon_pct : null, xp.abandon_pct != null ? +xp.abandon_pct : null, ' pts', false) + 'goal: under 5%', 'phone', 'Phone stats ›') +
+        xTile('Abandon rate', x ? dPct(x.abandon_pct) : '—', xUp(x ? +x.abandon_pct : null, xp.abandon_pct != null ? +xp.abandon_pct : null, ' pts', false) + 'target: under ' + EXEC_RULES.abYel + '%', 'phone', 'Phone stats ›') +
         xTile('QA score', dNum(c.qa, 1), xUp(c.qa != null ? +c.qa : null, p.qa != null ? +p.qa : null, '', true) + fmt(c.scored) + ' calls scored', '#fsteps', 'Call flow ▾') +
         xTile('Card asks', dPct(cr), xUp(cr, pcr, ' pts', true) + (cd.booked ? fmt(cd.asked) + ' of ' + fmt(cd.booked) + ' bookings' : ''), 'cardcap', 'Card capture ›') +
         xTile('Customer sentiment', dNum(c.sentiment, 2), xUp(c.sentiment != null ? +c.sentiment : null, p.sentiment != null ? +p.sentiment : null, '', true, false, 2) + '1–5 scale', '#fmood', 'Sentiment ▾');
@@ -486,7 +487,7 @@ export function mountOpsisQA(ROOT, cfg) {
       var dot = { r: '#C2562A', y: '#E0A82A', g: '#2F7D5B' }, stl = { r: 'Needs attention', y: 'Watch', g: 'On track' };
       var cell = function (v, f, bad, warn) { return '<td class="num" style="' + (bad ? 'color:#A8441A;font-weight:700' : warn ? 'color:#8A5A00;font-weight:600' : '') + '">' + f(v) + '</td>'; };
       var R = EXEC_RULES;
-      $('xbrands').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Brand Scorecard</h2><p class="sub">Click a brand for its dashboard. Status: red if conversion is under ' + R.convRed + '%, abandon over ' + R.abRed + '% or card asks under ' + R.cardRed + '%; yellow if close to those lines.</p></div><div class="mut" style="font-size:11.5px;white-space:nowrap">' + ['g', 'y', 'r'].map(function (k) { return '<span style="display:inline-block;width:9px;height:9px;border-radius:9px;background:' + dot[k] + ';margin:0 4px 0 10px"></span>' + stl[k]; }).join('') + '</div></div>' +
+      $('xbrands').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Brand Scorecard</h2><p class="sub">Click a brand for its dashboard. Targets: conversion ' + R.convYel + '%+, abandon under ' + R.abYel + '%, card asks ' + R.cardYel + '%+. Red: conversion under ' + R.convRed + '%, abandon over ' + R.abRed + '% or card asks under ' + R.cardRed + '%. Yellow: between target and red.</p></div><div class="mut" style="font-size:11.5px;white-space:nowrap">' + ['g', 'y', 'r'].map(function (k) { return '<span style="display:inline-block;width:9px;height:9px;border-radius:9px;background:' + dot[k] + ';margin:0 4px 0 10px"></span>' + stl[k]; }).join('') + '</div></div>' +
         '<div style="overflow-x:auto;margin-top:10px"><table class="tbl"><thead><tr><th>' + W_BRAND + '</th><th>Booked revenue' + itip('Value of jobs booked on calls this period.') + '</th><th>Left on the table' + itip('Winnable calls that didn’t book × the brand’s average job.') + '</th><th>Conversion</th><th>Abandon</th><th>QA</th><th>Card asks' + itip('PDQ and Dan’s Doors don’t take a card at booking.') + '</th></tr></thead><tbody>' +
         rows.map(function (r) { return '<tr class="click" data-brand="' + esc(r.b) + '" tabindex="0" title="Open ' + esc(short(r.b)) + '’s dashboard"><td><span title="' + stl[r.st] + '" style="display:inline-block;width:10px;height:10px;border-radius:10px;background:' + dot[r.st] + ';margin-right:8px"></span><b style="font-weight:600">' + esc(short(r.b)) + '</b></td><td class="num">' + (r.rev ? xMoney(r.rev) : '—') + '</td><td class="num mut">' + (r.lost ? xMoney(r.lost) : '—') + '</td>' +
           cell(r.cv, dPct, r.cv != null && r.cv < R.convRed, r.cv != null && r.cv < R.convYel) + cell(r.ab, dPct, r.ab != null && r.ab > R.abRed, r.ab != null && r.ab > R.abYel) + cell(r.qa, function (v) { return dNum(v, 1); }) + cell(r.card, function (v) { return v == null ? '—' : dPct(v); }, r.card != null && r.card < R.cardRed, r.card != null && r.card < R.cardYel) + '</tr>'; }).join('') + '</tbody></table></div>';
@@ -830,6 +831,7 @@ export function mountOpsisQA(ROOT, cfg) {
       return '<div class="oq-card" style="padding:14px 16px">' + capRow(d[0], KDEF[d[0]]) + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px"><span class="num" style="font-size:28px;font-weight:600;letter-spacing:-0.03em">' + d[3](d[1]) + '</span>' + (d[4] === null ? '' : delta(d[1], d[2], d[4])) + '</div><div class="mut num" style="font-size:11.5px;margin-top:6px">before: ' + d[3](d[2]) + '</div></div>';
     }).join('');
   }
+  var PROGRAM_MARKS = [['2026-08-26', 'Card program starts'], ['2026-10-27', 'Training starts']];
   function focusWeekly(f) {
     var T1 = 'QA Score and Booking Rate, Week by Week';
     var w = (f.weekly || []).filter(function (x) { return x.calls >= 10; });
@@ -846,10 +848,14 @@ export function mountOpsisQA(ROOT, cfg) {
     var startIdx = w.findIndex(function (x) { return x.w >= S.start.slice(0, 10); });
     var shade = startIdx >= 0 ? '<rect x="' + (L + startIdx / n * cw) + '" y="0" width="' + (cw - startIdx / n * cw) + '" height="' + Hd + '" fill="#E6F0EA" opacity=".55"/>' : '';
     var dots = w.map(function (x, i) { return '<circle cx="' + px(i) + '" cy="' + py(x.avg) + '" r="4" fill="#14302A"><title>Week of ' + fdate(x.w) + ': QA score ' + x.avg + (x.decided ? ' · ' + Math.round(x.booked / x.decided * 100) + '% booked' : '') + ' · ' + x.calls + ' calls</title></circle>'; }).join('');
+    // Program start markers (Becky 11/17): card program Aug 26, training Oct 27.
+    var marks = PROGRAM_MARKS.map(function (m) { var dt = m[0], i = -1; for (var k = 0; k < n; k++) if (w[k].w <= dt) i = k; if (i < 0) return '';
+      var days = Math.round((new Date(dt + 'T12:00:00Z') - new Date(w[i].w + 'T12:00:00Z')) / 864e5), x = (L + (i + Math.min(days, 6) / 7) / n * cw).toFixed(1);
+      return '<line x1="' + x + '" x2="' + x + '" y1="' + tp + '" y2="' + Hd + '" stroke="#1F5A41" stroke-width="1.5" stroke-dasharray="3 3"/><text x="' + (+x + 5) + '" y="' + (tp + 10) + '" font-size="11" font-weight="700" fill="#1F5A41">' + m[1] + ' · ' + fdate(dt) + '</text>'; }).join('');
     var last = w[n - 1], lr = rates[n - 1];
     var endl = '<text x="' + (+px(n - 1) - 8) + '" y="' + (+py(last.avg) - 9) + '" text-anchor="end" font-size="12" font-weight="700" fill="#14302A">' + (+last.avg).toFixed(1) + '</text>' + (lr != null ? '<text x="' + (+px(n - 1) - 8) + '" y="' + (+py(lr) + 16) + '" text-anchor="end" font-size="12" font-weight="700" fill="#E0662A">' + Math.round(lr) + '%</text>' : '');
-    $('fweek').innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">' + T1 + '</h2><p class="sub">Last 12 weeks. Solid line: average QA score (0–100). Dashed line: booking rate (%). Both read off the scale on the left. Shaded = the period you’re viewing · hover a dot for details.</p></div><div class="mut" style="font-size:12px;display:flex;gap:14px"><span style="color:#14302A">● QA score</span><span style="color:#E0662A">- - booking rate %</span></div></div>' +
-      '<svg viewBox="0 0 ' + Wd + ' ' + (Hd + 8) + '" style="width:100%;height:auto;margin-top:12px;overflow:visible" role="img" aria-label="Weekly QA score and booking rate">' + shade + grid + '<path d="' + rl + '" fill="none" stroke="#E0662A" stroke-width="2" stroke-dasharray="5 4"/><path d="' + line + '" fill="none" stroke="#14302A" stroke-width="2.4"/>' + dots + endl + '</svg>' +
+    $('fweek').innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">' + T1 + '</h2><p class="sub">Last 12 weeks. Solid line: average QA score (0–100). Dashed line: booking rate (%). Both read off the scale on the left. Shaded = the period you’re viewing. Dotted lines = when the card program and training started · hover a dot for details.</p></div><div class="mut" style="font-size:12px;display:flex;gap:14px"><span style="color:#14302A">● QA score</span><span style="color:#E0662A">- - booking rate %</span></div></div>' +
+      '<svg viewBox="0 0 ' + Wd + ' ' + (Hd + 8) + '" style="width:100%;height:auto;margin-top:12px;overflow:visible" role="img" aria-label="Weekly QA score and booking rate">' + shade + grid + marks + '<path d="' + rl + '" fill="none" stroke="#E0662A" stroke-width="2" stroke-dasharray="5 4"/><path d="' + line + '" fill="none" stroke="#14302A" stroke-width="2.4"/>' + dots + endl + '</svg>' +
       '<div style="display:flex;margin-top:4px;padding-left:4.4%">' + w.map(function (x, i) { return '<div style="flex:1;text-align:center;font-size:10px;color:#5F6763">' + (i % 2 === 0 ? 'Wk of ' + fdate(x.w) : '') + '</div>'; }).join('') + '</div>';
   }
 
