@@ -246,7 +246,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function dPct(v) { return v == null || isNaN(v) ? '—' : (+v).toFixed(1) + '%'; }
   function dNum(v, n) { return v == null || isNaN(v) ? '—' : (+v).toFixed(n); }
   function dTile(label, val, sub, dl, tip) {
-    return '<div class="oq-card" style="padding:16px 18px 14px;min-width:0" title="' + esc(tip || '') + '"><span class="cap">' + label + '</span><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px 8px;margin-top:12px"><span class="num" style="font-size:30px;font-weight:600;letter-spacing:-0.03em;line-height:1">' + val + '</span>' + (dl || '') + '</div><div class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.45">' + sub + '</div></div>';
+    return '<div class="oq-card" style="padding:16px 18px 14px;min-width:0">' + capRow(label, tip) + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px 8px;margin-top:12px"><span class="num" style="font-size:30px;font-weight:600;letter-spacing:-0.03em;line-height:1">' + val + '</span>' + (dl || '') + '</div><div class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.45">' + sub + '</div></div>';
   }
   function dNeutral(cur, prev, f) { return cur == null || prev == null ? '' : '<span class="pill num" style="background:#F3F1EC;color:#56605B" title="Previous period">was ' + f(prev) + '</span>'; }
   function vDash(tok) {
@@ -267,19 +267,19 @@ export function mountOpsisQA(ROOT, cfg) {
     if (!$('dphone')) return;
     var abd = x && x.abandon_pct != null ? delta(+x.abandon_pct, xp.abandon_pct != null ? +xp.abandon_pct : null, ' pts', false) : '';
     $('dphone').innerHTML = ($('dhead') ? '' : banner) + '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">' +
-      dTile('Calls', x ? fmt(x.offered) : '—', x ? fmt(x.answered) + ' answered · ' + fmt(Math.round(x.offered / Math.max(1, x.days))) + ' per day' : 'No phone data for these dates', '', 'Inbound calls that reached a CSR queue (LightSpeed).') +
-      dTile('Abandon rate', x ? dPct(x.abandon_pct) : '—', x ? fmt(x.abandoned) + ' callers hung up before a CSR answered' : '', abd, 'Abandoned ÷ calls that reached a CSR queue.') +
-      dTile('Avg time to answer', x ? dSec(x.tta) : '—', 'Queue to pickup, answered calls', x && x.tta != null && xp.tta != null ? delta(+x.tta, +xp.tta, 's', false) : '', 'Seconds from reaching the CSR queue to a CSR picking up.') +
+      dTile('Calls', x ? fmt(x.offered) : '—', x ? fmt(x.answered) + ' answered · ' + fmt(Math.round(x.offered / Math.max(1, x.days))) + ' per day' : 'No phone data for these dates', '', 'Every inbound call that reached a CSR queue in the LightSpeed phone system, answered or not. This is the phone system’s count, so it is higher than customer conversations.') +
+      dTile('Abandon rate', x ? dPct(x.abandon_pct) : '—', x ? fmt(x.abandoned) + ' callers hung up before a CSR answered' : '', abd, 'Callers who hung up after reaching the CSR queue but before a CSR answered, as a share of all calls that reached the queue.') +
+      dTile('Avg time to answer', x ? dSec(x.tta) : '—', 'Queue to pickup, answered calls', x && x.tta != null && xp.tta != null ? delta(+x.tta, +xp.tta, 's', false) : '', 'Average seconds from a call reaching the CSR queue to a CSR picking up, on answered calls.') +
       dTile('Avg time to abandon', x ? dSec(x.tab) : '—', 'Minimum: rollover calls only', '', 'Average wait of abandoned callers before they hung up. LightSpeed only times callers who rolled over to the queue, so treat this as a minimum.') +
-      dTile('Avg talk time', dTalk(c.aht), fmt(c.answered) + ' customer conversations', dNeutral(c.aht, p.aht, dTalk), 'Average talk time on inbound customer conversations answered by CSRs.') + '</div>';
+      dTile('Avg talk time', dTalk(c.aht), fmt(c.answered) + ' customer conversations', dNeutral(c.aht, p.aht, dTalk), 'Average length of the customer conversations CSRs answered, minutes:seconds. Internal calls, voicemail and calls with no conversation are left out.') + '</div>';
     var cr = cd.ask_rate != null ? +cd.ask_rate : null, pcr = cd.prev_ask_rate != null ? +cd.prev_ask_rate : null;
     if ($('dbook')) $('dbook').innerHTML = '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(128px,1fr))">' +
-      dTile('Opportunities', fmt(c.opps), fmt(c.decided) + ' ended booked or not booked', '', 'Calls where the customer could have been booked.') +
-      dTile('Booked', fmt(c.booked), 'vs ' + fmt(p.booked) + ' the period before', '', 'Booking opportunities that ended booked.') +
-      dTile('Conversion', dPct(c.conv), 'Booked ÷ booked + not booked', delta(c.conv != null ? +c.conv : null, p.conv != null ? +p.conv : null, ' pts'), 'Same booking rate as the Overview and Brands pages.') +
+      dTile('Opportunities', fmt(c.opps), fmt(c.decided) + ' ended booked or not booked', '', 'Customer conversations where a sales or service job could be booked. Follow-ups on existing work (billing, status checks, reschedules, warranty) are not opportunities. Only opportunities get a QA score.') +
+      dTile('Booked', fmt(c.booked), 'vs ' + fmt(p.booked) + ' the period before', '', 'Opportunities that ended with the job booked.') +
+      dTile('Conversion', dPct(c.conv), 'Booked ÷ booked + not booked', delta(c.conv != null ? +c.conv : null, p.conv != null ? +p.conv : null, ' pts'), 'Booked ÷ (booked + not booked). Opportunities handed to another team or still undecided are left out. Same booking rate as the Overview page.') +
       dTile('Booking ask rate', dPct(c.ask_rate), 'Opportunities where the CSR asked to book', delta(c.ask_rate != null ? +c.ask_rate : null, p.ask_rate != null ? +p.ask_rate : null, ' pts'), 'Share of opportunities where the CSR directly asked to book the appointment.') +
       dTile('Card asks', dPct(cr), cd.booked ? fmt(cd.asked) + ' of ' + fmt(cd.booked) + ' card-eligible bookings' : 'No card-eligible bookings', delta(cr, pcr, ' pts'), 'Booked residential service calls where the CSR asked for a card. Same numbers as Card capture.') +
-      (function (h) { return QAFLOW() ? h.replace('<div class="oq-card" style="', '<div class="oq-card click" data-qaflow="1" role="button" tabindex="0" aria-expanded="false" style="border-color:#CFE3D8;') : h; })(dTile('QA score', dNum(c.qa, 1), fmt(c.scored) + ' calls scored' + (QAFLOW() ? ' · <span style="color:#1F5A41;font-weight:600">click for call flow ▾</span>' : ''), delta(c.qa != null ? +c.qa : null, p.qa != null ? +p.qa : null, ''), 'Average call-flow score, 0–100.')) +
+      (function (h) { return QAFLOW() ? h.replace('<div class="oq-card" style="', '<div class="oq-card click" data-qaflow="1" role="button" tabindex="0" aria-expanded="false" style="border-color:#CFE3D8;') : h; })(dTile('QA score', dNum(c.qa, 1), fmt(c.scored) + ' calls scored' + (QAFLOW() ? ' · <span style="color:#1F5A41;font-weight:600">click for call flow ▾</span>' : ''), delta(c.qa != null ? +c.qa : null, p.qa != null ? +p.qa : null, ''), 'Average call-flow score (0–100) on opportunity calls. Click the tile to see each step of the call flow.')) +
       (function (h) { return QAFLOW() && $('fmood') ? h.replace('<div class="oq-card" style="', '<div class="oq-card click" data-ddrill="fmood" role="button" tabindex="0" aria-expanded="false" style="border-color:#CFE3D8;') : h; })(dTile('Sentiment', dNum(c.sentiment, 2), 'Customer mood at the end, 1–5' + (QAFLOW() && $('fmood') ? ' · <span style="color:#1F5A41;font-weight:600">click for details ▾</span>' : ''), delta(c.sentiment != null ? +c.sentiment : null, p.sentiment != null ? +p.sentiment : null, ''), 'Average customer sentiment at the end of the call (1 = upset, 5 = happy).') )+ '</div>';
     drawDashTrend(); drawDashTable();
   }
@@ -310,14 +310,22 @@ export function mountOpsisQA(ROOT, cfg) {
       '<text x="4" y="10" font-size="10" fill="#5F6763">Calls</text><text x="' + (W - 4) + '" y="10" text-anchor="end" font-size="10" fill="#2F7D5B">Conversion</text>' + grid + labs + bars +
       '<path d="' + line + '" fill="none" stroke="' + G + '" stroke-width="2" stroke-linejoin="round"/>' + pts.map(function (q) { return '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="3" fill="' + G + '"/>'; }).join('') + vals + xl + '</svg>';
   }
-  var DCOLS = [['name', W_CSR, 'Sort A–Z'], ['brand', W_BRAND, 'Sort by brand'], ['answered', 'Calls answered', 'Inbound customer conversations answered'], ['tta', 'Time to answer', 'Average seconds from queue to pickup (LightSpeed)'], ['aht', 'Avg talk time', 'Average talk time per conversation'],
-    ['opps', 'Opportunities', 'Calls that could have been booked'], ['booked', 'Booked', 'Opportunities that ended booked'], ['conv', 'Conversion', 'Booked ÷ booked + not booked'], ['card_rate', 'Card asks', 'Card-eligible bookings where the CSR asked for a card'], ['qa', 'QA score', 'Average call-flow score, 0–100'], ['sentiment', 'Sentiment', 'Customer mood at the end, 1–5']];
+  var DCOLS = [['name', W_CSR, ''], ['brand', W_BRAND, ''],
+    ['answered', 'Customer conversations', 'Answered inbound calls with a real customer on the line. Internal/staff calls, voicemail, spam, wrong numbers, hang-ups in the phone menu and calls with no one on the line are left out, so this is lower than the phone system’s inbound count in Call Center Efficiency.'],
+    ['tta', 'Time to answer', 'Average seconds from the call reaching this CSR’s queue to the CSR picking up. From the LightSpeed phone system.'],
+    ['aht', 'Avg talk time', 'Average length of this CSR’s customer conversations, minutes:seconds.'],
+    ['opps', 'Opportunities', 'Customer conversations where a sales or service job could be booked. Follow-ups on existing work (billing, status checks, reschedules, warranty) are not opportunities. Only opportunities get a QA score.'],
+    ['booked', 'Booked', 'Opportunities that ended with the job booked.'],
+    ['conv', 'Conversion', 'Booked ÷ (booked + not booked). Opportunities handed to another team or still undecided are left out. Green = 60% or higher.'],
+    ['card_rate', 'Card asks', 'Share of this CSR’s booked residential service calls where they asked for a card to hold the appointment (asked ÷ eligible bookings). Commercial, PDQ and Dan’s Doors are left out.'],
+    ['qa', 'QA score', 'Average call-flow score (0–100) on this CSR’s opportunity calls: introduce, listen, collect info, tech is the expert, offer and ask for the booking, card on file, overcome the objection, confirm and thank.'],
+    ['sentiment', 'Sentiment', 'Average customer mood at the end of the call, from 1 (upset) to 5 (happy). Counts every customer conversation, not just opportunities.']];
   function drawDashTable() {
     var el = $('dcsr'); if (!el) return;
     var multi = (DASH.d.brands || []).length !== 1, cols = DCOLS.filter(function (c) { return multi || c[0] !== 'brand'; });
     var rows = (DASH.d.agents || []).slice(), k = DASH.sort, dir = DASH.dir;
     rows.sort(function (a, b) { if (k === 'name' || k === 'brand') return dir * String(a[k] || '').localeCompare(String(b[k] || '')); var av = a[k] == null ? -1e9 : +a[k], bv = b[k] == null ? -1e9 : +b[k]; return dir * (av - bv); });
-    var th = function (c) { var on = k === c[0], asc = dir === 1; return '<th class="sortable" data-dsort="' + c[0] + '" title="' + esc(c[2]) + ' · click again to reverse" aria-sort="' + (on ? (asc ? 'ascending' : 'descending') : 'none') + '">' + c[1] + (on ? (asc ? ' ↑' : ' ↓') : '') + '</th>'; };
+    var th = function (c) { var on = k === c[0], asc = dir === 1; return '<th class="sortable" data-dsort="' + c[0] + '" aria-sort="' + (on ? (asc ? 'ascending' : 'descending') : 'none') + '"><span style="display:inline-flex;align-items:center;white-space:nowrap">' + c[1] + (on ? (asc ? ' ↑' : ' ↓') : '') + (c[2] ? itip(c[2]) : '') + '</span></th>'; };
     var c0 = DASH.d.cur || {}, cd = DASH.d.card || {};
     var cell = function (a, key) {
       if (key === 'name') return '<td><div style="display:flex;align-items:center;gap:10px">' + avatar(a.name, 28) + '<span style="font-weight:600">' + esc(a.name) + '</span></div></td>';
@@ -332,7 +340,7 @@ export function mountOpsisQA(ROOT, cfg) {
       return '<td></td>';
     };
     var cmp = function (label, v, tot, f, upGood) { var good = v == null || tot == null || upGood == null ? null : upGood ? +v >= +tot : +v <= +tot; return '<div style="flex:1 1 150px;min-width:140px;padding:10px 12px;background:#fff;border:1px solid #E8E4DC;border-radius:10px"><div class="cap">' + label + '</div><div class="num" style="font-size:18px;font-weight:600;margin-top:6px;color:' + (good == null ? 'inherit' : good ? '#1F5A41' : '#A8441A') + '">' + f(v) + '</div><div class="mut" style="font-size:11.5px;margin-top:2px">' + W_BRAND.toLowerCase() + ' ' + f(tot) + '</div></div>'; };
-    var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">' + W_CSR + ' Results: Calls, Bookings and Quality</h2><p class="sub">One row per ' + W_CSR + ' for this period: calls answered, speed to answer, talk time, bookings, card asks, QA score and customer sentiment. Click a ' + W_CSR + ' to compare them with the ' + W_BRAND.toLowerCase() + ' and open their calls.</p></div></div>' +
+    var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">' + W_CSR + ' Results: Calls, Bookings and Quality</h2><p class="sub">One row per ' + W_CSR + ' for this period: customer conversations, speed to answer, talk time, bookings, card asks, QA score and customer sentiment. Hover any ⓘ for how a column is counted. Click a ' + W_CSR + ' to compare them with the ' + W_BRAND.toLowerCase() + ' and open their calls.</p></div></div>' +
       '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:12px"><table class="tbl"><thead><tr>' + cols.map(th).join('') + '</tr></thead><tbody>';
     if (!rows.length) h += '<tr><td colspan="' + cols.length + '" class="mut">No ' + W_CSRS.toLowerCase() + ' with calls in this range.</td></tr>';
     rows.forEach(function (a) {
@@ -572,7 +580,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (!c) { if (tipEl) tipEl.style.display = 'none'; return; }
     if (!tipEl) { tipEl = document.createElement('div'); tipEl.style.cssText = 'position:fixed;z-index:80;pointer-events:none;background:#14302A;color:#fff;font-size:12px;line-height:1.5;padding:9px 12px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.18);max-width:320px'; ROOT.appendChild(tipEl); }
     tipEl.innerHTML = c.getAttribute('data-tip'); tipEl.style.display = 'block';
-    var r = c.getBoundingClientRect(); tipEl.style.left = Math.min(window.innerWidth - 330, Math.max(8, r.left + r.width / 2 - 160)) + 'px'; var tt = r.top - tipEl.offsetHeight - 8; tipEl.style.top = (tt < 8 ? r.bottom + 8 : tt) + 'px';
+    var r = c.getBoundingClientRect(); tipEl.style.left = Math.min(window.innerWidth - 330, Math.max(8, r.left + r.width / 2 - 160)) + 'px'; var tb = r.bottom + 8; tipEl.style.top = (tb + tipEl.offsetHeight > window.innerHeight - 8 ? Math.max(8, r.top - tipEl.offsetHeight - 8) : tb) + 'px';
   });
   function insightCard(cur, prev) {
     var k = cur.kpis || {}, p = cur.prev || {}, items = [];
@@ -4403,7 +4411,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (wt) { var wb = document.querySelector('#why .md'), wo = wb && wb.style.display === 'none'; if (wb) wb.style.display = wo ? '' : 'none'; wt.setAttribute('aria-expanded', wo ? 'true' : 'false'); var ws = wt.querySelector('span.mut'); if (ws) ws.textContent = wo ? 'Hide' : 'Show'; var wc = $('whychev'); if (wc) wc.style.transform = wo ? 'rotate(180deg)' : ''; return; }
     var qf = t.closest('[data-qaflow],[data-ddrill]');
     if (qf) { var fs = $(qf.getAttribute('data-ddrill') || 'fsteps'); if (fs) { var fo = fs.style.display === 'none'; fs.style.display = fo ? '' : 'none'; qf.setAttribute('aria-expanded', fo ? 'true' : 'false'); if (fo) fs.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } return; }
-    var dsr = t.closest('[data-dsort]');
+    var dsr = t.closest('[data-tip]') ? null : t.closest('[data-dsort]');
     if (dsr) { var dk = dsr.getAttribute('data-dsort'); DASH.dir = DASH.sort === dk ? -DASH.dir : (dk === 'name' || dk === 'brand' || dk === 'tta' ? 1 : -1); DASH.sort = dk; drawDashTable(); return; }
     var dcl = t.closest('[data-dcalls]');
     if (dcl) { openCalls(dcl.getAttribute('data-dnocard') ? { nocard: true } : {}, dcl.getAttribute('data-dcalls')); return; }
