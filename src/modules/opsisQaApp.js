@@ -155,9 +155,9 @@ export function mountOpsisQA(ROOT, cfg) {
     .concat(CFG.mountExt && CFG.supervisor ? [['wallboard', 'Wallboard'], ['myphone', 'Phone']] : [])
     .concat(CFG.mountExt ? [['wfm', 'Workforce']] : []).concat(CFG.mountExt && CFG.supervisor ? [['intraday', 'Intraday']] : [])],
     ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(CFG.mountExt && CFG.supervisor ? [['phonesetup', 'Phone setup'], ['callflow', 'Call flow']] : []).concat(IS_ADMIN ? [['team', 'Team & access'], ['brandset', 'Portal settings']] : [])]];
-  // Tile navigation (Becky 11/17): pages opened from an Overview / brand tile leave the sidebar.
+  // Tile navigation (Becky 11/17): these pages also open from Overview / brand tiles.
+  // They stay in the sidebar too (Becky 11/17 pm: removing them caused confusion).
   var TILE_VIEWS = ['phone', 'csrs', 'calls', 'cardcap', 'pricetalk', 'money'];
-  if (!CFG.csrSelf && !OPSIS && CFG.brandDash) NAV[0][1] = NAV[0][1].filter(function (n) { return TILE_VIEWS.indexOf(n[0]) < 0; });
   // RM / GM logins (Becky 11/16): Overview (their dashboard), Call trends, Coaching Hub, Coaching clips, AI CSR. Nothing else.
   var MGR = !CFG.csrSelf && !OPSIS && (CFG.portalRole === 'rm' || CFG.portalRole === 'gm');
   var MGR_NAV = ['overview', 'trends', 'hub', 'coachclips', 'receptionist'];
