@@ -1,7 +1,7 @@
 // ============================================================
 //  CxTrends — "Call trends" (2026-11-15). What callers are calling about, across every scored call
 //  (LightSpeed, Five9 and the phone engine): topics rising or falling this week vs the brand's normal,
-//  top topics, weekly lines, objections, not-booked reasons and booking rate by week.
+//  top topics. (11/16: weekly lines, objections, not-booked reasons and booking rate by week removed — repeated the dashboard.)
 //  Data: cx_trends(p_days, p_brand, p_client) — scoped to the login's client / brand.
 // ============================================================
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -82,21 +82,8 @@ export default function CxTrends({ clientId = null }) {
           ))}
         </div>
       </div>
-
-      {weekly.weeks.length > 1 && (
-        <div style={S.card}>
-          <div style={S.h3}>Week by week — top topics</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 8 }}>
-            {weekly.rows.map(r => <Spark key={r.topic} title={r.topic} vals={r.vals} weeks={weekly.weeks} />)}
-          </div>
-        </div>
-      )}
-
-      <div style={S.cols}>
-        <List title="Top objections" rows={d.objections} />
-        <List title="Why calls didn’t book" rows={d.not_booked} />
-        <Booked rows={d.booked_by_week} />
-      </div>
+      {/* 11/16 (Becky): week-by-week topics, top objections, why calls didn't book and booking rate by week
+          removed here; they repeat the dashboard and its drill-downs. */}
     </div>
   )
 }
