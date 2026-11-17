@@ -421,6 +421,7 @@ export function mountOpsisQA(ROOT, cfg) {
   // Overview, tile layout (Becky 11/17): phone + booking tiles open their pages; QA and Sentiment open in place; By brand table; daily trend.
   function vOverviewDash(tok) {
     S.tileFrom = null;
+    if (!LOCK && !MGR) { vExec(tok); return; }
     var ovBrand = LOCK ? short(LOCK) : S.brands.length === 1 ? short(S.brands[0]) : S.brands.length ? S.brands.length + ' ' + W_BRANDS.toLowerCase() : 'All ' + W_BRANDS.toLowerCase();
     setMain('<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">' + esc(ovBrand) + '</h1><span class="mut" style="font-size:13px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · vs the ' + daysBetween(S.start, S.end) + ' days before · click a tile for the details</span></div>' +
       '<div id="dphone">' + skel(110, 1) + '</div><div id="dbook">' + skel(110, 1) + '</div>' +
@@ -432,6 +433,70 @@ export function mountOpsisQA(ROOT, cfg) {
     Promise.all([loadReport(), loadPrevReport()]).then(function (r) { if (tok !== T) return; noteKnown(r[0]); LASTBR = [r[0], r[1]]; brandTable(r[0], r[1], 'brandcard', 12); }).catch(function (e) { if (tok === T && $('brandcard')) $('brandcard').innerHTML = errBox(e); });
     loadFocus(null, null).then(function (f) { if (tok === T && $('fsteps')) stepCard(f, 'fsteps', null, null); }).catch(function () {});
     api(Object.assign({ action: 'qaextras' }, win())).then(function (x) { if (tok === T) { EXTRAS = x || {}; drawSent(); drawTemper(); if (LASTBR) brandTable(LASTBR[0], LASTBR[1], 'brandcard', 12); } }).catch(function () {});
+  }
+
+  // Executive summary (Becky 11/17): the admin Overview for C-level readers. Money first, then operations,
+  // a brand scorecard with status dots, plain-English highlights and the week-by-week trend.
+  var EXEC_RULES = { convRed: 50, convYel: 55, abRed: 7, abYel: 5.5, cardRed: 70, cardYel: 78 };
+  function xTile(label, val, sub, to, linkLbl, dark, tip) {
+    var at = to ? (to.charAt(0) === '#' ? ' data-ddrill="' + to.slice(1) + '" role="button" aria-expanded="false"' : ' data-tgo="' + to + '" role="link"') + ' tabindex="0"' : '';
+    return '<div class="oq-card' + (to ? ' click' : '') + '"' + at + ' style="padding:16px 18px 14px;min-width:0;' + (dark ? 'background:#14302A;border-color:#14302A;color:#fff' : (to ? 'border-color:#CFE3D8' : '')) + '">' +
+      '<div class="cap" style="' + (dark ? 'color:#9DBBAE' : '') + '">' + label + (tip ? itip(tip) : '') + '</div><div class="num" style="font-size:' + (dark ? 30 : 26) + 'px;font-weight:600;letter-spacing:-0.03em;margin-top:8px;line-height:1.1">' + val + '</div>' +
+      '<div style="font-size:11.5px;margin-top:6px;line-height:1.45;color:' + (dark ? '#BFD1C8' : 'var(--mut)') + '">' + sub + '</div>' + (linkLbl ? '<div style="margin-top:8px;font-size:11.5px;font-weight:700;color:' + (dark ? '#9CC6B2' : '#1F5A41') + '">' + linkLbl + '</div>' : '') + '</div>';
+  }
+  function xUp(cur, prev, unit, upGood, dark, dec) { if (cur == null || prev == null || isNaN(cur) || isNaN(prev)) return ''; var d = cur - prev; if (Math.abs(d) < (dec ? 0.05 : 0.5)) return '<span style="font-weight:700">no change</span> · '; var good = upGood ? d > 0 : d < 0;
+    return '<span style="font-weight:700;color:' + (good ? (dark ? '#9CC6B2' : '#1F5A41') : (dark ? '#F0A57E' : '#A8441A')) + '">' + (d > 0 ? '▲ ' : '▼ ') + (unit === '$' ? '$' + Math.abs(Math.round(d)).toLocaleString() : unit === '%' ? Math.abs(d).toFixed(1) + '%' : Math.abs(d).toFixed(dec || 1) + unit) + '</span> · '; }
+  function xMoney(v) { v = +v || 0; return v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e3 ? '$' + Math.round(v / 1e3) + 'K' : '$' + Math.round(v); }
+  function vExec(tok) {
+    var n = daysBetween(S.start, S.end), ps = addDays(S.start, -n), pe = addDays(S.start, -1), br = S.brands.length ? S.brands : null;
+    setMain('<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">' + esc(CFG.clientName || 'GarageCo') + ' · Executive summary</h1><span class="mut" style="font-size:13px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · vs the ' + n + ' days before' + (n < 28 ? ' · tip: pick Last 30 days for the monthly view' : '') + '</span></div>' +
+      '<div id="xhero" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">' + skel(120, 1).repeat(4) + '</div>' +
+      '<div id="xops" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">' + skel(110, 1).repeat(5) + '</div>' +
+      '<div class="oq-card" id="fsteps" style="display:none">' + skel(18, 9) + '</div>' +
+      '<div id="fmood" style="display:none"><div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:2 1 420px;min-width:0" id="sentcard">' + skel(24, 6) + '</div><div class="oq-card" style="flex:3 1 420px;min-width:0" id="tempcard">' + skel(24, 4) + '</div></div></div>' +
+      '<div class="oq-card" id="xbrands">' + skel(30, 8) + '</div>' +
+      '<div class="row" style="align-items:flex-start"><div class="ai" style="flex:1 1 320px;min-width:0" id="insightcard">' + skel(30, 4) + '</div><div class="oq-card" style="flex:2 1 560px;min-width:0" id="fweek">' + skel(180, 1) + '</div></div>');
+    var X = { d: null, m: null, mp: null };
+    var paint = function () { if (tok !== T) return; var d = X.d, m = X.m; if (!d || !m) return;
+      var c = d.cur || {}, p = d.prev || {}, x = d.cdr, xp = d.cdr_prev || {}, cd = d.card || {}, t = m.totals || {}, tp = (X.mp || {}).totals || {};
+      var aov = function (tt) { var k = (+tt.booked || 0) - (+tt.booked_unvalued || 0); return k > 0 && +tt.booked_value ? tt.booked_value / k : null; };
+      var a1 = aov(t), a0 = aov(tp), perPt = a1 && +t.decided ? (t.decided * 0.01 * a1) * (30 / Math.max(1, n)) : null;
+      var conv = +t.decided ? 100 * t.booked / t.decided : null, pconv = +tp.decided ? 100 * tp.booked / tp.decided : null;
+      var bvPrev = +tp.booked_value || null, bvChg = bvPrev ? 100 * ((+t.booked_value || 0) - bvPrev) / bvPrev : null;
+      $('xhero').innerHTML =
+        xTile('Booked revenue', xMoney(t.booked_value), (bvChg == null ? '' : Math.abs(bvChg) < 0.05 ? '<span style="font-weight:700">no change</span> · ' : '<span style="font-weight:700;color:' + (bvChg >= 0 ? '#9CC6B2' : '#F0A57E') + '">' + (bvChg >= 0 ? '▲ ' : '▼ ') + Math.abs(bvChg).toFixed(1) + '%</span> · ') + fmt(t.booked) + ' booked jobs' + (+t.booked_actual_n ? ' · ' + fmt(t.booked_actual_n) + ' matched to invoices' : ''), 'money', 'Revenue ›', true, 'Value of the jobs booked on calls in this period. Matched Acumatica invoices where we have them, otherwise the brand’s Acumatica average for that kind of job.') +
+        xTile('Revenue left on the table', xMoney(t.ctrl_value), fmt(t.ctrl_n) + ' winnable calls didn’t book, valued at the brand’s average job', 'calls:notbooked', 'Why they didn’t book ›', true, 'Opportunities that didn’t book for a reason the CSR could have controlled (no ask, no offer, price given first and so on), each valued at the brand’s average job. An estimate of what better calls could recover.') +
+        xTile('Booking conversion', conv == null ? '—' : conv.toFixed(1) + '%', xUp(conv, pconv, ' pts', true, true) + (perPt ? 'each point ≈ ' + xMoney(perPt) + '/month' : 'booked ÷ booked + not booked'), 'calls:notbooked', 'Not-booked calls ›', true, 'Booked ÷ (booked + not booked) on opportunity calls. “Each point” = one more booking per 100 decided calls × average order value, scaled to a month.') +
+        xTile('Avg order value', a1 ? '$' + Math.round(a1).toLocaleString() : '—', xUp(a1, a0, '$', true, true) + 'from Acumatica', 'money', 'Revenue ›', true, 'Booked revenue ÷ valued booked jobs.');
+      var cr = cd.ask_rate != null ? +cd.ask_rate : null, pcr = cd.prev_ask_rate != null ? +cd.prev_ask_rate : null;
+      $('xops').innerHTML =
+        xTile('Calls', x ? fmt(x.offered) : '—', (x && xp.offered ? xUp(100 * (x.offered - xp.offered) / xp.offered, 0, '%', true) : '') + (x ? fmt(Math.round(x.offered / Math.max(1, x.days))) + ' per day' : 'no phone data'), 'phone', 'Phone stats ›') +
+        xTile('Abandon rate', x ? dPct(x.abandon_pct) : '—', xUp(x ? +x.abandon_pct : null, xp.abandon_pct != null ? +xp.abandon_pct : null, ' pts', false) + 'goal: under 5%', 'phone', 'Phone stats ›') +
+        xTile('QA score', dNum(c.qa, 1), xUp(c.qa != null ? +c.qa : null, p.qa != null ? +p.qa : null, '', true) + fmt(c.scored) + ' calls scored', '#fsteps', 'Call flow ▾') +
+        xTile('Card asks', dPct(cr), xUp(cr, pcr, ' pts', true) + (cd.booked ? fmt(cd.asked) + ' of ' + fmt(cd.booked) + ' bookings' : ''), 'cardcap', 'Card capture ›') +
+        xTile('Customer sentiment', dNum(c.sentiment, 2), xUp(c.sentiment != null ? +c.sentiment : null, p.sentiment != null ? +p.sentiment : null, '', true, false, 2) + '1–5 scale', '#fmood', 'Sentiment ▾');
+      // Brand scorecard
+      var ab = {}; (d.cdr_by_brand || []).forEach(function (r) { ab[r.brand] = r; });
+      var mb = {}; (m.by_brand || []).forEach(function (r) { mb[r.brand] = r; });
+      var B = {}; (d.agents || []).forEach(function (a) { var b = B[a.brand] || (B[a.brand] = { decided: 0, booked: 0, qs: 0, qn: 0, cb: 0, ca: 0 }); b.decided += +a.decided || 0; b.booked += +a.booked || 0; if (a.qa != null) { var sc = +a.scored || 0; b.qs += a.qa * sc; b.qn += sc; } b.cb += +a.card_booked || 0; b.ca += +a.card_asked || 0; });
+      var rows = Object.keys(B).filter(function (b) { return b && b !== '—'; }).map(function (b) { var o = B[b], cv = o.decided ? 100 * o.booked / o.decided : null, abp = ab[b] ? +ab[b].abandon_pct : null, card = CARD_SKIP.indexOf(b) >= 0 || !o.cb ? null : 100 * o.ca / o.cb, R = EXEC_RULES;
+        var red = (cv != null && cv < R.convRed) || (abp != null && abp > R.abRed) || (card != null && card < R.cardRed), yel = (cv != null && cv < R.convYel) || (abp != null && abp > R.abYel) || (card != null && card < R.cardYel);
+        return { b: b, rev: mb[b] ? +mb[b].booked_value || 0 : 0, lost: mb[b] ? +mb[b].ctrl_value || 0 : 0, cv: cv, ab: abp, qa: o.qn ? o.qs / o.qn : null, card: card, st: red ? 'r' : yel ? 'y' : 'g' }; })
+        .sort(function (a, b) { return b.rev - a.rev; });
+      var dot = { r: '#C2562A', y: '#E0A82A', g: '#2F7D5B' }, stl = { r: 'Needs attention', y: 'Watch', g: 'On track' };
+      var cell = function (v, f, bad, warn) { return '<td class="num" style="' + (bad ? 'color:#A8441A;font-weight:700' : warn ? 'color:#8A5A00;font-weight:600' : '') + '">' + f(v) + '</td>'; };
+      var R = EXEC_RULES;
+      $('xbrands').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Brand Scorecard</h2><p class="sub">Click a brand for its dashboard. Status: red if conversion is under ' + R.convRed + '%, abandon over ' + R.abRed + '% or card asks under ' + R.cardRed + '%; yellow if close to those lines.</p></div><div class="mut" style="font-size:11.5px;white-space:nowrap">' + ['g', 'y', 'r'].map(function (k) { return '<span style="display:inline-block;width:9px;height:9px;border-radius:9px;background:' + dot[k] + ';margin:0 4px 0 10px"></span>' + stl[k]; }).join('') + '</div></div>' +
+        '<div style="overflow-x:auto;margin-top:10px"><table class="tbl"><thead><tr><th>' + W_BRAND + '</th><th>Booked revenue' + itip('Value of jobs booked on calls this period.') + '</th><th>Left on the table' + itip('Winnable calls that didn’t book × the brand’s average job.') + '</th><th>Conversion</th><th>Abandon</th><th>QA</th><th>Card asks' + itip('PDQ and Dan’s Doors don’t take a card at booking.') + '</th></tr></thead><tbody>' +
+        rows.map(function (r) { return '<tr class="click" data-brand="' + esc(r.b) + '" tabindex="0" title="Open ' + esc(short(r.b)) + '’s dashboard"><td><span title="' + stl[r.st] + '" style="display:inline-block;width:10px;height:10px;border-radius:10px;background:' + dot[r.st] + ';margin-right:8px"></span><b style="font-weight:600">' + esc(short(r.b)) + '</b></td><td class="num">' + (r.rev ? xMoney(r.rev) : '—') + '</td><td class="num mut">' + (r.lost ? xMoney(r.lost) : '—') + '</td>' +
+          cell(r.cv, dPct, r.cv != null && r.cv < R.convRed, r.cv != null && r.cv < R.convYel) + cell(r.ab, dPct, r.ab != null && r.ab > R.abRed, r.ab != null && r.ab > R.abYel) + cell(r.qa, function (v) { return dNum(v, 1); }) + cell(r.card, function (v) { return v == null ? '—' : dPct(v); }, r.card != null && r.card < R.cardRed, r.card != null && r.card < R.cardYel) + '</tr>'; }).join('') + '</tbody></table></div>';
+    };
+    loadDash().then(function (d) { X.d = d || {}; DASH.d = X.d; paint(); }).catch(function (e) { if (tok === T && $('xhero')) $('xhero').innerHTML = errBox(e); });
+    api({ action: 'money', start: S.start, end: S.end, brands: br }).then(function (m) { X.m = m || {}; paint(); }).catch(function () { X.m = {}; paint(); });
+    api({ action: 'money', start: ps, end: pe, brands: br }).then(function (m) { X.mp = m || {}; paint(); }).catch(function () {});
+    Promise.all([loadReport(), loadPrevReport()]).then(function (r) { if (tok !== T) return; noteKnown(r[0]); LASTBR = [r[0], r[1]]; insightCard(r[0], r[1]); }).catch(function () { var e = $('insightcard'); if (e) e.remove(); });
+    loadFocus(null, null).then(function (f) { if (tok !== T) return; if ($('fsteps')) stepCard(f, 'fsteps', null, null); if ($('fweek')) focusWeekly(f); }).catch(function () { var e = $('fweek'); if (e) e.remove(); });
+    api(Object.assign({ action: 'qaextras' }, win())).then(function (x) { if (tok === T) { EXTRAS = x || {}; drawSent(); drawTemper(); } }).catch(function () {});
   }
 
   var BKEY = 'oqBrands:' + CLIENT;
