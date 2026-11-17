@@ -1,4 +1,4 @@
-// 2026-11-16: passes brandDash (RPC qa_brand_dash) for the new Dashboard page.
+// 2026-11-16: passes portalRole (rm/gm → manager sidebar) and brandDash (RPC qa_brand_dash) for the new Dashboard page.
 // Opsis QA client portal (2026-10-20) — the new look for garageco.opsiscx.com.
 // Renders the vanilla app in ./opsisQaApp.js (same UI as the Opsis QA preview Rob saw) and
 // feeds it real data through the authenticated edge function `opsis-qa-portal`, which scopes
@@ -65,6 +65,8 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
   const [err, setErr] = useState('')
   // portal_role rm / gm / admin / manager (client logins) or Opsis staff → supervisor tools
   const [sup, setSup] = useState(null)
+  // portal_role of the signed-in login (rm / gm get a short, manager-only sidebar — Becky 11/16)
+  const [prole, setProle] = useState(null)
   // "View as" Admin / RM / GM / CSR — your own +rm/+gm/+csr logins (2026-11-10)
   const [accounts, setAccounts] = useState(null)
   useEffect(() => { let on = true; loadAccounts().then(a => { if (on) setAccounts(a) }); return () => { on = false } }, [])
@@ -75,7 +77,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       const uid = data?.user?.id
       if (!uid) { if (active) setSup(false); return }
       supabase.from('profiles').select('role, portal_role').eq('id', uid).maybeSingle()
-        .then(({ data: p }) => { if (active) setSup(!!p && (String(p.role || '').toLowerCase() !== 'client' || ['admin', 'manager', 'rm', 'gm'].includes(p.portal_role || 'manager'))) })
+        .then(({ data: p }) => { if (active) setProle(String(p?.portal_role || '').toLowerCase() || null); if (active) setSup(!!p && (String(p.role || '').toLowerCase() !== 'client' || ['admin', 'manager', 'rm', 'gm'].includes(p.portal_role || 'manager'))) })
         .catch(() => { if (active) setSup(false) })
     })
     return () => { active = false }
@@ -93,6 +95,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
     if (!me || !ref.current || sup === null || accounts === null) return
     const destroy = mountOpsisQA(ref.current, {
       supervisor: !!sup,
+      portalRole: prole,
       accounts,
       onSwitchAccount: switchAccount,
       invoke,
