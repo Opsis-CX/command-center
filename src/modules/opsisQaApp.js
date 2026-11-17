@@ -155,11 +155,14 @@ export function mountOpsisQA(ROOT, cfg) {
     .concat(CFG.mountExt && CFG.supervisor ? [['wallboard', 'Wallboard'], ['myphone', 'Phone']] : [])
     .concat(CFG.mountExt ? [['wfm', 'Workforce']] : []).concat(CFG.mountExt && CFG.supervisor ? [['intraday', 'Intraday']] : [])],
     ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(CFG.mountExt && CFG.supervisor ? [['phonesetup', 'Phone setup'], ['callflow', 'Call flow']] : []).concat(IS_ADMIN ? [['team', 'Team & access'], ['brandset', 'Portal settings']] : [])]];
+  // Tile navigation (Becky 11/17): pages opened from an Overview / brand tile leave the sidebar.
+  var TILE_VIEWS = ['phone', 'csrs', 'calls', 'cardcap', 'pricetalk', 'money'];
+  if (!CFG.csrSelf && !OPSIS && CFG.brandDash) NAV[0][1] = NAV[0][1].filter(function (n) { return TILE_VIEWS.indexOf(n[0]) < 0; });
   // RM / GM logins (Becky 11/16): Overview (their dashboard), Call trends, Coaching Hub, Coaching clips, AI CSR. Nothing else.
   var MGR = !CFG.csrSelf && !OPSIS && (CFG.portalRole === 'rm' || CFG.portalRole === 'gm');
   var MGR_NAV = ['overview', 'trends', 'hub', 'coachclips', 'receptionist'];
   // reachable by drilling down from the dashboard, but not in the sidebar
-  var MGR_OK = MGR_NAV.concat(['brand', 'csr', 'calls', 'hubqs', 'repeat']);
+  var MGR_OK = MGR_NAV.concat(['brand', 'csr', 'calls', 'hubqs', 'repeat', 'kpi']).concat(TILE_VIEWS);
   function mgrNav() { if (!MGR) return; NAV = [['', NAV[0][1].filter(function (n) { return MGR_NAV.indexOf(n[0]) >= 0; })]]; }
   mgrNav();
   function renderWho() {
@@ -255,6 +258,8 @@ export function mountOpsisQA(ROOT, cfg) {
   function dTile(label, val, sub, dl, tip) {
     return '<div class="oq-card" style="padding:16px 18px 14px;min-width:0">' + capRow(label, tip) + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px 8px;margin-top:12px"><span class="num" style="font-size:30px;font-weight:600;letter-spacing:-0.03em;line-height:1">' + val + '</span>' + (dl || '') + '</div><div class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.45">' + sub + '</div></div>';
   }
+  // A tile that opens another page (Becky 11/17): whole card is clickable, with a green "Opens X ›" tag.
+  function tGo(h, to, label) { return h.replace('<div class="oq-card" style="', '<div class="oq-card click" data-tgo="' + to + '" role="link" tabindex="0" title="Open ' + label + '" style="border-color:#CFE3D8;').replace(/<\/div>$/, '<div style="margin-top:8px;font-size:11.5px;color:#1F5A41;font-weight:700">' + label + ' ›</div></div>'); }
   function dNeutral(cur, prev, f) { return cur == null || prev == null ? '' : '<span class="pill num" style="background:#F3F1EC;color:#56605B" title="Previous period">was ' + f(prev) + '</span>'; }
   function vDash(tok) {
     // 11/16 (Becky): no separate Dashboard tab. The dashboard lives on each brand's page; Overview gets the phone row.
@@ -273,22 +278,34 @@ export function mountOpsisQA(ROOT, cfg) {
     if ($('dhead')) $('dhead').innerHTML = '<h2 class="ttl" style="font-size:20px">' + esc(bl) + '</h2><p class="sub">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · compared with the ' + n + ' days before</p>' + banner;
     if (!$('dphone')) return;
     var abd = x && x.abandon_pct != null ? delta(+x.abandon_pct, xp.abandon_pct != null ? +xp.abandon_pct : null, ' pts', false) : '';
-    $('dphone').innerHTML = ($('dhead') ? '' : banner) + '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">' +
-      dTile('Calls', x ? fmt(x.offered) : '—', x ? fmt(x.answered) + ' answered · ' + fmt(Math.round(x.offered / Math.max(1, x.days))) + ' per day' : 'No phone data for these dates', '', 'Every inbound call that reached a CSR queue in the LightSpeed phone system, answered or not. This is the phone system’s count, so it is higher than customer conversations.') +
-      dTile('Abandon rate', x ? dPct(x.abandon_pct) : '—', x ? fmt(x.abandoned) + ' callers hung up before a CSR answered' : '', abd, 'Callers who hung up after reaching the CSR queue but before a CSR answered, as a share of all calls that reached the queue.') +
-      dTile('Avg time to answer', x ? dSec(x.tta) : '—', 'Queue to pickup, answered calls', x && x.tta != null && xp.tta != null ? delta(+x.tta, +xp.tta, 's', false) : '', 'Average seconds from a call reaching the CSR queue to a CSR picking up, on answered calls.') +
-      dTile('Avg time to abandon', x ? dSec(x.tab) : '—', 'Minimum: rollover calls only', '', 'Average wait of abandoned callers before they hung up. LightSpeed only times callers who rolled over to the queue, so treat this as a minimum.') +
-      dTile('Avg talk time', dTalk(c.aht), fmt(c.answered) + ' customer conversations', dNeutral(c.aht, p.aht, dTalk), 'Average length of the customer conversations CSRs answered, minutes:seconds. Internal calls, voicemail and calls with no conversation are left out.') + '</div>';
+    $('dphone').innerHTML = ($('dhead') ? '' : banner) + '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">' +
+      tGo(dTile('Calls', x ? fmt(x.offered) : '—', x ? fmt(x.answered) + ' answered · ' + fmt(Math.round(x.offered / Math.max(1, x.days))) + ' per day' : 'No phone data for these dates', '', 'Every inbound call that reached a CSR queue in the LightSpeed phone system, answered or not. This is the phone system’s count, so it is higher than customer conversations.'), 'phone', 'Phone stats') +
+      tGo(dTile('Abandon rate', x ? dPct(x.abandon_pct) : '—', x ? fmt(x.abandoned) + ' callers hung up before a CSR answered' : '', abd, 'Callers who hung up after reaching the CSR queue but before a CSR answered, as a share of all calls that reached the queue.'), 'phone', 'Phone stats') +
+      tGo(dTile('Avg time to answer', x ? dSec(x.tta) : '—', 'Queue to pickup, answered calls', x && x.tta != null && xp.tta != null ? delta(+x.tta, +xp.tta, 's', false) : '', 'Average seconds from a call reaching the CSR queue to a CSR picking up, on answered calls.'), 'phone', 'Phone stats') +
+      tGo(dTile('Avg time to abandon', x ? dSec(x.tab) : '—', 'Minimum: rollover calls only', '', 'Average wait of abandoned callers before they hung up. LightSpeed only times callers who rolled over to the queue, so treat this as a minimum.'), 'phone', 'Phone stats') +
+      tGo(dTile('Avg talk time', dTalk(c.aht), fmt(c.answered) + ' customer conversations', dNeutral(c.aht, p.aht, dTalk), 'Average length of the customer conversations CSRs answered, minutes:seconds. Internal calls, voicemail and calls with no conversation are left out.'), 'phone', 'Phone stats') +
+      tGo(dTile(W_CSRS + ' on the phones', fmt((d.agents || []).length), (d.brands || []).length > 1 ? 'across ' + (d.brands || []).length + ' ' + W_BRANDS.toLowerCase() : 'with customer conversations', '', 'People with at least one customer conversation in this period.'), 'csrs', W_CSRS) + '</div>';
     var cr = cd.ask_rate != null ? +cd.ask_rate : null, pcr = cd.prev_ask_rate != null ? +cd.prev_ask_rate : null;
-    if ($('dbook')) $('dbook').innerHTML = '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(128px,1fr))">' +
-      dTile('Opportunities', fmt(c.opps), fmt(c.decided) + ' ended booked or not booked', '', 'Customer conversations where a sales or service job could be booked. Follow-ups on existing work (billing, status checks, reschedules, warranty) are not opportunities. Only opportunities get a QA score.') +
-      dTile('Booked', fmt(c.booked), 'vs ' + fmt(p.booked) + ' the period before', '', 'Opportunities that ended with the job booked.') +
-      dTile('Conversion', dPct(c.conv), 'Booked ÷ booked + not booked', delta(c.conv != null ? +c.conv : null, p.conv != null ? +p.conv : null, ' pts'), 'Booked ÷ (booked + not booked). Opportunities handed to another team or still undecided are left out. Same booking rate as the Overview page.') +
-      dTile('Booking ask rate', dPct(c.ask_rate), 'Opportunities where the CSR asked to book', delta(c.ask_rate != null ? +c.ask_rate : null, p.ask_rate != null ? +p.ask_rate : null, ' pts'), 'Share of opportunities where the CSR directly asked to book the appointment.') +
-      dTile('Card asks', dPct(cr), cd.booked ? fmt(cd.asked) + ' of ' + fmt(cd.booked) + ' card-eligible bookings' : 'No card-eligible bookings', delta(cr, pcr, ' pts'), 'Booked residential service calls where the CSR asked for a card. Same numbers as Card capture.') +
+    if ($('dbook')) $('dbook').innerHTML = '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr))">' +
+      tGo(dTile('Opportunities', fmt(c.opps), fmt(c.decided) + ' ended booked or not booked', '', 'Customer conversations where a sales or service job could be booked. Follow-ups on existing work (billing, status checks, reschedules, warranty) are not opportunities. Only opportunities get a QA score.'), 'calls:all', 'Calls') +
+      tGo(dTile('Booked', fmt(c.booked), 'vs ' + fmt(p.booked) + ' the period before', '', 'Opportunities that ended with the job booked.'), 'calls:booked', 'Booked calls') +
+      tGo(dTile('Conversion', dPct(c.conv), 'Booked ÷ booked + not booked', delta(c.conv != null ? +c.conv : null, p.conv != null ? +p.conv : null, ' pts'), 'Booked ÷ (booked + not booked). Opportunities handed to another team or still undecided are left out. Same booking rate as the Overview page.'), 'calls:notbooked', 'Not-booked calls') +
+      tGo(dTile('Booking ask rate', dPct(c.ask_rate), 'Opportunities where the CSR asked to book', delta(c.ask_rate != null ? +c.ask_rate : null, p.ask_rate != null ? +p.ask_rate : null, ' pts'), 'Share of opportunities where the CSR directly asked to book the appointment.'), 'calls:noask', 'Calls with no ask') +
+      tGo(dTile('Card asks', dPct(cr), cd.booked ? fmt(cd.asked) + ' of ' + fmt(cd.booked) + ' card-eligible bookings' : 'No card-eligible bookings', delta(cr, pcr, ' pts'), 'Booked residential service calls where the CSR asked for a card. Same numbers as Card capture.'), 'cardcap', 'Card capture') +
+      tGo(dTile('Avg order value', '<span id="daov">…</span>', '<span id="daovs">Booked jobs, from Acumatica</span>', '', 'Average value of a booked job, from Acumatica invoices (or the brand’s Acumatica average for that job type when the invoice isn’t matched yet).'), 'money', 'Revenue') +
+      tGo(dTile('Price talk', '<span id="dprice">…</span>', '<span id="dprices">Calls where price came up</span>', '', 'Share of read calls where price or a fee came up, whether the caller asked or the CSR brought it up.'), 'pricetalk', 'Price talk') +
       (function (h) { return QAFLOW() ? h.replace('<div class="oq-card" style="', '<div class="oq-card click" data-qaflow="1" role="button" tabindex="0" aria-expanded="false" style="border-color:#CFE3D8;') : h; })(dTile('QA score', dNum(c.qa, 1), fmt(c.scored) + ' calls scored' + (QAFLOW() ? ' · <span style="color:#1F5A41;font-weight:600">click for call flow ▾</span>' : ''), delta(c.qa != null ? +c.qa : null, p.qa != null ? +p.qa : null, ''), 'Average call-flow score (0–100) on opportunity calls. Click the tile to see each step of the call flow.')) +
       (function (h) { return QAFLOW() && $('fmood') ? h.replace('<div class="oq-card" style="', '<div class="oq-card click" data-ddrill="fmood" role="button" tabindex="0" aria-expanded="false" style="border-color:#CFE3D8;') : h; })(dTile('Sentiment', dNum(c.sentiment, 2), 'Customer mood at the end, 1–5' + (QAFLOW() && $('fmood') ? ' · <span style="color:#1F5A41;font-weight:600">click for details ▾</span>' : ''), delta(c.sentiment != null ? +c.sentiment : null, p.sentiment != null ? +p.sentiment : null, ''), 'Average customer sentiment at the end of the call (1 = upset, 5 = happy).') )+ '</div>';
-    drawDashTrend(); drawDashTable();
+    drawDashTrend(); drawDashTable(); dashLate();
+  }
+  // AOV + price-talk tiles fill in after the main numbers (separate data).
+  function dashLate() {
+    var br = (DASH.d && DASH.d.brands && DASH.d.brands.length) ? DASH.d.brands : (S.brands.length ? S.brands : null);
+    var set = function (id, v) { var e = $(id); if (e) e.innerHTML = v; };
+    api({ action: 'money', start: S.start, end: S.end, brands: br }).then(function (m) { var t = (m || {}).totals || {}, n = (+t.booked || 0) - (+t.booked_unvalued || 0);
+      set('daov', n > 0 && +t.booked_value ? '$' + Math.round(t.booked_value / n).toLocaleString() : '—'); set('daovs', n > 0 ? fmt(n) + ' booked jobs' + (+t.booked_actual_n ? ', ' + fmt(t.booked_actual_n) + ' matched to invoices' : ', estimated from brand averages') : 'No valued bookings in this range'); }).catch(function () { set('daov', '—'); });
+    api({ action: 'pricetalk', start: S.start, end: S.end, brands: br }).then(function (r) { var K = (r || {}).kinds || {}, g = function (k) { return +((K[k] || {}).n) || 0; }, read = +(r || {}).read || 0, talk = g('asked_answered') + g('asked_no_number') + g('volunteered');
+      set('dprice', read ? Math.round(100 * talk / read) + '%' : '—'); set('dprices', read ? fmt(talk) + ' of ' + fmt(read) + ' calls · ' + fmt(g('volunteered')) + ' brought up by the CSR' : 'No calls read in this range'); }).catch(function () { set('dprice', '—'); });
   }
   function drawDashTrend() {
     var el = $('dtrend'); if (!el) return;
@@ -376,6 +393,7 @@ export function mountOpsisQA(ROOT, cfg) {
 
   function vOverview(tok) {
     if (MGR && LOCK && DASHON()) { S.brand = LOCK; vFocus(tok, 'brand', true); return; }
+    if (DASHON()) { vOverviewDash(tok); return; }
     var ovBrand = LOCK ? short(LOCK) : S.brands.length === 1 ? short(S.brands[0]) : S.brands.length ? S.brands.length + ' ' + W_BRANDS.toLowerCase() : 'All ' + W_BRANDS.toLowerCase();
     setMain('<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">' + esc(ovBrand) + '</h1><span class="mut" style="font-size:13px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · vs the ' + daysBetween(S.start, S.end) + ' days before</span></div>' +
       (DASHON() ? '<div id="dphone">' + skel(110, 1) + '</div>' : '') +
@@ -398,6 +416,22 @@ export function mountOpsisQA(ROOT, cfg) {
     api(Object.assign({ action: 'calls' }, win({ winnable: true, score_max: 40, limit: 5 }))).then(function (c) { if (tok === T) reviewCard(c); }).catch(function () {});
     needsCard(tok);
     api(Object.assign({ action: 'qaextras' }, win())).then(function (x) { if (tok === T) { EXTRAS = x || {}; drawFcr(); drawSent(); drawTemper(); kpiLate(); if (LASTBR) brandTable(LASTBR[0], LASTBR[1], 'brandcard', 8); } }).catch(function () { var a = $('fcrcard'), b = $('sentcard'); if (a) a.innerHTML = '<div class="mut">First contact resolution couldn\u2019t load.</div>'; if (b) b.innerHTML = '<div class="mut">Sentiment couldn\u2019t load.</div>'; var c = $('tempcard'); if (c) c.innerHTML = '<div class="mut">Temper shift couldn\u2019t load.</div>'; });
+  }
+
+  // Overview, tile layout (Becky 11/17): phone + booking tiles open their pages; QA and Sentiment open in place; By brand table; daily trend.
+  function vOverviewDash(tok) {
+    S.tileFrom = null;
+    var ovBrand = LOCK ? short(LOCK) : S.brands.length === 1 ? short(S.brands[0]) : S.brands.length ? S.brands.length + ' ' + W_BRANDS.toLowerCase() : 'All ' + W_BRANDS.toLowerCase();
+    setMain('<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">' + esc(ovBrand) + '</h1><span class="mut" style="font-size:13px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · vs the ' + daysBetween(S.start, S.end) + ' days before · click a tile for the details</span></div>' +
+      '<div id="dphone">' + skel(110, 1) + '</div><div id="dbook">' + skel(110, 1) + '</div>' +
+      '<div class="oq-card" id="fsteps" style="display:none">' + skel(18, 9) + '</div>' +
+      '<div id="fmood" style="display:none"><div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:2 1 420px;min-width:0" id="sentcard">' + skel(24, 6) + '</div><div class="oq-card" style="flex:3 1 420px;min-width:0" id="tempcard">' + skel(24, 4) + '</div></div></div>' +
+      '<div class="oq-card" id="brandcard">' + skel(30, 8) + '</div>' +
+      '<div class="oq-card" id="dtrend">' + skel(180, 1) + '</div>');
+    loadDash().then(function (d) { if (tok !== T) return; DASH.d = d || {}; drawDash(); }).catch(function (e) { if (tok === T && $('dphone')) $('dphone').innerHTML = errBox(e); });
+    Promise.all([loadReport(), loadPrevReport()]).then(function (r) { if (tok !== T) return; noteKnown(r[0]); LASTBR = [r[0], r[1]]; brandTable(r[0], r[1], 'brandcard', 12); }).catch(function (e) { if (tok === T && $('brandcard')) $('brandcard').innerHTML = errBox(e); });
+    loadFocus(null, null).then(function (f) { if (tok === T && $('fsteps')) stepCard(f, 'fsteps', null, null); }).catch(function () {});
+    api(Object.assign({ action: 'qaextras' }, win())).then(function (x) { if (tok === T) { EXTRAS = x || {}; drawSent(); drawTemper(); if (LASTBR) brandTable(LASTBR[0], LASTBR[1], 'brandcard', 12); } }).catch(function () {});
   }
 
   var BKEY = 'oqBrands:' + CLIENT;
@@ -3401,6 +3435,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   function crumb(parts) {
+    if (S.tileFrom && TILE_VIEWS.indexOf(S.view) >= 0 && parts.length && parts[0][1] !== S.tileFrom[0]) parts = [[S.tileFrom[1], S.tileFrom[0]]].concat(parts);
     return '<div class="oq-crumb">' + parts.map(function (p, i) { return i === parts.length - 1 ? '<span style="color:var(--ink);font-weight:600">' + esc(p[0]) + '</span>' : '<button data-go="' + p[1] + '">' + esc(p[0]) + '</button><span aria-hidden="true">/</span>'; }).join('') + '</div>';
   }
 
@@ -4471,6 +4506,10 @@ export function mountOpsisQA(ROOT, cfg) {
     if (ps) { var pk = ps.getAttribute('data-psort').split('|'); S['pd' + pk[0]] = S['ps' + pk[0]] === pk[1] ? -(S['pd' + pk[0]] || 1) : 1; S['ps' + pk[0]] = pk[1]; loadPhone().then(pk[0] === 'b' ? phoneBrands : phoneCsrs); return; }
     var wt = t.closest('[data-whytog]');
     if (wt) { var wb = document.querySelector('#why .md'), wo = wb && wb.style.display === 'none'; if (wb) wb.style.display = wo ? '' : 'none'; wt.setAttribute('aria-expanded', wo ? 'true' : 'false'); var ws = wt.querySelector('span.mut'); if (ws) ws.textContent = wo ? 'Hide' : 'Show'; var wc = $('whychev'); if (wc) wc.style.transform = wo ? 'rotate(180deg)' : ''; return; }
+    var tg = t.closest('[data-tgo]');
+    if (tg) { var to = tg.getAttribute('data-tgo'); S.tileFrom = S.view === 'brand' && S.brand ? ['brand', short(S.brand)] : ['overview', 'Overview'];
+      if (S.view === 'brand' && S.brand) S.brands = [S.brand];
+      if (to.indexOf('calls:') === 0) { var cm = { all: {}, booked: { outcome: 'Booked' }, notbooked: { outcome: 'Not Booked' }, noask: { step: 'ask_booking' } }; openCalls(cm[to.slice(6)] || {}); } else go(to); return; }
     var qf = t.closest('[data-qaflow],[data-ddrill]');
     if (qf) { var fs = $(qf.getAttribute('data-ddrill') || 'fsteps'); if (fs) { var fo = fs.style.display === 'none'; fs.style.display = fo ? '' : 'none'; qf.setAttribute('aria-expanded', fo ? 'true' : 'false'); if (fo) fs.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } return; }
     var dsr = t.closest('[data-tip]') ? null : t.closest('[data-dsort]');
