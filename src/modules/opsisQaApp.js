@@ -1,4 +1,4 @@
-// 2026-11-16: new Dashboard page (brand phone + booking tiles, daily trend, sortable CSR table with drill-down) from RPC qa_brand_dash via cfg.brandDash.
+// 2026-11-16: brand dashboard (Rob + Brian) lives on each brand's page: phone row under the header + sortable By CSR table with drill-down; Overview gets the phone row for the brands picked. No separate Dashboard tab (Becky). Data: RPC qa_brand_dash via cfg.brandDash.
 // 2026-11-13: Card capture — clicking a CSR/brand row opens its calls with no card ask (or the calls behind the number clicked) and scrolls to them.
 // 2026-11-09: Revenue Leaderboard brand/CSR column is left-aligned (lbtbl).
 // 2026-11-09: nav gains "AI Speed to Lead" and "Workforce" (Erlang C) when the host passes mountExt (OpsisQAPortal.jsx).
@@ -145,7 +145,7 @@ export function mountOpsisQA(ROOT, cfg) {
   // Revenue, Calibration, Coaching Hub, Practice, Reporting, AI CSR, AI Speed to Lead, [Wallboard, Phone for supervisors], Workforce.
   // Wallboard + Phone sit under AI Speed to Lead until the CCaaS phone system is finished and ready for use.
   // Practice + AI CSR are added after the pilot check (see vPractice access below).
-  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']].concat(CFG.mountExt ? [['mycoach', 'My coaching']] : [])]] : [['', [['overview', 'Overview']].concat(!OPSIS && CFG.brandDash ? [['dash', 'Dashboard']] : [])
+  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']].concat(CFG.mountExt ? [['mycoach', 'My coaching']] : [])]] : [['', [['overview', 'Overview']]
     .concat([['insights', 'Insights']]).concat(CFG.mountExt ? [['trends', 'Call trends']] : []).concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', W_BRANDS]])
     .concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['pricetalk', 'Price talk'], ['money', 'Revenue']])
     .concat(!OPSIS && (!LOCK || CFG.supervisor) && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])
@@ -233,9 +233,11 @@ export function mountOpsisQA(ROOT, cfg) {
   // CSR drill-down: calls answered, time to answer, talk time, opportunities, booked, conversion,
   // card asks on card-eligible bookings, QA score, sentiment. Data: RPC qa_brand_dash via CFG.brandDash.
   var DASHC = {}, DASH = { d: null, sort: 'answered', dir: -1, open: null };
-  function loadDash() {
-    var k = [S.start, S.end, S.brands.join('|')].join('~');
-    if (!DASHC[k]) { DASHC[k] = CFG.brandDash({ start: S.start, end: S.end, brands: S.brands.length ? S.brands : null }); DASHC[k].catch(function () { delete DASHC[k]; }); }
+  var DASHON = function () { return !!CFG.brandDash && !OPSIS; };
+  function loadDash(brands) {
+    brands = brands || S.brands;
+    var k = [S.start, S.end, brands.join('|')].join('~');
+    if (!DASHC[k]) { DASHC[k] = CFG.brandDash({ start: S.start, end: S.end, brands: brands.length ? brands : null }); DASHC[k].catch(function () { delete DASHC[k]; }); }
     return DASHC[k];
   }
   function dSec(v) { if (v == null || isNaN(v)) return '—'; v = +v; return v < 60 ? v.toFixed(1) + 's' : fsecs(Math.round(v)); }
@@ -247,7 +249,10 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function dNeutral(cur, prev, f) { return cur == null || prev == null ? '' : '<span class="pill num" style="background:#F3F1EC;color:#56605B" title="Previous period">was ' + f(prev) + '</span>'; }
   function vDash(tok) {
-    if (!CFG.brandDash || OPSIS) { S.view = 'overview'; vOverview(tok); return; }
+    // 11/16 (Becky): no separate Dashboard tab. The dashboard lives on each brand's page; Overview gets the phone row.
+    var one = LOCK || (S.brands.length === 1 ? S.brands[0] : null);
+    if (one) { S.view = 'brand'; S.brand = one; vFocus(tok, 'brand'); } else { S.view = 'brands'; vBrands(tok); }
+    writeHash(); renderNav(); return;
     setMain(crumb([['Dashboard']]) + '<div id="dhead"></div><div id="dphone">' + skel(110, 1) + '</div><div id="dbook">' + skel(110, 1) + '</div><div class="oq-card" id="dtrend">' + skel(180, 1) + '</div><div class="oq-card" id="dcsr">' + skel(30, 8) + '</div>');
     loadDash().then(function (d) { if (tok !== T) return; DASH.d = d || {}; drawDash(); })
       .catch(function (e) { if (tok === T) $('dphone').innerHTML = errBox(e); ['dbook', 'dtrend', 'dcsr'].forEach(function (id) { var x = $(id); if (x) x.remove(); }); });
@@ -256,17 +261,18 @@ export function mountOpsisQA(ROOT, cfg) {
     var d = DASH.d || {}, c = d.cur || {}, p = d.prev || {}, x = d.cdr, xp = d.cdr_prev || {}, cd = d.card || {}, n = (d.range || {}).days || daysBetween(S.start, S.end);
     var stale = d.cdr_latest && d.cdr_latest < S.end;
     var bl = (d.brands || []).length === 1 ? (d.brands[0]) : (d.brands || []).length ? (d.brands.length + ' ' + W_BRANDS.toLowerCase()) : 'All ' + W_BRANDS.toLowerCase();
-    $('dhead').innerHTML = '<h2 class="ttl" style="font-size:20px">' + esc(bl) + '</h2><p class="sub">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · compared with the ' + n + ' days before</p>' +
-      (stale || !x ? '<div class="banner" style="margin-top:10px">Phone numbers (calls, abandons, time to answer and time to abandon) ' + (d.cdr_latest ? 'run through <b>' + fdate(d.cdr_latest) + '</b>' : 'aren’t available for these dates') + '. The LightSpeed daily phone summary from Switchboard hasn’t come in for later days yet. Talk time, bookings, card asks, QA and sentiment are current.</div>' : '');
+    var banner = (stale || !x ? '<div class="banner" style="margin-top:10px">Phone numbers (calls, abandons, time to answer and time to abandon) ' + (d.cdr_latest ? 'run through <b>' + fdate(d.cdr_latest) + '</b>' : 'aren’t available for these dates') + '. The LightSpeed daily phone summary from Switchboard hasn’t come in for later days yet. Talk time, bookings, card asks, QA and sentiment are current.</div>' : '');
+    if ($('dhead')) $('dhead').innerHTML = '<h2 class="ttl" style="font-size:20px">' + esc(bl) + '</h2><p class="sub">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · compared with the ' + n + ' days before</p>' + banner;
+    if (!$('dphone')) return;
     var abd = x && x.abandon_pct != null ? delta(+x.abandon_pct, xp.abandon_pct != null ? +xp.abandon_pct : null, ' pts', false) : '';
-    $('dphone').innerHTML = '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">' +
+    $('dphone').innerHTML = ($('dhead') ? '' : banner) + '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">' +
       dTile('Calls', x ? fmt(x.offered) : '—', x ? fmt(x.answered) + ' answered · ' + fmt(Math.round(x.offered / Math.max(1, x.days))) + ' per day' : 'No phone data for these dates', '', 'Inbound calls that reached a CSR queue (LightSpeed).') +
       dTile('Abandon rate', x ? dPct(x.abandon_pct) : '—', x ? fmt(x.abandoned) + ' callers hung up before a CSR answered' : '', abd, 'Abandoned ÷ calls that reached a CSR queue.') +
       dTile('Avg time to answer', x ? dSec(x.tta) : '—', 'Queue to pickup, answered calls', x && x.tta != null && xp.tta != null ? delta(+x.tta, +xp.tta, 's', false) : '', 'Seconds from reaching the CSR queue to a CSR picking up.') +
       dTile('Avg time to abandon', x ? dSec(x.tab) : '—', 'Minimum: rollover calls only', '', 'Average wait of abandoned callers before they hung up. LightSpeed only times callers who rolled over to the queue, so treat this as a minimum.') +
       dTile('Avg talk time', dTalk(c.aht), fmt(c.answered) + ' customer conversations', dNeutral(c.aht, p.aht, dTalk), 'Average talk time on inbound customer conversations answered by CSRs.') + '</div>';
     var cr = cd.ask_rate != null ? +cd.ask_rate : null, pcr = cd.prev_ask_rate != null ? +cd.prev_ask_rate : null;
-    $('dbook').innerHTML = '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">' +
+    if ($('dbook')) $('dbook').innerHTML = '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">' +
       dTile('Opportunities', fmt(c.opps), fmt(c.decided) + ' ended booked or not booked', '', 'Calls where the customer could have been booked.') +
       dTile('Booked', fmt(c.booked), 'vs ' + fmt(p.booked) + ' the period before', '', 'Booking opportunities that ended booked.') +
       dTile('Conversion', dPct(c.conv), 'Booked ÷ booked + not booked', delta(c.conv != null ? +c.conv : null, p.conv != null ? +p.conv : null, ' pts'), 'Same booking rate as the Overview and Brands pages.') +
@@ -334,6 +340,7 @@ export function mountOpsisQA(ROOT, cfg) {
     setMain('<div class="hero" style="position:relative;overflow:hidden;border-radius:16px;padding:16px 8px 8px;min-height:120px">' +
       '<svg viewBox="0 0 700 180" preserveAspectRatio="xMaxYMid slice" style="position:absolute;right:0;top:0;width:60%;height:100%" aria-hidden="true"><path d="M0 180 C120 150 180 70 300 90 C420 110 470 20 560 30 C620 36 660 10 700 0 L700 180 Z" fill="#DCE5DD"/><path d="M80 180 C200 140 260 110 360 120 C470 132 520 60 610 70 C650 75 680 60 700 50 L700 180 Z" fill="#C6D5C9"/><path d="M200 180 C300 160 360 140 450 146 C540 152 600 110 700 100 L700 180 Z" fill="#A9C0AF"/><path d="M330 180 C420 170 500 160 580 164 C640 167 680 150 700 146 L700 180 Z" fill="#8AAA93"/></svg>' +
       '<div style="position:relative"><div class="cap" style="letter-spacing:.3em">' + (OPSIS ? 'Opsis CX' : 'GarageCo') + ' · Call quality intelligence</div><h1 style="margin:10px 0 0;font-size:34px;font-weight:600;line-height:1.1;letter-spacing:-0.03em">Turn every conversation<br>into a booked job.</h1></div></div>' +
+      (DASHON() ? '<div id="dphone">' + skel(110, 1) + '</div>' : '') +
       '<div id="kpis" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">' + skel(118, 1).repeat(5) + '</div>' +
       '<div class="oq-card" id="needscard">' + skel(60, 1) + '</div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:3 1 520px;min-width:0" id="fcrcard">' + skel(24, 6) + '</div><div class="oq-card" style="flex:2 1 420px;min-width:0" id="sentcard">' + skel(24, 6) + '</div></div>' +
@@ -341,6 +348,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div class="row"><div class="oq-card" style="flex:999 1 520px" id="brandcard">' + skel(30, 8) + '</div><div class="oq-card" style="flex:1 1 320px" id="coachcard">' + skel(40, 5) + '</div></div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 420px" id="stepcard">' + skel(18, 9) + '</div><div class="oq-card" style="flex:1 1 360px;max-height:470px;overflow-y:auto" id="reviewcard">' + skel(50, 4) + '</div></div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 520px" id="trendcard">' + skel(200, 1) + '</div><div class="ai" style="flex:1 1 360px" id="insightcard">' + skel(30, 4) + '</div></div>');
+    if (DASHON()) loadDash().then(function (d) { if (tok !== T) return; DASH.d = d || {}; drawDash(); }).catch(function () { var x = $('dphone'); if (x) x.remove(); });
     Promise.all([loadReport(), loadPrevReport()]).then(function (r) {
       if (tok !== T) return; var cur = r[0], prev = r[1]; noteKnown(cur);
       kpiCards(cur);
@@ -585,15 +593,19 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div class="oq-card" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:14px">' + (kind === 'brand' ? bbadge(name).replace('26px;height:26px', '44px;height:44px').replace('10.5px', '15px') : avatar(name, 44)) +
       '<div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.025em">' + esc(kind === 'brand' ? name : name) + '</h1><div class="mut" style="font-size:12.5px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' vs the ' + daysBetween(S.start, S.end) + ' days before</div></div></div>' +
       '<div class="row"><button class="sel" data-callsfor="' + kind + '">All calls →</button><button class="sel btnd" data-ask="' + esc(kind === 'brand' ? 'What should we focus on at ' + name + ' this week?' : 'How should we coach ' + name + ' this week?') + '">Ask about ' + esc(title) + '</button></div></div>' +
+      (kind === 'brand' && DASHON() ? '<div id="dphone">' + skel(110, 1) + '</div>' : '') +
       '<div class="ai" id="why"><div style="display:flex;gap:10px;align-items:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><b>Why ' + esc(title) + ' is trending this way</b></div><div class="md" style="margin-top:10px"><span class="dots"><span></span><span></span><span></span></span> <span class="mut">Reading this period’s calls…</span></div></div>' +
       '<div id="fk" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">' + skel(90, 1).repeat(4) + '</div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 520px" id="fweek">' + skel(200, 1) + '</div><div class="oq-card" style="flex:1 1 360px" id="fsteps">' + skel(18, 9) + '</div></div>' +
+      (kind === 'brand' && DASHON() ? '<div class="oq-card" id="dcsr">' + skel(30, 8) + '</div>' : '') +
       (kind === 'brand' ? '<div class="oq-card" id="fmovers">' + skel(30, 8) + '</div>' : '<div class="oq-card" id="fcalls">' + skel(50, 5) + '</div>') +
       '<div class="oq-card" id="feff">' + skel(30, 5) + '</div>' +
       '<div class="row" style="align-items:flex-start" id="fmix">' + skel(20, 10) + '</div>' +
       '<div class="oq-card" id="fmood">' + skel(30, 4) + '</div>');
     var brand = kind === 'brand' ? name : null, agent = kind === 'csr' ? name : null;
     focusEff(tok, kind, brand, agent); focusMood(tok, kind, brand, agent);
+    if (kind === 'brand' && DASHON()) { DASH.open = null; loadDash([brand]).then(function (d) { if (tok !== T) return; DASH.d = d || {}; drawDash(); })
+      .catch(function () { ['dphone', 'dcsr'].forEach(function (id) { var x = $(id); if (x) x.remove(); }); }); }
     loadFocus(brand, agent).then(function (f) {
       if (tok !== T) return;
       if (FOCUSWHY) FOCUSWHY(f); focusKpis(f, brand, agent); focusWeekly(f); stepCard(f, 'fsteps', brand, agent); focusMix(f, brand, agent);
