@@ -325,12 +325,14 @@ export function mountOpsisQA(ROOT, cfg) {
     ['booked', 'Booked', 'Opportunities that ended with the job booked.'],
     ['conv', 'Conversion', 'Booked ÷ (booked + not booked). Opportunities handed to another team or still undecided are left out. Green = 60% or higher.'],
     ['card_rate', 'Card asks', 'Share of this CSR’s booked residential service calls where they asked for a card to hold the appointment (asked ÷ eligible bookings). Commercial, PDQ and Dan’s Doors are left out.'],
+    ['cap_rate', 'Card captured', 'When the CSR asked for a card, how often the customer gave one (captured ÷ asked). Same numbers as the Card capture page.'],
     ['qa', 'QA score', 'Average call-flow score (0–100) on this CSR’s opportunity calls: introduce, listen, collect info, tech is the expert, offer and ask for the booking, card on file, overcome the objection, confirm and thank.'],
     ['sentiment', 'Sentiment', 'Average customer mood at the end of the call, from 1 (upset) to 5 (happy). Counts every customer conversation, not just opportunities.']];
   function drawDashTable() {
     var el = $('dcsr'); if (!el) return;
     var multi = (DASH.d.brands || []).length !== 1, cols = DCOLS.filter(function (c) { return multi || c[0] !== 'brand'; });
     var rows = (DASH.d.agents || []).slice(), k = DASH.sort, dir = DASH.dir;
+    rows.forEach(function (a) { a.cap_rate = +a.card_asked ? 100 * (+a.card_captured || 0) / +a.card_asked : null; });
     rows.sort(function (a, b) { if (k === 'name' || k === 'brand') return dir * String(a[k] || '').localeCompare(String(b[k] || '')); var av = a[k] == null ? -1e9 : +a[k], bv = b[k] == null ? -1e9 : +b[k]; return dir * (av - bv); });
     var th = function (c) { var on = k === c[0], asc = dir === 1; return '<th class="sortable" data-dsort="' + c[0] + '" aria-sort="' + (on ? (asc ? 'ascending' : 'descending') : 'none') + '"><span style="display:inline-flex;align-items:center;white-space:nowrap">' + c[1] + (on ? (asc ? ' ↑' : ' ↓') : '') + (c[2] ? itip(c[2]) : '') + '</span></th>'; };
     var c0 = DASH.d.cur || {}, cd = DASH.d.card || {};
@@ -342,6 +344,7 @@ export function mountOpsisQA(ROOT, cfg) {
       if (key === 'aht') return '<td class="num">' + dTalk(a.aht) + '</td>';
       if (key === 'conv') return '<td class="num" style="color:' + (a.conv == null ? 'inherit' : +a.conv >= 60 ? '#1F5A41' : '#A8441A') + ';font-weight:600">' + dPct(a.conv) + '</td>';
       if (key === 'card_rate') return '<td class="num" title="' + (a.card_booked ? fmt(a.card_asked) + ' of ' + fmt(a.card_booked) + ' card-eligible bookings' : 'No card-eligible bookings') + '">' + (a.card_booked ? dPct(a.card_rate) + ' <span class="mut" style="font-size:11.5px">(' + fmt(a.card_asked) + '/' + fmt(a.card_booked) + ')</span>' : '—') + '</td>';
+      if (key === 'cap_rate') return '<td class="num">' + (+a.card_asked ? dPct(100 * (+a.card_captured || 0) / +a.card_asked) + ' <span class="mut" style="font-size:11.5px">(' + fmt(a.card_captured || 0) + '/' + fmt(a.card_asked) + ')</span>' : '—') + '</td>';
       if (key === 'qa') return '<td class="num"><span class="pill" style="' + (a.qa == null ? 'background:#F3F1EC' : chipScore(+a.qa)) + '">' + dNum(a.qa, 1) + '</span></td>';
       if (key === 'sentiment') return '<td class="num">' + dNum(a.sentiment, 2) + '</td>';
       return '<td></td>';
@@ -350,7 +353,16 @@ export function mountOpsisQA(ROOT, cfg) {
     var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">' + W_CSR + ' Results: Calls, Bookings and Quality</h2><p class="sub">One row per ' + W_CSR + ' for this period: customer conversations, speed to answer, talk time, bookings, card asks, QA score and customer sentiment. Hover any ⓘ for how a column is counted. Click a ' + W_CSR + ' to compare them with the ' + W_BRAND.toLowerCase() + ' and open their calls.</p></div></div>' +
       '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:12px"><table class="tbl"><thead><tr>' + cols.map(th).join('') + '</tr></thead><tbody>';
     if (!rows.length) h += '<tr><td colspan="' + cols.length + '" class="mut">No ' + W_CSRS.toLowerCase() + ' with calls in this range.</td></tr>';
-    rows.forEach(function (a) {
+    // Roll-up (Rob 11/16): brand total on top, then a subtotal row for each location.
+    var agg = function (list) { var t = { answered: 0, opps: 0, booked: 0, decided: 0, card_booked: 0, card_asked: 0, card_captured: 0 }, w = { tta: [0, 0], aht: [0, 0], qa: [0, 0], sentiment: [0, 0] };
+      list.forEach(function (a) { var n = +a.answered || 0; ['answered', 'opps', 'booked', 'decided', 'card_booked', 'card_asked', 'card_captured'].forEach(function (f) { t[f] += +a[f] || 0; });
+        if (a.tta != null) { w.tta[0] += a.tta * n; w.tta[1] += n; } if (a.aht != null) { w.aht[0] += a.aht * n; w.aht[1] += n; } if (a.qa != null) { var sc = +a.scored || +a.opps || 0; w.qa[0] += a.qa * sc; w.qa[1] += sc; } if (a.sentiment != null) { w.sentiment[0] += a.sentiment * n; w.sentiment[1] += n; } });
+      Object.keys(w).forEach(function (f) { t[f] = w[f][1] ? w[f][0] / w[f][1] : null; });
+      t.conv = t.decided ? 100 * t.booked / t.decided : null; t.card_rate = t.card_booked ? 100 * t.card_asked / t.card_booked : null; return t; };
+    var totRow = function (label, sub, t, top) { return '<tr style="background:' + (top ? '#E6F0EA' : '#F1EEE8') + ';font-weight:700"><td style="font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#14302A">' + esc(label) + ' <span class="mut" style="font-weight:500;text-transform:none;letter-spacing:0">· ' + sub + '</span></td>' + cols.slice(1).map(function (c) { return c[0] === 'brand' ? '<td></td>' : cell(t, c[0]); }).join('') + '</tr>'; };
+    var groups = !multi && LROSTER && rows.length ? byLoc(LROSTER, rows, function (a) { return a.name; }) : [['', rows]];
+    if (rows.length > 1) h += totRow(multi ? 'All ' + W_BRANDS.toLowerCase() : short((DASH.d.brands || [])[0] || '') + ' total', rows.length + ' ' + W_CSRS.toLowerCase(), agg(rows), true);
+    groups.forEach(function (g) { if (groups.length > 1) h += totRow(g[0], g[1].length + ' ' + (g[1].length === 1 ? W_CSR : W_CSRS).toLowerCase(), agg(g[1]), false); g[1].forEach(function (a) {
       var id = a.name + '|' + a.brand, open = DASH.open === id;
       h += '<tr class="click" data-dopen="' + esc(id) + '" tabindex="0" aria-expanded="' + open + '"' + (open ? ' style="background:#FAF8F3"' : '') + '>' + cols.map(function (c) { return cell(a, c[0]); }).join('') + '</tr>';
       if (open) h += '<tr><td colspan="' + cols.length + '" style="white-space:normal;background:#F7F5F0;padding:14px"><div style="display:flex;flex-wrap:wrap;gap:10px">' +
@@ -358,7 +370,7 @@ export function mountOpsisQA(ROOT, cfg) {
         cmp('Card asks', a.card_rate, cd.ask_rate, dPct, true) + cmp('QA score', a.qa, c0.qa, function (v) { return dNum(v, 1); }, true) + cmp('Sentiment', a.sentiment, c0.sentiment, function (v) { return dNum(v, 2); }, true) +
         '</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="sel btnd" data-agent="' + esc(a.name) + '">Open ' + esc(a.name.split(' ')[0]) + '’s page</button><button class="sel" data-dcalls="' + esc(a.name) + '">Hear their calls</button>' +
         (a.card_booked ? '<button class="sel" data-dcalls="' + esc(a.name) + '" data-dnocard="1">Bookings with no card ask</button>' : '') + '</div></td></tr>';
-    });
+    }); });
     el.innerHTML = h + '</tbody></table></div>';
   }
 
@@ -743,6 +755,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
 
   // Locations (Becky 10/29): group CSRs by their roster location (Richmond, Chesapeake, ...).
+  var LROSTER = null;
   function locOf(roster, name) { var r = (roster || []).filter(function (x) { return nmMatch(x.agent, name); })[0]; return r ? r.location : null; }
   function byLoc(roster, rows, nameOf) { var locs = {}, order = []; rows.forEach(function (r) { var l = locOf(roster, nameOf(r)) || 'Not on the roster'; if (!locs[l]) { locs[l] = []; order.push(l); } locs[l].push(r); });
     order.sort(function (a, b) { return a === 'Not on the roster' ? 1 : b === 'Not on the roster' ? -1 : a.localeCompare(b); }); return order.map(function (l) { return [l, locs[l]]; }); }
@@ -871,7 +884,7 @@ export function mountOpsisQA(ROOT, cfg) {
   var EFFS = { k: 'in', dir: -1 };
   function nmMatch(a, b) { a = String(a || '').toLowerCase().trim(); b = String(b || '').toLowerCase().trim(); if (!a || !b) return false; if (a === b) return true; var x = a.split(/\s+/), y = b.split(/\s+/); if (x[0] !== y[0]) return false; if (x.length < 2 || y.length < 2) return x.length === 1 || y.length === 1; return x[1][0] === y[1][0]; }
   function focusEff(tok, kind, brand, agent) {
-    Promise.all([api({ action: 'phone', start: S.start, end: S.end, brands: brand ? [brand] : (S.brands.length ? S.brands : null) }), loadFocus(brand, null).catch(function () { return {}; })]).then(function (rr) { var ph = rr[0], roster = (rr[1] || {}).roster; if (tok !== T) return; var el = $('feff'); if (!el) return;
+    Promise.all([api({ action: 'phone', start: S.start, end: S.end, brands: brand ? [brand] : (S.brands.length ? S.brands : null) }), loadFocus(brand, null).catch(function () { return {}; })]).then(function (rr) { var ph = rr[0], roster = (rr[1] || {}).roster; if (tok !== T) return; if (roster && roster.length && !agent) { var had = !!LROSTER; LROSTER = roster; if (!had && DASH.d && $('dcsr')) drawDashTable(); } var el = $('feff'); if (!el) return;
       var rows = (ph.agents || []).filter(function (a) { return !agent || nmMatch(a.agent, agent); }).map(function (a) { var talk = (+a.in_talk || 0) + (+a.out_talk || 0), calls = (+a.in_calls || 0) + (+a.out_calls || 0), days = +a.days || 0;
         return { name: a.agent, brand: a.brand, inc: +a.in_calls || 0, out: +a.out_calls || 0, talk: talk, avg: calls ? talk / calls : null, tta: a.tta == null ? null : +a.tta, days: days, util: days ? talk / (days * 8 * 3600) * 100 : null }; });
       var hm = function (sec) { sec = Math.round(sec || 0); var h = Math.floor(sec / 3600), m = Math.round(sec % 3600 / 60); return h ? h + 'h ' + m + 'm' : m + 'm'; }, ms = function (sec) { if (sec == null) return '—'; sec = Math.round(sec); return Math.floor(sec / 60) + ':' + ('0' + sec % 60).slice(-2); };
@@ -887,14 +900,18 @@ export function mountOpsisQA(ROOT, cfg) {
       var v = function (x) { var k = EFFS.k; return k === 'name' ? String(x.name).toLowerCase() : k === 'out' ? x.out : k === 'talk' ? x.talk : k === 'avg' ? (x.avg || 0) : k === 'tta' ? (x.tta == null ? 999 : x.tta) : k === 'util' ? (x.util || 0) : x.inc; };
       rows.sort(function (a, b) { var x = v(a), y = v(b); return (x < y ? -1 : x > y ? 1 : 0) * EFFS.dir; });
       var th = function (k, l, t) { var on = EFFS.k === k; return '<th data-effk="' + k + '" role="button" tabindex="0" style="cursor:pointer;white-space:nowrap' + (k === 'name' ? '' : ';text-align:right') + (on ? ';color:var(--ink)' : '') + '">' + l + (t ? itip(t) : '') + ' <span style="font-size:9px;opacity:' + (on ? 1 : .35) + '">' + (on && EFFS.dir > 0 ? '▲' : '▼') + '</span></th>'; };
-      el.innerHTML = head + '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:8px"><table class="tbl efftbl" style="font-size:12.5px"><thead><tr>' + th('name', 'CSR') + th('in', 'Inbound', 'Every inbound call the LightSpeed phone system routed to this CSR and they picked up, including internal/staff calls, short calls and calls with no recording. That is why it is higher than Customer conversations in CSR Results.') + '<th style="text-align:right;white-space:nowrap">% In' + itip('Inbound calls as a share of all calls (inbound + outbound) for that row.') + '</th>' + th('out', 'Outbound', 'Every outbound call this CSR placed from LightSpeed, answered or not: callbacks, follow-ups, confirmations and calls to techs or other locations.') + '<th style="text-align:right;white-space:nowrap">% Out' + itip('Outbound calls as a share of all calls (inbound + outbound) for that row.') + '</th>' + th('talk', 'Total talk', 'All talk time on this CSR’s inbound and outbound calls added together,, shown in hours and minutes.') + th('avg', 'Avg talk', 'Average talk time per call, inbound and outbound.') + th('tta', 'Avg answer', 'Average seconds from the call ringing to the CSR answering.') + th('util', 'Utilization', 'Total talk time as a share of an 8-hour day, for each day the CSR took calls. Breaks and meetings are not subtracted.') + '</tr></thead><tbody>' +
+      el.innerHTML = head + '<p class="swipe mut" style="display:none;font-size:11.5px;margin:8px 0 0">Swipe sideways for more columns →</p><div style="overflow-x:auto;margin-top:8px"><table class="tbl efftbl" style="font-size:12.5px"><thead><tr>' + th('name', 'CSR') + th('in', 'Inbound', 'Every inbound call the LightSpeed phone system routed to this CSR and they picked up, including internal/staff calls, short calls and calls with no recording. That is why it is higher than Customer conversations in CSR Results.') + '<th style="text-align:right;white-space:nowrap">% In' + itip('Who is doing the heavy lifting: this CSR’s share of their location’s inbound calls (e.g. 291 of 409 = 71%). On a location row, that location’s share of the brand’s inbound calls.') + '</th>' + th('out', 'Outbound', 'Every outbound call this CSR placed from LightSpeed, answered or not: callbacks, follow-ups, confirmations and calls to techs or other locations.') + '<th style="text-align:right;white-space:nowrap">% Out' + itip('This CSR’s share of their location’s outbound calls. On a location row, that location’s share of the brand’s outbound calls.') + '</th>' + th('talk', 'Total talk', 'All talk time on this CSR’s inbound and outbound calls added together,, shown in hours and minutes.') + th('avg', 'Avg talk', 'Average talk time per call, inbound and outbound.') + th('tta', 'Avg answer', 'Average seconds from the call ringing to the CSR answering.') + th('util', 'Utilization', 'Total talk time as a share of an 8-hour day, for each day the CSR took calls. Breaks and meetings are not subtracted.') + '</tr></thead><tbody>' +
+        (function () { var B = rows.reduce(function (a, x) { a.inc += x.inc; a.out += x.out; a.talk += x.talk; a.dt += x.days; if (x.tta != null) { a.ts += x.tta * x.inc; a.tn += x.inc; } return a; }, { inc: 0, out: 0, talk: 0, dt: 0, ts: 0, tn: 0 }); EFFB = B;
+          return rows.length > 1 ? '<tr style="background:#E6F0EA;font-weight:700"><td style="font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#14302A">' + esc((function () { var bn = (brand && brand !== 'null' ? brand : '') || (S.brands.length === 1 ? S.brands[0] : '') || S.brand || LOCK || ''; var sh = bn ? short(bn) : ''; return sh && sh !== 'null' ? sh + ' total' : 'All ' + W_BRANDS.toLowerCase(); })()) + ' <span class="mut" style="font-weight:500;text-transform:none;letter-spacing:0">· ' + rows.length + ' CSRs</span></td><td class="num" style="text-align:right">' + fmt(B.inc) + '</td><td class="num" style="text-align:right">100%</td><td class="num" style="text-align:right">' + fmt(B.out) + '</td><td class="num" style="text-align:right">100%</td><td class="num" style="text-align:right">' + hm(B.talk) + '</td><td class="num" style="text-align:right">' + ms((B.inc + B.out) ? B.talk / (B.inc + B.out) : null) + '</td><td class="num" style="text-align:right">' + (B.tn ? (B.ts / B.tn).toFixed(1) + 's' : '—') + '</td><td class="num" style="text-align:right">' + (B.dt ? Math.round(B.talk / (B.dt * 8 * 3600) * 100) + '%' : '—') + '</td></tr>' : ''; })() +
         byLoc(roster, rows, function (x) { return x.name; }).map(function (g, gi, G0) { var t = g[1].reduce(function (a, x) { a.inc += x.inc; a.out += x.out; a.talk += x.talk; a.dt += x.days; if (x.tta != null) { a.ts += x.tta * x.inc; a.tn += x.inc; } return a; }, { inc: 0, out: 0, talk: 0, dt: 0, ts: 0, tn: 0 });
-          return (G0.length > 1 ? '<tr style="background:#F1EEE8;font-weight:700"><td style="font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#14302A">' + esc(g[0]) + ' <span class="mut" style="font-weight:500;text-transform:none;letter-spacing:0">· ' + g[1].length + ' CSR' + (g[1].length === 1 ? '' : 's') + '</span></td><td class="num" style="text-align:right">' + fmt(t.inc) + '</td><td class="num" style="text-align:right">' + EPC(t.inc, t.out) + '</td><td class="num" style="text-align:right">' + fmt(t.out) + '</td><td class="num" style="text-align:right">' + EPC(t.out, t.inc) + '</td><td class="num" style="text-align:right">' + hm(t.talk) + '</td><td class="num" style="text-align:right">' + ms((t.inc + t.out) ? t.talk / (t.inc + t.out) : null) + '</td><td class="num" style="text-align:right">' + (t.tn ? (t.ts / t.tn).toFixed(1) + 's' : '—') + '</td><td class="num" style="text-align:right">' + (t.dt ? Math.round(t.talk / (t.dt * 8 * 3600) * 100) + '%' : '—') + '</td></tr>' : '') +
-          g[1].map(function (x) { return '<tr><td><b style="font-weight:600' + (G0.length > 1 ? ';padding-left:10px;display:inline-block' : '') + '">' + esc(x.name) + '</b> <span class="mut" style="font-size:11.5px">· ' + x.days + 'd</span></td><td class="num" style="text-align:right">' + fmt(x.inc) + '</td><td class="num mut" style="text-align:right">' + EPC(x.inc, x.out) + '</td><td class="num" style="text-align:right">' + fmt(x.out) + '</td><td class="num mut" style="text-align:right">' + EPC(x.out, x.inc) + '</td><td class="num" style="text-align:right">' + hm(x.talk) + '</td><td class="num" style="text-align:right">' + ms(x.avg) + '</td><td class="num" style="text-align:right">' + (x.tta == null ? '—' : x.tta.toFixed(1) + 's') + '</td><td class="num" style="text-align:right">' + (x.util == null ? '—' : Math.round(x.util) + '%') + '</td></tr>'; }).join(''); }).join('') + '</tbody></table></div>';
+          return (G0.length > 1 ? '<tr style="background:#F1EEE8;font-weight:700"><td style="font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#14302A">' + esc(g[0]) + ' <span class="mut" style="font-weight:500;text-transform:none;letter-spacing:0">· ' + g[1].length + ' CSR' + (g[1].length === 1 ? '' : 's') + '</span></td><td class="num" style="text-align:right">' + fmt(t.inc) + '</td><td class="num" style="text-align:right">' + SHR(t.inc, EFFB.inc) + '</td><td class="num" style="text-align:right">' + fmt(t.out) + '</td><td class="num" style="text-align:right">' + SHR(t.out, EFFB.out) + '</td><td class="num" style="text-align:right">' + hm(t.talk) + '</td><td class="num" style="text-align:right">' + ms((t.inc + t.out) ? t.talk / (t.inc + t.out) : null) + '</td><td class="num" style="text-align:right">' + (t.tn ? (t.ts / t.tn).toFixed(1) + 's' : '—') + '</td><td class="num" style="text-align:right">' + (t.dt ? Math.round(t.talk / (t.dt * 8 * 3600) * 100) + '%' : '—') + '</td></tr>' : '') +
+          g[1].map(function (x) { return '<tr><td><b style="font-weight:600' + (G0.length > 1 ? ';padding-left:10px;display:inline-block' : '') + '">' + esc(x.name) + '</b> <span class="mut" style="font-size:11.5px">· ' + x.days + 'd</span></td><td class="num" style="text-align:right">' + fmt(x.inc) + '</td><td class="num mut" style="text-align:right">' + SHR(x.inc, t.inc) + '</td><td class="num" style="text-align:right">' + fmt(x.out) + '</td><td class="num mut" style="text-align:right">' + SHR(x.out, t.out) + '</td><td class="num" style="text-align:right">' + hm(x.talk) + '</td><td class="num" style="text-align:right">' + ms(x.avg) + '</td><td class="num" style="text-align:right">' + (x.tta == null ? '—' : x.tta.toFixed(1) + 's') + '</td><td class="num" style="text-align:right">' + (x.util == null ? '—' : Math.round(x.util) + '%') + '</td></tr>'; }).join(''); }).join('') + '</tbody></table></div>';
       el.dataset.k = '1'; FEFF = function () { focusEff(T, kind, brand, agent); };
     }).catch(function () { var el = $('feff'); if (el) el.innerHTML = '<h2 class="ttl">Call Center Efficiency</h2><p class="mut" style="font-size:12.5px">Phone stats couldn’t load.</p>'; });
   }
   var FEFF = null;
+  var EFFB = { inc: 0, out: 0 };
+  function SHR(a, tot) { return +tot ? Math.round(100 * (+a || 0) / +tot) + '%' : '—'; }
   function EPC(a, b) { var n = (+a || 0) + (+b || 0); return n ? Math.round(100 * (+a || 0) / n) + '%' : '—'; }
   // Customer sentiment + temper shift in one card (Rob 10/29).
   function focusMood(tok, kind, brand, agent) {
@@ -1398,10 +1415,18 @@ export function mountOpsisQA(ROOT, cfg) {
       (!d.ready ? '<div class="banner" style="margin-top:10px"><b>Not set up yet.</b> ' + (CFG.staff ? 'Add the ElevenLabs key, then <button class="lnk" data-act="prsetup">set up the practice caller</button>.' : 'Opsis is finishing setup.') + '</div>' : '') +
       (LOCK ? '' : '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px;margin-top:12px" class="mut">Practice as<select id="prbrand" class="oq-field" style="min-width:230px">' + PR_BRANDS.map(function (b) { return '<option' + (PR.brand === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select></label>') +
       (PR.err ? '<div class="banner" style="margin-top:10px;background:#FDECEC;border-color:#F3C7C7;color:#A61B1B">' + esc(PR.err) + '</div>' : '') + '</div>';
+    if (CFG.staff && d.ready) {
+      var pvc = (VX.practice || {});
+      intro += '<div class="oq-card"><h2 class="ttl" style="margin:0">Caller voices</h2><p class="sub">The voice of the AI customer on female-caller and male-caller scenarios. ▶ Sample plays ElevenLabs’ clip. Saving updates the practice caller right away.' + (VX.err ? ' <span style="color:#A8441A">' + esc(VX.err) + '</span>' : '') + '</p>' +
+        '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:10px">' +
+        '<label class="mut" style="display:flex;flex-direction:column;gap:4px;font-size:12px">Female caller' + vxSelect('', pvc.female || 'female', 'practice', false, 'data-pv="female"') + '</label>' +
+        '<label class="mut" style="display:flex;flex-direction:column;gap:4px;font-size:12px">Male caller' + vxSelect('', pvc.male || 'male', 'practice', false, 'data-pv="male"') + '</label></div>' +
+        '<div style="margin-top:12px"><button class="sel btnd" data-act="prvoice"' + (VX.list && VX.list.length ? '' : ' disabled') + '>Save caller voices</button></div></div>';
+    }
     var cards = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">' + (d.scenarios || []).map(function (s) {
       var mine = prMine(s.id), best = mine.reduce(function (m, x) { return x.score_pct != null && (m == null || x.score_pct > m) ? x.score_pct : m; }, null);
       return '<div class="oq-card" style="display:flex;flex-direction:column;gap:8px;margin:0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div style="font-weight:600;font-size:15px">' + esc(s.title) + '</div>' + prDots(s.difficulty) + '</div>' +
-        '<div class="mut" style="font-size:12px">' + esc(s.call_type || '') + ' · ' + (s.voice === 'male' ? 'male caller' : 'female caller') + '</div>' +
+        '<div class="mut" style="font-size:12px">' + esc(s.call_type || '') + ' · ' + (function () { var sl = s.voice === 'male' ? 'male' : 'female', id = (VX.practice || {})[sl], nm = vxName(id); return sl + ' caller' + (nm ? ' (' + esc(nm) + ')' : ''); })() + '</div>' +
         '<div style="font-size:12.5px;line-height:1.5;color:#3B4541;flex:1">' + esc(s.goal.length > 190 ? s.goal.slice(0, 187) + '…' : s.goal) + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="mut" style="font-size:12px">' + (mine.length ? mine.length + ' tr' + (mine.length === 1 ? 'y' : 'ies') + ' · best ' + Math.round(best || 0) : 'Not tried yet') + '</span><button class="sel btnd" data-act="prstart" data-id="' + esc(s.id) + '"' + (d.ready && !PR.busy ? '' : ' disabled') + '>☎ Start call</button></div></div>';
     }).join('') + '</div>';
@@ -1581,6 +1606,30 @@ export function mountOpsisQA(ROOT, cfg) {
   function rcAdd(list, label) { return RC.s.can_edit ? '<button class="sel" data-act="rcadd" data-list="' + list + '" style="margin-top:10px">+ ' + label + '</button>' : ''; }
   function rcZips(v) { var out = [], t = Array.isArray(v) ? v.join(',') : String(v || ''), re = /(\d{5})(?:\s*(?:-|–|to)\s*(\d{5}))?/g, m; while ((m = re.exec(t)) && out.length < 3000) { var a = +m[1], b = m[2] ? +m[2] : a; if (b >= a && b - a <= 2000) { for (var z = a; z <= b; z++) { var k = String(z); while (k.length < 5) k = '0' + k; if (out.indexOf(k) < 0) out.push(k); } } else if (out.indexOf(m[1]) < 0) out.push(m[1]); } return out; }
   function rcPreview(s) { return function (t) { return String(t || '').replace(/\{agent\}/gi, s.agent_name || 'Ava').replace(/\{company\}/gi, s.company_name || ''); }; }
+  // ---- Voice picker (Becky 11/16: more ElevenLabs voices) ----
+  var VX = { list: null, practice: null, recep: {}, err: null, busy: false, audio: null, btn: null };
+  function vxTok() { try { var rw = localStorage.getItem('sb-dqvuviyqrcrgapmxkoyx-auth-token'); if (!rw) { for (var i = 0; i < localStorage.length; i++) { var kk = localStorage.key(i); if (/^sb-.*-auth-token$/.test(kk)) { rw = localStorage.getItem(kk); break; } } } var jj = rw && JSON.parse(rw); return jj && (jj.access_token || (jj.currentSession && jj.currentSession.access_token)); } catch (x) { return null; } }
+  function vxCall(body) {
+    return fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/ai-voices', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (vxTok() || '') }, body: JSON.stringify(Object.assign(CFG.clientId ? { client_id: CFG.clientId } : {}, body)) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || 'Couldn’t reach the voice service.'); return j; }); });
+  }
+  var VX_DEF = { female: '21m00Tcm4TlvDq8ikWAM', male: 'pNInz6obpgDQGcFmaJgB' };
+  function vxLoad(action) {
+    if (VX.list || VX.busy) return; VX.busy = true;
+    vxCall({ op: 'list' }).then(function (r) { VX.busy = false; VX.err = null; VX.list = r.voices || []; VX.practice = r.practice || null; VX.recep = r.recep || {}; if (action === 'practice') drawPractice(); else drawRcSettings(); })
+      .catch(function (e) { VX.busy = false; VX.err = e.message; VX.list = []; if (action === 'practice') drawPractice(); else drawRcSettings(); });
+  }
+  function vxLabel(v) { var bits = [v.accent, v.age].filter(Boolean).map(function (x) { return String(x).replace(/_/g, ' '); }); return String(v.name).replace(/\s+-\s+/, ' — ') + (bits.length ? ' (' + bits.join(', ') + ')' : ''); }
+  function vxName(id) { var v = (VX.list || []).filter(function (x) { return x.id === id; })[0]; return v ? String(v.name).split(/\s+-\s+/)[0] : null; }
+  function vxSelect(key, cur, action, disabled, attr) {
+    if (!VX.list) vxLoad(action);
+    var id = VX_DEF[cur] || cur, list = VX.list || [], has = list.some(function (v) { return v.id === id; });
+    var grp = function (lab, f) { var xs = list.filter(f); return xs.length ? '<optgroup label="' + lab + '">' + xs.map(function (v) { return '<option value="' + esc(v.id) + '"' + (v.id === id ? ' selected' : '') + '>' + esc(vxLabel(v)) + '</option>'; }).join('') + '</optgroup>' : ''; };
+    var opts = (has ? '' : '<option value="' + esc(cur) + '" selected>' + (id === VX_DEF.male ? 'Adam (current)' : id === VX_DEF.female ? 'Rachel (current)' : 'Current voice') + '</option>') +
+      grp('Female voices', function (v) { return v.gender === 'female'; }) + grp('Male voices', function (v) { return v.gender === 'male'; }) + grp('Other voices', function (v) { return v.gender !== 'female' && v.gender !== 'male'; });
+    return '<span style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap"><select class="oq-field" ' + (attr || 'data-k="' + key + '"') + ' style="width:auto;max-width:100%;min-width:260px"' + (disabled ? ' disabled' : '') + '>' + (VX.list ? opts : '<option>' + (VX.busy ? 'Loading voices…' : esc(cur)) + '</option>') + '</select>' +
+      '<button type="button" class="sel" data-act="vxprev" style="min-height:34px;padding:6px 12px">▶ Sample</button></span>';
+  }
   function drawRcSettings() {
     var el = $('rcset'); if (!el) return;
     var brand = LOCK || RC.sBrand || RC.brand;
@@ -1594,7 +1643,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var id = rcRow('Assistant name', say(rcIn('agent_name', { w: 200 }), 'agent_name'), 'What she calls herself on the phone.') +
       rcRow('Company name as spoken', say(rcIn('company_name', { w: 320 }), 'company_name'), 'Exactly how she says the company name, e.g. “Giel Doors” instead of “Thomas V Giel”.') +
       rcRow('Other names callers use', say(rcIn('aka', { ph: 'e.g. TVG, Thomas V Giel' }), 'aka'), 'So she knows these are the same company.') +
-      rcRow('Voice', say(rcIn('voice', { type: 'select', options: [['female', 'Female (Rachel)'], ['male', 'Male (Adam)']] }), 'voice')) +
+      rcRow('Voice', say(vxSelect('', VX.recep[RC.sBrand] || s.voice || 'female', 'receptionist', !RC.s.can_edit, 'data-vxrecep="1"'), 'voice'), VX.err ? '<span style="color:#A8441A">' + esc(VX.err) + '</span>' : 'Every voice in the Opsis ElevenLabs account. Picking one changes the line right away. ▶ Sample plays ElevenLabs’ own clip; ▶ Hear it plays her greeting in that voice.') +
       rcRow('Greeting', say(rcIn('greeting', { type: 'textarea' }), 'greeting'), 'Use {agent} and {company} to fill in the names. She’ll say: <i>“' + esc(pv(s.greeting)) + '”</i>') +
       rcRow('Closing line', say(rcIn('end_greeting', { type: 'textarea' }), 'end_greeting'), 'Said at the end of every call, then she hangs up. She’ll say: <i>“' + esc(pv(s.end_greeting)) + '”</i>');
     var oh = rcRow('Time zone', rcIn('timezone', { type: 'select', options: RC_TZ })) +
@@ -1725,6 +1774,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (RC.saving || !RC.s) return; RC.saving = true; drawRcSettings();
     api({ action: 'receptionist', op: 'save', brand: RC.sBrand, settings: RC.s.settings }).then(function (r) {
       RC.saving = false; RC.dirty = false; RC.s.settings = r.settings; RC.s.updated_by_name = r.updated_by_name; RC.s.updated_at = r.updated_at; drawRcSettings(); toast('Saved. The ' + short(r.brand) + ' line is updated.');
+      vxCall({ op: 'recep_apply', brand: r.brand || RC.sBrand }).catch(function (e) { toast('Saved, but the voice didn’t re-apply: ' + e.message); });
     }).catch(function (e) { RC.saving = false; drawRcSettings(); toast(e.message || 'Couldn’t save.'); });
   }
 
@@ -4174,6 +4224,12 @@ export function mountOpsisQA(ROOT, cfg) {
     else if (a === 'sdays') { CAL.sdays = +v; CAL.stats = null; CAL.why = {}; $('calwrap').innerHTML = '<div class="oq-card">' + skel(36, 6) + '</div>'; calLoadStats(T); }
     else if (a === 'why') calWhy(k);
   });
+  on(document, 'change', function (e) {
+    var vr = e.target && e.target.closest && e.target.closest('[data-vxrecep]'); if (!vr) return;
+    var b0 = RC.sBrand || RC.brand, vid0 = vr.value; vr.disabled = true;
+    vxCall({ op: 'recep_set', brand: b0, voice_id: vid0 }).then(function () { VX.recep[b0] = vid0; vr.disabled = false; toast((vxName(vid0) || 'New voice') + ' is now the ' + short(b0) + ' AI CSR voice.'); })
+      .catch(function (er) { vr.disabled = false; toast(er.message); drawRcSettings(); });
+  });
   on(document, 'change', function (e) { if (e.target && e.target.id === 'calout' && CAL.form) { CAL.form.outcome = e.target.value; calSync(); drawCalForm(); } });
 
   // ---------- First contact resolution + sentiment (Overview, 2026-10-22) ----------
@@ -4536,7 +4592,7 @@ export function mountOpsisQA(ROOT, cfg) {
         if (!String(txt).replace(/[\s.]/g, '')) { toast('Type something first.'); return; }
         var tk2 = null; try { var rw2 = localStorage.getItem('sb-dqvuviyqrcrgapmxkoyx-auth-token'); if (!rw2) { for (var i2 = 0; i2 < localStorage.length; i2++) { var kk2 = localStorage.key(i2); if (/^sb-.*-auth-token$/.test(kk2)) { rw2 = localStorage.getItem(kk2); break; } } } var jj2 = rw2 && JSON.parse(rw2); tk2 = jj2 && (jj2.access_token || (jj2.currentSession && jj2.currentSession.access_token)); } catch (x) { }
         var bt = el; bt.disabled = true; bt.textContent = 'Loading…';
-        fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/ai-csr-say', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (tk2 || '') }, body: JSON.stringify(Object.assign(CFG.clientId ? { client_id: CFG.clientId } : {}, { brand: RC.sBrand || RC.brand, text: txt, voice: ss.voice || 'female' })) })
+        fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/ai-csr-say', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (tk2 || '') }, body: JSON.stringify(Object.assign(CFG.clientId ? { client_id: CFG.clientId } : {}, { brand: RC.sBrand || RC.brand, text: txt, voice: VX.recep[RC.sBrand || RC.brand] || ss.voice || 'female' })) })
           .then(function (r) { if (r.ok) return r.blob(); return r.json().catch(function () { return {}; }).then(function (j) { throw new Error(j.error || 'Couldn’t play it.'); }); })
           .then(function (b) { var au = new Audio(URL.createObjectURL(b)); RC.sayAudio = au; RC.sayBtn = bt; bt.disabled = false; bt.textContent = '■ Stop'; au.onended = function () { if (RC.sayBtn === bt) { RC.sayAudio = null; RC.sayBtn = null; } bt.textContent = '▶ Hear it'; }; return au.play(); })
           .catch(function (e) { bt.disabled = false; bt.textContent = '▶ Hear it'; toast(e.message); });
@@ -4567,6 +4623,21 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'prcancel') { prCancel(); }
       else if (a === 'prback') { PR.result = null; PR.err = null; if (PR.d) drawPractice(); else render(); }
       else if (a === 'prview') { prView(d.id); }
+      else if (a === 'vxprev') {
+        var vs = el.parentNode && el.parentNode.querySelector('select'), vid = vs && (VX_DEF[vs.value] || vs.value), vv = (VX.list || []).filter(function (x) { return x.id === vid; })[0];
+        if (VX.audio) { try { VX.audio.pause(); } catch (x) { } var wb = VX.btn; VX.audio = null; VX.btn = null; if (wb) wb.textContent = '▶ Sample'; if (wb === el) return; }
+        if (!vv || !vv.preview) { toast('No sample clip for this voice. Use ▶ Hear it.'); return; }
+        var au0 = new Audio(vv.preview); VX.audio = au0; VX.btn = el; el.textContent = '■ Stop'; au0.onended = function () { if (VX.btn === el) { VX.audio = null; VX.btn = null; } el.textContent = '▶ Sample'; }; au0.play().catch(function () { el.textContent = '▶ Sample'; toast('Couldn’t play the sample.'); });
+      }
+      else if (a === 'prvoice') {
+        var pf = document.querySelector('[data-pv="female"]'), pm = document.querySelector('[data-pv="male"]'), cur0 = VX.practice || {}, jobs = [];
+        if (pf && pf.value && pf.value !== cur0.female && pf.value.length > 10) jobs.push(['female', pf.value]);
+        if (pm && pm.value && pm.value !== cur0.male && pm.value.length > 10) jobs.push(['male', pm.value]);
+        if (!jobs.length) { toast('No changes to save.'); return; }
+        el.disabled = true; el.textContent = 'Saving…';
+        jobs.reduce(function (pr, j) { return pr.then(function () { return vxCall({ op: 'practice_set', slot: j[0], voice_id: j[1] }); }).then(function () { (VX.practice = VX.practice || {})[j[0]] = j[1]; }); }, Promise.resolve())
+          .then(function () { toast('Caller voices saved.'); drawPractice(); }).catch(function (e) { el.disabled = false; el.textContent = 'Save caller voices'; toast(e.message); });
+      }
       else if (a === 'prsetup') { api({ action: 'practice', op: 'setup' }).then(function () { toast('Practice caller is set up.'); PR.d = null; render(); }).catch(function (e) { toast(e.message); }); }
       else if (a === 'ptf') { PT.f = d.f; PT.shown = 50; PT.scroll = !!d.scroll; drawPrice(); }
       else if (a === 'ptsort') { if (PT.sk === d.k) PT.sd = -PT.sd; else { PT.sk = d.k; PT.sd = (d.k === 'agent' || d.k === 'brand') ? 1 : -1; } drawPrice(); }
