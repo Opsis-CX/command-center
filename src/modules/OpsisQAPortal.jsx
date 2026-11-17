@@ -1,3 +1,4 @@
+// 2026-11-16: passes brandDash (RPC qa_brand_dash) for the new Dashboard page.
 // Opsis QA client portal (2026-10-20) — the new look for garageco.opsiscx.com.
 // Renders the vanilla app in ./opsisQaApp.js (same UI as the Opsis QA preview Rob saw) and
 // feeds it real data through the authenticated edge function `opsis-qa-portal`, which scopes
@@ -109,6 +110,13 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       phone: !csrSelf && me.client === 'c7c50cda-92a6-4665-baa3-3e207f853326',
       onSignOut,
       onClassic,
+      // Brand Dashboard (2026-11-16): reads RPC qa_brand_dash with the signed-in user's own session, so the database
+      // applies the login's access and brand lock. CSR logins don't get the page.
+      brandDash: csrSelf ? null : async ({ start, end, brands }) => {
+        const { data, error } = await supabase.rpc('qa_brand_dash', { p_client: clientId || me.client, p_start: start, p_end: end, p_brands: brands && brands.length ? brands : null })
+        if (error) { const e = new Error(error.message || 'Could not load the dashboard.'); e.status = 400; throw e }
+        return data
+      },
       // Workforce (Erlang C) and AI Speed to Lead, scoped to this login's client through opsis-portal-ops.
       mountExt: (kind, el) => {
         const root = createRoot(el)
