@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback, createContext, useContext } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import WfmTarget from '../components/WfmTarget'
 import { staffInterval, performance, sensitivity, outboundWork, pct, secs, slotLabel } from '../lib/erlang'
 
 // ============================================================
@@ -29,6 +30,8 @@ const supabaseData = {
   plans: () => supabase.from('wfm_plans').select('*').order('updated_at', { ascending: false }).then(unwrap),
   savePlan: row => supabase.from('wfm_plans').insert(row).then(r => { if (r.error) throw r.error }),
   deletePlan: id => supabase.from('wfm_plans').delete().eq('id', id).then(r => { if (r.error) throw r.error }),
+  // Perfect-world staffing snapshot (Switchboard copy), GarageCo by default (2026-11-17).
+  target: () => supabase.from('wfm_target_snapshot').select('payload, loaded_at').eq('client_id', 'c7c50cda-92a6-4665-baa3-3e207f853326').order('loaded_at', { ascending: false }).limit(1).maybeSingle().then(r => { if (r.error) throw r.error; return r.data ? { ...r.data.payload, loaded_at: r.data.loaded_at } : null }),
 }
 // Client portal: same calls through opsis-portal-ops (pass the portal's invoke()).
 export function portalWfmData(invoke) {
@@ -41,6 +44,7 @@ export function portalWfmData(invoke) {
     plans: () => q('plans'),
     savePlan: row => q('plan_save', row),
     deletePlan: id => q('plan_delete', { id }),
+    target: () => q('target'),
   }
 }
 const DataCtx = createContext(supabaseData)
@@ -48,6 +52,7 @@ const DataCtx = createContext(supabaseData)
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const TZS = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix', 'America/Los_Angeles']
 const TABS = [
+  ['target', 'Staffing target'],
   ['inbound', 'Inbound forecast'],
   ['outbound', 'Outbound capacity'],
   ['s2l', 'Speed to lead'],
@@ -154,7 +159,7 @@ function DayChart({ rows, target }) {
 // ============================================================
 export default function Workforce({ data = supabaseData, portal = false }) {
   const { session } = useAuth() || {}
-  const [tab, setTab] = useState('inbound')
+  const [tab, setTab] = useState('target')
   const [brands, setBrands] = useState([])
   const [clients, setClients] = useState([])
   const [err, setErr] = useState('')
@@ -191,6 +196,7 @@ export default function Workforce({ data = supabaseData, portal = false }) {
       </div>
       {err && <div className="card" style={{ padding: 12, color: 'var(--failed)', background: 'var(--failed-bg)' }}>{err}</div>}
       {toast && <div style={{ position: 'fixed', right: 24, bottom: 24, background: 'var(--ink)', color: 'var(--surface)', padding: '10px 16px', borderRadius: 10, zIndex: 50 }}>{toast}</div>}
+      {tab === 'target' && <WfmTarget load={data.target} />}
       {tab === 'inbound' && <InboundPlanner brands={brands} clients={clients} onSave={savePlan} preset={loadPlan?.kind === 'inbound' ? loadPlan : null} />}
       {tab === 'outbound' && <OutboundPlanner brands={brands} onSave={savePlan} preset={loadPlan?.kind === 'outbound' ? loadPlan : null} />}
       {tab === 's2l' && <SpeedToLeadPlanner onSave={savePlan} preset={loadPlan?.kind === 'speed_to_lead' ? loadPlan : null} />}
