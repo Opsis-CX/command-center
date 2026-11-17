@@ -849,6 +849,19 @@ export default function Chat() {
   // Matrix-driven: who can start new channels / DMs (see lib/permissions.js).
   const canCreateChannels = isAdmin || can(appRole, 'chat.create_channels')
   const canCreateDMs = isAdmin || can(appRole, 'chat.create_dms')
+  // Agent Support (2026-11-17): agents don't DM individuals — they message their project's support
+  // team, and every internal staff member (except the excluded list) is in that conversation.
+  const [supportOpts, setSupportOpts] = useState([])      // agent: the support lines I can message
+  const [showSupport, setShowSupport] = useState(false)
+  const [lineChoice, setLineChoice] = useState(null)     // staff: { agent, opts } when an agent has 2+ lines
+  const [supPw, setSupPw] = useState({ agent: false, owner: false, admin: false })
+  const [supportMeta, setSupportMeta] = useState({})     // staff side: channelId -> { clientId, client, line, agent, agentId }
+  useEffect(() => {
+    supabase.rpc('chat_support_powers').then(({ data }) => { if (data) setSupPw({ agent: !!data.agent, owner: !!data.owner, admin: !!data.admin }) })
+    supabase.rpc('chat_support_options').then(({ data }) => setSupportOpts(Array.isArray(data) ? data : []))
+  }, [])
+  const canLeaveSupport = isOwner || supPw.owner      // Owners can leave agent support chats
+  const canMuteSupport = isAdmin || supPw.admin       // only admins can mute them
   const isMobile = useIsMobile()
   const { counts: unreadCounts, markRead } = useUnread()
   const [me, setMe] = useState(null)
@@ -1001,13 +1014,42 @@ export default function Chat() {
           const nameById = {}; (profs || []).forEach(p => nameById[p.id] = p.full_name)
           const map = {}
           const peers = {}
+          // Agent Support: the agent sees the line ("GarageCo Support"); staff see the agent,
+          // grouped by client in the Agent Support section.
+          const supportCh = dmChannels.filter(c => c.support_line_id)
+          const lineName = {}
+          const supportMetaTmp = {}
+          if (supportCh.length) {
+            const { data: lines } = await supabase.from('chat_support_lines').select('id, name, client_id').in('id', [...new Set(supportCh.map(c => c.support_line_id))])
+            const lineClient = {}
+            ;(lines || []).forEach(l => { lineName[l.id] = l.name; lineClient[l.id] = l.client_id })
+            const cIds = [...new Set(Object.values(lineClient).filter(Boolean))]
+            const { data: cls } = cIds.length ? await supabase.from('clients').select('id, name').in('id', cIds) : { data: [] }
+            const clientName = {}; (cls || []).forEach(c => { clientName[c.id] = c.name })
+            const agentIds = supportCh.map(c => c.support_agent_id).filter(id => id && !nameById[id])
+            if (agentIds.length) { const { data: ap } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', agentIds); registerPhotos(ap); (ap || []).forEach(p => { nameById[p.id] = p.full_name }) }
+            supportCh.forEach(c => {
+              if (c.support_agent_id === meRes.data.id) return
+              const cl = lineClient[c.support_line_id]
+              supportMetaTmp[c.id] = { clientId: cl || 'line:' + c.support_line_id, client: (cl && clientName[cl]) || lineName[c.support_line_id] || 'Other',
+                line: lineName[c.support_line_id] || 'Support', agentId: c.support_agent_id, agent: nameById[c.support_agent_id] || 'Agent' }
+            })
+          }
           Object.entries(othersByChannel).forEach(([cid, pids]) => {
+            const sc = supportCh.find(c => c.id === cid)
+            if (sc) {
+              const ln = lineName[sc.support_line_id] || sc.name || 'Support'
+              if (sc.support_agent_id === meRes.data.id) map[cid] = ln
+              else { map[cid] = `${nameById[sc.support_agent_id] || 'Agent'} · ${ln}`; peers[cid] = sc.support_agent_id }
+              return
+            }
             if (pids.length === 0) map[cid] = 'Just you'
             else if (pids.length === 1) { map[cid] = nameById[pids[0]] || 'Unknown'; peers[cid] = pids[0] }
             else map[cid] = pids.map(pid => (nameById[pid] || 'Unknown').split(' ')[0]).sort().join(', ')
           })
           setDmNames(map)
           setDmPeers(peers)
+          setSupportMeta(supportMetaTmp)
         }
       }
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
@@ -1083,6 +1125,10 @@ export default function Chat() {
   // For the open 1:1 DM: a staff-side note + one-click "turn on" when the agent can't reply.
   const agentMutedFor = (channelId) => {
     const c = channels.find(x => x.id === channelId)
+    if (c?.support_line_id) {
+      if (!c.support_muted_at || !supportMeta[c.id]) return null
+      return { name: supportMeta[c.id].agent, onTurnOn: canMuteSupport ? () => setSupportMuted(c, false) : null }
+    }
     const ag = agentPeer(c)
     if (!amStaff || !ag || !agentBlocked(ag.id)) return null
     return { name: ag.full_name, onTurnOn: () => setAgentBlocked(ag.id, false) }
@@ -1094,10 +1140,58 @@ export default function Chat() {
     return o === undefined ? agentDm.blockAll : o
   }
   const agentPeer = (c) => {
-    if (!c?.is_dm) return null
+    if (!c?.is_dm || c.support_line_id) return null
     const peer = dmPeers[c.id] ? profiles.find(p => p.id === dmPeers[c.id]) : null
     return peer && isAgentProfile(peer) ? peer : null
   }
+  // ---- Agent Support helpers ----
+  async function setSupportMuted(c, muted) {
+    const { error } = await supabase.rpc('chat_support_set_muted', { p_channel: c.id, p_muted: muted })
+    if (error) { window.alert(error.message); return }
+    setChannels(prev => prev.map(x => x.id === c.id ? { ...x, support_muted_at: muted ? new Date().toISOString() : null } : x))
+  }
+  async function leaveSupport(c) {
+    const who = supportMeta[c.id]?.agent || 'this agent'
+    if (!await uiConfirm(`Leave the support chat with ${who}?\n\nYou won't see it or get notifications anymore. The rest of the team still has it. If you message ${who.split(' ')[0]} later, you'll rejoin.`)) return
+    const { error } = await supabase.rpc('chat_support_leave', { p_channel: c.id })
+    if (error) { window.alert(error.message); return }
+    if (activeId === c.id) { setActiveId(null); setMobileView('list') }
+    load()
+  }
+  async function openSupportLine(lineId, agentId = null) {
+    const { data, error } = await supabase.rpc('chat_support_open', { p_line: lineId, p_agent: agentId })
+    if (error) { window.alert(error.message); return }
+    setShowSupport(false); setLineChoice(null)
+    if (prefs[data]?.hidden_at) savePref(data, { hidden_at: null })
+    await load(); openChannel(data)
+  }
+  // agent: "+ DM" → straight to their only line, or pick the project
+  const startAgentDM = () => supportOpts.length === 1 ? openSupportLine(supportOpts[0].id) : setShowSupport(true)
+  // staff: open an agent's support chat
+  async function openAgentSupport(agentId) {
+    const { data: opts, error } = await supabase.rpc('chat_support_options', { p_agent: agentId })
+    if (error) { window.alert(error.message); return }
+    if (!opts?.length) { window.alert('This agent isn\'t on a support line yet.'); return }
+    if (opts.length > 1) { setLineChoice({ agent: agentId, opts }); return }
+    openSupportLine(opts[0].id, agentId)
+  }
+  // Old private DMs with agents are read-only now; point people to the support chat.
+  const legacyAgentDmFor = (channelId) => {
+    const c = channels.find(x => x.id === channelId)
+    if (!c?.is_dm || c.support_line_id) return null
+    if (supPw.agent) return {
+      text: 'Direct messages now go to your project\'s support team, so anyone on the team can help you.',
+      label: supportOpts.length === 1 ? `Message ${supportOpts[0].name}` : supportOpts.length ? 'Start a message' : null,
+      onAction: startAgentDM,
+    }
+    const ag = agentPeer(c)
+    if (amStaff && ag) {
+      const first = (ag.full_name || 'this agent').split(' ')[0]
+      return { text: `Messages with ${first} now go through Agent Support, so the whole team can see them.`, label: `Open ${first}'s support chat`, onAction: () => openAgentSupport(ag.id) }
+    }
+    return null
+  }
+
   async function setAgentBlocked(agentId, blocked) {
     setAgentDm(prev => ({ ...prev, overrides: { ...prev.overrides, [agentId]: blocked } }))
     const { error } = await supabase.from('dm_agent_overrides')
@@ -1259,7 +1353,17 @@ export default function Chat() {
   const groupOf = (c) => (!isFav(c) && sectionIds.has(prefs[c.id]?.section_id)) ? prefs[c.id].section_id : null
   const favList = visible.filter(isFav).sort(byPinThenActivity)
   const channelList = visible.filter(c => !c.is_dm && !isFav(c) && !groupOf(c)).sort(byPinThenActivity)
-  const dmList = visible.filter(c => c.is_dm && !isFav(c) && !groupOf(c)).sort(byPinThenActivity)
+  // Staff: agent support chats get their own "Agent Support" section, grouped by client.
+  // Direct messages stays for internal DMs. (Agents see their support chats under Direct messages.)
+  const isSupportForStaff = (c) => !!supportMeta[c.id]
+  const dmList = visible.filter(c => c.is_dm && !isFav(c) && !groupOf(c) && !isSupportForStaff(c)).sort(byPinThenActivity)
+  const supportList = visible.filter(c => c.is_dm && !isFav(c) && !groupOf(c) && isSupportForStaff(c)).sort(byPinThenActivity)
+  const supportGroups = (() => {
+    const g = {}
+    supportList.forEach(c => { const m = supportMeta[c.id]; (g[m.clientId] ||= { id: m.clientId, name: m.client, items: [], lines: new Set() }); g[m.clientId].items.push(c); g[m.clientId].lines.add(m.line) })
+    return Object.values(g).sort((a, b) => a.name.localeCompare(b.name))
+  })()
+  const supportUnread = supportList.reduce((n, c) => n + (unreadCounts[c.id] || 0), 0)
   const hiddenUnread = hiddenList.reduce((n, c) => n + (unreadCounts[c.id] || 0), 0)
 
   // A collapsed section still shows anything unread (and whatever is open).
@@ -1269,19 +1373,19 @@ export default function Chat() {
     <span style={{ background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', flex: 'none' }}>{n > 99 ? '99+' : n}</span>
   )
 
-  const renderRow = (c, { dim = false } = {}) => {
+  const renderRow = (c, { dim = false, labelOverride = null, sub = null, indent = 0 } = {}) => {
     const typingHere = c.is_dm && Object.keys(dmTyping[c.id] || {}).length > 0
     const active = c.id === activeId && !isMobile
     const unread = unreadCounts[c.id] || 0
     const pinnedHere = !!prefs[c.id]?.pinned_at
     const peer = c.is_dm && dmPeers[c.id] ? profiles.find(p => p.id === dmPeers[c.id]) : null
     const st = peer && effStatus(peer)
-    const label = c.is_dm ? (dmNames[c.id] || c.name || 'Direct message') : c.name
+    const label = labelOverride || (c.is_dm ? (dmNames[c.id] || c.name || 'Direct message') : c.name)
     const isGroupDm = c.is_dm && !peer
     return (
       <div key={c.id} className={'chat-side-row' + (active ? ' is-active' : '')} style={{ opacity: dim ? 0.7 : 1 }}>
         <button onClick={() => openChannel(c.id)} className="chat-side-btn"
-          style={{ color: active ? 'var(--accent)' : unread ? 'var(--ink)' : 'var(--ink-soft)', fontWeight: unread ? 700 : 500, padding: isMobile ? '9px 10px' : '4px 8px', fontSize: isMobile ? 15 : 13.5 }}>
+          style={{ color: active ? 'var(--accent)' : unread ? 'var(--ink)' : 'var(--ink-soft)', fontWeight: unread ? 700 : 500, padding: isMobile ? '9px 10px' : '4px 8px', paddingLeft: indent ? (isMobile ? 10 : 8) + indent : undefined, fontSize: isMobile ? 15 : 13.5 }}>
           {c.is_dm ? (
             <span style={{ position: 'relative', width: 20, height: 20, flex: 'none' }}>
               {isGroupDm ? (
@@ -1296,9 +1400,10 @@ export default function Chat() {
           )}
           <span style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
             <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+            {sub && <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--ink-soft)', opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '0 1 auto' }}>· {sub}</span>}
             {st && st.emoji ? <span title={st.text || ''} style={{ fontSize: 12, flex: 'none' }}><StatusEmoji emoji={st.emoji} size={12} /></span> : null}
             {pinnedHere && <span title="Pinned" style={{ fontSize: 10, flex: 'none' }}>📌</span>}
-            {amStaff && peer && isAgentProfile(peer) && agentBlocked(peer.id) && <span title="Messages from this agent are turned off" style={{ fontSize: 10.5, flex: 'none' }}>🔕</span>}
+            {amStaff && peer && isAgentProfile(peer) && (c.support_line_id ? !!c.support_muted_at : agentBlocked(peer.id)) && <span title="Messages from this agent are turned off" style={{ fontSize: 10.5, flex: 'none' }}>🔕</span>}
           </span>
           {typingHere && <span className="chat-typing-dots" title={`${label} ${label.includes(',') ? 'are' : 'is'} typing…`} aria-label="typing"><i /><i /><i /></span>}
           {unreadBadge(unread)}
@@ -1366,7 +1471,12 @@ export default function Chat() {
             const ag = agentPeer(c), off = agentBlocked(ag.id), first = (ag.full_name || 'this agent').split(' ')[0]
             return menuItem(off ? `🔔 Turn on messages from ${first}` : `🔕 Turn off messages from ${first}`, () => { setAgentBlocked(ag.id, !off); close() })
           })()}
-          {c.is_dm && menuItem('✕ Remove conversation', () => { close(); deleteDmForMe(c) })}
+          {c.support_line_id && amStaff && canMuteSupport && supportMeta[c.id] && (() => {
+            const first = (supportMeta[c.id].agent || 'this agent').split(' ')[0]
+            return menuItem(c.support_muted_at ? `🔔 Turn on messages from ${first}` : `🔕 Turn off messages from ${first}`, () => { setSupportMuted(c, !c.support_muted_at); close() })
+          })()}
+          {c.support_line_id && supportMeta[c.id] && canLeaveSupport && menuItem('🚪 Leave conversation', () => { close(); leaveSupport(c) })}
+          {c.is_dm && !supportMeta[c.id] && menuItem('✕ Remove conversation', () => { close(); deleteDmForMe(c) })}
           {isOwner && !c.is_dm && <div style={{ borderTop: '1px solid var(--line)', margin: '4px 0' }} />}
           {isOwner && menuItem(c.is_dm ? '⚠ Delete for everyone' : '🗑 Delete channel for everyone', () => { close(); deleteChannel(c) }, { danger: true })}
         </>)
@@ -1440,11 +1550,38 @@ export default function Chat() {
             )}
             {whenCollapsed(channelList, builtinCollapsed.channels).map(c => renderRow(c))}
 
-            {(dmList.length > 0 || canCreateDMs) && renderHeader({
+            {(dmList.length > 0 || canCreateDMs || supportOpts.length > 0) && renderHeader({
               key: 'h-dm', label: 'Direct messages', icon: '💬', collapsed: builtinCollapsed.dms, onToggle: () => toggleBuiltin('dms'),
-              right: canCreateDMs ? <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button> : null,
+              right: canCreateDMs && !supPw.agent ? <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowDM(true)}>+ DM</button>
+                : supPw.agent && supportOpts.length ? <button className="btn btn-ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={startAgentDM} title="Message your project's support team">+ DM</button> : null,
             })}
             {whenCollapsed(dmList, builtinCollapsed.dms).map(c => renderRow(c))}
+
+            {supportList.length > 0 && (<>
+              {renderHeader({ key: 'h-sup', label: 'Agent Support', icon: '🎧', collapsed: builtinCollapsed.support, onToggle: () => toggleBuiltin('support'), unread: builtinCollapsed.support ? supportUnread : 0 })}
+              {supportGroups.map(g => {
+                const k = 'sup:' + g.id
+                const gCollapsed = !!builtinCollapsed[k]
+                const gUnread = g.items.reduce((n, c) => n + (unreadCounts[c.id] || 0), 0)
+                const rows = whenCollapsed(g.items, builtinCollapsed.support || gCollapsed)
+                if (builtinCollapsed.support && rows.length === 0) return null
+                const multiLine = g.lines.size > 1
+                return (
+                  <React.Fragment key={k}>
+                    {!builtinCollapsed.support && (
+                      <button onClick={() => toggleBuiltin(k)} className="chat-side-head-btn"
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '5px 8px 2px 26px', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-soft)' }}>
+                        <span style={{ fontSize: 10, width: 9, flex: 'none', opacity: 0.8 }}>{gCollapsed ? '▸' : '▾'}</span>
+                        <span style={{ flex: 1, minWidth: 0, textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.name}</span>
+                        <span style={{ fontWeight: 500, fontSize: 11.5, opacity: 0.6 }}>{g.items.length}</span>
+                        {gCollapsed && gUnread ? unreadBadge(gUnread) : null}
+                      </button>
+                    )}
+                    {rows.map(c => renderRow(c, { labelOverride: supportMeta[c.id].agent, sub: multiLine ? supportMeta[c.id].line : null, indent: 10 }))}
+                  </React.Fragment>
+                )
+              })}
+            </>)}
 
             {hiddenList.length > 0 && (<>
               {renderHeader({ key: 'h-hidden', label: 'Hidden', icon: '🙈', count: hiddenList.length, collapsed: !showHidden, onToggle: () => setShowHidden(v => !v), unread: hiddenUnread })}
@@ -1461,12 +1598,12 @@ export default function Chat() {
         activeId
           ? (activeId === LSA_CHANNEL_ID
               ? <LsaChannelView key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} isOwner={isOwner} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead}
-                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} agentMuted={agentMutedFor(activeId)} />
+                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} agentMuted={agentMutedFor(activeId)} legacyAgentDm={legacyAgentDmFor(activeId)} />
               : activeId === TRADE_BOARD_CHANNEL_ID
               ? <SetterChannelView key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} isOwner={isOwner} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead}
-                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} agentMuted={agentMutedFor(activeId)} />
+                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} agentMuted={agentMutedFor(activeId)} legacyAgentDm={legacyAgentDmFor(activeId)} />
               : <ChannelPane key={activeId} channelId={activeId} me={me} isAdmin={isAdmin} isOwner={isOwner} channel={channels.find(c => c.id === activeId)} dmName={dmNames[activeId]} profiles={profiles} isMobile={isMobile} onBack={() => setMobileView('list')} markRead={markRead}
-                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} agentMuted={agentMutedFor(activeId)} />)
+                  targetMessageId={targetMessageId} onTargetConsumed={() => setTargetMessageId(null)} clearedAt={prefs[activeId]?.cleared_at || null} agentMuted={agentMutedFor(activeId)} legacyAgentDm={legacyAgentDmFor(activeId)} />)
           : <div style={{ display: 'grid', placeItems: 'center', color: 'var(--ink-soft)', height: '100%' }}>Select a channel</div>
       )}
 
@@ -1481,6 +1618,9 @@ export default function Chat() {
           if (prefs[id]?.hidden_at) savePref(id, { hidden_at: null })
           load(); openChannel(id)
         }} />}
+      {showSupport && <SupportLineModal lines={supportOpts} title="New direct message" onClose={() => setShowSupport(false)} onPick={(l) => openSupportLine(l.id)} />}
+      {lineChoice && <SupportLineModal lines={lineChoice.opts} title="Message an agent" agentName={profiles.find(p => p.id === lineChoice.agent)?.full_name}
+        onClose={() => setLineChoice(null)} onPick={(l) => openSupportLine(l.id, lineChoice.agent)} />}
       {renderMenu()}
       {nameModal && <NameModal {...nameModal} onClose={() => setNameModal(null)} />}
     </div>
@@ -1592,7 +1732,7 @@ function ChannelPane(props) {
   return <ChannelPaneMemo {...props} onBack={stable.onBack} markRead={stable.markRead}
     onTargetConsumed={props.onTargetConsumed ? stable.onTargetConsumed : undefined} />
 }
-function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, profiles, isMobile, onBack, markRead, targetMessageId, onTargetConsumed, clearedAt = null, agentMuted = null }) {
+function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, profiles, isMobile, onBack, markRead, targetMessageId, onTargetConsumed, clearedAt = null, agentMuted = null, legacyAgentDm = null }) {
   // Agent side: names of staff in this DM who have turned off messages from agents.
   const [dmBlockedBy, setDmBlockedBy] = useState([])
   const refreshDmBlock = useCallback(async () => {
@@ -2579,7 +2719,21 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
 
       <TypingLine store={typingStore} />
 
-      {dmBlockedBy.length > 0 ? (
+      {legacyAgentDm ? (
+        <div style={{ borderTop: '1px solid var(--line)', padding: '14px 16px', flex: 'none', background: 'var(--canvas)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 18 }}>🎧</span>
+          <div style={{ fontSize: 13.5, lineHeight: 1.5, flex: 1, minWidth: 200 }}>{legacyAgentDm.text}</div>
+          {legacyAgentDm.label && <button className="btn btn-primary" style={{ fontSize: 12.5, padding: '6px 12px' }} onClick={legacyAgentDm.onAction}>{legacyAgentDm.label}</button>}
+        </div>
+      ) : channel?.support_line_id && channel?.support_muted_at && isAgentProfile(me) ? (
+        <div style={{ borderTop: '1px solid var(--line)', padding: '14px 16px', flex: 'none', background: 'var(--canvas)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <span style={{ fontSize: 18 }}>🔕</span>
+          <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>
+            Messages here are paused right now. If it's urgent, please email{' '}
+            <a href="mailto:support@opsiscx.com" style={{ color: 'var(--accent)', fontWeight: 600 }}>support@opsiscx.com</a>.
+          </div>
+        </div>
+      ) : dmBlockedBy.length > 0 ? (
         <div style={{ borderTop: '1px solid var(--line)', padding: '14px 16px', flex: 'none', background: 'var(--canvas)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <span style={{ fontSize: 18 }}>🔕</span>
           <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>
@@ -2593,7 +2747,7 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
         {agentMuted && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--ink-soft)', marginBottom: 8, flexWrap: 'wrap' }}>
             <span>🔕 Messages from <b style={{ color: 'var(--ink)' }}>{agentMuted.name}</b> are turned off — they can read this but can't reply.</span>
-            <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '2px 8px' }} onClick={agentMuted.onTurnOn}>Turn on</button>
+            {agentMuted.onTurnOn && <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '2px 8px' }} onClick={agentMuted.onTurnOn}>Turn on</button>}
           </div>
         )}
         {/* Pending scheduled messages you've queued for this conversation. */}
@@ -2737,6 +2891,7 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
       )}
       {showPrefs && <NotificationPrefsPanel channelId={channelId} channelName={channel?.name}
         isDm={channel?.is_dm} dmName={dmName} meId={me.id} profiles={profiles}
+        noMute={!!channel?.support_line_id && !isAdmin}
         onClose={() => setShowPrefs(false)} />}
       {showMembers && <ChannelMembersPanel channelId={channelId} channelName={channel?.name} profiles={profiles} meId={me.id} isOwner={isOwner} onClose={() => setShowMembers(false)} onChanged={async () => {
         const { data } = await supabase.from('channel_members').select('profile_id').eq('channel_id', channelId)
@@ -2773,7 +2928,7 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
 // notify_all | notify_mentions | notify_from[] | notify_keywords[]
 // "None" = all four off/empty.
 // ============================================================
-function NotificationPrefsPanel({ channelId, channelName, isDm, dmName, meId, profiles, onClose }) {
+function NotificationPrefsPanel({ channelId, channelName, isDm, dmName, meId, profiles, onClose, noMute = false }) {
   const [prefs, setPrefs] = useState(null)
   const [saving, setSaving] = useState(false)
   const [kw, setKw] = useState('')
@@ -2805,6 +2960,9 @@ notify_keywords: [],
   const set = (patch) => setPrefs(p => ({ ...p, ...patch }))
 
   async function save() {
+    if (noMute && !prefs.notify_all && !prefs.notify_mentions && !prefs.notify_from.length && !prefs.notify_keywords.length) {
+      window.alert('Only admins can mute agent support chats. Keep at least one option on.'); return
+    }
     setSaving(true)
     const { error } = await supabase.from('channel_notification_prefs').upsert({
       profile_id: meId,
@@ -2940,10 +3098,10 @@ notify_keywords: [],
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--line-soft)' }}>
-          <button className="btn btn-ghost" style={{ flex: 1 }}
+          {!noMute && <button className="btn btn-ghost" style={{ flex: 1 }}
             onClick={() => set({ notify_all: false, notify_mentions: false, notify_from: [], notify_keywords: [] })}>
             Mute (None)
-          </button>
+          </button>}
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
           </button>
@@ -3902,6 +4060,17 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
   async function start() {
     const personIds = [...picked]
     if (!personIds.length) return
+    // Agents are messaged through Agent Support (the support team sees it too)
+    const agentsPicked = personIds.filter(id => isAgentProfile(profiles.find(p => p.id === id)))
+    if (agentsPicked.length) {
+      if (personIds.length > 1) { setErr('Agents are messaged one at a time through Agent Support — pick just the agent.'); return }
+      setSaving(true); setErr('')
+      const { data: opts } = await supabase.rpc('chat_support_options', { p_agent: agentsPicked[0] })
+      setSaving(false)
+      if (!opts?.length) { setErr(`${profiles.find(p => p.id === agentsPicked[0])?.full_name || 'This agent'} isn't on a support line yet.`); return }
+      if (opts.length > 1) { setLineChoices({ agent: agentsPicked[0], opts }); return }
+      return openLine(opts[0], agentsPicked[0])
+    }
     setSaving(true); setErr('')
     try {
       // Look for an existing DM whose member set is EXACTLY me + the picked
@@ -3945,6 +4114,16 @@ function CreateDMModal({ me, profiles, onClose, onCreated }) {
   }
 
   const pickedNames = [...picked].map(id => profiles.find(p => p.id === id)?.full_name?.split(' ')[0]).filter(Boolean)
+
+  const [lineChoices, setLineChoices] = useState(null)
+  async function openLine(line, agentId) {
+    setSaving(true); setErr('')
+    const { data, error } = await supabase.rpc('chat_support_open', { p_line: line.id, p_agent: agentId })
+    if (error) { setErr(error.message); setSaving(false); return }
+    onCreated(data)
+  }
+  if (lineChoices) return <SupportLineModal lines={lineChoices.opts} title="Message an agent" agentName={profiles.find(p => p.id === lineChoices.agent)?.full_name}
+    onClose={() => setLineChoices(null)} onPick={(l) => openLine(l, lineChoices.agent)} />
 
   return (
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
@@ -4060,6 +4239,25 @@ function CreateChannelModal({ me, profiles, onClose, onCreated }) {
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={create} disabled={saving}>{saving ? 'Creating…' : 'Create channel'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+// Pick a support line (agents: their project; staff: which project to message an agent about)
+function SupportLineModal({ lines, title, onClose, onPick, agentName }) {
+  const [busy, setBusy] = useState(false)
+  return (
+    <div onMouseDown={e => { if (e.target === e.currentTarget) onClose() }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.42)', zIndex: 3000, display: 'grid', placeItems: 'center', padding: 14 }}>
+      <div role="dialog" aria-label={title} style={{ width: 'min(440px, 100%)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 16, boxShadow: '0 24px 60px rgba(0,0,0,.25)', padding: '18px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}><b style={{ fontSize: 16, flex: 1 }}>{title}</b><button className="btn btn-ghost" style={{ padding: '2px 8px' }} onClick={onClose} aria-label="Close">✕</button></div>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--ink-soft)' }}>{agentName ? `Which project is this about? ${agentName} and the support team will see the conversation.` : 'Choose your project. Your message goes to the support team — anyone on the team can answer.'}</p>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {lines.map(l => (
+            <button key={l.id} className="btn btn-ghost" disabled={busy} style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '12px 14px', fontSize: 14, fontWeight: 700 }}
+              onClick={async () => { setBusy(true); await onPick(l); setBusy(false) }}>💬 {l.name}{l.channel_id ? <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: 'var(--ink-soft)' }}>open</span> : null}</button>))}
         </div>
       </div>
     </div>
