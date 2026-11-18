@@ -762,7 +762,17 @@ export default function CallQA({ portal = false } = {}) {
     })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
   }, [filtered])
 
-  async function rescore(callId) { setBusy(callId); try { const { error } = await supabase.functions.invoke('callqa-score', { body: { call_id: callId } }); if (error) throw error; await load() } catch (e) { alert('Re-score failed: ' + (e.message || e)) } setBusy('') }
+  // Scores are locked once given (Becky 11/18: same score every time). Re-score unlocks just this call, on purpose.
+  async function rescore(callId) {
+    if (!window.confirm('Scores are locked so a call always keeps the same score.\n\nRe-scoring unlocks this one call and lets the AI score it again — the score may change. Continue?')) return
+    setBusy(callId)
+    try {
+      const { error: ue } = await supabase.rpc('callqa_unlock_score', { p_call: callId }); if (ue) throw ue
+      const { error } = await supabase.functions.invoke('callqa-score', { body: { call_id: callId } }); if (error) throw error
+      await load()
+    } catch (e) { alert('Re-score failed: ' + (e.message || e)) }
+    setBusy('')
+  }
   async function setReviewStatus(reviewId, status) { await supabase.from('ai_qa_reviews').update({ status, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', reviewId); await load() }
   // Marking reviewed goes through the qa_set_reviewed RPC rather than a direct
   // update: the RLS write policy on ai_qa_reviews is can_manage_qa(), which
