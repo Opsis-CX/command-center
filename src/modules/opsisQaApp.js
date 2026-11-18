@@ -1656,8 +1656,25 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px"><div style="flex:1 1 260px"><div class="cap" style="color:#1F5A41">What went well</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(D.went_well) + '</ul></div><div style="flex:1 1 260px"><div class="cap" style="color:#A8441A">Try this next time</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(D.try_next) + '</ul></div></div>' +
       (D.say_this ? '<div class="banner" style="margin-top:14px;background:#EEF2FB;border-color:#D5DDF3;color:#2B3A67"><b>Say it like this:</b> “' + esc(D.say_this) + '”</div>' : '') +
       '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' + (r.scenario_id ? '<button class="sel btnd" data-act="prstart" data-id="' + esc(r.scenario_id) + '">↻ Try it again</button>' : '') + '<button class="sel" data-act="prback">Pick another scenario</button></div></div>' +
+      (r.session_id ? '<div class="oq-card"><h2 class="ttl" style="margin:0 0 8px">Recording</h2>' + prAudioHtml(r.session_id) + '</div>' : '') +
       '<div class="oq-card"><h2 class="ttl">Call flow</h2>' + steps + '</div>' +
       '<div class="oq-card"><details><summary style="cursor:pointer;font-weight:600">Transcript</summary><div style="margin-top:8px">' + tx + '</div></details></div>';
+  }
+  // Practice call recordings (Rob 11/17): practice-audio pulls the ElevenLabs audio once, then serves a signed link.
+  var PR_AUD = {};
+  function prAudioHtml(sid) {
+    var a = PR_AUD[sid];
+    if (!a) { setTimeout(function () { prAudioLoad(sid); }, 0); return '<div id="praud" class="mut" style="font-size:13px">Loading recording…</div>'; }
+    if (a.url) return '<div id="praud"><audio controls preload="metadata" src="' + esc(a.url) + '" style="width:100%;max-width:560px"></audio></div>';
+    return '<div id="praud" class="mut" style="font-size:13px">' + esc(a.reason || 'No recording for this call.') + '</div>';
+  }
+  function prAudioLoad(sid) {
+    if (PR_AUD[sid] || PR_AUD['_' + sid]) return; PR_AUD['_' + sid] = 1;
+    fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/practice-audio', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (vxTok() || '') }, body: JSON.stringify({ session_id: sid }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }); })
+      .then(function (j) { PR_AUD[sid] = { url: j.url || null, reason: j.url ? null : (j.reason || j.error || 'Couldn’t load the recording.') }; })
+      .catch(function () { PR_AUD[sid] = { url: null, reason: 'Couldn’t load the recording.' }; })
+      .then(function () { delete PR_AUD['_' + sid]; var el = $('praud'); if (el && PR.result && PR.result.session_id === sid) el.outerHTML = prAudioHtml(sid); });
   }
   var PR_SDK = null;
   function prSdk() { if (!PR_SDK) PR_SDK = (new Function('u', 'return import(u)'))('https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.35.0/+esm'); return PR_SDK; }
