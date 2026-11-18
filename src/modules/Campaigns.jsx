@@ -372,7 +372,7 @@ function AgentsTab({ campaign }) {
   const [busy, setBusy] = useState(null)
   useEffect(() => {
     Promise.all([
-      supabase.from('profiles').select('id, full_name, email, role').eq('is_active', true).order('full_name'),
+      supabase.from('profiles').select('id, full_name, email, role').is('client_id', null).eq('is_active', true).order('full_name'),
       supabase.from('dial_campaign_agents').select('profile_id').eq('campaign_id', campaign.id),
     ]).then(([p, a]) => {
       setPeople((p.data || []).filter(x => !/(^|,)(client|csr)(,|$)/.test(x.role || '')))

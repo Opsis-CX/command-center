@@ -750,7 +750,7 @@ function CallReviews({ isAuditor }) {
       const [rRes, pRes] = await Promise.all([
         supabase.from('call_reviews').select('*').order('created_at', { ascending: false }),
         isAuditor
-          ? supabase.from('profiles').select('id, full_name, role, is_active').eq('is_active', true).order('full_name')
+          ? supabase.from('profiles').select('id, full_name, role, is_active').is('client_id', null).eq('is_active', true).order('full_name')
           : Promise.resolve({ data: [] }),
       ])
       if (rRes.error) throw rRes.error

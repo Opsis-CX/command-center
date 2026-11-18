@@ -63,7 +63,7 @@ export default function SalesSprintReport({ pipelineKey = 'sales', onClose }) {
           .eq('pipeline', pipelineKey),
         supabase.from('deal_activities').select('id, kind, actor_id, actor_name, created_at').gte('created_at', iso),
         supabase.from('deal_stage_events').select('id, to_status, actor_id, created_at').gte('created_at', iso),
-        supabase.from('profiles').select('id, full_name').eq('is_active', true),
+        supabase.from('profiles').select('id, full_name').is('client_id', null).eq('is_active', true),
       ])
       const bad = [dealsRes, actRes, evRes, profRes].find(r => r.error)
       if (bad) throw bad.error

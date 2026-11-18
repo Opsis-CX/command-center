@@ -64,7 +64,7 @@ export function ProjectsDataProvider({ children }) {
         // Project Management assigns work inside Command Center, which agents and
         // clients cannot open — so they must never appear in an owner, member or
         // assignee picker. Deactivated people are gone entirely.
-        fetchAllRows(() => supabase.from('profiles').select('*').eq('is_active', true).not('role', 'in', '(agent,client)').order('full_name').order('id')),
+        fetchAllRows(() => supabase.from('profiles').select('*').is('client_id', null).eq('is_active', true).not('role', 'in', '(agent,client)').order('full_name').order('id')),
         fetchAllRows(() => supabase.from('projects').select('*').order('name', { ascending: true }).order('id')),
         fetchAllRows(() => supabase.from('clients').select('*').order('name').order('id')),
         fetchAllRows(() => supabase.from('recurring_tasks').select('*').order('created_at', { ascending: false }).order('id')),

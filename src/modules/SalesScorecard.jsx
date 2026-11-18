@@ -63,7 +63,7 @@ export default function SalesScorecard() {
   }
   useEffect(() => {
     loadSprints()
-    supabase.from('profiles').select('id, full_name, role, is_active').order('full_name')
+    supabase.from('profiles').select('id, full_name, role, is_active').is('client_id', null).order('full_name')
       .then(({ data }) => setPeople((data || []).filter(p => p.is_active !== false && p.role && !/agent|client/.test(p.role))))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 

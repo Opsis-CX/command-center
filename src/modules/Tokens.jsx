@@ -591,7 +591,7 @@ function AdminBudgets() {
 
   const load = useCallback(async () => {
     const [{ data: p }, { data: b }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, role').eq('is_active', true).order('full_name').then((res) => ({ ...res, data: (res.data || []).filter((p) => rolesOf(p.role).some((r) => r === 'admin' || AWARD_ROLES.includes(r))) })),
+      supabase.from('profiles').select('id, full_name, role').is('client_id', null).eq('is_active', true).order('full_name').then((res) => ({ ...res, data: (res.data || []).filter((p) => rolesOf(p.role).some((r) => r === 'admin' || AWARD_ROLES.includes(r))) })),
       supabase.from('token_budgets').select('*, profiles!token_budgets_manager_id_fkey(full_name)'),
     ])
     setManagers(p || []); setBudgets(b || [])
@@ -721,7 +721,7 @@ function AdminAdjust() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
   useEffect(() => {
-    supabase.from('profiles').select('id, full_name').eq('is_active', true).order('full_name').then(({ data }) => setPeople(data || []))
+    supabase.from('profiles').select('id, full_name').is('client_id', null).eq('is_active', true).order('full_name').then(({ data }) => setPeople(data || []))
   }, [])
   async function submit() {
     setBusy(true); setMsg(null)

@@ -85,7 +85,7 @@ export default function TradeBoardChannel({ me: meProp, isMobile, onBack }) {
       const { data: { user } } = await supabase.auth.getUser()
       const [meRes, profRes, blkRes, clmRes, trdRes, schRes, audRes, recRes, certRes, tierRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
-        supabase.from('profiles').select('id, full_name').order('full_name'),
+        supabase.from('profiles').select('id, full_name').is('client_id', null).order('full_name'),
         supabase.from('shift_blocks').select('*').in('role', ROLES).order('block_date').order('start_time'),
         fetchAllRows(() => supabase.from('shift_claims').select('*').order('id')),
         supabase.from('interval_trades').select('*').eq('status', 'open'),

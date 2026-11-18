@@ -253,11 +253,11 @@ export default function PipelineBoard({ heading = 'Sales pipeline', stages: STAG
   useEffect(() => {
     let alive = true
     const byName = (a, b) => (a.full_name || '').localeCompare(b.full_name || '')
-    supabase.from('profiles').select('id, full_name, role, can_own_deals').eq('is_active', true)
+    supabase.from('profiles').select('id, full_name, role, can_own_deals').is('client_id', null).eq('is_active', true)
       .then(({ data, error }) => {
         if (!alive) return
         if (error || !data) {
-          supabase.from('profiles').select('id, full_name, role').eq('is_active', true)
+          supabase.from('profiles').select('id, full_name, role').is('client_id', null).eq('is_active', true)
             .then(({ data: d2 }) => {
               if (!alive || !d2) return
               setOwners(d2.filter(p => /admin|marketing|sales|owner/i.test(p.role || '')).sort(byName))

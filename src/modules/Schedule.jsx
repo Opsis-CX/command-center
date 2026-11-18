@@ -209,7 +209,7 @@ export default function Schedule() {
       const { data: { user } } = await supabase.auth.getUser()
       const [meRes, profRes, tierRes, schRes, blkRes, clmRes, audRes, recRes, certRes, trdRes, vtoRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
-        supabase.from('profiles').select('id, full_name, email, tier_id, is_admin, is_active, release_penalty_until_thu').order('full_name'),
+        supabase.from('profiles').select('id, full_name, email, tier_id, is_admin, is_active, release_penalty_until_thu').is('client_id', null).order('full_name'),
         supabase.from('performance_tiers').select('*').order('sort_order'),
         supabase.from('schedules').select('*').order('week_start_date', { ascending: false }),
         fetchAllRows(() => supabase.from('shift_blocks').select('*').order('block_date').order('start_time').order('id')),

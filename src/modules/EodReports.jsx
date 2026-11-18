@@ -338,7 +338,7 @@ function AdminEod() {
   const load = useCallback(async () => {
     setLoading(true); setErr(''); setMissing(false)
     try {
-      const { data: profs } = await supabase.from('profiles').select('id, full_name, role, is_active').eq('is_active', true)
+      const { data: profs } = await supabase.from('profiles').select('id, full_name, role, is_active').is('client_id', null).eq('is_active', true)
       const nonAgents = (profs || []).filter(p => String(p.role || '').toLowerCase() !== 'agent')
       const ids = nonAgents.map(p => p.id)
 

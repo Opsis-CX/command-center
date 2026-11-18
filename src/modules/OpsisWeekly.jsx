@@ -316,7 +316,7 @@ function PicksAdmin({ onChanged, spotlights, tip, quote, names }) {
 
   useEffect(() => {
     if (!open) return
-    supabase.from('profiles').select('id, full_name').eq('is_active', true).order('full_name')
+    supabase.from('profiles').select('id, full_name').is('client_id', null).eq('is_active', true).order('full_name')
       .then(({ data }) => setProfiles(data || []))
     supabase.from('tags').select('id, name').eq('namespace', 'team').order('name')
       .then(({ data }) => setTeams(data || []))

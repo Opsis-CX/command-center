@@ -271,7 +271,7 @@ export default function Reporting() {
     let active = true
     ;(async () => {
       const [pRes, tRes, tgRes] = await Promise.all([
-        supabase.from('profiles').select('id, full_name, email, phone, role, is_active, inactive_reason, deactivated_at, created_at').order('full_name'),
+        supabase.from('profiles').select('id, full_name, email, phone, role, is_active, inactive_reason, deactivated_at, created_at').is('client_id', null).order('full_name'),
         supabase.from('tags').select('id, name').order('name'),
         supabase.from('taggables').select('tag_id, entity_id').eq('entity_type', 'profile'),
       ])
@@ -3039,7 +3039,7 @@ function PositionsReport() {
       // Count by the person's ACTUAL role (profiles.role) — the authoritative field
       // the app uses for permissions. The roles table just supplies labels + levels.
       const [{ data: profs, error }, { data: roles }] = await Promise.all([
-        supabase.from('profiles').select('role, is_active'),
+        supabase.from('profiles').select('role, is_active').is('client_id', null),
         supabase.from('roles').select('key, name, level'),
       ])
       if (!active) return

@@ -88,7 +88,7 @@ export default function ScheduleBuilder() {
         fetchAllRows(() => supabase.from('shift_blocks').select('*').order('block_date').order('start_time').order('id')),
         fetchAllRows(() => supabase.from('shift_claims').select('*').order('id')),
         supabase.from('call_types').select('*').order('name'),
-        supabase.from('profiles').select('id, full_name, email, is_active').eq('is_active', true).order('full_name'),
+        supabase.from('profiles').select('id, full_name, email, is_active').is('client_id', null).eq('is_active', true).order('full_name'),
         supabase.from('schedule_audience').select('*'),
         supabase.from('clients').select('*').order('name'),
         supabase.from('vto_windows').select('*').eq('is_active', true).order('created_at', { ascending: false }),

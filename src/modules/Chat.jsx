@@ -955,7 +955,7 @@ export default function Chat() {
         myChannelIds.length
           ? supabase.from('channels').select('*').in('id', myChannelIds).order('name')
           : Promise.resolve({ data: [], error: null }),
-        supabase.from('profiles').select('id, full_name, avatar_url, job_title, pronouns, timezone, role, is_admin, is_active, last_seen_at, status_emoji, status_text, status_type, status_until').eq('is_active', true).order('full_name'),
+        supabase.from('profiles').select('id, full_name, avatar_url, job_title, pronouns, timezone, role, is_admin, is_active, last_seen_at, status_emoji, status_text, status_type, status_until').is('client_id', null).eq('is_active', true).order('full_name'),
       ])
       if (chRes.error) throw chRes.error
       setMe(meRes.data)
@@ -1062,7 +1062,7 @@ export default function Chat() {
   useEffect(() => {
     const refresh = async () => {
       const { data } = await supabase.from('profiles')
-        .select('id, last_seen_at, status_emoji, status_text, status_type, status_until').eq('is_active', true)
+        .select('id, last_seen_at, status_emoji, status_text, status_type, status_until').is('client_id', null).eq('is_active', true)
       if (!data) return
       const byId = {}; data.forEach(r => { byId[r.id] = r })
       setProfiles(prev => prev.map(p => byId[p.id] ? { ...p, ...byId[p.id] } : p))

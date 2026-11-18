@@ -53,7 +53,7 @@ export default function Dashboard() {
         supabase.from('schedule_activity_log').select('*').order('created_at', { ascending: false }).limit(8),
         supabase.from('agent_cert_records').select('*'),
         supabase.from('certifications').select('id, name, active'),
-        supabase.from('profiles').select('id, full_name, is_active, role'),
+        supabase.from('profiles').select('id, full_name, is_active, role').is('client_id', null),
         supabase.from('notifications').select('*').eq('recipient_id', user.id).is('read_at', null),
         // RLS lets admins read everyone's reports; others just get their own (fine — only admins render this stat).
         supabase.from('daily_reports').select('profile_id').eq('report_date', today),

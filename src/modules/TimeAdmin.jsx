@@ -56,7 +56,7 @@ export default function TimeAdmin() {
   const [eNote, setENote] = useState('')
 
   useEffect(() => {
-    supabase.from('profiles').select('id, full_name').eq('is_active', true).order('full_name')
+    supabase.from('profiles').select('id, full_name').is('client_id', null).eq('is_active', true).order('full_name')
       .then(({ data }) => setPeople(data || []))
   }, [])
 

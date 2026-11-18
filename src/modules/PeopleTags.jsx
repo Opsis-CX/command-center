@@ -78,7 +78,7 @@ export default function PeopleTags() {
     try {
       const [tagsRes, peopleRes, tgRes] = await Promise.all([
         supabase.from('tags').select('*').order('name'),
-        supabase.from('profiles').select('id, full_name, email, color, is_active, inactive_reason, five9_username, five9_sent_at, role')
+        supabase.from('profiles').select('id, full_name, email, color, is_active, inactive_reason, five9_username, five9_sent_at, role').is('client_id', null)
           .order('full_name'),
         supabase.from('taggables').select('*').eq('entity_type', 'profile'),
       ])
