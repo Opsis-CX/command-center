@@ -1596,7 +1596,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function vPractice(tok) {
     if (!PR.live) PR.result = null;
     setMain(crumb([['Practice']]) + '<div id="prwrap"><div class="oq-card">' + skel(30, 6) + '</div></div>');
-    api({ action: 'practice', op: 'list' }).then(function (r) { if (tok !== T) return; PR.d = r; if (!PR.brand) PR.brand = r.lock || 'Quality Overhead Door'; drawPractice(); })
+    prList().then(function (r) { if (tok !== T) return; PR.d = r; if (!PR.brand) PR.brand = r.lock || 'Quality Overhead Door'; drawPractice(); })
       .catch(function (e) { if (tok === T && $('prwrap')) $('prwrap').innerHTML = errBox(e); });
   }
   function prMine(sid) { var me = PR.d && PR.d.me; return ((PR.d && PR.d.sessions) || []).filter(function (s) { return s.scenario_id === sid && s.user_id === me && s.status === 'scored'; }); }
@@ -1627,7 +1627,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var hist = (d.sessions || []).filter(function (x) { return x.status === 'scored' || x.status === 'failed'; });
     var names = {}; (d.scenarios || []).forEach(function (s) { names[s.id] = s.title; });
     var showWho = hist.some(function (x) { return x.user_id !== d.me; });
-    var htbl = '<div class="oq-card"><h2 class="ttl">Practice history</h2><p class="sub">' + (showWho ? 'Everyone in the pilot' : 'Your practice calls') + ' · click one to see the debrief.</p>' + (hist.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>When</th>' + (showWho ? '<th>Who</th>' : '') + '<th>Scenario</th>' + (LOCK ? '' : '<th>Brand</th>') + '<th style="text-align:right">Length</th><th style="text-align:right">Booked</th><th style="text-align:right">Score</th></tr></thead><tbody>' +
+    var htbl = '<div class="oq-card"><h2 class="ttl">Practice history</h2><p class="sub">' + esc(d.teamLabel || (showWho ? 'Everyone in the pilot' : 'Your practice calls')) + ' · click one to see the debrief.</p>' + (hist.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>When</th>' + (showWho ? '<th>Who</th>' : '') + '<th>Scenario</th>' + (LOCK ? '' : '<th>Brand</th>') + '<th style="text-align:right">Length</th><th style="text-align:right">Booked</th><th style="text-align:right">Score</th></tr></thead><tbody>' +
       hist.map(function (x) { return '<tr style="cursor:pointer" data-act="prview" data-id="' + esc(x.id) + '"><td>' + fdate(String(x.started_at).slice(0, 10)) + '</td>' + (showWho ? '<td>' + esc(x.user_name || '') + '</td>' : '') + '<td>' + esc(names[x.scenario_id] || '') + '</td>' + (LOCK ? '' : '<td class="mut">' + esc(short(x.brand || '')) + '</td>') + '<td class="num" style="text-align:right">' + (x.duration_secs ? fsecs(x.duration_secs) : '—') + '</td><td style="text-align:right">' + (x.status === 'failed' ? '<span class="mut">too short</span>' : x.booked ? 'Yes' : 'No') + '</td><td style="text-align:right">' + prScoreChip(x.score_pct) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="mut" style="margin-top:8px">No practice calls yet.</p>') + '</div>';
     w.innerHTML = intro + cards + htbl;
     var bs = $('prbrand'); if (bs) bs.addEventListener('change', function () { PR.brand = bs.value; });
@@ -1662,6 +1662,16 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   // Practice call recordings (Rob 11/17): practice-audio pulls the ElevenLabs audio once, then serves a signed link.
   var PR_AUD = {};
+  function prTeam(body) {
+    return fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/practice-audio', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (vxTok() || '') }, body: JSON.stringify(Object.assign(CFG.clientId ? { client_id: CFG.clientId } : {}, body)) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || 'Couldn’t reach practice review.'); return j; }); });
+  }
+  // Scenarios come from the portal function; history comes from practice-audio so RMs see their brand, GMs their location, admins everyone.
+  function prList() {
+    return Promise.all([api({ action: 'practice', op: 'list' }), prTeam({ op: 'list' }).catch(function () { return null; })]).then(function (rr) {
+      var d = rr[0], t = rr[1]; if (t && t.sessions) { d.sessions = t.sessions; d.teamLabel = t.scope === 'own' ? null : t.label; } return d;
+    });
+  }
   function prAudioHtml(sid) {
     var a = PR_AUD[sid];
     if (!a) { setTimeout(function () { prAudioLoad(sid); }, 0); return '<div id="praud" class="mut" style="font-size:13px">Loading recording…</div>'; }
@@ -1670,8 +1680,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function prAudioLoad(sid) {
     if (PR_AUD[sid] || PR_AUD['_' + sid]) return; PR_AUD['_' + sid] = 1;
-    fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/practice-audio', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (vxTok() || '') }, body: JSON.stringify({ session_id: sid }) })
-      .then(function (r) { return r.json().catch(function () { return {}; }); })
+    prTeam({ op: 'audio', session_id: sid })
       .then(function (j) { PR_AUD[sid] = { url: j.url || null, reason: j.url ? null : (j.reason || j.error || 'Couldn’t load the recording.') }; })
       .catch(function () { PR_AUD[sid] = { url: null, reason: 'Couldn’t load the recording.' }; })
       .then(function () { delete PR_AUD['_' + sid]; var el = $('praud'); if (el && PR.result && PR.result.session_id === sid) el.outerHTML = prAudioHtml(sid); });
@@ -1720,13 +1729,13 @@ export function mountOpsisQA(ROOT, cfg) {
       api(op === 'finish' ? { action: 'practice', op: 'finish', session_id: L.sid, conversation_id: cid } : { action: 'practice', op: 'session', session_id: L.sid }).then(function (r) {
         if (r.status === 'processing' && tries++ < 12) { setTimeout(function () { go('finish'); }, 4000); return; }
         r.title = L.sc.title; r.scenario_id = L.sc.id; PR.live = null; PR.busy = false; PR.result = r; PR.d = null;
-        api({ action: 'practice', op: 'list' }).then(function (d) { PR.d = d; drawPractice(); }).catch(function () { });
+        prList().then(function (d) { PR.d = d; drawPractice(); }).catch(function () { });
       }).catch(function (e) { PR.live = null; PR.busy = false; PR.err = e.message; drawPractice(); });
     };
     go('finish');
   }
   function prView(id) {
-    api({ action: 'practice', op: 'session', session_id: id }).then(function (r) { var s = ((PR.d && PR.d.sessions) || []).filter(function (x) { return x.id === id; })[0]; var sc = s && ((PR.d.scenarios || []).filter(function (y) { return y.id === s.scenario_id; })[0]); r.title = sc ? sc.title : ''; r.scenario_id = sc ? sc.id : null; PR.result = r; drawPractice(); window.scrollTo(0, 0); }).catch(function (e) { toast(e.message); });
+    prTeam({ op: 'session', session_id: id }).then(function (r) { var s = ((PR.d && PR.d.sessions) || []).filter(function (x) { return x.id === id; })[0]; var sc = s && ((PR.d.scenarios || []).filter(function (y) { return y.id === s.scenario_id; })[0]); r.title = sc ? sc.title : ''; r.scenario_id = sc ? sc.id : null; PR.result = r; drawPractice(); window.scrollTo(0, 0); }).catch(function (e) { toast(e.message); });
   }
   // ---------- AI CSR (Broccoli replacement, phase 1, pilot) ----------
   var RC = { d: null, brand: '', live: null, res: null, err: null, tab: 'calls', s: null, sBrand: '', dirty: false, saving: false, open: { id: true }, rp: null };
