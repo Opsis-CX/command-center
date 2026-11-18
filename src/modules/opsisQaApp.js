@@ -1654,6 +1654,7 @@ export function mountOpsisQA(ROOT, cfg) {
     return '<div class="oq-card"><div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:96px;height:96px;flex-shrink:0"><svg width="96" height="96" viewBox="0 0 120 120" aria-label="Score ' + sc + '"><circle cx="60" cy="60" r="50" fill="none" stroke="#EEEBE4" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + ((sc || 0) / 100 * 314).toFixed(0) + ' 314" transform="rotate(-90 60 60)"/></svg><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span class="num" style="font-size:24px;font-weight:600">' + (sc == null ? '—' : Math.round(sc)) + '</span></div></div>' +
       '<div style="flex:1;min-width:220px"><div class="mut" style="font-size:12px">' + esc(r.title || 'Practice call') + ' · ' + esc(short(r.brand || '')) + (r.duration_secs ? ' · ' + fsecs(r.duration_secs) : '') + ' · ' + (r.booked ? 'Booked' : 'Not booked') + '</div><div style="font-size:16px;font-weight:600;margin-top:4px;line-height:1.4">' + esc(D.headline || '') + '</div></div></div>' +
       '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px"><div style="flex:1 1 260px"><div class="cap" style="color:#1F5A41">What went well</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(D.went_well) + '</ul></div><div style="flex:1 1 260px"><div class="cap" style="color:#A8441A">Try this next time</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px">' + li(D.try_next) + '</ul></div></div>' +
+      (r.checking ? '<div class="banner" style="margin-top:14px"><b>Double-checking what you said…</b> We’re listening to the recording again so names and the brand are heard right. Your score may update in a few seconds.</div>' : '') +
       (D.say_this ? '<div class="banner" style="margin-top:14px;background:#EEF2FB;border-color:#D5DDF3;color:#2B3A67"><b>Say it like this:</b> “' + esc(D.say_this) + '”</div>' : '') +
       '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' + (r.scenario_id ? '<button class="sel btnd" data-act="prstart" data-id="' + esc(r.scenario_id) + '">↻ Try it again</button>' : '') + '<button class="sel" data-act="prback">Pick another scenario</button></div></div>' +
       (r.session_id ? '<div class="oq-card"><h2 class="ttl" style="margin:0 0 8px">Recording</h2>' + prAudioHtml(r.session_id) + '</div>' : '') +
@@ -1667,6 +1668,17 @@ export function mountOpsisQA(ROOT, cfg) {
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || 'Couldn’t reach practice review.'); return j; }); });
   }
   // Scenarios come from the portal function; history comes from practice-audio so RMs see their brand, GMs their location, admins everyone.
+  // Second listen (Becky 11/18): re-transcribe the recording with a more accurate model primed with brand and
+  // people names, then re-score. The live transcript often mishears names ("Quality Open Door").
+  function prRecheck(sid, n) {
+    prTeam({ op: 'rescore', session_id: sid }).then(function (j) {
+      if (j.skipped === 'no recording' && n < 3) { setTimeout(function () { prRecheck(sid, n + 1); }, 8000); return; }
+      var R = PR.result; if (!R || R.session_id !== sid) return;
+      if (j.retranscribed) { ['score', 'booked', 'steps', 'debrief', 'transcript'].forEach(function (k) { R[k] = j[k]; }); }
+      R.checking = false; drawPractice();
+      prList().then(function (d) { PR.d = d; if (!PR.live) drawPractice(); }).catch(function () { });
+    }).catch(function () { var R = PR.result; if (R && R.session_id === sid) { R.checking = false; drawPractice(); } });
+  }
   function prList() {
     return Promise.all([api({ action: 'practice', op: 'list' }), prTeam({ op: 'list' }).catch(function () { return null; })]).then(function (rr) {
       var d = rr[0], t = rr[1]; if (t && t.sessions) { d.sessions = t.sessions; d.teamLabel = t.scope === 'own' ? null : t.label; } return d;
@@ -1729,6 +1741,7 @@ export function mountOpsisQA(ROOT, cfg) {
       api(op === 'finish' ? { action: 'practice', op: 'finish', session_id: L.sid, conversation_id: cid } : { action: 'practice', op: 'session', session_id: L.sid }).then(function (r) {
         if (r.status === 'processing' && tries++ < 12) { setTimeout(function () { go('finish'); }, 4000); return; }
         r.title = L.sc.title; r.scenario_id = L.sc.id; PR.live = null; PR.busy = false; PR.result = r; PR.d = null;
+        if (r.status === 'scored') { r.checking = true; prRecheck(r.session_id, 0); }
         prList().then(function (d) { PR.d = d; drawPractice(); }).catch(function () { });
       }).catch(function (e) { PR.live = null; PR.busy = false; PR.err = e.message; drawPractice(); });
     };
