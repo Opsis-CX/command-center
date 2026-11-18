@@ -104,7 +104,8 @@ export default function CsrPhone({ accent = '#14302A' }) {
 
   const st = d.status?.state || 'offline'
   const loggedIn = !!d.day
-  const look = STATE_LOOK[voice?.busy ? 'on_call' : st] || STATE_LOOK.offline
+  const look0 = STATE_LOOK[voice?.busy ? 'on_call' : st] || STATE_LOOK.offline
+  const look = st === 'ready' && !voice?.busy && voice && !voice.registered ? { ...look0, label: 'Ready · connecting…', color: '#b45309', bg: '#fef3c7' } : look0
   const since = d.status?.since ? Math.max(0, Math.floor((now - new Date(d.status.since).getTime()) / 1000)) : 0
   const dayLen = d.day ? Math.max(0, Math.floor((now - new Date(d.day.started_at).getTime()) / 1000)) : 0
   const onInbound = !!(voice?.inboundCall || voice?.incoming)
@@ -196,7 +197,7 @@ export default function CsrPhone({ accent = '#14302A' }) {
                   <span style={{ fontSize: 12.5, color: l.live ? '#16a34a' : '#b45309' }}>{l.live ? (l.number ? fmtPhone(l.number) : 'Live') : 'Not connected yet (test)'}</span>
                 </div>
               ))}
-              <p style={{ ...S.mut, marginTop: 8 }}>{st === 'ready' ? 'You’re Ready — calls will ring here. Click Answer when one comes in.' : 'Set yourself to Ready to get calls.'}</p>
+              <p style={{ ...S.mut, marginTop: 8 }}>{st === 'ready' ? (voice?.registered ? 'You’re Ready — calls will ring here. Click Answer when one comes in.' : 'Connecting your phone… calls start ringing here as soon as it’s connected (a few seconds). Don’t click Ready again.') : 'Set yourself to Ready to get calls.'}</p>
             </div>
             <div style={S.card}>
               <div style={S.h}>Today</div>

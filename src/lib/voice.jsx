@@ -171,8 +171,16 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
       }
       patch({ status: 'error', error: err?.message || 'Calling error' })
     })
-    device.on('registered', () => setRegistered(true))
-    device.on('unregistered', () => setRegistered(false))
+    // 2026-11-18 (Becky): the server only rings CSRs whose phone is really connected. While registered, the phone
+    // checks in every 30s (csr_phone_heartbeat); cx_offer skips anyone without a check-in in the last 90s, so a quick
+    // Offline → Ready toggle can't send a call to a phone that is still connecting.
+    const beat = (ok) => { supabase.rpc('csr_phone_heartbeat', { p_ok: ok }).then(() => {}, () => {}) }
+    let beatTimer = null
+    device.on('registered', () => {
+      setRegistered(true); beat(true)
+      clearInterval(beatTimer); beatTimer = setInterval(() => { if (device.state === 'registered') beat(true) }, 30000)
+    })
+    device.on('unregistered', () => { setRegistered(false); clearInterval(beatTimer); beatTimer = null; beat(false) })
     device.on('incoming', handleIncoming)
     deviceRef.current = device
     return device

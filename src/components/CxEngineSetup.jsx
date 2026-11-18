@@ -317,6 +317,21 @@ function CallerIds({ d, args, can, reload, onErr, flash }) {
 }
 
 // ---------- storm / emergency closure (works on every line, Standard or Advanced) ----------
+// Also shown on the supervisor Wallboard (Becky 11/18): RMs/GMs can close and reopen their own lines there without
+// Phone setup. The server (cx_emergency_close / cx_emergency_lift) still decides who may change which line.
+export function StormSwitch({ clientId = null }) {
+  const [msg, setMsg] = useState('')
+  const [err, setErr] = useState('')
+  const args = useCallback(x => (clientId ? { ...x, p_client: clientId } : x), [clientId])
+  const flash = useCallback(t => { setMsg(t); setErr(''); setTimeout(() => setMsg(''), 4000) }, [])
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      <EmergencySwitch args={args} can={true} flash={flash} onErr={setErr} />
+      {msg && <div style={S.ok}>{msg}</div>}
+      {err && <div style={{ color: '#b91c1c', fontSize: 13 }}>{err === 'Not allowed' ? 'Your login can’t close these lines.' : err}</div>}
+    </div>
+  )
+}
 function EmergencySwitch({ args, can, flash, onErr }) {
   const [rows, setRows] = useState(null)
   const [pick, setPick] = useState({})

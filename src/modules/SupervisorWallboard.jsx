@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import CxLiveBoard from '../components/CxLiveBoard'
+import { StormSwitch } from '../components/CxEngineSetup'
 
 const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Chicago' } catch { return 'America/Chicago' } })()
 const LS = 'sup-wallboard-tiles'
@@ -209,6 +210,9 @@ export default function SupervisorWallboard({ clientId = null }) {
 
       {/* Advanced engine: live calls, monitoring, service level, TV links (2026-11-13) */}
       {!tv && <CxLiveBoard clientId={clientId} />}
+
+      {/* Storm / emergency closure for supervisors (Becky 11/18, go-live CX-12) */}
+      {!tv && <StormSwitch clientId={clientId} />}
 
       {/* widgets (left) + leaderboard (right) */}
       <style>{'@media (max-width: 1000px){.wb-split{grid-template-columns:minmax(0,1fr) !important}}'}</style>
