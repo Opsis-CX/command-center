@@ -255,10 +255,13 @@ export function mountOpsisQA(ROOT, cfg) {
   var DASHC = {}, DASH = { d: null, sort: 'answered', dir: -1, open: null };
   var DASHON = function () { return !!CFG.brandDash && !OPSIS; };
   var QAFLOW = function () { return !!($('fsteps') && $('dtrend')); }; // brand page: Call Flow opens from the QA score tile
+  // Location filter (Becky 11/18): GMs start on their own location and can switch to any other location of their brand;
+  // RMs and admins start on all locations. Applies to the dashboard tiles (Phones, Booking, trend, By CSR).
+  if (S.locs === undefined) S.locs = CFG.portalRole === 'gm' && CFG.portalLocation ? [CFG.portalLocation] : [];
   function loadDash(brands) {
     brands = brands || S.brands;
-    var k = [S.start, S.end, brands.join('|')].join('~');
-    if (!DASHC[k]) { DASHC[k] = CFG.brandDash({ start: S.start, end: S.end, brands: brands.length ? brands : null }); DASHC[k].catch(function () { delete DASHC[k]; }); }
+    var k = [S.start, S.end, brands.join('|'), S.locs.join('|')].join('~');
+    if (!DASHC[k]) { DASHC[k] = CFG.brandDash({ start: S.start, end: S.end, brands: brands.length ? brands : null, locations: S.locs.length ? S.locs : null }); DASHC[k].catch(function () { delete DASHC[k]; }); }
     return DASHC[k];
   }
   function dSec(v) { if (v == null || isNaN(v)) return '—'; v = +v; return v < 60 ? v.toFixed(1) + 's' : fsecs(Math.round(v)); }
@@ -296,6 +299,14 @@ export function mountOpsisQA(ROOT, cfg) {
       tGo(dTile('Abandon rate', x ? dPct(x.abandon_pct) : '—', x && !abd ? fmt(x.abandoned) + ' hung up' : '', abd, 'Callers who hung up after reaching the CSR queue but before a CSR answered, as a share of all calls that reached the queue' + (x ? ' (' + fmt(x.abandoned) + ' callers)' : '') + '. Average wait before hanging up: ' + (x && x.tab != null ? dSec(x.tab) : 'not timed') + '.'), 'phone', 'Phone stats') +
       tGo(dTile('Time to answer', x ? dSec(x.tta) : '—', '', x && x.tta != null && xp.tta != null ? delta(+x.tta, +xp.tta, 's', false) : '', 'Average seconds from a call reaching the CSR queue to a CSR picking up, on answered calls.'), 'phone', 'Phone stats') +
       tGo(dTile('Avg talk time', dTalk(c.aht), p.aht != null ? 'was ' + dTalk(p.aht) : '', '', 'Average length of the customer conversations CSRs answered, minutes:seconds (' + fmt(c.answered) + ' conversations, ' + fmt((d.agents || []).length) + ' CSRs). Internal calls, voicemail and calls with no conversation are left out.'), 'csrs', W_CSRS) + '</div>';
+    var locs = d.locations || [];
+    if (locs.length > 1 && (d.brands || []).length === 1) {
+      var cur0 = S.locs[0] || '';
+      $('dphone').insertAdjacentHTML('afterbegin', '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 12px"><label class="cap" for="dloc" style="font-size:11px;letter-spacing:.14em">Location</label>' +
+        '<select id="dloc" class="sel" style="min-width:180px"><option value="">All locations</option>' + locs.map(function (l) { return '<option value="' + esc(l) + '"' + (l === cur0 ? ' selected' : '') + '>' + esc(l) + (d.my_location === l ? ' (yours)' : '') + '</option>'; }).join('') + '</select>' +
+        '<span class="mut" style="font-size:12px">Filters Phones, Booking, the trend and the CSR table.</span></div>');
+      $('dloc').addEventListener('change', function () { S.locs = this.value ? [this.value] : []; render(); });
+    }
     if ($('dbook')) $('dbook').innerHTML = SEC('Booking') + G4 +
       tGo(dTile('Conversion', dPct(c.conv), '', delta(c.conv != null ? +c.conv : null, p.conv != null ? +p.conv : null, ' pts'), 'Booked ÷ (booked + not booked). Opportunities handed to another team or still undecided are left out. Same booking rate as the Overview page.'), 'calls:notbooked', 'Not-booked calls') +
       tGo(dTile('Booked', fmt(c.booked), 'of ' + fmt(c.opps) + ' opportunities', '', 'Opportunities that ended with the job booked. Opportunities are customer conversations where a sales or service job could be booked; follow-ups on existing work are not. ' + fmt(p.booked) + ' booked the period before.'), 'calls:booked', 'Booked calls') +

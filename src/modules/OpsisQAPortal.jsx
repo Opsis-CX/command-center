@@ -67,6 +67,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
   const [sup, setSup] = useState(null)
   // portal_role of the signed-in login (rm / gm get a short, manager-only sidebar — Becky 11/16)
   const [prole, setProle] = useState(null)
+  const [ploc, setPloc] = useState(null)
   // "View as" Admin / RM / GM / CSR — your own +rm/+gm/+csr logins (2026-11-10)
   const [accounts, setAccounts] = useState(null)
   useEffect(() => { let on = true; loadAccounts().then(a => { if (on) setAccounts(a) }); return () => { on = false } }, [])
@@ -76,8 +77,8 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
     supabase.auth.getUser().then(({ data }) => {
       const uid = data?.user?.id
       if (!uid) { if (active) setSup(false); return }
-      supabase.from('profiles').select('role, portal_role').eq('id', uid).maybeSingle()
-        .then(({ data: p }) => { if (active) setProle(String(p?.portal_role || '').toLowerCase() || null); if (active) setSup(!!p && (String(p.role || '').toLowerCase() !== 'client' || ['admin', 'manager', 'rm', 'gm'].includes(p.portal_role || 'manager'))) })
+      supabase.from('profiles').select('role, portal_role, portal_location').eq('id', uid).maybeSingle()
+        .then(({ data: p }) => { if (active) setProle(String(p?.portal_role || '').toLowerCase() || null); if (active) setPloc(p?.portal_location || null); if (active) setSup(!!p && (String(p.role || '').toLowerCase() !== 'client' || ['admin', 'manager', 'rm', 'gm'].includes(p.portal_role || 'manager'))) })
         .catch(() => { if (active) setSup(false) })
     })
     return () => { active = false }
@@ -96,6 +97,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
     const destroy = mountOpsisQA(ref.current, {
       supervisor: !!sup,
       portalRole: prole,
+      portalLocation: ploc,
       accounts,
       onSwitchAccount: switchAccount,
       invoke,
@@ -115,8 +117,8 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       onClassic,
       // Brand Dashboard (2026-11-16): reads RPC qa_brand_dash with the signed-in user's own session, so the database
       // applies the login's access and brand lock. CSR logins don't get the page.
-      brandDash: csrSelf ? null : async ({ start, end, brands }) => {
-        const { data, error } = await supabase.rpc('qa_brand_dash', { p_client: clientId || me.client, p_start: start, p_end: end, p_brands: brands && brands.length ? brands : null })
+      brandDash: csrSelf ? null : async ({ start, end, brands, locations }) => {
+        const { data, error } = await supabase.rpc('qa_brand_dash', { p_client: clientId || me.client, p_start: start, p_end: end, p_brands: brands && brands.length ? brands : null, p_locations: locations && locations.length ? locations : null })
         if (error) { const e = new Error(error.message || 'Could not load the dashboard.'); e.status = 400; throw e }
         return data
       },
