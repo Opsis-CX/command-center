@@ -158,16 +158,17 @@ export function mountOpsisQA(ROOT, cfg) {
   // Tile navigation (Becky 11/17): these pages also open from Overview / brand tiles.
   // They stay in the sidebar too (Becky 11/17 pm: removing them caused confusion).
   var TILE_VIEWS = ['phone', 'csrs', 'calls', 'cardcap', 'pricetalk', 'money', 'leadtime'];
-  // RM / GM logins (Becky 11/16): Overview (their dashboard), Call trends, Coaching Hub, Coaching clips, AI CSR. Nothing else.
+  // RM / GM logins (Becky 11/16): Overview (their dashboard), Call trends, Coaching Hub, Coaching clips, AI CSR.
+  // Becky 11/18 (go-live test plan): plus the supervisor tools Wallboard, Phone, Workforce and Intraday. Still no settings or Calibration.
   var MGR = !CFG.csrSelf && !OPSIS && (CFG.portalRole === 'rm' || CFG.portalRole === 'gm');
-  var MGR_NAV = ['overview', 'trends', 'hub', 'coachclips', 'receptionist'];
+  var MGR_NAV = ['overview', 'trends', 'hub', 'coachclips', 'receptionist', 'wallboard', 'myphone', 'wfm', 'intraday'];
   // reachable by drilling down from the dashboard, but not in the sidebar
   var MGR_OK = MGR_NAV.concat(['brand', 'csr', 'calls', 'hubqs', 'repeat', 'kpi']).concat(TILE_VIEWS);
   function mgrNav() { if (!MGR) return; NAV = [['', NAV[0][1].filter(function (n) { return MGR_NAV.indexOf(n[0]) >= 0; })]]; }
   mgrNav();
   function renderWho() {
     var w = $('oqwho'); if (!w) return;
-    w.innerHTML = '<b>' + esc(CFG.userName || '') + '</b><span>' + esc(RNAME[ROLE] || '') + (LOCK ? ' · ' + esc(short(LOCK)) : '') + '</span>' +
+    w.innerHTML = '<b>' + esc(CFG.userName || '') + '</b><span>' + esc(MGR ? (CFG.portalRole === 'rm' ? 'Regional manager' : 'General manager') : (RNAME[ROLE] || '')) + (LOCK ? ' · ' + esc(short(LOCK)) : '') + '</span>' +
       (CFG.staff ? '<a href="' + esc(location.pathname + (OPSIS ? '' : '?portal=opsiscx')) + '" style="color:#9CC6B2;font-size:12px;font-weight:600;text-decoration:none">Switch to ' + (OPSIS ? 'GarageCo' : 'Opsis CX') + ' →</a>' : '') + '<span style="display:flex;gap:14px;flex-wrap:wrap">' + (CFG.onClassic ? '<button data-act="classic">Classic view</button>' : '') + (CFG.onSignOut ? '<button data-act="signout">Sign out</button>' : '') + '</span>';
       // "View as" Admin / RM / GM / CSR (2026-11-10): your own +rm / +gm / +csr logins
     if (CFG.accounts && CFG.accounts.length > 1 && CFG.onSwitchAccount) {
