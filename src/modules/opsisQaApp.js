@@ -1756,7 +1756,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var tries = 0, go = function (op) {
       api(op === 'finish' ? { action: 'practice', op: 'finish', session_id: L.sid, conversation_id: cid } : { action: 'practice', op: 'session', session_id: L.sid }).then(function (r) {
         if (r.status === 'processing' && tries++ < 12) { setTimeout(function () { go('finish'); }, 4000); return; }
-        r.title = L.sc.title; r.scenario_id = L.sc.id; PR.live = null; PR.busy = false; PR.result = r; PR.d = null;
+        r.title = L.sc.title; r.scenario_id = L.sc.id; PR.live = null; PR.busy = false; PR.result = r; drawPractice(); // keep the old list (Back is instant); refresh it below (Becky 11/18)
         if (r.status === 'scored') { r.checking = true; prRecheck(r.session_id, 0); }
         prList().then(function (d) { PR.d = d; drawPractice(); }).catch(function () { });
       }).catch(function (e) { PR.live = null; PR.busy = false; PR.err = e.message; drawPractice(); });
@@ -4593,7 +4593,10 @@ export function mountOpsisQA(ROOT, cfg) {
     // React pages inside the portal (Phone setup etc.) can step back inside themselves first — e.g. a campaign form → the campaign list (2026-11-10, Becky).
     if (typeof window.__oqExtBack === 'function') { try { if (window.__oqExtBack()) { window.scrollTo(0, 0); return; } } catch (x) {} }
     if (S.view === 'receptionist' && RC.res && !RC.live) { RC.res = null; drawRecep(); window.scrollTo(0, 0); return; }
-    if (S.view === 'practice' && PR.result && !PR.live) { PR.result = null; PR.err = null; if (PR.d) drawPractice(); else render(); window.scrollTo(0, 0); return; }
+    // Practice (Becky 11/18): Back during a call hangs up (ringing = cancel, connected = end and score) instead of leaving the page
+    // with the call still running; Back on a debrief returns to the scenario list straight away.
+    if (S.view === 'practice' && PR.live) { if (PR.live.state === 'ringing') prCancel(); else prFinish(); window.scrollTo(0, 0); return; }
+    if (S.view === 'practice' && (PR.result || PR.err)) { PR.result = null; PR.err = null; if (PR.d) drawPractice(); else render(); window.scrollTo(0, 0); return; }
     if (typeof CAL !== 'undefined' && CAL.item && S.view === 'calib') { calLeave(); EXT = null; S.pop = null; window.scrollTo(0, 0); render(); return; }
     var h = HIST.pop(); saveHist(); if (!h) return;
     if ($('layer') && $('layer').innerHTML) closeLayer();
