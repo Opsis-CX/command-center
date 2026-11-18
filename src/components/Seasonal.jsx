@@ -382,6 +382,162 @@ function HarvestBasket() {
   )
 }
 
+// ---------- Thanksgiving: cozy colors, countdown, gratitude tree ----------
+// Warm tint on the top bar and page background (gentler in dark mode).
+const TG_COZY_CSS = `
+body.cc-thanksgiving { --tg-a: 60%; --tg-b: 10%; }
+:root[data-theme="dark"] body.cc-thanksgiving { --tg-a: 16%; --tg-b: 5%; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) body.cc-thanksgiving { --tg-a: 16%; --tg-b: 5%; } }
+body.cc-thanksgiving .topbar {
+  background: linear-gradient(90deg, color-mix(in srgb, #FFEDD5 var(--tg-a), var(--surface)) 0%, color-mix(in srgb, #FEF3C7 var(--tg-a), var(--surface)) 55%, color-mix(in srgb, #FFE4E6 var(--tg-a), var(--surface)) 100%) !important;
+  border-bottom-color: color-mix(in srgb, #FDBA74 50%, var(--line)) !important;
+}
+body.cc-thanksgiving .main { background: color-mix(in srgb, #FED7AA var(--tg-b), var(--canvas)); }
+.tg-pill { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; font-weight: 700; white-space: nowrap;
+  background: color-mix(in srgb, #FFF7ED 85%, var(--surface)); color: #9A3412; border: 1px solid #FDBA74; box-shadow: 0 4px 12px -8px rgba(194,65,12,.6); }
+button.tg-pill { cursor: pointer; font-family: inherit; transition: transform .15s, box-shadow .15s; }
+button.tg-pill:hover { transform: translateY(-1px); box-shadow: 0 8px 18px -10px rgba(194,65,12,.7); }
+.tg-tree-leaf { cursor: pointer; transition: transform .15s; transform-box: fill-box; transform-origin: center; }
+.tg-tree-leaf:hover, .tg-tree-leaf.on { transform: scale(1.35); }
+@keyframes tgLeafIn { from { opacity: 0; transform: translateY(-40px) rotate(-90deg) scale(.4) } to { opacity: 1; transform: none } }
+@media (max-width: 900px) { .tg-count-pill { display: none !important; } }
+`
+const TG_DAY = [11, 26]
+function etMonthDay() {
+  const [mo, da] = new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'numeric', day: 'numeric' }).split('/').map(Number)
+  return [mo, da]
+}
+function countdownText() {
+  const [mo, da] = etMonthDay()
+  if (mo !== 11) return null
+  const left = TG_DAY[1] - da
+  if (left > 1) return `🦃 ${left} days to the long weekend`
+  if (left === 1) return '🦃 The long weekend starts tomorrow!'
+  if (left === 0) return '🦃 Happy Thanksgiving!'
+  return '🥧 Enjoy the long weekend!'
+}
+const GRAT_SEASON = 'thanksgiving-2026'
+function TgTopBar() {
+  const crumb = useAnchorRect('.topbar .crumb', 900)
+  const [open, setOpen] = useState(false)
+  const [count, setCount] = useState(null)
+  const refresh = () => supabase.from('gratitude_leaves').select('id', { count: 'exact', head: true }).eq('season', GRAT_SEASON).then(({ count: c }) => setCount(c ?? 0))
+  useEffect(() => { refresh() }, [])
+  if (!crumb) return null
+  const text = countdownText()
+  return (
+    <>
+      <div style={{ position: 'fixed', left: crumb.right + 64, top: crumb.top + crumb.height / 2 - 15, zIndex: 2360, display: 'flex', gap: 8, alignItems: 'center' }}>
+        {text && <span className="tg-pill tg-count-pill">{text}</span>}
+        <button className="tg-pill" onClick={() => setOpen(true)} title="Add what you're thankful for">🌳 Gratitude tree{count ? ` · ${count}` : ''}</button>
+      </div>
+      {open && <GratitudeTree onClose={() => { setOpen(false); refresh() }} />}
+    </>
+  )
+}
+const LEAF_D = 'M20 3 L23.5 11 L30.5 8 L28.5 16 L37 17 L31 23 L34 28 L24.5 26 L22 33 L20 36 L18 33 L15.5 26 L6 28 L9 23 L3 17 L11.5 16 L9.5 8 L16.5 11 Z'
+const hashNum = (str) => { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return Math.abs(h) }
+function GratitudeTree({ onClose }) {
+  const { user, isAdmin } = useAuth()
+  const [leaves, setLeaves] = useState(null)
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [sel, setSel] = useState(null)
+  const [fresh, setFresh] = useState(null)
+  const load = () => supabase.from('gratitude_leaves').select('id, message, created_at, profile_id, profiles(full_name)').eq('season', GRAT_SEASON).order('created_at', { ascending: true }).limit(400)
+    .then(({ data, error }) => { if (error) setErr(error.message); setLeaves(data || []) })
+  useEffect(() => { load() }, [])
+  useEffect(() => { const k = (e) => { if (e.key === 'Escape') onClose() }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k) }, [onClose])
+  async function add(e) {
+    e.preventDefault()
+    const m = text.trim(); if (!m) return
+    setBusy(true); setErr('')
+    const { data, error } = await supabase.from('gratitude_leaves').insert({ message: m, season: GRAT_SEASON }).select('id, message, created_at, profile_id, profiles(full_name)').single()
+    setBusy(false)
+    if (error) { setErr(/row-level security/i.test(error.message) ? "You've added a lot of leaves today. Try again tomorrow!" : error.message); return }
+    setLeaves(l => [...(l || []), data]); setText(''); setSel(data.id); setFresh(data.id)
+    const r = document.getElementById('tg-tree-svg')?.getBoundingClientRect()
+    if (r) celebrate(r.left + r.width / 2, r.top + r.height * .35)
+  }
+  async function remove(l) {
+    setLeaves(ls => ls.filter(x => x.id !== l.id)); if (sel === l.id) setSel(null)
+    const { error } = await supabase.from('gratitude_leaves').delete().eq('id', l.id)
+    if (error) { setErr(error.message); load() }
+  }
+  const list = leaves || []
+  const N = Math.max(36, list.length)
+  const placed = list.map((l, i) => {
+    const r = Math.sqrt((i + .6) / N), a = i * 2.39996 + 0.6
+    const h = hashNum(l.id)
+    return { l, x: 300 + Math.cos(a) * r * 200, y: 122 + Math.sin(a) * r * 92, rot: (h % 120) - 60, c: LEAF_COLORS[h % LEAF_COLORS.length], s: .62 + (h % 5) * .05 }
+  })
+  const selected = list.find(l => l.id === sel)
+  const first = (l) => (l?.profiles?.full_name || 'Someone')
+  return (
+    <div onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}
+      style={{ position: 'fixed', inset: 0, zIndex: 2600, background: 'rgba(28,16,6,.42)', display: 'grid', placeItems: 'center', padding: 14 }}>
+      <div role="dialog" aria-label="Gratitude tree" style={{ width: 'min(760px, 100%)', maxHeight: '92vh', overflow: 'auto', background: 'linear-gradient(180deg, #FFF7ED 0%, var(--surface) 46%)', color: 'var(--ink)', borderRadius: 20, boxShadow: '0 30px 70px -20px rgba(0,0,0,.45)', padding: '18px 22px 20px', border: '1px solid #FED7AA' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 26 }}>🌳</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 800, fontSize: 20, color: '#9A3412' }}>Our Gratitude Tree</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>Add a leaf for something you're thankful for. Everyone on the team can see the tree.</div>
+          </div>
+          <button className="btn btn-ghost" onClick={onClose} aria-label="Close" style={{ padding: '4px 10px' }}>✕</button>
+        </div>
+        <svg id="tg-tree-svg" viewBox="0 0 600 320" style={{ width: '100%', maxHeight: 330, height: 'auto', display: 'block', marginTop: 6 }}>
+          <defs>
+            <radialGradient id="tgCanopy" cx="50%" cy="45%" r="60%"><stop offset="0%" stopColor="#FFEDD5" /><stop offset="100%" stopColor="#FED7AA" stopOpacity=".55" /></radialGradient>
+            <linearGradient id="tgBark" x1="0" x2="1"><stop offset="0%" stopColor="#7A3E17" /><stop offset="55%" stopColor="#9A5426" /><stop offset="100%" stopColor="#6B3412" /></linearGradient>
+          </defs>
+          <ellipse cx="300" cy="306" rx="190" ry="11" fill="#FDE7CF" />
+          {[[300, 124, 205, 96], [205, 150, 92, 62], [395, 150, 92, 62], [300, 74, 120, 58]].map(([cx, cy, rx, ry], i) => <ellipse key={i} cx={cx} cy={cy} rx={rx} ry={ry} fill="url(#tgCanopy)" />)}
+          <path d="M280 308 C286 270 288 242 284 214 C268 198 244 186 214 180 L217 170 C246 175 270 186 287 199 C289 178 288 160 292 138 L300 136 L308 138 C312 160 311 178 313 199 C330 184 354 174 386 168 L389 178 C358 186 332 198 316 214 C312 242 314 270 320 308 Z" fill="url(#tgBark)" />
+          <path d="M300 150 Q298 230 302 300" stroke="#B8683A" strokeWidth="3" fill="none" opacity=".5" strokeLinecap="round" />
+          <path d="M292 140 Q268 112 236 100 M308 140 Q334 110 370 98 M300 136 L300 92" stroke="url(#tgBark)" strokeWidth="7" fill="none" strokeLinecap="round" />
+          {list.length === 0 && [[210, 140], [300, 80], [390, 132], [250, 190], [352, 192]].map(([x, y], i) => (
+            <path key={i} d={LEAF_D} transform={`translate(${x - 14} ${y - 14}) scale(.7)`} fill={LEAF_COLORS[i]} opacity=".22" />
+          ))}
+          {placed.map(({ l, x, y, rot, c, s: sc }) => (
+            <g key={l.id} className={'tg-tree-leaf' + (sel === l.id ? ' on' : '')} onClick={() => setSel(l.id)}
+              style={fresh === l.id ? { animation: 'tgLeafIn .9s cubic-bezier(.3,.7,.4,1)' } : undefined}>
+              <title>{`${first(l)}: ${l.message}`}</title>
+              <path d={LEAF_D} transform={`translate(${x} ${y}) rotate(${rot}) scale(${sc}) translate(-20 -20)`} fill={c} stroke={sel === l.id ? '#7C2D12' : c} strokeWidth="2.4" strokeLinejoin="round" />
+            </g>
+          ))}
+        </svg>
+        <div style={{ minHeight: 46, margin: '2px 0 10px', padding: '10px 14px', borderRadius: 12, background: selected ? '#FFF7ED' : 'transparent', border: selected ? '1px solid #FED7AA' : '1px dashed var(--line)', fontSize: 14 }}>
+          {selected ? <span><b style={{ color: '#9A3412' }}>{first(selected)}</b> is thankful for: {selected.message}</span>
+            : <span style={{ color: 'var(--ink-soft)' }}>{leaves === null ? 'Loading the tree…' : list.length ? 'Tap a leaf to read it.' : 'No leaves yet. Be the first to add one!'}</span>}
+        </div>
+        <form onSubmit={add} style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+          <input value={text} onChange={e => setText(e.target.value)} maxLength={140} placeholder="I'm thankful for…" aria-label="I'm thankful for"
+            style={{ flex: 1, border: '1px solid #FDBA74', borderRadius: 12, padding: '10px 12px', fontSize: 14, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }} />
+          <button className="btn btn-primary" disabled={busy || !text.trim()} style={{ background: '#EA580C', borderColor: '#EA580C', whiteSpace: 'nowrap' }}>{busy ? 'Adding…' : 'Add my leaf 🍂'}</button>
+        </form>
+        <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginTop: 4, textAlign: 'right' }}>{text.length}/140</div>
+        {err && <div className="login-err" style={{ marginTop: 6 }}>{err}</div>}
+        {list.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: '#9A3412', marginBottom: 6 }}>All leaves ({list.length})</div>
+            <div style={{ display: 'grid', gap: 6, maxHeight: 220, overflow: 'auto', paddingRight: 4 }}>
+              {list.slice().reverse().map(l => (
+                <div key={l.id} onClick={() => setSel(l.id)} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '7px 10px', borderRadius: 10, cursor: 'pointer', background: sel === l.id ? '#FFF7ED' : 'var(--canvas)', border: '1px solid ' + (sel === l.id ? '#FED7AA' : 'var(--line)'), fontSize: 13.5 }}>
+                  <span style={{ flex: 'none', marginTop: 1 }}><Leaf size={16} color={LEAF_COLORS[hashNum(l.id) % LEAF_COLORS.length]} /></span>
+                  <span style={{ flex: 1 }}><b>{first(l)}</b> · {l.message}</span>
+                  {(l.profile_id === user?.id || isAdmin) && <button onClick={(e) => { e.stopPropagation(); remove(l) }} title="Remove this leaf" aria-label="Remove this leaf"
+                    style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 13, padding: '0 4px' }}>✕</button>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // for the profile header corner
 export function SeasonHeaderDecor() {
   if (!seasonalHat()) return null
@@ -534,8 +690,9 @@ export default function Seasonal() {
       <CornerBranch />
       <TopLeaves />
       <HarvestPatch />
-      <ChatPeeker kind="turkey" />
+      <style>{TG_COZY_CSS}</style>
       <HarvestBasket />
+      <TgTopBar />
       <div className="cc-season-layer" aria-hidden="true">
         {floaters.map(f => f.kind === 'leaves' ? (
           <React.Fragment key={f.id}>
