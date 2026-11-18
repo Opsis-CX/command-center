@@ -3083,11 +3083,21 @@ export function mountOpsisQA(ROOT, cfg) {
     var paint = function () {
       var el = $('hubr'); if (!el || tok !== T) return; var R = HUB.roster;
       var ALLN = R.rows.length; R = Object.assign({}, R, { rows: S.brands.length ? R.rows.filter(function (r) { return S.brands.indexOf(r.brand) >= 0; }) : R.rows });
+      // Location filter (Becky 11/18, PORT-05): same picker as the dashboard (S.locs) — GMs start on their own location and can
+      // switch to another location or all locations. Location comes from the CSR roster (brand + name).
+      if (!S.locs) S.locs = CFG.portalRole === 'gm' && CFG.portalLocation ? [CFG.portalLocation] : [];
+      var LM = HUB.locs, locOf = function (r) { return LM ? LM.map[r.brand + '|' + String(r.name).toLowerCase().trim()] || null : null; };
+      var BRN = R.rows.length, locList = [];
+      if (LM) { R.rows.forEach(function (r) { var l = locOf(r); if (l && locList.indexOf(l) < 0) locList.push(l); }); locList.sort(); }
+      if (LM && S.locs.length) R = Object.assign({}, R, { rows: R.rows.filter(function (r) { var l = locOf(r); return l && S.locs.map(function (x) { return x.toLowerCase(); }).indexOf(l.toLowerCase()) >= 0; }) });
+      var cur0 = S.locs[0] || '';
+      var locBar = locList.length > 1 || (cur0 && locList.length) ? '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 4px"><label class="cap" for="hubloc" style="font-size:11px;letter-spacing:.14em">Location</label><select id="hubloc" class="sel" style="min-width:180px"><option value="">All locations</option>' + locList.map(function (l) { return '<option value="' + esc(l) + '"' + (l.toLowerCase() === cur0.toLowerCase() ? ' selected' : '') + '>' + esc(l) + (LM.mine && LM.mine.toLowerCase() === l.toLowerCase() ? ' (yours)' : '') + '</option>'; }).join('') + '</select></div>' : '';
+      if (!R.rows.length && BRN) { el.innerHTML = locBar + '<div class="oq-card"><b>No CSRs at this location</b><p class="sub">Pick another location above, or choose All locations.</p></div>'; bindLoc(); return; }
       if (!R.rows.length && ALLN) { el.innerHTML = '<div class="oq-card"><b>No CSRs for the brands picked above</b><p class="sub">Pick other brands at the top, or <button class="more" data-act="huballbrands">show all brands</button>.</p></div>'; return; }
       if (!R.rows.length) { el.innerHTML = '<div class="oq-card"><b>No CSRs in the Coaching Hub yet</b><p class="sub">Add the people who answer your phones.</p>' + (LOCK ? '<button class="sel btnd" data-hubpeople="' + esc(LOCK) + '">Add CSRs</button>' : '') + '</div>'; return; }
       var brands = {}; R.rows.forEach(function (r) { (brands[r.brand_short] = brands[r.brand_short] || []).push(r); });
       var dl = function (v, l) { if (v == null || l == null) return ''; var x = v - l; return x === 0 ? '<span class="mut">even</span>' : '<span style="color:' + (x > 0 ? '#1F5A41' : '#A8441A') + ';font-weight:600">' + (x > 0 ? '▲ ' : '▼ ') + Math.abs(x) + '</span>'; };
-      el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">Coaching Hub</h1><p class="sub">' + esc(R.week_label) + ' · ' + R.rows.length + ' CSRs' + (R.rows.length < ALLN ? ' of ' + ALLN + ' (filtered by brand)' : '') + ' · open anyone to see exactly what they see, set their focus or send kudos</p></div>' + '<div class="row" style="gap:8px"><button class="sel btnd" data-go="hubqs">What CSRs are asking</button>' + (LOCK ? '<button class="sel" data-hubpeople="' + esc(LOCK) + '">Edit CSR list</button>' : '') + '</div></div>' +
+      el.innerHTML = locBar + '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">Coaching Hub</h1><p class="sub">' + esc(R.week_label) + ' · ' + R.rows.length + ' CSRs' + (R.rows.length < ALLN ? ' of ' + ALLN + (R.rows.length < BRN ? ' (filtered by location)' : ' (filtered by brand)') : '') + ' · open anyone to see exactly what they see, set their focus or send kudos</p></div>' + '<div class="row" style="gap:8px"><button class="sel btnd" data-go="hubqs">What CSRs are asking</button>' + (LOCK ? '<button class="sel" data-hubpeople="' + esc(LOCK) + '">Edit CSR list</button>' : '') + '</div></div>' +
         Object.keys(brands).sort().map(function (b) {
           return '<div style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="cap">' + esc(b) + ' · ' + brands[b].length + '</span>' + (LOCK ? '' : '<button class="more" data-hubpeople="' + esc(brands[b][0].brand) + '">Edit list</button>') + '</div><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">' + brands[b].map(function (r) {
             return '<button class="oq-card click" data-hubcsr="' + r.id + '" style="text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:10px;padding:16px;font:inherit;color:inherit">' +
@@ -3097,7 +3107,10 @@ export function mountOpsisQA(ROOT, cfg) {
               '<span class="mut" style="font-size:12px;line-height:1.4;width:100%">' + (r.focus ? '<b style="color:var(--ink);font-weight:600">Focus:</b> ' + esc(r.focus) : 'Focus set when you open them') + (r.kudos ? ' · ♥ ' + r.kudos : '') + '</span></button>';
           }).join('') + '</div></div>';
         }).join('');
+      bindLoc();
     };
+    var bindLoc = function () { var x = $('hubloc'); if (x) x.addEventListener('change', function () { S.locs = this.value ? [this.value] : []; paint(); }); };
+    if (!HUB.locs && CFG.csrLocations) CFG.csrLocations().then(function (d) { var m = {}; (d.rows || []).forEach(function (r) { m[r.brand + '|' + String(r.name).toLowerCase().trim()] = r.location; }); HUB.locs = { map: m, mine: d.my_location || null }; if (HUB.roster) paint(); }).catch(function () {});
     if (HUB.roster) { setTimeout(paint, 0); }
     api({ action: 'hubroster', week: HUB.week || null }).then(function (r) { HUB.roster = r; paint(); }).catch(function (e) { var el = $('hubr'); if (el && !HUB.roster) el.innerHTML = errBox(e); });
   }
