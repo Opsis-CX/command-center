@@ -387,15 +387,28 @@ const ANN_KEY = 'cc.tg.announce.' + GRAT_SEASON
 const hashNum = (str) => { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return Math.abs(h) }
 
 // "Happy Thanksgiving!" lettering + Gratitude Tree button, centered in the empty middle of the top bar.
-function TgHeader({ count, onOpen }) {
+function TgHeader({ count, onOpen, fall, setFall }) {
   // .tb-left stretches to fill the bar, so measure from the page name (.crumb) instead
   const left = useAnchorRect('.topbar .crumb', 800), right = useAnchorRect('.topbar .tb-right', 800), bar = useAnchorRect('.topbar', 800)
   if (!left || !right || !bar) return null
   const free = right.left - left.right - 32
   if (free < 46) return null
-  const showTitle = free >= 660, big = free >= 820, compact = free < 200
+  // Fall Mode switch: at the far right of the top bar on wide screens (space is reserved by CSS),
+  // otherwise at the right end of the free space.
+  const wide = window.innerWidth >= 1000
+  const showFall = wide || free >= 300, fallW = wide ? 0 : (free >= 420 ? 148 : 70)
+  const mid = free - (showFall && !wide ? fallW + 16 : 0)
+  const showTitle = mid >= 660, big = mid >= 820, compact = mid < 200
   return (
-    <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: left.right + 16, width: free, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: big ? 26 : 16, pointerEvents: 'none' }}>
+    <>
+    {showFall && (wide
+      ? <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: right.right + 12, width: 140, zIndex: 2360, display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
+          <FallToggle on={fall} onChange={setFall} />
+        </div>
+      : <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: left.right + 16 + free - fallW, width: fallW, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', pointerEvents: 'none' }}>
+          <FallToggle on={fall} onChange={setFall} compact={fallW < 100} />
+        </div>)}
+    <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: left.right + 16, width: mid, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: big ? 26 : 16, pointerEvents: 'none' }}>
       {showTitle && (
         <div aria-hidden="true" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Sprig w={big ? 82 : 62} flip />
@@ -411,6 +424,7 @@ function TgHeader({ count, onOpen }) {
         </button>
       )}
     </div>
+    </>
   )
 }
 // The announcement, centered in the empty middle of the work bar (between Status and the shift/timer controls).
@@ -466,6 +480,69 @@ function TgFrame() {
         <div style={{ marginLeft: -6, transform: 'rotate(30deg) translateY(2px)' }}><Leaf size={16} color="#F59E0B" /></div>
       </div>
     </div>
+  )
+}
+
+
+// ---------- Fall Mode (optional, personal) ----------
+// A temporary warm color layer. It only re-points the app's existing color variables (and the sidebar,
+// which has its own colors) while <html> has the class "cc-fall". Removing the class restores the normal
+// Opsis colors instantly. Nothing in index.css is changed. Each person's choice is saved in
+// public.seasonal_prefs (key 'fall_mode-2026'), cached in localStorage so it applies without a flash.
+const FALL_KEY = 'fall_mode-2026'
+const FALL_CSS = `
+html.cc-fall {
+  --accent: #C2410C; --accent-bg: #FDDCC0; --accent-ink: #fff;
+  --blue: #C2410C; --cyan: #F97316; --teal: #6B3418; --ink-soft: #6B3418; --ink: #2B1408;
+  --cta: #E2622A; --cta-ink: #fff;
+  --surface: #FFF8F0; --canvas: #FCEBDA; --bg-soft: #FFF3E6; --line: #F0D3B6; --line-soft: #F7E4D1;
+  --needed: #9A3412; --needed-bg: #FDE4CC;
+  --opsis-accent: #EA580C;
+  --grad-accent: linear-gradient(180deg, #A93C12 0%, #7C2D12 100%);
+  --composer-toolbar-bg: #FFF3E6;
+}
+/* sidebar: deep rust with cream text, orange pill for the current page (mockup) */
+html.cc-fall .sidebar { background: linear-gradient(180deg, #8C3514 0%, #74290F 45%, #5E200B 100%) !important; border-right: 0; }
+html.cc-fall .sidebar .nav-label, html.cc-fall .sidebar .nav-group-label { color: rgba(255,236,218,.62); }
+html.cc-fall .sidebar .nav-item, html.cc-fall .sidebar .nav-subitem { color: #FFF1E4; }
+html.cc-fall .sidebar .nav-subitem { color: rgba(255,241,228,.86); }
+html.cc-fall .sidebar .nav-item .ic, html.cc-fall .sidebar .nav-item svg, html.cc-fall .sidebar .nav-caret { color: #FFE2C8; }
+html.cc-fall .sidebar .nav-item:hover { background: rgba(255,214,180,.13); color: #fff; }
+html.cc-fall .sidebar .nav-item.on { background: linear-gradient(180deg, #EC7436 0%, #D4561F 100%); color: #fff; box-shadow: 0 6px 14px -8px rgba(0,0,0,.45); }
+html.cc-fall .sidebar .nav-item.on .ic, html.cc-fall .sidebar .nav-item.on svg { color: #fff; }
+html.cc-fall .sidebar .user-chip { background: linear-gradient(180deg, #EC7436 0%, #D4561F 100%); border-color: rgba(255,214,180,.35); }
+html.cc-fall .sidebar .user-name, html.cc-fall .sidebar .user-role { color: #fff; }
+html.cc-fall .sidebar .user-av { background: #FFF3E6; color: #9A3412; box-shadow: 0 0 0 2px #FDBA74; }
+html.cc-fall .sidebar .signout { color: rgba(255,241,228,.8); }
+html.cc-fall .sidebar .signout:hover { color: #fff; }
+html.cc-fall .hd-avatar { background: #9A3412; box-shadow: 0 0 0 2px #F97316; }
+html.cc-fall .btn-primary { background: linear-gradient(180deg, #A93C12 0%, #7C2D12 100%); border-color: #7C2D12; color: #fff; box-shadow: 0 8px 22px -12px rgba(124,45,18,.8); }
+html.cc-fall .topbar { background: linear-gradient(90deg, #FFF3E4 0%, #FFF8EF 50%, #FFF1E2 100%) !important; }
+html.cc-fall .workbar { background: #FFF5EA; border-bottom-color: #F3D2AE; }
+/* dark mode: deep browns */
+:root.cc-fall[data-theme="dark"] { --ink: #F7E7D8; --canvas: #1A120C; --bg-soft: #20160F; --surface: #24180F; --line: #3B2A1E; --line-soft: #2C1F16; --ink-soft: #E7B48A; --teal: #E7B48A; --accent-bg: #4A2716; --composer-toolbar-bg: #24180F; }
+:root.cc-fall[data-theme="dark"] .topbar, :root.cc-fall[data-theme="dark"] .workbar { background: #24180F !important; }
+@media (prefers-color-scheme: dark) {
+  :root.cc-fall:not([data-theme="light"]) { --ink: #F7E7D8; --canvas: #1A120C; --bg-soft: #20160F; --surface: #24180F; --line: #3B2A1E; --line-soft: #2C1F16; --ink-soft: #E7B48A; --teal: #E7B48A; --accent-bg: #4A2716; --composer-toolbar-bg: #24180F; }
+  :root.cc-fall:not([data-theme="light"]) .topbar, :root.cc-fall:not([data-theme="light"]) .workbar { background: #24180F !important; }
+}
+/* room for the Fall Mode switch at the far right of the top bar (Thanksgiving only, wide screens) */
+@media (min-width: 1000px) { body.cc-thanksgiving .topbar .tb-right { margin-right: 168px; } }
+.tg-fall { pointer-events: auto; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 4px 0 6px; border-radius: 999px; border: 0; background: transparent;
+  color: #3B1A0A; font-family: inherit; font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+:root[data-theme="dark"] .tg-fall { color: #FDE7D2; }
+.tg-fall:focus-visible { outline: 2px solid #F97316; outline-offset: 2px; }
+.tg-switch { position: relative; width: 46px; height: 26px; border-radius: 999px; background: #D6D3D1; transition: background .2s; flex: none; box-shadow: inset 0 1px 2px rgba(0,0,0,.15); }
+.tg-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .2s; }
+.tg-fall[aria-checked="true"] .tg-switch { background: linear-gradient(180deg, #F57C35, #D4561F); }
+.tg-fall[aria-checked="true"] .tg-switch::after { transform: translateX(20px); }
+`
+function FallToggle({ on, onChange, compact }) {
+  return (
+    <button type="button" role="switch" aria-checked={on ? 'true' : 'false'} className="tg-fall" onClick={() => onChange(!on)}
+      title={on ? 'Fall Mode is on — only you see it' : 'Turn on Fall Mode (warm autumn colors, just for you)'}>
+      <Leaf size={18} color="#EA580C" />{!compact && <span>Fall Mode</span>}<span className="tg-switch" />
+    </button>
   )
 }
 
@@ -655,6 +732,8 @@ export default function Seasonal() {
   const [greet, setGreet] = useState(null)
   const [treeOpen, setTreeOpen] = useState(false)
   const [gCount, setGCount] = useState(null)
+  const fallCacheKey = user?.id ? `cc.${FALL_KEY}.${user.id}` : null
+  const [fall, setFallState] = useState(false)
   const season = activeSeason()
   const idRef = useRef(0)
   const still = reduceMotion()
@@ -699,6 +778,18 @@ export default function Seasonal() {
     t1 = setTimeout(flurry, 6000)
     return () => clearTimeout(t1)
   }, [on, season?.key, still]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Fall Mode: read the cached choice right away, then the saved one; apply/remove the class on <html>.
+  useEffect(() => {
+    if (!on || season?.key !== 'thanksgiving' || !user?.id) return
+    try { if (localStorage.getItem(fallCacheKey) === '1') setFallState(true) } catch { /* ignore */ }
+    supabase.from('seasonal_prefs').select('enabled').eq('profile_id', user.id).eq('key', FALL_KEY).maybeSingle()
+      .then(({ data }) => { if (data) { setFallState(!!data.enabled); try { localStorage.setItem(fallCacheKey, data.enabled ? '1' : '0') } catch { /* ignore */ } } })
+  }, [on, season?.key, user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const active = !!(on && season?.key === 'thanksgiving' && fall)
+    document.documentElement.classList.toggle('cc-fall', active)
+    return () => document.documentElement.classList.remove('cc-fall')
+  }, [on, season?.key, fall])
   // Gratitude Tree count (header badge) + the script font for the lettering, only while Thanksgiving is on.
   useEffect(() => {
     if (!on || season?.key !== 'thanksgiving') return
@@ -772,12 +863,18 @@ export default function Seasonal() {
   if (!season || !on) return null
   const closeGreet = () => { try { localStorage.setItem(greet.key, '1') } catch { /* ignore */ } setGreet(null) }
 
+  const setFall = (v) => {
+    setFallState(v)
+    try { localStorage.setItem(fallCacheKey, v ? '1' : '0') } catch { /* ignore */ }
+    supabase.from('seasonal_prefs').upsert({ profile_id: user.id, key: FALL_KEY, enabled: v, updated_at: new Date().toISOString() }, { onConflict: 'profile_id,key' }).then(() => {})
+  }
   if (season.key === 'thanksgiving') return (
     <>
       <style>{CSS}</style>
       <style>{TG_COZY_CSS}</style>
+      <style>{FALL_CSS}</style>
       <TgFrame />
-      <TgHeader count={gCount} onOpen={() => setTreeOpen(true)} />
+      <TgHeader count={gCount} onOpen={() => setTreeOpen(true)} fall={fall} setFall={setFall} />
       <TgAnnounce onOpen={() => setTreeOpen(true)} />
       {treeOpen && <GratitudeTree onClose={() => setTreeOpen(false)} onChanged={() => window.dispatchEvent(new Event('cc:gratitude-changed'))} />}
       <div className="cc-season-layer" aria-hidden="true">
