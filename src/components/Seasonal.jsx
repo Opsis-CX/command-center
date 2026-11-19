@@ -352,6 +352,27 @@ function CornerSpray({ scale = 1, flipX = false, flipY = false, sprigs = true })
   )
 }
 
+
+// ---------- Painted artwork (2026-11-18) ----------
+// Cut from Brittney's Thanksgiving mockup (transparent PNGs in public/seasonal/thanksgiving/), so the
+// decorations look painted like the mockup instead of flat. Sizes are the images' natural pixel sizes.
+const ART = '/seasonal/thanksgiving/'
+const ART_SIZE = {"corner_tl": [236, 68], "title": [352, 64], "sprig_l": [103, 50], "sprig_r": [93, 50], "corner_tr": [236, 68], "side_r": [100, 140], "corner_bl": [227, 148], "pumpkins": [213, 94], "corner_br": [42, 206], "hdr_l": [112, 56], "hdr_r": [86, 56], "hdr_title": [322, 54], "btn_leaf": [34, 36], "ann_leaf": [34, 36], "tree": [545, 232], "leaf_0": [28, 27], "leaf_1": [32, 33], "leaf_2": [37, 41], "leaf_3": [22, 28], "leaf_4": [46, 48], "leaf_5": [32, 26], "leaf_6": [49, 49], "leaf_7": [22, 27], "leaf_8": [43, 39], "leaf_9": [26, 22], "leaf_10": [29, 25]}
+const LEAF_ART = Array.from({ length: 11 }, (_, i) => 'leaf_' + i)
+// where leaves can land on the painted tree (percent of its width/height). The first 11 are where the
+// leaves sit in the mockup, so the tree fills in to look like the design.
+const TREE_ART_SLOTS = [[32.8, 4.9], [59.5, 6.4], [66.9, 11.4], [44.2, 12.3], [24.9, 18.4], [68.9, 22.9], [17.3, 31.5], [49.1, 28.6], [77.1, 49.8], [19.8, 53.9], [67.0, 57.8], [36.0, 50.9], [55.2, 52.6], [33.9, 28.0], [59.1, 29.3], [79.4, 29.3], [27.5, 44.0], [44.2, 57.8], [41.5, 36.2], [70.1, 40.9], [62.0, 45.3], [38.3, 17.7], [54.7, 19.0], [53.9, 36.6], [22.0, 39.2], [30.5, 55.6], [30.6, 17.2], [63.3, 21.1], [32.8, 40.5], [74.3, 33.2], [40.9, 48.3], [28.1, 27.2], [38.7, 6.9], [41.5, 25.4], [23.7, 48.7], [72.8, 48.7], [37.2, 34.5], [66.2, 45.3], [62.9, 54.7], [58.0, 44.8], [35.0, 12.5], [55.2, 28.0], [44.0, 43.1], [58.0, 14.7], [62.9, 37.1], [30.8, 47.4], [76.3, 25.9], [70.8, 33.2], [59.8, 51.7], [25.1, 39.2], [44.0, 50.4], [42.6, 18.5], [65.9, 25.0], [41.5, 55.2], [31.0, 28.9], [33.0, 52.2], [61.8, 27.2], [35.2, 44.4], [69.5, 47.4], [32.5, 22.4]]
+const isDarkTheme = () => {
+  const t = document.documentElement.getAttribute('data-theme')
+  if (t) return t === 'dark'
+  try { return window.matchMedia('(prefers-color-scheme: dark)').matches } catch { return false }
+}
+function ArtImg({ name, h, w, style, ...rest }) {
+  const [nw, nh] = ART_SIZE[name] || [1, 1]
+  const width = w || (h ? h * nw / nh : nw), height = h || (w ? w * nh / nw : nh)
+  return <img src={ART + name + '.png'} alt="" aria-hidden="true" draggable="false" width={Math.round(width)} height={Math.round(height)} style={{ display: 'block', userSelect: 'none', ...style }} {...rest} />
+}
+
 const TG_COZY_CSS = `
 body.cc-thanksgiving { --tg-a: 62%; --tg-b: 9%; --tg-frame: rgba(234,88,12,.55); }
 :root[data-theme="dark"] body.cc-thanksgiving { --tg-a: 16%; --tg-b: 4%; --tg-frame: rgba(234,88,12,.45); }
@@ -410,17 +431,25 @@ function TgHeader({ count, onOpen, fall, setFall }) {
         </div>)}
     <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: left.right + 16, width: mid, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: big ? 26 : 16, pointerEvents: 'none' }}>
       {showTitle && (
-        <div aria-hidden="true" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Sprig w={big ? 82 : 62} flip />
-          <span className="tg-script" style={{ fontSize: big ? 33 : 27, background: 'linear-gradient(180deg, #C2410C 0%, #8A2E0E 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', padding: '6px 4px', filter: 'drop-shadow(0 1px 0 rgba(255,255,255,.6))' }}>Happy Thanksgiving!</span>
-          <Sprig w={big ? 82 : 62} />
-        </div>
+        isDarkTheme() ? (
+          <div aria-hidden="true" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Sprig w={big ? 82 : 62} flip />
+            <span className="tg-script" style={{ fontSize: big ? 33 : 27, color: '#FDBA74', padding: '6px 4px' }}>Happy Thanksgiving!</span>
+            <Sprig w={big ? 82 : 62} />
+          </div>
+        ) : (
+          <div aria-hidden="true" style={{ display: 'flex', alignItems: 'center', gap: big ? 8 : 4 }}>
+            <ArtImg name="sprig_l" h={big ? 42 : 32} />
+            <ArtImg name="title" h={big ? Math.min(52, bar.height - 6) : 38} />
+            <ArtImg name="sprig_r" h={big ? 42 : 32} />
+          </div>
+        )
       )}
       {compact ? (
         <button className="tg-btn" onClick={onOpen} title="Gratitude Tree" aria-label="Open the Gratitude Tree" style={{ padding: 0, width: 38, justifyContent: 'center' }}><Leaf size={20} color="#F59E0B" /></button>
       ) : (
         <button className="tg-btn" onClick={onOpen} title="Add what you're thankful for">
-          <Leaf size={20} color="#F59E0B" /><span>Gratitude Tree</span>{count != null && <span className="tg-badge">{count}</span>}
+          <ArtImg name="btn_leaf" h={24} /><span>Gratitude Tree</span>{count != null && <span className="tg-badge">{count}</span>}
         </button>
       )}
     </div>
@@ -440,7 +469,7 @@ function TgAnnounce({ onOpen }) {
     <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: l + 16, width: free, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
       <div className="tg-ann" role="status">
         <button className="tg-ann-main" onClick={onOpen}>
-          <Leaf size={20} color="#EA580C" />
+          <ArtImg name="ann_leaf" h={24} />
           <span>Share what you're thankful for on our Gratitude Tree!</span>
           <svg width="20" height="18" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 20 C5 15 2 11.5 2 7.5 C2 4.4 4.4 2 7.3 2 C9.3 2 11 3.1 12 4.8 C13 3.1 14.7 2 16.7 2 C19.6 2 22 4.4 22 7.5 C22 11.5 19 15 12 20 Z" fill="none" stroke="#C2410C" strokeWidth="2" strokeLinejoin="round" /></svg>
         </button>
@@ -459,26 +488,31 @@ function TgFrame() {
   const top = head.top + head.height + 14, left = main.left + 14, right = main.right - 18, bottom = vh - 12
   const w = right - left, h = bottom - top
   if (w < 640 || h < 320) return null
-  const sc = w >= 1300 ? 1 : w >= 1000 ? .85 : .7
-  const edge = (side, pct, s, r, c) => (
-    <div key={side + pct} style={{ position: 'absolute', [side]: -s / 2, top: `${pct}%`, transform: `rotate(${r}deg)`, opacity: .92 }}><Leaf size={s} color={c} /></div>
-  )
+  // painted corner pieces, lined up so their frame line sits on ours (offsets are the frame corner inside each image)
+  const k = Math.max(.7, Math.min(1.15, w / 1490))
+  const piece = (name, cx, cy, ax, ay, flip = false, extra = {}, kk = k) => {
+    const [nw] = ART_SIZE[name]
+    const left = (flip ? ax - (nw - cx) * kk : ax - cx * kk) - left0, topP = ay - cy * kk - top0
+    return <ArtImg key={name + (flip ? 'f' : '')} name={name} w={nw * kk} style={{ position: 'absolute', left, top: topP, transform: flip ? 'scaleX(-1)' : undefined, ...extra }} />
+  }
+  const left0 = left, top0 = top, rightX = right, bottomY = bottom
+  // keep each piece solid along the frame edge and fade it out toward the page, so it never sits on text or buttons
+  const fade = (...g) => {
+    const m = g.map(([dir, a, b]) => `linear-gradient(${dir}, #000 0 ${a}%, transparent ${b}%)`).join(', ')
+    return { WebkitMaskImage: m, maskImage: m, WebkitMaskComposite: 'source-over', maskComposite: 'add' }
+  }
   return (
     <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', top, left, width: w, height: h, zIndex: 2300, pointerEvents: 'none',
-      border: '2px solid var(--tg-frame)', borderRadius: 22, boxShadow: '0 0 0 4px rgba(255,237,213,.35)' }}>
-      <div style={{ position: 'absolute', left: 0, top: 0 }}><CornerSpray scale={sc} /></div>
-      <div style={{ position: 'absolute', right: 0, top: 0 }}><CornerSpray scale={sc} flipX /></div>
-      <div style={{ position: 'absolute', left: 0, bottom: 0 }}><CornerSpray scale={sc * .95} flipY /></div>
-      <div style={{ position: 'absolute', right: 0, bottom: 0 }}><CornerSpray scale={sc * .7} flipX flipY sprigs={false} /></div>
-      {edge('left', 46, 34 * sc, -25, '#D97706')}
-      {edge('right', 30, 38 * sc, 20, '#EA580C')}{edge('right', 50, 32 * sc, -35, '#F59E0B')}{edge('right', 68, 38 * sc, 60, '#C2410C')}
-      <div style={{ position: 'absolute', right: 84, bottom: -6, display: 'flex', alignItems: 'flex-end' }}>
-        <div style={{ marginRight: -10, transform: 'rotate(-18deg) translateY(4px)' }}><Leaf size={18} color="#DC2626" /></div>
-        <HarvestPumpkin size={34} tone="cream" />
-        <div style={{ marginLeft: -8, zIndex: 1 }}><HarvestPumpkin size={50} /></div>
-        <div style={{ marginLeft: -10 }}><HarvestPumpkin size={30} /></div>
-        <div style={{ marginLeft: -6, transform: 'rotate(30deg) translateY(2px)' }}><Leaf size={16} color="#F59E0B" /></div>
-      </div>
+      border: '2px solid #F98524', borderRadius: 20 }}>
+      {piece('corner_tr', 228, 1, rightX, top, false, fade(['to bottom', 42, 66], ['to left', 14, 26]))}
+      {/* top-left: smaller and lighter, because page titles (e.g. "Chat") start right there */}
+      {piece('corner_tl', 236 - 228, 1, left - 9, top - 8, false, fade(['to bottom', 34, 60], ['to right', 12, 24]), k * .74)}
+      {piece('corner_bl', 3, 146, left, bottomY, false, fade(['to right', 16, 32], ['to top', 26, 46]))}
+      {piece('corner_br', 34, 204, rightX, bottomY)}
+      {piece('side_r', 92, 0, rightX, top + h * .58, false, fade(['to left', 30, 62]))}
+      {piece('pumpkins', 314, 92, rightX, bottomY)}
+      <ArtImg name="leaf_6" w={30 * k} style={{ position: 'absolute', right: -15 * k, top: h * .22, transform: 'rotate(-18deg)' }} />
+      <ArtImg name="leaf_2" w={26 * k} style={{ position: 'absolute', right: -13 * k, top: h * .4, transform: 'rotate(24deg)' }} />
     </div>
   )
 }
@@ -613,63 +647,42 @@ function GratitudeTree({ onClose, onChanged }) {
       style={{ position: 'fixed', inset: 0, zIndex: 2600, background: 'rgba(40,20,8,.45)', display: 'grid', placeItems: 'center', padding: 12 }}>
       <div role="dialog" aria-label="Our Gratitude Tree" style={{ width: 'min(640px, 100%)', maxHeight: '94vh', display: 'flex', flexDirection: 'column', background: '#FFF8EE', color: '#2B1A10', borderRadius: 24, border: '2px solid #EA580C', boxShadow: '0 34px 80px -24px rgba(0,0,0,.55)', overflow: 'hidden' }}>
         <div style={{ position: 'relative', flex: 'none', height: 78, background: 'linear-gradient(180deg, #A53D12 0%, #7C2D12 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '0 56px' }}>
-          <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}><Leaf size={26} color="#F59E0B" /><Leaf size={22} color="#EA580C" /><Sprig w={52} flip /></div>
-          <span className="tg-script" style={{ fontSize: 'clamp(26px, 5vw, 38px)', color: '#FFF1DC', textShadow: '0 2px 0 rgba(0,0,0,.18)' }}>Our Gratitude Tree</span>
-          <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}><Sprig w={52} /><Leaf size={22} color="#EA580C" /><Leaf size={26} color="#F59E0B" /></div>
+          <ArtImg name="hdr_l" h={52} style={{ flex: 'none' }} />
+          <ArtImg name="hdr_title" h={50} style={{ maxWidth: '58%', height: 'auto' }} />
+          <ArtImg name="hdr_r" h={52} style={{ flex: 'none' }} />
           <button onClick={onClose} aria-label="Close" style={{ position: 'absolute', right: 14, top: 18, width: 40, height: 40, borderRadius: '50%', border: 0, background: '#fff', color: '#1F2937', fontSize: 18, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 10px rgba(0,0,0,.25)' }}>✕</button>
         </div>
         <div style={{ overflowY: 'auto', padding: '14px 22px 18px' }}>
           <p style={{ margin: '0 0 4px', textAlign: 'center', fontSize: 14.5, fontWeight: 600, lineHeight: 1.45 }}>Add a leaf for something you're thankful for. Watch our tree fill with gratitude throughout the week!</p>
-          <svg id="tg-tree-svg" viewBox="0 0 520 300" style={{ width: '100%', maxHeight: 300, height: 'auto', display: 'block' }}>
-            <defs>
-              <linearGradient id="tgBark3" x1="0" x2="1"><stop offset="0%" stopColor="#6B3412" /><stop offset="50%" stopColor="#9A5426" /><stop offset="100%" stopColor="#5E2C0E" /></linearGradient>
-              <radialGradient id="tgGlow3" cx="50%" cy="45%" r="60%"><stop offset="0%" stopColor="#FFE9CC" /><stop offset="100%" stopColor="#FFF8EE" stopOpacity="0" /></radialGradient>
-              <linearGradient id="tgGround3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#F3C98F" /><stop offset="100%" stopColor="#E3A764" /></linearGradient>
-              {LEAF_COLORS.map(c => <radialGradient key={c} id={'tgt' + c.slice(1)} cx="50%" cy="58%" r="62%"><stop offset="0%" stopColor={SHADE(c, 28)} /><stop offset="100%" stopColor={SHADE(c, -18)} /></radialGradient>)}
-            </defs>
-            <ellipse cx="262" cy="140" rx="220" ry="120" fill="url(#tgGlow3)" />
-            <path d="M40 300 Q60 262 150 262 Q262 250 374 262 Q464 262 484 300 Z" fill="url(#tgGround3)" />
-            <path d="M244 278 C250 250 252 228 250 200 C249 192 252 188 258 186 L266 186 C272 188 275 192 274 200 C272 228 274 250 282 278 C290 284 300 286 306 290 L220 290 C226 286 236 284 244 278 Z" fill="url(#tgBark3)" />
-            <path d="M262 200 Q260 240 264 282" stroke="#B8683A" strokeWidth="2.5" fill="none" opacity=".45" strokeLinecap="round" />
-            {TREE_BRANCHES.map(([a, b, c, wd], i) => <path key={i} d={`M${a[0]} ${a[1]} Q${b[0]} ${b[1]} ${c[0]} ${c[1]}`} stroke="url(#tgBark3)" strokeWidth={wd} fill="none" strokeLinecap="round" />)}
-            {[[96, 282, '#DC2626', -30], [128, 276, '#F59E0B', 40], [196, 286, '#EA580C', 10], [336, 286, '#D97706', -20], [404, 278, '#C2410C', 60], [438, 284, '#F59E0B', -50], [170, 274, '#E8A33D', 70], [362, 272, '#DC2626', 20]].map(([x, y, c, r], i) => (
-              <path key={'g' + i} d={MAPLE_D} fill={`url(#tgt${c.slice(1)})`} transform={`translate(${x} ${y}) rotate(${r}) scale(.15) translate(-50 -50)`} />
-            ))}
-            <g transform="translate(108 236)"><HarvestPumpkin size={58} /></g>
-            <g transform="translate(70 254)"><HarvestPumpkin size={38} tone="cream" /></g>
-            <g transform="translate(160 256)"><HarvestPumpkin size={34} /></g>
-            <g transform="translate(356 238)"><HarvestPumpkin size={56} /></g>
-            <g transform="translate(408 254)"><HarvestPumpkin size={38} tone="cream" /></g>
-            <g transform="translate(320 258)"><HarvestPumpkin size={30} tone="cream" /></g>
+          <div id="tg-tree-svg" style={{ position: 'relative', width: '100%', maxWidth: 560, margin: '4px auto 0', aspectRatio: `${ART_SIZE.tree[0]} / ${ART_SIZE.tree[1]}` }}>
+            <ArtImg name="tree" style={{ width: '100%', height: '100%' }} />
             {list.map((l, i) => {
-              const [x, y] = treeSpot(i), h = hashNum(l.id), c = LEAF_COLORS[h % LEAF_COLORS.length], s = .46 + (h % 4) * .04, on = sel === l.id
+              const h = hashNum(l.id), name = LEAF_ART[h % LEAF_ART.length], [nw, nh] = ART_SIZE[name], on = sel === l.id
+              const [px, py] = i < TREE_ART_SLOTS.length ? TREE_ART_SLOTS[i] : [22 + ((i * 37) % 56), 6 + ((i * 53) % 46)]
               return (
-                <g key={l.id} className={'tg-tree-leaf' + (on ? ' on' : '')} onClick={() => setSel(l.id)} transform={`translate(${x} ${y})`}>
-                  <title>{`${who(l)}: ${l.message}`}</title>
-                  <g style={fresh === l.id ? { animation: 'tgLeafIn .9s cubic-bezier(.3,.7,.4,1)' } : undefined}>
-                    <g transform={`rotate(${(h % 140) - 70}) scale(${s}) translate(-50 -56)`}>
-                      <path d={MAPLE_STEM} stroke="#7C2D12" strokeWidth="4" fill="none" strokeLinecap="round" />
-                      <path d={MAPLE_D} fill={`url(#tgt${c.slice(1)})`} stroke={on ? '#5B1F08' : '#7C2D12'} strokeOpacity={on ? 1 : .3} strokeWidth={on ? 7 : 1.5} />
-                      <path d={MAPLE_VEINS} stroke="#7C2D12" strokeOpacity=".38" strokeWidth="2" fill="none" strokeLinecap="round" />
-                    </g>
-                  </g>
-                </g>
+                <button key={l.id} type="button" onClick={() => setSel(l.id)} title={`${who(l)}: ${l.message}`} aria-label={`Leaf from ${who(l)}`}
+                  style={{ position: 'absolute', left: `${px}%`, top: `${py}%`, width: `${nw / ART_SIZE.tree[0] * 100}%`, aspectRatio: `${nw} / ${nh}`, transform: `translate(-50%, -50%) rotate(${(h % 50) - 25}deg) scale(${on ? 1.35 : 1})`,
+                    padding: 0, border: 0, background: 'transparent', cursor: 'pointer', transition: 'transform .15s', zIndex: on ? 2 : 1, filter: on ? 'drop-shadow(0 0 3px #7C2D12) drop-shadow(0 2px 4px rgba(0,0,0,.3))' : 'drop-shadow(0 1px 1px rgba(0,0,0,.15))' }}>
+                  <span style={{ display: 'block', width: '100%', height: '100%', animation: fresh === l.id ? 'tgLeafIn .9s cubic-bezier(.3,.7,.4,1)' : undefined }}>
+                    <img src={ART + name + '.png'} alt="" draggable="false" style={{ width: '100%', height: '100%', display: 'block' }} />
+                  </span>
+                </button>
               )
             })}
-          </svg>
+          </div>
           <div style={{ minHeight: 44, margin: '6px 0 10px', padding: '10px 14px', borderRadius: 14, background: selected ? '#FFF1E0' : 'transparent', border: selected ? '1.5px solid #FDBA74' : '1.5px dashed #F3D2AE', fontSize: 14 }}>
             {selected ? <span><b style={{ color: '#9A3412' }}>{who(selected)}</b> is thankful for: {selected.message}</span>
               : <span style={{ color: '#8A6A55' }}>{leaves === null ? 'Loading the tree…' : list.length ? 'Click a leaf on the tree to read it.' : 'The tree is bare. Be the first to add a leaf!'}</span>}
           </div>
           <form onSubmit={add} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, height: 46, padding: '0 14px', borderRadius: 999, background: '#fff', border: '1.5px solid #F3D2AE', boxShadow: 'inset 0 1px 2px rgba(0,0,0,.04)' }}>
-              <Leaf size={20} color="#EA580C" />
+              <ArtImg name="ann_leaf" h={22} />
               <input value={text} onChange={e => setText(e.target.value)} maxLength={140} placeholder="I'm thankful for..." aria-label="I'm thankful for"
                 style={{ flex: 1, minWidth: 0, border: 0, outline: 'none', background: 'transparent', fontSize: 14.5, fontFamily: 'inherit', color: '#2B1A10' }} />
             </label>
             <button disabled={busy || !text.trim()} style={{ height: 46, padding: '0 20px', borderRadius: 999, border: 0, cursor: busy || !text.trim() ? 'default' : 'pointer', opacity: busy || !text.trim() ? .65 : 1,
               background: 'linear-gradient(180deg, #C2410C 0%, #9A3412 100%)', color: '#fff', fontWeight: 800, fontSize: 14.5, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap', boxShadow: '0 8px 18px -10px rgba(154,52,18,.9)' }}>
-              <Leaf size={18} color="#FED7AA" />{busy ? 'Adding…' : 'Add My Leaf'}
+              <ArtImg name="btn_leaf" h={20} />{busy ? 'Adding…' : 'Add My Leaf'}
             </button>
           </form>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '8px 6px 0', fontSize: 13 }}>
@@ -685,7 +698,7 @@ function GratitudeTree({ onClose, onChanged }) {
             {shown.length === 0 && <div style={{ fontSize: 13.5, color: '#8A6A55', padding: '6px 4px' }}>{tab === 'mine' ? "You haven't added a leaf yet." : 'No leaves yet.'}</div>}
             {shown.map(l => (
               <div key={l.id} onClick={() => setSel(l.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 14, cursor: 'pointer', background: sel === l.id ? '#FFF1E0' : '#fff', border: '1.5px solid ' + (sel === l.id ? '#FDBA74' : '#F6E3CC'), fontSize: 13.5 }}>
-                <Leaf size={20} color={LEAF_COLORS[hashNum(l.id) % LEAF_COLORS.length]} />
+                <ArtImg name={LEAF_ART[hashNum(l.id) % LEAF_ART.length]} h={22} style={{ flex: 'none' }} />
                 <span style={{ flex: 1, minWidth: 0 }}><b>{who(l)}</b> · {l.message}</span>
                 {(l.mine || isAdmin) && <button onClick={(e) => { e.stopPropagation(); remove(l) }} title="Remove this leaf" aria-label="Remove this leaf"
                   style={{ border: 0, background: 'transparent', cursor: 'pointer', color: '#2B1A10', fontSize: 15, padding: '0 4px' }}>✕</button>}
