@@ -16,7 +16,7 @@ export const SEASONS = [
   { key: 'halloween', from: [10, 27], to: [10, 31],
     greeting: (first) => `Happy Halloween week${first ? `, ${first}` : ''}!`,
     hat: 'witch' },
-  { key: 'thanksgiving', from: [11, 18], to: [11, 29],
+  { key: 'thanksgiving', from: [11, 22], to: [11, 28],
     greeting: (first) => `Happy Thanksgiving${first ? `, ${first}` : ''}! We're thankful for you 🧡`,
     hat: 'pilgrim' },
 ]
