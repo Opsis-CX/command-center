@@ -1475,11 +1475,11 @@ html.cc-xmas body.cc-christmas .header-wrap {
 html.cc-xmas body.cc-christmas .topbar, html.cc-xmas body.cc-christmas .workbar { background: transparent !important; border-bottom-color: transparent !important; }
 @keyframes xmTakeoff {
   0% { transform: translate(0, 0) rotate(0deg); opacity: 1 }
-  12% { transform: translate(14px, 2px) rotate(0deg) }
-  30% { transform: translate(calc(var(--fx) * .22), calc(var(--fy) * .12)) rotate(-8deg) }
-  100% { transform: translate(var(--fx), var(--fy)) rotate(-16deg) scale(.55); opacity: 1 }
+  12% { transform: translate(-14px, 2px) rotate(0deg) }
+  30% { transform: translate(calc(var(--fx) * .22), calc(var(--fy) * .12)) rotate(8deg) }
+  100% { transform: translate(var(--fx), var(--fy)) rotate(16deg) scale(.55); opacity: 1 }
 }
-@keyframes xmLand { from { transform: translate(-180px, -70px) rotate(-10deg) scale(.8); opacity: 0 } 60% { opacity: 1 } to { transform: none; opacity: 1 } }
+@keyframes xmLand { from { transform: translate(180px, -70px) rotate(10deg) scale(.8); opacity: 0 } 60% { opacity: 1 } to { transform: none; opacity: 1 } }
 @keyframes xmTrail { 0% { opacity: 0; transform: scale(.3) } 20% { opacity: 1; transform: scale(1) } 100% { opacity: 0; transform: translateY(10px) scale(.4) } }
 @keyframes xmBells { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-1px) } }
 `
@@ -1556,14 +1556,15 @@ function XmSleigh() {
   const x0 = box.lo + (space - total) / 2
   const sx = x0 + (showL ? tl + 70 : 0)
   const baseY = box.top + 2           // bottoms sit on the top edge of the message box
-  const fx = window.innerWidth - sx + 120, fy = -(baseY + 160)
+  // the reindeer face left, so the sleigh flies off up and to the left (and lands back in from the right)
+  const fx = -(sx + sw + 120), fy = -(baseY + 160)
   const sleighStyle = phase === 'flying' ? { animation: 'xmTakeoff 2.6s cubic-bezier(.45,.05,.7,.4) forwards', '--fx': fx + 'px', '--fy': fy + 'px' }
     : phase === 'gone' ? { opacity: 0 } : phase === 'landing' ? { animation: 'xmLand 1.4s cubic-bezier(.2,.7,.3,1) both' } : {}
   return (
     <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', inset: 0, zIndex: 2340, pointerEvents: 'none' }}>
       {showL && <XImg name="xm_trees_cl" w={tl} style={{ position: 'fixed', left: x0, top: baseY - XART_SIZE.xm_trees_cl[1] / 2 }} />}
       {showR && <XImg name="xm_trees_cr" w={tr} style={{ position: 'fixed', left: sx + sw + 22, top: baseY - XART_SIZE.xm_trees_cr[1] / 2 }} />}
-      <div style={{ position: 'fixed', left: sx, top: baseY - sh, width: sw, height: sh, transformOrigin: '70% 80%', ...sleighStyle }}>
+      <div style={{ position: 'fixed', left: sx, top: baseY - sh, width: sw, height: sh, transformOrigin: '20% 80%', ...sleighStyle }}>
         <XImg name="xm_sleigh" w={sw} />
       </div>
       {trail && (
