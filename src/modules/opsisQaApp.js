@@ -1805,7 +1805,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function rcBrandSel(id, val, all) {
     if (LOCK) return '';
-    return '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Brand<select id="' + id + '" class="oq-field" style="min-width:220px">' + (all ? '<option value=""' + (!val ? ' selected' : '') + '>All brands</option>' : '') + PR_BRANDS.map(function (b) { return '<option' + (val === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select></label>';
+    return '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Brand<select id="' + id + '" class="oq-field" style="min-width:220px">' + (all ? '<option value=""' + (!val ? ' selected' : '') + '>All brands</option>' : '') + PR_BRANDS.map(function (b) { var v = b.replace(/\u2019/g, "'"); return '<option value="' + esc(v) + '"' + (val === v || val === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select></label>';
   }
   function drawRecep() {
     var w = $('rcwrap'); if (!w || !RC.d) return; var d = RC.d;
@@ -1820,13 +1820,16 @@ export function mountOpsisQA(ROOT, cfg) {
     if (RC.tab === 'reports') { w.innerHTML = rcTabs() + '<div id="rcrep"></div>'; drawRcReport(); return; }
     var intro = '<div class="oq-card" style="background:#FAF8F4"><h2 class="ttl" style="margin:0 0 4px">AI CSR (test)</h2><p class="sub" style="line-height:1.55;margin:0">The AI CSR answers the brand’s line like a top CSR: she follows the 5-step call flow, asks your required questions, offers the days and windows in Settings, and sends the team a ready-to-book request. Call her as a customer to test her. <b>Phase 1</b>: test calls only. Transfers are simulated, and a team member confirms the time. Pilot: only a few people can see this tab.</p>' +
       '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' + rcBrandSel('rcbrand', RC.brand) +
+      (RL.brand === (LOCK || RC.brand) && RL.d && (RL.d.locations || []).some(function (x) { return x.built; }) ? '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Location<select id="rcloc" class="oq-field" style="min-width:180px"><option value="">Brand line</option>' + RL.d.locations.filter(function (x) { return x.built; }).map(function (x) { return '<option value="' + esc(x.location) + '"' + (RC.loc === x.location ? ' selected' : '') + '>' + esc(x.location === 'Main' ? 'Main line' : x.location) + '</option>'; }).join('') + '</select></label>' : '') +
       '<button class="sel btnd" data-act="rcstart"' + (d.ready ? '' : ' disabled') + '>☎ Call the ' + esc(short(LOCK || RC.brand)) + ' line</button></div>' +
       (RC.err ? '<div class="banner" style="margin-top:10px;background:#FDECEC;border-color:#F3C7C7;color:#A61B1B">' + esc(RC.err) + '</div>' : '') + '</div>';
     var rows = (d.calls || []).filter(function (c) { return c.status === 'done'; });
     var tbl = '<div class="oq-card"><h2 class="ttl">Requests taken</h2><p class="sub">Test calls so far · click one to see the request and transcript.</p>' + (rows.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl rctbl" style="font-size:13px"><thead><tr><th>When</th><th>Brand</th><th>Location</th><th>Caller</th><th>Request</th><th class="r">Length</th><th>Tested by</th></tr></thead><tbody>' +
       rows.map(function (c) { var L = c.lead || {}; return '<tr style="cursor:pointer" data-act="rcview" data-id="' + esc(c.id) + '"><td>' + fdate(String(c.started_at).slice(0, 10)) + '</td><td class="mut">' + esc(short(c.brand)) + '</td><td class="mut">' + esc(c.location || '—') + '</td><td>' + esc(L.name || '—') + '</td><td class="req">' + (L.urgent ? '<b style="color:#A61B1B">Urgent · </b>' : '') + esc(L.summary || L.issue || '') + '</td><td class="num r">' + (c.duration_secs ? fsecs(c.duration_secs) : '—') + '</td><td class="mut">' + esc(c.user_name || '') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="mut" style="margin-top:8px">No test calls yet.</p>') + '</div>';
     w.innerHTML = rcTabs() + intro + tbl;
-    var bs = $('rcbrand'); if (bs) bs.addEventListener('change', function () { RC.brand = bs.value; drawRecep(); });
+    var bs = $('rcbrand'); if (bs) bs.addEventListener('change', function () { RC.brand = bs.value; RC.loc = ''; drawRecep(); });
+    var ls = $('rcloc'); if (ls) ls.addEventListener('change', function () { RC.loc = ls.value; });
+    var rb = LOCK || RC.brand; if (rb && RL.brand !== rb) rlLoad(rb, function () { if (RC.tab === 'calls' && !RC.live && !RC.res) drawRecep(); });
   }
 
   // ---------- AI CSR · Settings ----------
@@ -1943,7 +1946,7 @@ export function mountOpsisQA(ROOT, cfg) {
       rcSec('loc', 'Locations and service area', 'towns and zip codes each location covers', lc) +
       rcSec('web', 'Website', 'pages she can look up to answer questions', wb) +
       rcSec('beh', 'Call behavior', 'interruptions, silence, speed, call length', bh) +
-      rcSec('notes', 'Extra instructions', 'optional', nt) + '<div id="rcalerts"></div>' +
+      rcSec('notes', 'Extra instructions', 'optional', nt) + '<div id="rclocs"></div><div id="rcalerts"></div>' +
       (R.can_edit ? '<div id="rcsavebar" style="position:sticky;bottom:12px;display:' + (RC.dirty ? 'flex' : 'none') + ';gap:10px;align-items:center;justify-content:flex-end;padding:12px 16px;background:#14302A;color:#fff;border-radius:12px;margin-top:10px"><span style="margin-right:auto;font-size:13.5px">Unsaved changes for ' + esc(short(brand)) + '</span><button class="sel" data-act="rcsreset" style="background:transparent;color:#fff;border-color:#fff">Discard</button><button class="sel btnd" data-act="rcssave"' + (RC.saving ? ' disabled' : '') + '>' + (RC.saving ? 'Saving…' : 'Save') + '</button></div>' : '');
     var sb = $('rcsbrand'); if (sb) sb.addEventListener('change', function () { if (RC.dirty && !confirm('Discard unsaved changes?')) { sb.value = brand; return; } RC.brand = sb.value; rcLoadSettings(sb.value); });
     [].forEach.call(el.querySelectorAll('[data-k]'), function (inp) {
@@ -1955,7 +1958,61 @@ export function mountOpsisQA(ROOT, cfg) {
     });
     [].forEach.call(el.querySelectorAll('[data-zips]'), function (ta) { ta.addEventListener('input', function () { rcSet('locations.' + ta.getAttribute('data-zips') + '.zips', rcZips(ta.value)); }); ta.addEventListener('blur', function () { drawRcSettings(); }); });
     [].forEach.call(el.querySelectorAll('[data-days]'), function (cb) { cb.addEventListener('change', function () { var p = cb.getAttribute('data-days'), cur = (rcGet(p) || []).slice(), dd = cb.getAttribute('data-day'), ix = cur.indexOf(dd); if (cb.checked && ix < 0) cur.push(dd); if (!cb.checked && ix >= 0) cur.splice(ix, 1); rcSet(p, cur); }); });
-    rcAlertsBox(brand);
+    rcAlertsBox(brand); rcLocBox(brand);
+  }
+  // ---------- One AI CSR per location (Becky 11/18) ----------
+  // Each location's AI CSR is a copy of the brand settings above plus what differs for that office. Edge function recep-locations.
+  var RL = { brand: null, d: null, err: null, open: null, busy: null, msg: {} };
+  function rlCall(body) {
+    var tok = vxTok(); if (!tok) return Promise.reject(new Error('Please sign in again.'));
+    if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
+    return fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/recep-locations', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || 'Couldn’t reach the location settings.'); return j; }); });
+  }
+  function rlLoad(brand, cb) {
+    RL.brand = brand; RL.d = null; RL.err = null;
+    rlCall({ op: 'list', brand: brand }).then(function (r) { if (RL.brand !== brand) return; RL.d = r; if (cb) cb(); else rcLocBox(brand); }).catch(function (e) { if (RL.brand !== brand) return; RL.err = e.message; rcLocBox(brand); });
+  }
+  var RL_ST = { draft: ['Draft', '#F3F1EC', '#5F6763'], ready: ['Ready', '#EEF2FB', '#2B3A67'], live: ['Live', '#E6F0EA', '#1F5A41'], off: ['Off', '#FDECEC', '#A61B1B'] };
+  function rcLocBox(brand) {
+    var el = $('rclocs'); if (!el) return;
+    if (RL.brand !== brand) { rlLoad(brand); }
+    var head = '<div class="oq-card"><h2 class="ttl" style="margin:0">Location AI CSRs</h2><p class="sub" style="margin:2px 0 0">Each location has its own AI CSR, copied from the brand settings above. Change only what’s different for that office here. Saving the brand settings updates every location.</p>';
+    if (RL.err) { el.innerHTML = head + '<div class="banner" style="margin-top:10px">' + esc(RL.err) + '</div></div>'; return; }
+    if (!RL.d) { el.innerHTML = head + '<div style="margin-top:10px">' + skel(16, 3) + '</div></div>'; return; }
+    var L = RL.d.locations || [], ed = RL.d.can_edit, dis = ed ? '' : ' disabled';
+    if (!L.length) { el.innerHTML = head + '<p class="mut" style="margin-top:10px">No locations set up for this brand yet.</p></div>'; return; }
+    var row = function (x) {
+      var st = RL_ST[x.status] || RL_ST.draft, open = RL.open === x.location, ok = /^ok/.test(x.last_sync_result || ''), wait = /^waiting/.test(x.last_sync_result || '');
+      var info = x.built && ok ? 'Built' : wait ? 'Waiting for the brand to be saved' : /^error/.test(x.last_sync_result || '') ? 'Build failed' : x.built ? 'Built' : 'Not built yet';
+      var h = '<div style="border:1px solid var(--line2);border-radius:12px;margin-top:10px;overflow:hidden"><button data-act="rltog" data-loc="' + esc(x.location) + '" style="all:unset;cursor:pointer;display:flex;gap:10px;align-items:center;width:100%;box-sizing:border-box;padding:12px 14px;background:#FAF8F4">' +
+        '<b style="font-size:14.5px">' + esc(x.location === 'Main' ? 'Main line' : x.location) + '</b><span class="pill" style="background:' + st[1] + ';color:' + st[2] + '">' + st[0] + '</span><span class="mut" style="font-size:12px">' + esc(info) + (x.last_sync_at ? ' · ' + esc(String(x.last_sync_at).slice(0, 16).replace('T', ' ')) : '') + '</span><span style="margin-left:auto">' + (open ? '▴' : '▾') + '</span></button>';
+      if (!open) return h + '</div>';
+      var f = function (k, lab, help, ta, ph) { var v = x[k] == null ? '' : (Array.isArray(x[k]) ? x[k].join(', ') : x[k]); return rcRow(lab, ta ? '<textarea class="oq-field" data-rl="' + k + '" rows="' + ta + '" style="width:100%;resize:vertical" placeholder="' + esc(ph || '') + '"' + dis + '>' + esc(v) + '</textarea>' : '<input type="text" class="oq-field" data-rl="' + k + '" value="' + esc(v) + '" placeholder="' + esc(ph || '') + '" style="width:100%"' + dis + '>', help); };
+      h += '<div style="padding:4px 14px 14px">' +
+        f('greeting', 'Greeting', 'Leave empty to use: “Thank you for calling {company}, our ' + esc(x.location) + ' office. This is {agent}, the digital assistant…”', 0, '') +
+        f('serves', 'Towns this office serves', 'Comma separated. She uses these to know the caller is in this office’s area.', 2, 'e.g. Salina, Abilene, Lindsborg') +
+        f('zips', 'Zip codes', 'Optional. Paste a list; ranges like 67401-67499 work.', 2, '') +
+        f('hours_note', 'Office hours, if different from the brand', 'e.g. Mon–Fri 7:30 AM–5 PM, Sat 8 AM–noon', 0, 'Same as the brand') +
+        f('notes', 'Extra instructions for this office', 'Optional', 2, '') +
+        rcRow('Status', '<select class="oq-field" data-rl="status" style="width:auto"' + dis + '>' + ['draft', 'ready', 'live', 'off'].map(function (k) { return '<option value="' + k + '"' + (x.status === k ? ' selected' : '') + '>' + RL_ST[k][0] + '</option>'; }).join('') + '</select>', 'Draft = still being reviewed. Off = not built or updated.') +
+        (x.last_sync_result && !ok ? '<div class="banner" style="margin-top:10px">' + esc(x.last_sync_result) + '</div>' : '') +
+        (RL.msg[x.location] ? '<div class="mut" style="margin-top:8px;font-size:12.5px">' + esc(RL.msg[x.location]) + '</div>' : '') +
+        '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">' + (ed ? '<button class="sel btnd" data-act="rlsave" data-loc="' + esc(x.location) + '"' + (RL.busy ? ' disabled' : '') + '>' + (RL.busy === x.location ? 'Saving and building…' : 'Save and build') + '</button>' : '') +
+        '<button class="sel" data-act="rltest" data-loc="' + esc(x.location) + '"' + (x.built ? '' : ' disabled title="Save it first"') + '>☎ Test call</button></div></div>';
+      return h + '</div>';
+    };
+    el.innerHTML = head + L.map(row).join('') + '</div>';
+  }
+  function rlSave(loc) {
+    var box = $('rclocs'); if (!box || RL.busy) return; var patch = {};
+    [].forEach.call(box.querySelectorAll('[data-rl]'), function (n) { patch[n.getAttribute('data-rl')] = n.value; });
+    patch.zips = rcZips(patch.zips || '');
+    RL.busy = loc; RL.msg[loc] = ''; rcLocBox(RL.brand);
+    rlCall({ op: 'save', brand: RL.brand, location: loc, patch: patch }).then(function (r) {
+      RL.busy = null; RL.msg[loc] = /^ok/.test(r.result || '') ? 'Saved. This location’s AI CSR is up to date.' : (r.result || 'Saved.');
+      var L = RL.d.locations; for (var i = 0; i < L.length; i++) if (L[i].location === loc) L[i] = r.location; rcLocBox(RL.brand);
+    }).catch(function (e) { RL.busy = null; RL.msg[loc] = e.message; rcLocBox(RL.brand); });
   }
   // Call alert emails (2026-11-05): per-brand list of who gets the email after every AI CSR call.
   // Stored in qa_receptionist_alerts through the ai-csr-alerts function, separate from the receptionist settings save.
@@ -2128,11 +2185,15 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function rcStart() {
     if (RC.live) return; RC.err = null; RC.res = null;
-    var brand = LOCK || RC.brand || 'Quality Overhead Door';
-    var L = RC.live = { brand: brand, lines: [], state: 'connecting', mode: 'listening', secs: 0 }; drawRecep();
+    var brand = (LOCK || RC.brand || 'Quality Overhead Door').replace(/\u2019/g, "'"), loc = RC.loc || '';
+    var L = RC.live = { brand: brand + (loc && loc !== 'Main' ? ' · ' + loc : ''), lines: [], state: 'connecting', mode: 'listening', secs: 0 }; drawRecep();
     var fail = function (e) { if (L.timer) clearInterval(L.timer); if (RC.live !== L) return; RC.live = null; RC.err = (e && e.message) || String(e); drawRecep(); };
     Promise.resolve().then(function () { if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser can’t use the microphone here. Try Chrome or Edge.'); return navigator.mediaDevices.getUserMedia({ audio: true }); })
       .then(function (s) { s.getTracks().forEach(function (t) { t.stop(); }); return Promise.all([api({ action: 'receptionist', op: 'start', brand: brand }), prSdk()]); })
+      .then(function (rr) { // a location's own AI CSR (Becky 11/18): same call record, that location's copy answers
+        if (!loc) return rr;
+        return rlCall({ op: 'test', brand: brand, location: loc, call_id: rr[0].call_id }).then(function (t) { rr[0].signed_url = t.signed_url; return rr; });
+      })
       .then(function (rr) {
         var st = rr[0], SDK = rr[1]; L.cid = st.call_id; L.agent = st.agent_name || 'Ava';
         return SDK.Conversation.startSession({ signedUrl: st.signed_url, connectionType: 'websocket', dynamicVariables: st.dynamic_variables,
@@ -4864,6 +4925,9 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'qsinsedit') { QSE.ins = true; drawQs(); }
       else if (a === 'prstart') { prStart(d.id); }
       else if (a === 'rcstart') { rcStart(); }
+      else if (a === 'rltog') { var lc = d.loc; RL.open = RL.open === lc ? null : lc; rcLocBox(RL.brand); }
+      else if (a === 'rlsave') { rlSave(d.loc); }
+      else if (a === 'rltest') { RC.brand = RL.brand; RC.loc = d.loc; RC.tab = 'calls'; rcStart(); }
       else if (a === 'rcend') { rcEnd(); }
       else if (a === 'rcback') { RC.res = null; RC.err = null; drawRecep(); }
       else if (a === 'rcsay') {
