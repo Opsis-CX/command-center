@@ -706,16 +706,18 @@ function findComposer() {
   if (r.width < 260) return null
   // the "Post as @update · Schedule send" row sits just above the editor; walk only in the gap between them
   let lo = r.left + 18, hi = r.right - 18
-  let row = wrap.parentElement
-  while (row && row.parentElement && !row.previousElementSibling) row = row.parentElement
-  for (let el = row && row.parentElement ? row.parentElement.firstElementChild : null; el; el = el.nextElementSibling) {
-    if (el.contains(wrap)) break
-    const er = el.getBoundingClientRect()
-    if (er.height < 4 || er.bottom < r.top - 60) continue
-    const label = el.querySelector('label'), btns = [...el.querySelectorAll('button')]
-    if (label) lo = Math.max(lo, label.getBoundingClientRect().right + 14)
-    const sched = btns.find(b => /schedule|cancel/i.test(b.textContent || ''))
-    if (sched) hi = Math.min(hi, sched.getBoundingClientRect().left - 14)
+  // climb a few levels until we reach the block whose earlier siblings hold that row
+  for (let anc = wrap.parentElement, depth = 0; anc && anc.parentElement && depth < 6; anc = anc.parentElement, depth++) {
+    let found = false
+    for (let el = anc.previousElementSibling; el; el = el.previousElementSibling) {
+      const er = el.getBoundingClientRect()
+      if (er.height < 4 || er.bottom < r.top - 60) continue
+      const label = el.querySelector('label') || (el.tagName === 'LABEL' ? el : null), btns = [...el.querySelectorAll('button')]
+      if (label) { lo = Math.max(lo, label.getBoundingClientRect().right + 14); found = true }
+      const sched = btns.find(b => /schedule|cancel/i.test(b.textContent || ''))
+      if (sched) { hi = Math.min(hi, sched.getBoundingClientRect().left - 14); found = true }
+    }
+    if (found) break
   }
   return { wrap, top: r.top, lo, hi, editable: wrap.querySelector('[contenteditable="true"]') }
 }
@@ -969,7 +971,7 @@ export function SeasonHeaderDecor() {
 // The bottom-right corner is left empty on purpose so the phone button stays clear.
 // ============================================================
 const XART = '/seasonal/christmas/'
-const XART_SIZE = { top_garland: [365, 133], corner_tl: [392, 275], corner_tr: [935, 365], snowman: [442, 340], corner_br: [250, 330], scene: [1225, 924], gift: [64, 64] }
+const XART_SIZE = { top_garland: [365, 133], corner_tl: [392, 275], corner_tr: [935, 365], snowman: [442, 340], corner_br: [250, 330], xm_sleigh: [487, 122], xm_trees_cl: [142, 68], xm_trees_cr: [187, 70], xm_trees_hl: [402, 73], xm_trees_hr: [284, 84], xm_trees_side: [206, 146], scene: [1225, 924], gift: [64, 64] }
 const XTEAL = '#13707A', XTEAL_D = '#0B555E'
 const XMAS_KEY = 'christmas_mode-2026'
 function XImg({ name, w, h, style, ...rest }) {
@@ -1102,7 +1104,7 @@ function XmHeader({ mode, setMode, garlandRight, onTight }) {
 function XmToggle({ on, onChange, compact }) {
   return (
     <button type="button" role="switch" aria-checked={on ? 'true' : 'false'} className="xm-toggle" onClick={() => onChange(!on)}
-      title={on ? 'Christmas Mode is on — only you see it' : 'Christmas Mode (coming soon — only you will see it)'}>
+      title={on ? 'Christmas Mode is on — only you see it' : 'Turn on Christmas Mode (a snowy look with Santa\'s sleigh, just for you)'}>
       <Snowflake size={18} color="#1B8590" sw={2} />{!compact && <span>Christmas Mode</span>}<span className="xm-switch" />
     </button>
   )
@@ -1222,11 +1224,11 @@ function xmMask(name, skip, src) {
   img.src = src || (XART + name + '.webp')
   return null
 }
-function xmCovers(x, y) {
+function xmCovers(x, y, inHeader) {
   if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) return false
   const el = document.elementFromPoint(x, y)
   if (!el || el === document.body || el === document.documentElement) return false
-  if (el.closest('.header-wrap')) return false            // the header sits on top of the garlands anyway
+  if (!inHeader && el.closest('.header-wrap')) return false   // the header sits on top of the garlands anyway
   if (el.closest('[data-cc-chatpane] .btn-primary, [data-cc-chatpane] .btn-cta')) return false   // raised above the art
   let n = el
   for (let i = 0; n && i < 6; i++, n = n.parentElement) {   // floating things (phone button, popups) sit on top of us
@@ -1261,7 +1263,7 @@ function useFitPieces(layoutRef) {
           const g = p.place(sc)
           // look at every other sample point (plenty to catch a button, cheap enough to run each second)
           let hit = false
-          for (let i = 0; i < pts.length && !hit; i += 2) hit = xmCovers(g.left + pts[i][0] * g.w, g.top + pts[i][1] * g.h)
+          for (let i = 0; i < pts.length && !hit; i += 2) hit = xmCovers(g.left + pts[i][0] * g.w, g.top + pts[i][1] * g.h, p.inHeader)
           if (!hit) { chosen = sc; break }
         }
         next[p.name] = chosen
@@ -1434,6 +1436,197 @@ const CONFETTI_XM = [
   () => <Snowflake size={16} color="#1B8590" />, () => <svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><rect x="5" y="0" width="4" height="3" rx="1" fill="#C9A227" /><circle cx="7" cy="9.5" r="6" fill="#DC2626" /><circle cx="5" cy="7.5" r="1.6" fill="#fff" opacity=".7" /></svg>,
 ]
 
+// ============================================================
+// CHRISTMAS MODE (2026-11-18, Brittney's mockup) — the personal switch at the top right. Only the person
+// who turns it on sees it (saved in seasonal_prefs, like Fall Mode). It adds:
+//  • a snowy sidebar (dark text, snow drift under the logo, little pines at the bottom)
+//  • a snowy hillside behind the whole header with pine trees on either side of the 25 Days button
+//  • Santa's sleigh parked on the message box. It doesn't move until a message is sent — then it
+//    takes off into the sky with a sparkle trail, and glides back in a few seconds later.
+// Everything is a pointer-events:none layer or a color change, and the trees use the same "never cover
+// anything" check as the border.
+// ============================================================
+const XM_HILLS = "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 44' preserveAspectRatio='none'><path d='M0 22 C140 6 260 30 420 16 S700 2 860 20 S1120 36 1260 16 S1400 10 1440 18 V44 H0Z' fill='%23FFFFFF'/><path d='M0 32 C200 20 380 40 580 29 S920 20 1120 33 S1340 26 1440 31 V44 H0Z' fill='%23EAF3F9'/></svg>\")"
+const XMODE_CSS = `
+html.cc-xmas body.cc-christmas .sidebar {
+  background:
+    radial-gradient(120% 60% at 20% 0%, rgba(255,255,255,.95) 0 30%, transparent 62%),
+    radial-gradient(90% 40% at 100% 45%, rgba(255,255,255,.75) 0 25%, transparent 65%),
+    radial-gradient(110% 45% at 0% 80%, rgba(255,255,255,.8) 0 28%, transparent 66%),
+    linear-gradient(180deg, #E6F1F8 0%, #F4F9FC 38%, #E9F2F8 72%, #F7FBFD 100%) !important;
+  border-right: 1px solid #D6E6EF;
+}
+html.cc-xmas body.cc-christmas .sidebar .brand {
+  background: radial-gradient(ellipse 62% 58% at 50% 62%, #FFFFFF 0 58%, rgba(255,255,255,.7) 74%, transparent 100%);
+  box-shadow: none;
+}
+html.cc-xmas body.cc-christmas .sidebar .nav-item, html.cc-xmas body.cc-christmas .sidebar .nav-subitem { color: #0F2B36; }
+html.cc-xmas body.cc-christmas .sidebar .nav-subitem { color: #26444F; }
+html.cc-xmas body.cc-christmas .sidebar .nav-label, html.cc-xmas body.cc-christmas .sidebar .nav-group-label { color: #5A7883; }
+html.cc-xmas body.cc-christmas .sidebar .nav-item .ic, html.cc-xmas body.cc-christmas .sidebar .nav-item svg, html.cc-xmas body.cc-christmas .sidebar .nav-caret { color: #0F2B36; }
+html.cc-xmas body.cc-christmas .sidebar .nav-item:hover { background: rgba(19,112,122,.08); color: #0B2530; }
+html.cc-xmas body.cc-christmas .sidebar .nav-item.on { background: linear-gradient(180deg, #86D6E4 0%, #48B6CC 100%); color: #08303A; box-shadow: 0 8px 18px -12px rgba(18,110,130,.8), inset 0 1px 0 rgba(255,255,255,.5); }
+html.cc-xmas body.cc-christmas .sidebar .nav-item.on .ic, html.cc-xmas body.cc-christmas .sidebar .nav-item.on svg { color: #08303A; }
+html.cc-xmas body.cc-christmas .sidebar .user-chip { background: rgba(255,255,255,.88); border: 1px solid #D3E5EE; box-shadow: 0 8px 20px -16px rgba(20,70,90,.6); }
+html.cc-xmas body.cc-christmas .sidebar .user-name { color: #0F2B36; }
+html.cc-xmas body.cc-christmas .sidebar .user-role { color: #4A6B76; }
+html.cc-xmas body.cc-christmas .sidebar .signout { color: #2C4A55; }
+html.cc-xmas body.cc-christmas .sidebar .signout:hover { color: #0F2B36; }
+html.cc-xmas body.cc-christmas .sidebar .nav-scroll { scrollbar-color: rgba(15,43,54,.2) transparent; }
+/* header: one snowy hillside behind both rows */
+html.cc-xmas body.cc-christmas .header-wrap {
+  background: ${XM_HILLS} left bottom / 100% 30px no-repeat,
+    radial-gradient(60% 120% at 15% 0%, rgba(255,255,255,.9) 0 30%, transparent 70%),
+    radial-gradient(50% 120% at 85% 10%, rgba(255,255,255,.85) 0 30%, transparent 70%),
+    linear-gradient(180deg, #D9EAF4 0%, #ECF5FA 55%, #F6FAFD 100%) !important;
+}
+html.cc-xmas body.cc-christmas .topbar, html.cc-xmas body.cc-christmas .workbar { background: transparent !important; border-bottom-color: transparent !important; }
+@keyframes xmTakeoff {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 1 }
+  12% { transform: translate(14px, 2px) rotate(0deg) }
+  30% { transform: translate(calc(var(--fx) * .22), calc(var(--fy) * .12)) rotate(-8deg) }
+  100% { transform: translate(var(--fx), var(--fy)) rotate(-16deg) scale(.55); opacity: 1 }
+}
+@keyframes xmLand { from { transform: translate(-180px, -70px) rotate(-10deg) scale(.8); opacity: 0 } 60% { opacity: 1 } to { transform: none; opacity: 1 } }
+@keyframes xmTrail { 0% { opacity: 0; transform: scale(.3) } 20% { opacity: 1; transform: scale(1) } 100% { opacity: 0; transform: translateY(10px) scale(.4) } }
+@keyframes xmBells { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-1px) } }
+`
+function xmTextIn(ed) { return !!(ed && (ed.textContent || '').trim()) || !!(ed && ed.querySelector('img')) }
+// Santa's sleigh + little pines, parked on the top edge of the message box (between "Post as @update"
+// and "Schedule send", like Cluck Norris). On send: takes off up and away with a sparkle trail, then
+// glides back in. Reduced motion → it just sparkles in place.
+function XmSleigh() {
+  const still = reduceMotion()
+  const [box, setBox] = useState(null)
+  const [phase, setPhase] = useState('parked')   // parked | flying | gone | landing
+  const [trail, setTrail] = useState(null)
+  const phaseRef = useRef('parked')
+  const set = (p) => { phaseRef.current = p; setPhase(p) }
+  useEffect(() => {
+    const read = () => {
+      const c = findComposer()
+      setBox(prev => {
+        if (!c) return prev ? null : prev
+        const n = { top: c.top, lo: c.lo, hi: c.hi }
+        if (prev && Math.abs(prev.top - n.top) < 1 && Math.abs(prev.lo - n.lo) < 1 && Math.abs(prev.hi - n.hi) < 1) return prev
+        return n
+      })
+    }
+    read(); const iv = setInterval(read, 600); window.addEventListener('resize', read)
+    return () => { clearInterval(iv); window.removeEventListener('resize', read) }
+  }, [])
+  useEffect(() => {
+    const timers = []
+    const go = () => {
+      if (phaseRef.current !== 'parked') return
+      const id = Date.now()
+      setTrail(id)
+      timers.push(setTimeout(() => setTrail(t => (t === id ? null : t)), 3200))
+      if (still) return
+      set('flying')
+      timers.push(setTimeout(() => set('gone'), 2600))
+      timers.push(setTimeout(() => set('landing'), 4200))
+      timers.push(setTimeout(() => set('parked'), 5600))
+    }
+    const inComposer = (el) => { const c = findComposer(); return c && el && c.wrap.contains(el) ? c : null }
+    const onKey = (e) => {
+      if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return
+      const c = inComposer(e.target)
+      if (c && xmTextIn(c.editable)) go()
+    }
+    const onClick = (e) => {
+      const btn = e.target.closest && e.target.closest('[data-cc-chatpane] .btn-primary, [data-cc-chatpane] .btn-cta')
+      if (!btn) return
+      const c = findComposer()
+      if (!c || !/send|post/i.test(btn.textContent || '')) return
+      const br = btn.getBoundingClientRect()
+      if (Math.abs(br.top - c.top) > 80) return     // only the Send button next to the message box
+      if (xmTextIn(c.editable)) go()
+    }
+    const onCelebrate = () => { if (findComposer()) go() }
+    document.addEventListener('keydown', onKey, true)
+    document.addEventListener('click', onClick, true)
+    window.addEventListener('cc:celebrate', onCelebrate)
+    return () => { timers.forEach(clearTimeout); document.removeEventListener('keydown', onKey, true); document.removeEventListener('click', onClick, true); window.removeEventListener('cc:celebrate', onCelebrate) }
+  }, [still])
+  if (!box) return null
+  const space = box.hi - box.lo
+  const [sw0, sh0] = [XART_SIZE.xm_sleigh[0] / 2, XART_SIZE.xm_sleigh[1] / 2]
+  const tl = XART_SIZE.xm_trees_cl[0] / 2, tr = XART_SIZE.xm_trees_cr[0] / 2
+  let sw = sw0, showL = true, showR = true
+  const need = (w, l, r) => w + (l ? tl + 70 : 0) + (r ? tr + 22 : 0)
+  if (need(sw, true, true) > space) showL = false
+  if (need(sw, showL, true) > space) showR = false
+  if (need(sw, showL, showR) > space) sw = Math.max(0, space - 10)
+  if (sw < 150) return null
+  const sh = sw * sh0 / sw0
+  const total = need(sw, showL, showR)
+  const x0 = box.lo + (space - total) / 2
+  const sx = x0 + (showL ? tl + 70 : 0)
+  const baseY = box.top + 2           // bottoms sit on the top edge of the message box
+  const fx = window.innerWidth - sx + 120, fy = -(baseY + 160)
+  const sleighStyle = phase === 'flying' ? { animation: 'xmTakeoff 2.6s cubic-bezier(.45,.05,.7,.4) forwards', '--fx': fx + 'px', '--fy': fy + 'px' }
+    : phase === 'gone' ? { opacity: 0 } : phase === 'landing' ? { animation: 'xmLand 1.4s cubic-bezier(.2,.7,.3,1) both' } : {}
+  return (
+    <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', inset: 0, zIndex: 2340, pointerEvents: 'none' }}>
+      {showL && <XImg name="xm_trees_cl" w={tl} style={{ position: 'fixed', left: x0, top: baseY - XART_SIZE.xm_trees_cl[1] / 2 }} />}
+      {showR && <XImg name="xm_trees_cr" w={tr} style={{ position: 'fixed', left: sx + sw + 22, top: baseY - XART_SIZE.xm_trees_cr[1] / 2 }} />}
+      <div style={{ position: 'fixed', left: sx, top: baseY - sh, width: sw, height: sh, transformOrigin: '70% 80%', ...sleighStyle }}>
+        <XImg name="xm_sleigh" w={sw} />
+      </div>
+      {trail && (
+        <div key={trail} style={{ position: 'fixed', left: sx, top: baseY - sh, width: sw, height: sh }}>
+          {Array.from({ length: 14 }, (_, i) => (
+            <svg key={i} width="12" height="12" viewBox="0 0 16 16" style={{ position: 'absolute', left: `${(i * 37) % 100}%`, top: `${20 + (i * 23) % 70}%`,
+              animation: `xmTrail 1.3s ease-out ${(still ? 0 : .15) + i * .09}s both`, filter: 'drop-shadow(0 0 3px rgba(255,230,150,.9))' }}>
+              <path d="M8 0 L9.3 6.7 L16 8 L9.3 9.3 L8 16 L6.7 9.3 L0 8 L6.7 6.7 Z" fill={i % 3 ? '#FFFFFF' : '#FFE08A'} />
+            </svg>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+// pine trees on the header hillside (either side of the 25 Days button) and at the bottom of the sidebar
+function XmModeTrees() {
+  const btn = useAnchorRect('.xm-btn', 800), head = useAnchorRect('.header-wrap', 800), sb = useAnchorRect('.sidebar', 900)
+  const [vh, setVh] = useState(() => window.innerHeight)
+  useEffect(() => { const f = () => setVh(window.innerHeight); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f) }, [])
+  const layoutRef = useRef(null)
+  const fit = useFitPieces(layoutRef)
+  const pieces = []
+  const mk = (name, w, ax, ay, fx, fy, extra = {}) => ({ name, src: XART + name + '.webp', ...extra, place: (sc) => {
+    const pw = w * sc, phh = pw * XART_SIZE[name][1] / XART_SIZE[name][0]
+    return { left: ax - fx * pw, top: ay - fy * phh, w: pw, h: phh }
+  } })
+  if (btn && head) {
+    const bottom = head.top + head.height - 3
+    pieces.push(mk('xm_trees_hl', 205, btn.left - 24, bottom, 1, 1, { inHeader: true }))
+    pieces.push(mk('xm_trees_hr', 142, btn.right + 24, bottom, 0, 1, { inHeader: true }))
+  }
+  if (sb && sb.width >= 120) pieces.push(mk('xm_trees_side', 104, sb.left + sb.width - 2, Math.min(vh, sb.top + sb.height), 1, 1))
+  layoutRef.current = pieces.length ? pieces : null
+  return (
+    <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', inset: 0, zIndex: 31, pointerEvents: 'none' }}>
+      {pieces.map(p => {
+        const sc = fit[p.name] ?? 0
+        if (!sc) return null
+        const g = p.place(sc)
+        return <XImg key={p.name} name={p.name} w={g.w} style={{ position: 'fixed', left: g.left, top: g.top }} />
+      })}
+    </div>
+  )
+}
+function XmModeLayer() {
+  return (
+    <>
+      <style>{XMODE_CSS}</style>
+      <XmModeTrees />
+      <XmSleigh />
+    </>
+  )
+}
+
 // ---------- the layer ----------
 const CONFETTI_TG = [
   () => <Leaf size={20} color={CRAN} />, () => <Leaf size={20} color={AMBER} />, () => <Leaf size={20} color={ORANGE_D} />,
@@ -1517,7 +1710,7 @@ export default function Seasonal() {
     document.documentElement.classList.toggle('cc-fall', active)
     return () => document.documentElement.classList.remove('cc-fall')
   }, [on, season?.key, fall])
-  // Christmas Mode: saved per person like Fall Mode (the look itself comes with the next mockup).
+  // Christmas Mode: saved per person like Fall Mode.
   useEffect(() => {
     if (!on || season?.key !== 'christmas' || !user?.id) return
     try { if (localStorage.getItem(xmCacheKey) === '1') setXmModeState(true) } catch { /* ignore */ }
@@ -1620,12 +1813,13 @@ export default function Seasonal() {
       <style>{CSS}</style>
       <style>{XM_CSS}</style>
       <XmSnow />
-      <XmSidebarFlakes />
+      {!xmMode && <XmSidebarFlakes />}
       <XmFrame />
       <XmTopGarland onRight={setGarlandRight} hidden={garlandAway} />
       <XmHeader mode={xmMode} setMode={setXmMode} garlandRight={garlandRight} onTight={setGarlandAway} />
       <XmButton onOpen={() => setAdventOpen(true)} />
       {adventOpen && <XmAdvent onClose={() => setAdventOpen(false)} />}
+      {xmMode && <XmModeLayer />}
       <div className="cc-season-layer" aria-hidden="true">
         {bursts.map(b => (
           <div key={b.id} style={{ position: 'absolute', left: b.x, top: b.y }}>
