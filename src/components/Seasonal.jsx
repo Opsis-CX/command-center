@@ -986,18 +986,6 @@ function Snowflake({ size = 22, color = XTEAL, sw = 1.6, style }) {
     </svg>
   )
 }
-function SantaHatSvg({ size }) {
-  const w = Math.max(13, Math.round(size * 0.86))
-  return (
-    <svg aria-hidden="true" width={w} height={w} viewBox="0 0 40 40"
-      style={{ position: 'absolute', left: -Math.round(size * 0.14), top: -Math.round(size * 0.5), transform: 'rotate(-14deg)', pointerEvents: 'none', overflow: 'visible', zIndex: 1 }}>
-      <path d="M8 31 Q11 14 22 8 Q31 4 35 13 Q31 11 28 15 Q30 22 31 31 Z" fill="#DC2626" />
-      <path d="M22 8 Q29 6 33 11 Q29 10 27 13 Z" fill="#B91C1C" />
-      <rect x="5" y="28" width="29" height="8" rx="4" fill="#F8FAFC" stroke="#E2E8F0" strokeWidth=".8" />
-      <circle cx="35" cy="14" r="4.2" fill="#F8FAFC" stroke="#E2E8F0" strokeWidth=".8" />
-    </svg>
-  )
-}
 const XM_CSS = `
 body.cc-christmas { --xm-a: 72%; --xm-b: 55%; --xm-shade: 0; }
 :root[data-theme="dark"] body.cc-christmas { --xm-a: 12%; --xm-b: 7%; --xm-shade: .72; }
@@ -1014,6 +1002,24 @@ body.cc-christmas [data-cc-chatpane] > div[style*="overflow-y: auto"] {
   background: linear-gradient(rgba(15,23,32,var(--xm-shade)), rgba(15,23,32,var(--xm-shade))), url(${'/seasonal/christmas/scene.webp'}) right bottom / contain no-repeat;
 }
 @media (min-width: 1000px) { body.cc-christmas .topbar .tb-right { margin-right: 196px; } }
+/* top bar: the icy, snowy banner background (the "Wishing you…" lettering sits on top of it) */
+body.cc-christmas .topbar {
+  background: linear-gradient(rgba(15,23,32,var(--xm-shade)), rgba(15,23,32,var(--xm-shade))), url(${'/seasonal/christmas/hdr_bg.webp'}) center / 100% 100% no-repeat !important;
+}
+.xm-glitter { position: absolute; inset: 0; border-radius: 20px; padding: 4px;
+  background:
+    radial-gradient(circle at 30% 40%, #fff 0 .9px, transparent 1.4px) 0 0 / 6px 5px,
+    radial-gradient(circle at 70% 70%, #fff 0 .8px, transparent 1.3px) 0 0 / 9px 7px,
+    radial-gradient(circle at 55% 25%, rgba(18,110,122,.85) 0 .7px, transparent 1.1px) 0 0 / 5px 9px,
+    radial-gradient(circle at 20% 80%, rgba(120,138,152,.9) 0 .6px, transparent 1px) 0 0 / 8px 6px,
+    linear-gradient(90deg, #7CC6D0, #E8F3F6, #3FA7B5, #C3CED6, #F4F8FA, #5DB6C2, #FFFFFF, #9AD3DB, #AEBBC5, #7CC6D0) 0 0 / 520px 100%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: xmShimmer 9s linear infinite; }
+@keyframes xmShimmer { to { background-position: 0 0, 0 0, 0 0, 0 0, 520px 0; } }
+.xm-twinkle { animation: xmTwinkle 4s ease-in-out infinite; transform-origin: center; filter: drop-shadow(0 0 3px rgba(120,210,225,.9)); }
+@keyframes xmTwinkle { 0%, 100% { opacity: .15; transform: scale(.4) rotate(0deg) } 45% { opacity: 1; transform: scale(1) rotate(30deg) } 60% { opacity: .9; transform: scale(.85) rotate(40deg) } }
+@media (prefers-reduced-motion: reduce) { .xm-glitter, .xm-twinkle { animation: none; } .xm-twinkle { opacity: .8; } }
 /* the chat Send / Post update button always sits in front of the bottom-right branch */
 body.cc-christmas [data-cc-chatpane] .btn-primary, body.cc-christmas [data-cc-chatpane] .btn-cta { position: relative; z-index: 30; }
 .xm-script { font-family: 'Kaushan Script', 'Dancing Script', cursive; font-weight: 400; letter-spacing: .3px; line-height: 1.25; white-space: nowrap; }
@@ -1041,36 +1047,33 @@ body.cc-christmas [data-cc-chatpane] .btn-primary, body.cc-christmas [data-cc-ch
 :root[data-theme="dark"] .xm-door:disabled { background: #0E1D21; color: #47636B; }
 @keyframes xmIn { from { opacity: 0; transform: translateY(10px) scale(.98) } to { opacity: 1; transform: none } }
 `
-// "Merry Christmas! Wishing you a season filled with joy!" with a snowflake on each side, centered in
-// the top bar (shortens to "Merry Christmas!" and then hides when the page name or icons need the room).
-// The Christmas Mode switch sits at the far right like Fall Mode did.
-function XmHeader({ mode, setMode, garlandRight }) {
+// The header: Brittney's painted banner — "Wishing you a season filled with joy!" in glittery teal script
+// between two crystal snowflakes — centered in the top bar (on an icy, snowy top-bar background). It
+// shrinks a little to fit, slides off-center if the page name or icons need the room, and hides only on
+// very small screens. The Christmas Mode switch sits at the far right like Fall Mode did.
+const XM_BANNER = [1240, 126]
+function XmHeader({ mode, setMode, garlandRight, onTight }) {
   const left = useAnchorRect('.topbar .crumb', 800), right = useAnchorRect('.topbar .tb-right', 800), bar = useAnchorRect('.topbar', 800)
+  const tightRef = useRef(false)
+  useEffect(() => { onTight?.(tightRef.current) })
   if (!left || !right || !bar) return null
   const wide = window.innerWidth >= 1000
   const freeAll = right.left - left.right - 32
   const togW = wide ? 0 : (freeAll >= 460 ? 176 : freeAll >= 120 ? 70 : 0)
-  const lo = Math.max(left.right + 16, (garlandRight || 0) + 8), hi = right.left - 16 - (togW ? togW + 12 : 0)
+  const lo = Math.max(left.right + 12, (garlandRight || 0) + 4), hi = right.left - 12 - (togW ? togW + 12 : 0)
   const center = bar.left + bar.width / 2
   const half = Math.min(center - lo, hi - center)
-  const H0 = Math.min(50, bar.height - 8), room = Math.max(0, half * 2 - 8)
-  const LINE = 'Merry Christmas! Wishing you a season filled with joy!', SHORT = 'Merry Christmas!'
-  const widthAt = (H, text, flakes) => textWidth(text, `${Math.round(H * .66)}px 'Kaushan Script'`) + (flakes ? 2 * (H * .7 + 14) : 0)
-  let text = null, flakes = false, H = H0, boxL = center - half, boxW = half * 2
-  for (const [t, f] of [[LINE, true], [LINE, false], [SHORT, true], [SHORT, false]]) {
-    const k = Math.min(1, room / widthAt(H0, t, f))
-    if (k >= (t === LINE ? .6 : .7)) { text = t; flakes = f; H = Math.floor(H0 * k); break }
+  const ratio = XM_BANNER[0] / XM_BANNER[1]
+  const fullH = bar.height, fullW = fullH * ratio
+  let bw = 0, bx = 0
+  if (half * 2 >= fullW * .72) { bw = Math.min(fullW, half * 2); bx = center - bw / 2 }        // centered on the bar
+  else if (hi - lo >= fullW * .5) { bw = Math.min(fullW, hi - lo); bx = lo + (hi - lo - bw) / 2 }  // centered in the open space
+  else {  // still tight (smaller laptops): the hanging pine branch steps aside so the message fits
+    const lo2 = left.right + 12
+    if (hi - lo2 >= fullW * .5) { bw = Math.min(fullW, hi - lo2); bx = lo2 + (hi - lo2 - bw) / 2 }
   }
-  // not enough room to center it on the bar: center it in the open space instead (better than hiding)
-  if (!text && hi - lo > 120) {
-    const room2 = hi - lo - 8
-    for (const [t, f] of [[LINE, true], [LINE, false], [SHORT, true], [SHORT, false]]) {
-      const k = Math.min(1, room2 / widthAt(H0, t, f))
-      if (k >= .7) { text = t; flakes = f; H = Math.floor(H0 * k); boxL = lo; boxW = hi - lo; break }
-    }
-  }
-  const dark = isDarkTheme()
-  const ink = dark ? { color: '#9EDCE4' } : { color: XTEAL }
+  tightRef.current = bw > 0 && bx < (garlandRight || 0)
+  const bh = bw / ratio
   return (
     <>
       {wide
@@ -1080,12 +1083,9 @@ function XmHeader({ mode, setMode, garlandRight }) {
         : togW > 0 && <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: right.left - 16 - togW, width: togW, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', pointerEvents: 'none' }}>
             <XmToggle on={mode} onChange={setMode} compact={togW < 100} />
           </div>}
-      {text && (
-        <div aria-label={text} role="img" style={{ position: 'fixed', top: bar.top, height: bar.height, left: boxL, width: boxW, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, pointerEvents: 'none' }}>
-          {flakes && <Snowflake size={Math.round(H * .72)} color={dark ? '#7CCFD9' : '#1B8590'} sw={1.5} />}
-          <span className="xm-script" style={{ fontSize: Math.round(H * .66), padding: '2px 4px 4px', textShadow: dark ? 'none' : '0 1px 0 rgba(255,255,255,.8), 0 2px 6px rgba(19,112,122,.18)', ...ink }}>{text}</span>
-          {flakes && <Snowflake size={Math.round(H * .72)} color={dark ? '#7CCFD9' : '#1B8590'} sw={1.5} />}
-        </div>
+      {bw > 0 && (
+        <img src={XART + 'hdr_banner.webp'} alt="Wishing you a season filled with joy!" draggable="false" width={Math.round(bw)} height={Math.round(bh)}
+          style={{ position: 'fixed', left: bx, top: bar.top + bar.height - bh, zIndex: 2350, pointerEvents: 'none', userSelect: 'none', display: 'block' }} />
       )}
     </>
   )
@@ -1099,11 +1099,11 @@ function XmToggle({ on, onChange, compact }) {
   )
 }
 // The pine branch hanging from the top bar, just to the right of the page name.
-function XmTopGarland({ onRight }) {
+function XmTopGarland({ onRight, hidden }) {
   const crumb = useAnchorRect('.topbar .crumb', 800), bar = useAnchorRect('.topbar', 800)
   const right = crumb && bar ? crumb.right + 8 + (XART_SIZE.top_garland[0] / 2) * Math.min(1.15, Math.max(.8, bar.height / 64)) : null
   useEffect(() => { onRight?.(right) }, [right]) // eslint-disable-line react-hooks/exhaustive-deps
-  if (!crumb || !bar || window.innerWidth < 900) return null
+  if (!crumb || !bar || window.innerWidth < 900 || hidden) return null
   const k = Math.min(1.15, Math.max(.8, bar.height / 64))
   return <XImg name="top_garland" w={XART_SIZE.top_garland[0] / 2 * k} className="cc-desktop-only" style={{ position: 'fixed', left: crumb.right + 8, top: bar.top, zIndex: 2355, pointerEvents: 'none' }} />
 }
@@ -1205,10 +1205,34 @@ function XmFrame() {
     // task timer details — always sit on top of the garlands. The phone button (z-index 1000) sits on top
     // of the bottom-right branch.
     <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', inset: 0, zIndex: 29, pointerEvents: 'none' }}>
+      <XmGlitter top={head.top + head.height + 8} left={main.left + 8} right={main.right - 10} bottom={vh - 8} />
       <XImg name="corner_tl" w={s('corner_tl') * .84} style={{ ...pos, left: left - 14 - 2 * k / 2, top: top - 8 - 22 * k / 2, ...trail('to right', 62) }} />
       <XImg name="corner_tr" w={s('corner_tr') * .9} style={{ ...pos, left: right + 6 - 920 * .9 * k / 2, top: top - 10 - 22 * k / 2, ...trail('to left', 78) }} />
       <XImg name="snowman" w={s('snowman')} style={{ ...pos, left: left - 2 * k / 2, top: bottom - ph('snowman') }} />
       <XImg name="corner_br" w={s('corner_br') * 1.5} style={{ ...pos, left: main.right + 14 - s('corner_br') * 1.5, top: bottom - ph('corner_br') * 1.5 + 4 }} />
+    </div>
+  )
+}
+// Glittery silver-and-teal line around the page content (like Thanksgiving's orange frame), with a slow
+// shimmer and little sparkles that twinkle along it. Reduced motion → it stays still.
+const XM_TWINKLES = [[.06, 't'], [.22, 't'], [.41, 't'], [.63, 't'], [.84, 't'], [.18, 'r'], [.47, 'r'], [.76, 'r'], [.12, 'b'], [.36, 'b'], [.58, 'b'], [.9, 'b'], [.3, 'l'], [.66, 'l']]
+function XmGlitter({ top, left, right, bottom }) {
+  const w = right - left, h = bottom - top
+  if (w < 400 || h < 200) return null
+  return (
+    <div style={{ position: 'fixed', top, left, width: w, height: h, filter: 'drop-shadow(0 0 4px rgba(70,170,186,.6)) drop-shadow(0 0 1px rgba(255,255,255,.9))' }}>
+      <div className="xm-glitter" />
+      {XM_TWINKLES.map(([f, side], i) => {
+        const x = side === 't' || side === 'b' ? f * w : side === 'l' ? 0 : w
+        const y = side === 'l' || side === 'r' ? f * h : side === 't' ? 0 : h
+        return (
+          <svg key={i} className="xm-twinkle" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"
+            style={{ position: 'absolute', left: x - 8, top: y - 8, animationDelay: `${(i * .73) % 4}s` }}>
+            <path d="M8 0 L9.3 6.7 L16 8 L9.3 9.3 L8 16 L6.7 9.3 L0 8 L6.7 6.7 Z" fill="#fff" />
+            <circle cx="8" cy="8" r="1.6" fill="#E6FBFF" />
+          </svg>
+        )
+      })}
     </div>
   )
 }
@@ -1223,45 +1247,71 @@ function XmSidebarFlakes() {
     </div>
   )
 }
-// Gently falling snow over the whole app. One canvas, ~30fps, pauses when the tab is hidden.
-// Reduced motion → no falling snow.
+// Gently falling snow over the whole app — sparkly silver so it shows on white and on teal: each flake
+// has a soft silver edge and a white center, and they twinkle; now and then one catches the light.
+// One canvas, ~30fps, pauses when the tab is hidden. Reduced motion → no falling snow.
 function XmSnow() {
   const ref = useRef(null)
   useEffect(() => {
     if (reduceMotion()) return
     const cv = ref.current; if (!cv) return
     const ctx = cv.getContext('2d')
-    let W = 0, H = 0, dpr = 1, raf = 0, last = 0, alive = true
+    let W = 0, H = 0, dpr = 1, raf = 0, last = 0, alive = true, clock = 0
     const resize = () => { dpr = Math.min(2, window.devicePixelRatio || 1); W = window.innerWidth; H = window.innerHeight; cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px'; ctx.setTransform(dpr, 0, 0, dpr, 0, 0) }
     resize()
-    const count = () => Math.round(Math.min(90, Math.max(35, W * H / 26000)))
-    const mk = (y) => { const big = Math.random() < .22; return { x: Math.random() * W, y: y ?? Math.random() * H, r: big ? 3 + Math.random() * 2.6 : 1.3 + Math.random() * 2, big,
-      vy: .35 + Math.random() * .7, sway: Math.random() * Math.PI * 2, sw: .4 + Math.random() * .8, rot: Math.random() * 6, vr: (Math.random() - .5) * .02, a: .55 + Math.random() * .4 } }
-    let flakes = Array.from({ length: count() }, () => mk())
-    const drawFlake = (f) => {
-      ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rot); ctx.globalAlpha = f.a
-      ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = Math.max(1, f.r * .22); ctx.lineCap = 'round'
-      ctx.shadowColor = 'rgba(70,120,150,.45)'; ctx.shadowBlur = 3
-      for (let i = 0; i < 6; i++) {
-        ctx.rotate(Math.PI / 3); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -f.r * 2)
-        ctx.moveTo(-f.r * .5, -f.r * 1.15); ctx.lineTo(0, -f.r * 1.5); ctx.lineTo(f.r * .5, -f.r * 1.15); ctx.stroke()
+    // pre-drawn sprites (cheap to stamp every frame)
+    const sprite = (size, draw) => { const c = document.createElement('canvas'); c.width = c.height = size * 2; const g = c.getContext('2d'); g.scale(2, 2); draw(g, size / 2); return c }
+    const dot = sprite(24, (g, m) => {
+      const r = 7
+      g.shadowColor = 'rgba(40,62,82,.45)'; g.shadowBlur = 3
+      // a little silver bead: bright highlight up-left, silver body, darker rim (so it shows on white too)
+      const gr = g.createRadialGradient(m - 2.2, m - 2.4, .3, m, m, r)
+      gr.addColorStop(0, '#FFFFFF'); gr.addColorStop(.22, '#F3F6F8'); gr.addColorStop(.55, '#C4CED6'); gr.addColorStop(.85, '#9FADB9'); gr.addColorStop(1, '#7F8F9C')
+      g.fillStyle = gr; g.beginPath(); g.arc(m, m, r, 0, Math.PI * 2); g.fill()
+    })
+    const flake = sprite(40, (g, m) => {
+      const R = 15
+      g.lineCap = 'round'; g.translate(m, m)
+      const arms = (lw, color) => {
+        g.strokeStyle = color; g.lineWidth = lw
+        for (let i = 0; i < 6; i++) { g.rotate(Math.PI / 3); g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -R); g.moveTo(-R * .26, -R * .55); g.lineTo(0, -R * .74); g.lineTo(R * .26, -R * .55); g.stroke() }
       }
-      ctx.restore()
-    }
+      g.shadowColor = 'rgba(40,62,82,.4)'; g.shadowBlur = 3
+      arms(3.6, '#8293A1'); g.shadowBlur = 0; arms(1.8, '#E9EFF3')
+      g.fillStyle = '#FFFFFF'; g.beginPath(); g.arc(0, 0, 2.2, 0, Math.PI * 2); g.fill()
+    })
+    const glint = sprite(24, (g, m) => {
+      g.fillStyle = '#FFFFFF'; g.shadowColor = 'rgba(160,220,235,.95)'; g.shadowBlur = 4
+      g.beginPath(); g.moveTo(m, m - 10); g.lineTo(m + 1.4, m - 1.4); g.lineTo(m + 10, m); g.lineTo(m + 1.4, m + 1.4); g.lineTo(m, m + 10); g.lineTo(m - 1.4, m + 1.4); g.lineTo(m - 10, m); g.lineTo(m - 1.4, m - 1.4); g.closePath(); g.fill()
+    })
+    const count = () => Math.round(Math.min(90, Math.max(35, W * H / 26000)))
+    const mk = (y) => { const big = Math.random() < .22; return { x: Math.random() * W, y: y ?? Math.random() * H, r: big ? 3.4 + Math.random() * 2.6 : 2.2 + Math.random() * 2, big,
+      vy: .35 + Math.random() * .7, sway: Math.random() * Math.PI * 2, sw: .4 + Math.random() * .8, rot: Math.random() * 6, vr: (Math.random() - .5) * .02,
+      a: .75 + Math.random() * .25, tw: Math.random() * Math.PI * 2, ts: .04 + Math.random() * .06 } }
+    let flakes = Array.from({ length: count() }, () => mk())
     const tick = (t) => {
       if (!alive) return
       raf = requestAnimationFrame(tick)
       if (t - last < 33) return
-      const dt = Math.min(3, (t - last) / 16.7); last = t
+      const dt = Math.min(3, (t - last) / 16.7); last = t; clock += dt
       ctx.clearRect(0, 0, W, H)
       for (const f of flakes) {
-        f.y += f.vy * dt; f.sway += .012 * dt; f.x += Math.sin(f.sway) * f.sw * .35 * dt; f.rot += f.vr * dt
-        if (f.y > H + 12) Object.assign(f, mk(-12))
-        if (f.x < -12) f.x = W + 10; else if (f.x > W + 12) f.x = -10
-        if (f.big) drawFlake(f)
-        else { ctx.globalAlpha = f.a; ctx.fillStyle = '#FFFFFF'; ctx.shadowColor = 'rgba(70,120,150,.4)'; ctx.shadowBlur = 2; ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); ctx.fill() }
+        f.y += f.vy * dt; f.sway += .012 * dt; f.x += Math.sin(f.sway) * f.sw * .35 * dt; f.rot += f.vr * dt; f.tw += f.ts * dt
+        if (f.y > H + 14) Object.assign(f, mk(-14))
+        if (f.x < -14) f.x = W + 12; else if (f.x > W + 14) f.x = -12
+        const twinkle = .72 + .28 * Math.sin(f.tw)
+        ctx.globalAlpha = f.a * twinkle
+        if (f.big) {
+          const d = f.r * 4.4
+          ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rot); ctx.drawImage(flake, -d / 2, -d / 2, d, d); ctx.restore()
+        } else {
+          const d = f.r * 2 * (24 / 14)
+          ctx.drawImage(dot, f.x - d / 2, f.y - d / 2, d, d)
+        }
+        // a quick sparkle when a flake catches the light
+        if (Math.sin(f.tw) > .985) { const g = (f.big ? 16 : 10); ctx.globalAlpha = 1; ctx.drawImage(glint, f.x - g / 2, f.y - g / 2, g, g) }
       }
-      ctx.globalAlpha = 1; ctx.shadowBlur = 0
+      ctx.globalAlpha = 1
     }
     raf = requestAnimationFrame(tick)
     const onVis = () => { if (document.visibilityState === 'hidden') { cancelAnimationFrame(raf) } else { last = 0; raf = requestAnimationFrame(tick) } }
@@ -1303,6 +1353,7 @@ export default function Seasonal() {
   const [xmMode, setXmModeState] = useState(false)
   const [adventOpen, setAdventOpen] = useState(false)
   const [garlandRight, setGarlandRight] = useState(null)
+  const [garlandAway, setGarlandAway] = useState(false)
   const season = activeSeason()
   const idRef = useRef(0)
   const still = reduceMotion()
@@ -1465,8 +1516,8 @@ export default function Seasonal() {
       <XmSnow />
       <XmSidebarFlakes />
       <XmFrame />
-      <XmTopGarland onRight={setGarlandRight} />
-      <XmHeader mode={xmMode} setMode={setXmMode} garlandRight={garlandRight} />
+      <XmTopGarland onRight={setGarlandRight} hidden={garlandAway} />
+      <XmHeader mode={xmMode} setMode={setXmMode} garlandRight={garlandRight} onTight={setGarlandAway} />
       <XmButton onOpen={() => setAdventOpen(true)} />
       {adventOpen && <XmAdvent onClose={() => setAdventOpen(false)} />}
       <div className="cc-season-layer" aria-hidden="true">
@@ -1574,7 +1625,7 @@ export default function Seasonal() {
 // A tiny cute witch hat (Chat avatars during Halloween week).
 export function WitchHat({ size }) {
   if (seasonalHat() === 'pilgrim') return <PilgrimHatSvg size={size} />
-  if (seasonalHat() === 'santa') return <SantaHatSvg size={size} />
+  if (seasonalHat() === 'santa') return null   // Brittney: no hats for Christmas
   const w = Math.max(13, Math.round(size * 0.8))
   return (
     <svg aria-hidden="true" width={w} height={w} viewBox="0 0 40 40"
