@@ -960,7 +960,7 @@ export function SeasonHeaderDecor() {
 // The bottom-right corner is left empty on purpose so the phone button stays clear.
 // ============================================================
 const XART = '/seasonal/christmas/'
-const XART_SIZE = { top_garland: [365, 133], corner_tl: [392, 275], corner_tr: [935, 365], snowman: [442, 340], drift_l: [90, 116], drift_m: [1650, 116], drift_r: [175, 116], scene: [1225, 924], gift: [64, 64] }
+const XART_SIZE = { top_garland: [365, 133], corner_tl: [392, 275], corner_tr: [935, 365], snowman: [442, 340], corner_br: [250, 330], scene: [1225, 924], gift: [64, 64] }
 const XTEAL = '#13707A', XTEAL_D = '#0B555E'
 const XMAS_KEY = 'christmas_mode-2026'
 function XImg({ name, w, h, style, ...rest }) {
@@ -1182,7 +1182,7 @@ function XmAdvent({ onClose }) {
   )
 }
 // Painted pieces around the page content: garlands on the top corners (with the hanging ornaments),
-// the snowman bottom-left and the snow drift along the bottom. The bottom-right corner stays empty.
+// the snowman bottom-left and a snowy pine corner bottom-right (the phone button sits on top of it).
 function XmFrame() {
   const main = useAnchorRect('.main', 800), head = useAnchorRect('.header-wrap', 800)
   const [vh, setVh] = useState(() => window.innerHeight)
@@ -1196,22 +1196,17 @@ function XmFrame() {
   const s = (name) => XART_SIZE[name][0] / 2 * k
   const ph = (name) => XART_SIZE[name][1] / 2 * k
   const pos = { position: 'fixed', pointerEvents: 'none' }
-  // drift: left pine + stretchy snow + right pine, from the snowman to just short of the right edge
-  const dl = s('drift_l'), dr = s('drift_r'), dh = ph('drift_m')
-  const dStart = left + s('snowman') * .78, dEnd = right - 70 * k
-  const dMid = Math.max(0, dEnd - dStart - dl - dr)
+  // the garlands trail off softly where they end instead of stopping in a straight line
+  const trail = (dir, from) => { const m = `linear-gradient(${dir}, #000 ${from}%, transparent 100%)`; return { WebkitMaskImage: m, maskImage: m } }
   return (
     // zIndex 29: just under the app's header (z-index 30), so menus that open from the header — like the
-    // task timer details — always sit on top of the garlands
+    // task timer details — always sit on top of the garlands. The phone button (z-index 1000) sits on top
+    // of the bottom-right branch.
     <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', inset: 0, zIndex: 29, pointerEvents: 'none' }}>
-      <XImg name="corner_tl" w={s('corner_tl') * .84} style={{ ...pos, left: left - 14 - 2 * k / 2, top: top - 8 - 22 * k / 2 }} />
-      <XImg name="corner_tr" w={s('corner_tr') * .9} style={{ ...pos, left: right + 6 - 920 * .9 * k / 2, top: top - 10 - 22 * k / 2 }} />
-      {dMid > 40 && <>
-        <XImg name="drift_l" w={dl} h={dh} style={{ ...pos, left: dStart, top: bottom - dh }} />
-        <XImg name="drift_m" w={dMid} h={dh} style={{ ...pos, left: dStart + dl, top: bottom - dh }} />
-        <XImg name="drift_r" w={dr} h={dh} style={{ ...pos, left: dStart + dl + dMid, top: bottom - dh }} />
-      </>}
+      <XImg name="corner_tl" w={s('corner_tl') * .84} style={{ ...pos, left: left - 14 - 2 * k / 2, top: top - 8 - 22 * k / 2, ...trail('to right', 62) }} />
+      <XImg name="corner_tr" w={s('corner_tr') * .9} style={{ ...pos, left: right + 6 - 920 * .9 * k / 2, top: top - 10 - 22 * k / 2, ...trail('to left', 78) }} />
       <XImg name="snowman" w={s('snowman')} style={{ ...pos, left: left - 2 * k / 2, top: bottom - ph('snowman') }} />
+      <XImg name="corner_br" w={s('corner_br') * 1.5} style={{ ...pos, left: main.right + 14 - s('corner_br') * 1.5, top: bottom - ph('corner_br') * 1.5 + 4 }} />
     </div>
   )
 }
