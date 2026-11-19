@@ -9,6 +9,7 @@ import { useAuth } from '../lib/auth'
 // Purely decorative: pointer-events: none everywhere, nothing touches data.
 // Halloween = kawaii hand-drawn characters (ghost, bats, candy, pumpkins, kitty).
 // Thanksgiving (2026-11-18) = warm autumn: turkey, falling leaves, acorns, pie, harvest basket.
+// Christmas (2026-11-18) = icy blue + teal: pine garlands, snowman, snowy forest, falling snow.
 // Add a holiday = add an entry to SEASONS (month/day, inclusive).
 // ============================================================
 
@@ -19,6 +20,11 @@ export const SEASONS = [
   { key: 'thanksgiving', from: [11, 22], to: [11, 28],
     greeting: (first) => `Happy Thanksgiving${first ? `, ${first}` : ''}! We're thankful for you 🧡`,
     hat: 'pilgrim' },
+  // Christmas: live now for testing (Brittney will send the real go-live/end dates). Thanksgiving is
+  // listed first, so Nov 22–28 still shows Thanksgiving and Christmas picks back up after.
+  { key: 'christmas', from: [11, 18], to: [12, 31],
+    greeting: (first) => `Merry Christmas${first ? `, ${first}` : ''}! 🎄`,
+    hat: 'santa' },
 ]
 
 let _off = false
@@ -414,8 +420,13 @@ const _tw = {}
 function textWidth(str, font) {
   const key = font + '|' + str
   if (_tw[key]) return _tw[key]
+  // a web font (quoted family) only counts once it has actually loaded, otherwise we'd remember the fallback width
+  let ready = true
+  const fam = (font.match(/'([^']+)'/) || [])[1]
+  if (fam) { try { ready = [...document.fonts].some(f => f.family.replace(/["']/g, '') === fam && f.status === 'loaded') } catch { ready = true } }
   let w = str.length * parseFloat(font) * .5
   try { const c = document.createElement('canvas').getContext('2d'); c.font = font; w = c.measureText(str).width } catch { /* ignore */ }
+  if (!ready) return w
   return (_tw[key] = w)
 }
 const TG_LINE_2 = "We're thankful for you!"
@@ -923,6 +934,11 @@ function GratitudeTree({ onClose, onChanged }) {
 // for the profile header corner
 export function SeasonHeaderDecor() {
   if (!seasonalHat()) return null
+  if (activeSeason()?.key === 'christmas') return (
+    <div aria-hidden="true" style={{ position: 'absolute', right: 14, top: 6, display: 'flex', alignItems: 'center', gap: 6, pointerEvents: 'none' }}>
+      <Snowflake size={18} color="#38A3B0" /><XImg name="gift" h={30} /><Snowflake size={24} color="#1B8590" /><Snowflake size={14} color="#7CC8D2" />
+    </div>
+  )
   if (activeSeason()?.key === 'thanksgiving') return (
     <div aria-hidden="true" style={{ position: 'absolute', right: 14, top: 4, display: 'flex', alignItems: 'center', gap: 2, pointerEvents: 'none' }}>
       <Leaf size={22} color={CRAN} /><Turkey size={38} /><Pie size={30} /><Acorn size={22} /><Sparkle size={12} delay={.4} />
@@ -934,6 +950,333 @@ export function SeasonHeaderDecor() {
     </div>
   )
 }
+
+// ============================================================
+// CHRISTMAS (2026-11-18, Brittney's mockup) — icy blues + teal, painted pine garlands with warm
+// lights, a snowman, a snowy forest behind the chat messages, gently falling snow, a centered
+// "Merry Christmas!" header and the "25 Days of Christmas" button. Like Thanksgiving, everything
+// here is a fixed, pointer-events:none layer (or a background color/image), so it never covers a
+// click target and nothing in the app's own files changes. The art lives in public/seasonal/christmas/.
+// The bottom-right corner is left empty on purpose so the phone button stays clear.
+// ============================================================
+const XART = '/seasonal/christmas/'
+const XART_SIZE = { top_garland: [365, 133], corner_tl: [392, 275], corner_tr: [935, 365], snowman: [442, 340], drift_l: [90, 116], drift_m: [1650, 116], drift_r: [175, 116], scene: [1225, 924], gift: [64, 64] }
+const XTEAL = '#13707A', XTEAL_D = '#0B555E'
+const XMAS_KEY = 'christmas_mode-2026'
+function XImg({ name, w, h, style, ...rest }) {
+  const [nw, nh] = XART_SIZE[name]
+  const width = w || (h ? h * nw / nh : nw / 2), height = h || width * nh / nw
+  return <img src={XART + name + '.webp'} alt="" aria-hidden="true" draggable="false" width={Math.round(width)} height={Math.round(height)} style={{ display: 'block', userSelect: 'none', ...style }} {...rest} />
+}
+// a crisp six-armed snowflake (header, sidebar, falling snow, confetti)
+function Snowflake({ size = 22, color = XTEAL, sw = 1.6, style }) {
+  const arm = (
+    <g>
+      <line x1="12" y1="12" x2="12" y2="1.5" />
+      <polyline points="9.4,3.6 12,6 14.6,3.6" fill="none" />
+      <polyline points="9.9,7.2 12,9 14.1,7.2" fill="none" />
+    </g>
+  )
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={style}>
+      <g stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+        {[0, 60, 120, 180, 240, 300].map(r => <g key={r} transform={`rotate(${r} 12 12)`}>{arm}</g>)}
+      </g>
+      <circle cx="12" cy="12" r="1.5" fill={color} />
+    </svg>
+  )
+}
+function SantaHatSvg({ size }) {
+  const w = Math.max(13, Math.round(size * 0.86))
+  return (
+    <svg aria-hidden="true" width={w} height={w} viewBox="0 0 40 40"
+      style={{ position: 'absolute', left: -Math.round(size * 0.14), top: -Math.round(size * 0.5), transform: 'rotate(-14deg)', pointerEvents: 'none', overflow: 'visible', zIndex: 1 }}>
+      <path d="M8 31 Q11 14 22 8 Q31 4 35 13 Q31 11 28 15 Q30 22 31 31 Z" fill="#DC2626" />
+      <path d="M22 8 Q29 6 33 11 Q29 10 27 13 Z" fill="#B91C1C" />
+      <rect x="5" y="28" width="29" height="8" rx="4" fill="#F8FAFC" stroke="#E2E8F0" strokeWidth=".8" />
+      <circle cx="35" cy="14" r="4.2" fill="#F8FAFC" stroke="#E2E8F0" strokeWidth=".8" />
+    </svg>
+  )
+}
+const XM_CSS = `
+body.cc-christmas { --xm-a: 72%; --xm-b: 55%; --xm-shade: 0; }
+:root[data-theme="dark"] body.cc-christmas { --xm-a: 12%; --xm-b: 7%; --xm-shade: .72; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) body.cc-christmas { --xm-a: 12%; --xm-b: 7%; --xm-shade: .72; } }
+body.cc-christmas .topbar {
+  background: linear-gradient(90deg, color-mix(in srgb, #E3EFF6 var(--xm-a), var(--surface)) 0%, color-mix(in srgb, #F3F8FB var(--xm-a), var(--surface)) 50%, color-mix(in srgb, #E5F0F7 var(--xm-a), var(--surface)) 100%) !important;
+  border-bottom-color: color-mix(in srgb, #BCD8E6 50%, var(--line)) !important;
+}
+body.cc-christmas .workbar { background: color-mix(in srgb, #EDF5FA calc(var(--xm-a) * .9), var(--workbar-bg)); border-bottom-color: color-mix(in srgb, #BCD8E6 45%, var(--workbar-line)); }
+body.cc-christmas .main { background: color-mix(in srgb, #C9DFEC var(--xm-b), var(--canvas)); }
+body.cc-christmas [data-cc-chatpane] { background: linear-gradient(180deg, color-mix(in srgb, #F0F6FA var(--xm-a), var(--surface)) 0%, color-mix(in srgb, #E3EEF5 var(--xm-a), var(--surface)) 100%); }
+/* the snowy forest sits behind the messages, anchored bottom-right (it never scrolls with them) */
+body.cc-christmas [data-cc-chatpane] > div[style*="overflow-y: auto"] {
+  background: linear-gradient(rgba(15,23,32,var(--xm-shade)), rgba(15,23,32,var(--xm-shade))), url(${'/seasonal/christmas/scene.webp'}) right bottom / contain no-repeat;
+}
+@media (min-width: 1000px) { body.cc-christmas .topbar .tb-right { margin-right: 196px; } }
+.xm-script { font-family: 'Kaushan Script', 'Dancing Script', cursive; font-weight: 400; letter-spacing: .3px; line-height: 1.25; white-space: nowrap; }
+.xm-toggle { pointer-events: auto; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 4px 0 6px; border-radius: 999px; border: 0; background: transparent;
+  font: inherit; font-size: 14px; font-weight: 700; color: #0F3D45; cursor: pointer; white-space: nowrap; }
+:root[data-theme="dark"] .xm-toggle { color: #D7EEF3; }
+.xm-toggle:focus-visible { outline: 2px solid #38A3B0; outline-offset: 2px; }
+.xm-switch { position: relative; width: 46px; height: 26px; border-radius: 999px; background: #D5DEE3; transition: background .2s; flex: none; box-shadow: inset 0 1px 2px rgba(0,0,0,.15); }
+.xm-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .2s; }
+.xm-toggle[aria-checked="true"] .xm-switch { background: linear-gradient(180deg, #1F8C97, #0E6670); }
+.xm-toggle[aria-checked="true"] .xm-switch::after { transform: translateX(20px); }
+.xm-btn { pointer-events: auto; display: inline-flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px 0 10px; border-radius: 999px; cursor: pointer; font-family: inherit;
+  font-size: 15px; font-weight: 700; color: #fff; white-space: nowrap; border: 1px solid #0B5961; background: linear-gradient(180deg, #1A7F89 0%, #0F6670 55%, #0C5A63 100%);
+  box-shadow: 0 8px 18px -10px rgba(8,70,78,.85), inset 0 1px 0 rgba(255,255,255,.22); transition: transform .15s, box-shadow .15s; }
+.xm-btn:hover { transform: translateY(-1px); box-shadow: 0 12px 24px -12px rgba(8,70,78,.9), inset 0 1px 0 rgba(255,255,255,.25); }
+.xm-btn:focus-visible { outline: 2px solid #7DD3DC; outline-offset: 2px; }
+.xm-day { background: #EAF6F8; color: #0C5A63; border-radius: 999px; padding: 3px 11px; font-size: 13.5px; font-weight: 800; box-shadow: inset 0 0 0 1px rgba(12,90,99,.15); }
+.xm-door { position: relative; aspect-ratio: 1; border-radius: 14px; border: 1.5px solid #C7DFE8; background: linear-gradient(160deg, #FFFFFF 0%, #EAF4F9 100%); cursor: pointer;
+  display: grid; place-items: center; font: inherit; font-size: 22px; font-weight: 800; color: #0F5B64; transition: transform .15s, box-shadow .15s; }
+.xm-door:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 20px -12px rgba(12,90,99,.6); }
+.xm-door.today { border-color: #13707A; box-shadow: 0 0 0 3px rgba(19,112,122,.18); }
+.xm-door.on { background: linear-gradient(160deg, #1A7F89 0%, #0E6670 100%); color: #fff; border-color: #0E6670; }
+.xm-door:disabled { cursor: default; color: #9DB5BE; background: #F3F7F9; }
+:root[data-theme="dark"] .xm-door { background: #12262C; border-color: #24464F; color: #BFE6EC; }
+:root[data-theme="dark"] .xm-door:disabled { background: #0E1D21; color: #47636B; }
+@keyframes xmIn { from { opacity: 0; transform: translateY(10px) scale(.98) } to { opacity: 1; transform: none } }
+`
+// "Merry Christmas! Wishing you a season filled with joy!" with a snowflake on each side, centered in
+// the top bar (shortens to "Merry Christmas!" and then hides when the page name or icons need the room).
+// The Christmas Mode switch sits at the far right like Fall Mode did.
+function XmHeader({ mode, setMode, garlandRight }) {
+  const left = useAnchorRect('.topbar .crumb', 800), right = useAnchorRect('.topbar .tb-right', 800), bar = useAnchorRect('.topbar', 800)
+  if (!left || !right || !bar) return null
+  const wide = window.innerWidth >= 1000
+  const freeAll = right.left - left.right - 32
+  const togW = wide ? 0 : (freeAll >= 460 ? 176 : freeAll >= 120 ? 70 : 0)
+  const lo = Math.max(left.right + 16, (garlandRight || 0) + 8), hi = right.left - 16 - (togW ? togW + 12 : 0)
+  const center = bar.left + bar.width / 2
+  const half = Math.min(center - lo, hi - center)
+  const H0 = Math.min(50, bar.height - 8), room = Math.max(0, half * 2 - 8)
+  const LINE = 'Merry Christmas! Wishing you a season filled with joy!', SHORT = 'Merry Christmas!'
+  const widthAt = (H, text, flakes) => textWidth(text, `${Math.round(H * .66)}px 'Kaushan Script'`) + (flakes ? 2 * (H * .7 + 14) : 0)
+  let text = null, flakes = false, H = H0, boxL = center - half, boxW = half * 2
+  for (const [t, f] of [[LINE, true], [LINE, false], [SHORT, true], [SHORT, false]]) {
+    const k = Math.min(1, room / widthAt(H0, t, f))
+    if (k >= (t === LINE ? .6 : .7)) { text = t; flakes = f; H = Math.floor(H0 * k); break }
+  }
+  // not enough room to center it on the bar: center it in the open space instead (better than hiding)
+  if (!text && hi - lo > 120) {
+    const room2 = hi - lo - 8
+    for (const [t, f] of [[LINE, true], [LINE, false], [SHORT, true], [SHORT, false]]) {
+      const k = Math.min(1, room2 / widthAt(H0, t, f))
+      if (k >= .7) { text = t; flakes = f; H = Math.floor(H0 * k); boxL = lo; boxW = hi - lo; break }
+    }
+  }
+  const dark = isDarkTheme()
+  const ink = dark ? { color: '#9EDCE4' } : { color: XTEAL }
+  return (
+    <>
+      {wide
+        ? <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: right.right + 12, width: 186, zIndex: 2360, display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
+            <XmToggle on={mode} onChange={setMode} />
+          </div>
+        : togW > 0 && <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: right.left - 16 - togW, width: togW, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', pointerEvents: 'none' }}>
+            <XmToggle on={mode} onChange={setMode} compact={togW < 100} />
+          </div>}
+      {text && (
+        <div aria-label={text} role="img" style={{ position: 'fixed', top: bar.top, height: bar.height, left: boxL, width: boxW, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, pointerEvents: 'none' }}>
+          {flakes && <Snowflake size={Math.round(H * .72)} color={dark ? '#7CCFD9' : '#1B8590'} sw={1.5} />}
+          <span className="xm-script" style={{ fontSize: Math.round(H * .66), padding: '2px 4px 4px', textShadow: dark ? 'none' : '0 1px 0 rgba(255,255,255,.8), 0 2px 6px rgba(19,112,122,.18)', ...ink }}>{text}</span>
+          {flakes && <Snowflake size={Math.round(H * .72)} color={dark ? '#7CCFD9' : '#1B8590'} sw={1.5} />}
+        </div>
+      )}
+    </>
+  )
+}
+function XmToggle({ on, onChange, compact }) {
+  return (
+    <button type="button" role="switch" aria-checked={on ? 'true' : 'false'} className="xm-toggle" onClick={() => onChange(!on)}
+      title={on ? 'Christmas Mode is on — only you see it' : 'Christmas Mode (coming soon — only you will see it)'}>
+      <Snowflake size={18} color="#1B8590" sw={2} />{!compact && <span>Christmas Mode</span>}<span className="xm-switch" />
+    </button>
+  )
+}
+// The pine branch hanging from the top bar, just to the right of the page name.
+function XmTopGarland({ onRight }) {
+  const crumb = useAnchorRect('.topbar .crumb', 800), bar = useAnchorRect('.topbar', 800)
+  const right = crumb && bar ? crumb.right + 8 + (XART_SIZE.top_garland[0] / 2) * Math.min(1.15, Math.max(.8, bar.height / 64)) : null
+  useEffect(() => { onRight?.(right) }, [right]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!crumb || !bar || window.innerWidth < 900) return null
+  const k = Math.min(1.15, Math.max(.8, bar.height / 64))
+  return <XImg name="top_garland" w={XART_SIZE.top_garland[0] / 2 * k} className="cc-desktop-only" style={{ position: 'fixed', left: crumb.right + 8, top: bar.top, zIndex: 2355, pointerEvents: 'none' }} />
+}
+// "25 Days of Christmas" — the main button, centered in the work bar under the header.
+const xmDay = () => {
+  const [mo, da] = new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'numeric', day: 'numeric' }).split('/').map(Number)
+  return mo === 12 ? Math.min(25, da) : 1   // before December this is a preview, so Day 1 is open
+}
+function XmButton({ onOpen }) {
+  const left = useAnchorRect('.workbar .wb-left', 800), right = useAnchorRect('.workbar .wb-right', 800), bar = useAnchorRect('.workbar', 800), top = useAnchorRect('.topbar', 800)
+  if (!bar) return null
+  const lo = (left ? left.right : bar.left) + 22, hi = (right ? right.left : bar.right) - 22
+  const center = top ? top.left + top.width / 2 : bar.left + bar.width / 2
+  const half = Math.min(center - lo, hi - center)
+  const day = xmDay()
+  const longW = textWidth('25 Days of Christmas', '700 15px Montserrat') + 30 + 64 + 18 + 3 * 12 + 26
+  const shortW = textWidth('25 Days', '700 15px Montserrat') + 30 + 64 + 18 + 3 * 12 + 26
+  let mode = half * 2 >= longW ? 'long' : half * 2 >= shortW ? 'short' : null
+  let boxLeft = center - half, boxW = half * 2
+  if (!mode && hi - lo >= shortW) { mode = 'short'; boxLeft = lo; boxW = hi - lo }
+  if (!mode) return null
+  return (
+    <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: boxLeft, width: boxW, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+      <button className="xm-btn" onClick={onOpen} title="Open the 25 Days of Christmas">
+        <XImg name="gift" h={28} />
+        <span>{mode === 'long' ? '25 Days of Christmas' : '25 Days'}</span>
+        <span className="xm-day">Day {day}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </button>
+    </div>
+  )
+}
+// One little thing a day, Dec 1–25 (placeholder ideas until Brittney sends the real list).
+const XM_DAYS = [
+  'Share your favorite holiday movie in chat 🎬', 'Tell us the best gift you ever got 🎁', 'Ugly sweater day! Post a pic if you have one 🧶',
+  'What\'s your go-to holiday cookie? 🍪', 'Give a shout-out to a teammate who helped you this year 🙌', 'Favorite holiday song — go! 🎶',
+  'Hot cocoa or eggnog? ☕', 'Share a holiday tradition from your family 🕯️', 'Snow day dream: where would you spend it? ❄️',
+  'Post your desk or workspace decorations 🎄', 'What\'s on your wish list this year? 📝', 'Random act of kindness day 💙',
+  'Best holiday memory from when you were a kid ⭐', 'Name your favorite reindeer 🦌', 'Real tree or fake tree? 🌲',
+  'Share a win from this year you\'re proud of 🏆', 'Favorite holiday food at the big dinner 🍽️', 'Pajama day! 🛌',
+  'Which holiday character are you? 🎅', 'Send a thank-you note to someone today ✉️', 'Gingerbread house: builder or eater? 🏠',
+  'Your best gift-wrapping tip 🎀', 'What are you most looking forward to next year? ✨', 'Christmas Eve plans? 🌟', 'Merry Christmas, team! 🎄💙',
+]
+function XmAdvent({ onClose }) {
+  const today = xmDay()
+  const [pick, setPick] = useState(today)
+  useEffect(() => { const k = (e) => { if (e.key === 'Escape') onClose() }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [onClose])
+  const preview = (() => { const mo = Number(new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'numeric' })); return mo !== 12 })()
+  return (
+    <div role="dialog" aria-modal="true" aria-label="25 Days of Christmas" onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 2600, background: 'rgba(8,32,40,.45)', display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(540px, 100%)', maxHeight: '90vh', overflowY: 'auto', borderRadius: 20, background: 'var(--surface)', boxShadow: '0 30px 70px -20px rgba(8,40,48,.6)', animation: 'xmIn .25s ease' }}>
+        <div style={{ position: 'relative', padding: '18px 22px 16px', borderRadius: '20px 20px 0 0', background: 'linear-gradient(180deg, #1A7F89 0%, #0E6670 100%)', color: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <XImg name="gift" h={36} />
+          <div style={{ flex: 1 }}>
+            <div className="xm-script" style={{ fontSize: 28, lineHeight: 1.1 }}>25 Days of Christmas</div>
+            <div style={{ fontSize: 13, opacity: .9, marginTop: 2 }}>{preview ? 'Preview — Day 1 is open so you can try it out' : `Day ${today} of 25 · a little something every day`}</div>
+          </div>
+          <Snowflake size={26} color="rgba(255,255,255,.85)" />
+          <button onClick={onClose} aria-label="Close" style={{ border: 0, background: 'rgba(255,255,255,.15)', color: '#fff', width: 32, height: 32, borderRadius: '50%', cursor: 'pointer', fontSize: 15 }}>✕</button>
+        </div>
+        <div style={{ padding: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
+            {Array.from({ length: 25 }, (_, i) => i + 1).map(d => (
+              <button key={d} className={'xm-door' + (d === today ? ' today' : '') + (d === pick ? ' on' : '')} disabled={d > today} onClick={() => setPick(d)}
+                title={d > today ? `Opens Dec ${d}` : `Day ${d}`} aria-label={d > today ? `Day ${d}, opens December ${d}` : `Open day ${d}`}>
+                {d > today ? <span style={{ fontSize: 18 }}>{d}<span style={{ display: 'block', fontSize: 10, fontWeight: 700, marginTop: -2 }}>🔒</span></span> : d}
+              </button>
+            ))}
+          </div>
+          <div style={{ marginTop: 16, borderRadius: 14, padding: '14px 16px', background: 'color-mix(in srgb, #E6F2F7 70%, var(--surface))', border: '1px solid color-mix(in srgb, #BCD8E6 60%, var(--line))', display: 'flex', gap: 12, alignItems: 'center' }}>
+            <span className="xm-script" style={{ fontSize: 26, color: XTEAL, minWidth: 64 }}>Day {pick}</span>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>{XM_DAYS[pick - 1]}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+// Painted pieces around the page content: garlands on the top corners (with the hanging ornaments),
+// the snowman bottom-left and the snow drift along the bottom. The bottom-right corner stays empty.
+function XmFrame() {
+  const main = useAnchorRect('.main', 800), head = useAnchorRect('.header-wrap', 800)
+  const [vh, setVh] = useState(() => window.innerHeight)
+  useEffect(() => { const f = () => setVh(window.innerHeight); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f) }, [])
+  if (!main || !head) return null
+  const top = head.top + head.height + 10, left = main.left + 14, right = main.right - 14, bottom = vh
+  const w = right - left
+  if (w < 640 || bottom - top < 320) return null
+  // scale against the mockup (its content area was ~1290px wide); art is stored at 2x
+  const k = Math.max(.72, Math.min(1.25, w / 1290))
+  const s = (name) => XART_SIZE[name][0] / 2 * k
+  const ph = (name) => XART_SIZE[name][1] / 2 * k
+  const pos = { position: 'fixed', pointerEvents: 'none' }
+  // drift: left pine + stretchy snow + right pine, from the snowman to just short of the right edge
+  const dl = s('drift_l'), dr = s('drift_r'), dh = ph('drift_m')
+  const dStart = left + s('snowman') * .78, dEnd = right - 70 * k
+  const dMid = Math.max(0, dEnd - dStart - dl - dr)
+  return (
+    <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', inset: 0, zIndex: 2300, pointerEvents: 'none' }}>
+      <XImg name="corner_tl" w={s('corner_tl') * .84} style={{ ...pos, left: left - 14 - 2 * k / 2, top: top - 8 - 22 * k / 2 }} />
+      <XImg name="corner_tr" w={s('corner_tr') * .9} style={{ ...pos, left: right + 6 - 920 * .9 * k / 2, top: top - 10 - 22 * k / 2 }} />
+      {dMid > 40 && <>
+        <XImg name="drift_l" w={dl} h={dh} style={{ ...pos, left: dStart, top: bottom - dh }} />
+        <XImg name="drift_m" w={dMid} h={dh} style={{ ...pos, left: dStart + dl, top: bottom - dh }} />
+        <XImg name="drift_r" w={dr} h={dh} style={{ ...pos, left: dStart + dl + dMid, top: bottom - dh }} />
+      </>}
+      <XImg name="snowman" w={s('snowman')} style={{ ...pos, left: left - 2 * k / 2, top: bottom - ph('snowman') }} />
+    </div>
+  )
+}
+// a few white snowflakes sprinkled on the sidebar (like the mockup)
+const XM_SIDE_FLAKES = [[86, 14, 14], [90, 23, 10], [80, 33, 16], [92, 42, 11], [84, 51, 15], [90, 61, 12], [82, 70, 17], [91, 79, 11], [86, 88, 15], [12, 95, 13], [62, 97, 10]]
+function XmSidebarFlakes() {
+  const sb = useAnchorRect('.sidebar', 900)
+  if (!sb || sb.width < 120) return null
+  return (
+    <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', left: sb.left, top: sb.top, width: sb.width, height: sb.height, zIndex: 2290, pointerEvents: 'none', overflow: 'hidden' }}>
+      {XM_SIDE_FLAKES.map(([x, y, sz], i) => <Snowflake key={i} size={sz} color="rgba(255,255,255,.55)" sw={1.4} style={{ position: 'absolute', left: `${x}%`, top: `${y}%`, transform: `rotate(${i * 17}deg)` }} />)}
+    </div>
+  )
+}
+// Gently falling snow over the whole app. One canvas, ~30fps, pauses when the tab is hidden.
+// Reduced motion → no falling snow.
+function XmSnow() {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (reduceMotion()) return
+    const cv = ref.current; if (!cv) return
+    const ctx = cv.getContext('2d')
+    let W = 0, H = 0, dpr = 1, raf = 0, last = 0, alive = true
+    const resize = () => { dpr = Math.min(2, window.devicePixelRatio || 1); W = window.innerWidth; H = window.innerHeight; cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px'; ctx.setTransform(dpr, 0, 0, dpr, 0, 0) }
+    resize()
+    const count = () => Math.round(Math.min(90, Math.max(35, W * H / 26000)))
+    const mk = (y) => { const big = Math.random() < .22; return { x: Math.random() * W, y: y ?? Math.random() * H, r: big ? 3 + Math.random() * 2.6 : 1.3 + Math.random() * 2, big,
+      vy: .35 + Math.random() * .7, sway: Math.random() * Math.PI * 2, sw: .4 + Math.random() * .8, rot: Math.random() * 6, vr: (Math.random() - .5) * .02, a: .55 + Math.random() * .4 } }
+    let flakes = Array.from({ length: count() }, () => mk())
+    const drawFlake = (f) => {
+      ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rot); ctx.globalAlpha = f.a
+      ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = Math.max(1, f.r * .22); ctx.lineCap = 'round'
+      ctx.shadowColor = 'rgba(70,120,150,.45)'; ctx.shadowBlur = 3
+      for (let i = 0; i < 6; i++) {
+        ctx.rotate(Math.PI / 3); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -f.r * 2)
+        ctx.moveTo(-f.r * .5, -f.r * 1.15); ctx.lineTo(0, -f.r * 1.5); ctx.lineTo(f.r * .5, -f.r * 1.15); ctx.stroke()
+      }
+      ctx.restore()
+    }
+    const tick = (t) => {
+      if (!alive) return
+      raf = requestAnimationFrame(tick)
+      if (t - last < 33) return
+      const dt = Math.min(3, (t - last) / 16.7); last = t
+      ctx.clearRect(0, 0, W, H)
+      for (const f of flakes) {
+        f.y += f.vy * dt; f.sway += .012 * dt; f.x += Math.sin(f.sway) * f.sw * .35 * dt; f.rot += f.vr * dt
+        if (f.y > H + 12) Object.assign(f, mk(-12))
+        if (f.x < -12) f.x = W + 10; else if (f.x > W + 12) f.x = -10
+        if (f.big) drawFlake(f)
+        else { ctx.globalAlpha = f.a; ctx.fillStyle = '#FFFFFF'; ctx.shadowColor = 'rgba(70,120,150,.4)'; ctx.shadowBlur = 2; ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); ctx.fill() }
+      }
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0
+    }
+    raf = requestAnimationFrame(tick)
+    const onVis = () => { if (document.visibilityState === 'hidden') { cancelAnimationFrame(raf) } else { last = 0; raf = requestAnimationFrame(tick) } }
+    const onResize = () => { resize(); const n = count(); if (flakes.length < n) flakes = flakes.concat(Array.from({ length: n - flakes.length }, () => mk())); else flakes.length = n }
+    document.addEventListener('visibilitychange', onVis); window.addEventListener('resize', onResize)
+    return () => { alive = false; cancelAnimationFrame(raf); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('resize', onResize) }
+  }, [])
+  return <canvas ref={ref} aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 2295, pointerEvents: 'none' }} />
+}
+const CONFETTI_XM = [
+  () => <Snowflake size={18} color="#38A3B0" />, () => <Snowflake size={14} color="#7CC8D2" />, () => <Sparkle size={14} color={GOLD} />,
+  () => <svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><rect x="5" y="0" width="4" height="3" rx="1" fill="#C9A227" /><circle cx="7" cy="9.5" r="6" fill="#1F8C97" /><circle cx="5" cy="7.5" r="1.6" fill="#fff" opacity=".7" /></svg>,
+  () => <Snowflake size={16} color="#1B8590" />, () => <svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><rect x="5" y="0" width="4" height="3" rx="1" fill="#C9A227" /><circle cx="7" cy="9.5" r="6" fill="#DC2626" /><circle cx="5" cy="7.5" r="1.6" fill="#fff" opacity=".7" /></svg>,
+]
 
 // ---------- the layer ----------
 const CONFETTI_TG = [
@@ -956,6 +1299,10 @@ export default function Seasonal() {
   const [gCount, setGCount] = useState(null)
   const fallCacheKey = user?.id ? `cc.${FALL_KEY}.${user.id}` : null
   const [fall, setFallState] = useState(false)
+  const xmCacheKey = user?.id ? `cc.${XMAS_KEY}.${user.id}` : null
+  const [xmMode, setXmModeState] = useState(false)
+  const [adventOpen, setAdventOpen] = useState(false)
+  const [garlandRight, setGarlandRight] = useState(null)
   const season = activeSeason()
   const idRef = useRef(0)
   const still = reduceMotion()
@@ -969,6 +1316,7 @@ export default function Seasonal() {
       _off = !enabled; setOn(enabled)
       document.body.classList.toggle('cc-halloween', enabled && season.key === 'halloween')
       document.body.classList.toggle('cc-thanksgiving', enabled && season.key === 'thanksgiving')
+      document.body.classList.toggle('cc-christmas', enabled && season.key === 'christmas')
       window.dispatchEvent(new Event('cc:seasonal-state'))
       if (enabled) {
         const key = `cc.season.greet.${season.key}.${new Date().toDateString()}`
@@ -977,7 +1325,7 @@ export default function Seasonal() {
     })
     read()
     window.addEventListener('cc:seasonal-changed', read)
-    return () => { alive = false; window.removeEventListener('cc:seasonal-changed', read); document.body.classList.remove('cc-halloween'); document.body.classList.remove('cc-thanksgiving') }
+    return () => { alive = false; window.removeEventListener('cc:seasonal-changed', read); document.body.classList.remove('cc-halloween'); document.body.classList.remove('cc-thanksgiving'); document.body.classList.remove('cc-christmas') }
   }, [user?.id, season?.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Intentional edge moments (no more floaters through the middle of the screen):
@@ -1012,6 +1360,21 @@ export default function Seasonal() {
     document.documentElement.classList.toggle('cc-fall', active)
     return () => document.documentElement.classList.remove('cc-fall')
   }, [on, season?.key, fall])
+  // Christmas Mode: saved per person like Fall Mode (the look itself comes with the next mockup).
+  useEffect(() => {
+    if (!on || season?.key !== 'christmas' || !user?.id) return
+    try { if (localStorage.getItem(xmCacheKey) === '1') setXmModeState(true) } catch { /* ignore */ }
+    supabase.from('seasonal_prefs').select('enabled').eq('profile_id', user.id).eq('key', XMAS_KEY).maybeSingle()
+      .then(({ data }) => { if (data) { setXmModeState(!!data.enabled); try { localStorage.setItem(xmCacheKey, data.enabled ? '1' : '0') } catch { /* ignore */ } } })
+    let link = document.getElementById('cc-xm-font')
+    if (!link) { link = document.createElement('link'); link.id = 'cc-xm-font'; link.rel = 'stylesheet'; link.href = 'https://fonts.googleapis.com/css2?family=Kaushan+Script&display=swap'; document.head.appendChild(link) }
+    return () => { document.getElementById('cc-xm-font')?.remove() }
+  }, [on, season?.key, user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const active = !!(on && season?.key === 'christmas' && xmMode)
+    document.documentElement.classList.toggle('cc-xmas', active)
+    return () => document.documentElement.classList.remove('cc-xmas')
+  }, [on, season?.key, xmMode])
   // Gratitude Tree count (header badge) + the script font for the lettering, only while Thanksgiving is on.
   useEffect(() => {
     if (!on || season?.key !== 'thanksgiving') return
@@ -1072,7 +1435,7 @@ export default function Seasonal() {
       if (still) return
       const x = e?.detail?.x ?? window.innerWidth / 2, y = e?.detail?.y ?? window.innerHeight - 140
       const id = ++idRef.current
-      const set = season.key === 'thanksgiving' ? CONFETTI_TG : CONFETTI
+      const set = season.key === 'thanksgiving' ? CONFETTI_TG : season.key === 'christmas' ? CONFETTI_XM : CONFETTI
       const bits = Array.from({ length: 16 }, (_, i) => ({ k: i, C: set[i % set.length],
         dx: `${Math.round((Math.random() - .5) * 280)}px`, dy: `${Math.round(-70 - Math.random() * 190)}px`, rot: `${Math.round((Math.random() - .5) * 540)}deg`, d: 1 + Math.random() * .6 }))
       setBursts(b => [...b, { id, x, y, bits }])
@@ -1090,6 +1453,33 @@ export default function Seasonal() {
     try { localStorage.setItem(fallCacheKey, v ? '1' : '0') } catch { /* ignore */ }
     supabase.from('seasonal_prefs').upsert({ profile_id: user.id, key: FALL_KEY, enabled: v, updated_at: new Date().toISOString() }, { onConflict: 'profile_id,key' }).then(() => {})
   }
+  const setXmMode = (v) => {
+    setXmModeState(v)
+    try { localStorage.setItem(xmCacheKey, v ? '1' : '0') } catch { /* ignore */ }
+    supabase.from('seasonal_prefs').upsert({ profile_id: user.id, key: XMAS_KEY, enabled: v, updated_at: new Date().toISOString() }, { onConflict: 'profile_id,key' }).then(() => {})
+  }
+  if (season.key === 'christmas') return (
+    <>
+      <style>{CSS}</style>
+      <style>{XM_CSS}</style>
+      <XmSnow />
+      <XmSidebarFlakes />
+      <XmFrame />
+      <XmTopGarland onRight={setGarlandRight} />
+      <XmHeader mode={xmMode} setMode={setXmMode} garlandRight={garlandRight} />
+      <XmButton onOpen={() => setAdventOpen(true)} />
+      {adventOpen && <XmAdvent onClose={() => setAdventOpen(false)} />}
+      <div className="cc-season-layer" aria-hidden="true">
+        {bursts.map(b => (
+          <div key={b.id} style={{ position: 'absolute', left: b.x, top: b.y }}>
+            {b.bits.map(({ k, C, dx, dy, rot, d }) => (
+              <span key={k} style={{ position: 'absolute', '--dx': dx, '--dy': dy, '--rot': rot, animation: `ccPop ${d}s ease-out forwards` }}><C /></span>
+            ))}
+          </div>
+        ))}
+      </div>
+    </>
+  )
   if (season.key === 'thanksgiving') return (
     <>
       <style>{CSS}</style>
@@ -1184,6 +1574,7 @@ export default function Seasonal() {
 // A tiny cute witch hat (Chat avatars during Halloween week).
 export function WitchHat({ size }) {
   if (seasonalHat() === 'pilgrim') return <PilgrimHatSvg size={size} />
+  if (seasonalHat() === 'santa') return <SantaHatSvg size={size} />
   const w = Math.max(13, Math.round(size * 0.8))
   return (
     <svg aria-hidden="true" width={w} height={w} viewBox="0 0 40 40"
