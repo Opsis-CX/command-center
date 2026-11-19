@@ -273,7 +273,7 @@ export default function ScheduleBuilder() {
                 <button className="btn btn-ghost" style={{ color: 'var(--failed)' }} onClick={() => deleteSchedule(s)}>Delete</button>
               </div>
             </div>
-            {pastDayCount > 0 && (
+            {pastDayCount > 0 && (viewBySchedule[s.id] || 'grid') === 'list' && (
               <button onClick={() => setPastBySchedule(v => ({ ...v, [s.id]: !showPast }))}
                 style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink-soft)', fontSize: 12.5, fontWeight: 600, padding: '2px 0', marginBottom: 8 }}>
                 {showPast ? '▾ Hide' : '▸ Show'} {pastDayCount} past day{pastDayCount !== 1 ? 's' : ''}
@@ -281,15 +281,15 @@ export default function ScheduleBuilder() {
             )}
             {!sBlocks.length ? (
               <div className="page-sub" style={{ padding: '6px 0' }}>No intervals yet.</div>
-            ) : !shownBlocks.length ? (
-              <div className="page-sub" style={{ padding: '6px 0' }}>Nothing upcoming — every interval on this schedule is in the past.</div>
             ) : (viewBySchedule[s.id] || 'grid') === 'grid' ? (
-              <ScheduleGrid blocks={shownBlocks} claims={claims} today={today}
+              <ScheduleGrid blocks={sBlocks} claims={claims} today={today}
                 onEdit={(b) => setEditBlock({ scheduleId: s.id, block: b })}
                 onAdd={(dayISO, startHM, mins) => setEditBlock({ scheduleId: s.id, preset: { date: dayISO, start: startHM, end: addMinsHM(startHM, mins) } })}
                 onDeleteDay={(dayISO) => deleteDay(s, dayISO)}
                 onDeleteMany={(list) => deleteMany(s, list)}
                 onChanged={(msg) => { load(true); flash(msg) }} />
+            ) : !shownBlocks.length ? (
+              <div className="page-sub" style={{ padding: '6px 0' }}>Nothing upcoming — every interval on this schedule is in the past.</div>
             ) : (
               // List view is grouped by day so a whole day can be removed in one go.
               [...new Set(shownBlocks.map(b => b.block_date))].sort().map(dayISO => {
@@ -586,8 +586,24 @@ function ReviewCard({ claim, block, person, meId, onDone }) {
 //  • "Select" mode → click / shift-click / day header / time label to pick
 //    many intervals, then change spots, change times, or delete them together.
 // Past days are read-only: the DB refuses to re-time, re-size or delete them.
-function ScheduleGrid({ blocks, claims, onEdit, onAdd, onDeleteDay, onDeleteMany, onChanged, today }) {
+function ScheduleGrid({ blocks: allBlocks, claims, onEdit, onAdd, onDeleteDay, onDeleteMany, onChanged, today }) {
   const claimCount = (b) => claims.filter(c => c.shift_block_id === b.id).length
+
+  // One week (Mon–Sun) at a time. Opens on this week, or the schedule's next
+  // week with intervals, or (for a finished schedule) its last week.
+  const [week, setWeek] = useState(() => {
+    const t = today || todayISO()
+    const dates = allBlocks.map(b => b.block_date).sort()
+    const thisWk = weekStartISO(t)
+    if (dates.some(d => weekStartISO(d) === thisWk)) return thisWk
+    const next = dates.find(d => d >= t)
+    return weekStartISO(next || dates[dates.length - 1] || t)
+  })
+  const [focusDay, setFocusDay] = useState(null)   // highlighted after "Go to date"
+  const weekEnd = addDaysISO(week, 6)
+  const blocks = allBlocks.filter(b => b.block_date >= week && b.block_date <= weekEnd)
+  const weeksWithIntervals = [...new Set(allBlocks.map(b => weekStartISO(b.block_date)))].sort()
+  const goDate = (iso) => { if (!iso) return; setWeek(weekStartISO(iso)); setFocusDay(iso) }
   const [selecting, setSelecting] = useState(false)
   const [sel, setSel] = useState(() => new Set())
   const [anchor, setAnchor] = useState(null)   // {d, t} index of the last plain click, for shift-click ranges
@@ -597,9 +613,11 @@ function ScheduleGrid({ blocks, claims, onEdit, onAdd, onDeleteDay, onDeleteMany
   const [tStart, setTStart] = useState('')
   const [tEnd, setTEnd] = useState('')
 
-  // unique day columns (sorted) and start-time rows (sorted)
-  const dayKeys = [...new Set(blocks.map(b => b.block_date))].sort()
-  const startKeys = [...new Set(blocks.map(b => b.start_time.slice(0, 5)))].sort()
+  // All 7 days of the week as columns (empty days can still be clicked to add),
+  // and every start time the schedule uses as rows, so the grid keeps the same
+  // shape from week to week.
+  const dayKeys = [0, 1, 2, 3, 4, 5, 6].map(i => addDaysISO(week, i))
+  const startKeys = [...new Set(allBlocks.map(b => b.start_time.slice(0, 5)))].sort()
 
   // index blocks by day+start for quick lookup
   const byCell = {}
@@ -609,22 +627,23 @@ function ScheduleGrid({ blocks, claims, onEdit, onAdd, onDeleteDay, onDeleteMany
   // the end time when adding into an empty slot.
   const typicalMins = (() => {
     const counts = {}
-    for (const b of blocks) { const m = toMins(b.end_time) - toMins(b.start_time); if (m > 0) counts[m] = (counts[m] || 0) + 1 }
+    for (const b of allBlocks) { const m = toMins(b.end_time) - toMins(b.start_time); if (m > 0) counts[m] = (counts[m] || 0) + 1 }
     const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]
     return best ? Number(best[0]) : 30
   })()
 
   const editable = (b) => b && (!today || b.block_date >= today)
-  const selBlocks = blocks.filter(b => sel.has(b.id))
+  const selBlocks = allBlocks.filter(b => sel.has(b.id))
+  const selOtherWeeks = selBlocks.filter(b => b.block_date < week || b.block_date > weekEnd).length
 
   // Drop selections that no longer exist after a reload.
   useEffect(() => {
     setSel(prev => {
-      const ids = new Set(blocks.map(b => b.id))
+      const ids = new Set(allBlocks.map(b => b.id))
       const next = new Set([...prev].filter(id => ids.has(id)))
       return next.size === prev.size ? prev : next
     })
-  }, [blocks])
+  }, [allBlocks])
 
   function toggleMany(list, forceOn) {
     const ids = list.filter(editable).map(b => b.id)
@@ -704,8 +723,37 @@ function ScheduleGrid({ blocks, claims, onEdit, onAdd, onDeleteDay, onDeleteMany
   const hourLabel = (hm) => { const [h, m] = hm.split(':').map(Number); const p = h >= 12 ? 'p' : 'a'; const h12 = h % 12 === 0 ? 12 : h % 12; return m === 0 ? `${h12}${p}` : `${h12}:${String(m).padStart(2, '0')}${p}` }
   const small = { fontSize: 12, padding: '5px 10px' }
 
+  const wkLabel = `${new Date(week + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(weekEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+  const wkIdx = weeksWithIntervals.indexOf(week)
+  const prevWithIntervals = [...weeksWithIntervals].reverse().find(w => w < week)
+  const nextWithIntervals = weeksWithIntervals.find(w => w > week)
+
   return (
     <div style={{ marginTop: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        <button className="btn btn-ghost" style={small} onClick={() => { setWeek(addDaysISO(week, -7)); setFocusDay(null) }} title="Previous week">‹</button>
+        <div style={{ fontSize: 14, fontWeight: 700, minWidth: 190, textAlign: 'center' }}>
+          Week of {wkLabel}
+          <div className="page-sub" style={{ fontSize: 11, fontWeight: 500 }}>
+            {blocks.length} interval{blocks.length !== 1 ? 's' : ''}{wkIdx >= 0 ? ` · week ${wkIdx + 1} of ${weeksWithIntervals.length}` : ''}
+          </div>
+        </div>
+        <button className="btn btn-ghost" style={small} onClick={() => { setWeek(addDaysISO(week, 7)); setFocusDay(null) }} title="Next week">›</button>
+        <button className="btn btn-ghost" style={small} onClick={() => goDate(today || todayISO())}>This week</button>
+        <label className="page-sub" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          Go to date
+          <input type="date" value={focusDay || ''} onChange={e => goDate(e.target.value)}
+            style={{ padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 6 }} />
+        </label>
+        {!blocks.length && (prevWithIntervals || nextWithIntervals) && (
+          <span className="page-sub" style={{ fontSize: 12 }}>
+            No intervals this week —{' '}
+            {prevWithIntervals && <a href="#" onClick={e => { e.preventDefault(); setWeek(prevWithIntervals) }}>previous week with intervals</a>}
+            {prevWithIntervals && nextWithIntervals && ' · '}
+            {nextWithIntervals && <a href="#" onClick={e => { e.preventDefault(); setWeek(nextWithIntervals) }}>next week with intervals</a>}
+          </span>
+        )}
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 10, fontSize: 12, color: 'var(--ink-soft)', flexWrap: 'wrap' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: 'var(--passed-bg)', border: '1px solid var(--passed)' }} />Full</span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: 'var(--needed-bg)', border: '1px solid var(--needed)' }} />Partial</span>
@@ -723,7 +771,7 @@ function ScheduleGrid({ blocks, claims, onEdit, onAdd, onDeleteDay, onDeleteMany
 
       {selecting && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 12px', marginBottom: 10, borderRadius: 8, border: '1px solid var(--line)', background: 'var(--canvas)', fontSize: 13 }}>
-          <b style={{ marginRight: 4 }}>{sel.size} selected</b>
+          <b style={{ marginRight: 4 }}>{sel.size} selected{selOtherWeeks ? ` (${selOtherWeeks} on other weeks)` : ''}</b>
           {sel.size > 0 && <>
             <span className="page-sub" style={{ marginLeft: 6 }}>Spots</span>
             <button className="btn btn-ghost" style={small} disabled={busy} onClick={() => bumpSpots(-1)} title="One fewer spot on each (never below who's already claimed)">−1</button>
@@ -745,24 +793,26 @@ function ScheduleGrid({ blocks, claims, onEdit, onAdd, onDeleteDay, onDeleteMany
         </div>
       )}
 
-      <div style={{ overflowX: 'auto' }}>
-      <table style={{ borderCollapse: 'separate', borderSpacing: 3, tableLayout: 'fixed', minWidth: Math.max(360, 60 + dayKeys.length * 84), userSelect: selecting ? 'none' : undefined }}>
+      {/* Own scroll box: the day header and the time column stay put while you scroll. */}
+      <div style={{ overflow: 'auto', maxHeight: '68vh', border: '1px solid var(--line)', borderRadius: 8 }}>
+      <table style={{ borderCollapse: 'separate', borderSpacing: 3, tableLayout: 'fixed', width: '100%', minWidth: 60 + 7 * 84, userSelect: selecting ? 'none' : undefined }}>
         <thead>
           <tr>
-            <th style={{ width: 52 }} />
+            <th style={{ width: 52, position: 'sticky', top: 0, left: 0, zIndex: 3, background: 'var(--surface)' }} />
             {dayKeys.map(dk => {
               const dayBlocks = blocks.filter(b => b.block_date === dk)
               const n = dayBlocks.length
               const past = today && dk < today
               return (
-                <th key={dk} style={{ width: 84, fontSize: 11.5, fontWeight: 600, color: 'var(--ink-soft)', paddingBottom: 4, textAlign: 'center' }}>
+                <th key={dk} style={{ width: 84, fontSize: 11.5, fontWeight: 600, color: dk === focusDay ? 'var(--accent, #0077B6)' : 'var(--ink-soft)', padding: '6px 0 4px', textAlign: 'center',
+                  position: 'sticky', top: 0, zIndex: 2, background: dk === focusDay ? 'var(--canvas)' : 'var(--surface)', borderBottom: '1px solid var(--line)' }}>
                   <div onClick={selecting && !past ? () => toggleMany(dayBlocks) : undefined}
                     title={selecting && !past ? 'Select every interval on this day' : undefined}
                     style={{ cursor: selecting && !past ? 'pointer' : 'default', textDecoration: selecting && !past ? 'underline dotted' : 'none' }}>
                     {dayLabel(dk)}
                   </div>
                   {/* Past days are history — the DB refuses to delete them, so no button. */}
-                  {!selecting && onDeleteDay && !past && (
+                  {!selecting && onDeleteDay && !past && n > 0 && (
                     <button onClick={() => onDeleteDay(dk)}
                       title={`Delete all ${n} interval${n !== 1 ? 's' : ''} on ${dayLabel(dk)}`}
                       aria-label={`Delete all intervals on ${dayLabel(dk)}`}
@@ -780,7 +830,8 @@ function ScheduleGrid({ blocks, claims, onEdit, onAdd, onDeleteDay, onDeleteMany
             <tr key={sk}>
               <td onClick={selecting ? () => toggleMany(blocks.filter(b => b.start_time.slice(0, 5) === sk)) : undefined}
                 title={selecting ? 'Select this time on every day' : undefined}
-                style={{ fontSize: 11, color: 'var(--ink-soft)', textAlign: 'right', paddingRight: 6, whiteSpace: 'nowrap', cursor: selecting ? 'pointer' : 'default', textDecoration: selecting ? 'underline dotted' : 'none' }}>{hourLabel(sk)}</td>
+                style={{ fontSize: 11, color: 'var(--ink-soft)', textAlign: 'right', paddingRight: 6, whiteSpace: 'nowrap', cursor: selecting ? 'pointer' : 'default', textDecoration: selecting ? 'underline dotted' : 'none',
+                  position: 'sticky', left: 0, zIndex: 1, background: 'var(--surface)' }}>{hourLabel(sk)}</td>
               {dayKeys.map((dk, dIdx) => {
                 const b = byCell[dk + '|' + sk]
                 const past = today && dk < today
@@ -789,7 +840,7 @@ function ScheduleGrid({ blocks, claims, onEdit, onAdd, onDeleteDay, onDeleteMany
                   return <td key={dk} onClick={canAdd ? (e) => clickCell(dIdx, tIdx, null, e) : undefined}
                     className={canAdd ? 'sb-empty-cell' : undefined}
                     title={canAdd ? `Add an interval on ${dayLabel(dk)} at ${hourLabel(sk)}` : undefined}
-                    style={{ height: 34, borderRadius: 5, background: 'var(--canvas)', opacity: .4, cursor: canAdd ? 'copy' : 'default', textAlign: 'center', fontSize: 14, color: 'var(--ink-soft)' }} />
+                    style={{ height: 34, borderRadius: 5, background: dk === focusDay ? 'var(--needed-bg)' : 'var(--canvas)', opacity: .4, cursor: canAdd ? 'copy' : 'default', textAlign: 'center', fontSize: 14, color: 'var(--ink-soft)' }} />
                 }
                 const tn = tone(b)
                 const isSel = sel.has(b.id)
