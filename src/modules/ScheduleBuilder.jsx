@@ -80,8 +80,11 @@ export default function ScheduleBuilder() {
       now >= new Date(w.opens_at).getTime() && now <= new Date(w.closes_at).getTime()) || null
   }
 
-  const load = useCallback(async () => {
-    setLoading(true); setErr('')
+  // quiet = refresh the data without the full-page "Loading…" (keeps grid
+  // selections and scroll position while you make bulk changes).
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true)
+    setErr('')
     try {
       const [schRes, blkRes, clmRes, ctRes, profRes, audRes, cliRes, vtoRes] = await Promise.all([
         supabase.from('schedules').select('*').order('week_start_date', { ascending: false }),
@@ -138,6 +141,17 @@ export default function ScheduleBuilder() {
       subtitle: `${schedule.title} · ${dayBlocks.length} interval${dayBlocks.length !== 1 ? 's' : ''} on this day`,
       blockIds: dayBlocks.map(b => b.id),
       doneMsg: `Deleted ${dayBlocks.length} interval(s) on ${label}`,
+    })
+  }
+
+  // Several hand-picked intervals (grid "Select several"), same guarded RPC.
+  function deleteMany(schedule, list) {
+    if (!list.length) return
+    setDeleteFor({
+      title: `Delete ${list.length} interval${list.length !== 1 ? 's' : ''}?`,
+      subtitle: `${schedule.title} · ${[...new Set(list.map(b => b.block_date))].length} day(s) selected`,
+      blockIds: list.map(b => b.id),
+      doneMsg: `Deleted ${list.length} interval(s)`,
     })
   }
 
@@ -272,7 +286,10 @@ export default function ScheduleBuilder() {
             ) : (viewBySchedule[s.id] || 'grid') === 'grid' ? (
               <ScheduleGrid blocks={shownBlocks} claims={claims} today={today}
                 onEdit={(b) => setEditBlock({ scheduleId: s.id, block: b })}
-                onDeleteDay={(dayISO) => deleteDay(s, dayISO)} />
+                onAdd={(dayISO, startHM, mins) => setEditBlock({ scheduleId: s.id, preset: { date: dayISO, start: startHM, end: addMinsHM(startHM, mins) } })}
+                onDeleteDay={(dayISO) => deleteDay(s, dayISO)}
+                onDeleteMany={(list) => deleteMany(s, list)}
+                onChanged={(msg) => { load(true); flash(msg) }} />
             ) : (
               // List view is grouped by day so a whole day can be removed in one go.
               [...new Set(shownBlocks.map(b => b.block_date))].sort().map(dayISO => {
@@ -343,7 +360,8 @@ export default function ScheduleBuilder() {
 
       {editSchedule && <ScheduleModal schedule={editSchedule} callTypes={callTypes} clients={clients} profiles={profiles} audience={audience}
         onClose={() => setEditSchedule(null)} onSaved={() => { setEditSchedule(null); load(); flash('Schedule saved') }} />}
-      {editBlock && <BlockModal editBlock={editBlock} schedules={schedules}
+      {editBlock && <BlockModal editBlock={editBlock} schedules={schedules} claims={claims} profiles={profiles}
+        onDelete={(b) => { setEditBlock(null); deleteBlock(b) }}
         onClose={() => setEditBlock(null)} onSaved={() => { setEditBlock(null); load(); flash('Interval saved') }} />}
       {importFor && <ImportModal scheduleId={importFor}
         onClose={() => setImportFor(null)} onDone={(n) => { setImportFor(null); load(); flash(`Imported ${n} interval${n !== 1 ? 's' : ''}`) }} />}
@@ -561,11 +579,23 @@ function ReviewCard({ claim, block, person, meId, onDone }) {
 }
 
 // ---------- CALENDAR GRID VIEW ----------
-// Days as columns, hour-rows as rows, built from the schedule's own blocks.
+// Days as columns, start times as rows, built from the schedule's own blocks.
 // Cell color = coverage: green full, amber partial, red unfilled.
-// Clicking a cell opens the same edit modal as the list view.
-function ScheduleGrid({ blocks, claims, onEdit, onDeleteDay, today }) {
+//  • Click an interval → edit it (the edit popup also has Delete).
+//  • Click an empty slot (today or later) → new interval prefilled there.
+//  • "Select" mode → click / shift-click / day header / time label to pick
+//    many intervals, then change spots, change times, or delete them together.
+// Past days are read-only: the DB refuses to re-time, re-size or delete them.
+function ScheduleGrid({ blocks, claims, onEdit, onAdd, onDeleteDay, onDeleteMany, onChanged, today }) {
   const claimCount = (b) => claims.filter(c => c.shift_block_id === b.id).length
+  const [selecting, setSelecting] = useState(false)
+  const [sel, setSel] = useState(() => new Set())
+  const [anchor, setAnchor] = useState(null)   // {d, t} index of the last plain click, for shift-click ranges
+  const [busy, setBusy] = useState(false)
+  const [bulkErr, setBulkErr] = useState('')
+  const [setTo, setSetTo] = useState('')
+  const [tStart, setTStart] = useState('')
+  const [tEnd, setTEnd] = useState('')
 
   // unique day columns (sorted) and start-time rows (sorted)
   const dayKeys = [...new Set(blocks.map(b => b.block_date))].sort()
@@ -574,6 +604,93 @@ function ScheduleGrid({ blocks, claims, onEdit, onDeleteDay, today }) {
   // index blocks by day+start for quick lookup
   const byCell = {}
   for (const b of blocks) byCell[b.block_date + '|' + b.start_time.slice(0, 5)] = b
+
+  // Most common interval length on this schedule (minutes) — used to prefill
+  // the end time when adding into an empty slot.
+  const typicalMins = (() => {
+    const counts = {}
+    for (const b of blocks) { const m = toMins(b.end_time) - toMins(b.start_time); if (m > 0) counts[m] = (counts[m] || 0) + 1 }
+    const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]
+    return best ? Number(best[0]) : 30
+  })()
+
+  const editable = (b) => b && (!today || b.block_date >= today)
+  const selBlocks = blocks.filter(b => sel.has(b.id))
+
+  // Drop selections that no longer exist after a reload.
+  useEffect(() => {
+    setSel(prev => {
+      const ids = new Set(blocks.map(b => b.id))
+      const next = new Set([...prev].filter(id => ids.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [blocks])
+
+  function toggleMany(list, forceOn) {
+    const ids = list.filter(editable).map(b => b.id)
+    if (!ids.length) return
+    setSel(prev => {
+      const next = new Set(prev)
+      const allOn = ids.every(id => next.has(id))
+      const turnOn = forceOn ?? !allOn
+      ids.forEach(id => turnOn ? next.add(id) : next.delete(id))
+      return next
+    })
+  }
+
+  function clickCell(dIdx, tIdx, b, e) {
+    if (!selecting) { if (b) onEdit(b); else if (onAdd && (!today || dayKeys[dIdx] >= today)) onAdd(dayKeys[dIdx], startKeys[tIdx], typicalMins); return }
+    if (!b) return
+    if (e.shiftKey && anchor) {
+      const d0 = Math.min(anchor.d, dIdx), d1 = Math.max(anchor.d, dIdx)
+      const t0 = Math.min(anchor.t, tIdx), t1 = Math.max(anchor.t, tIdx)
+      const list = []
+      for (let d = d0; d <= d1; d++) for (let t = t0; t <= t1; t++) { const x = byCell[dayKeys[d] + '|' + startKeys[t]]; if (x) list.push(x) }
+      toggleMany(list, true)
+    } else {
+      toggleMany([b])
+      setAnchor({ d: dIdx, t: tIdx })
+    }
+  }
+
+  function exitSelect() { setSelecting(false); setSel(new Set()); setAnchor(null); setBulkErr('') }
+
+  // Run one update per interval; report what was skipped and why.
+  async function runBulk(makePayload, label) {
+    setBusy(true); setBulkErr('')
+    let ok = 0; const fails = []
+    for (const b of selBlocks) {
+      const payload = makePayload(b)
+      if (!payload) continue
+      const { error } = await supabase.from('shift_blocks').update(payload).eq('id', b.id)
+      if (error) fails.push(`${fmtDate(b.block_date)} ${formatTime(b.start_time)}: ${error.message}`)
+      else ok++
+    }
+    setBusy(false)
+    if (fails.length) setBulkErr(`${fails.length} not changed — ${fails.slice(0, 3).join(' · ')}${fails.length > 3 ? ' …' : ''}`)
+    onChanged(`${label} on ${ok} interval${ok !== 1 ? 's' : ''}`)
+  }
+
+  function bumpSpots(delta) {
+    runBulk(b => {
+      const next = Math.max(1, b.total_spots + delta, claimCount(b))
+      return next === b.total_spots ? null : { total_spots: next }
+    }, delta > 0 ? 'Added a spot' : 'Removed a spot')
+  }
+  function setSpots() {
+    const n = parseInt(setTo, 10)
+    if (!n || n < 1) { setBulkErr('Enter a number of spots (1 or more).'); return }
+    const tooSmall = selBlocks.filter(b => claimCount(b) > n)
+    if (tooSmall.length) { setBulkErr(`${tooSmall.length} selected interval(s) already have more than ${n} people claimed — pick a bigger number or unselect them.`); return }
+    runBulk(b => b.total_spots === n ? null : { total_spots: n }, `Set ${n} spot${n !== 1 ? 's' : ''}`)
+  }
+  function setTimes() {
+    if (!tStart || !tEnd) { setBulkErr('Pick a start and end time.'); return }
+    if (tEnd <= tStart) { setBulkErr('End time must be after the start time.'); return }
+    const claimed = selBlocks.filter(b => claimCount(b) > 0)
+    if (claimed.length) { setBulkErr(`${claimed.length} selected interval(s) have people on them, and their times can't move. Unselect those (or remove the people first).`); return }
+    runBulk(() => ({ start_time: tStart, end_time: tEnd }), `Changed times`)
+  }
 
   const tone = (b) => {
     if (!b) return null
@@ -585,25 +702,67 @@ function ScheduleGrid({ blocks, claims, onEdit, onDeleteDay, today }) {
 
   const dayLabel = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
   const hourLabel = (hm) => { const [h, m] = hm.split(':').map(Number); const p = h >= 12 ? 'p' : 'a'; const h12 = h % 12 === 0 ? 12 : h % 12; return m === 0 ? `${h12}${p}` : `${h12}:${String(m).padStart(2, '0')}${p}` }
+  const small = { fontSize: 12, padding: '5px 10px' }
 
   return (
-    <div style={{ overflowX: 'auto', marginTop: 4 }}>
+    <div style={{ marginTop: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 10, fontSize: 12, color: 'var(--ink-soft)', flexWrap: 'wrap' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: 'var(--passed-bg)', border: '1px solid var(--passed)' }} />Full</span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: 'var(--needed-bg)', border: '1px solid var(--needed)' }} />Partial</span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: 'var(--failed-bg)', border: '1px solid var(--failed)' }} />Unfilled</span>
+        <span style={{ marginLeft: 'auto' }}>
+          {selecting
+            ? <>Click intervals to select · Shift-click for a range · Click a day or time to select it all</>
+            : <>Click an interval to edit or delete · Click an empty slot to add one</>}
+        </span>
+        <button className={'btn ' + (selecting ? 'btn-primary' : 'btn-ghost')} style={small}
+          onClick={() => selecting ? exitSelect() : setSelecting(true)}>
+          {selecting ? 'Done selecting' : '☑ Select several'}
+        </button>
       </div>
-      <table style={{ borderCollapse: 'separate', borderSpacing: 3, tableLayout: 'fixed', minWidth: Math.max(360, 60 + dayKeys.length * 84) }}>
+
+      {selecting && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 12px', marginBottom: 10, borderRadius: 8, border: '1px solid var(--line)', background: 'var(--canvas)', fontSize: 13 }}>
+          <b style={{ marginRight: 4 }}>{sel.size} selected</b>
+          {sel.size > 0 && <>
+            <span className="page-sub" style={{ marginLeft: 6 }}>Spots</span>
+            <button className="btn btn-ghost" style={small} disabled={busy} onClick={() => bumpSpots(-1)} title="One fewer spot on each (never below who's already claimed)">−1</button>
+            <button className="btn btn-ghost" style={small} disabled={busy} onClick={() => bumpSpots(1)} title="One more spot on each">+1</button>
+            <input type="number" min="1" value={setTo} onChange={e => setSetTo(e.target.value)} placeholder="Set to" style={{ width: 70, padding: '5px 8px', border: '1px solid var(--line)', borderRadius: 6 }} />
+            <button className="btn btn-ghost" style={small} disabled={busy || !setTo} onClick={setSpots}>Apply</button>
+            <span className="page-sub" style={{ marginLeft: 10 }}>Times</span>
+            <input type="time" value={tStart} onChange={e => setTStart(e.target.value)} style={{ padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 6 }} />
+            <span>–</span>
+            <input type="time" value={tEnd} onChange={e => setTEnd(e.target.value)} style={{ padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 6 }} />
+            <button className="btn btn-ghost" style={small} disabled={busy || !tStart || !tEnd} onClick={setTimes}>Apply</button>
+            <button className="btn btn-ghost" style={{ ...small, color: 'var(--failed)', marginLeft: 'auto' }} disabled={busy}
+              onClick={() => onDeleteMany(selBlocks)}>🗑 Delete {sel.size}</button>
+            <button className="btn btn-ghost" style={small} disabled={busy} onClick={() => setSel(new Set())}>Clear</button>
+          </>}
+          {sel.size === 0 && <span className="page-sub">Pick intervals in the grid below.</span>}
+          {busy && <span className="page-sub">Saving…</span>}
+          {bulkErr && <div style={{ flexBasis: '100%', color: 'var(--failed)', fontSize: 12.5 }}>{bulkErr}</div>}
+        </div>
+      )}
+
+      <div style={{ overflowX: 'auto' }}>
+      <table style={{ borderCollapse: 'separate', borderSpacing: 3, tableLayout: 'fixed', minWidth: Math.max(360, 60 + dayKeys.length * 84), userSelect: selecting ? 'none' : undefined }}>
         <thead>
           <tr>
             <th style={{ width: 52 }} />
             {dayKeys.map(dk => {
-              const n = blocks.filter(b => b.block_date === dk).length
+              const dayBlocks = blocks.filter(b => b.block_date === dk)
+              const n = dayBlocks.length
+              const past = today && dk < today
               return (
                 <th key={dk} style={{ width: 84, fontSize: 11.5, fontWeight: 600, color: 'var(--ink-soft)', paddingBottom: 4, textAlign: 'center' }}>
-                  <div>{dayLabel(dk)}</div>
+                  <div onClick={selecting && !past ? () => toggleMany(dayBlocks) : undefined}
+                    title={selecting && !past ? 'Select every interval on this day' : undefined}
+                    style={{ cursor: selecting && !past ? 'pointer' : 'default', textDecoration: selecting && !past ? 'underline dotted' : 'none' }}>
+                    {dayLabel(dk)}
+                  </div>
                   {/* Past days are history — the DB refuses to delete them, so no button. */}
-                  {onDeleteDay && (!today || dk >= today) && (
+                  {!selecting && onDeleteDay && !past && (
                     <button onClick={() => onDeleteDay(dk)}
                       title={`Delete all ${n} interval${n !== 1 ? 's' : ''} on ${dayLabel(dk)}`}
                       aria-label={`Delete all intervals on ${dayLabel(dk)}`}
@@ -617,17 +776,31 @@ function ScheduleGrid({ blocks, claims, onEdit, onDeleteDay, today }) {
           </tr>
         </thead>
         <tbody>
-          {startKeys.map(sk => (
+          {startKeys.map((sk, tIdx) => (
             <tr key={sk}>
-              <td style={{ fontSize: 11, color: 'var(--ink-soft)', textAlign: 'right', paddingRight: 6, whiteSpace: 'nowrap' }}>{hourLabel(sk)}</td>
-              {dayKeys.map(dk => {
+              <td onClick={selecting ? () => toggleMany(blocks.filter(b => b.start_time.slice(0, 5) === sk)) : undefined}
+                title={selecting ? 'Select this time on every day' : undefined}
+                style={{ fontSize: 11, color: 'var(--ink-soft)', textAlign: 'right', paddingRight: 6, whiteSpace: 'nowrap', cursor: selecting ? 'pointer' : 'default', textDecoration: selecting ? 'underline dotted' : 'none' }}>{hourLabel(sk)}</td>
+              {dayKeys.map((dk, dIdx) => {
                 const b = byCell[dk + '|' + sk]
+                const past = today && dk < today
+                if (!b) {
+                  const canAdd = !selecting && onAdd && !past
+                  return <td key={dk} onClick={canAdd ? (e) => clickCell(dIdx, tIdx, null, e) : undefined}
+                    className={canAdd ? 'sb-empty-cell' : undefined}
+                    title={canAdd ? `Add an interval on ${dayLabel(dk)} at ${hourLabel(sk)}` : undefined}
+                    style={{ height: 34, borderRadius: 5, background: 'var(--canvas)', opacity: .4, cursor: canAdd ? 'copy' : 'default', textAlign: 'center', fontSize: 14, color: 'var(--ink-soft)' }} />
+                }
                 const tn = tone(b)
-                if (!b) return <td key={dk} style={{ height: 34, borderRadius: 5, background: 'var(--canvas)', opacity: .4 }} />
+                const isSel = sel.has(b.id)
+                const lockedInSelect = selecting && !editable(b)
                 return (
-                  <td key={dk} onClick={() => onEdit(b)} title={`${formatTime(b.start_time)}–${formatTime(b.end_time)}${b.role ? ' · ' + b.role : ''} · ${claimCount(b)}/${b.total_spots} claimed · click to edit`}
-                    style={{ height: 34, borderRadius: 5, background: tn.bg, border: '1px solid ' + tn.bd, color: tn.fg, fontSize: 11, fontWeight: 600, textAlign: 'center', cursor: 'pointer', verticalAlign: 'middle' }}>
-                    {claimCount(b)}/{b.total_spots}
+                  <td key={dk} onClick={(e) => clickCell(dIdx, tIdx, b, e)}
+                    title={`${formatTime(b.start_time)}–${formatTime(b.end_time)}${b.role ? ' · ' + b.role : ''} · ${claimCount(b)}/${b.total_spots} claimed · ${lockedInSelect ? 'past — locked' : selecting ? 'click to select' : 'click to edit'}`}
+                    style={{ height: 34, borderRadius: 5, background: tn.bg, border: (isSel ? '2px solid var(--accent, #0077B6)' : '1px solid ' + tn.bd),
+                      boxShadow: isSel ? '0 0 0 2px rgba(0,119,182,.25)' : 'none', color: tn.fg, fontSize: 11, fontWeight: 600, textAlign: 'center',
+                      cursor: lockedInSelect ? 'not-allowed' : 'pointer', opacity: lockedInSelect ? .5 : 1, verticalAlign: 'middle' }}>
+                    {isSel ? '✓ ' : ''}{claimCount(b)}/{b.total_spots}
                   </td>
                 )
               })}
@@ -635,16 +808,14 @@ function ScheduleGrid({ blocks, claims, onEdit, onDeleteDay, today }) {
           ))}
         </tbody>
       </table>
+      </div>
+      <style>{`.sb-empty-cell:hover{opacity:1 !important;outline:1px dashed var(--accent,#0077B6);} .sb-empty-cell:hover::after{content:'+';}`}</style>
     </div>
   )
 }
+function toMins(t) { const [h, m] = (t || '0:0').slice(0, 5).split(':').map(Number); return h * 60 + m }
+function addMinsHM(hm, mins) { const t = Math.min(toMins(hm) + mins, 23 * 60 + 59); return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}` }
 
-// ---------- DELETE INTERVALS (one interval, or a whole day) ----------
-// Opens, immediately asks the DB for an exact plan (dry run), and shows it.
-// Nothing is deleted until the button is pressed, and if the plan destroys
-// claimed spots the button stays disabled until the checkbox is ticked.
-// Errors from the guards (past day, 200 cap, not an admin) render right here
-// instead of a toast that can be missed.
 function DeleteIntervalsModal({ request, claims, profiles, onClose, onDone }) {
   const { title, subtitle, blockIds, doneMsg } = request
   const [plan, setPlan] = useState(null)
@@ -909,14 +1080,19 @@ function ScheduleModal({ schedule, callTypes, clients, profiles, audience, onClo
 }
 
 // ---------- INTERVAL (BLOCK) CREATE/EDIT ----------
-function BlockModal({ editBlock, schedules, onClose, onSaved }) {
+function BlockModal({ editBlock, schedules, claims = [], profiles = [], onDelete, onClose, onSaved }) {
   const b = editBlock.block
+  const preset = editBlock.preset || {}
   const isNew = !b
   const sched = schedules.find(s => s.id === editBlock.scheduleId)
-  const [date, setDate] = useState(b?.block_date || sched?.week_start_date || '')
+  const [date, setDate] = useState(b?.block_date || preset.date || sched?.week_start_date || '')
   const [role, setRole] = useState(b?.role || '')
-  const [start, setStart] = useState(b?.start_time?.slice(0, 5) || '')
-  const [end, setEnd] = useState(b?.end_time?.slice(0, 5) || '')
+  const [start, setStart] = useState(b?.start_time?.slice(0, 5) || preset.start || '')
+  const [end, setEnd] = useState(b?.end_time?.slice(0, 5) || preset.end || '')
+  // Who's on this interval — shown so you know before you change or delete it.
+  const onIt = b ? claims.filter(c => c.shift_block_id === b.id) : []
+  const onItNames = onIt.map(c => profiles.find(p => p.id === c.profile_id)?.full_name || 'Unknown').sort()
+  const isPast = b && b.block_date < todayISO()
   const [spots, setSpots] = useState(b?.total_spots || 1)
   const [notes, setNotes] = useState(b?.notes || '')
   const [saving, setSaving] = useState(false)
@@ -928,6 +1104,7 @@ function BlockModal({ editBlock, schedules, onClose, onSaved }) {
     // same-day, so an end at/before the start is a typo (e.g. 4:00 for 16:00)
     // that would otherwise silently count as 0 hours.
     if (end <= start) { setErr('End time must be after the start time.'); return }
+    if (b && parseInt(spots, 10) < onIt.length) { setErr(`${onIt.length} people are already on this interval — spots can't go below ${onIt.length}.`); return }
     setSaving(true); setErr('')
     try {
       const payload = {
@@ -947,7 +1124,12 @@ function BlockModal({ editBlock, schedules, onClose, onSaved }) {
     <div className="modal-back open" onClick={e => { if (e.target.classList.contains('modal-back')) onClose() }}>
       <div className="modal">
         <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600 }}>{isNew ? 'New interval' : 'Edit interval'}</h3>
-        <p className="page-sub" style={{ marginBottom: 18 }}>{sched?.title}</p>
+        <p className="page-sub" style={{ marginBottom: onIt.length ? 8 : 18 }}>{sched?.title}</p>
+        {onIt.length > 0 && (
+          <p className="page-sub" style={{ marginBottom: 16, fontSize: 12.5 }}>
+            <b>On this interval ({onIt.length}):</b> {onItNames.join(', ')}. Its date and time are locked while people are on it.
+          </p>
+        )}
         {err && <div className="login-err" style={{ marginBottom: 14 }}>{err}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div className="field"><label>Date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
@@ -958,6 +1140,9 @@ function BlockModal({ editBlock, schedules, onClose, onSaved }) {
         <div className="field"><label>Total spots available</label><input type="number" min="1" value={spots} onChange={e => setSpots(e.target.value)} style={{ width: 120 }} /></div>
         <div className="field"><label>Notes <span style={{ fontWeight: 400 }}>(optional)</span></label><input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Anything agents should know" /></div>
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+          {!isNew && onDelete && !isPast && (
+            <button className="btn btn-ghost" style={{ color: 'var(--failed)', marginRight: 'auto' }} onClick={() => onDelete(b)} disabled={saving}>🗑 Delete</button>
+          )}
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose} disabled={saving}>Cancel</button>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save interval'}</button>
         </div>
