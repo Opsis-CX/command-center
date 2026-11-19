@@ -394,6 +394,8 @@ body.cc-thanksgiving .main { background: color-mix(in srgb, #FED7AA var(--tg-b),
   color: #9A3412; font-family: inherit; font-size: 14px; font-weight: 700; white-space: nowrap; box-shadow: 0 6px 18px -10px rgba(194,65,12,.7); }
 :root[data-theme="dark"] .tg-ann { background: #2A1A10; color: #FDBA74; }
 .tg-ann-main { display: inline-flex; align-items: center; gap: 10px; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; padding: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tg-ann-btn { cursor: pointer; padding: 0 8px 0 14px; transition: transform .15s, box-shadow .15s; }
+.tg-ann-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 22px -10px rgba(194,65,12,.75); }
 .tg-ann-x { border: 0; background: transparent; color: inherit; cursor: pointer; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 15px; }
 .tg-ann-x:hover { background: rgba(234,88,12,.12); }
 .tg-tree-leaf { cursor: pointer; }
@@ -404,77 +406,102 @@ body.cc-thanksgiving .main { background: color-mix(in srgb, #FED7AA var(--tg-b),
 .tg-tab.on { color: #EA580C; border-bottom-color: #EA580C; }
 `
 const GRAT_SEASON = 'thanksgiving-2026'
-const ANN_KEY = 'cc.tg.announce.' + GRAT_SEASON
 const hashNum = (str) => { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return Math.abs(h) }
 
 // "Happy Thanksgiving!" lettering + Gratitude Tree button, centered in the empty middle of the top bar.
+// measure text width once per string (canvas; falls back to an estimate)
+const _tw = {}
+function textWidth(str, font) {
+  const key = font + '|' + str
+  if (_tw[key]) return _tw[key]
+  let w = str.length * parseFloat(font) * .5
+  try { const c = document.createElement('canvas').getContext('2d'); c.font = font; w = c.measureText(str).width } catch { /* ignore */ }
+  return (_tw[key] = w)
+}
+const TG_LINE_2 = "We're thankful for you!"
+// "Happy Thanksgiving! We're thankful for you!" with the leaf sprigs, centered in the top bar.
+// It's centered on the bar itself; if the page name or the right-side icons would get in the way it
+// drops the second line, then the sprigs, then hides. The Fall Mode switch stays at the far right.
 function TgHeader({ count, onOpen, fall, setFall }) {
-  // .tb-left stretches to fill the bar, so measure from the page name (.crumb) instead
   const left = useAnchorRect('.topbar .crumb', 800), right = useAnchorRect('.topbar .tb-right', 800), bar = useAnchorRect('.topbar', 800)
   if (!left || !right || !bar) return null
-  const free = right.left - left.right - 32
-  if (free < 46) return null
-  // Fall Mode switch: at the far right of the top bar on wide screens (space is reserved by CSS),
-  // otherwise at the right end of the free space.
   const wide = window.innerWidth >= 1000
-  const showFall = wide || free >= 300, fallW = wide ? 0 : (free >= 420 ? 148 : 70)
-  const mid = free - (showFall && !wide ? fallW + 16 : 0)
-  const showTitle = mid >= 660, big = mid >= 820, compact = mid < 200
+  const freeAll = right.left - left.right - 32
+  // narrow screens: Fall Mode switch sits at the right end of the free space
+  const fallW = wide ? 0 : (freeAll >= 420 ? 148 : freeAll >= 120 ? 70 : 0)
+  const lo = left.right + 16, hi = right.left - 16 - (fallW ? fallW + 12 : 0)
+  const center = bar.left + bar.width / 2
+  const half = Math.min(center - lo, hi - center)
+  const dark = isDarkTheme()
+  // measure the whole message at full size, then scale everything (lettering + sprigs) down to fit
+  const widthAt = (H, parts) => {
+    const sprigH = H * .78
+    const titleW = dark ? textWidth('Happy Thanksgiving!', `${Math.round(H * .66)}px 'Kaushan Script'`) : H * ART_SIZE.title[0] / ART_SIZE.title[1]
+    const line2W = textWidth(TG_LINE_2, `${Math.round(H * .58)}px 'Kaushan Script'`) + 14
+    const sprigsW = sprigH * (ART_SIZE.sprig_l[0] + ART_SIZE.sprig_r[0]) / ART_SIZE.sprig_l[1] + 20
+    return titleW + (parts.line2 ? line2W : 0) + (parts.sprigs ? sprigsW : 0)
+  }
+  const H0 = Math.min(46, bar.height - 10), room = Math.max(0, half * 2 - 8)
+  let mode = null, H = H0
+  for (const [m, parts] of [['full', { line2: 1, sprigs: 1 }], ['nosprigs', { line2: 1 }], ['title+sprigs', { sprigs: 1 }], ['title', {}]]) {
+    const f = Math.min(1, room / widthAt(H0, parts))
+    if (f >= .62) { mode = m; H = Math.floor(H0 * f); break }
+  }
+  const sprigH = Math.round(H * .78), fs2 = Math.round(H * .58)
+  const showLine2 = mode === 'full' || mode === 'nosprigs', showSprigs = mode === 'full' || mode === 'title+sprigs'
+  const line2Style = dark ? { color: '#FDBA74' } : { background: 'linear-gradient(180deg, #A3261A 0%, #7A1610 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }
   return (
     <>
-    {showFall && (wide
+    {wide
       ? <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: right.right + 12, width: 140, zIndex: 2360, display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
           <FallToggle on={fall} onChange={setFall} />
         </div>
-      : <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: left.right + 16 + free - fallW, width: fallW, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', pointerEvents: 'none' }}>
+      : fallW > 0 && <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: right.left - 16 - fallW, width: fallW, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', pointerEvents: 'none' }}>
           <FallToggle on={fall} onChange={setFall} compact={fallW < 100} />
-        </div>)}
-    <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: left.right + 16, width: mid, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: big ? 26 : 16, pointerEvents: 'none' }}>
-      {showTitle && (
-        isDarkTheme() ? (
-          <div aria-hidden="true" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Sprig w={big ? 82 : 62} flip />
-            <span className="tg-script" style={{ fontSize: big ? 33 : 27, color: '#FDBA74', padding: '6px 4px' }}>Happy Thanksgiving!</span>
-            <Sprig w={big ? 82 : 62} />
-          </div>
-        ) : (
-          <div aria-hidden="true" style={{ display: 'flex', alignItems: 'center', gap: big ? 8 : 4 }}>
-            <ArtImg name="sprig_l" h={big ? 42 : 32} />
-            <ArtImg name="title" h={big ? Math.min(52, bar.height - 6) : 38} />
-            <ArtImg name="sprig_r" h={big ? 42 : 32} />
-          </div>
-        )
-      )}
-      {compact ? (
-        <button className="tg-btn" onClick={onOpen} title="Gratitude Tree" aria-label="Open the Gratitude Tree" style={{ padding: 0, width: 38, justifyContent: 'center' }}><Leaf size={20} color="#F59E0B" /></button>
-      ) : (
-        <button className="tg-btn" onClick={onOpen} title="Add what you're thankful for">
-          <ArtImg name="btn_leaf" h={24} /><span>Gratitude Tree</span>{count != null && <span className="tg-badge">{count}</span>}
-        </button>
-      )}
-    </div>
+        </div>}
+    {mode && (
+      <div aria-label="Happy Thanksgiving! We're thankful for you!" role="img" style={{ position: 'fixed', top: bar.top, height: bar.height, left: center - half, width: half * 2, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, pointerEvents: 'none' }}>
+        {showSprigs && (dark ? <Sprig w={sprigH * 2} flip /> : <ArtImg name="sprig_l" h={sprigH} />)}
+        {dark
+          ? <span className="tg-script" style={{ fontSize: Math.round(H * .66), color: '#FDBA74' }}>Happy Thanksgiving!</span>
+          : <ArtImg name="title" h={H} />}
+        {showLine2 && <span className="tg-script" style={{ fontSize: fs2, padding: '4px 4px 6px', marginLeft: 2, ...line2Style }}>{TG_LINE_2}</span>}
+        {showSprigs && (dark ? <Sprig w={sprigH * 2} /> : <ArtImg name="sprig_r" h={sprigH} />)}
+      </div>
+    )}
+    {/* very small screens (no room for the work-bar button): a little leaf button opens the tree */}
+    {window.innerWidth < 760 && (
+      <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: left.right + 10, zIndex: 2360, display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
+        <button className="tg-btn" onClick={onOpen} title="Gratitude Tree" aria-label="Open the Gratitude Tree" style={{ padding: 0, width: 38, justifyContent: 'center' }}><ArtImg name="btn_leaf" h={22} /></button>
+      </div>
+    )}
     </>
   )
 }
-// The announcement, centered in the empty middle of the work bar (between Status and the shift/timer controls).
-function TgAnnounce({ onOpen }) {
-  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(ANN_KEY) === '1' } catch { return false } })
-  const left = useAnchorRect('.workbar .wb-left', 800), right = useAnchorRect('.workbar .wb-right', 800), bar = useAnchorRect('.workbar', 800)
-  if (hidden || !bar) return null
-  const l = left ? left.right : bar.left, r = right ? right.left : bar.right
-  const free = r - l - 32
-  if (free < 470) return null
-  const close = () => { try { localStorage.setItem(ANN_KEY, '1') } catch { /* ignore */ } setHidden(true) }
+// The main Gratitude Tree button: "Share what you're thankful for on our Gratitude Tree!" with the
+// live leaf count, centered under the header message (in the work bar, between Status and the
+// shift/timer controls). Always shown (no dismiss). Shortens to "Gratitude Tree" when space is tight.
+function TgAnnounce({ onOpen, count }) {
+  const left = useAnchorRect('.workbar .wb-left', 800), right = useAnchorRect('.workbar .wb-right', 800), bar = useAnchorRect('.workbar', 800), top = useAnchorRect('.topbar', 800)
+  if (!bar) return null
+  const lo = (left ? left.right : bar.left) + 22, hi = (right ? right.left : bar.right) - 22
+  const center = top ? top.left + top.width / 2 : bar.left + bar.width / 2
+  const half = Math.min(center - lo, hi - center)
+  const LONG = "Share what you're thankful for on our Gratitude Tree!"
+  const extra = 24 + 20 + 30 + 3 * 10 + 26 + 24   // leaf + heart + count + gaps + padding/border + safety
+  const longW = textWidth(LONG, "700 14px Montserrat") + extra, shortW = textWidth('Gratitude Tree', "700 14px Montserrat") + extra
+  let mode = half * 2 >= longW ? 'long' : half * 2 >= shortW ? 'short' : null
+  let boxLeft = center - half, boxW = half * 2
+  if (!mode && hi - lo >= shortW) { mode = 'short'; boxLeft = lo; boxW = hi - lo }   // not centered, but still reachable
+  if (!mode) return null
   return (
-    <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: l + 16, width: free, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-      <div className="tg-ann" role="status">
-        <button className="tg-ann-main" onClick={onOpen}>
-          <ArtImg name="ann_leaf" h={24} />
-          <span>Share what you're thankful for on our Gratitude Tree!</span>
-          <svg width="20" height="18" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 20 C5 15 2 11.5 2 7.5 C2 4.4 4.4 2 7.3 2 C9.3 2 11 3.1 12 4.8 C13 3.1 14.7 2 16.7 2 C19.6 2 22 4.4 22 7.5 C22 11.5 19 15 12 20 Z" fill="none" stroke="#C2410C" strokeWidth="2" strokeLinejoin="round" /></svg>
-        </button>
-        <button className="tg-ann-x" onClick={close} aria-label="Dismiss" title="Dismiss">✕</button>
-      </div>
+    <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: boxLeft, width: boxW, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+      <button className="tg-ann tg-ann-btn" onClick={onOpen} title="Open the Gratitude Tree">
+        <ArtImg name="ann_leaf" h={24} />
+        <span>{mode === 'long' ? LONG : 'Gratitude Tree'}</span>
+        <svg width="20" height="18" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 20 C5 15 2 11.5 2 7.5 C2 4.4 4.4 2 7.3 2 C9.3 2 11 3.1 12 4.8 C13 3.1 14.7 2 16.7 2 C19.6 2 22 4.4 22 7.5 C22 11.5 19 15 12 20 Z" fill="none" stroke="#C2410C" strokeWidth="2" strokeLinejoin="round" /></svg>
+        {count != null && <span className="tg-badge" aria-label={`${count} leaves`}>{count}</span>}
+      </button>
     </div>
   )
 }
@@ -485,7 +512,8 @@ function TgFrame() {
   const [vh, setVh] = useState(() => window.innerHeight)
   useEffect(() => { const f = () => setVh(window.innerHeight); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f) }, [])
   if (!main || !head) return null
-  const top = head.top + head.height + 14, left = main.left + 14, right = main.right - 18, bottom = vh - 12
+  // frame line sits close to the edges of the content area, leaving the page's own margin free for the leaves
+  const top = head.top + head.height + 7, left = main.left + 7, right = main.right - 11, bottom = vh - 8
   const w = right - left, h = bottom - top
   if (w < 640 || h < 320) return null
   // painted corner pieces, lined up so their frame line sits on ours (offsets are the frame corner inside each image)
@@ -504,9 +532,10 @@ function TgFrame() {
   return (
     <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', top, left, width: w, height: h, zIndex: 2300, pointerEvents: 'none',
       border: '2px solid #F98524', borderRadius: 20 }}>
-      {piece('corner_tr', 228, 1, rightX, top, false, fade(['to bottom', 42, 66], ['to left', 14, 26]))}
+      {/* top-right: tucked up and out, fading before the Call / notification buttons in page headers */}
+      {piece('corner_tr', 228, 1, rightX + 9, top - 6, false, fade(['to bottom', 34, 54], ['to left', 12, 24]), k * .9)}
       {/* top-left: smaller and lighter, because page titles (e.g. "Chat") start right there */}
-      {piece('corner_tl', 236 - 228, 1, left - 9, top - 8, false, fade(['to bottom', 34, 60], ['to right', 12, 24]), k * .74)}
+      {piece('corner_tl', 236 - 228, 1, left - 6, top - 6, false, fade(['to bottom', 32, 54], ['to right', 10, 20]), k * .72)}
       {piece('corner_bl', 3, 146, left, bottomY, false, fade(['to right', 16, 32], ['to top', 26, 46]))}
       {piece('corner_br', 34, 204, rightX, bottomY)}
       {piece('side_r', 92, 0, rightX, top + h * .58, false, fade(['to left', 30, 62]))}
@@ -888,7 +917,7 @@ export default function Seasonal() {
       <style>{FALL_CSS}</style>
       <TgFrame />
       <TgHeader count={gCount} onOpen={() => setTreeOpen(true)} fall={fall} setFall={setFall} />
-      <TgAnnounce onOpen={() => setTreeOpen(true)} />
+      <TgAnnounce onOpen={() => setTreeOpen(true)} count={gCount} />
       {treeOpen && <GratitudeTree onClose={() => setTreeOpen(false)} onChanged={() => window.dispatchEvent(new Event('cc:gratitude-changed'))} />}
       <div className="cc-season-layer" aria-hidden="true">
         {floaters.map(f => f.kind === 'leaves' ? (
