@@ -527,24 +527,33 @@ function FrameImg({ name, w, style }) {
 function TgFrame() {
   const main = useAnchorRect('.main', 800), head = useAnchorRect('.header-wrap', 800)
   const [vh, setVh] = useState(() => window.innerHeight)
+  const layoutRef = useRef(null)
+  const fit = useFitPieces(layoutRef)   // same rule as Christmas: never sit on anything you can click or read
   useEffect(() => { const f = () => setVh(window.innerHeight); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f) }, [])
-  if (!main || !head) return null
+  if (!main || !head) { layoutRef.current = null; return null }
   const top = head.top + head.height + 8, left = main.left + 8, right = main.right - 10, bottom = vh - 8
   const w = right - left, h = bottom - top
-  if (w < 640 || h < 320) return null
+  if (w < 640 || h < 320) { layoutRef.current = null; return null }
   const k = Math.max(.7, Math.min(1.1, w / 1490))
-  // place a piece so the point (cx, cy) in the art (where its corner of the line was painted) lands on (x, y) in the frame box
-  const at = (name, cx, cy, x, y, kk = k, extra = {}) => {
-    const [nw] = FRAME_ART[name]
-    return <FrameImg key={name} name={name} w={nw * kk} style={{ left: x - cx * kk, top: y - cy * kk, ...extra }} />
-  }
   const L = -1, R = w - 3, B = h - 3   // the 2px line's center, measured from inside the border
+  // each piece: the point (cx, cy) in the art (where its corner of the line was painted) lands on (x, y) in the frame box
+  const piece = (name, cx, cy, x, y) => ({ name: 'tg_' + name, art: name, src: ART + 'frame_' + name + '.png', place: (sc) => {
+    const [nw, nh] = FRAME_ART[name], kk = k * sc
+    return { left: left + x - cx * kk, top: top + y - cy * kk, w: nw * kk, h: nh * kk, rel: { left: x - cx * kk, top: y - cy * kk } }
+  } })
+  // just two touches: the leaf cluster in the bottom-left corner and the pumpkin patch on the bottom edge
+  const pieces = [piece('bl', 3, 146, L, B), piece('pumpkins', 314, 92, R, B)]
+  layoutRef.current = pieces
   return (
-    <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', top, left, width: w, height: h, zIndex: 2300, pointerEvents: 'none',
+    // zIndex 29: under the app's header (30), so menus that open from the header always sit on top
+    <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', top, left, width: w, height: h, zIndex: 29, pointerEvents: 'none',
       border: '2px solid #F98524', borderRadius: 20, boxSizing: 'border-box' }}>
-      {/* just two touches: the leaf cluster in the bottom-left corner and the pumpkin patch on the bottom edge */}
-      {at('bl', 3, 146, L, B)}
-      {at('pumpkins', 314, 92, R, B)}
+      {pieces.map(p => {
+        const sc = fit[p.name] ?? 0
+        if (!sc) return null
+        const g = p.place(sc)
+        return <FrameImg key={p.name} name={p.art} w={g.w} style={{ left: g.rel.left, top: g.rel.top, transition: 'width .3s, height .3s, left .3s, top .3s' }} />
+      })}
     </div>
   )
 }
@@ -1192,7 +1201,7 @@ const XM_PIECE_SCALES = [1, .82, .66, .5]
 const XM_BLOCKERS = 'button, a[href], input, select, textarea, label, img, svg, canvas, video, [role="button"], [role="tab"], [role="link"], [contenteditable="true"]'
 const _xmMasks = {}
 // where each picture is actually painted (sample points, as fractions of its width/height)
-function xmMask(name, skip) {
+function xmMask(name, skip, src) {
   if (_xmMasks[name]) return _xmMasks[name] === 'loading' ? null : _xmMasks[name]
   _xmMasks[name] = 'loading'
   const img = new Image()
@@ -1210,7 +1219,7 @@ function xmMask(name, skip) {
     } catch { _xmMasks[name] = [] }
   }
   img.onerror = () => { _xmMasks[name] = [] }
-  img.src = XART + name + '.webp'
+  img.src = src || (XART + name + '.webp')
   return null
 }
 function xmCovers(x, y) {
@@ -1233,12 +1242,10 @@ function xmCovers(x, y) {
   }
   return false
 }
-function XmFrame() {
-  const main = useAnchorRect('.main', 800), head = useAnchorRect('.header-wrap', 800)
-  const [vh, setVh] = useState(() => window.innerHeight)
+// Shared by the Christmas and Thanksgiving frames: about once a second, checks whether each decoration
+// would sit on a button, link, field, icon or text, and picks the biggest size that fits (0 = hide it).
+function useFitPieces(layoutRef) {
   const [fit, setFit] = useState({})          // piece name → scale that fits (0 = hidden)
-  const layoutRef = useRef(null)
-  useEffect(() => { const f = () => setVh(window.innerHeight); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f) }, [])
   useEffect(() => {
     let alive = true
     const check = () => {
@@ -1247,7 +1254,7 @@ function XmFrame() {
       const next = {}
       let waiting = false
       for (const p of L) {
-        const pts = xmMask(p.name, p.skip)
+        const pts = xmMask(p.name, p.skip, p.src)
         if (!pts) { next[p.name] = 0; waiting = true; continue }   // picture still loading: check again shortly
         let chosen = 0
         for (const sc of XM_PIECE_SCALES) {
@@ -1267,6 +1274,14 @@ function XmFrame() {
     window.addEventListener('resize', check)
     return () => { alive = false; clearTimeout(t0); clearInterval(iv); window.removeEventListener('resize', check) }
   }, [])
+  return fit
+}
+function XmFrame() {
+  const main = useAnchorRect('.main', 800), head = useAnchorRect('.header-wrap', 800)
+  const [vh, setVh] = useState(() => window.innerHeight)
+  const layoutRef = useRef(null)
+  const fit = useFitPieces(layoutRef)
+  useEffect(() => { const f = () => setVh(window.innerHeight); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f) }, [])
   if (!main || !head) { layoutRef.current = null; return null }
   const top = head.top + head.height + 10, left = main.left + 14, right = main.right - 14, bottom = vh
   const w = right - left
