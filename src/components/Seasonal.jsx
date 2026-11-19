@@ -1031,12 +1031,12 @@ body.cc-christmas [data-cc-chatpane] .btn-primary, body.cc-christmas [data-cc-ch
 .xm-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .2s; }
 .xm-toggle[aria-checked="true"] .xm-switch { background: linear-gradient(180deg, #1F8C97, #0E6670); }
 .xm-toggle[aria-checked="true"] .xm-switch::after { transform: translateX(20px); }
-.xm-btn { pointer-events: auto; display: inline-flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px 0 10px; border-radius: 999px; cursor: pointer; font-family: inherit;
-  font-size: 15px; font-weight: 700; color: #fff; white-space: nowrap; border: 1px solid #0B5961; background: linear-gradient(180deg, #1A7F89 0%, #0F6670 55%, #0C5A63 100%);
+.xm-btn { pointer-events: auto; display: inline-flex; align-items: center; gap: 9px; height: 32px; padding: 0 9px 0 8px; border-radius: 999px; cursor: pointer; font-family: inherit;
+  font-size: 13.5px; font-weight: 700; color: #fff; white-space: nowrap; border: 1px solid #0B5961; background: linear-gradient(180deg, #1A7F89 0%, #0F6670 55%, #0C5A63 100%);
   box-shadow: 0 8px 18px -10px rgba(8,70,78,.85), inset 0 1px 0 rgba(255,255,255,.22); transition: transform .15s, box-shadow .15s; }
 .xm-btn:hover { transform: translateY(-1px); box-shadow: 0 12px 24px -12px rgba(8,70,78,.9), inset 0 1px 0 rgba(255,255,255,.25); }
 .xm-btn:focus-visible { outline: 2px solid #7DD3DC; outline-offset: 2px; }
-.xm-day { background: #EAF6F8; color: #0C5A63; border-radius: 999px; padding: 3px 11px; font-size: 13.5px; font-weight: 800; box-shadow: inset 0 0 0 1px rgba(12,90,99,.15); }
+.xm-day { background: #EAF6F8; color: #0C5A63; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 800; box-shadow: inset 0 0 0 1px rgba(12,90,99,.15); }
 .xm-door { position: relative; aspect-ratio: 1; border-radius: 14px; border: 1.5px solid #C7DFE8; background: linear-gradient(160deg, #FFFFFF 0%, #EAF4F9 100%); cursor: pointer;
   display: grid; place-items: center; font: inherit; font-size: 22px; font-weight: 800; color: #0F5B64; transition: transform .15s, box-shadow .15s; }
 .xm-door:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 20px -12px rgba(12,90,99,.6); }
@@ -1051,7 +1051,7 @@ body.cc-christmas [data-cc-chatpane] .btn-primary, body.cc-christmas [data-cc-ch
 // between two crystal snowflakes — centered in the top bar (on an icy, snowy top-bar background). It
 // shrinks a little to fit, slides off-center if the page name or icons need the room, and hides only on
 // very small screens. The Christmas Mode switch sits at the far right like Fall Mode did.
-const XM_BANNER = [1240, 126]
+const XM_BANNER = [1240, 112]
 function XmHeader({ mode, setMode, garlandRight, onTight }) {
   const left = useAnchorRect('.topbar .crumb', 800), right = useAnchorRect('.topbar .tb-right', 800), bar = useAnchorRect('.topbar', 800)
   const tightRef = useRef(false)
@@ -1064,7 +1064,7 @@ function XmHeader({ mode, setMode, garlandRight, onTight }) {
   const center = bar.left + bar.width / 2
   const half = Math.min(center - lo, hi - center)
   const ratio = XM_BANNER[0] / XM_BANNER[1]
-  const fullH = bar.height, fullW = fullH * ratio
+  const fullH = bar.height * .84, fullW = fullH * ratio
   let bw = 0, bx = 0
   if (half * 2 >= fullW * .72) { bw = Math.min(fullW, half * 2); bx = center - bw / 2 }        // centered on the bar
   else if (hi - lo >= fullW * .5) { bw = Math.min(fullW, hi - lo); bx = lo + (hi - lo - bw) / 2 }  // centered in the open space
@@ -1084,8 +1084,8 @@ function XmHeader({ mode, setMode, garlandRight, onTight }) {
             <XmToggle on={mode} onChange={setMode} compact={togW < 100} />
           </div>}
       {bw > 0 && (
-        <img src={XART + 'hdr_banner.webp'} alt="Wishing you a season filled with joy!" draggable="false" width={Math.round(bw)} height={Math.round(bh)}
-          style={{ position: 'fixed', left: bx, top: bar.top + bar.height - bh, zIndex: 2350, pointerEvents: 'none', userSelect: 'none', display: 'block' }} />
+        <img src={XART + 'hdr_text.webp'} alt="Wishing you a season filled with joy!" draggable="false" width={Math.round(bw)} height={Math.round(bh)}
+          style={{ position: 'fixed', left: bx, top: bar.top + (bar.height - bh) / 2, zIndex: 2350, pointerEvents: 'none', userSelect: 'none', display: 'block' }} />
       )}
     </>
   )
@@ -1119,8 +1119,8 @@ function XmButton({ onOpen }) {
   const center = top ? top.left + top.width / 2 : bar.left + bar.width / 2
   const half = Math.min(center - lo, hi - center)
   const day = xmDay()
-  const longW = textWidth('25 Days of Christmas', '700 15px Montserrat') + 30 + 64 + 18 + 3 * 12 + 26
-  const shortW = textWidth('25 Days', '700 15px Montserrat') + 30 + 64 + 18 + 3 * 12 + 26
+  const longW = textWidth('25 Days of Christmas', '700 13.5px Montserrat') + 24 + 54 + 14 + 3 * 9 + 20
+  const shortW = textWidth('25 Days', '700 13.5px Montserrat') + 24 + 54 + 14 + 3 * 9 + 20
   let mode = half * 2 >= longW ? 'long' : half * 2 >= shortW ? 'short' : null
   let boxLeft = center - half, boxW = half * 2
   if (!mode && hi - lo >= shortW) { mode = 'short'; boxLeft = lo; boxW = hi - lo }
@@ -1128,10 +1128,10 @@ function XmButton({ onOpen }) {
   return (
     <div style={{ position: 'fixed', top: bar.top, height: bar.height, left: boxLeft, width: boxW, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
       <button className="xm-btn" onClick={onOpen} title="Open the 25 Days of Christmas">
-        <XImg name="gift" h={28} />
+        <XImg name="gift" h={22} />
         <span>{mode === 'long' ? '25 Days of Christmas' : '25 Days'}</span>
         <span className="xm-day">Day {day}</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </button>
     </div>
   )
@@ -1185,31 +1185,122 @@ function XmAdvent({ onClose }) {
 }
 // Painted pieces around the page content: garlands on the top corners (with the hanging ornaments),
 // the snowman bottom-left and a snowy pine corner bottom-right (the phone button sits on top of it).
+// Every page is laid out differently, so each piece checks what's underneath it (about once a second):
+// if any of its painted part would sit on a button, link, field, icon or text, it shrinks into its
+// corner step by step, and if it still doesn't fit it hides on that page. It never covers anything.
+const XM_PIECE_SCALES = [1, .82, .66, .5]
+const XM_BLOCKERS = 'button, a[href], input, select, textarea, label, img, svg, canvas, video, [role="button"], [role="tab"], [role="link"], [contenteditable="true"]'
+const _xmMasks = {}
+// where each picture is actually painted (sample points, as fractions of its width/height)
+function xmMask(name, skip) {
+  if (_xmMasks[name]) return _xmMasks[name] === 'loading' ? null : _xmMasks[name]
+  _xmMasks[name] = 'loading'
+  const img = new Image()
+  img.onload = () => {
+    try {
+      const cols = 36, rows = Math.max(8, Math.round(cols * img.naturalHeight / img.naturalWidth))
+      const c = document.createElement('canvas'); c.width = cols; c.height = rows
+      const g = c.getContext('2d'); g.drawImage(img, 0, 0, cols, rows)
+      const d = g.getImageData(0, 0, cols, rows).data, pts = []
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        const fx = (x + .5) / cols, fy = (y + .5) / rows
+        if (d[(y * cols + x) * 4 + 3] > 110 && !(skip && skip(fx, fy))) pts.push([fx, fy])
+      }
+      _xmMasks[name] = pts
+    } catch { _xmMasks[name] = [] }
+  }
+  img.onerror = () => { _xmMasks[name] = [] }
+  img.src = XART + name + '.webp'
+  return null
+}
+function xmCovers(x, y) {
+  if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) return false
+  const el = document.elementFromPoint(x, y)
+  if (!el || el === document.body || el === document.documentElement) return false
+  if (el.closest('.header-wrap')) return false            // the header sits on top of the garlands anyway
+  if (el.closest('[data-cc-chatpane] .btn-primary, [data-cc-chatpane] .btn-cta')) return false   // raised above the art
+  let n = el
+  for (let i = 0; n && i < 6; i++, n = n.parentElement) {   // floating things (phone button, popups) sit on top of us
+    const cs = getComputedStyle(n)
+    if (cs.position === 'fixed' && (parseInt(cs.zIndex, 10) || 0) > 29) return false
+  }
+  if (el.closest(XM_BLOCKERS)) return true
+  // text: only counts if the words themselves are under this spot (not just somewhere in a big box)
+  for (const t of el.childNodes) {
+    if (t.nodeType !== 3 || !t.textContent.trim()) continue
+    const r = document.createRange(); r.selectNodeContents(t)
+    for (const q of r.getClientRects()) if (x >= q.left - 4 && x <= q.right + 4 && y >= q.top - 4 && y <= q.bottom + 4) return true
+  }
+  return false
+}
 function XmFrame() {
   const main = useAnchorRect('.main', 800), head = useAnchorRect('.header-wrap', 800)
   const [vh, setVh] = useState(() => window.innerHeight)
+  const [fit, setFit] = useState({})          // piece name → scale that fits (0 = hidden)
+  const layoutRef = useRef(null)
   useEffect(() => { const f = () => setVh(window.innerHeight); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f) }, [])
-  if (!main || !head) return null
+  useEffect(() => {
+    let alive = true
+    const check = () => {
+      const L = layoutRef.current
+      if (!alive || !L) return
+      const next = {}
+      let waiting = false
+      for (const p of L) {
+        const pts = xmMask(p.name, p.skip)
+        if (!pts) { next[p.name] = 0; waiting = true; continue }   // picture still loading: check again shortly
+        let chosen = 0
+        for (const sc of XM_PIECE_SCALES) {
+          const g = p.place(sc)
+          // look at every other sample point (plenty to catch a button, cheap enough to run each second)
+          let hit = false
+          for (let i = 0; i < pts.length && !hit; i += 2) hit = xmCovers(g.left + pts[i][0] * g.w, g.top + pts[i][1] * g.h)
+          if (!hit) { chosen = sc; break }
+        }
+        next[p.name] = chosen
+      }
+      setFit(prev => (L.every(p => prev[p.name] === next[p.name]) ? prev : next))
+      if (waiting) setTimeout(check, 300)
+    }
+    const t0 = setTimeout(check, 400)
+    const iv = setInterval(() => { if (document.visibilityState === 'visible') check() }, 1100)
+    window.addEventListener('resize', check)
+    return () => { alive = false; clearTimeout(t0); clearInterval(iv); window.removeEventListener('resize', check) }
+  }, [])
+  if (!main || !head) { layoutRef.current = null; return null }
   const top = head.top + head.height + 10, left = main.left + 14, right = main.right - 14, bottom = vh
   const w = right - left
-  if (w < 640 || bottom - top < 320) return null
+  if (w < 640 || bottom - top < 320) { layoutRef.current = null; return null }
   // scale against the mockup (its content area was ~1290px wide); art is stored at 2x
   const k = Math.max(.72, Math.min(1.25, w / 1290))
-  const s = (name) => XART_SIZE[name][0] / 2 * k
-  const ph = (name) => XART_SIZE[name][1] / 2 * k
-  const pos = { position: 'fixed', pointerEvents: 'none' }
-  // the garlands trail off softly where they end instead of stopping in a straight line
+  const base = (name) => XART_SIZE[name][0] / 2 * k
+  // each piece: its anchor point on screen, the matching point in the picture, and its full size
+  const piece = (name, size, ax, ay, fx, fy, extra) => ({ name, ...extra, place: (sc) => {
+    const pw = size * sc, phh = pw * XART_SIZE[name][1] / XART_SIZE[name][0]
+    return { left: ax - fx * pw, top: ay - fy * phh, w: pw, h: phh }
+  } })
   const trail = (dir, from) => { const m = `linear-gradient(${dir}, #000 ${from}%, transparent 100%)`; return { WebkitMaskImage: m, maskImage: m } }
+  const pieces = [
+    // the garlands trail off softly where they end instead of stopping in a straight line
+    piece('corner_tl', base('corner_tl') * .84, left - 14, top - 8, 2 / 392, 22 / 275, { style: trail('to right', 62), skip: (fx) => fx > .8 }),
+    piece('corner_tr', base('corner_tr') * .9, right + 6, top - 10, 920 / 935, 22 / 365, { style: trail('to left', 78), skip: (fx) => fx < .16 }),
+    piece('snowman', base('snowman'), left, bottom, 2 / 442, 1),
+    piece('corner_br', base('corner_br') * 1.5, main.right + 14, bottom + 4, 1, 1),
+  ]
+  layoutRef.current = pieces
+  const pos = { position: 'fixed', pointerEvents: 'none', transition: 'width .3s, height .3s, left .3s, top .3s' }
   return (
     // zIndex 29: just under the app's header (z-index 30), so menus that open from the header — like the
     // task timer details — always sit on top of the garlands. The phone button (z-index 1000) sits on top
     // of the bottom-right branch.
     <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', inset: 0, zIndex: 29, pointerEvents: 'none' }}>
       <XmGlitter top={head.top + head.height + 8} left={main.left + 8} right={main.right - 10} bottom={vh - 8} />
-      <XImg name="corner_tl" w={s('corner_tl') * .84} style={{ ...pos, left: left - 14 - 2 * k / 2, top: top - 8 - 22 * k / 2, ...trail('to right', 62) }} />
-      <XImg name="corner_tr" w={s('corner_tr') * .9} style={{ ...pos, left: right + 6 - 920 * .9 * k / 2, top: top - 10 - 22 * k / 2, ...trail('to left', 78) }} />
-      <XImg name="snowman" w={s('snowman')} style={{ ...pos, left: left - 2 * k / 2, top: bottom - ph('snowman') }} />
-      <XImg name="corner_br" w={s('corner_br') * 1.5} style={{ ...pos, left: main.right + 14 - s('corner_br') * 1.5, top: bottom - ph('corner_br') * 1.5 + 4 }} />
+      {pieces.map(p => {
+        const sc = fit[p.name] ?? 0
+        if (!sc) return null
+        const g = p.place(sc)
+        return <XImg key={p.name} name={p.name} w={g.w} style={{ ...pos, left: g.left, top: g.top, ...(p.style || {}) }} />
+      })}
     </div>
   )
 }
