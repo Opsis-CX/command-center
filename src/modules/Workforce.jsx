@@ -197,12 +197,12 @@ export default function Workforce({ data = supabaseData, portal = false }) {
         </div>
       </div>
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
-        {TABS.map(([k, l]) => <button key={k} style={S.tab(tab === k)} onClick={() => setTab(k)}>{l}</button>)}
+        {TABS.filter(([k]) => portal || k !== 'actual').map(([k, l]) => <button key={k} style={S.tab(tab === k)} onClick={() => setTab(k)}>{l}</button>)}
       </div>
       {err && <div className="card" style={{ padding: 12, color: 'var(--failed)', background: 'var(--failed-bg)' }}>{err}</div>}
       {toast && <div style={{ position: 'fixed', right: 24, bottom: 24, background: 'var(--ink)', color: 'var(--surface)', padding: '10px 16px', borderRadius: 10, zIndex: 50 }}>{toast}</div>}
       {tab === 'target' && <WfmTarget load={data.target} />}
-      {tab === 'actual' && <WfmActual loadActual={data.actual} loadTarget={data.target} />}
+      {portal && tab === 'actual' && <WfmActual loadActual={data.actual} loadTarget={data.target} />}
       {tab === 'inbound' && <InboundPlanner brands={brands} clients={clients} onSave={savePlan} preset={loadPlan?.kind === 'inbound' ? loadPlan : null} />}
       {tab === 'outbound' && <OutboundPlanner brands={brands} onSave={savePlan} preset={loadPlan?.kind === 'outbound' ? loadPlan : null} />}
       {tab === 's2l' && <SpeedToLeadPlanner onSave={savePlan} preset={loadPlan?.kind === 'speed_to_lead' ? loadPlan : null} />}
