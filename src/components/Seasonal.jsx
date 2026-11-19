@@ -1014,6 +1014,8 @@ body.cc-christmas [data-cc-chatpane] > div[style*="overflow-y: auto"] {
   background: linear-gradient(rgba(15,23,32,var(--xm-shade)), rgba(15,23,32,var(--xm-shade))), url(${'/seasonal/christmas/scene.webp'}) right bottom / contain no-repeat;
 }
 @media (min-width: 1000px) { body.cc-christmas .topbar .tb-right { margin-right: 196px; } }
+/* the chat Send / Post update button always sits in front of the bottom-right branch */
+body.cc-christmas [data-cc-chatpane] .btn-primary, body.cc-christmas [data-cc-chatpane] .btn-cta { position: relative; z-index: 30; }
 .xm-script { font-family: 'Kaushan Script', 'Dancing Script', cursive; font-weight: 400; letter-spacing: .3px; line-height: 1.25; white-space: nowrap; }
 .xm-toggle { pointer-events: auto; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 4px 0 6px; border-radius: 999px; border: 0; background: transparent;
   font: inherit; font-size: 14px; font-weight: 700; color: #0F3D45; cursor: pointer; white-space: nowrap; }
