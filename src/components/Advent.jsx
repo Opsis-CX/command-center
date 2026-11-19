@@ -466,6 +466,58 @@ function GrandSurprise() {
   )
 }
 
+// ---------- "Share in chat" (Days 16 and 19) ----------
+// Turns the picture into a PNG, closes the calendar, goes to Chat and attaches it to the message box of
+// whichever chat is open, with a little caption typed in. Nothing is sent until the person clicks Send,
+// so they can pick the chat and change the words first. Chat.jsx is untouched: we use its own file input.
+async function svgToPngFile(svg, name, caption) {
+  const vb = svg.viewBox.baseVal, W = 720, H = Math.round(W * vb.height / vb.width) + 70
+  const clone = svg.cloneNode(true)
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg'); clone.setAttribute('width', W); clone.setAttribute('height', H - 70)
+  clone.querySelectorAll('[style]').forEach(el => { el.style.animation = 'none' })
+  const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(clone))
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url })
+  const c = document.createElement('canvas'); c.width = W; c.height = H
+  const g = c.getContext('2d')
+  const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#DDEFF8'); bg.addColorStop(1, '#FFFFFF'); g.fillStyle = bg; g.fillRect(0, 0, W, H)
+  g.drawImage(img, 0, 0, W, H - 70)
+  g.fillStyle = '#0F6E7A'; g.font = '600 26px Montserrat, Poppins, sans-serif'; g.textAlign = 'center'; g.fillText(caption, W / 2, H - 28)
+  const blob = await new Promise(res => c.toBlob(res, 'image/png'))
+  return new File([blob], name, { type: 'image/png' })
+}
+function attachToChat(file, text, onClose) {
+  onClose?.()
+  if (!/^\/chat/.test(window.location.pathname)) { window.history.pushState({}, '', '/chat'); window.dispatchEvent(new PopStateEvent('popstate')) }
+  const started = Date.now()
+  const tryAttach = () => {
+    const pane = document.querySelector('[data-cc-chatpane]')
+    // the main message box is the bottom-most editor in the chat pane; use the file input that sits with it
+    const wraps = pane ? [...pane.querySelectorAll('.re-wrap')].filter(w => w.offsetParent).sort((x, y) => y.getBoundingClientRect().bottom - x.getBoundingClientRect().bottom) : []
+    let input = null
+    for (let el = wraps[0]; el && el !== pane.parentElement && !input; el = el.parentElement) input = el.querySelector('input[type="file"]')
+    if (!input) { if (Date.now() - started < 60000) setTimeout(tryAttach, 500); return }
+    const dt = new DataTransfer(); dt.items.add(file)
+    input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }))
+    const ed = wraps[0].querySelector('[contenteditable="true"]')
+    if (ed && !(ed.textContent || '').trim()) { ed.focus(); try { document.execCommand('insertText', false, text) } catch { /* ignore */ } }
+  }
+  setTimeout(tryAttach, 350)
+}
+function ShareInChat({ svgRef, name, caption, text, onClose }) {
+  const [busy, setBusy] = useState(false)
+  const share = async () => {
+    if (!svgRef.current || busy) return
+    setBusy(true)
+    try { const f = await svgToPngFile(svgRef.current, name, caption); attachToChat(f, text, onClose) } catch { setBusy(false) }
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <button className="ad-btn" onClick={share} disabled={busy}>💬 Share in chat</button>
+      <span className="ad-small">Adds the picture to the chat you have open. You pick the chat and hit Send.</span>
+    </div>
+  )
+}
+
 // ---------- Day 15: Bingo ----------
 const BINGO = ['Wrapped a gift', 'Drank hot cocoa', 'Watched a Christmas movie', 'Heard "All I Want for Christmas"', 'Saw holiday lights', 'Ate a Christmas cookie', 'Wore something festive', 'Sang a carol',
   'Saw a snowman', 'Got a holiday card', 'Ate a candy cane', 'Smelled a pine tree', 'FREE ⭐', 'Said "Happy Holidays"', 'Untangled lights', 'Used way too much tape', 'Saw a reindeer decoration',
@@ -505,7 +557,7 @@ function Ornament({ o }) {
   if (o.k === 'bow') return <g transform={`translate(${o.x} ${o.y})`}><path d="M0 0 L-6 -4 L-6 4 Z M0 0 L6 -4 L6 4 Z" fill="#E5484D" /><circle r="1.8" fill="#B82E33" /></g>
   return <g><circle cx={o.x} cy={o.y} r="4.6" fill={ORN[o.k]} stroke="rgba(0,0,0,.15)" strokeWidth=".6" /><circle cx={o.x - 1.4} cy={o.y - 1.6} r="1.3" fill="#fff" opacity=".75" /><rect x={o.x - 1.2} y={o.y - 6.4} width="2.4" height="2" fill="#B9A15A" /></g>
 }
-function DecorateTree({ userId }) {
+function DecorateTree({ userId, onClose }) {
   const [state, setState] = useSaved(userId, 'tree', { orn: [], lights: false, topper: 'star' })
   const [tool, setTool] = useState('red')
   const ref = useRef(null)
@@ -545,6 +597,7 @@ function DecorateTree({ userId }) {
             <button className="ad-btn ghost" onClick={() => setState(s => ({ ...s, orn: s.orn.slice(0, -1) }))} disabled={!state.orn.length}>Undo</button>
             <button className="ad-btn ghost" onClick={() => setState({ orn: [], lights: false, topper: 'star' })}>Start over</button>
           </div>
+          <ShareInChat svgRef={ref} name="my-christmas-tree.png" caption="My Christmas tree 🎄" text="Check out the Christmas tree I decorated! 🎄" onClose={onClose} />
         </div>
       </div>
     </div>
@@ -587,7 +640,8 @@ function Puzzle() {
 }
 
 // ---------- Day 19: Build a snowman ----------
-function BuildSnowman({ userId }) {
+function BuildSnowman({ userId, onClose }) {
+  const svgRef = useRef(null)
   const [o, setO] = useSaved(userId, 'snowman', { hat: 'top', scarf: 'teal', face: 'happy', extra: 'none' })
   const set = (k, v) => setO(s => ({ ...s, [k]: v }))
   const scarfC = { teal: '#1FA6B0', red: '#E5484D', striped: 'url(#smStripe)', none: null }[o.scarf]
@@ -597,7 +651,7 @@ function BuildSnowman({ userId }) {
   return (
     <div className="ad-box">
       <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        <svg viewBox="0 0 200 240" style={{ width: 'min(260px, 100%)', background: 'linear-gradient(180deg,#CFE7F5,#F4FAFD)', borderRadius: 14 }} role="img" aria-label="Your snowman">
+        <svg ref={svgRef} viewBox="0 0 200 240" style={{ width: 'min(260px, 100%)', background: 'linear-gradient(180deg,#CFE7F5,#F4FAFD)', borderRadius: 14 }} role="img" aria-label="Your snowman">
           <defs><pattern id="smStripe" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#E5484D" /><rect width="4" height="8" fill="#fff" /></pattern></defs>
           <ellipse cx="100" cy="226" rx="90" ry="12" fill="#fff" />
           {o.extra === 'broom' && <g><line x1="150" y1="120" x2="176" y2="228" stroke="#8A5A32" strokeWidth="4" /><path d="M168 200 L186 232 L166 234 Z" fill="#D9A441" /></g>}
@@ -621,6 +675,7 @@ function BuildSnowman({ userId }) {
           <Row label="Scarf" k="scarf" opts={[['teal', 'Teal'], ['red', 'Red'], ['striped', 'Candy stripe'], ['none', 'No scarf']]} />
           <Row label="Face" k="face" opts={[['happy', '😊 Happy'], ['wink', '😉 Wink'], ['surprised', '😮 Surprised']]} />
           <Row label="Extras" k="extra" opts={[['none', 'None'], ['mittens', '🧤 Mittens'], ['earmuffs', '🎧 Earmuffs'], ['broom', '🧹 Broom']]} />
+          <ShareInChat svgRef={svgRef} name="my-snowman.png" caption="Meet my snowman ☃️" text="Meet the snowman I built! ☃️" onClose={onClose} />
         </div>
       </div>
     </div>
@@ -874,7 +929,7 @@ export default function Advent({ onClose, userId, canPreview }) {
               <button className="ad-btn ghost" onClick={() => setDay(null)}>‹ All presents</button>
               <span className="ad-small" style={{ flex: 1, minWidth: 180 }}>{D.i}</span>
             </div>
-            <div className="ad-panel-body"><D.C userId={userId} /></div>
+            <div className="ad-panel-body"><D.C userId={userId} onClose={onClose} /></div>
           </div>
         )}
       </div>
