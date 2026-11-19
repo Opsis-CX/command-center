@@ -971,7 +971,7 @@ export function SeasonHeaderDecor() {
 // The bottom-right corner is left empty on purpose so the phone button stays clear.
 // ============================================================
 const XART = '/seasonal/christmas/'
-const XART_SIZE = { top_garland: [365, 133], corner_tl: [392, 275], corner_tr: [935, 365], snowman: [442, 340], corner_br: [250, 330], xm_sleigh: [487, 122], xm_trees_cl: [142, 68], xm_trees_cr: [187, 70], xm_trees_hl: [402, 73], xm_trees_hr: [284, 84], xm_trees_side: [206, 146], scene: [1225, 924], gift: [64, 64] }
+const XART_SIZE = { top_garland: [365, 133], corner_tl: [392, 275], corner_tr: [935, 365], snowman: [442, 340], corner_br: [250, 330], xm_sleigh: [487, 122], xm_trees_cl: [142, 68], xm_trees_cr: [187, 70], xm_trees_hl: [402, 113], xm_trees_hr: [285, 114], xm_trees_side: [206, 146], scene: [1225, 924], gift: [64, 64] }
 const XTEAL = '#13707A', XTEAL_D = '#0B555E'
 const XMAS_KEY = 'christmas_mode-2026'
 function XImg({ name, w, h, style, ...rest }) {
@@ -1446,14 +1446,9 @@ const CONFETTI_XM = [
 // Everything is a pointer-events:none layer or a color change, and the trees use the same "never cover
 // anything" check as the border.
 // ============================================================
-const XM_HILLS = "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 44' preserveAspectRatio='none'><path d='M0 22 C140 6 260 30 420 16 S700 2 860 20 S1120 36 1260 16 S1400 10 1440 18 V44 H0Z' fill='%23FFFFFF'/><path d='M0 32 C200 20 380 40 580 29 S920 20 1120 33 S1340 26 1440 31 V44 H0Z' fill='%23EAF3F9'/></svg>\")"
 const XMODE_CSS = `
 html.cc-xmas body.cc-christmas .sidebar {
-  background:
-    radial-gradient(120% 60% at 20% 0%, rgba(255,255,255,.95) 0 30%, transparent 62%),
-    radial-gradient(90% 40% at 100% 45%, rgba(255,255,255,.75) 0 25%, transparent 65%),
-    radial-gradient(110% 45% at 0% 80%, rgba(255,255,255,.8) 0 28%, transparent 66%),
-    linear-gradient(180deg, #E6F1F8 0%, #F4F9FC 38%, #E9F2F8 72%, #F7FBFD 100%) !important;
+  background: url(${'/seasonal/christmas/xm_snow_side.webp'}) center top / 100% 100% no-repeat, #EEF5FA !important;
   border-right: 1px solid #D6E6EF;
 }
 html.cc-xmas body.cc-christmas .sidebar .brand {
@@ -1475,10 +1470,7 @@ html.cc-xmas body.cc-christmas .sidebar .signout:hover { color: #0F2B36; }
 html.cc-xmas body.cc-christmas .sidebar .nav-scroll { scrollbar-color: rgba(15,43,54,.2) transparent; }
 /* header: one snowy hillside behind both rows */
 html.cc-xmas body.cc-christmas .header-wrap {
-  background: ${XM_HILLS} left bottom / 100% 30px no-repeat,
-    radial-gradient(60% 120% at 15% 0%, rgba(255,255,255,.9) 0 30%, transparent 70%),
-    radial-gradient(50% 120% at 85% 10%, rgba(255,255,255,.85) 0 30%, transparent 70%),
-    linear-gradient(180deg, #D9EAF4 0%, #ECF5FA 55%, #F6FAFD 100%) !important;
+  background: url(${'/seasonal/christmas/xm_snow_hdr.webp'}) center bottom / cover no-repeat, #E8F2F8 !important;
 }
 html.cc-xmas body.cc-christmas .topbar, html.cc-xmas body.cc-christmas .workbar { background: transparent !important; border-bottom-color: transparent !important; }
 @keyframes xmTakeoff {
@@ -1600,9 +1592,10 @@ function XmModeTrees() {
     return { left: ax - fx * pw, top: ay - fy * phh, w: pw, h: phh }
   } })
   if (btn && head) {
-    const bottom = head.top + head.height - 3
-    pieces.push(mk('xm_trees_hl', 205, btn.left - 24, bottom, 1, 1, { inHeader: true }))
-    pieces.push(mk('xm_trees_hr', 142, btn.right + 24, bottom, 0, 1, { inHeader: true }))
+    const bottom = head.top + head.height - 6     // set down into the snow a little
+    const sink = { WebkitMaskImage: 'linear-gradient(to top, transparent 0, #000 16%)', maskImage: 'linear-gradient(to top, transparent 0, #000 16%)' }
+    pieces.push(mk('xm_trees_hl', 205, btn.left - 24, bottom, 1, 1, { inHeader: true, style: sink }))
+    pieces.push(mk('xm_trees_hr', 146, btn.right + 24, bottom, 0, 1, { inHeader: true, style: sink }))
   }
   if (sb && sb.width >= 120) pieces.push(mk('xm_trees_side', 104, sb.left + sb.width - 2, Math.min(vh, sb.top + sb.height), 1, 1))
   layoutRef.current = pieces.length ? pieces : null
@@ -1612,7 +1605,7 @@ function XmModeTrees() {
         const sc = fit[p.name] ?? 0
         if (!sc) return null
         const g = p.place(sc)
-        return <XImg key={p.name} name={p.name} w={g.w} style={{ position: 'fixed', left: g.left, top: g.top }} />
+        return <XImg key={p.name} name={p.name} w={g.w} style={{ position: 'fixed', left: g.left, top: g.top, ...(p.style || {}) }} />
       })}
     </div>
   )
