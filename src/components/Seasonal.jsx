@@ -1201,7 +1201,9 @@ function XmFrame() {
   const dStart = left + s('snowman') * .78, dEnd = right - 70 * k
   const dMid = Math.max(0, dEnd - dStart - dl - dr)
   return (
-    <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', inset: 0, zIndex: 2300, pointerEvents: 'none' }}>
+    // zIndex 29: just under the app's header (z-index 30), so menus that open from the header — like the
+    // task timer details — always sit on top of the garlands
+    <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', inset: 0, zIndex: 29, pointerEvents: 'none' }}>
       <XImg name="corner_tl" w={s('corner_tl') * .84} style={{ ...pos, left: left - 14 - 2 * k / 2, top: top - 8 - 22 * k / 2 }} />
       <XImg name="corner_tr" w={s('corner_tr') * .9} style={{ ...pos, left: right + 6 - 920 * .9 * k / 2, top: top - 10 - 22 * k / 2 }} />
       {dMid > 40 && <>
@@ -1219,7 +1221,7 @@ function XmSidebarFlakes() {
   const sb = useAnchorRect('.sidebar', 900)
   if (!sb || sb.width < 120) return null
   return (
-    <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', left: sb.left, top: sb.top, width: sb.width, height: sb.height, zIndex: 2290, pointerEvents: 'none', overflow: 'hidden' }}>
+    <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', left: sb.left, top: sb.top, width: sb.width, height: sb.height, zIndex: 29, pointerEvents: 'none', overflow: 'hidden' }}>
       {XM_SIDE_FLAKES.map(([x, y, sz], i) => <Snowflake key={i} size={sz} color="rgba(255,255,255,.55)" sw={1.4} style={{ position: 'absolute', left: `${x}%`, top: `${y}%`, transform: `rotate(${i * 17}deg)` }} />)}
     </div>
   )
@@ -1270,7 +1272,8 @@ function XmSnow() {
     document.addEventListener('visibilitychange', onVis); window.addEventListener('resize', onResize)
     return () => { alive = false; cancelAnimationFrame(raf); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('resize', onResize) }
   }, [])
-  return <canvas ref={ref} aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 2295, pointerEvents: 'none' }} />
+  // under the header and under any popup/menu, so snow never lands on top of something you're reading
+  return <canvas ref={ref} aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 28, pointerEvents: 'none' }} />
 }
 const CONFETTI_XM = [
   () => <Snowflake size={18} color="#38A3B0" />, () => <Snowflake size={14} color="#7CC8D2" />, () => <Sparkle size={14} color={GOLD} />,
