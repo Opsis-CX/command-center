@@ -505,43 +505,35 @@ function TgAnnounce({ onOpen, count }) {
     </div>
   )
 }
-// Fall-leaf frame around the content area (below the header), with corner clusters, a few scattered
-// leaves on the edges and a small pumpkin arrangement. Purely visual, never takes clicks.
+// Fall frame around the content area (below the header): one clean orange line, a leaf cluster in the
+// bottom-left corner and a pumpkin patch on the bottom edge. Purely visual, never takes clicks. (The frame_* art has its own painted line
+// removed, so the only line is ours and the leaves sit on top of it.)
+const FRAME_ART = { tl: [236, 68], tr: [236, 68], bl: [227, 148], br: [42, 206], side_r: [100, 140], pumpkins: [213, 94] }
+function FrameImg({ name, w, style }) {
+  const [nw, nh] = FRAME_ART[name]
+  return <img src={ART + 'frame_' + name + '.png'} alt="" aria-hidden="true" draggable="false" width={Math.round(w)} height={Math.round(w * nh / nw)} style={{ position: 'absolute', display: 'block', userSelect: 'none', ...style }} />
+}
 function TgFrame() {
   const main = useAnchorRect('.main', 800), head = useAnchorRect('.header-wrap', 800)
   const [vh, setVh] = useState(() => window.innerHeight)
   useEffect(() => { const f = () => setVh(window.innerHeight); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f) }, [])
   if (!main || !head) return null
-  // frame line sits close to the edges of the content area, leaving the page's own margin free for the leaves
-  const top = head.top + head.height + 7, left = main.left + 7, right = main.right - 11, bottom = vh - 8
+  const top = head.top + head.height + 8, left = main.left + 8, right = main.right - 10, bottom = vh - 8
   const w = right - left, h = bottom - top
   if (w < 640 || h < 320) return null
-  // painted corner pieces, lined up so their frame line sits on ours (offsets are the frame corner inside each image)
-  const k = Math.max(.7, Math.min(1.15, w / 1490))
-  const piece = (name, cx, cy, ax, ay, flip = false, extra = {}, kk = k) => {
-    const [nw] = ART_SIZE[name]
-    const left = (flip ? ax - (nw - cx) * kk : ax - cx * kk) - left0, topP = ay - cy * kk - top0
-    return <ArtImg key={name + (flip ? 'f' : '')} name={name} w={nw * kk} style={{ position: 'absolute', left, top: topP, transform: flip ? 'scaleX(-1)' : undefined, ...extra }} />
+  const k = Math.max(.7, Math.min(1.1, w / 1490))
+  // place a piece so the point (cx, cy) in the art (where its corner of the line was painted) lands on (x, y) in the frame box
+  const at = (name, cx, cy, x, y, kk = k, extra = {}) => {
+    const [nw] = FRAME_ART[name]
+    return <FrameImg key={name} name={name} w={nw * kk} style={{ left: x - cx * kk, top: y - cy * kk, ...extra }} />
   }
-  const left0 = left, top0 = top, rightX = right, bottomY = bottom
-  // keep each piece solid along the frame edge and fade it out toward the page, so it never sits on text or buttons
-  const fade = (...g) => {
-    const m = g.map(([dir, a, b]) => `linear-gradient(${dir}, #000 0 ${a}%, transparent ${b}%)`).join(', ')
-    return { WebkitMaskImage: m, maskImage: m, WebkitMaskComposite: 'source-over', maskComposite: 'add' }
-  }
+  const L = -1, R = w - 3, B = h - 3   // the 2px line's center, measured from inside the border
   return (
     <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', top, left, width: w, height: h, zIndex: 2300, pointerEvents: 'none',
-      border: '2px solid #F98524', borderRadius: 20 }}>
-      {/* top-right: tucked up and out, fading before the Call / notification buttons in page headers */}
-      {piece('corner_tr', 228, 1, rightX + 9, top - 6, false, fade(['to bottom', 34, 54], ['to left', 12, 24]), k * .9)}
-      {/* top-left: smaller and lighter, because page titles (e.g. "Chat") start right there */}
-      {piece('corner_tl', 236 - 228, 1, left - 6, top - 6, false, fade(['to bottom', 32, 54], ['to right', 10, 20]), k * .72)}
-      {piece('corner_bl', 3, 146, left, bottomY, false, fade(['to right', 16, 32], ['to top', 26, 46]))}
-      {piece('corner_br', 34, 204, rightX, bottomY)}
-      {piece('side_r', 92, 0, rightX, top + h * .58, false, fade(['to left', 30, 62]))}
-      {piece('pumpkins', 314, 92, rightX, bottomY)}
-      <ArtImg name="leaf_6" w={30 * k} style={{ position: 'absolute', right: -15 * k, top: h * .22, transform: 'rotate(-18deg)' }} />
-      <ArtImg name="leaf_2" w={26 * k} style={{ position: 'absolute', right: -13 * k, top: h * .4, transform: 'rotate(24deg)' }} />
+      border: '2px solid #F98524', borderRadius: 20, boxSizing: 'border-box' }}>
+      {/* just two touches: the leaf cluster in the bottom-left corner and the pumpkin patch on the bottom edge */}
+      {at('bl', 3, 146, L, B)}
+      {at('pumpkins', 314, 92, R, B)}
     </div>
   )
 }
