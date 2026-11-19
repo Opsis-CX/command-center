@@ -443,7 +443,7 @@ function TgHeader({ count, onOpen, fall, setFall }) {
   }
   const H0 = Math.min(46, bar.height - 10), room = Math.max(0, half * 2 - 8)
   let mode = null, H = H0
-  for (const [m, parts] of [['full', { line2: 1, sprigs: 1 }], ['nosprigs', { line2: 1 }], ['title+sprigs', { sprigs: 1 }], ['title', {}]]) {
+  for (const [m, parts] of [['title+sprigs', { sprigs: 1 }], ['title', {}]]) {
     const f = Math.min(1, room / widthAt(H0, parts))
     if (f >= .62) { mode = m; H = Math.floor(H0 * f); break }
   }
@@ -460,7 +460,7 @@ function TgHeader({ count, onOpen, fall, setFall }) {
           <FallToggle on={fall} onChange={setFall} compact={fallW < 100} />
         </div>}
     {mode && (
-      <div aria-label="Happy Thanksgiving! We're thankful for you!" role="img" style={{ position: 'fixed', top: bar.top, height: bar.height, left: center - half, width: half * 2, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, pointerEvents: 'none' }}>
+      <div aria-label="Happy Thanksgiving!" role="img" style={{ position: 'fixed', top: bar.top, height: bar.height, left: center - half, width: half * 2, zIndex: 2360, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, pointerEvents: 'none' }}>
         {showSprigs && (dark ? <Sprig w={sprigH * 2} flip /> : <ArtImg name="sprig_l" h={sprigH} />)}
         {dark
           ? <span className="tg-script" style={{ fontSize: Math.round(H * .66), color: '#FDBA74' }}>Happy Thanksgiving!</span>
@@ -606,6 +606,194 @@ function FallToggle({ on, onChange, compact }) {
       title={on ? 'Fall Mode is on — only you see it' : 'Turn on Fall Mode (warm autumn colors, just for you)'}>
       <Leaf size={18} color="#EA580C" />{!compact && <span>Fall Mode</span>}<span className="tg-switch" />
     </button>
+  )
+}
+
+
+// ============================================================
+// CLUCK NORRIS 🦃 (Thanksgiving, 2026-11-18) — a little turkey who strolls along the top edge of the
+// chat message box (only in the open space between "Post as @update" and "Schedule send", never over
+// the text you type or any button). Typing → he stops, looks down at your words, then up at you.
+// Stop typing → short pause, then he walks again. Send → happy gobble + feather shake.
+// Purely visual (pointer-events: none). Reduced motion → he stands still and only changes pose.
+// Finds the composer through the page itself, so Chat.jsx is untouched.
+// ============================================================
+const CLUCK_W = 54, CLUCK_H = 50
+function CluckSvg({ pose, step }) {
+  // pose: 'walk' | 'idle' | 'down' | 'up' | 'gobble'
+  const head = pose === 'down' ? 'rotate(34deg)' : pose === 'up' ? 'rotate(-16deg)' : pose === 'gobble' ? 'rotate(-8deg)' : 'rotate(0deg)'
+  const pupil = pose === 'down' ? [.9, 1.3] : pose === 'up' ? [-.5, -1.3] : [1, 0]
+  const fan = pose === 'gobble' ? 'scale(1.12)' : 'scale(1)'
+  const feathers = [[-150, '#B91C1C'], [-132, '#EA580C'], [-114, '#F59E0B'], [-96, '#C2410C'], [-78, '#EA580C'], [-60, '#D97706'], [-42, '#B91C1C'], [-24, '#F59E0B']]
+  return (
+    <svg width={CLUCK_W} height={CLUCK_H} viewBox="0 0 100 92" aria-hidden="true" style={{ overflow: 'visible', display: 'block' }}>
+      <defs>
+        <radialGradient id="ckBody" cx="58%" cy="40%" r="70%"><stop offset="0%" stopColor="#B8672F" /><stop offset="70%" stopColor="#874019" /><stop offset="100%" stopColor="#5E2A0E" /></radialGradient>
+        <radialGradient id="ckHead" cx="40%" cy="35%" r="70%"><stop offset="0%" stopColor="#E9B48A" /><stop offset="100%" stopColor="#C2814F" /></radialGradient>
+        <linearGradient id="ckWing" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#9A4E22" /><stop offset="100%" stopColor="#6B3112" /></linearGradient>
+        {feathers.map(([, c], i) => (
+          <linearGradient key={i} id={'ckF' + i} x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stopColor="#5E2A0E" /><stop offset="45%" stopColor={c} /><stop offset="86%" stopColor={SHADE(c, 35)} /><stop offset="100%" stopColor="#FFF1DC" />
+          </linearGradient>
+        ))}
+      </defs>
+      {/* tail fan */}
+      <g style={{ transformOrigin: '36px 54px', transform: fan, transition: 'transform .2s' }} className={pose === 'gobble' ? 'ck-shake' : undefined}>
+        {feathers.map(([a], i) => (
+          <path key={i} d="M36 54 C30 41 30 21 36 9 C42 21 42 41 36 54 Z" fill={`url(#ckF${i})`} stroke="#5E2A0E" strokeOpacity=".25" strokeWidth=".8" transform={`rotate(${a + 90} 36 54)`} />
+        ))}
+      </g>
+      {/* legs */}
+      <g stroke="#E8892B" strokeWidth="3" strokeLinecap="round" fill="none">
+        <g style={{ transformOrigin: '46px 70px', transform: `rotate(${step ? 16 : -10}deg)`, transition: 'transform .22s' }}><path d="M46 70 L46 84 M46 84 l-4 3 M46 84 l1 4 M46 84 l5 2" /></g>
+        <g style={{ transformOrigin: '55px 70px', transform: `rotate(${step ? -10 : 16}deg)`, transition: 'transform .22s' }}><path d="M55 70 L55 84 M55 84 l-4 3 M55 84 l1 4 M55 84 l5 2" /></g>
+      </g>
+      {/* neck (behind the body so it grows out of the chest) */}
+      <g style={{ transform: head, transformOrigin: '63px 50px', transformBox: 'view-box', transition: 'transform .35s cubic-bezier(.3,.7,.4,1)' }}>
+        <path d="M60 56 Q65 42 70 33" stroke="#B9774A" strokeWidth="10" strokeLinecap="round" fill="none" />
+      </g>
+      {/* body */}
+      <ellipse cx="50" cy="58" rx="22" ry="17" fill="url(#ckBody)" />
+      <ellipse cx="62" cy="61" rx="8" ry="9" fill="#D49A66" opacity=".45" />
+      <path d="M40 54 l3 3 3-3 M48 50 l3 3 3-3 M44 62 l3 3 3-3 M53 58 l3 3 3-3" stroke="#E2A877" strokeOpacity=".55" strokeWidth="1.2" fill="none" strokeLinecap="round" />
+      {/* wing */}
+      <path d="M33 55 Q46 43 61 52 Q59 61 51 66 Q41 68 35 62 Z" fill="url(#ckWing)" />
+      <path d="M38 61 Q43 57 49 61 M42 56 Q48 52 54 56 M46 64 Q51 61 56 63" stroke="#C47A45" strokeOpacity=".7" strokeWidth="1.3" fill="none" strokeLinecap="round" />
+      {/* neck + head */}
+      <g style={{ transform: head, transformOrigin: '63px 50px', transformBox: 'view-box', transition: 'transform .35s cubic-bezier(.3,.7,.4,1)' }} className={pose === 'gobble' ? 'ck-gobble' : undefined}>
+        <path d="M66 41 Q68 36 70 33" stroke="#B9774A" strokeWidth="10" strokeLinecap="round" fill="none" />
+        <circle cx="72" cy="27" r="9" fill="url(#ckHead)" />
+        <path d="M80 27 L88 29.5 L80 32 Z" fill="#F59E0B" stroke="#C2410C" strokeWidth=".8" strokeLinejoin="round" />
+        <path d="M80 26 Q83 30 81 36 Q79 39 78 34 Q78 30 80 26 Z" fill="#DC2626" />
+        <path d="M74 33 Q77 38 74 43 Q71 40 72 35 Z" fill="#DC2626" />
+        <ellipse cx="68" cy="31" rx="2.6" ry="1.6" fill="#F9A8D4" opacity=".85" />
+        <circle cx="74.5" cy="25" r="3" fill="#fff" />
+        <circle cx={74.5 + pupil[0]} cy={25 + pupil[1]} r="1.8" fill="#2B1408" />
+        <circle cx={75.2 + pupil[0]} cy={24.2 + pupil[1]} r=".6" fill="#fff" />
+        <path d="M71 21.5 Q74 20 77 21.5" stroke="#5E2A0E" strokeWidth="1" fill="none" strokeLinecap="round" opacity={pose === 'up' || pose === 'down' ? 1 : 0} />
+      </g>
+    </svg>
+  )
+}
+const CLUCK_CSS = `
+@keyframes ckBob { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-2px) } }
+@keyframes ckShake { 0%, 100% { transform: scale(1.12) rotate(0) } 25% { transform: scale(1.14) rotate(-6deg) } 75% { transform: scale(1.14) rotate(6deg) } }
+@keyframes ckGobble { 0%, 100% { transform: rotate(-8deg) } 30% { transform: rotate(6deg) translateY(1px) } 60% { transform: rotate(-12deg) } }
+@keyframes ckPop { from { opacity: 0; transform: translate(-50%, 4px) scale(.8) } to { opacity: 1; transform: translate(-50%, 0) scale(1) } }
+.ck-shake { animation: ckShake .32s ease-in-out 3; transform-box: view-box; }
+.ck-gobble { animation: ckGobble .3s ease-in-out 3; transform-box: view-box; }
+`
+function findComposer() {
+  const pane = document.querySelector('[data-cc-chatpane]')
+  if (!pane) return null
+  const wraps = [...pane.querySelectorAll('.re-wrap')].filter(w => w.offsetParent)
+  if (!wraps.length) return null
+  // the main composer is the bottom-most, widest editor in the chat pane
+  const wrap = wraps.sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom)[0]
+  const r = wrap.getBoundingClientRect()
+  if (r.width < 260) return null
+  // the "Post as @update · Schedule send" row sits just above the editor; walk only in the gap between them
+  let lo = r.left + 18, hi = r.right - 18
+  let row = wrap.parentElement
+  while (row && row.parentElement && !row.previousElementSibling) row = row.parentElement
+  for (let el = row && row.parentElement ? row.parentElement.firstElementChild : null; el; el = el.nextElementSibling) {
+    if (el.contains(wrap)) break
+    const er = el.getBoundingClientRect()
+    if (er.height < 4 || er.bottom < r.top - 60) continue
+    const label = el.querySelector('label'), btns = [...el.querySelectorAll('button')]
+    if (label) lo = Math.max(lo, label.getBoundingClientRect().right + 14)
+    const sched = btns.find(b => /schedule|cancel/i.test(b.textContent || ''))
+    if (sched) hi = Math.min(hi, sched.getBoundingClientRect().left - 14)
+  }
+  return { wrap, top: r.top, lo, hi, editable: wrap.querySelector('[contenteditable="true"]') }
+}
+function CluckNorris() {
+  const still = reduceMotion()
+  const [box, setBox] = useState(null)          // { top, lo, hi }
+  const [x, setX] = useState(null)              // left position (px)
+  const [face, setFace] = useState(1)           // 1 = facing right, -1 = left
+  const [pose, setPose] = useState('idle')
+  const [step, setStep] = useState(false)
+  const [bubble, setBubble] = useState(false)
+  const st = useRef({ target: null, typingUntil: 0, gobbleUntil: 0, pauseUntil: 0, lastSwap: 0, look: 0, x: null })
+  // keep track of where the composer is (it moves when the window resizes or the editor grows)
+  useEffect(() => {
+    let alive = true
+    const read = () => {
+      const c = findComposer()
+      if (!alive) return
+      setBox(prev => {
+        if (!c || c.hi - c.lo < CLUCK_W + 20) return null
+        if (prev && Math.abs(prev.top - c.top) < 1 && Math.abs(prev.lo - c.lo) < 1 && Math.abs(prev.hi - c.hi) < 1) return prev
+        return { top: c.top, lo: c.lo, hi: c.hi }
+      })
+    }
+    read()
+    const iv = setInterval(read, 600)
+    window.addEventListener('resize', read)
+    return () => { alive = false; clearInterval(iv); window.removeEventListener('resize', read) }
+  }, [])
+  // typing + sending
+  useEffect(() => {
+    const inComposer = (t) => { const c = findComposer(); return !!(c && t && c.wrap.contains(t)) }
+    const onInput = (e) => { if (inComposer(e.target)) st.current.typingUntil = Date.now() + 1400 }
+    const onKey = (e) => {
+      if (!inComposer(e.target)) return
+      if (e.key === 'Enter' && !e.shiftKey) gobble()
+      else if (e.key.length === 1 || e.key === 'Backspace') st.current.typingUntil = Date.now() + 1400
+    }
+    const gobble = () => { st.current.gobbleUntil = Date.now() + 1100; st.current.typingUntil = 0; st.current.pauseUntil = Date.now() + 1700 }
+    const onCelebrate = () => { if (findComposer()) gobble() }
+    document.addEventListener('input', onInput, true)
+    document.addEventListener('keydown', onKey, true)
+    window.addEventListener('cc:celebrate', onCelebrate)
+    return () => { document.removeEventListener('input', onInput, true); document.removeEventListener('keydown', onKey, true); window.removeEventListener('cc:celebrate', onCelebrate) }
+  }, [])
+  // the little brain: ~12 updates a second, very light
+  useEffect(() => {
+    if (!box) return
+    const s = st.current
+    if (s.x == null || s.x < box.lo || s.x > box.hi - CLUCK_W) { s.x = box.lo + Math.random() * Math.max(0, box.hi - box.lo - CLUCK_W); setX(s.x) }
+    const iv = setInterval(() => {
+      const now = Date.now()
+      if (now < s.gobbleUntil) { setPose('gobble'); setBubble(true); return }
+      setBubble(false)
+      if (now < s.typingUntil) {
+        // nosy: look down at the words, then up at you, back and forth
+        if (!s.look || now - s.look > 1300) { s.look = now; setPose(p => (p === 'down' ? 'up' : 'down')) }
+        s.pauseUntil = now + 900
+        return
+      }
+      s.look = 0
+      if (still) { setPose('idle'); return }
+      if (now < s.pauseUntil) { setPose('idle'); return }
+      if (s.target == null || Math.abs(s.target - s.x) < 2) {
+        if (s.target != null) { s.target = null; s.pauseUntil = now + 900 + Math.random() * 2200; setPose('idle'); return }
+        s.target = box.lo + Math.random() * Math.max(0, box.hi - box.lo - CLUCK_W)
+      }
+      const dir = Math.sign(s.target - s.x)
+      s.x += dir * Math.min(2.6, Math.abs(s.target - s.x))
+      setFace(dir >= 0 ? 1 : -1); setX(s.x); setPose('walk')
+      if (now - s.lastSwap > 230) { s.lastSwap = now; setStep(v => !v) }
+    }, 85)
+    return () => clearInterval(iv)
+  }, [box, still])
+  if (!box || x == null) return null
+  const walking = pose === 'walk'
+  return (
+    <>
+      <style>{CLUCK_CSS}</style>
+      <div aria-hidden="true" className="cc-desktop-only" style={{ position: 'fixed', left: x, top: box.top - CLUCK_H + 3, width: CLUCK_W, height: CLUCK_H, zIndex: 2340, pointerEvents: 'none' }}>
+        {bubble && (
+          <div style={{ position: 'absolute', left: '50%', bottom: CLUCK_H - 2, transform: 'translateX(-50%)', animation: 'ckPop .18s ease-out', background: '#fff', border: '1.5px solid #FDBA74', borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 800, color: '#C2410C', whiteSpace: 'nowrap', boxShadow: '0 4px 10px -6px rgba(194,65,12,.6)' }}>Gobble! 🧡</div>
+        )}
+        <div style={{ transform: `scaleX(${face})`, transition: 'transform .18s' }}>
+          <div style={{ animation: walking && !still ? 'ckBob .46s ease-in-out infinite' : 'none' }}>
+            <CluckSvg pose={pose} step={walking && !still ? step : false} />
+          </div>
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -918,6 +1106,7 @@ export default function Seasonal() {
       <TgFrame />
       <TgHeader count={gCount} onOpen={() => setTreeOpen(true)} fall={fall} setFall={setFall} />
       <TgAnnounce onOpen={() => setTreeOpen(true)} count={gCount} />
+      <CluckNorris />
       {treeOpen && <GratitudeTree onClose={() => setTreeOpen(false)} onChanged={() => window.dispatchEvent(new Event('cc:gratitude-changed'))} />}
       <div className="cc-season-layer" aria-hidden="true">
         {floaters.map(f => f.kind === 'leaves' ? (
