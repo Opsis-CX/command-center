@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import Advent from './Advent'
 
 // ============================================================
 // SEASONAL DECORATIONS (2026-10-27, Brittney) — cute, never scary.
@@ -1048,14 +1049,7 @@ body.cc-christmas [data-cc-chatpane] .btn-primary, body.cc-christmas [data-cc-ch
 .xm-btn:hover { transform: translateY(-1px); box-shadow: 0 12px 24px -12px rgba(8,70,78,.9), inset 0 1px 0 rgba(255,255,255,.25); }
 .xm-btn:focus-visible { outline: 2px solid #7DD3DC; outline-offset: 2px; }
 .xm-day { background: #EAF6F8; color: #0C5A63; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 800; box-shadow: inset 0 0 0 1px rgba(12,90,99,.15); }
-.xm-door { position: relative; aspect-ratio: 1; border-radius: 14px; border: 1.5px solid #C7DFE8; background: linear-gradient(160deg, #FFFFFF 0%, #EAF4F9 100%); cursor: pointer;
   display: grid; place-items: center; font: inherit; font-size: 22px; font-weight: 800; color: #0F5B64; transition: transform .15s, box-shadow .15s; }
-.xm-door:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 20px -12px rgba(12,90,99,.6); }
-.xm-door.today { border-color: #13707A; box-shadow: 0 0 0 3px rgba(19,112,122,.18); }
-.xm-door.on { background: linear-gradient(160deg, #1A7F89 0%, #0E6670 100%); color: #fff; border-color: #0E6670; }
-.xm-door:disabled { cursor: default; color: #9DB5BE; background: #F3F7F9; }
-:root[data-theme="dark"] .xm-door { background: #12262C; border-color: #24464F; color: #BFE6EC; }
-:root[data-theme="dark"] .xm-door:disabled { background: #0E1D21; color: #47636B; }
 @keyframes xmIn { from { opacity: 0; transform: translateY(10px) scale(.98) } to { opacity: 1; transform: none } }
 `
 // The header: Brittney's painted banner — "Wishing you a season filled with joy!" in glittery teal script
@@ -1121,7 +1115,7 @@ function XmTopGarland({ onRight, hidden }) {
 // "25 Days of Christmas" — the main button, centered in the work bar under the header.
 const xmDay = () => {
   const [mo, da] = new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'numeric', day: 'numeric' }).split('/').map(Number)
-  return mo === 12 ? Math.min(25, da) : 1   // before December this is a preview, so Day 1 is open
+  return mo === 12 ? Math.min(25, da) : 1   // before December the badge shows Day 1 (the calendar itself says "Coming December 1")
 }
 function XmButton({ onOpen }) {
   const left = useAnchorRect('.workbar .wb-left', 800), right = useAnchorRect('.workbar .wb-right', 800), bar = useAnchorRect('.workbar', 800), top = useAnchorRect('.topbar', 800)
@@ -1144,53 +1138,6 @@ function XmButton({ onOpen }) {
         <span className="xm-day">Day {day}</span>
         <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </button>
-    </div>
-  )
-}
-// One little thing a day, Dec 1–25 (placeholder ideas until Brittney sends the real list).
-const XM_DAYS = [
-  'Share your favorite holiday movie in chat 🎬', 'Tell us the best gift you ever got 🎁', 'Ugly sweater day! Post a pic if you have one 🧶',
-  'What\'s your go-to holiday cookie? 🍪', 'Give a shout-out to a teammate who helped you this year 🙌', 'Favorite holiday song — go! 🎶',
-  'Hot cocoa or eggnog? ☕', 'Share a holiday tradition from your family 🕯️', 'Snow day dream: where would you spend it? ❄️',
-  'Post your desk or workspace decorations 🎄', 'What\'s on your wish list this year? 📝', 'Random act of kindness day 💙',
-  'Best holiday memory from when you were a kid ⭐', 'Name your favorite reindeer 🦌', 'Real tree or fake tree? 🌲',
-  'Share a win from this year you\'re proud of 🏆', 'Favorite holiday food at the big dinner 🍽️', 'Pajama day! 🛌',
-  'Which holiday character are you? 🎅', 'Send a thank-you note to someone today ✉️', 'Gingerbread house: builder or eater? 🏠',
-  'Your best gift-wrapping tip 🎀', 'What are you most looking forward to next year? ✨', 'Christmas Eve plans? 🌟', 'Merry Christmas, team! 🎄💙',
-]
-function XmAdvent({ onClose }) {
-  const today = xmDay()
-  const [pick, setPick] = useState(today)
-  useEffect(() => { const k = (e) => { if (e.key === 'Escape') onClose() }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [onClose])
-  const preview = (() => { const mo = Number(new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'numeric' })); return mo !== 12 })()
-  return (
-    <div role="dialog" aria-modal="true" aria-label="25 Days of Christmas" onClick={onClose}
-      style={{ position: 'fixed', inset: 0, zIndex: 2600, background: 'rgba(8,32,40,.45)', display: 'grid', placeItems: 'center', padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 'min(540px, 100%)', maxHeight: '90vh', overflowY: 'auto', borderRadius: 20, background: 'var(--surface)', boxShadow: '0 30px 70px -20px rgba(8,40,48,.6)', animation: 'xmIn .25s ease' }}>
-        <div style={{ position: 'relative', padding: '18px 22px 16px', borderRadius: '20px 20px 0 0', background: 'linear-gradient(180deg, #1A7F89 0%, #0E6670 100%)', color: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <XImg name="gift" h={36} />
-          <div style={{ flex: 1 }}>
-            <div className="xm-script" style={{ fontSize: 28, lineHeight: 1.1 }}>25 Days of Christmas</div>
-            <div style={{ fontSize: 13, opacity: .9, marginTop: 2 }}>{preview ? 'Preview — Day 1 is open so you can try it out' : `Day ${today} of 25 · a little something every day`}</div>
-          </div>
-          <Snowflake size={26} color="rgba(255,255,255,.85)" />
-          <button onClick={onClose} aria-label="Close" style={{ border: 0, background: 'rgba(255,255,255,.15)', color: '#fff', width: 32, height: 32, borderRadius: '50%', cursor: 'pointer', fontSize: 15 }}>✕</button>
-        </div>
-        <div style={{ padding: 20 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
-            {Array.from({ length: 25 }, (_, i) => i + 1).map(d => (
-              <button key={d} className={'xm-door' + (d === today ? ' today' : '') + (d === pick ? ' on' : '')} disabled={d > today} onClick={() => setPick(d)}
-                title={d > today ? `Opens Dec ${d}` : `Day ${d}`} aria-label={d > today ? `Day ${d}, opens December ${d}` : `Open day ${d}`}>
-                {d > today ? <span style={{ fontSize: 18 }}>{d}<span style={{ display: 'block', fontSize: 10, fontWeight: 700, marginTop: -2 }}>🔒</span></span> : d}
-              </button>
-            ))}
-          </div>
-          <div style={{ marginTop: 16, borderRadius: 14, padding: '14px 16px', background: 'color-mix(in srgb, #E6F2F7 70%, var(--surface))', border: '1px solid color-mix(in srgb, #BCD8E6 60%, var(--line))', display: 'flex', gap: 12, alignItems: 'center' }}>
-            <span className="xm-script" style={{ fontSize: 26, color: XTEAL, minWidth: 64 }}>Day {pick}</span>
-            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>{XM_DAYS[pick - 1]}</span>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }
@@ -1645,6 +1592,7 @@ export default function Seasonal() {
   const xmCacheKey = user?.id ? `cc.${XMAS_KEY}.${user.id}` : null
   const [xmMode, setXmModeState] = useState(false)
   const [adventOpen, setAdventOpen] = useState(false)
+  const [canPreview, setCanPreview] = useState(false)
   const [garlandRight, setGarlandRight] = useState(null)
   const [garlandAway, setGarlandAway] = useState(false)
   const season = activeSeason()
@@ -1654,10 +1602,11 @@ export default function Seasonal() {
   useEffect(() => {
     if (!user?.id || !season) return
     let alive = true
-    const read = () => supabase.from('profiles').select('seasonal_effects, full_name').eq('id', user.id).maybeSingle().then(({ data }) => {
+    const read = () => supabase.from('profiles').select('seasonal_effects, full_name, is_admin, role').eq('id', user.id).maybeSingle().then(({ data }) => {
       if (!alive) return
       const enabled = data?.seasonal_effects !== false
       _off = !enabled; setOn(enabled)
+      setCanPreview(!!data?.is_admin || /^(owner|admin)$/i.test(String(data?.role || '')))
       document.body.classList.toggle('cc-halloween', enabled && season.key === 'halloween')
       document.body.classList.toggle('cc-thanksgiving', enabled && season.key === 'thanksgiving')
       document.body.classList.toggle('cc-christmas', enabled && season.key === 'christmas')
@@ -1812,7 +1761,7 @@ export default function Seasonal() {
       <XmTopGarland onRight={setGarlandRight} hidden={garlandAway} />
       <XmHeader mode={xmMode} setMode={setXmMode} garlandRight={garlandRight} onTight={setGarlandAway} />
       <XmButton onOpen={() => setAdventOpen(true)} />
-      {adventOpen && <XmAdvent onClose={() => setAdventOpen(false)} />}
+      {adventOpen && <Advent onClose={() => setAdventOpen(false)} userId={user?.id} canPreview={canPreview} />}
       {xmMode && <XmModeLayer />}
       <div className="cc-season-layer" aria-hidden="true">
         {bursts.map(b => (
