@@ -21,9 +21,8 @@ export const SEASONS = [
   { key: 'thanksgiving', from: [11, 22], to: [11, 28],
     greeting: (first) => `Happy Thanksgiving${first ? `, ${first}` : ''}! We're thankful for you 🧡`,
     hat: 'pilgrim' },
-  // Christmas: live now for testing (Brittney will send the real go-live/end dates). Thanksgiving is
-  // listed first, so Nov 22–28 still shows Thanksgiving and Christmas picks back up after.
-  { key: 'christmas', from: [11, 18], to: [12, 31],
+  // Christmas: Dec 1 through Dec 25 (ends 11:59pm Eastern on Christmas Day), matching the 25-day countdown.
+  { key: 'christmas', from: [12, 1], to: [12, 25],
     greeting: (first) => `Merry Christmas${first ? `, ${first}` : ''}! 🎄`,
     hat: 'santa' },
 ]
