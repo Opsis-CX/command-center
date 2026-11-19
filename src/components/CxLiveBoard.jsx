@@ -4,7 +4,7 @@
 //  answer, abandon rate, waiting now), live alerts, every live call with Listen /
 //  Whisper / Barge, and shareable TV wallboard links (no login needed).
 // ============================================================
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useVoice } from '../lib/voice'
 import { cxControl, startMonitor } from '../lib/cx'
@@ -13,6 +13,22 @@ const G = '#14302A'
 const mmss = s => (s == null ? '—' : `${Math.floor(s / 60)}:${String(Math.round(s) % 60).padStart(2, '0')}`)
 const pct = v => (v == null ? '—' : `${v}%`)
 const dayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString() }
+
+// Alert sound (CX-15, 11/18): a short two-tone chime when a new "needs attention" alert appears (a caller waiting past
+// the line's alert time, a CSR asking for help…). Web Audio, no file to load. Browsers only allow sound after the page
+// has been clicked once, so the first click on the wallboard unlocks it.
+let actx = null
+function audio() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); return actx } catch { return null } }
+if (typeof window !== 'undefined') window.addEventListener('pointerdown', () => audio(), { once: true })
+function chime() {
+  const c = audio(); if (!c) return
+  ;[[880, 0], [660, 0.22]].forEach(([f, t]) => {
+    const o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = f
+    g.gain.setValueAtTime(0.0001, c.currentTime + t); g.gain.exponentialRampToValueAtTime(0.25, c.currentTime + t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + t + 0.2)
+    o.connect(g); g.connect(c.destination); o.start(c.currentTime + t); o.stop(c.currentTime + t + 0.22)
+  })
+}
+const soundPref = () => { try { return localStorage.getItem('cx_alert_sound') !== 'off' } catch { return true } }
 
 export default function CxLiveBoard({ clientId = null }) {
   const voice = useVoice()
@@ -23,6 +39,8 @@ export default function CxLiveBoard({ clientId = null }) {
   const [mon, setMon] = useState(null)      // { id, mode, call }
   const [err, setErr] = useState('')
   const [showLinks, setShowLinks] = useState(false)
+  const [sound, setSound] = useState(soundPref)
+  const seen = useRef(null)
   const args = useCallback(x => (clientId ? { ...x, p_client: clientId } : x), [clientId])
 
   const load = useCallback(async () => {
@@ -33,6 +51,11 @@ export default function CxLiveBoard({ clientId = null }) {
     ])
     if (a.error) { setErr(a.error.message); return }
     setErr(''); setM(a.data); setCalls(b.data || []); setAlerts(c.data || [])
+    const keys = (c.data || []).map(x => `${x.interaction_id || ''}|${x.text}`)
+    if (seen.current && soundPref() && keys.some(k => !seen.current.has(k))) chime()
+    seen.current = new Set(keys)
+    // the monitored call ended: drop the Stop / Leave state
+    setMon(cur => (cur && !(b.data || []).some(x => x.id === cur.id) ? null : cur))
   }, [args])
   useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t) }, [load])
 
@@ -96,6 +119,7 @@ export default function CxLiveBoard({ clientId = null }) {
           <div style={{ fontWeight: 800, color: G }}>Live calls · today</div>
           <div style={{ display: 'flex', gap: 6 }}>
             {mon && <button style={{ ...S.btn, background: '#fee2e2', borderColor: '#fecaca' }} onClick={leave}>Leave the call</button>}
+            <button style={S.btn} title="Play a chime when a new alert appears (a caller waiting too long, a CSR asking for help)" onClick={() => { const v = !sound; setSound(v); try { localStorage.setItem('cx_alert_sound', v ? 'on' : 'off') } catch { /* ignore */ } if (v) chime() }}>{sound ? '🔔 Alert sound on' : '🔕 Alert sound off'}</button>
             <button style={S.btn} onClick={() => { setShowLinks(s => !s); loadLinks() }}>{showLinks ? 'Hide TV links' : 'TV links'}</button>
           </div>
         </div>
@@ -119,6 +143,7 @@ export default function CxLiveBoard({ clientId = null }) {
                 <span style={{ display: 'flex', gap: 4 }}>
                   <button style={S.small} onClick={() => join(a.interaction_id, 'listen', a.text)}>Listen</button>
                   <button style={S.small} onClick={() => join(a.interaction_id, 'whisper', a.text)}>Whisper</button>
+                  {mon?.id === a.interaction_id && <button style={{ ...S.small, background: '#fee2e2', borderColor: '#fecaca' }} onClick={leave}>Stop</button>}
                 </span>
               )}
             </div>
@@ -148,6 +173,7 @@ export default function CxLiveBoard({ clientId = null }) {
                             {md === 'listen' ? 'Listen' : md === 'whisper' ? 'Whisper' : 'Barge'}
                           </button>
                         ))}
+                        {on && <button onClick={leave} style={{ ...S.small, background: '#fee2e2', borderColor: '#fecaca', fontWeight: 700 }} title="Stop listening and leave this call">Stop</button>}
                       </td>
                     </tr>
                   )
@@ -155,7 +181,7 @@ export default function CxLiveBoard({ clientId = null }) {
               </tbody>
             </table>
           </div>
-          <div style={{ ...S.mut, marginTop: 6 }}>Listen: you hear the call, nobody hears you. Whisper: only the CSR hears you. Barge: everyone hears you. Every join is logged.</div>
+          <div style={{ ...S.mut, marginTop: 6 }}>Listen: you hear the call, nobody hears you. Whisper: only the CSR hears you. Barge: everyone hears you. Stop leaves the call. Every join is logged.</div>
         </div>
       )}
 

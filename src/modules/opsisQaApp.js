@@ -163,7 +163,9 @@ export function mountOpsisQA(ROOT, cfg) {
   // RM / GM logins (Becky 11/16): Overview (their dashboard), Call trends, Coaching Hub, Coaching clips, AI CSR.
   // Becky 11/18 (go-live test plan): plus the supervisor tools Wallboard, Phone, Workforce and Intraday. Still no settings or Calibration.
   var MGR = !CFG.csrSelf && !OPSIS && (CFG.portalRole === 'rm' || CFG.portalRole === 'gm');
-  var MGR_NAV = ['overview', 'trends', 'hub', 'coachclips', 'receptionist', 'wallboard', 'myphone', 'wfm', 'intraday'];
+  // Becky 11/18 (S2L-12): RMs/GMs also see AI Speed to Lead — read-only for their brand (opsis-portal-ops: can_edit is admin only,
+  // dialer campaigns hidden for non-staff).
+  var MGR_NAV = ['overview', 'trends', 'hub', 'coachclips', 'receptionist', 'aistl', 'wallboard', 'myphone', 'wfm', 'intraday'];
   // reachable by drilling down from the dashboard, but not in the sidebar
   var MGR_OK = MGR_NAV.concat(['brand', 'csr', 'calls', 'hubqs', 'repeat', 'kpi']).concat(TILE_VIEWS);
   function mgrNav() { if (!MGR) return; NAV = [['', NAV[0][1].filter(function (n) { return MGR_NAV.indexOf(n[0]) >= 0; })]]; }
