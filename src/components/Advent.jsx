@@ -14,7 +14,7 @@ const ART = '/seasonal/christmas/'
 // TESTING SWITCH (2026-11-18): while this is true, admins/owners see all 25 presents unlocked on any
 // date so Brittney can click through every day. Everyone else still follows the real Dec 1–25 schedule.
 // Set it to false when testing is done.
-const ADVENT_TEST_UNLOCK = true
+const ADVENT_TEST_UNLOCK = false
 const KEY = (d) => `advent-2026-${String(d).padStart(2, '0')}`
 const reduceMotion = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false } }
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v) } catch { return d } }
@@ -847,7 +847,7 @@ function Characters() {
 // ---------- the calendar ----------
 export default function Advent({ onClose, userId, canPreview }) {
   const today = adventToday()
-  const [preview, setPreview] = useState(() => !!canPreview && (ADVENT_TEST_UNLOCK || today === 0))
+  const [preview, setPreview] = useState(() => !!canPreview && ADVENT_TEST_UNLOCK)
   useEffect(() => { if (canPreview && ADVENT_TEST_UNLOCK) setPreview(true) }, [canPreview])
   const unlockedTo = preview ? 25 : today
   const cacheKey = `cc.advent2026.${userId || 'me'}.opened`
