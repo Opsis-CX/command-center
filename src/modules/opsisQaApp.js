@@ -864,7 +864,11 @@ export function mountOpsisQA(ROOT, cfg) {
   // ---------- Brands list ----------
   function vBrands(tok) {
     setMain(crumb([['Brands']]) + '<div class="oq-card" id="brandall">' + skel(30, 10) + '</div>');
-    Promise.all([loadReport(), loadPrevReport()]).then(function (r) { if (tok === T) { noteKnown(r[0]); brandTable(r[0], r[1], 'brandall', 0); } }).catch(function (e) { if (tok === T) $('brandall').innerHTML = errBox(e); });
+    var BR = null;
+    Promise.all([loadReport(), loadPrevReport()]).then(function (r) { if (tok === T) { noteKnown(r[0]); BR = r; brandTable(r[0], r[1], 'brandall', 0); } }).catch(function (e) { if (tok === T) $('brandall').innerHTML = errBox(e); });
+    // 11/19: the "Ask rate · not booked" column comes from qaextras. This page never loaded it, so the column was blank
+    // unless you'd opened the Overview first (and then it showed the Overview's date range). Load it here and redraw.
+    loadExtras().then(function () { if (tok === T && BR) brandTable(BR[0], BR[1], 'brandall', 0); }).catch(function () {});
   }
 
   // ---------- Brand / CSR drill-down ----------
