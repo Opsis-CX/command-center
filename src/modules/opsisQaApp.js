@@ -20,7 +20,7 @@ var MARKUP = "<div class=\"oq-app\">\n  <aside>\n    <div class=\"logo\"><img id
 function oqSideToggle(ROOT) {
   if (!document.getElementById('oqa-side-style')) {
     var ss = document.createElement('style'); ss.id = 'oqa-side-style';
-    ss.textContent = '#oqa .oq-sidehide{all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;color:#BFD1C8;font-family:Montserrat,Arial,sans-serif;font-size:12.5px;font-weight:500}' +
+    ss.textContent = '#oqa .oq-sidehide{all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;align-self:flex-start;margin:-10px 0 -12px;padding:6px 10px;border-radius:10px;color:#BFD1C8;font-family:Montserrat,Arial,sans-serif;font-size:12.5px;font-weight:500}' +
       '#oqa .oq-sidehide:hover,#oqa .oq-sidehide:focus-visible{background:rgba(255,255,255,.12);color:#fff}' +
       '#oqa .oq-sideshow{all:unset;cursor:pointer;position:fixed;top:12px;left:12px;z-index:50;display:none;align-items:center;gap:6px;background:var(--side);color:#fff;font-family:Montserrat,Arial,sans-serif;font-size:12.5px;font-weight:600;padding:8px 12px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.18)}' +
       '#oqa .oq-sideshow:hover,#oqa .oq-sideshow:focus-visible{background:#1F4A3E}' +
@@ -36,8 +36,7 @@ function oqSideToggle(ROOT) {
   var hideBtn = document.createElement('button');
   hideBtn.type = 'button'; hideBtn.className = 'oq-sidehide'; hideBtn.innerHTML = '<span aria-hidden="true" style="font-size:15px;line-height:1">&laquo;</span> Hide menu';
   hideBtn.title = 'Hide menu'; hideBtn.setAttribute('aria-label', 'Hide menu');
-  var nav = aside.querySelector('.nav');
-  aside.insertBefore(hideBtn, nav ? nav.nextSibling : null);
+  aside.insertBefore(hideBtn, aside.firstChild);
   var showBtn = document.createElement('button');
   showBtn.type = 'button'; showBtn.className = 'oq-sideshow';
   showBtn.innerHTML = '<span aria-hidden="true" style="font-size:15px;line-height:1">&#9776;</span> Menu';
