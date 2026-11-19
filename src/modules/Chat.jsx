@@ -2893,7 +2893,7 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
         isDm={channel?.is_dm} dmName={dmName} meId={me.id} profiles={profiles}
         noMute={!!channel?.support_line_id && !isAdmin}
         onClose={() => setShowPrefs(false)} />}
-      {showMembers && <ChannelMembersPanel channelId={channelId} channelName={channel?.name} profiles={profiles} meId={me.id} isOwner={isOwner} onClose={() => setShowMembers(false)} onChanged={async () => {
+      {showMembers && <ChannelMembersPanel channelId={channelId} channelName={channel?.name} profiles={profiles} meId={me.id} isOwner={isOwner || isAdmin} onClose={() => setShowMembers(false)} onChanged={async () => {
         const { data } = await supabase.from('channel_members').select('profile_id').eq('channel_id', channelId)
         setMembers((data || []).map(m => m.profile_id))
       }} />}
@@ -3121,7 +3121,8 @@ const NP = {
   listBtn: { display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', border: 0, background: 'transparent', cursor: 'pointer', padding: '7px 8px', fontFamily: 'inherit' },
 }
 
-// Channel members panel: lists everyone in the channel; owners can remove.
+// Channel members panel: lists everyone in the channel; owners and admins can add or remove people
+// (2026-11-19: admins too — the database already allows it via "Admins manage members").
 function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, onClose, onChanged }) {
   const [memberIds, setMemberIds] = useState([])
   const [loading, setLoading] = useState(true)
