@@ -221,18 +221,19 @@ export function mountOpsisQA(ROOT, cfg) {
       box.innerHTML = 'View as <select style="flex:1;background:#234840;color:#fff;border:1px solid #3B6158;border-radius:8px;padding:6px 8px;font:inherit;font-weight:700;cursor:pointer">' +
         CFG.accounts.map(function (x) { return '<option value="' + esc(x.email) + '"' + (x.current ? ' selected' : '') + '>' + esc(x.label) + '</option>'; }).join('') +
         // PORT-05 (11/18): see exactly what one CSR sees — opens the Coaching Hub list (your brand / location) to pick them
-        (CFG.csrSelf || OPSIS ? '' : '<option value="__csr">A specific CSR…</option>') + '</select>';
+        (CFG.csrSelf || OPSIS ? '' : '<option value="__csr">A specific CSR…</option>') + (COACH_OK() ? '<option value="__coach"' + (COACHMODE ? ' selected' : '') + '>Coach mode</option>' : '') + '</select>';
       w.insertBefore(box, w.children[2] || null);
       var sel = box.querySelector('select');
-      sel.onchange = function () { var v = sel.value; if (v === '__csr') { sel.value = cur.email; S.hubCsr = null; HUB.tab = 'home'; go('hub'); toast('Pick a CSR to see exactly what they see.'); return; } if (!v || v === cur.email) return; sel.disabled = true; toast('Switching…'); Promise.resolve(CFG.onSwitchAccount(v)).catch(function (e) { sel.disabled = false; sel.value = cur.email; toast((e && e.message) || 'Couldn\u2019t switch accounts.'); }); };
+      sel.onchange = function () { var v = sel.value; if (v === '__coach') { setCoachMode(true); return; } if (COACHMODE && v === cur.email) { setCoachMode(false); return; } if (v === '__csr') { sel.value = COACHMODE ? '__coach' : cur.email; S.hubCsr = null; HUB.tab = 'home'; go('hub'); toast('Pick a CSR to see exactly what they see.'); return; } if (!v || v === cur.email) return; sel.disabled = true; toast('Switching…'); Promise.resolve(CFG.onSwitchAccount(v)).catch(function (e) { sel.disabled = false; sel.value = cur.email; toast((e && e.message) || 'Couldn\u2019t switch accounts.'); }); };
     }
   }
 
   // Coach mode (Becky + Rob 11/19): a coach's landing page with everything else out of the way. On by default for
   // Opsis coaches (staff who aren't app admins); anyone with the Coach view can switch it on or off (remembered per browser).
   var COACH_NAV = ['coach', 'hub', 'csrs', 'calls', 'cardcap', 'calib', 'practice', 'coachclips'];
-  var COACHMODE = (function () { if (OPSIS || CFG.csrSelf || !CFG.coachHistory || !CFG.supervisor) return false; try { var v = localStorage.getItem('oq_coachmode'); if (v === '1' || v === '0') return v === '1'; } catch (e) {} return !!CFG.coachDefault; })();
-  function setCoachMode(on) { COACHMODE = !!on; try { localStorage.setItem('oq_coachmode', on ? '1' : '0'); } catch (e) {} if (on) go('coach'); else renderNav(); }
+  function COACH_OK() { return !OPSIS && !CFG.csrSelf && !!CFG.coachHistory && !!CFG.supervisor; }
+  var COACHMODE = (function () { if (!COACH_OK()) return false; try { var v = localStorage.getItem('oq_coachmode'); if (v === '1' || v === '0') return v === '1'; } catch (e) {} return !!CFG.coachDefault; })();
+  function setCoachMode(on) { COACHMODE = !!on; try { localStorage.setItem('oq_coachmode', on ? '1' : '0'); } catch (e) {} if (on) go('coach'); else { renderNav(); renderWho(); } toast(on ? 'Coach mode on: just the coaching pages.' : 'Coach mode off: full menu.'); }
   function renderNav() {
     var cur = S.view === 'brand' ? 'brands' : (S.view === 'csr' ? 'csrs' : (S.view === 'repeat' ? 'insights' : (S.view === 'hubqs' ? 'hub' : S.view)));
     var GRP = { phone: 'Performance', brands: 'Performance', csrs: 'Performance', calls: 'Performance', cardcap: 'Performance', pricetalk: 'Performance', money: 'Performance', leadtime: 'Performance',
@@ -251,7 +252,7 @@ export function mountOpsisQA(ROOT, cfg) {
       }).join('');
     }).join('');
     NAV = NAV0;
-    if (!OPSIS && !CFG.csrSelf && CFG.coachHistory && CFG.supervisor) {
+    if (COACH_OK() && !(CFG.accounts && CFG.accounts.length > 1 && CFG.onSwitchAccount)) {
       var tg = document.createElement('button'); tg.setAttribute('data-coachmode', COACHMODE ? '0' : '1');
       tg.style.cssText = 'margin-top:10px;font-size:12px;opacity:.85;justify-content:center';
       tg.textContent = COACHMODE ? 'Show the full menu' : 'Coach mode';
@@ -1970,7 +1971,7 @@ export function mountOpsisQA(ROOT, cfg) {
     prTeam({ op: 'session', session_id: id }).then(function (r) { var s = ((PR.d && PR.d.sessions) || []).filter(function (x) { return x.id === id; })[0]; var sc = s && ((PR.d.scenarios || []).filter(function (y) { return y.id === s.scenario_id; })[0]); r.title = sc ? sc.title : ''; r.scenario_id = sc ? sc.id : null; PR.result = r; drawPractice(); window.scrollTo(0, 0); }).catch(function (e) { toast(e.message); });
   }
   // ---------- AI CSR (Broccoli replacement, phase 1, pilot) ----------
-  var RC = { d: null, brand: '', live: null, res: null, err: null, tab: 'calls', s: null, sBrand: '', dirty: false, saving: false, open: { id: true }, rp: null };
+  var RC = { d: null, brand: '', live: null, res: null, err: null, tab: CFG.recepDash ? 'dash' : 'calls', s: null, sBrand: '', dirty: false, saving: false, open: { id: true }, rp: null };
   var RC_DAYS = [['sun', 'Sun'], ['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['fri', 'Fri'], ['sat', 'Sat']];
   var RC_TZ = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific']];
   function rcStrip(s) { return String(s || '').replace(/\[[a-z][a-z ,'-]{0,30}\]\s*/gi, '').replace(/\s{2,}/g, ' ').trim(); }
@@ -1999,7 +2000,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div class="oq-card"><details open><summary style="cursor:pointer;font-weight:600">Transcript</summary><div style="margin-top:8px">' + tx + '</div></details></div>';
   }
   function rcTabs() {
-    var t = [['calls', 'Test calls'], ['settings', 'Settings'], ['reports', 'Reports']];
+    var t = (CFG.recepDash ? [['dash', 'Dashboard']] : []).concat([['calls', 'Test calls'], ['settings', 'Settings'], ['reports', 'Reports']]);
     return '<div style="display:flex;gap:6px;margin:0 0 12px;flex-wrap:wrap">' + t.map(function (x) { var on = RC.tab === x[0]; return '<button class="sel' + (on ? ' btnd' : '') + '" data-act="rctab" data-t="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
   }
   function rcBrandSel(id, val, all) {
@@ -2017,6 +2018,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (RC.res) { w.innerHTML = rcResultHtml(RC.res); return; }
     if (RC.tab === 'settings') { w.innerHTML = rcTabs() + '<div id="rcset"></div>'; drawRcSettings(); return; }
     if (RC.tab === 'reports') { w.innerHTML = rcTabs() + '<div id="rcrep"></div>'; drawRcReport(); return; }
+    if (RC.tab === 'dash' && CFG.recepDash) { w.innerHTML = rcTabs() + '<div id="rddash"></div>'; drawRecepDash(); return; }
     var intro = '<div class="oq-card" style="background:#FAF8F4"><h2 class="ttl" style="margin:0 0 4px">AI CSR (test)</h2><p class="sub" style="line-height:1.55;margin:0">The AI CSR answers the brand’s line like a top CSR: she follows the 5-step call flow, asks your required questions, offers the days and windows in Settings, and sends the team a ready-to-book request. Call her as a customer to test her. <b>Phase 1</b>: test calls only. Transfers are simulated, and a team member confirms the time. Pilot: only a few people can see this tab.</p>' +
       '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' + rcBrandSel('rcbrand', RC.brand) +
       (RL.brand === (LOCK || RC.brand) && RL.d && (RL.d.locations || []).some(function (x) { return x.built; }) ? '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">Location<select id="rcloc" class="oq-field" style="min-width:180px"><option value="">Brand line</option>' + RL.d.locations.filter(function (x) { return x.built; }).map(function (x) { return '<option value="' + esc(x.location) + '"' + (RC.loc === x.location ? ' selected' : '') + '>' + esc(x.location === 'Main' ? 'Main line' : x.location) + '</option>'; }).join('') + '</select></label>' : '') +
@@ -2031,6 +2033,215 @@ export function mountOpsisQA(ROOT, cfg) {
     var rb = LOCK || RC.brand; if (rb && RL.brand !== rb) rlLoad(rb, function () { if (RC.tab === 'calls' && !RC.live && !RC.res) drawRecep(); });
   }
 
+
+  // ---------- AI CSR · Dashboard (Becky 11/19: "make it BETTER" than Broccoli's) ----------
+  // Live phone calls only (test calls stay on the Test calls tab). Data: RPC qa_recep_dash (date range + the previous period
+  // of the same length for the change arrows; office hours + time zone per brand). Everything is clickable: any bar, band,
+  // cell or row narrows the call list at the bottom, and a call opens the full request + transcript.
+  var RD = { d: null, key: '', loc: '', f: null, more: 0, busy: false, err: null };
+  var RD_OUT = [['Request taken', 'Request taken', '#1F8A5B'], ['Message taken', 'Message taken', '#3474C9'], ['No request', 'No request', '#E0662A'], ['Transferred', 'Transferred', '#9B59C9'], ['No one on the line', 'No one on the line', '#CFCAC0']];
+  var RD_COL = {}; RD_OUT.forEach(function (o) { RD_COL[o[0]] = o[2]; });
+  var RD_LEADS = ['Repair', 'New door / sales quote', 'Opener', 'Maintenance', 'Emergency'];
+  var RD_DOW = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], RD_DOWL = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  function rdLocal(iso, tz) {
+    var p = {}; try { new Intl.DateTimeFormat('en-US', { timeZone: tz || 'America/Chicago', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(iso)).forEach(function (x) { p[x.type] = x.value; }); } catch (e) {}
+    var h = +p.hour % 24, m = +p.minute || 0;
+    return { dow: RD_DOWL.indexOf(p.weekday), h: h, min: h * 60 + m, ymd: p.year + '-' + p.month + '-' + p.day };
+  }
+  function rdWhy(c) {
+    var r = String(c.nbr || '').toLowerCase();
+    if (!r) return 'No reason given';
+    if (/outside|service area|don.?t service|out of area/.test(r)) return 'Outside the service area';
+    if (/cancel/.test(r)) return 'Cancelling or changing a job';
+    if (/price|cost|expensive|charge/.test(r)) return 'Price';
+    if (/didn.?t provide|did not provide|declin|refus|wouldn.?t give/.test(r)) return 'Wouldn’t give their details';
+    if (/hung up|hang ?up|disconnect|ended before|incomplete|cut off|dropped/.test(r)) return 'Call ended early';
+    if (/held|pending|confirm/.test(r)) return 'Time held, waiting on a callback';
+    if (/transfer|on-call|emergency team/.test(r)) return 'Sent to a person';
+    if (/call ?back|callback|quote|information only|just/.test(r)) return 'Wants a callback or quote';
+    return 'Other';
+  }
+  function rdMiss(c) {
+    var t = [].concat(c.missing || [], c.issues || []).join(' ').toLowerCase(), out = [];
+    [['Phone number', /phone|number|digits/], ['Email', /email|e-mail/], ['Address or ZIP', /address|zip|street/], ['Name spelling', /name|spell/], ['Asked a question twice', /twice|again|repeat/], ['Talked over the caller', /interrupt|talk(ed)? over|cut .* off/], ['Required question', /heard about|required question/], ['Scheduling', /schedul|window|day|time/]]
+      .forEach(function (k) { if (k[1].test(t)) out.push(k[0]); });
+    return out;
+  }
+  function rdXfer(x) { var t = String(x || '').trim(); if (!t) return ''; t = t.replace(/\s*\(.*\)\s*/, ' ').trim(); return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase().replace(/\bsalina\b/, 'Salina'); }
+  function rdAfter(c, B) {
+    var b = B[c.brand] || {}, H = b.hours, L = c.L; if (!H || L.dow < 0) return false;
+    var d = H[RD_DOW[L.dow]]; if (!d || d.open === false) return true;
+    var f = String(d.from || '0:0').split(':'), t = String(d.to || '24:0').split(':');
+    return L.min < (+f[0]) * 60 + (+f[1] || 0) || L.min >= (+t[0]) * 60 + (+t[1] || 0);
+  }
+  function rdPrep(d) {
+    var B = d.brands || {}, cur = [], prev = [];
+    (d.calls || []).forEach(function (c) {
+      c.L = rdLocal(c.at, (B[c.brand] || {}).tz); var et = rdLocal(c.at, 'America/New_York').ymd;
+      c.real = c.outcome !== 'No one on the line'; c.lead = c.real && RD_LEADS.indexOf(c.category) >= 0;
+      c.got = c.outcome === 'Request taken' || c.outcome === 'Message taken' || c.outcome === 'Transferred';
+      c.after = rdAfter(c, B); c.why = c.lead && c.outcome === 'No request' ? rdWhy(c) : null; c.miss = c.real ? rdMiss(c) : []; c.xf = c.outcome === 'Transferred' ? (rdXfer(c.xfer) || 'Team member') : '';
+      c.cat = c.real ? (c.category || 'Other') : null;
+      if (RD.loc && (c.location || '') !== RD.loc) return;
+      (et >= d.start ? cur : prev).push(c);
+    });
+    return { cur: cur, prev: prev, B: B };
+  }
+  function rdKpis(a) {
+    var real = a.filter(function (c) { return c.real; }), leads = real.filter(function (c) { return c.lead; }), rv = real.filter(function (c) { return c.complete != null; });
+    var al = a.map(function (c) { return c.alert_at && c.ended ? (new Date(c.alert_at) - new Date(c.ended)) / 60000 : null; }).filter(function (x) { return x != null && x >= 0; }).sort(function (x, y) { return x - y; });
+    var sec = real.filter(function (c) { return c.secs; });
+    return { calls: a.length, real: real.length, leads: leads.length,
+      cap: leads.length ? 100 * leads.filter(function (c) { return c.got; }).length / leads.length : null,
+      contain: real.length ? 100 * real.filter(function (c) { return c.outcome !== 'Transferred'; }).length / real.length : null,
+      complete: rv.length ? 100 * rv.filter(function (c) { return c.complete; }).length / rv.length : null,
+      neg: real.filter(function (c) { return c.sentiment; }).length ? 100 * real.filter(function (c) { return c.sentiment === 'Negative'; }).length / real.filter(function (c) { return c.sentiment; }).length : null,
+      after: real.length ? 100 * real.filter(function (c) { return c.after; }).length / real.length : null,
+      alert: al.length ? al[Math.floor(al.length / 2)] : null, talk: sec.length ? sec.reduce(function (s, c) { return s + c.secs; }, 0) / sec.length : null,
+      urgent: real.filter(function (c) { return c.urgent; }).length };
+  }
+  var RD_F = {
+    outcome: function (c, v) { return c.outcome === v; }, real: function (c) { return c.real; }, lead: function (c) { return c.lead; }, cat: function (c, v) { return c.cat === v; },
+    why: function (c, v) { return c.why === v; }, xf: function (c, v) { return c.xf === v; }, miss: function (c, v) { return c.miss.indexOf(v) >= 0; },
+    cell: function (c, v) { var p = v.split('-'); return c.L.dow === +p[0] && c.L.h === +p[1]; }, day: function (c, v) { return rdLocal(c.at, 'America/New_York').ymd === v; },
+    phone: function (c, v) { return c.phone === v; }, after: function (c, v) { return c.real && c.after === (v === '1'); }, urgent: function (c) { return c.urgent; },
+    sent: function (c, v) { return c.sentiment === v; }, incomplete: function (c) { return c.complete === false; }
+  };
+  function drawRecepDash() {
+    var el = $('rddash'); if (!el) return;
+    var brands = LOCK ? [LOCK] : S.brands, key = S.start + '|' + S.end + '|' + brands.join(',');
+    if (RD.key !== key) {
+      RD.key = key; RD.d = null; RD.err = null; RD.f = null;
+      el.innerHTML = '<div class="oq-card">' + skel(90, 1) + '</div><div class="oq-card">' + skel(30, 6) + '</div>';
+      CFG.recepDash({ start: S.start, end: S.end, brands: brands }).then(function (d) { if (RD.key !== key) return; RD.d = d; if ($('rddash')) drawRecepDash(); })
+        .catch(function (e) { if (RD.key !== key) return; RD.err = e; RD.key = ''; if ($('rddash')) $('rddash').innerHTML = errBox(e); });
+      return;
+    }
+    if (!RD.d) return;
+    var P = rdPrep(RD.d), A = P.cur, K = rdKpis(A), KP = rdKpis(P.prev), agent = ((P.B[A[0] && A[0].brand] || {}).agent) || 'Ava';
+    var pc = function (v, dp) { return v == null ? '—' : v.toFixed(dp || 0) + '%'; };
+    var dl = function (k, good, unit) { var a = K[k], b = KP[k]; if (a == null || b == null || !P.prev.length) return '<span class="mut">no earlier data</span>'; var dd = a - b; if (Math.abs(dd) < 0.05) return '<span class="mut">same as before</span>'; var up = dd > 0, ok = good === 0 ? null : (up === (good > 0));
+      return '<span style="color:' + (ok == null ? 'var(--mut)' : ok ? '#1F8A5B' : '#B4432F') + ';font-weight:600">' + (up ? '▲ ' : '▼ ') + (unit === '%' ? Math.abs(dd).toFixed(1) + ' pts' : unit === 'm' ? Math.abs(dd).toFixed(1) + ' min' : fmt(Math.abs(Math.round(dd)))) + '</span> <span class="mut">vs prior</span>'; };
+    var kt = function (lbl, val, sub, tip) { return '<div style="background:#FAF9F6;border:1px solid #EEEBE4;border-radius:12px;padding:12px 14px;min-width:0" title="' + esc(tip) + '"><div class="cap">' + lbl + '</div><div class="num" style="font-weight:700;font-size:24px;margin:2px 0">' + val + '</div><div style="font-size:11.5px">' + sub + '</div></div>'; };
+    var locs = []; (RD.d.calls || []).forEach(function (c) { var l = c.location || ''; if (l && locs.indexOf(l) < 0) locs.push(l); }); locs.sort();
+    var h = '<div class="oq-card"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">' + esc(agent) + ' · AI CSR dashboard</h2><p class="sub">Live calls ' + esc(agent) + ' answered · ' + esc(rangeLabel()) + ' · ' + (LOCK ? esc(short(LOCK)) : brands.length ? brands.map(short).map(esc).join(', ') : 'all brands') + '. Click anything to see the calls behind it.</p></div>' +
+      (locs.length > 1 ? '<div class="row" style="gap:6px"><button class="chip' + (!RD.loc ? ' on' : '') + '" data-rdloc="">All locations</button>' + locs.map(function (l) { return '<button class="chip' + (RD.loc === l ? ' on' : '') + '" data-rdloc="' + esc(l) + '">' + esc(l) + '</button>'; }).join('') + '</div>' : '') + '</div>';
+    if (!A.length) { el.innerHTML = h + '<p class="mut" style="margin-top:12px">No live calls in this date range' + (RD.loc ? ' for ' + esc(RD.loc) : '') + '. Try a longer range.</p></div>'; rdWire(el); return; }
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:10px;margin-top:12px">' +
+      kt('Calls answered', fmt(K.calls), dl('calls', 0), 'Every live call ' + agent + ' picked up, including hang-ups and silent calls') +
+      kt('Leads captured', pc(K.cap, 1), dl('cap', 1, '%'), 'Of ' + K.leads + ' callers who needed service (repair, new door, opener, maintenance or emergency): request taken, message taken, or sent straight to a person') +
+      kt('Handled by ' + esc(agent) + ' alone', pc(K.contain), dl('contain', 1, '%'), 'Real conversations that finished without a transfer') +
+      kt('After hours', pc(K.after), '<span class="mut">' + fmt(A.filter(function (c) { return c.real && c.after && c.got; }).length) + ' leads caught while closed</span>', 'Conversations outside each brand’s office hours, in the brand’s own time zone') +
+      kt('Info complete', pc(K.complete), dl('complete', 1, '%'), 'Calls where the review found every detail the team needs (name, phone, address, job, required questions)') +
+      kt('Team alerted in', K.alert == null ? '—' : (K.alert < 1 ? '<1' : K.alert.toFixed(1)) + ' min', dl('alert', -1, 'm'), 'Median time from the end of the call to the email or text reaching the team') +
+      kt('Upset callers', pc(K.neg), dl('neg', -1, '%'), 'Share of conversations the review rated negative') + '</div></div>';
+
+    // insights (computed, no AI)
+    var ins = [], cnt = function (arr, f) { var m = {}; arr.forEach(function (c) { [].concat(f(c) || []).forEach(function (k) { if (k) m[k] = (m[k] || 0) + 1; }); }); return Object.keys(m).map(function (k) { return [k, m[k]]; }).sort(function (x, y) { return y[1] - x[1]; }); };
+    var ahLeads = A.filter(function (c) { return c.real && c.after && c.got; }).length;
+    if (K.after != null && K.after >= 20) ins.push(['after', '1', '<b>' + pc(K.after) + ' of conversations came in after hours.</b> ' + agent + ' captured ' + ahLeads + ' lead' + (ahLeads === 1 ? '' : 's') + ' while the office was closed.']);
+    var why = cnt(A, function (c) { return c.why; });
+    if (why.length) ins.push(['why', why[0][0], '<b>Top reason a lead didn’t become a request: ' + esc(why[0][0].toLowerCase()) + '</b> (' + why[0][1] + ' of ' + A.filter(function (c) { return c.why; }).length + ').']);
+    var miss = cnt(A, function (c) { return c.miss; });
+    if (miss.length) ins.push(['miss', miss[0][0], '<b>Most common miss: ' + esc(miss[0][0].toLowerCase()) + '</b> on ' + miss[0][1] + ' call' + (miss[0][1] === 1 ? '' : 's') + '. Worth a look in Settings.']);
+    var ph = {}; A.forEach(function (c) { if (!c.phone) return; var x = ph[c.phone] = ph[c.phone] || { n: 0, days: {} }; x.n++; x.days[c.L.ymd] = (x.days[c.L.ymd] || 0) + 1; });
+    var reps = Object.keys(ph).filter(function (k) { return ph[k].n > 1; }).map(function (k) { var x = ph[k]; return { phone: k, n: x.n, max: Math.max.apply(null, Object.keys(x.days).map(function (d) { return x.days[d]; })), last: A.filter(function (c) { return c.phone === k; })[0] }; }).sort(function (a, b) { return b.max - a.max || b.n - a.n; });
+    if (reps.length) ins.push(['phone', reps[0].phone, '<b>' + reps.length + ' caller' + (reps.length === 1 ? '' : 's') + ' called more than once</b>' + (reps.filter(function (r) { return r.max >= 3; }).length ? ', ' + reps.filter(function (r) { return r.max >= 3; }).length + ' of them 3+ times in one day' : '') + '. Repeat calls usually mean a callback didn’t happen.']);
+    var aerr = A.filter(function (c) { return c.alert_err; }).length; if (aerr) ins.push(['outcome', 'Request taken', '<b style="color:#B4432F">' + aerr + ' team alert' + (aerr === 1 ? '' : 's') + ' failed to send.</b> Check the alert contacts in Settings.']);
+    if (K.urgent) ins.push(['urgent', '1', '<b>' + K.urgent + ' urgent call' + (K.urgent === 1 ? '' : 's') + '</b>, ' + A.filter(function (c) { return c.urgent && c.outcome === 'Transferred'; }).length + ' sent straight to a person.']);
+    if (ins.length) h += '<div class="oq-card" style="background:#F4F8F5;border-color:#D6E7DD"><h2 class="ttl" style="margin-bottom:6px">What stands out</h2><ul style="margin:0;padding-left:18px;line-height:1.6;font-size:13.5px">' + ins.slice(0, 5).map(function (x) { return '<li><button class="lnk" data-rdf="' + x[0] + '" data-rdv="' + esc(x[1]) + '" style="all:unset;cursor:pointer">' + x[2] + ' <span style="color:#1F5A41;font-weight:600">See calls →</span></button></li>'; }).join('') + '</ul></div>';
+
+    // flow + daily
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px"><div class="oq-card"><h2 class="ttl">Where calls ended up</h2><p class="sub">Every call, from pickup to outcome. Click a band.</p>' + rdFlow(A) + '</div>' +
+      '<div class="oq-card"><h2 class="ttl">Calls by day</h2><p class="sub">Click a day to see its calls.</p>' + rdDays(A, RD.d.start, RD.d.end) + '</div></div>';
+    // heatmap
+    h += '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-end"><div><h2 class="ttl">When people call</h2><p class="sub">Conversations by day and hour, in each brand’s time zone. Outlined = office hours.</p></div>' + rdHoursSplit(A) + '</div>' + rdHeat(A, P.B) + '</div>';
+    // reason cards
+    var cats = cnt(A, function (c) { return c.cat; }), xf = cnt(A, function (c) { return c.xf; });
+    var bars = function (rows, k, col, tot) { if (!rows.length) return '<p class="mut" style="font-size:12.5px">None in this range.</p>'; var mx = rows[0][1]; return rows.slice(0, 7).map(function (r) { return '<button data-rdf="' + k + '" data-rdv="' + esc(r[0]) + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;width:100%;padding:6px 0;border-top:1px solid var(--line2)"><span style="font-size:13px">' + esc(r[0]) + '</span><span class="num" style="font-size:13px"><b>' + r[1] + '</b> <span class="mut" style="font-size:11.5px">' + Math.round(100 * r[1] / (tot || 1)) + '%</span></span><span style="grid-column:1/3;height:6px;background:#F3F1EC;border-radius:3px"><span style="display:block;height:6px;border-radius:3px;background:' + col + ';width:' + Math.max(3, 100 * r[1] / mx).toFixed(1) + '%"></span></span></button>'; }).join(''); };
+    var nReal = A.filter(function (c) { return c.real; }).length, nWhy = A.filter(function (c) { return c.why; }).length, nX = A.filter(function (c) { return c.xf; }).length;
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">' +
+      '<div class="oq-card"><h2 class="ttl">What callers needed</h2><p class="sub">' + nReal + ' conversations</p>' + bars(cats, 'cat', '#3474C9', nReal) + '</div>' +
+      '<div class="oq-card"><h2 class="ttl">Why leads didn’t become requests</h2><p class="sub">' + nWhy + ' service callers with no request</p>' + bars(why, 'why', '#E0662A', nWhy) + '</div>' +
+      '<div class="oq-card"><h2 class="ttl">Who ' + esc(agent) + ' handed off to</h2><p class="sub">' + nX + ' transfers</p>' + bars(xf, 'xf', '#9B59C9', nX) + '</div></div>';
+    // quality + repeat callers
+    var sent = cnt(A.filter(function (c) { return c.real; }), function (c) { return c.sentiment; }), sTot = sent.reduce(function (s, x) { return s + x[1]; }, 0), SC = { Positive: '#1F8A5B', Neutral: '#A9A398', Negative: '#B4432F' };
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px"><div class="oq-card"><h2 class="ttl">How well ' + esc(agent) + ' handled it</h2><p class="sub">From the review of every conversation</p>' +
+      '<div style="display:flex;gap:18px;flex-wrap:wrap;margin:8px 0 10px"><button data-rdf="incomplete" data-rdv="1" style="all:unset;cursor:pointer"><div class="cap">Info complete</div><div class="num" style="font-size:22px;font-weight:700">' + pc(K.complete) + '</div><div class="mut" style="font-size:11.5px">' + A.filter(function (c) { return c.complete === false; }).length + ' calls missing something →</div></button>' +
+      '<div style="flex:1;min-width:200px"><div class="cap">Caller mood</div><div style="display:flex;height:12px;border-radius:6px;overflow:hidden;gap:2px;margin:8px 0 6px;background:#fff">' + sent.map(function (x) { return '<button data-rdf="sent" data-rdv="' + esc(x[0]) + '" title="' + esc(x[0]) + ': ' + x[1] + '" style="all:unset;cursor:pointer;background:' + (SC[x[0]] || '#CFCAC0') + ';width:' + (100 * x[1] / (sTot || 1)).toFixed(1) + '%"></button>'; }).join('') + '</div><div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px">' + sent.map(function (x) { return '<span><span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:' + (SC[x[0]] || '#CFCAC0') + ';margin-right:5px"></span>' + esc(x[0]) + ' ' + x[1] + '</span>'; }).join('') + '</div></div></div>' +
+      '<div class="cap" style="margin-top:4px">Most common misses</div>' + bars(miss, 'miss', '#B4432F', A.filter(function (c) { return c.miss.length; }).length) + '</div>' +
+      '<div class="oq-card"><h2 class="ttl">Repeat callers</h2><p class="sub">Called more than once in this range. Click one to see every call.</p>' + (reps.length ? '<table class="tbl rdt" style="font-size:13px;margin-top:8px"><thead><tr><th>Caller</th><th class="num">Calls</th><th class="num">Most in a day</th><th>Last call</th></tr></thead><tbody>' + reps.slice(0, 8).map(function (r) { var L = r.last; return '<tr class="click" data-rdf="phone" data-rdv="' + esc(r.phone) + '"><td><b style="font-weight:600">' + esc(L.name || '—') + '</b><div class="mut" style="font-size:11.5px">' + esc(fphone(r.phone)) + '</div></td><td class="num">' + r.n + '</td><td class="num">' + (r.max >= 3 ? '<b style="color:#B4432F">' + r.max + '</b>' : r.max) + '</td><td>' + rdPill(L.outcome) + '<div class="mut" style="font-size:11.5px;margin-top:2px">' + fdate(L.L.ymd) + '</div></td></tr>'; }).join('') + '</tbody></table>' : '<p class="mut" style="font-size:12.5px">Nobody called twice. </p>') + '</div></div>';
+    // call list
+    h += '<div class="oq-card" id="rdlist"></div>';
+    el.innerHTML = h; rdWire(el); rdList(A);
+  }
+  function fphone(p) { var d = String(p || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); return d.length === 10 ? '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6) : (p || ''); }
+  function rdPill(o) { var c = RD_COL[o] || '#A9A398'; return o ? '<span class="pill" style="background:' + c + '1A;color:' + (o === 'No one on the line' ? '#5F6763' : c) + ';border:1px solid ' + c + '55">' + esc(o) + '</span>' : ''; }
+  function rdFlow(A) {
+    var W = 640, H = 230, n = A.length, real = A.filter(function (c) { return c.real; }), none = n - real.length, y0 = 14, hh = H - 28, sc = hh / Math.max(1, n);
+    var ends = RD_OUT.slice(0, 4).map(function (o) { return [o[0], real.filter(function (c) { return c.outcome === o[0]; }).length, o[2]]; }).filter(function (x) { return x[1]; });
+    var other = real.length - ends.reduce(function (s, x) { return s + x[1]; }, 0); if (other > 0) ends.push(['Other', other, '#A9A398']);
+    var band = function (x1, a1, b1, x2, a2, b2, col, k, v, tip) { var m = (x1 + x2) / 2; return '<path data-rdf="' + k + '" data-rdv="' + esc(v) + '" d="M' + x1 + ',' + a1 + ' C' + m + ',' + a1 + ' ' + m + ',' + a2 + ' ' + x2 + ',' + a2 + ' L' + x2 + ',' + b2 + ' C' + m + ',' + b2 + ' ' + m + ',' + b1 + ' ' + x1 + ',' + b1 + ' Z" fill="' + col + '" fill-opacity=".32" style="cursor:pointer"><title>' + esc(tip) + '</title></path>'; };
+    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;margin-top:6px" role="img" aria-label="Call flow">';
+    var gap = 6, realH = real.length * sc, noneH = none * sc, midTop = y0, x0 = 70, x1 = 250, x2 = 470;
+    s += '<rect x="' + (x0 - 8) + '" y="' + y0 + '" width="8" height="' + (n * sc) + '" rx="3" fill="#14302A"/><text x="' + (x0 - 14) + '" y="' + (y0 + n * sc / 2) + '" text-anchor="end" font-size="12" fill="#1C2421" dominant-baseline="middle">' + n + ' calls</text>';
+    s += band(x0, y0, y0 + realH, x1, midTop, midTop + realH, '#1F5A41', 'real', '1', real.length + ' real conversations');
+    if (none) s += band(x0, y0 + realH, y0 + n * sc, x1, midTop + realH + gap, midTop + realH + gap + noneH, '#A9A398', 'outcome', 'No one on the line', none + ' hang-ups or silent calls');
+    s += '<rect x="' + x1 + '" y="' + midTop + '" width="8" height="' + realH + '" rx="3" fill="#1F5A41" data-rdf="real" data-rdv="1" style="cursor:pointer"/><text x="' + (x1 + 14) + '" y="' + (midTop + 12) + '" font-size="12" fill="#1C2421">Talked to ' + real.length + '</text>';
+    if (none) s += '<rect x="' + x1 + '" y="' + (midTop + realH + gap) + '" width="8" height="' + Math.max(2, noneH) + '" rx="3" fill="#A9A398" data-rdf="outcome" data-rdv="No one on the line" style="cursor:pointer"/><text x="' + (x1 + 14) + '" y="' + (midTop + realH + gap + Math.max(10, noneH / 2)) + '" font-size="12" fill="#5F6763" dominant-baseline="middle">No one on the line ' + none + '</text>';
+    var tot = ends.reduce(function (s2, x) { return s2 + x[1]; }, 0), g2 = 10, avail = hh - g2 * Math.max(0, ends.length - 1), sc2 = avail / Math.max(1, tot), yy = y0, ya = midTop;
+    ends.forEach(function (e) { var hgt = e[1] * sc2, ha = e[1] * sc; s += band(x1 + 8, ya, ya + ha, x2, yy, yy + hgt, e[2], e[0] === 'Other' ? 'real' : 'outcome', e[0] === 'Other' ? '1' : e[0], e[1] + ' ' + e[0].toLowerCase());
+      s += '<rect x="' + x2 + '" y="' + yy + '" width="8" height="' + Math.max(2, hgt) + '" rx="3" fill="' + e[2] + '" data-rdf="outcome" data-rdv="' + esc(e[0]) + '" style="cursor:pointer"/><text x="' + (x2 + 14) + '" y="' + (yy + Math.max(2, hgt) / 2) + '" font-size="12" fill="#1C2421" dominant-baseline="middle">' + esc(e[0]) + ' <tspan font-weight="700">' + e[1] + '</tspan></text>'; ya += ha; yy += hgt + g2; });
+    return s + '</svg>';
+  }
+  function rdDays(A, start, end) {
+    var days = [], d = new Date(start + 'T12:00:00Z'), e = new Date(end + 'T12:00:00Z'); while (d <= e && days.length < 93) { days.push(d.toISOString().slice(0, 10)); d.setUTCDate(d.getUTCDate() + 1); }
+    var by = {}; A.forEach(function (c) { var k = rdLocal(c.at, 'America/New_York').ymd; (by[k] = by[k] || []).push(c); });
+    var mx = Math.max.apply(null, days.map(function (k) { return (by[k] || []).length; }).concat([1])), W = 640, H = 220, pl = 28, pb = 26, bw = Math.max(4, Math.min(44, (W - pl) / days.length - 6)), step = (W - pl) / days.length;
+    var nice = mx <= 5 ? mx : Math.ceil(mx / 4) * 4, s = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;margin-top:6px" role="img" aria-label="Calls by day">';
+    [0, .5, 1].forEach(function (f) { var y = H - pb - f * (H - pb - 10); s += '<line x1="' + pl + '" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="#EEEBE4"/><text x="' + (pl - 6) + '" y="' + y + '" font-size="10" fill="#8A918D" text-anchor="end" dominant-baseline="middle">' + Math.round(f * nice) + '</text>'; });
+    days.forEach(function (k, i) { var list = by[k] || [], x = pl + i * step + (step - bw) / 2, y = H - pb, leads = list.filter(function (c) { return c.lead; }), cap = leads.length ? Math.round(100 * leads.filter(function (c) { return c.got; }).length / leads.length) : null;
+      var tip = fdate(k) + ': ' + list.length + ' calls' + RD_OUT.map(function (o) { var m = list.filter(function (c) { return c.outcome === o[0]; }).length; return m ? '\n' + o[1] + ': ' + m : ''; }).join('') + (cap != null ? '\nLeads captured: ' + cap + '%' : '');
+      s += '<g data-rdf="day" data-rdv="' + k + '" style="cursor:pointer"><title>' + esc(tip) + '</title><rect x="' + (pl + i * step) + '" y="0" width="' + step + '" height="' + (H - pb) + '" fill="transparent"/>';
+      RD_OUT.forEach(function (o) { var m = list.filter(function (c) { return c.outcome === o[0]; }).length; if (!m) return; var hgt = m / nice * (H - pb - 10); s += '<rect x="' + x + '" y="' + (y - hgt) + '" width="' + bw + '" height="' + Math.max(1, hgt - 2) + '" rx="2" fill="' + o[2] + '"/>'; y -= hgt; });
+      if (days.length <= 16 || i % Math.ceil(days.length / 12) === 0) s += '<text x="' + (x + bw / 2) + '" y="' + (H - 8) + '" font-size="10" fill="#8A918D" text-anchor="middle">' + fdate(k) + '</text>';
+      s += '</g>'; });
+    s += '</svg><div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin-top:4px">' + RD_OUT.map(function (o) { return '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:' + o[2] + ';margin-right:5px"></span>' + o[1] + '</span>'; }).join('') + '</div>';
+    return s;
+  }
+  function rdHoursSplit(A) {
+    var r = A.filter(function (c) { return c.real; }), f = function (af) { var a = r.filter(function (c) { return c.after === af; }), l = a.filter(function (c) { return c.lead; }); return { n: a.length, cap: l.length ? 100 * l.filter(function (c) { return c.got; }).length / l.length : null }; }, o = f(false), a = f(true);
+    var box = function (lbl, x, v) { return '<button data-rdf="after" data-rdv="' + v + '" style="all:unset;cursor:pointer;padding:6px 12px;border:1px solid #EEEBE4;border-radius:10px;background:#FAF9F6"><div class="cap">' + lbl + '</div><div style="font-size:13px"><b class="num">' + x.n + '</b> calls · <b class="num">' + (x.cap == null ? '—' : x.cap.toFixed(0) + '%') + '</b> leads captured</div></button>'; };
+    return '<div class="row" style="gap:8px">' + box('Office hours', o, '0') + box('After hours', a, '1') + '</div>';
+  }
+  function rdHeat(A, B) {
+    var g = {}, mx = 1, office = {}; A.forEach(function (c) { if (!c.real || c.L.dow < 0) return; var k = c.L.dow + '-' + c.L.h; g[k] = (g[k] || 0) + 1; mx = Math.max(mx, g[k]); });
+    var b0 = B[(A[0] || {}).brand] || {}, H = b0.hours || {};
+    RD_DOW.forEach(function (d, i) { var x = H[d]; if (!x || x.open === false) return; var f = +String(x.from || '0').split(':')[0], t = +String(x.to || '24').split(':')[0]; for (var hr = f; hr < t; hr++) office[i + '-' + hr] = 1; });
+    var hrs = []; for (var hr = 6; hr < 23; hr++) hrs.push(hr); var early = A.some(function (c) { return c.real && (c.L.h < 6 || c.L.h >= 23); }); if (early) { hrs = []; for (var h2 = 0; h2 < 24; h2++) hrs.push(h2); }
+    var lab = function (h3) { return (h3 % 12 || 12) + (h3 < 12 ? 'a' : 'p'); };
+    var s = '<div style="overflow-x:auto;margin-top:10px"><table style="border-collapse:separate;border-spacing:3px;font-size:11px;width:100%;min-width:560px"><thead><tr><th></th>' + hrs.map(function (h3) { return '<th class="mut" style="font-weight:500;text-align:center">' + lab(h3) + '</th>'; }).join('') + '</tr></thead><tbody>';
+    RD_DOWL.forEach(function (d, i) { s += '<tr><th class="mut" style="font-weight:600;text-align:left;padding-right:6px">' + d + '</th>' + hrs.map(function (h3) { var k = i + '-' + h3, v = g[k] || 0, a = v ? 0.16 + 0.84 * v / mx : 0;
+      return '<td data-rdf="' + (v ? 'cell' : '') + '" data-rdv="' + k + '" title="' + d + ' ' + lab(h3) + 'm: ' + v + ' conversation' + (v === 1 ? '' : 's') + (office[k] ? ' (office hours)' : ' (after hours)') + '" style="height:22px;border-radius:4px;text-align:center;' + (v ? 'cursor:pointer;' : '') + 'background:' + (v ? 'rgba(31,138,91,' + a.toFixed(2) + ')' : '#F6F4EF') + ';color:' + (a > 0.55 ? '#fff' : '#1C2421') + ';' + (office[k] ? 'box-shadow:inset 0 0 0 1.5px #14302A55' : '') + '">' + (v || '') + '</td>'; }).join('') + '</tr>'; });
+    return s + '</tbody></table></div>' + (Object.keys(B).length > 1 ? '<p class="mut" style="font-size:11.5px;margin:6px 0 0">Office-hours outline uses ' + esc(short((A[0] || {}).brand || '')) + '’s hours; the after-hours split above uses each brand’s own.</p>' : '');
+  }
+  var RD_FL = { outcome: 'Outcome', real: 'Real conversations', lead: 'Service callers', cat: 'Needed', why: 'Not a request because', xf: 'Handed off to', miss: 'Missed', cell: 'Day & hour', day: 'Day', phone: 'Caller', after: '', urgent: 'Urgent', sent: 'Caller mood', incomplete: 'Info incomplete' };
+  function rdList(A) {
+    var el = $('rdlist'); if (!el) return;
+    var f = RD.f, rows = f ? A.filter(function (c) { return RD_F[f.k](c, f.v); }) : A, show = 25 + RD.more;
+    var lbl = !f ? '' : f.k === 'after' ? (f.v === '1' ? 'After hours' : 'Office hours') : f.k === 'cell' ? RD_DOWL[+f.v.split('-')[0]] + ' ' + ((+f.v.split('-')[1]) % 12 || 12) + ((+f.v.split('-')[1]) < 12 ? 'am' : 'pm') : f.k === 'day' ? fdate(f.v) : f.k === 'phone' ? fphone(f.v) : (RD_FL[f.k] ? RD_FL[f.k] + (f.v && f.v !== '1' ? ': ' : '') : '') + (f.v && f.v !== '1' ? f.v : '');
+    var h = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Calls</h2><p class="sub">' + fmt(rows.length) + ' call' + (rows.length === 1 ? '' : 's') + ' · newest first · click one for the request, recording and transcript</p></div>' + (f ? '<button class="chip on" data-rdclear="1">' + esc(lbl) + ' ✕</button>' : '') + '</div>';
+    h += rows.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl rdt" style="font-size:13px"><thead><tr><th>When</th><th>Caller</th><th>What they needed</th><th>Outcome</th><th class="num">Length</th><th title="Did the review find every detail the team needs?">Info</th></tr></thead><tbody>' +
+      rows.slice(0, show).map(function (c) { return '<tr class="click" data-act="rcview" data-id="' + esc(c.id) + '"><td style="white-space:nowrap">' + fdate(c.L.ymd) + ' <span class="mut">' + ((c.L.h % 12) || 12) + ':' + ('0' + (c.L.min % 60)).slice(-2) + (c.L.h < 12 ? 'am' : 'pm') + '</span>' + (c.after && c.real ? '<div class="mut" style="font-size:11px">after hours</div>' : '') + '</td><td><b style="font-weight:600">' + esc(c.name || '—') + '</b><div class="mut" style="font-size:11.5px">' + esc(fphone(c.phone)) + (c.location ? ' · ' + esc(c.location) : '') + '</div></td><td>' + (c.urgent ? '<b style="color:#A61B1B">Urgent · </b>' : '') + esc(c.summary || c.category || (c.real ? '—' : '')) + (c.why ? '<div class="mut" style="font-size:11.5px">' + esc(c.why) + '</div>' : '') + (c.xf ? '<div class="mut" style="font-size:11.5px">to ' + esc(c.xf) + '</div>' : '') + '</td><td>' + rdPill(c.outcome) + '</td><td class="num">' + (c.secs ? fsecs(c.secs) : '—') + '</td><td>' + (c.complete == null ? '<span class="mut">—</span>' : c.complete ? '<span style="color:#1F8A5B" title="Complete">✓</span>' : '<span style="color:#B4432F" title="' + esc(c.miss.join(', ') || 'Something was missing') + '">Missing</span>') + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+      (rows.length > show ? '<button class="sel" data-rdmore="1" style="margin-top:10px">Show more (' + Math.min(50, rows.length - show) + ')</button>' : '') : '<p class="mut" style="margin-top:10px">No calls match.</p>';
+    el.innerHTML = h;
+    var cl = el.querySelector('[data-rdclear]'); if (cl) cl.addEventListener('click', function () { RD.f = null; RD.more = 0; rdList(A); });
+    var mo = el.querySelector('[data-rdmore]'); if (mo) mo.addEventListener('click', function () { RD.more += 50; rdList(A); });
+  }
+  function rdWire(el) {
+    [].forEach.call(el.querySelectorAll('[data-rdloc]'), function (b) { b.addEventListener('click', function () { RD.loc = b.getAttribute('data-rdloc'); RD.f = null; RD.more = 0; drawRecepDash(); }); });
+    [].forEach.call(el.querySelectorAll('[data-rdf]'), function (b) { var k = b.getAttribute('data-rdf'); if (!k || !RD_F[k]) return; b.addEventListener('click', function (e) { e.stopPropagation(); RD.f = { k: k, v: b.getAttribute('data-rdv') || '' }; RD.more = 0; var P = rdPrep(RD.d); rdList(P.cur); var l = $('rdlist'); if (l) l.scrollIntoView({ block: 'start', behavior: 'smooth' }); }); });
+  }
   // ---------- AI CSR · Settings ----------
   function rcLoadSettings(brand) {
     RC.s = null; RC.sBrand = brand; RC.dirty = false; drawRcSettings();

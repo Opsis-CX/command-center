@@ -141,6 +141,12 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         const { error } = await supabase.rpc('qa_csr_note_delete', { p_client: clientId || me.client, p_id: id })
         if (error) throw new Error(error.message || 'Could not delete the note.')
       },
+      // AI CSR dashboard (Becky 11/19): live AI CSR phone calls for the range + previous period, brand lock applied in the RPC.
+      recepDash: csrSelf ? null : async ({ start, end, brands }) => {
+        const { data, error } = await supabase.rpc('qa_recep_dash', { p_client: clientId || me.client, p_start: start, p_end: end, p_brands: brands && brands.length ? brands : null })
+        if (error) { const e = new Error(error.message || 'Could not load the AI CSR dashboard.'); e.status = 400; throw e }
+        return data
+      },
       // Coach view (Becky 11/19): coaching history per CSR for the signed-in login's scope.
       coachHistory: csrSelf ? null : async () => {
         const { data, error } = await supabase.rpc('qa_coach_history', { p_client: clientId || me.client })
