@@ -703,7 +703,8 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div style="position:relative;width:70px;height:70px;flex-shrink:0"><svg width="70" height="70" viewBox="0 0 72 72" role="img" aria-label="' + ratio + ' percent were real conversations"><circle cx="36" cy="36" r="30" fill="none" stroke="#EEEBE4" stroke-width="7"/><circle cx="36" cy="36" r="30" fill="none" stroke="#14302A" stroke-width="7" stroke-linecap="round" stroke-dasharray="' + dash + ' 188.5" transform="rotate(-90 36 36)"/></svg><span class="num" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600">' + ratio + '%</span></div></div><div class="mut" style="font-size:11px;margin-top:8px">The rest were voicemail, internal, IVR or wrong numbers.</div></div>';
     $('kpis').innerHTML = h; kpiLate();
   }
-  var CARD_SKIP = ['PDQ', 'Dan\u2019s Doors', "Dan's Doors"];
+  // 11/20 Becky: Dan's Doors now has a card ask rate. The server leaves out Dan's calls before 11/21 (qa_card_skip); PDQ stays out.
+  var CARD_SKIP = ['PDQ'];
   var CARD_DEF = '<b>Card asked</b><br><b>Booked residential service calls only</b> (repairs, springs, openers, tune-ups; not new doors, installs or commercial customers) where the CSR asked for a credit or debit card to hold the appointment. It counts as asked even if the customer said no. Paying an invoice or a deposit on finished work doesn’t count.<br><br>PDQ and Dan’s Doors are left out (they don’t take a card at booking). Same numbers as the Card capture page.<br><br>Click to compare brands and hear the booked service calls with no card ask.';
   function cardTot(cc) { var b = 0, a = 0, k = 0; ((cc || {}).by_brand || []).forEach(function (x) { if (CARD_SKIP.indexOf(x.brand) >= 0) return; b += +x.booked || 0; a += +x.asked_cc || 0; k += +x.captured_cc || 0; }); return { booked: b, asked: a, captured: k }; }
   function kpiLate() {
