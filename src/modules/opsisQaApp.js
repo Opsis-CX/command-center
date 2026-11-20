@@ -1144,13 +1144,16 @@ export function mountOpsisQA(ROOT, cfg) {
       notes.length + ' session' + (notes.length === 1 ? '' : 's') + itip('Coaching sessions for this CSR across all dates (not limited to the date range above): notes written by the coach, plus the AI summary of recorded sessions the CSR joined (1:1s and group trainings). A note and a recording on the same day count once.') + ' · ' +
       att + ' attended' + itip('Sessions the CSR showed up for.') + ' · ' + ns + ' no-show' + (ns === 1 ? '' : 's') + itip('Sessions where the note says the CSR did not attend.') + '</p>';
     if (!notes.length) { el.innerHTML = head + '<p class="mut" style="font-size:12.5px;margin:8px 0 0">No coaching sessions logged for this CSR yet.</p>'; return; }
+    var SHOW = 3;
     el.innerHTML = head + notes.map(function (n, i) {
       var pill = n.kind === 'session' ? '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#EEF0F8;color:#3A4380">Recorded session</span>' : n.no_show ? '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#FCEBDD;color:#A8441A">No-show</span>' : '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#E6F0EA;color:#1F5A41">Attended</span>';
       var body = String(n.body || ''), long = body.length > 320;
-      return '<div style="border-top:1px solid var(--line2);padding:12px 0' + (i ? '' : ';margin-top:8px') + '"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b class="num" style="font-size:13px">' + esc(fdate(String(n.date || '').slice(0, 10))) + '</b>' + pill +
+      return '<div' + (i >= SHOW ? ' data-noteextra="1"' : '') + ' style="border-top:1px solid var(--line2);padding:12px 0' + (i ? '' : ';margin-top:8px') + (i >= SHOW ? ';display:none' : '') + '"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b class="num" style="font-size:13px">' + esc(fdate(String(n.date || '').slice(0, 10))) + '</b>' + pill +
         (n.title ? '<b style="font-size:13px">' + esc(n.title) + '</b>' : '') + '<span class="mut" style="font-size:12px;margin-left:auto">' + esc(n.coach || 'Opsis CX coach') + '</span></div>' +
         '<div style="font-size:13px;line-height:1.5;margin-top:6px">' + (long ? '<span>' + md(body.slice(0, 320)) + '… </span><button class="more" data-notemore="1" style="font-size:12px">Show more</button><span style="display:none">' + md(body) + '</span>' : md(body)) + '</div></div>';
-    }).join('');
+    }).join('') + (notes.length > SHOW ? '<button class="more" data-notesall="1" style="margin-top:6px;font-size:12.5px">More + (' + (notes.length - SHOW) + ')</button>' : '');
+    var allBtn = el.querySelector('[data-notesall]');
+    if (allBtn) allBtn.addEventListener('click', function () { [].forEach.call(el.querySelectorAll('[data-noteextra]'), function (x) { x.style.display = ''; }); allBtn.remove(); });
     [].forEach.call(el.querySelectorAll('[data-notemore]'), function (b) { b.addEventListener('click', function () { var full = b.nextElementSibling, short0 = b.previousElementSibling; if (full) full.style.display = ''; if (short0) short0.style.display = 'none'; b.remove(); }); });
   }
   // Call Center Efficiency (Rob 10/29): raw LightSpeed phone numbers per CSR, separate from QA.
