@@ -895,7 +895,7 @@ export function mountOpsisQA(ROOT, cfg) {
       if (FOCUSWHY) FOCUSWHY(f); focusKpis(f, brand, agent); focusWeekly(f); stepCard(f, 'fsteps', brand, agent); focusMix(f, brand, agent);
       if (kind === 'brand') focusMovers(f);
     }).catch(function (e) { if (tok === T) $('fk').innerHTML = errBox(e); });
-    if (kind === 'csr' && CFG.csrNotes) CFG.csrNotes(agent).then(function (n) { if (tok === T) drawCsrNotes(n || []); }).catch(function () { var x = $('fnotes'); if (x) x.remove(); });
+    if (kind === 'csr' && CFG.csrNotes) CFG.csrNotes(agent).then(function (n) { if (tok === T) drawCsrNotes(n || [], agent); }).catch(function () { var x = $('fnotes'); if (x) x.remove(); });
     if (kind === 'csr') api(Object.assign({ action: 'calls' }, win({ agent: agent, limit: 6 }))).then(function (c) { if (tok !== T) return; $('fcalls').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start"><div><h2 class="ttl">Recent Calls</h2><p class="sub">' + fmt(c.total) + ' scored calls in this period</p></div><button class="more" data-callsfor="csr">All →</button></div>' + (c.rows || []).map(callRow).join(''); }).catch(function () {});
     var ckey = 'why7|' + kind + '|' + name + '|' + S.start + '|' + S.end;
     // Executive summary (Becky 10/29): only what actually moved, cause -> effect, no noise. Numbers match the tiles.
@@ -1136,25 +1136,62 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   // Coaching Notes (Becky 11/19): every Opsis CX coaching session logged for this CSR, all dates, newest first.
   // Data: RPC qa_csr_coaching_notes via CFG.csrNotes (same access + brand lock as the login; CSR logins get none).
-  function drawCsrNotes(notes) {
+  function drawCsrNotes(notes, agent) {
     var el = $('fnotes'); if (!el) return;
+    var canAdd = !!(CFG.csrNoteSave && CFG.staff);
     var att = notes.filter(function (n) { return !n.no_show; }).length, ns = notes.length - att;
     var md = function (t) { return esc(String(t || '')).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>'); };
     var head = '<h2 class="ttl">Coaching Notes</h2><p class="sub">Every Opsis CX coaching session for this CSR (coach notes and recorded sessions), newest first · ' +
       notes.length + ' session' + (notes.length === 1 ? '' : 's') + itip('Coaching sessions for this CSR across all dates (not limited to the date range above): notes written by the coach, plus the AI summary of recorded sessions the CSR joined (1:1s and group trainings). A note and a recording on the same day count once.') + ' · ' +
       att + ' attended' + itip('Sessions the CSR showed up for.') + ' · ' + ns + ' no-show' + (ns === 1 ? '' : 's') + itip('Sessions where the note says the CSR did not attend.') + '</p>';
-    if (!notes.length) { el.innerHTML = head + '<p class="mut" style="font-size:12.5px;margin:8px 0 0">No coaching sessions logged for this CSR yet.</p>'; return; }
+    head = '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div>' + head + '</div>' + (canAdd ? '<button class="sel btnd" data-noteadd="1" style="flex:none">+ Add note</button>' : '') + '</div><div id="fnoteform"></div>';
+    if (!notes.length) { el.innerHTML = head + '<p class="mut" style="font-size:12.5px;margin:8px 0 0">No coaching sessions logged for this CSR yet.</p>'; wireNoteForm(el, notes, agent); return; }
     var SHOW = 3;
     el.innerHTML = head + notes.map(function (n, i) {
       var pill = n.kind === 'session' ? '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#EEF0F8;color:#3A4380">Recorded session</span>' : n.no_show ? '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#FCEBDD;color:#A8441A">No-show</span>' : '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#E6F0EA;color:#1F5A41">Attended</span>';
       var body = String(n.body || ''), long = body.length > 320;
       return '<div' + (i >= SHOW ? ' data-noteextra="1"' : '') + ' style="border-top:1px solid var(--line2);padding:12px 0' + (i ? '' : ';margin-top:8px') + (i >= SHOW ? ';display:none' : '') + '"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b class="num" style="font-size:13px">' + esc(fdate(String(n.date || '').slice(0, 10))) + '</b>' + pill +
-        (n.title ? '<b style="font-size:13px">' + esc(n.title) + '</b>' : '') + '<span class="mut" style="font-size:12px;margin-left:auto">' + esc(n.coach || 'Opsis CX coach') + '</span></div>' +
+        (n.title ? '<b style="font-size:13px">' + esc(n.title) + '</b>' : '') + '<span class="mut" style="font-size:12px;margin-left:auto">' + esc(n.coach || 'Opsis CX coach') + (n.can_edit && canAdd ? ' · <button class="lnk" data-noteedit="' + i + '" style="font-size:12px;background:none;border:0;border-bottom:1px dashed #9CC6B2;padding:0">Edit</button> · <button class="lnk" data-notedel="' + i + '" style="font-size:12px;background:none;border:0;border-bottom:1px dashed #E3A9A0;padding:0;color:#B4432F">Delete</button>' : '') + '</span></div>' +
         '<div style="font-size:13px;line-height:1.5;margin-top:6px">' + (long ? '<span>' + md(body.slice(0, 320)) + '… </span><button class="more" data-notemore="1" style="font-size:12px">Show more</button><span style="display:none">' + md(body) + '</span>' : md(body)) + '</div></div>';
     }).join('') + (notes.length > SHOW ? '<button class="more" data-notesall="1" style="margin-top:6px;font-size:12.5px">More + (' + (notes.length - SHOW) + ')</button>' : '');
     var allBtn = el.querySelector('[data-notesall]');
     if (allBtn) allBtn.addEventListener('click', function () { [].forEach.call(el.querySelectorAll('[data-noteextra]'), function (x) { x.style.display = ''; }); allBtn.remove(); });
+    wireNoteForm(el, notes, agent);
     [].forEach.call(el.querySelectorAll('[data-notemore]'), function (b) { b.addEventListener('click', function () { var full = b.nextElementSibling, short0 = b.previousElementSibling; if (full) full.style.display = ''; if (short0) short0.style.display = 'none'; b.remove(); }); });
+  }
+  // "+ Add note" / Edit / Delete on the Coaching Notes card (Becky 11/19). Opsis staff only; RPCs qa_csr_note_save / qa_csr_note_delete.
+  function wireNoteForm(el, notes, agent) {
+    if (!(CFG.csrNoteSave && CFG.staff)) return;
+    var reload = function () { CFG.csrNotes(agent).then(function (n) { drawCsrNotes(n || [], agent); }).catch(function (e) { toast(e.message || 'Could not reload notes.'); }); };
+    var today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+    var open = function (n) {
+      var box = el.querySelector('#fnoteform'); if (!box) return;
+      n = n || {};
+      var lab = function (t, inner) { return '<label style="display:inline-flex;flex-direction:column;gap:4px;font-size:12px" class="mut">' + t + inner + '</label>'; };
+      box.innerHTML = '<div style="margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#FAF8F4;display:flex;flex-direction:column;gap:10px">' +
+        '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
+        lab('Session date', '<input type="date" id="nf_d" class="oq-field" style="width:160px" value="' + esc(String(n.date || today).slice(0, 10)) + '">') +
+        lab('Attendance', '<select id="nf_a" class="oq-field" style="width:140px"><option value="1"' + (n.attended === false ? '' : ' selected') + '>Attended</option><option value="0"' + (n.attended === false ? ' selected' : '') + '>No-show</option></select>') +
+        lab('Credit card ask rate, last 7 days (%)' + itip('Optional. The CSR’s credit card ask rate going into the session, 0 to 100.'), '<input type="number" id="nf_r" class="oq-field" min="0" max="100" step="0.1" style="width:120px" value="' + (n.ask_rate == null ? '' : esc(n.ask_rate)) + '">') +
+        lab('Title (optional)', '<input id="nf_t" class="oq-field" style="width:260px" value="' + esc(n.title || 'Credit card capture') + '">') + '</div>' +
+        lab('Coaching note', '<textarea id="nf_n" class="oq-field" rows="4" style="width:100%;font:inherit" placeholder="What you covered, what went well, what to work on">' + esc(n.note || '') + '</textarea>') +
+        '<div style="display:flex;gap:8px"><button class="sel btnd" id="nf_save">' + (n.id ? 'Save changes' : 'Save note') + '</button><button class="sel" id="nf_cancel">Cancel</button></div></div>';
+      box.querySelector('#nf_cancel').addEventListener('click', function () { box.innerHTML = ''; });
+      box.querySelector('#nf_save').addEventListener('click', function () {
+        var b = this, r = box.querySelector('#nf_r').value;
+        b.disabled = true; b.textContent = 'Saving…';
+        CFG.csrNoteSave({ agent: agent, id: n.id || null, date: box.querySelector('#nf_d').value, attended: box.querySelector('#nf_a').value === '1',
+          ask_rate: r === '' ? null : Number(r), title: box.querySelector('#nf_t').value, note: box.querySelector('#nf_n').value })
+          .then(function () { toast('Coaching note saved.'); reload(); })
+          .catch(function (e) { b.disabled = false; b.textContent = n.id ? 'Save changes' : 'Save note'; toast(e.message || 'Could not save the note.'); });
+      });
+    };
+    var add = el.querySelector('[data-noteadd]'); if (add) add.addEventListener('click', function () { open(null); });
+    [].forEach.call(el.querySelectorAll('[data-noteedit]'), function (b) { b.addEventListener('click', function () { open(notes[+b.getAttribute('data-noteedit')]); el.querySelector('#fnoteform').scrollIntoView({ block: 'nearest' }); }); });
+    [].forEach.call(el.querySelectorAll('[data-notedel]'), function (b) { b.addEventListener('click', function () {
+      var n = notes[+b.getAttribute('data-notedel')]; if (!n || !n.id || !window.confirm('Delete this coaching note?')) return;
+      CFG.csrNoteDelete(n.id).then(function () { toast('Note deleted.'); reload(); }).catch(function (e) { toast(e.message || 'Could not delete the note.'); });
+    }); });
   }
   // Call Center Efficiency (Rob 10/29): raw LightSpeed phone numbers per CSR, separate from QA.
   var EFFS = { k: 'in', dir: -1 };

@@ -128,6 +128,16 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         if (error) { const e = new Error(error.message || 'Could not load coaching notes.'); e.status = 400; throw e }
         return data || []
       },
+      // Add / edit / delete coaching notes (Becky 11/19): Opsis staff only, enforced in the RPCs.
+      csrNoteSave: csrSelf ? null : async ({ agent, id, date, attended, ask_rate, title, note }) => {
+        const { data, error } = await supabase.rpc('qa_csr_note_save', { p_client: clientId || me.client, p_agent: agent, p_id: id, p_date: date, p_attended: attended, p_ask_rate: ask_rate, p_title: title, p_note: note })
+        if (error) throw new Error(error.message || 'Could not save the note.')
+        return data
+      },
+      csrNoteDelete: csrSelf ? null : async (id) => {
+        const { error } = await supabase.rpc('qa_csr_note_delete', { p_client: clientId || me.client, p_id: id })
+        if (error) throw new Error(error.message || 'Could not delete the note.')
+      },
       // Coaching Hub location filter (Becky 11/18): which location each CSR works at (RPC qa_csr_locations, same access + brand lock).
       csrLocations: csrSelf ? null : async () => {
         const { data, error } = await supabase.rpc('qa_csr_locations', { p_client: clientId || me.client })
