@@ -1,10 +1,15 @@
 // Print / PDF for reports (Becky 11/19): print ONLY the report — no app header, sidebar or buttons — and all of it,
-// not just what fits in the app's scrolling frame. Copies the report into a clean window with the page's styles,
+// not just what fits in the app's scrolling frame. Copies the report into a hidden frame with the page's styles,
 // removes anything marked data-noprint, lets scroll boxes grow, then opens the print dialog.
 export function printReport(node, { title = 'Report', wrap, extraCss = '' } = {}) {
   if (!node) return
-  const w = window.open('', '_blank')
-  if (!w) { alert('Allow pop-ups for this site to print the report.'); return }
+  // Print from a hidden frame in this page, not a pop-up: the Command Center desktop app blocks new windows (Becky 11/20).
+  const old = document.getElementById('print-report-frame'); if (old) old.remove()
+  const f = document.createElement('iframe')
+  f.id = 'print-report-frame'; f.setAttribute('aria-hidden', 'true')
+  f.style.cssText = 'position:fixed;left:-10000px;top:0;width:1100px;height:800px;border:0;visibility:hidden'
+  document.body.appendChild(f)
+  const w = f.contentWindow
   const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style')).map((n) => n.outerHTML).join('\n')
   const clone = node.cloneNode(true)
   clone.querySelectorAll('[data-noprint]').forEach((n) => n.remove())
@@ -32,7 +37,13 @@ export function printReport(node, { title = 'Report', wrap, extraCss = '' } = {}
 </style></head><body>${body}</body></html>`)
   w.document.close()
   let done = false
-  const go = () => { if (done) return; done = true; try { w.focus(); w.print() } catch (e) { /* window closed */ } }
-  w.addEventListener('load', () => setTimeout(go, 400))
-  setTimeout(go, 2000)
+  const go = () => {
+    if (done) return; done = true
+    try { w.focus(); w.print() } catch (e) { alert('Could not open the print dialog.') }
+    setTimeout(() => f.remove(), 60000) // keep the frame while the dialog is open
+  }
+  // wait for the copied stylesheets and fonts before printing
+  const ready = () => setTimeout(go, 500)
+  if (w.document.readyState === 'complete') ready(); else w.addEventListener('load', ready)
+  setTimeout(go, 2500)
 }
