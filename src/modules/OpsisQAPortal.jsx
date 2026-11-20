@@ -99,8 +99,8 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       supervisor: !!sup,
       portalRole: prole,
       portalLocation: ploc,
-      // Coach view lands first for Opsis coaches (staff who aren't app admins) — Becky 11/19
-      coachDefault: !csrSelf && !!(staff || me.staff) && !['admin', 'owner'].includes(profRole || ''),
+      // Coach mode is off by default for everyone (Becky 11/19: Kerri & Chelsea are testing — don't change what they see).
+      coachDefault: false,
       accounts,
       onSwitchAccount: switchAccount,
       invoke,
