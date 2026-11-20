@@ -1792,7 +1792,7 @@ export function mountOpsisQA(ROOT, cfg) {
       (flags ? '<div style="flex:1.3 1 300px;min-width:0"><div class="cap" style="margin-bottom:6px">How the call was handled</div>' + flags + '</div>' : '') + '</div></div>';
   }
   function vInsights(tok) {
-    setMain(crumb([['Insights']]) + '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(420px,1fr));align-items:start" id="ins">' + ('<div class="oq-card">' + skel(20, 8) + '</div>').repeat(4) + '</div>');
+    setMain(crumb([['Insights']]) + '<style>#ins{grid-template-columns:repeat(2,minmax(0,1fr))}@media (max-width:980px){#ins{grid-template-columns:minmax(0,1fr)}}</style><div class="grid" style="align-items:start" id="ins">' + ('<div class="oq-card">' + skel(20, 8) + '</div>').repeat(4) + '</div>');
     Promise.all([loadReport(), loadFocus(null, null), loadExtras().catch(function () { return {}; })]).then(function (r) {
       if (tok !== T) return; var rep = r[0], f = r[1], X = r[2] || {}, B = X.base || {}; noteKnown(rep);
       var NO_OTHER = function (L) { return (L || []).filter(function (x) { return x.k && !/^(other|general inquiry|unspecified)$/i.test(x.k); }); };
