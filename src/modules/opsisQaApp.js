@@ -3078,7 +3078,8 @@ export function mountOpsisQA(ROOT, cfg) {
   // Workforce (Erlang C) + AI Speed to Lead (2026-11-09): Command Center pages mounted inside this shell (CFG.mountExt).
   function vExt(kind) {
     setMain(crumb([[({ wfm: 'Workforce', wallboard: 'Wallboard', myphone: 'Phone', phonesetup: 'Phone setup', trends: 'Call trends', coachclips: 'Coaching clips', mycoach: 'My coaching', intraday: 'Intraday', callflow: 'Call flow' })[kind] || 'AI Speed to Lead']]) + '<div id="extmount" style="min-height:300px"></div>');
-    if (CFG.mountExt) EXT = CFG.mountExt(kind, $('extmount'));
+    // the top bar's brand / location picks go along (Becky 11/20: Apple picked, wallboard still showed every brand)
+    if (CFG.mountExt) EXT = CFG.mountExt(kind, $('extmount'), { brands: LOCK ? [LOCK] : (S.brands || []).slice(), locations: (S.locs || []).slice() });
   }
   function vScorecards() {
     setMain(crumb([['CSR scorecards']]) + '<div class="oq-card" style="padding:0;overflow:hidden"><div id="csrmount" style="min-height:300px"></div></div>');

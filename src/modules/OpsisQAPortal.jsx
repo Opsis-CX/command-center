@@ -177,12 +177,12 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         return data
       },
       // Workforce (Erlang C) and AI Speed to Lead, scoped to this login's client through opsis-portal-ops.
-      mountExt: (kind, el) => {
+      mountExt: (kind, el, pick = {}) => {
         const root = createRoot(el)
         const scoped = (b) => invoke(clientId ? { ...b, client_id: clientId } : b)
         root.render(
           <div style={PORTAL_THEME}>
-            {kind === 'wallboard' ? <SupervisorWallboard clientId={clientId} />
+            {kind === 'wallboard' ? <SupervisorWallboard clientId={clientId} brands={pick.brands} locations={pick.locations} />
               : kind === 'phonesetup' ? <PhoneSetup clientId={clientId} />
               : kind === 'trends' ? <CxTrends clientId={clientId} />
               : kind === 'coachclips' ? <CoachingDesk />

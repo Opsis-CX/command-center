@@ -102,7 +102,9 @@ function Leaderboard({ data, failed, tv }) {
   )
 }
 
-export default function SupervisorWallboard({ clientId = null }) {
+export default function SupervisorWallboard({ clientId = null, brands = null, locations = null }) {
+  // brand / location picks from the GarageCo portal's top bar (Becky 11/20); empty = everything this login can see
+  const pickB = (brands || []).join('|'), pickL = (locations || []).join('|')
   const [range, setRange] = useState('today')
   const [cs, setCs] = useState(ymd(addDays(new Date(), -6)))
   const [ce, setCe] = useState(ymd(new Date()))
@@ -129,17 +131,21 @@ export default function SupervisorWallboard({ clientId = null }) {
   const load = useCallback(async () => {
     const args = { p_start: dates[0], p_end: dates[1], p_tz: TZ }
     if (clientId) args.p_client = clientId
+    if (pickB) args.p_brands = pickB.split('|')
+    if (pickL) args.p_locations = pickL.split('|')
     const { data, error } = await supabase.rpc('sup_wallboard', args)
     if (error) setErr(error.message); else { setD(data); setErr('') }
-  }, [dates, clientId])
+  }, [dates, clientId, pickB, pickL])
   useEffect(() => { load(); const t = setInterval(load, tv ? 10000 : 20000); return () => clearInterval(t) }, [load, tv])
   // Leaderboards (2026-11-10, Becky): from reviewed calls, refreshed every minute.
   const loadLeaders = useCallback(async () => {
     const args = { p_start: dates[0], p_end: dates[1], p_tz: TZ }
     if (clientId) args.p_client = clientId
+    if (pickB) args.p_brands = pickB.split('|')
+    if (pickL) args.p_locations = pickL.split('|')
     const { data, error } = await supabase.rpc('sup_leaders', args)
     if (!error) { setLeaders(data); setLeadersFailed(false) } else setLeadersFailed(true)
-  }, [dates, clientId])
+  }, [dates, clientId, pickB, pickL])
   useEffect(() => { loadLeaders(); const t = setInterval(loadLeaders, 60000); return () => clearInterval(t) }, [loadLeaders])
   useEffect(() => { const t = setInterval(() => tick(x => x + 1), 1000); return () => clearInterval(t) }, [])
   useEffect(() => { try { localStorage.setItem(LS, JSON.stringify(tiles)); localStorage.setItem(LS + '-lb', '1') } catch { /* ignore */ } }, [tiles])
@@ -151,7 +157,8 @@ export default function SupervisorWallboard({ clientId = null }) {
   if (err && !d) return <div style={S.card}><b>Couldn’t load the wallboard.</b><p style={S.mut}>{err}</p></div>
   if (!d) return <div style={S.card}>Loading the wallboard…</div>
 
-  const scopeLabel = d.scope.location ? `${d.scope.brand} · ${d.scope.location}` : d.scope.brand || 'All brands'
+  const scopeLabel = pickB || pickL ? [pickB.split('|').filter(Boolean).join(', ') || d.scope.brand || 'All brands', pickL.split('|').filter(Boolean).join(', ')].filter(Boolean).join(' · ')
+    : d.scope.location ? `${d.scope.brand} · ${d.scope.location}` : d.scope.brand || 'All brands'
   const isToday = dates[0] === dates[1] && dates[0] === d.range.today
   const rows = [...(d.csrs || [])].sort((a, b) => {
     const [k, dir] = sort
