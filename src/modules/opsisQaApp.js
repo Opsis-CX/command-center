@@ -1814,7 +1814,7 @@ export function mountOpsisQA(ROOT, cfg) {
       var card = function (g) {
         var rows = g[2] || [], max = rows.length ? rows[0].n : 1, d = g[6];
         // 11/18 (PORT-09): one decimal on every row; one-per-call lists (g[8]) are rounded so they add to exactly 100.0%.
-        var P = g[8] ? pct100(rows, d) : null;
+        var P = g[8] ? pct100k(rows, d) : null;
         return '<div class="oq-card"><h2 class="ttl">' + g[0] + '</h2><p class="sub">' + g[1] + ' · click one to hear the calls</p><div style="margin-top:10px">' + (rows.length ? rows.slice(0, 10).map(function (r) {
           var attr = ' data-ffk="' + g[5] + '" data-ffv="' + esc(r.k) + '" title="Hear these calls"';
           return '<button class="click" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) 54px 58px;gap:10px;align-items:center;font-size:12.5px;padding:6px 2px"' + attr + '><span>' + esc(r.k) + '</span><span class="track" style="height:8px;display:block"><span style="display:block;height:100%;border-radius:999px;background:' + g[3] + ';width:' + (r.n / max * 100).toFixed(1) + '%"></span></span><b class="num" style="text-align:right">' + (P ? P[r.k] : pct1(r.n, d)) + '</b><span class="num mut" style="text-align:right;font-size:11.5px">' + fmt(r.n) + '</span></button>';
@@ -5259,7 +5259,8 @@ export function mountOpsisQA(ROOT, cfg) {
   function pctOf(n, d) { return d ? (100 * n / d) : null; }
   // 11/18 (PORT-09): fixed one-decimal percents, and a largest-remainder version for lists that should add to 100.0%.
   function pct1(n, d) { return d ? (100 * n / d).toFixed(1) + '%' : '—'; }
-  function pct100(rows, d) {
+  // named pct100k so it doesn't replace pct100(ns) above (same name made 'Every call, identified' show "undefined" — Becky 11/20)
+  function pct100k(rows, d) {
     var out = {}; if (!d) { (rows || []).forEach(function (r) { out[r.k] = '—'; }); return out; }
     var tenths = (rows || []).map(function (r) { var x = 1000 * (+r.n || 0) / d; return { k: r.k, f: Math.floor(x), rem: x - Math.floor(x) }; });
     var sum = tenths.reduce(function (t, x) { return t + x.f; }, 0), want = Math.round(1000 * tenths.reduce(function (t, x, i) { return t + (+rows[i].n || 0); }, 0) / d);
