@@ -172,7 +172,7 @@ export function mountOpsisQA(ROOT, cfg) {
   function iconPath(k) {
     if (k === 'brandset') k = 'settings';
     return {
-      overview: 'M4 5h16v14H4zM4 9h16M9 9v10', leadtime: 'M4 5h16v15H4zM4 10h16M9 3v4M15 3v4M8 14h3', dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', wallboard: 'M3 4h18v12H3zM8 20h8M12 16v4M7 12V9M11 12V7M15 12v-2', trends: 'M3 17l5-5 4 4 8-8M15 8h5v5', coachclips: 'M4 5h16v11H8l-4 4zM10 8.5v4l3.5-2z', phonesetup: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4', myphone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', aistl: 'M13 2L4 14h7l-1 8 9-12h-7z', wfm: 'M4 20V10M10 20V4M16 20v-7M22 20H2', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
+      overview: 'M4 5h16v14H4zM4 9h16M9 9v10', coach: 'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8M4 21v-1a6 6 0 0 1 9-5.2M16 15l2 2 4-4', leadtime: 'M4 5h16v15H4zM4 10h16M9 3v4M15 3v4M8 14h3', dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', wallboard: 'M3 4h18v12H3zM8 20h8M12 16v4M7 12V9M11 12V7M15 12v-2', trends: 'M3 17l5-5 4 4 8-8M15 8h5v5', coachclips: 'M4 5h16v11H8l-4 4zM10 8.5v4l3.5-2z', phonesetup: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4', myphone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', aistl: 'M13 2L4 14h7l-1 8 9-12h-7z', wfm: 'M4 20V10M10 20V4M16 20v-7M22 20H2', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
       cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', receptionist: 'M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zM4 21v-1a8 8 0 0 1 16 0v1M19 9h2M3 9h2', practice: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2', pricetalk: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
@@ -189,6 +189,7 @@ export function mountOpsisQA(ROOT, cfg) {
     .concat([['insights', 'Insights']]).concat(CFG.mountExt ? [['trends', 'Call trends']] : []).concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', W_BRANDS]])
     .concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['pricetalk', 'Price talk'], ['money', 'Revenue']].concat(CFG.leadTime ? [['leadtime', 'Booking lead time']] : []))
     .concat(!OPSIS && (!LOCK || CFG.supervisor) && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])
+    .concat(!OPSIS && CFG.supervisor && CFG.coachHistory ? [['coach', 'Coach view']] : [])
     .concat(OPSIS ? [] : [['hub', 'Coaching Hub']]).concat(CFG.mountExt && CFG.supervisor ? [['coachclips', 'Coaching clips']] : [])
     .concat([['reporting', 'Reporting']])
     .concat(CFG.mountExt ? [['aistl', 'AI Speed to Lead']] : [])
@@ -203,7 +204,7 @@ export function mountOpsisQA(ROOT, cfg) {
   var MGR = !CFG.csrSelf && !OPSIS && (CFG.portalRole === 'rm' || CFG.portalRole === 'gm');
   // Becky 11/18 (S2L-12): RMs/GMs also see AI Speed to Lead — read-only for their brand (opsis-portal-ops: can_edit is admin only,
   // dialer campaigns hidden for non-staff).
-  var MGR_NAV = ['overview', 'trends', 'hub', 'coachclips', 'receptionist', 'aistl', 'wallboard', 'myphone', 'wfm', 'intraday'];
+  var MGR_NAV = ['overview', 'trends', 'coach', 'hub', 'coachclips', 'receptionist', 'aistl', 'wallboard', 'myphone', 'wfm', 'intraday'];
   // reachable by drilling down from the dashboard, but not in the sidebar
   var MGR_OK = MGR_NAV.concat(['brand', 'csr', 'calls', 'hubqs', 'repeat', 'kpi']).concat(TILE_VIEWS);
   function mgrNav() { if (!MGR) return; NAV = [['', NAV[0][1].filter(function (n) { return MGR_NAV.indexOf(n[0]) >= 0; })]]; }
@@ -227,12 +228,18 @@ export function mountOpsisQA(ROOT, cfg) {
     }
   }
 
+  // Coach mode (Becky + Rob 11/19): a coach's landing page with everything else out of the way. On by default for
+  // Opsis coaches (staff who aren't app admins); anyone with the Coach view can switch it on or off (remembered per browser).
+  var COACH_NAV = ['coach', 'hub', 'csrs', 'calls', 'cardcap', 'calib', 'practice', 'coachclips'];
+  var COACHMODE = (function () { if (OPSIS || CFG.csrSelf || !CFG.coachHistory || !CFG.supervisor) return false; try { var v = localStorage.getItem('oq_coachmode'); if (v === '1' || v === '0') return v === '1'; } catch (e) {} return !!CFG.coachDefault; })();
+  function setCoachMode(on) { COACHMODE = !!on; try { localStorage.setItem('oq_coachmode', on ? '1' : '0'); } catch (e) {} if (on) go('coach'); else renderNav(); }
   function renderNav() {
     var cur = S.view === 'brand' ? 'brands' : (S.view === 'csr' ? 'csrs' : (S.view === 'repeat' ? 'insights' : (S.view === 'hubqs' ? 'hub' : S.view)));
     var GRP = { phone: 'Performance', brands: 'Performance', csrs: 'Performance', calls: 'Performance', cardcap: 'Performance', pricetalk: 'Performance', money: 'Performance', leadtime: 'Performance',
-      calib: 'Coaching', hub: 'Coaching', practice: 'Coaching', coachclips: 'Coaching',
+      calib: 'Coaching', coach: 'Coaching', hub: 'Coaching', practice: 'Coaching', coachclips: 'Coaching',
       reporting: 'Tools', receptionist: 'Tools', aistl: 'Tools', wallboard: 'Tools', myphone: 'Tools', wfm: 'Tools', intraday: 'Tools' };
     var ORD = { '': 0, Performance: 1, Coaching: 2, Tools: 3 };
+    var NAV0 = NAV; if (COACHMODE) NAV = [['', NAV0[0][1].filter(function (n) { return COACH_NAV.indexOf(n[0]) >= 0; })]];
     $('nav').innerHTML = NAV.map(function (sec, si) {
       if (si === 0 && !sec[0] && sec[1].length > 8) {
         var items = sec[1].map(function (n, i) { return { n: n, g: GRP[n[0]] || '', i: i }; }).sort(function (a, b) { return (ORD[a.g] - ORD[b.g]) || (a.i - b.i); }), last = '';
@@ -243,6 +250,15 @@ export function mountOpsisQA(ROOT, cfg) {
         return '<button class="' + (cur === n[0] ? 'on' : '') + '" data-go="' + n[0] + '"' + (cur === n[0] ? ' aria-current="page"' : '') + '><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + iconPath(n[0]) + '"/></svg>' + n[1] + '</button>';
       }).join('');
     }).join('');
+    NAV = NAV0;
+    if (!OPSIS && !CFG.csrSelf && CFG.coachHistory && CFG.supervisor) {
+      var tg = document.createElement('button'); tg.setAttribute('data-coachmode', COACHMODE ? '0' : '1');
+      tg.style.cssText = 'margin-top:10px;font-size:12px;opacity:.85;justify-content:center';
+      tg.textContent = COACHMODE ? 'Show the full menu' : 'Coach mode';
+      tg.title = COACHMODE ? 'Show every page in the menu' : 'Keep only the coaching pages in the menu';
+      tg.addEventListener('click', function () { setCoachMode(!COACHMODE); });
+      $('nav').appendChild(tg);
+    }
   }
   var RANGES = [['today', 'Today'], ['yesterday', 'Yesterday'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['month', 'This month'], ['lastmonth', 'Last month'], ['custom', 'Custom…']];
   function rangeLabel() { if (S.range === 'custom') return fdate(S.start) + ' – ' + fdate(S.end); var r = RANGES.filter(function (x) { return x[0] === S.range; })[0]; return r ? r[1] : ''; }
@@ -1138,14 +1154,14 @@ export function mountOpsisQA(ROOT, cfg) {
   // Data: RPC qa_csr_coaching_notes via CFG.csrNotes (same access + brand lock as the login; CSR logins get none).
   function drawCsrNotes(notes, agent) {
     var el = $('fnotes'); if (!el) return;
-    var canAdd = !!(CFG.csrNoteSave && CFG.staff);
+    var canAdd = !!(CFG.csrNoteSave && CFG.supervisor);
     var att = notes.filter(function (n) { return !n.no_show; }).length, ns = notes.length - att;
     var md = function (t) { return esc(String(t || '')).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>'); };
     var head = '<h2 class="ttl">Coaching Notes</h2><p class="sub">Every Opsis CX coaching session for this CSR (coach notes and recorded sessions), newest first · ' +
       notes.length + ' session' + (notes.length === 1 ? '' : 's') + itip('Coaching sessions for this CSR across all dates (not limited to the date range above): notes written by the coach, plus the AI summary of recorded sessions the CSR joined (1:1s and group trainings). A note and a recording on the same day count once.') + ' · ' +
       att + ' attended' + itip('Sessions the CSR showed up for.') + ' · ' + ns + ' no-show' + (ns === 1 ? '' : 's') + itip('Sessions where the note says the CSR did not attend.') + '</p>';
     head = '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div>' + head + '</div>' + (canAdd ? '<button class="sel btnd" data-noteadd="1" style="flex:none">+ Add note</button>' : '') + '</div><div id="fnoteform"></div>';
-    if (!notes.length) { el.innerHTML = head + '<p class="mut" style="font-size:12.5px;margin:8px 0 0">No coaching sessions logged for this CSR yet.</p>'; wireNoteForm(el, notes, agent); return; }
+    if (!notes.length) { el.innerHTML = head + '<p class="mut" style="font-size:12.5px;margin:8px 0 0">No coaching sessions logged for this CSR yet.</p>'; wireNoteForm(el, notes, agent); if (S.noteOpen) { S.noteOpen = false; var nab0 = el.querySelector('[data-noteadd]'); if (nab0) nab0.click(); } return; }
     var SHOW = 3;
     el.innerHTML = head + notes.map(function (n, i) {
       var pill = n.kind === 'session' ? '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#EEF0F8;color:#3A4380">Recorded session</span>' : n.no_show ? '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#FCEBDD;color:#A8441A">No-show</span>' : '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#E6F0EA;color:#1F5A41">Attended</span>';
@@ -1157,11 +1173,12 @@ export function mountOpsisQA(ROOT, cfg) {
     var allBtn = el.querySelector('[data-notesall]');
     if (allBtn) allBtn.addEventListener('click', function () { [].forEach.call(el.querySelectorAll('[data-noteextra]'), function (x) { x.style.display = ''; }); allBtn.remove(); });
     wireNoteForm(el, notes, agent);
+    if (S.noteOpen) { S.noteOpen = false; var nab = el.querySelector('[data-noteadd]'); if (nab) { nab.click(); el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }
     [].forEach.call(el.querySelectorAll('[data-notemore]'), function (b) { b.addEventListener('click', function () { var full = b.nextElementSibling, short0 = b.previousElementSibling; if (full) full.style.display = ''; if (short0) short0.style.display = 'none'; b.remove(); }); });
   }
   // "+ Add note" / Edit / Delete on the Coaching Notes card (Becky 11/19). Opsis staff only; RPCs qa_csr_note_save / qa_csr_note_delete.
   function wireNoteForm(el, notes, agent) {
-    if (!(CFG.csrNoteSave && CFG.staff)) return;
+    if (!(CFG.csrNoteSave && CFG.supervisor)) return;
     var reload = function () { CFG.csrNotes(agent).then(function (n) { drawCsrNotes(n || [], agent); }).catch(function (e) { toast(e.message || 'Could not reload notes.'); }); };
     var today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
     var open = function (n) {
@@ -1304,6 +1321,81 @@ export function mountOpsisQA(ROOT, cfg) {
     }).catch(function (e) { if (tok === T) $('csrall').innerHTML = errBox(e); });
   }
 
+
+  // ---------- Coach view (Becky + Rob, 11/19 "CSR Training – The Next Steps") ----------
+  // A coach's landing page: who needs a 1:1 (lowest card ask / QA / booking rate), who has been coached enough that
+  // their GM or RM should step in, and who deserves a thank-you. Same numbers as the CSR Scorecards page; coaching
+  // history comes from RPC qa_coach_history (the same feed as each CSR's Coaching Notes card).
+  var CARD_GOAL = 75, AI_NAMES = ['Dane', 'Sophia', 'Jason'], RECEP_BRANDS = ['PDQ', 'Dan’s Doors', "Dan's Doors"];
+  var COACH = { m: 'card' };
+  function vCoach(tok) {
+    setMain(crumb([['Coach view']]) + '<div id="coachtop"></div><div class="oq-card" id="coachneed">' + skel(30, 10) + '</div>' +
+      '<div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px"><div class="oq-card" id="coachesc">' + skel(30, 4) + '</div><div class="oq-card" id="coachkudo">' + skel(30, 4) + '</div></div>');
+    Promise.all([loadReport(), loadPrevReport(), api(Object.assign({ action: 'cardcap' }, win())).catch(function () { return null; }), CFG.coachHistory().catch(function () { return []; })]).then(function (r) {
+      if (tok !== T) return; noteKnown(r[0]);
+      var HI = {}; (r[3] || []).forEach(function (x) { HI[String(x.name || '').toLowerCase()] = x; });
+      var CM = {}; ((r[2] || {}).by_agent || []).forEach(function (x) { if (CARD_SKIP.indexOf(x.brand) >= 0) return; var k = String(x.agent || '').toLowerCase(); CM[k] = CM[k] || { b: 0, a: 0 }; CM[k].b += +x.booked || 0; CM[k].a += +x.asked_cc || 0; });
+      var rows = agentRows(r[0], r[1], 1).filter(function (a) { return AI_NAMES.indexOf(a.name) < 0; });
+      rows.forEach(function (a) { var k = String(a.name || '').toLowerCase(), v = CM[k]; a.ccb = v ? v.b : 0; a.cc = v && v.b ? 100 * v.a / v.b : null; a.h = HI[k] || null; });
+      var pc = function (v) { return v == null ? '—' : v.toFixed(0) + '%'; };
+      var hist = function (a) { var h = a.h; if (!h || (!h.sessions && !h.no_shows)) return '<span class="mut">Not coached yet</span>';
+        return '<span title="From the Coaching Notes on this CSR’s page">' + h.sessions + ' session' + (h.sessions === 1 ? '' : 's') + (h.no_shows ? ' · <span style="color:#B4432F">' + h.no_shows + ' no-show' + (h.no_shows === 1 ? '' : 's') + '</span>' : '') + (h.last ? '<br><span class="mut" style="font-size:11.5px">last ' + fdate(h.last) + '</span>' : '') + '</span>'; };
+      var noteBtn = function (a) { return '<button class="sel" data-coachnote="' + esc(a.name) + '" style="min-height:30px;padding:4px 10px;font-size:12px">+ Note</button>'; };
+      var who = function (a) { return '<div style="display:flex;align-items:center;gap:10px">' + avatar(a.name, 28) + '<div><b style="font-weight:600">' + esc(a.name) + '</b><div class="mut" style="font-size:11.5px">' + esc(short(a.brand || '')) + (RECEP_BRANDS.indexOf(a.brand) >= 0 ? ' · <span title="Rob 11/19: these brands still use receptionists. Check the call type before coaching.">receptionist brand</span>' : '') + '</div></div></div>'; };
+      var wire = function (el) { [].forEach.call(el.querySelectorAll('[data-coachnote]'), function (b) { b.addEventListener('click', function (e) { e.stopPropagation(); S.agent = b.getAttribute('data-coachnote'); S.noteOpen = true; go('csr'); }); }); };
+
+      // 1) Who needs coaching — pick a metric, lowest first
+      var M = {
+        card: { l: 'Card ask rate', t: 'Booked service calls where the CSR asked for a card (goal ' + CARD_GOAL + '%)', ok: function (a) { return a.cc != null && a.ccb >= 4; }, v: function (a) { return a.cc; } },
+        qa: { l: 'QA score', t: 'Average call-flow (QA) score, 0–100', ok: function (a) { return a.avg != null && a.calls >= 10; }, v: function (a) { return a.avg; } },
+        book: { l: 'Booking rate', t: 'Booked ÷ booking opportunities', ok: function (a) { return a.rate != null && a.calls >= 10; }, v: function (a) { return a.rate; } }
+      };
+      var draw = function () {
+        var m = M[COACH.m], list = rows.filter(m.ok).sort(function (a, b) { return m.v(a) - m.v(b); }).slice(0, 15);
+        var h = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><h2 class="ttl">Who needs coaching</h2><p class="sub">Lowest ' + esc(m.l.toLowerCase()) + ' · ' + esc(rangeLabel()) + ' · pick the CSRs for this week’s 1:1s (15–20 minutes). Check the calls before the session.</p></div>' +
+          '<div class="row" style="gap:6px">' + Object.keys(M).map(function (k) { return '<button class="chip' + (COACH.m === k ? ' on' : '') + '" data-coachm="' + k + '" title="' + esc(M[k].t) + '">' + M[k].l + '</button>'; }).join('') + '</div></div>';
+        if (!list.length) h += '<p class="mut" style="margin-top:10px">Not enough calls in this date range. Try Last 30 days.</p>';
+        else h += '<div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13.5px"><thead><tr><th>CSR</th><th class="num" title="' + esc(M.card.t) + '">Card ask</th><th class="num" title="' + esc(M.qa.t) + '">QA score</th><th class="num" title="' + esc(M.book.t) + '">Booking rate</th><th class="num">Calls</th><th>Coaching so far</th><th></th></tr></thead><tbody>' +
+          list.map(function (a) { var b = function (k, s) { return COACH.m === k ? '<b>' + s + '</b>' : '<span class="mut">' + s + '</span>'; };
+            return '<tr class="click" data-agent="' + esc(a.name) + '" tabindex="0"><td>' + who(a) + '</td><td class="num">' + b('card', '<span style="color:' + (a.cc != null && a.cc < CARD_GOAL ? O : 'inherit') + '">' + pc(a.cc) + '</span>') + '</td><td class="num">' + b('qa', a.avg != null ? a.avg.toFixed(1) : '—') + '</td><td class="num">' + b('book', pc(a.rate)) + '</td><td class="num">' + fmt(a.calls) + '</td><td style="font-size:12.5px">' + hist(a) + '</td><td>' + noteBtn(a) + '</td></tr>'; }).join('') + '</tbody></table></div>';
+        var el = $('coachneed'); el.innerHTML = h; wire(el);
+        [].forEach.call(el.querySelectorAll('[data-coachm]'), function (b) { b.addEventListener('click', function () { COACH.m = b.getAttribute('data-coachm'); draw(); }); });
+      };
+      draw();
+
+      // 2) Escalate — coached (or scheduled) 5+ times, or 3+ no-shows, and still under the card ask goal
+      var esc5 = rows.filter(function (a) { var h = a.h; if (!h) return false; var tries = (h.sessions || 0) + (h.no_shows || 0); return (tries >= 5 || (h.no_shows || 0) >= 3) && (a.cc == null || a.cc < CARD_GOAL); })
+        .sort(function (a, b) { return ((b.h.sessions + b.h.no_shows) - (a.h.sessions + a.h.no_shows)) || ((a.cc == null ? 999 : a.cc) - (b.cc == null ? 999 : b.cc)); });
+      var mail = function (subj, body) { return 'mailto:?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body); };
+      var eh = '<h2 class="ttl">Bring in their GM or RM</h2><p class="sub">Coached or scheduled 5+ times, or missed 3+ sessions, and still under the ' + CARD_GOAL + '% card ask goal. Rob 11/19: at this point it’s a will issue, not a skill issue.</p>';
+      eh += esc5.length ? esc5.slice(0, 8).map(function (a) { var h = a.h, first = a.name.split(' ')[0];
+        var body = 'Hi,\n\nWe wanted to flag ' + a.name + ' (' + short(a.brand || '') + '). Since we started coaching, ' + first + ' has been scheduled for ' + (h.sessions + h.no_shows) + ' coaching sessions: attended ' + h.sessions + ', missed ' + h.no_shows + '.' + (a.cc != null ? ' Credit card ask rate, ' + rangeLabel().toLowerCase() + ': ' + a.cc.toFixed(0) + '% (goal ' + CARD_GOAL + '%).' : '') + '\n\nWe think more direct coaching from you is the next step. The session notes are on ' + first + '’s page in the portal.\n\nThanks,\n' + (CFG.userName || '');
+        return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line2)">' + '<div data-agent="' + esc(a.name) + '" class="click" style="flex:1;min-width:0">' + who(a) + '<div style="font-size:12.5px;margin:4px 0 0 38px">' + hist(a).replace('<br>', ' · ') + ' · card ask <b>' + pc(a.cc) + '</b></div></div>' +
+          '<a class="sel" href="' + esc(mail('Coaching follow-up: ' + a.name, body)) + '" style="min-height:30px;padding:4px 10px;font-size:12px;text-decoration:none;flex:none">Draft email</a></div>'; }).join('')
+        : '<p class="mut" style="margin-top:10px">Nobody meets this yet.</p>';
+      var ee = $('coachesc'); ee.innerHTML = eh;
+
+      // 3) Kudos — at or over the card goal, and most improved QA
+      var top = rows.filter(function (a) { return a.cc != null && a.ccb >= 5 && a.cc >= CARD_GOAL; }).sort(function (a, b) { return b.cc - a.cc || (b.avg || 0) - (a.avg || 0); }).slice(0, 6);
+      var up = rows.filter(function (a) { return a.calls >= 20 && a.avg != null && a.pavg != null && a.avg - a.pavg >= 5; }).sort(function (a, b) { return (b.avg - b.pavg) - (a.avg - a.pavg); }).slice(0, 5);
+      var kudo = function (a, why) { var first = a.name.split(' ')[0];
+        var body = 'Hi ' + first + ',\n\nWe’ve been watching your calls and wanted to say great job. ' + why + '\n\nKeep it up!\n\n' + (CFG.userName || '');
+        return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line2)"><div data-agent="' + esc(a.name) + '" class="click" style="flex:1;min-width:0">' + who(a) + '<div style="font-size:12.5px;margin:4px 0 0 38px">' + esc(why) + '</div></div>' +
+          '<a class="sel" href="' + esc(mail('Great work, ' + first + '!', body)) + '" title="Add the CSR, their GM and Rob before you send" style="min-height:30px;padding:4px 10px;font-size:12px;text-decoration:none;flex:none">Thank-you email</a></div>'; };
+      var kh = '<h2 class="ttl">Kudos</h2><p class="sub">Worth a thank-you email. Copy their GM and Rob.</p>';
+      kh += top.length ? '<div class="cap" style="margin-top:8px">At or over the ' + CARD_GOAL + '% card ask goal</div>' + top.map(function (a) { return kudo(a, 'Card ask rate ' + a.cc.toFixed(0) + '%' + (a.avg != null ? ', QA score ' + a.avg.toFixed(1) : '') + (a.rate != null ? ', booking rate ' + a.rate.toFixed(0) + '%' : '') + '.'); }).join('') : '';
+      kh += up.length ? '<div class="cap" style="margin-top:12px">Most improved QA score</div>' + up.map(function (a) { return kudo(a, 'QA score up ' + (a.avg - a.pavg).toFixed(1) + ' points, to ' + a.avg.toFixed(1) + '.'); }).join('') : '';
+      if (!top.length && !up.length) kh += '<p class="mut" style="margin-top:10px">Nobody yet for this date range.</p>';
+      $('coachkudo').innerHTML = kh;
+
+      // top tiles
+      var under = rows.filter(function (a) { return a.cc != null && a.ccb >= 4 && a.cc < CARD_GOAL; }).length;
+      var tb = 0, ta = 0; rows.forEach(function (a) { var v = CM[String(a.name || '').toLowerCase()]; if (v) { tb += v.b; ta += v.a; } });
+      $('coachtop').innerHTML = '<div class="oq-card"><h2 class="ttl">Coach view</h2><p class="sub">' + esc(rangeLabel()) + (LOCK ? ' · ' + esc(short(LOCK)) : S.brands.length ? ' · ' + S.brands.map(short).map(esc).join(', ') : ' · all brands') + '. Click a CSR to open their page, calls and coaching notes.</p>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:10px">' +
+        tile('Card ask rate', tb ? (100 * ta / tb).toFixed(1) + '%' : '—', 'Goal ' + CARD_GOAL + '%') + tile('Under the card goal', fmt(under), 'CSRs with 4+ card-eligible bookings') + tile('For their GM or RM', fmt(esc5.length), 'Coached 5+ times or 3+ no-shows') + tile('Kudos', fmt(top.length + up.length), 'At goal or most improved') + '</div></div>';
+    }).catch(function (e) { if (tok === T) $('coachneed').innerHTML = errBox(e); });
+  }
   // ---------- Calls ----------
   var OUTCOMES = [['', 'Any outcome'], ['Booked', 'Booked'], ['Not Booked', 'Not booked'], ['Transferred', 'Transferred'], ['No Opportunity', 'No opportunity']];
   // KPI drill (2026-10-23): click a top tile -> every brand side by side, then the calls behind the number.
@@ -4818,7 +4910,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; if (MGR && MGR_OK.indexOf(S.view) < 0) S.view = 'overview'; renderNav(); renderWho(); writeHash(); trackHist();
-    var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, coach: vCoach, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
   }
@@ -5176,7 +5268,7 @@ export function mountOpsisQA(ROOT, cfg) {
   try { var bc0 = JSON.parse(localStorage.getItem('oqa_brand_' + (CFG.clientId || 'own')) || 'null'); if (bc0) applyBranding(bc0); } catch (x) {}
   if (!CFG.csrSelf) api({ action: 'branding' }).then(function (b) { try { localStorage.setItem('oqa_brand_' + (CFG.clientId || 'own'), JSON.stringify(b)); } catch (x) {} var g0 = G; applyBranding(b); if (G !== g0) render(); }).catch(function () {});
   var DEEP_CALL = (location.hash.match(/(?:^#|&)call=([0-9a-f-]{36})/i) || [])[1];
-  readHash(true); render();
+  readHash(true); if (COACHMODE && !/(^|&)v=/.test(location.hash.replace(/^#/, ''))) S.view = 'coach'; render();
   if (DEEP_CALL && !CFG.csrSelf) { S.callId = DEEP_CALL; callDrawer(); }
   return function destroy() {
     LISTENERS.forEach(function (l) { l[0].removeEventListener(l[1], l[2]); }); LISTENERS = [];

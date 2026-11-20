@@ -68,6 +68,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
   // portal_role of the signed-in login (rm / gm get a short, manager-only sidebar — Becky 11/16)
   const [prole, setProle] = useState(null)
   const [ploc, setPloc] = useState(null)
+  const [profRole, setProfRole] = useState(null)
   // "View as" Admin / RM / GM / CSR — your own +rm/+gm/+csr logins (2026-11-10)
   const [accounts, setAccounts] = useState(null)
   useEffect(() => { let on = true; loadAccounts().then(a => { if (on) setAccounts(a) }); return () => { on = false } }, [])
@@ -78,7 +79,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       const uid = data?.user?.id
       if (!uid) { if (active) setSup(false); return }
       supabase.from('profiles').select('role, portal_role, portal_location').eq('id', uid).maybeSingle()
-        .then(({ data: p }) => { if (active) setProle(String(p?.portal_role || '').toLowerCase() || null); if (active) setPloc(p?.portal_location || null); if (active) setSup(!!p && (String(p.role || '').toLowerCase() !== 'client' || ['admin', 'manager', 'rm', 'gm'].includes(p.portal_role || 'manager'))) })
+        .then(({ data: p }) => { if (active) setProle(String(p?.portal_role || '').toLowerCase() || null); if (active) setPloc(p?.portal_location || null); if (active) setProfRole(String(p?.role || '').toLowerCase() || null); if (active) setSup(!!p && (String(p.role || '').toLowerCase() !== 'client' || ['admin', 'manager', 'rm', 'gm'].includes(p.portal_role || 'manager'))) })
         .catch(() => { if (active) setSup(false) })
     })
     return () => { active = false }
@@ -98,6 +99,8 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       supervisor: !!sup,
       portalRole: prole,
       portalLocation: ploc,
+      // Coach view lands first for Opsis coaches (staff who aren't app admins) — Becky 11/19
+      coachDefault: !csrSelf && !!(staff || me.staff) && !['admin', 'owner'].includes(profRole || ''),
       accounts,
       onSwitchAccount: switchAccount,
       invoke,
@@ -137,6 +140,12 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       csrNoteDelete: csrSelf ? null : async (id) => {
         const { error } = await supabase.rpc('qa_csr_note_delete', { p_client: clientId || me.client, p_id: id })
         if (error) throw new Error(error.message || 'Could not delete the note.')
+      },
+      // Coach view (Becky 11/19): coaching history per CSR for the signed-in login's scope.
+      coachHistory: csrSelf ? null : async () => {
+        const { data, error } = await supabase.rpc('qa_coach_history', { p_client: clientId || me.client })
+        if (error) throw new Error(error.message || 'Could not load coaching history.')
+        return data || []
       },
       // Coaching Hub location filter (Becky 11/18): which location each CSR works at (RPC qa_csr_locations, same access + brand lock).
       csrLocations: csrSelf ? null : async () => {
