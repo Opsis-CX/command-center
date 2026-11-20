@@ -141,6 +141,17 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         const { error } = await supabase.rpc('qa_csr_note_delete', { p_client: clientId || me.client, p_id: id })
         if (error) throw new Error(error.message || 'Could not delete the note.')
       },
+      // Business reviews (Becky 11/19): WBR/MBR/QBR/Annual + Scorecard/Booking/Containment. Admins + Opsis staff (checked in the RPCs).
+      bizReview: csrSelf ? null : async ({ start, end, grain, trend, brands, prevStart, prevEnd }) => {
+        const { data, error } = await supabase.rpc('qa_biz_review', { p_client: clientId || me.client, p_start: start, p_end: end, p_grain: grain, p_trend_start: trend, p_brands: brands && brands.length ? brands : null, p_prev_start: prevStart || null, p_prev_end: prevEnd || null })
+        if (error) { const e = new Error(error.message || 'Could not load the review.'); e.status = 400; throw e }
+        return data
+      },
+      bizDetail: csrSelf ? null : async ({ start, end, trend, brands }) => {
+        const { data, error } = await supabase.rpc('qa_biz_detail', { p_client: clientId || me.client, p_start: start, p_end: end, p_trend_start: trend, p_brands: brands && brands.length ? brands : null })
+        if (error) { const e = new Error(error.message || 'Could not load the review details.'); e.status = 400; throw e }
+        return data
+      },
       // AI CSR dashboard (Becky 11/19): live AI CSR phone calls for the range + previous period, brand lock applied in the RPC.
       recepDash: csrSelf ? null : async ({ start, end, brands }) => {
         const { data, error } = await supabase.rpc('qa_recep_dash', { p_client: clientId || me.client, p_start: start, p_end: end, p_brands: brands && brands.length ? brands : null })
