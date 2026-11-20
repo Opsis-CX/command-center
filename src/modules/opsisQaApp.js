@@ -883,7 +883,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div class="ai" id="why"><div class="click" data-whytog="1" role="button" tabindex="0" aria-expanded="false" style="display:flex;gap:10px;align-items:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><b>Why ' + esc(title) + ' is trending this way</b><span class="mut" style="margin-left:auto;font-size:12.5px">Show</span><svg id="whychev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="2" style="transition:transform .15s" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></div><div class="md" style="margin-top:10px;display:none"><span class="dots"><span></span><span></span><span></span></span> <span class="mut">Reading this period’s calls…</span></div></div>' +
       '<div id="fk" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))' + (kind === 'brand' && DASHON() ? ';display:none' : '') + '">' + skel(90, 1).repeat(4) + '</div>' +
       (kind === 'brand' && DASHON() ? '<div class="oq-card" id="fweek">' + skel(200, 1) + '</div>' : '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:999 1 520px" id="fweek">' + skel(200, 1) + '</div><div class="oq-card" style="flex:1 1 360px" id="fsteps">' + skel(18, 9) + '</div></div>') +
-      (kind === 'brand' ? '<div class="oq-card" id="fmovers">' + skel(30, 8) + '</div>' : '<div class="oq-card" id="fcalls">' + skel(50, 5) + '</div>') +
+      (kind === 'brand' ? '<div class="oq-card" id="fmovers">' + skel(30, 8) + '</div>' : '<div class="oq-card" id="fcalls">' + skel(50, 5) + '</div>' + (CFG.csrNotes ? '<div class="oq-card" id="fnotes">' + skel(30, 3) + '</div>' : '')) +
       '<div class="oq-card" id="feff">' + skel(30, 5) + '</div>' +
       '<div class="row" style="align-items:flex-start" id="fmix">' + skel(20, 10) + '</div>' +
       (kind === 'brand' && DASHON() ? '' : '<div class="oq-card" id="fmood">' + skel(30, 4) + '</div>'));
@@ -896,6 +896,7 @@ export function mountOpsisQA(ROOT, cfg) {
       if (FOCUSWHY) FOCUSWHY(f); focusKpis(f, brand, agent); focusWeekly(f); stepCard(f, 'fsteps', brand, agent); focusMix(f, brand, agent);
       if (kind === 'brand') focusMovers(f);
     }).catch(function (e) { if (tok === T) $('fk').innerHTML = errBox(e); });
+    if (kind === 'csr' && CFG.csrNotes) CFG.csrNotes(agent).then(function (n) { if (tok === T) drawCsrNotes(n || []); }).catch(function () { var x = $('fnotes'); if (x) x.remove(); });
     if (kind === 'csr') api(Object.assign({ action: 'calls' }, win({ agent: agent, limit: 6 }))).then(function (c) { if (tok !== T) return; $('fcalls').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start"><div><h2 class="ttl">Recent Calls</h2><p class="sub">' + fmt(c.total) + ' scored calls in this period</p></div><button class="more" data-callsfor="csr">All →</button></div>' + (c.rows || []).map(callRow).join(''); }).catch(function () {});
     var ckey = 'why7|' + kind + '|' + name + '|' + S.start + '|' + S.end;
     // Executive summary (Becky 10/29): only what actually moved, cause -> effect, no noise. Numbers match the tiles.
@@ -1133,6 +1134,25 @@ export function mountOpsisQA(ROOT, cfg) {
       tile('What Callers Wanted', 'Why customers called, as a share of all calls · number of calls · (change vs the period before) · click to hear the calls', want);
     $('fmix').dataset.fb = brand || ''; $('fmix').dataset.fa = agent || '';
     lastFocus = f;
+  }
+  // Coaching Notes (Becky 11/19): every Opsis CX coaching session logged for this CSR, all dates, newest first.
+  // Data: RPC qa_csr_coaching_notes via CFG.csrNotes (same access + brand lock as the login; CSR logins get none).
+  function drawCsrNotes(notes) {
+    var el = $('fnotes'); if (!el) return;
+    var att = notes.filter(function (n) { return !n.no_show; }).length, ns = notes.length - att;
+    var md = function (t) { return esc(String(t || '')).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>'); };
+    var head = '<h2 class="ttl">Coaching Notes</h2><p class="sub">Every coaching session Opsis CX has logged for this CSR, newest first · ' +
+      notes.length + ' session' + (notes.length === 1 ? '' : 's') + itip('Coaching sessions logged by an Opsis CX coach for this CSR, across all dates (not limited to the date range above).') + ' · ' +
+      att + ' attended' + itip('Sessions the CSR showed up for.') + ' · ' + ns + ' no-show' + (ns === 1 ? '' : 's') + itip('Sessions where the note says the CSR did not attend.') + '</p>';
+    if (!notes.length) { el.innerHTML = head + '<p class="mut" style="font-size:12.5px;margin:8px 0 0">No coaching sessions logged for this CSR yet.</p>'; return; }
+    el.innerHTML = head + notes.map(function (n, i) {
+      var pill = n.no_show ? '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#FCEBDD;color:#A8441A">No-show</span>' : '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#E6F0EA;color:#1F5A41">Attended</span>';
+      var body = String(n.body || ''), long = body.length > 320;
+      return '<div style="border-top:1px solid var(--line2);padding:12px 0' + (i ? '' : ';margin-top:8px') + '"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b class="num" style="font-size:13px">' + esc(fdate(String(n.date || '').slice(0, 10))) + '</b>' + pill +
+        (n.title ? '<b style="font-size:13px">' + esc(n.title) + '</b>' : '') + '<span class="mut" style="font-size:12px;margin-left:auto">' + esc(n.coach || 'Opsis CX coach') + '</span></div>' +
+        '<div style="font-size:13px;line-height:1.5;margin-top:6px">' + (long ? '<span>' + md(body.slice(0, 320)) + '… </span><button class="more" data-notemore="1" style="font-size:12px">Show more</button><span style="display:none">' + md(body) + '</span>' : md(body)) + '</div></div>';
+    }).join('');
+    [].forEach.call(el.querySelectorAll('[data-notemore]'), function (b) { b.addEventListener('click', function () { var full = b.nextElementSibling, short0 = b.previousElementSibling; if (full) full.style.display = ''; if (short0) short0.style.display = 'none'; b.remove(); }); });
   }
   // Call Center Efficiency (Rob 10/29): raw LightSpeed phone numbers per CSR, separate from QA.
   var EFFS = { k: 'in', dir: -1 };

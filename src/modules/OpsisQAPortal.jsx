@@ -122,6 +122,12 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         if (error) { const e = new Error(error.message || 'Could not load the dashboard.'); e.status = 400; throw e }
         return data
       },
+      // Coaching Notes on the CSR page (Becky 11/19): RPC qa_csr_coaching_notes with the user's own session (brand lock applies).
+      csrNotes: csrSelf ? null : async (agent) => {
+        const { data, error } = await supabase.rpc('qa_csr_coaching_notes', { p_client: clientId || me.client, p_agent: agent })
+        if (error) { const e = new Error(error.message || 'Could not load coaching notes.'); e.status = 400; throw e }
+        return data || []
+      },
       // Coaching Hub location filter (Becky 11/18): which location each CSR works at (RPC qa_csr_locations, same access + brand lock).
       csrLocations: csrSelf ? null : async () => {
         const { data, error } = await supabase.rpc('qa_csr_locations', { p_client: clientId || me.client })
