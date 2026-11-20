@@ -6,7 +6,7 @@
 // ============================================================
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import CxEngineSetup from '../components/CxEngineSetup'
+import CxEngineSetup, { StormSwitch } from '../components/CxEngineSetup'
 
 // Speed-to-lead "middle ground" cadence (Becky's doc, Sept 2026): 8 dials over 5 dialing days, 5 in the first two days.
 const WHEN = [['asap', 'Right away (within 15 seconds)'], ['after_hours', 'Hours after the last dial'], ['morning', 'Morning (8–11 am)'], ['late_morning', 'Late morning (10 am–12 pm)'],
@@ -88,6 +88,8 @@ export default function PhoneSetup({ clientId = null }) {
 
       {tab === 'cx' ? <CxEngineSetup args={args} people={d.people || []} can={can} /> : tab === 'central' ? <CentralTeam args={args} onChange={load} /> : tab === 'blend' ? <Blending d={d} args={args} /> : tab === 'in' ? (
         <>
+          {/* Storm / emergency closure — moved here from the Wallboard (Becky 11/20: the wallboard is informational only) */}
+          <StormSwitch clientId={clientId} />
           {can && <div><button style={S.primary} onClick={() => setEdit({ kind: 'line', row: null })}>+ New inbound line</button></div>}
           {d.lines.length === 0 && <div style={S.card}><p style={S.mut}>No inbound lines yet.</p></div>}
           <div style={S.grid}>
