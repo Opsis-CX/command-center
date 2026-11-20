@@ -998,7 +998,9 @@ export function mountOpsisQA(ROOT, cfg) {
       return '<div class="oq-card" style="padding:14px 16px">' + capRow(d[0], KDEF[d[0]]) + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px"><span class="num" style="font-size:28px;font-weight:600;letter-spacing:-0.03em">' + d[3](d[1]) + '</span>' + (d[4] === null ? '' : delta(d[1], d[2], d[4])) + '</div><div class="mut num" style="font-size:11.5px;margin-top:6px">before: ' + d[3](d[2]) + '</div></div>';
     }).join('');
   }
-  var PROGRAM_MARKS = [['2026-10-27', 'Training starts']];
+  // Rubric changes (Becky 11/20) shown in gray, so a score move can be read against the scoring change, not just the CSRs:
+  // 11-step Universal CSR Call Flow live 9/27 (migration garageco_11_step_rubric_and_hold_timing), Rob's 5-step talk path 10/20.
+  var PROGRAM_MARKS = [['2026-09-27', '11-step rubric', 'rubric'], ['2026-10-20', '5-step call flow', 'rubric'], ['2026-10-27', 'Training starts', 'program']];
   function focusWeekly(f) {
     var T1 = 'QA Score and Booking Rate, Week by Week';
     var w = (f.weekly || []).filter(function (x) { return x.calls >= 10; });
@@ -1015,13 +1017,13 @@ export function mountOpsisQA(ROOT, cfg) {
     var startIdx = w.findIndex(function (x) { return x.w >= S.start.slice(0, 10); });
     var shade = startIdx >= 0 ? '<rect x="' + (L + startIdx / n * cw) + '" y="0" width="' + (cw - startIdx / n * cw) + '" height="' + Hd + '" fill="#E6F0EA" opacity=".55"/>' : '';
     var dots = w.map(function (x, i) { return '<circle cx="' + px(i) + '" cy="' + py(x.avg) + '" r="4" fill="#14302A"><title>Week of ' + fdate(x.w) + ': QA score ' + x.avg + (x.decided ? ' · ' + Math.round(x.booked / x.decided * 100) + '% booked' : '') + ' · ' + x.calls + ' calls</title></circle>'; }).join('');
-    // Program start markers (Becky 11/17): card program Aug 26, training Oct 27.
-    var marks = PROGRAM_MARKS.map(function (m) { var dt = m[0], i = -1; for (var k = 0; k < n; k++) if (w[k].w <= dt) i = k; if (i < 0) return '';
+    // Markers: rubric changes (gray) + training start (green). Labels alternate rows so close dates don't overlap.
+    var marks = PROGRAM_MARKS.map(function (m, mj) { var dt = m[0], i = -1, col = m[2] === 'rubric' ? '#8A918D' : '#1F5A41', ly = tp + 10 + (mj % 2) * 14; for (var k = 0; k < n; k++) if (w[k].w <= dt) i = k; if (i < 0) return '';
       var days = Math.round((new Date(dt + 'T12:00:00Z') - new Date(w[i].w + 'T12:00:00Z')) / 864e5), x = (L + (i + Math.min(days, 6) / 7) / n * cw).toFixed(1);
-      return '<line x1="' + x + '" x2="' + x + '" y1="' + tp + '" y2="' + Hd + '" stroke="#1F5A41" stroke-width="1.5" stroke-dasharray="3 3"/><text x="' + (+x + 5) + '" y="' + (tp + 10) + '" font-size="11" font-weight="700" fill="#1F5A41">' + m[1] + ' · ' + fdate(dt) + '</text>'; }).join('');
+      return '<line x1="' + x + '" x2="' + x + '" y1="' + tp + '" y2="' + Hd + '" stroke="' + col + '" stroke-width="1.5" stroke-dasharray="3 3"/><text x="' + (+x + 5) + '" y="' + ly + '" font-size="11" font-weight="700" fill="' + col + '"><title>' + (m[2] === 'rubric' ? 'QA scoring switched to the ' + m[1] + ' on this date. Scores before and after aren’t scored the same way.' : m[1]) + '</title>' + m[1] + ' · ' + fdate(dt) + '</text>'; }).join('');
     var last = w[n - 1], lr = rates[n - 1];
     var endl = '<text x="' + (+px(n - 1) - 8) + '" y="' + (+py(last.avg) - 9) + '" text-anchor="end" font-size="12" font-weight="700" fill="#14302A">' + (+last.avg).toFixed(1) + '</text>' + (lr != null ? '<text x="' + (+px(n - 1) - 8) + '" y="' + (+py(lr) + 16) + '" text-anchor="end" font-size="12" font-weight="700" fill="#E0662A">' + Math.round(lr) + '%</text>' : '');
-    $('fweek').innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">' + T1 + '</h2><p class="sub">Last 12 weeks. Solid line: average QA score (0–100). Dashed line: booking rate (%). Both read off the scale on the left. Shaded = the period you’re viewing. Dotted line = when CSR call standard training started · hover a dot for details.</p></div><div class="mut" style="font-size:12px;display:flex;gap:14px"><span style="color:#14302A">● QA score</span><span style="color:#E0662A">- - booking rate %</span></div></div>' +
+    $('fweek').innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">' + T1 + '</h2><p class="sub">Last 12 weeks. Solid line: average QA score (0–100). Dashed line: booking rate (%). Both read off the scale on the left. Shaded = the period you’re viewing. Green dotted line = when CSR call standard training started. Gray dotted lines = when QA scoring changed rubric (11-step on Sep 27, 5-step on Oct 20), so scores on either side aren’t scored the same way · hover a dot for details.</p></div><div class="mut" style="font-size:12px;display:flex;gap:14px"><span style="color:#14302A">● QA score</span><span style="color:#E0662A">- - booking rate %</span></div></div>' +
       '<svg viewBox="0 0 ' + Wd + ' ' + (Hd + 8) + '" style="width:100%;height:auto;margin-top:12px;overflow:visible" role="img" aria-label="Weekly QA score and booking rate">' + shade + grid + marks + '<path d="' + rl + '" fill="none" stroke="#E0662A" stroke-width="2" stroke-dasharray="5 4"/><path d="' + line + '" fill="none" stroke="#14302A" stroke-width="2.4"/>' + dots + endl + '</svg>' +
       '<div style="display:flex;margin-top:4px;padding-left:4.4%">' + w.map(function (x, i) { return '<div style="flex:1;text-align:center;font-size:10px;color:#5F6763">' + (i % 2 === 0 ? 'Wk of ' + fdate(x.w) : '') + '</div>'; }).join('') + '</div>';
   }
