@@ -1524,7 +1524,7 @@ export function mountOpsisQA(ROOT, cfg) {
     // 04 trend
     var MET = [['revenue', 'Revenue'], ['booked', 'Jobs booked'], ['conv', 'Booking rate'], ['card_rate', 'Card ask rate'], ['qa', 'QA score'], ['answered', 'Calls handled'], ['abandon_pct', 'Abandon rate']];
     var mk = BZ.metric, since = ds[BZ_GRP[mk] || 'calls'], bk = (d.buckets || []).filter(function (b) { return since && bzAdd(b.k, { week: 6, month: 31, quarter: 92 }[d.range.grain] || 31) >= since; });
-    var today = bzToday(), full = bk.filter(function (b) { return bzAdd(b.k, d.range.grain === 'week' ? 6 : 0) < today && (d.range.grain === 'week' || bzMonAdd(b.k, d.range.grain === 'quarter' ? 3 : 1) <= today); }), vals = full.map(function (b) { return b[mk] == null ? null : +b[mk]; }), first = vals.filter(function (v) { return v != null; })[0], last = vals.filter(function (v) { return v != null; }).slice(-1)[0], nFull = vals.filter(function (v) { return v != null; }).length;
+    var today = bzToday(), full = bk.filter(function (b) { return bzAdd(b.k, d.range.grain === 'week' ? 6 : 0) < today && (d.range.grain === 'week' || bzMonAdd(b.k, d.range.grain === 'quarter' ? 3 : 1) <= today); }), vals = full.map(function (b) { return bzBv(b, mk); }), first = vals.filter(function (v) { return v != null; })[0], last = vals.filter(function (v) { return v != null; }).slice(-1)[0], nFull = vals.filter(function (v) { return v != null; }).length;
     var unitName = d.range.grain === 'week' ? 'week' : 'month', mName = (MET.filter(function (m) { return m[0] === mk; })[0] || [])[1];
     var head = first == null || nFull < 2 ? mName + ' over time' : mName + (last > first ? (BZ_LOWER[mk] ? ' rose' : ' grew') : last < first ? (BZ_LOWER[mk] ? ' fell' : ' dropped') : ' held') + ' from ' + bzVal(mk, first) + ' to ' + bzVal(mk, last) + ' per ' + unitName + ' over ' + nFull + ' full ' + unitName + 's';
     h += bzSec('04', 'Performance over time', esc(head));
@@ -1552,9 +1552,11 @@ export function mountOpsisQA(ROOT, cfg) {
     h += '<p class="mut" style="font-size:11.5px;margin:18px 0 0;line-height:1.6">Data starts: calls ' + (ds.calls ? fdate(ds.calls) : '—') + ' · card capture ' + (ds.card ? fdate(ds.card) : '—') + ' · revenue ' + (ds.revenue ? fdate(ds.revenue) : '—') + ' · phone system ' + (ds.phone ? fdate(ds.phone) : '—') + ' · AI CSR ' + (ds.ai ? fdate(ds.ai) : '—') + '. Changes are only shown when the earlier period has full data. Phone system data runs through ' + (ds.phone_thru ? fdate(ds.phone_thru) : '—') + '.</p>';
     return h;
   }
+  var BZ_BASE = { card_rate: ['card_bk', 30], conv: ['decided', 30], qa: ['scored', 30], abandon_pct: ['offered', 100] };
+  function bzBv(b, mk) { var r = BZ_BASE[mk]; if (b[mk] == null) return null; if (r && (+b[r[0]] || 0) < r[1]) return null; return +b[mk]; }
   function bzChart(bk, mk, grain, p) {
     if (!bk.length) return '<p class="mut" style="margin-top:14px">No data for this measure yet.</p>';
-    var W = 900, H = 250, pl = 48, pb = 28, n = bk.length, step = (W - pl) / n, bw = Math.min(64, step * 0.62), vals = bk.map(function (b) { return b[mk] == null ? null : +b[mk]; });
+    var W = 900, H = 250, pl = 48, pb = 28, n = bk.length, step = (W - pl) / n, bw = Math.min(64, step * 0.62), vals = bk.map(function (b) { return bzBv(b, mk); });
     var mx = Math.max.apply(null, vals.filter(function (v) { return v != null; }).concat([0])), pctm = /conv|card_rate|abandon_pct/.test(mk), top = pctm ? Math.min(100, Math.ceil(mx / 10) * 10 || 10) : mk === 'qa' ? 100 : (function () { var m = mx || 1, e = Math.pow(10, Math.floor(Math.log10(m))), f = m / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e; })();
     var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;margin-top:12px" role="img" aria-label="Trend">';
     [0, .25, .5, .75, 1].forEach(function (f) { var y = H - pb - f * (H - pb - 22); s += '<line x1="' + pl + '" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="#EEEBE4"' + (f ? ' stroke-dasharray="3 4"' : '') + '/><text x="' + (pl - 8) + '" y="' + y + '" font-size="10.5" fill="#8A918D" text-anchor="end" dominant-baseline="middle">' + bzVal(mk, top * f).replace(/\.0(?=%|$)/, '') + '</text>'; });
