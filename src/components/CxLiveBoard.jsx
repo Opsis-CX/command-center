@@ -10,6 +10,7 @@ import { useVoice } from '../lib/voice'
 import { cxControl, startMonitor } from '../lib/cx'
 
 const G = '#14302A'
+const GT = 'light-dark(#14302A, #9fd6bd)'  // brand green for text/lines: lighter in dark mode
 const mmss = s => (s == null ? '—' : `${Math.floor(s / 60)}:${String(Math.round(s) % 60).padStart(2, '0')}`)
 const pct = v => (v == null ? '—' : `${v}%`)
 const dayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString() }
@@ -116,34 +117,34 @@ export default function CxLiveBoard({ clientId = null }) {
     <div style={{ display: 'grid', gap: 14 }}>
       <div style={S.card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-          <div style={{ fontWeight: 800, color: G }}>Live calls · today</div>
+          <div style={{ fontWeight: 800, color: GT }}>Live calls · today</div>
           <div style={{ display: 'flex', gap: 6 }}>
-            {mon && <button style={{ ...S.btn, background: '#fee2e2', borderColor: '#fecaca' }} onClick={leave}>Leave the call</button>}
+            {mon && <button style={{ ...S.btn, background: 'light-dark(#fee2e2, #391313)', borderColor: 'light-dark(#fecaca, #642b2b)' }} onClick={leave}>Leave the call</button>}
             <button style={S.btn} title="Play a chime when a new alert appears (a caller waiting too long, a CSR asking for help)" onClick={() => { const v = !sound; setSound(v); try { localStorage.setItem('cx_alert_sound', v ? 'on' : 'off') } catch { /* ignore */ } if (v) chime() }}>{sound ? '🔔 Alert sound on' : '🔕 Alert sound off'}</button>
             <button style={S.btn} onClick={() => { setShowLinks(s => !s); loadLinks() }}>{showLinks ? 'Hide TV links' : 'TV links'}</button>
           </div>
         </div>
         <div style={S.tiles}>
           {tiles.map(([l, v, sub, warn]) => (
-            <div key={l} style={{ ...S.tile, borderColor: warn ? '#fca5a5' : '#e2e8f0', background: warn ? '#fff1f2' : '#fff' }}>
+            <div key={l} style={{ ...S.tile, borderColor: warn ? 'light-dark(#fca5a5, #642b2b)' : 'light-dark(#e2e8f0, #2a3439)', background: warn ? 'light-dark(#fff1f2, #391316)' : 'light-dark(#fff, #161d21)' }}>
               <div style={S.cap}>{l}</div><div style={S.big}>{v}</div><div style={S.mut}>{sub}</div>
             </div>
           ))}
         </div>
-        {err && <div style={{ color: '#b91c1c', fontSize: 13, marginTop: 8 }}>{err}</div>}
+        {err && <div style={{ color: 'light-dark(#b91c1c, #e86464)', fontSize: 13, marginTop: 8 }}>{err}</div>}
       </div>
 
       {alerts.length > 0 && (
-        <div style={{ ...S.card, borderColor: '#fed7aa', background: '#fffbf5' }}>
+        <div style={{ ...S.card, borderColor: 'light-dark(#fed7aa, #64492b)', background: 'light-dark(#fffbf5, #392a13)' }}>
           <div style={S.cap}>Needs attention</div>
           {alerts.map((a, n) => (
-            <div key={n} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 0', borderBottom: '1px solid #fde7d0', fontSize: 13.5 }}>
+            <div key={n} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 0', borderBottom: '1px solid light-dark(#fde7d0, #64482b)', fontSize: 13.5 }}>
               <span>{a.level === 'high' ? '🔴' : a.level === 'medium' ? '🟠' : '🟡'} {a.text}</span>
               {a.interaction_id && calls.some(c => c.id === a.interaction_id && c.status !== 'queued') && (
                 <span style={{ display: 'flex', gap: 4 }}>
                   <button style={S.small} onClick={() => join(a.interaction_id, 'listen', a.text)}>Listen</button>
                   <button style={S.small} onClick={() => join(a.interaction_id, 'whisper', a.text)}>Whisper</button>
-                  {mon?.id === a.interaction_id && <button style={{ ...S.small, background: '#fee2e2', borderColor: '#fecaca' }} onClick={leave}>Stop</button>}
+                  {mon?.id === a.interaction_id && <button style={{ ...S.small, background: 'light-dark(#fee2e2, #391313)', borderColor: 'light-dark(#fecaca, #642b2b)' }} onClick={leave}>Stop</button>}
                 </span>
               )}
             </div>
@@ -160,20 +161,20 @@ export default function CxLiveBoard({ clientId = null }) {
                 {calls.map(c => {
                   const on = mon?.id === c.id
                   return (
-                    <tr key={c.id} style={{ background: c.needs_help ? '#fff7ed' : on ? '#f0fdf4' : 'transparent' }}>
+                    <tr key={c.id} style={{ background: c.needs_help ? 'light-dark(#fff7ed, #392813)' : on ? 'light-dark(#f0fdf4, #13391f)' : 'transparent' }}>
                       <td style={S.td}><b>{c.customer}</b><div style={S.mut}>{[c.direction === 'in' ? 'Inbound' : 'Outbound', c.location, c.queue].filter(Boolean).join(' · ')}</div></td>
-                      <td style={S.td}>{c.agent || '—'}{c.needs_help && <div style={{ color: '#b45309', fontWeight: 700, fontSize: 12 }}>✋ asked for help</div>}</td>
+                      <td style={S.td}>{c.agent || '—'}{c.needs_help && <div style={{ color: 'light-dark(#b45309, #e07524)', fontWeight: 700, fontSize: 12 }}>✋ asked for help</div>}</td>
                       <td style={S.td}>{c.status === 'queued' ? 'Waiting' : c.on_hold ? 'On hold' : c.status === 'connected' ? 'Talking' : c.status}{c.recording_paused ? ' · ⏸ rec' : ''}</td>
                       <td style={S.td}>{mmss(c.wait_secs)}</td>
                       <td style={S.td}>{c.sentiment == null ? '—' : c.sentiment >= 0.3 ? '🙂' : c.sentiment <= -0.3 ? '🙁' : '😐'}</td>
-                      <td style={{ ...S.td, maxWidth: 280, color: '#475569' }}>{c.alert ? <span style={{ color: '#9a3412' }}>⚠ {c.alert}</span> : c.last_line || '—'}</td>
+                      <td style={{ ...S.td, maxWidth: 280, color: 'light-dark(#475569, #b3c1c7)' }}>{c.alert ? <span style={{ color: 'light-dark(#9a3412, #e56f48)' }}>⚠ {c.alert}</span> : c.last_line || '—'}</td>
                       <td style={{ ...S.td, whiteSpace: 'nowrap' }}>
                         {c.status !== 'queued' && (['listen', 'whisper', 'barge']).map(md => (
                           <button key={md} onClick={() => join(c.id, md, c.customer)} style={{ ...S.small, marginRight: 4, ...(on && mon.mode === md ? { background: G, color: '#fff', borderColor: G } : {}) }}>
                             {md === 'listen' ? 'Listen' : md === 'whisper' ? 'Whisper' : 'Barge'}
                           </button>
                         ))}
-                        {on && <button onClick={leave} style={{ ...S.small, background: '#fee2e2', borderColor: '#fecaca', fontWeight: 700 }} title="Stop listening and leave this call">Stop</button>}
+                        {on && <button onClick={leave} style={{ ...S.small, background: 'light-dark(#fee2e2, #391313)', borderColor: 'light-dark(#fecaca, #642b2b)', fontWeight: 700 }} title="Stop listening and leave this call">Stop</button>}
                       </td>
                     </tr>
                   )
@@ -188,14 +189,14 @@ export default function CxLiveBoard({ clientId = null }) {
       {showLinks && (
         <div style={S.card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <div style={{ fontWeight: 800, color: G }}>TV wallboard links</div>
+            <div style={{ fontWeight: 800, color: GT }}>TV wallboard links</div>
             <button style={S.btn} onClick={newLink}>+ New TV link</button>
           </div>
           <div style={S.mut}>Open on any office TV or browser — no login. Shows live counts and CSR statuses (first names only), never customer details.</div>
           {(links || []).map(l => {
             const u = `${window.location.origin}/tv.html?t=${l.token}`
             return (
-              <div key={l.token} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '8px 0', borderBottom: '1px solid #eef2f7', fontSize: 13, opacity: l.revoked ? 0.5 : 1 }}>
+              <div key={l.token} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '8px 0', borderBottom: '1px solid light-dark(#eef2f7, #2a3439)', fontSize: 13, opacity: l.revoked ? 0.5 : 1 }}>
                 <span><b>{l.label || l.brand || 'Wallboard'}</b>{l.revoked ? ' · off' : ''}<div style={{ ...S.mut, wordBreak: 'break-all' }}>{u}</div></span>
                 {!l.revoked && <span style={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
                   <button style={S.small} onClick={() => navigator.clipboard?.writeText(u)}>Copy</button>
@@ -213,14 +214,14 @@ export default function CxLiveBoard({ clientId = null }) {
 }
 
 const S = {
-  card: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 14 },
+  card: { background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 14, padding: 14 },
   tiles: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 },
-  tile: { border: '1px solid #e2e8f0', borderRadius: 12, padding: 10 },
-  cap: { fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.6, color: '#64748b', marginBottom: 4 },
-  big: { fontSize: 22, fontWeight: 800, color: G, fontVariantNumeric: 'tabular-nums' },
-  mut: { fontSize: 12, color: '#64748b' },
-  btn: { padding: '6px 12px', fontSize: 12.5, fontWeight: 700, borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', color: '#0f172a' },
-  small: { padding: '4px 9px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', color: '#0f172a', display: 'inline-block' },
-  th: { textAlign: 'left', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b', padding: '6px 8px', borderBottom: '1px solid #e2e8f0' },
-  td: { padding: '8px', borderBottom: '1px solid #f1f5f9', verticalAlign: 'top' },
+  tile: { border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 12, padding: 10 },
+  cap: { fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.6, color: 'light-dark(#64748b, #9fb4bb)', marginBottom: 4 },
+  big: { fontSize: 22, fontWeight: 800, color: GT, fontVariantNumeric: 'tabular-nums' },
+  mut: { fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)' },
+  btn: { padding: '6px 12px', fontSize: 12.5, fontWeight: 700, borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)', background: 'light-dark(#fff, #161d21)', cursor: 'pointer', color: 'light-dark(#0f172a, #e8eef0)' },
+  small: { padding: '4px 9px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)', background: 'light-dark(#fff, #161d21)', cursor: 'pointer', color: 'light-dark(#0f172a, #e8eef0)', display: 'inline-block' },
+  th: { textAlign: 'left', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: 'light-dark(#64748b, #9fb4bb)', padding: '6px 8px', borderBottom: '1px solid light-dark(#e2e8f0, #2a3439)' },
+  td: { padding: '8px', borderBottom: '1px solid light-dark(#f1f5f9, #2a3439)', verticalAlign: 'top' },
 }

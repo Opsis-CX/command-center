@@ -12,9 +12,9 @@ import { dueCls } from './projectHelpers'
  
 const COLS = [
   { key: 'todo', label: 'To do', color: 'var(--ink-soft)' },
-  { key: 'inprogress', label: 'In progress', color: '#2563EB' },
-  { key: 'review', label: 'In review', color: '#7C3AED' },
-  { key: 'blocked', label: 'Blocked', color: '#DC2626' },
+  { key: 'inprogress', label: 'In progress', color: 'light-dark(#2563EB, #648ee9)' },
+  { key: 'review', label: 'In review', color: 'light-dark(#7C3AED, #a378ec)' },
+  { key: 'blocked', label: 'Blocked', color: 'light-dark(#DC2626, #e76c6c)' },
   { key: 'done', label: 'Done', color: '#16A34A' },
 ]
 

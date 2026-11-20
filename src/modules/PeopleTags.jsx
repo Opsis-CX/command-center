@@ -478,7 +478,7 @@ export default function PeopleTags() {
                           {[L.city, L.region, L.country !== 'US' ? L.country : null].filter(Boolean).join(', ') || `${Number(L.lat).toFixed(3)}, ${Number(L.lng).toFixed(3)}`}
                         </a>
                         {' · '}{new Date(L.created_at).toLocaleDateString()}
-                        {L.country && L.country !== 'US' && <span style={{ marginLeft: 6, color: '#B91C1C', fontWeight: 700 }}>⚠ Outside U.S.</span>}
+                        {L.country && L.country !== 'US' && <span style={{ marginLeft: 6, color: 'light-dark(#B91C1C, #e86464)', fontWeight: 700 }}>⚠ Outside U.S.</span>}
                       </div>
                     ) })()}
                   </div>

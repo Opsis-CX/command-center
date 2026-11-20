@@ -11,13 +11,13 @@ import { useAuth } from '../lib/auth'
 // ============================================================
 
 const STATUS_STYLE = {
-  new: { bg: '#eef2ff', fg: '#3730a3', label: 'New' },
-  transcribing: { bg: '#fef9c3', fg: '#854d0e', label: 'Transcribing…' },
-  ready: { bg: '#e0f2fe', fg: '#075985', label: 'Ready' },
-  summarizing: { bg: '#fef9c3', fg: '#854d0e', label: 'Summarizing…' },
-  cancelled: { bg: '#f1f5f9', fg: '#475569', label: 'Notetaker off' },
-  done: { bg: '#dcfce7', fg: '#166534', label: 'Done' },
-  error: { bg: '#fee2e2', fg: '#b91c1c', label: 'Error' },
+  new: { bg: 'light-dark(#eef2ff, #1b2327)', fg: 'light-dark(#3730a3, #8a85db)', label: 'New' },
+  transcribing: { bg: 'light-dark(#fef9c3, #393613)', fg: 'light-dark(#854d0e, #d27d1e)', label: 'Transcribing…' },
+  ready: { bg: 'light-dark(#e0f2fe, #132a39)', fg: 'light-dark(#075985, #1f99db)', label: 'Ready' },
+  summarizing: { bg: 'light-dark(#fef9c3, #393613)', fg: 'light-dark(#854d0e, #d27d1e)', label: 'Summarizing…' },
+  cancelled: { bg: 'light-dark(#f1f5f9, #1b2327)', fg: 'light-dark(#475569, #b3c1c7)', label: 'Notetaker off' },
+  done: { bg: 'light-dark(#dcfce7, #133920)', fg: 'light-dark(#166534, #29bc61)', label: 'Done' },
+  error: { bg: 'light-dark(#fee2e2, #391313)', fg: 'light-dark(#b91c1c, #e86464)', label: 'Error' },
 }
 const todayISO = () => new Date().toISOString().slice(0, 10)
 const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
@@ -699,7 +699,7 @@ function ActionItemRow({ item, isAdmin, look, nameOf, clientOf, projectOf, onTog
                 {item.project_id ? ` · 📁 ${projectOf(item.project_id) || 'project'}` : ' · 📁 —'}
                 {item.due_date ? ` · 📅 ${fmtDate(item.due_date)}` : ' · 📅 —'}
                 {item.task_id && <a href={`/projects?task=${item.task_id}`} style={{ marginLeft: 6 }}>Open task ↗</a>}
-                {st === 'needs_review' && item.review_reason && <span style={{ color: '#B45309' }}> · {item.review_reason}</span>}
+                {st === 'needs_review' && item.review_reason && <span style={{ color: 'light-dark(#B45309, #e07524)' }}> · {item.review_reason}</span>}
               </>}
         </div>
         {isAdmin && open && (editing ? (
@@ -719,7 +719,7 @@ function ActionItemRow({ item, isAdmin, look, nameOf, clientOf, projectOf, onTog
               </select>
               <input type="date" value={f.due} onChange={e => setF({ ...f, due: e.target.value })} style={sel} aria-label="Due date" />
             </div>
-            {f.owner && !joinedIds.has(f.owner) && <div style={{ fontSize: 12, color: '#B45309' }}>⚠ This person didn’t join the meeting. They’ll get the task but <b>can’t</b> open the meeting.</div>}
+            {f.owner && !joinedIds.has(f.owner) && <div style={{ fontSize: 12, color: 'light-dark(#B45309, #e07524)' }}>⚠ This person didn’t join the meeting. They’ll get the task but <b>can’t</b> open the meeting.</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-primary" style={{ fontSize: 12.5 }} onClick={() => onAssign(f)}>✓ Assign task</button>
               <button className="btn btn-ghost" style={{ fontSize: 12.5, color: 'var(--failed)' }} onClick={onDismiss}>🗑 Remove</button>

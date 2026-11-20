@@ -354,7 +354,7 @@ function DispositionEditor({ value, onChange }) {
               <label style={{ fontSize: 12.5, display: 'flex', gap: 4, alignItems: 'center' }}>
                 <input type="checkbox" checked={!!r.is_contact} onChange={e => upd(i, 'is_contact', e.target.checked)} /> talked to them
               </label>
-              <button onClick={() => onChange(rows.filter((_, j) => j !== i))} style={{ ...S.btn, padding: '4px 10px', color: '#b91c1c' }}>Remove</button>
+              <button onClick={() => onChange(rows.filter((_, j) => j !== i))} style={{ ...S.btn, padding: '4px 10px', color: 'light-dark(#b91c1c, #e86464)' }}>Remove</button>
             </div>
           ))}
           <button onClick={() => onChange([...rows, { code: 'new_outcome', label: 'New outcome', outcome: 'final', is_contact: true }])} style={{ ...S.btn, justifySelf: 'start' }}>+ Add disposition</button>
@@ -482,7 +482,7 @@ function QueueTab({ campaign }) {
                   <td style={S.td}>{r.attempts}</td>
                   <td style={S.td}>{['pending'].includes(r.status) ? fmt(r.next_attempt_at) : ''}</td>
                   <td style={S.td}>{r.last_disposition ? ((campaign.dispositions || []).find(d => d.code === r.last_disposition)?.label || r.last_disposition) : ''}</td>
-                  <td style={S.td}>{['pending', 'in_progress'].includes(r.status) && <button onClick={() => remove(r.id)} style={{ ...S.btn, padding: '3px 10px', color: '#b91c1c' }}>Remove</button>}</td>
+                  <td style={S.td}>{['pending', 'in_progress'].includes(r.status) && <button onClick={() => remove(r.id)} style={{ ...S.btn, padding: '3px 10px', color: 'light-dark(#b91c1c, #e86464)' }}>Remove</button>}</td>
                 </tr>
               ))}
               {rows && !shown.length && <tr><td colSpan={7} style={{ ...S.td, ...S.muted }}>Nothing here.</td></tr>}
@@ -579,7 +579,7 @@ function HubspotTab({ campaign, onSaved }) {
           <input readOnly type={show ? 'text' : 'password'} value={campaign.intake_key} style={{ ...S.input, flex: 1, fontFamily: 'monospace', fontSize: 12.5 }} />
           <button onClick={() => setShow(s => !s)} style={S.btn}>{show ? 'Hide' : 'Show'}</button>
           <button onClick={() => copy(campaign.intake_key, 'key')} style={S.btn}>{copied === 'key' ? 'Copied' : 'Copy'}</button>
-          <button onClick={regenerate} style={{ ...S.btn, color: '#b91c1c' }}>New key</button>
+          <button onClick={regenerate} style={{ ...S.btn, color: 'light-dark(#b91c1c, #e86464)' }}>New key</button>
         </div>
       </Field>
       <Field label="Example body" hint="Every field except phone is optional. call_after = don't call before this time. state (or timezone) sets the customer's calling hours.">

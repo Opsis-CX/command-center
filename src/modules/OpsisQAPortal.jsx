@@ -43,7 +43,7 @@ const PORTAL_THEME = {
   '--accent': '#2F7D5B', '--accent-bg': '#E6F0EA', '--accent-ink': '#FFFFFF', '--ink': '#1C2421', '--ink-soft': '#5F6763',
   '--line': '#E8E4DC', '--line-soft': '#F1EEE8', '--surface': '#FFFFFF', '--canvas': '#F5F3EE', '--bg-soft': '#F7F5F0',
   '--passed': '#2F7D5B', '--passed-bg': '#E6F0EA', '--failed': '#A8441A', '--failed-bg': '#FCEBDD',
-  fontFamily: 'Montserrat, Arial, sans-serif', color: '#1C2421',
+  fontFamily: 'Montserrat, Arial, sans-serif', color: 'light-dark(#1C2421, #e8eef0)',
 }
 
 async function invoke(body) {
@@ -167,14 +167,14 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
 
   if (err) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F5F3EE', fontFamily: 'Montserrat, Arial, sans-serif', padding: 16 }}>
-        <div style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 14, padding: 24, maxWidth: 420, color: '#1C2421' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'light-dark(#F5F3EE, #1b2327)', fontFamily: 'Montserrat, Arial, sans-serif', padding: 16 }}>
+        <div style={{ background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#E8E4DC, #2a3439)', borderRadius: 14, padding: 24, maxWidth: 420, color: 'light-dark(#1C2421, #e8eef0)' }}>
           <b>{csrSelf ? 'We couldn’t open your Coaching Hub.' : 'We couldn’t open your call quality portal.'}</b>
-          <p style={{ fontSize: 13, color: '#5F6763', lineHeight: 1.5 }}>{err} If this keeps happening, contact the Opsis CX Support team.</p>
+          <p style={{ fontSize: 13, color: 'light-dark(#5F6763, #b3c1c7)', lineHeight: 1.5 }}>{err} If this keeps happening, contact the Opsis CX Support team.</p>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => window.location.reload()} style={{ border: '1px solid #14302A', background: '#14302A', color: '#fff', borderRadius: 10, padding: '8px 14px', cursor: 'pointer' }}>Try again</button>
-            {onClassic && <button onClick={onClassic} style={{ border: '1px solid #E1DCD2', background: '#fff', borderRadius: 10, padding: '8px 14px', cursor: 'pointer' }}>Classic view</button>}
-            {onSignOut && <button onClick={onSignOut} style={{ border: '1px solid #E1DCD2', background: '#fff', borderRadius: 10, padding: '8px 14px', cursor: 'pointer' }}>Sign out</button>}
+            {onClassic && <button onClick={onClassic} style={{ border: '1px solid light-dark(#E1DCD2, #2a3439)', background: 'light-dark(#fff, #161d21)', borderRadius: 10, padding: '8px 14px', cursor: 'pointer' }}>Classic view</button>}
+            {onSignOut && <button onClick={onSignOut} style={{ border: '1px solid light-dark(#E1DCD2, #2a3439)', background: 'light-dark(#fff, #161d21)', borderRadius: 10, padding: '8px 14px', cursor: 'pointer' }}>Sign out</button>}
           </div>
         </div>
       </div>

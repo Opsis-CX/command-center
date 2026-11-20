@@ -27,11 +27,11 @@ const hhmm = s => { const h = Math.floor((s || 0) / 3600), m = Math.floor(((s ||
 const tme = ts => (ts ? new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '')
 const fmtPhone = v => { const d = String(v || '').replace(/\D/g, '').slice(-10); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : v }
 const STATE_LOOK = {
-  ready: { label: 'Ready', color: '#16a34a', bg: '#dcfce7' },
-  not_ready: { label: 'Not ready', color: '#b45309', bg: '#fef3c7' },
-  on_call: { label: 'On a call', color: '#0e7490', bg: '#cffafe' },
-  wrap: { label: 'Wrapping up', color: '#7c3aed', bg: '#ede9fe' },
-  offline: { label: 'Logged out', color: '#64748b', bg: '#f1f5f9' },
+  ready: { label: 'Ready', color: '#16a34a', bg: 'light-dark(#dcfce7, #133920)' },
+  not_ready: { label: 'Not ready', color: 'light-dark(#b45309, #e07524)', bg: 'light-dark(#fef3c7, #393213)' },
+  on_call: { label: 'On a call', color: 'light-dark(#0e7490, #1da4c9)', bg: 'light-dark(#cffafe, #133639)' },
+  wrap: { label: 'Wrapping up', color: 'light-dark(#7c3aed, #a378ec)', bg: 'light-dark(#ede9fe, #1a1339)' },
+  offline: { label: 'Logged out', color: 'light-dark(#64748b, #9fb4bb)', bg: 'light-dark(#f1f5f9, #1b2327)' },
 }
 
 export default function CsrPhone({ accent = '#14302A' }) {
@@ -105,7 +105,7 @@ export default function CsrPhone({ accent = '#14302A' }) {
   const st = d.status?.state || 'offline'
   const loggedIn = !!d.day
   const look0 = STATE_LOOK[voice?.busy ? 'on_call' : st] || STATE_LOOK.offline
-  const look = st === 'ready' && !voice?.busy && voice && !voice.registered ? { ...look0, label: 'Ready · connecting…', color: '#b45309', bg: '#fef3c7' } : look0
+  const look = st === 'ready' && !voice?.busy && voice && !voice.registered ? { ...look0, label: 'Ready · connecting…', color: 'light-dark(#b45309, #e07524)', bg: 'light-dark(#fef3c7, #393213)' } : look0
   const since = d.status?.since ? Math.max(0, Math.floor((now - new Date(d.status.since).getTime()) / 1000)) : 0
   const dayLen = d.day ? Math.max(0, Math.floor((now - new Date(d.day.started_at).getTime()) / 1000)) : 0
   const onInbound = !!(voice?.inboundCall || voice?.incoming)
@@ -157,9 +157,9 @@ export default function CsrPhone({ accent = '#14302A' }) {
       {!loggedIn ? (
         <div style={{ ...S.card, marginTop: 12, textAlign: 'center', padding: '36px 16px' }}>
           <div style={{ fontSize: 20, fontWeight: 800, color: accent }}>Good to see you{d.me?.name ? `, ${d.me.name.split(' ')[0]}` : ''}.</div>
-          <p style={{ color: '#475569', margin: '8px 0 18px' }}>Log in for the day when you're at your desk. Calls will start ringing here, and you can make calls.</p>
+          <p style={{ color: 'light-dark(#475569, #b3c1c7)', margin: '8px 0 18px' }}>Log in for the day when you're at your desk. Calls will start ringing here, and you can make calls.</p>
           <button disabled={busy} onClick={() => act('csr_day_start')} style={{ ...S.big, background: accent }}>Log in for the day</button>
-          <p style={{ fontSize: 12.5, color: '#64748b', marginTop: 14 }}>Use a headset. Your browser will ask to use the microphone the first time.</p>
+          <p style={{ fontSize: 12.5, color: 'light-dark(#64748b, #9fb4bb)', marginTop: 14 }}>Use a headset. Your browser will ask to use the microphone the first time.</p>
         </div>
       ) : (
         <div style={S.grid}>
@@ -188,13 +188,13 @@ export default function CsrPhone({ accent = '#14302A' }) {
           </div>
 
           <div style={{ display: 'grid', gap: 12, alignContent: 'start' }}>
-            {d.inbound_only && <div style={{ ...S.card, background: '#FFF8E8', borderColor: '#F0DDB0' }}><b>Inbound only.</b> <span style={S.mut}>Your manager has you taking incoming calls only right now, so no list calls will come to you.</span></div>}
+            {d.inbound_only && <div style={{ ...S.card, background: 'light-dark(#FFF8E8, #392e13)', borderColor: 'light-dark(#F0DDB0, #64532b)' }}><b>Inbound only.</b> <span style={S.mut}>Your manager has you taking incoming calls only right now, so no list calls will come to you.</span></div>}
             <div style={S.card}>
               <div style={S.h}>Taking calls</div>
               {(d.lines || []).length === 0 ? <p style={S.mut}>No phone line is assigned to you yet.</p> : (d.lines || []).map((l, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 0', borderTop: i ? '1px solid #eef2f6' : 'none' }}>
                   <span style={{ fontWeight: 600 }}>{l.name}</span>
-                  <span style={{ fontSize: 12.5, color: l.live ? '#16a34a' : '#b45309' }}>{l.live ? (l.number ? fmtPhone(l.number) : 'Live') : 'Not connected yet (test)'}</span>
+                  <span style={{ fontSize: 12.5, color: l.live ? '#16a34a' : 'light-dark(#b45309, #e07524)' }}>{l.live ? (l.number ? fmtPhone(l.number) : 'Live') : 'Not connected yet (test)'}</span>
                 </div>
               ))}
               <p style={{ ...S.mut, marginTop: 8 }}>{st === 'ready' ? (voice?.registered ? 'You’re Ready — calls will ring here. Click Answer when one comes in.' : 'Connecting your phone… calls start ringing here as soon as it’s connected (a few seconds). Don’t click Ready again.') : 'Set yourself to Ready to get calls.'}</p>
@@ -213,11 +213,11 @@ export default function CsrPhone({ accent = '#14302A' }) {
               {(d.recent || []).length === 0 ? <p style={S.mut}>No calls yet.</p> : (
                 <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}><tbody>
                   {(d.recent || []).slice(0, 12).map((r, i) => (
-                    <tr key={i} style={{ borderTop: '1px solid #eef2f6' }}>
+                    <tr key={i} style={{ borderTop: '1px solid light-dark(#eef2f6, #2a3439)' }}>
                       <td style={{ padding: '6px 4px', whiteSpace: 'nowrap' }}>{r.kind === 'in' ? '↘ In' : '↗ Out'}</td>
                       <td style={{ padding: '6px 4px' }}>{r.name || 'Customer'} <span style={{ opacity: 0.55 }}>…{r.last4}</span></td>
-                      <td style={{ padding: '6px 4px', whiteSpace: 'nowrap', color: '#475569' }}>{r.disposition || r.status || ''}</td>
-                      <td style={{ padding: '6px 4px', whiteSpace: 'nowrap', textAlign: 'right', color: '#64748b' }}>{mmss(r.secs)} · {tme(r.at)}</td>
+                      <td style={{ padding: '6px 4px', whiteSpace: 'nowrap', color: 'light-dark(#475569, #b3c1c7)' }}>{r.disposition || r.status || ''}</td>
+                      <td style={{ padding: '6px 4px', whiteSpace: 'nowrap', textAlign: 'right', color: 'light-dark(#64748b, #9fb4bb)' }}>{mmss(r.secs)} · {tme(r.at)}</td>
                     </tr>
                   ))}
                 </tbody></table>
@@ -261,22 +261,22 @@ function StatusBar({ d, look, since, dayLen, loggedIn, busy, act, accent }) {
     </div>
   )
 }
-function Stat({ label, value }) { return <div><div style={{ fontSize: 22, fontWeight: 800 }}>{value}</div><div style={{ fontSize: 12, color: '#64748b' }}>{label}</div></div> }
+function Stat({ label, value }) { return <div><div style={{ fontSize: 22, fontWeight: 800 }}>{value}</div><div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)' }}>{label}</div></div> }
 
 const S = {
   wrap: { maxWidth: 1180, margin: '0 auto', padding: '16px 16px 8px' },
-  card: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 16 },
+  card: { background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 14, padding: 16 },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12, marginTop: 12 },
   h: { fontWeight: 800, fontSize: 15, marginBottom: 10 },
-  mut: { fontSize: 12.5, color: '#64748b', margin: 0 },
-  lbl: { display: 'block', fontSize: 12.5, fontWeight: 600, color: '#334155', marginBottom: 8 },
-  input: { display: 'block', width: '100%', marginTop: 4, padding: '9px 11px', border: '1px solid #cbd5e1', borderRadius: 9, fontSize: 15, fontFamily: 'inherit', boxSizing: 'border-box' },
+  mut: { fontSize: 12.5, color: 'light-dark(#64748b, #9fb4bb)', margin: 0 },
+  lbl: { display: 'block', fontSize: 12.5, fontWeight: 600, color: 'light-dark(#334155, #b3c1c7)', marginBottom: 8 },
+  input: { display: 'block', width: '100%', marginTop: 4, padding: '9px 11px', border: '1px solid light-dark(#cbd5e1, #3a464c)', borderRadius: 9, fontSize: 15, fontFamily: 'inherit', boxSizing: 'border-box' },
   pad: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, margin: '6px 0 10px' },
-  key: { padding: '10px 0', fontSize: 18, fontWeight: 700, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer' },
+  key: { padding: '10px 0', fontSize: 18, fontWeight: 700, borderRadius: 10, border: '1px solid light-dark(#e2e8f0, #2a3439)', background: 'light-dark(#f8fafc, #161d21)', cursor: 'pointer' },
   big: { padding: '12px 22px', fontSize: 16, fontWeight: 800, color: '#fff', border: 'none', borderRadius: 11, cursor: 'pointer' },
-  btn: { padding: '8px 14px', fontSize: 13.5, fontWeight: 700, border: '1px solid #cbd5e1', borderRadius: 9, background: '#fff', cursor: 'pointer' },
+  btn: { padding: '8px 14px', fontSize: 13.5, fontWeight: 700, border: '1px solid light-dark(#cbd5e1, #3a464c)', borderRadius: 9, background: 'light-dark(#fff, #161d21)', cursor: 'pointer' },
   pill: { display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 12px', borderRadius: 999, fontWeight: 800, fontSize: 14 },
   dot: { width: 9, height: 9, borderRadius: 999, display: 'inline-block' },
   stats: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 },
-  error: { color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 9, padding: '8px 10px', fontSize: 13 },
+  error: { color: 'light-dark(#b91c1c, #e86464)', background: 'light-dark(#fef2f2, #391313)', border: '1px solid light-dark(#fecaca, #642b2b)', borderRadius: 9, padding: '8px 10px', fontSize: 13 },
 }

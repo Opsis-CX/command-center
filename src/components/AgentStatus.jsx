@@ -13,8 +13,8 @@ const LOOK = {
   ready: { label: 'Ready', color: '#16a34a' },
   not_ready: { label: 'Not ready', color: '#d97706' },
   on_call: { label: 'On a call', color: '#0891b2' },
-  wrap: { label: 'Wrap-up', color: '#7c3aed' },
-  offline: { label: 'Offline', color: '#64748b' },
+  wrap: { label: 'Wrap-up', color: 'light-dark(#7c3aed, #a378ec)' },
+  offline: { label: 'Offline', color: 'light-dark(#64748b, #9fb4bb)' },
 }
 
 function since(ts, now) {
@@ -83,7 +83,7 @@ export default function AgentStatus({ compact = false, align = 'right' }) {
 
 const S = {
   pill: { display: 'inline-flex', alignItems: 'center', gap: 7, border: 'none', borderRadius: 999, color: '#fff', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' },
-  dot: { width: 8, height: 8, borderRadius: '50%', background: '#fff' },
+  dot: { width: 8, height: 8, borderRadius: '50%', background: 'light-dark(#fff, #161d21)' },
   menu: { position: 'absolute', top: 'calc(100% + 6px)', zIndex: 1100, minWidth: 230, padding: 6, borderRadius: 12, background: 'var(--card, #fff)', color: 'var(--text, #0f172a)', border: '1px solid rgba(100,116,139,0.25)', boxShadow: '0 12px 32px rgba(0,0,0,0.2)' },
   item: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', border: 'none', background: 'transparent', color: 'inherit', fontSize: 13.5, textAlign: 'left', cursor: 'pointer', borderRadius: 8 },
   swatch: { width: 10, height: 10, borderRadius: '50%', flex: '0 0 auto' },

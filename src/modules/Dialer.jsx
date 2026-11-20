@@ -419,11 +419,11 @@ function OutboundWork({ me }) {
 
   const callBar = (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: '#0e7490' }}>{campaign?.name}</div>
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: 'light-dark(#0e7490, #1da4c9)' }}>{campaign?.name}</div>
       <div style={{ fontSize: 19, fontWeight: 800, marginTop: 2 }}>{contact.contact_name || 'Unknown name'}</div>
       <div style={S.small}>{info?.phone ? prettyPhone(info.phone) : `Phone ending ${contact.phone_last4}`} · their time {contact.customer_local_time}</div>
       {contact.dial_no && <div style={{ marginTop: 6, display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#E6F0EA', color: '#14532d' }}>Dial {contact.dial_no} of {contact.dial_total}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'light-dark(#E6F0EA, #222c31)', color: 'light-dark(#14532d, #2db964)' }}>Dial {contact.dial_no} of {contact.dial_total}</span>
         <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: contact.voicemail === 'none' ? '#F3F4F6' : '#FEF3C7', color: contact.voicemail === 'none' ? '#374151' : '#92400E' }}>
           {contact.voicemail === 'leave' ? 'Leave a voicemail' : contact.voicemail === 'final' ? 'Leave the final voicemail' : 'No voicemail — hang up'}</span>
       </div>}
@@ -451,7 +451,7 @@ function OutboundWork({ me }) {
         {phase === 'dispo' && <>
           <div style={{ width: '100%', fontWeight: 700 }}>Call ended{lastTalk ? ` · talked ${mmss(lastTalk)}` : ''}</div>
           {wrapStart && (() => { const w = Math.floor((Date.now() - wrapStart) / 1000), over = w > wrapLimit; return (
-            <div style={{ width: '100%', fontSize: 13, fontWeight: 700, color: over ? '#b91c1c' : '#475569' }}>
+            <div style={{ width: '100%', fontSize: 13, fontWeight: 700, color: over ? 'light-dark(#b91c1c, #e86464)' : 'light-dark(#475569, #b3c1c7)' }}>
               Wrap-up {mmss(w)} / {mmss(wrapLimit)}{over ? ' — over your wrap-up time, save the disposition' : ''}
             </div>) })()}
           {voice.status === 'error' && voice.error && <div style={{ ...S.small, width: '100%' }}>{voice.error}</div>}
@@ -479,7 +479,7 @@ function OutboundWork({ me }) {
 
 const S = {
   card: { padding: 14, borderRadius: 14, border: '1px solid rgba(100,116,139,0.22)', background: 'var(--card, #fff)' },
-  cardTitle: { fontSize: 12.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: '#0e7490', marginBottom: 8 },
+  cardTitle: { fontSize: 12.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: 'light-dark(#0e7490, #1da4c9)', marginBottom: 8 },
   select: { padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'transparent', color: 'inherit', fontSize: 14, maxWidth: 360 },
   btn: { padding: '8px 12px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'transparent', color: 'inherit', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
   callBtn: { padding: '9px 14px', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer' },

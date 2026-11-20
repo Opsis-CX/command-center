@@ -659,7 +659,7 @@ function WhatClientPays({ bill, billTypes, rates, deals, retainers, terms, onOpe
           </div>)
       })}
       {orphans.length > 0 && (
-        <div role="note" data-orphans style={{ borderTop: '1px solid var(--line)', padding: '8px 0 0', color: '#b45309' }}>
+        <div role="note" data-orphans style={{ borderTop: '1px solid var(--line)', padding: '8px 0 0', color: 'light-dark(#b45309, #e07524)' }}>
           ⚠ Not on any invoice, so never billed: {orphans.map(r => `${r.product_name} (${rateMoney(r.rate)} ${UNIT_TEXT[r.unit]})`).join(', ')}. Open the bill, go to Rate card, press Edit, and choose the invoice.
         </div>)}
     </div>

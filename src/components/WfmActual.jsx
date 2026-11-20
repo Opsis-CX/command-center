@@ -37,8 +37,8 @@ const S = {
 }
 // Gap colors: short = red, about right = green, 1+ extra = amber, 2+ extra = darker amber.
 const gapStyle = g => (g <= -0.5 ? { background: 'var(--failed-bg, #fde8e8)', color: 'var(--failed)' }
-  : g >= 2 ? { background: '#fbe3b8', color: '#8a5a00' }
-  : g >= 1 ? { background: '#fdf1d8', color: '#8a5a00' }
+  : g >= 2 ? { background: 'light-dark(#fbe3b8, #392c13)', color: 'light-dark(#8a5a00, #c98d1d)' }
+  : g >= 1 ? { background: 'light-dark(#fdf1d8, #392d13)', color: 'light-dark(#8a5a00, #c98d1d)' }
   : { background: 'var(--passed-bg, #e6f6ec)', color: 'var(--passed)' })
 
 const RANGES = [[5, '1 week'], [10, '2 weeks'], [20, '4 weeks']]
@@ -149,9 +149,9 @@ export default function WfmActual({ loadActual, loadTarget }) {
                   })}
                   <td style={S.td}>{f1(L.a)}</td>
                   <td style={S.td}>{f1(L.n)}</td>
-                  <td style={{ ...S.td, fontWeight: 700, color: L.a - L.n < 0 ? 'var(--failed)' : L.a - L.n >= 1 ? '#8a5a00' : 'var(--passed)' }}>{sgn(L.a - L.n)}</td>
+                  <td style={{ ...S.td, fontWeight: 700, color: L.a - L.n < 0 ? 'var(--failed)' : L.a - L.n >= 1 ? 'light-dark(#8a5a00, #c98d1d)' : 'var(--passed)' }}>{sgn(L.a - L.n)}</td>
                   <td style={{ ...S.td, color: L.under ? 'var(--failed)' : undefined }}>{L.under}</td>
-                  <td style={{ ...S.td, color: L.over ? '#8a5a00' : undefined }}>{L.over}</td>
+                  <td style={{ ...S.td, color: L.over ? 'light-dark(#8a5a00, #c98d1d)' : undefined }}>{L.over}</td>
                 </tr>
               ))}
             </tbody>

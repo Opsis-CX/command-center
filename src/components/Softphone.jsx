@@ -146,7 +146,7 @@ export default function Softphone() {
 
 const S = {
   fab: { position: 'fixed', right: 20, bottom: 20, zIndex: 1000, width: 52, height: 52, borderRadius: '50%', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,0.25)' },
-  dot: { position: 'absolute', right: 3, top: 3, width: 12, height: 12, borderRadius: '50%', border: '2px solid #fff' },
+  dot: { position: 'absolute', right: 3, top: 3, width: 12, height: 12, borderRadius: '50%', border: '2px solid light-dark(#fff, #2a3439)' },
   panel: { position: 'fixed', right: 20, bottom: 84, zIndex: 1000, width: 300, maxWidth: 'calc(100vw - 40px)', padding: 14, borderRadius: 16, background: 'var(--card, #fff)', color: 'var(--text, #0f172a)', border: '1px solid rgba(100,116,139,0.25)', boxShadow: '0 12px 40px rgba(0,0,0,0.25)' },
   head: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 },
   x: { background: 'none', border: 'none', fontSize: 22, lineHeight: 1, cursor: 'pointer', color: 'inherit', opacity: 0.6 },

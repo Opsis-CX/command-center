@@ -287,7 +287,7 @@ function SessionsPanel({ user, mode }) {
   const captureLabel = (r) => {
     const m = r.meeting_id ? meetings[r.meeting_id] : null
     if (m && (m.status === 'done' || m.status === 'ready') && m.recording_link) return { text: '🎙️ Recorded', color: '#16a34a' }
-    if (m && m.status === 'error') return { text: '🎙️ not captured', color: '#b91c1c' }
+    if (m && m.status === 'error') return { text: '🎙️ not captured', color: 'light-dark(#b91c1c, #e86464)' }
     if (r.capture === 'scheduled') return { text: '🎙️ notetaker scheduled', color: 'var(--muted,#6b7280)' }
     if (r.capture === 'recording' || (m && (m.status === 'new' || m.status === 'transcribing' || m.status === 'summarizing'))) return { text: '🎙️ recording…', color: 'var(--muted,#6b7280)' }
     if (r.capture === 'none') return { text: 'no notetaker (set ASC room)', color: 'var(--muted,#6b7280)' }
@@ -330,7 +330,7 @@ function SessionsPanel({ user, mode }) {
 
   return (
     <div>
-      {msg && <div style={{ ...card, color: '#b91c1c' }}>{msg}</div>}
+      {msg && <div style={{ ...card, color: 'light-dark(#b91c1c, #e86464)' }}>{msg}</div>}
       <div style={card}>
         <div style={{ fontWeight: 700, marginBottom: 6 }}>Upcoming</div>
         {upcoming.length ? upcoming.map(r => <Row key={r.id} r={r} />) : <div style={{ color: 'var(--muted,#6b7280)' }}>Nothing scheduled.</div>}

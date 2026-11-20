@@ -563,7 +563,7 @@ function RateCard({ entity, lines, deals, types, reload, flash }) {
                 <tr key={l.id} style={{ opacity: ended || !l.active ? 0.55 : 1 }}>
                   <td style={td}><div style={{ fontWeight: 600 }}>{l.product_name}</div>
                     <div style={{ color: 'var(--ink-soft)', fontSize: 12.5 }}>{[l.description, l.split_by_brand ? 'one line per brand' : ''].filter(Boolean).join(' · ')}</div></td>
-                  <td style={td}>{typeName(l.invoice_type_id) || <span data-orphan style={{ color: '#b45309', fontWeight: 600 }}>⚠ None, so never billed. Use Edit to choose an invoice.</span>}</td>
+                  <td style={td}>{typeName(l.invoice_type_id) || <span data-orphan style={{ color: 'light-dark(#b45309, #e07524)', fontWeight: 600 }}>⚠ None, so never billed. Use Edit to choose an invoice.</span>}</td>
                   <td style={td}>{UNITS.find(u => u[0] === l.unit)?.[1]}</td>
                   <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{rateText(l.rate)}</td>
                   <td style={td}>

@@ -40,10 +40,10 @@ function todayET() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-const pageWrap = { minHeight: '100vh', background: '#f3f4f6', display: 'flex', justifyContent: 'center', padding: '32px 16px', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }
+const pageWrap = { minHeight: '100vh', background: 'light-dark(#f3f4f6, #1b2327)', display: 'flex', justifyContent: 'center', padding: '32px 16px', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }
 const cardW = { width: '100%', maxWidth: 620 }
-const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: 20, marginBottom: 16, boxShadow: '0 1px 2px rgba(0,0,0,.04)' }
-const slotBtn = { padding: '8px 12px', margin: '0 8px 8px 0', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 600 }
+const card = { background: 'light-dark(#fff, #161d21)', border: '1px solid light-dark(#e5e7eb, #2a3439)', borderRadius: 14, padding: 20, marginBottom: 16, boxShadow: '0 1px 2px rgba(0,0,0,.04)' }
+const slotBtn = { padding: '8px 12px', margin: '0 8px 8px 0', borderRadius: 8, border: '1px solid light-dark(#d1d5db, #3a464c)', background: 'light-dark(#fff, #161d21)', cursor: 'pointer', fontSize: 14, fontWeight: 600 }
 
 export default function MockCallScheduler({ appId: appIdProp, embedded = false }) {
   const [ctx, setCtx] = useState(null)      // {ok, applicant_name, provider_name, status}
@@ -116,9 +116,9 @@ export default function MockCallScheduler({ appId: appIdProp, embedded = false }
       <Shell>
         <div style={card}>
           <h2 style={{ marginTop: 0 }}>Mock call scheduling</h2>
-          <p style={{ color: '#6b7280' }}>
+          <p style={{ color: 'light-dark(#6b7280, #9fb4bb)' }}>
             There’s no mock call to book right now{ctx?.status ? ` (status: ${ctx.status})` : ''}. If you believe this is a mistake,
-            email <a href="mailto:onboarding@opsiscx.com" style={{ color: '#1d4ed8', fontWeight: 600 }}>onboarding@opsiscx.com</a> and we’ll help you get scheduled.
+            email <a href="mailto:onboarding@opsiscx.com" style={{ color: 'light-dark(#1d4ed8, #7090eb)', fontWeight: 600 }}>onboarding@opsiscx.com</a> and we’ll help you get scheduled.
           </p>
         </div>
       </Shell>
@@ -139,9 +139,9 @@ export default function MockCallScheduler({ appId: appIdProp, embedded = false }
               <a href={confirmed.meeting_url} target="_blank" rel="noreferrer" style={{ background: '#0077B6', color: '#fff', textDecoration: 'none', padding: '10px 18px', borderRadius: 8, fontWeight: 700, display: 'inline-block' }}>Join the call</a>
             </p>
           )}
-          <p style={{ color: '#6b7280', marginBottom: 0 }}>
+          <p style={{ color: 'light-dark(#6b7280, #9fb4bb)', marginBottom: 0 }}>
             You’ll also receive the video link by email. The session is recorded so your coach can give you feedback.
-            Need to change it? Email <a href="mailto:onboarding@opsiscx.com" style={{ color: '#1d4ed8', fontWeight: 600 }}>onboarding@opsiscx.com</a>.
+            Need to change it? Email <a href="mailto:onboarding@opsiscx.com" style={{ color: 'light-dark(#1d4ed8, #7090eb)', fontWeight: 600 }}>onboarding@opsiscx.com</a>.
           </p>
         </div>
       </Shell>
@@ -152,17 +152,17 @@ export default function MockCallScheduler({ appId: appIdProp, embedded = false }
     <Shell>
       <div style={card}>
         <h2 style={{ marginTop: 0, marginBottom: 4 }}>Schedule your mock call</h2>
-        <p style={{ color: '#6b7280', marginTop: 0 }}>
+        <p style={{ color: 'light-dark(#6b7280, #9fb4bb)', marginTop: 0 }}>
           Hi {ctx.applicant_name || 'there'} — pick a time below to meet with <b>{ctx.provider_name}</b> for your mock call.
           All times are Eastern. The session is recorded for coaching feedback.
         </p>
-        {err && <div style={{ color: '#b91c1c', marginTop: 8 }}>{err}</div>}
+        {err && <div style={{ color: 'light-dark(#b91c1c, #e86464)', marginTop: 8 }}>{err}</div>}
       </div>
 
       {byDate.length === 0 ? (
         <div style={card}>
           <b>No open times right now.</b>
-          <p style={{ color: '#6b7280', marginBottom: 0 }}>
+          <p style={{ color: 'light-dark(#6b7280, #9fb4bb)', marginBottom: 0 }}>
             {ctx.provider_name} hasn’t opened any mock-call times yet, or they’re all taken. Please check back a little later.
           </p>
         </div>

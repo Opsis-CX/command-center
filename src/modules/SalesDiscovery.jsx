@@ -210,7 +210,7 @@ export default function SalesDiscovery() {
                     <td style={S.td}><TierChip tier={n.deal?.tier} /></td>
                     <td style={S.td}>{n.owner_name || '—'}</td>
                     <td style={S.td}>{STATUS_LABEL[n.meeting_status] || '—'}</td>
-                    <td style={S.td}>{n.qualified === true ? <b style={{ color: '#1f8a53' }}>Yes</b> :n.qualified === false ? 'No' : '—'}</td>
+                    <td style={S.td}>{n.qualified === true ? <b style={{ color: 'light-dark(#1f8a53, #2abb71)' }}>Yes</b> :n.qualified === false ? 'No' : '—'}</td>
                     <td style={{ ...S.td, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.q1_problem || '—'}</td>
                     <td style={{ ...S.td, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.q13_solution || '—'}</td>
                     <td style={{ ...S.td, ...S.num }}>{n.opportunity_value ? fmtMoney(n.opportunity_value) : (n.q14_opportunity || '—')}</td>

@@ -183,7 +183,7 @@ export default function TestLead() {
                           <td style={{ ...S.td, whiteSpace: 'nowrap' }}>{fmtTime(r.created_at)}</td>
                           <td style={S.td}>{r.contact_name}{r.last4 ? <span style={{ opacity: 0.6 }}> ·{r.last4}</span> : null}
                             <div style={{ fontSize: 11.5, opacity: 0.6 }}>{r.service}{isMgr && r.submitted_by ? ` · by ${r.submitted_by}` : ''}</div></td>
-                          <td style={{ ...S.td, fontVariantNumeric: 'tabular-nums', color: r.seconds_to_first_dial != null && r.seconds_to_first_dial > 300 ? '#dc2626' : undefined }}>
+                          <td style={{ ...S.td, fontVariantNumeric: 'tabular-nums', color: r.seconds_to_first_dial != null && r.seconds_to_first_dial > 300 ? 'light-dark(#dc2626, #e76c6c)' : undefined }}>
                             {waiting ? <span style={{ opacity: 0.7 }}>{fmtDur(Math.round((now - new Date(r.created_at).getTime()) / 1000))}…</span> : fmtDur(r.seconds_to_first_dial)}
                           </td>
                           <td style={{ ...S.td, fontVariantNumeric: 'tabular-nums' }}>{fmtDur(r.seconds_to_contact)}</td>

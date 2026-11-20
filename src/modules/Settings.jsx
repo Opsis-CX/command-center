@@ -90,7 +90,7 @@ function SoundCard({ userId }) {
         <button className="btn btn-ghost" style={{ fontSize: 12.5 }}
           onClick={() => save({ ...DEFAULT_SOUND_PREFS })}>Reset to default</button>
       </div>
-      {err && <div style={{ color: '#DC2626', fontSize: 12.5, marginTop: 8 }}>{err}</div>}
+      {err && <div style={{ color: 'light-dark(#DC2626, #e76c6c)', fontSize: 12.5, marginTop: 8 }}>{err}</div>}
     </div>
   )
 }
@@ -145,7 +145,7 @@ function AgentDmCard({ userId }) {
   const exceptions = agents.filter(a => overrides[a.id] !== undefined && overrides[a.id] !== blockAll)
   const addable = agents.filter(a => !exceptions.some(e => e.id === a.id))
   const pill = (blocked) => (
-    <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: blocked ? '#fde8e8' : '#e7f3e7', color: blocked ? '#b42318' : '#2e7d32' }}>
+    <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: blocked ? 'light-dark(#fde8e8, #391313)' : 'light-dark(#e7f3e7, #222c31)', color: blocked ? 'light-dark(#b42318, #e96c63)' : 'light-dark(#2e7d32, #3ea843)' }}>
       {blocked ? '🔕 Off' : '🔔 On'}
     </span>
   )
@@ -189,7 +189,7 @@ function AgentDmCard({ userId }) {
       <p className="page-sub" style={{ fontSize: 12, marginBottom: 0, marginTop: 12 }}>
         Tip: you can also turn one agent on or off from the ⋯ menu next to your DM with them in Chat.
       </p>
-      {err && <div style={{ color: '#DC2626', fontSize: 12.5, marginTop: 8 }}>{err}</div>}
+      {err && <div style={{ color: 'light-dark(#DC2626, #e76c6c)', fontSize: 12.5, marginTop: 8 }}>{err}</div>}
     </div>
   )
 }

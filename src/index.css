@@ -1145,3 +1145,50 @@ body{
   .wb-left{ margin-right:auto; }
   .hd-row2{ grid-template-columns:1fr; }
 }
+
+/* ============================================================
+   DARK MODE COVERAGE (2026-11-19)
+   1. color-scheme tells the browser which theme is active. That makes
+      native inputs, selects, checkboxes and scrollbars dark too, and it
+      drives the light-dark(lightColour, darkColour) values that screens
+      use for their own colours.
+   2. Shorthand colour names some screens use (--card, --muted, --border…)
+      were never defined, so they fell back to white / light grey and
+      ignored the theme. They now point at the theme colours.
+   3. The client portal (#oqa) is light by design. Screens embedded in it
+      (CSR phone, workforce, AI speed to lead) stay light there instead of
+      going half-dark.
+   ============================================================ */
+:root{ color-scheme: light dark; }
+:root[data-theme="light"]{ color-scheme: light; }
+:root[data-theme="dark"]{ color-scheme: dark; }
+
+:root{
+  /* light values = the fallbacks those screens already used, so light mode is unchanged */
+  --card:       var(--surface);
+  --bg:         var(--surface);
+  --surface-2:  light-dark(#f8fafc, #1b2327);
+  --border:     light-dark(#e5e7eb, #2a3439);
+  --text:       light-dark(#0f172a, #e8eef0);
+  --muted:      light-dark(#6b7280, #9fb4bb);
+  --text-dim:   light-dark(#778899, #9fb4bb);
+  --text-mute:  light-dark(#778899, #9fb4bb);
+  --ink-faint:  light-dark(#bbbbbb, #5c6b72);
+  --danger:     light-dark(#dd3333, #e15c4d);
+  --ok:         light-dark(#166534, #3fbf77);
+  --ok-bg:      light-dark(#f0fdf4, #12301f);
+  --warn-bg:    light-dark(#fff7ed, #392813);
+}
+
+#oqa{
+  color-scheme: light;
+  --surface:#FFFFFF; --canvas:#F5F3EE; --bg-soft:#f7f7f5; --line-soft:#eef2f3;
+  --ink-soft:#5F6763; --accent:#0077B6; --accent-bg:#e5f1f8; --accent-ink:#FFFFFF;
+  --passed:#1f8a53; --passed-bg:#e7f5ec; --failed:#c0392b; --failed-bg:#fbe9e7;
+  --needed:#245866; --needed-bg:#e3edf0;
+  --card-bg:rgba(255,255,255,.82); --card-edge:rgba(255,255,255,.92);
+  --composer-toolbar-bg:#fbfcfd; --ring:0 0 0 3px rgba(0,119,182,.15);
+  --cal-paper:#fdfcfa; --cal-panel:#ece8e0; --cal-line:#c3bfb5; --cal-line-2:#ece8e0; --cal-line-3:#f2efe9;
+  --cal-ink:#3a3a38; --cal-ink-soft:#6a665e; --cal-ink-mute:#9a968c;
+  --shadow:0 2px 8px rgba(8,15,30,.06),0 24px 60px -26px rgba(8,15,30,.42);
+}

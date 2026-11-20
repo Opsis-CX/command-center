@@ -408,7 +408,7 @@ const S = {
   icon: { padding: '6px 9px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.3)', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 12 },
   input: { display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'transparent', color: 'inherit', fontSize: 14, fontFamily: 'inherit' },
   lbl: { display: 'block', fontSize: 12.5, fontWeight: 700, margin: '6px 0' },
-  h: { fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.4, color: '#0e7490', margin: '16px 0 4px' },
+  h: { fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.4, color: 'light-dark(#0e7490, #1da4c9)', margin: '16px 0 4px' },
   help: { fontSize: 13, opacity: 0.75, margin: '0 0 8px' },
   grid2: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 },
   grid3: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 },

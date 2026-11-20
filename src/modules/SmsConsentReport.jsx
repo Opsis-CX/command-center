@@ -213,7 +213,7 @@ export default function SmsConsentReport() {
                       <td style={{ ...S.td, whiteSpace: 'nowrap', textAlign: 'right' }}>
                         <CallButton profileId={r.profile_id} name={r.full_name} hasPhone={!!(r.consent_phone || r.phone)} />
                         {hist.length > 0 && <button style={S.linkBtn} onClick={() => setExpanded(open ? null : r.profile_id)}>{open ? 'Hide' : `History (${hist.length})`}</button>}
-                        {r.status === 'Opted in' && <button style={{ ...S.linkBtn, color: '#b91c1c' }} disabled={busyId === r.profile_id} onClick={() => optOut(r)}>Opt out</button>}
+                        {r.status === 'Opted in' && <button style={{ ...S.linkBtn, color: 'light-dark(#b91c1c, #e86464)' }} disabled={busyId === r.profile_id} onClick={() => optOut(r)}>Opt out</button>}
                       </td>
                     </tr>,
                     open && (
@@ -274,7 +274,7 @@ export default function SmsConsentReport() {
                 {history.map(h => (
                   <tr key={h.id}>
                     <td style={S.td}>{fmtDate(h.created_at)}</td>
-                    <td style={S.td}>{nameById[h.profile_id] || <span style={{ color: '#b45309' }}>Unmatched: {h.full_name}</span>}</td>
+                    <td style={S.td}>{nameById[h.profile_id] || <span style={{ color: 'light-dark(#b45309, #e07524)' }}>Unmatched: {h.full_name}</span>}</td>
                     <td style={S.td}>{fmtPhone(h.phone_e164)}</td>
                     <td style={S.td}>{h.action === 'opt_in' ? 'Opt in' : 'Opt out'}</td>
                     <td style={S.td}>{SOURCE_LABEL[h.source] || h.source}</td>

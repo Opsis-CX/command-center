@@ -38,14 +38,14 @@ const qaFilterInp = { padding: '6px 9px', border: '1px solid var(--line)', borde
 // Non-ranked states describe *why* an agent isn't ranked — they are not performance
 // judgements and must stay visually distinct from Improvement Opportunity.
 const TIER_STYLE = {
-  'Top Performer': { bg: '#e8f5e9', fg: '#1b5e20' },
-  'High Performer': { bg: '#fff8e1', fg: '#8d6e00' },
-  'Developing Performer': { bg: '#e3f2fd', fg: '#0d47a1' },
-  'Improvement Opportunity': { bg: '#fdecea', fg: '#b71c1c' },
+  'Top Performer': { bg: 'light-dark(#e8f5e9, #1b2327)', fg: 'light-dark(#1b5e20, #33b23d)' },
+  'High Performer': { bg: 'light-dark(#fff8e1, #393013)', fg: 'light-dark(#8d6e00, #c9a31d)' },
+  'Developing Performer': { bg: 'light-dark(#e3f2fd, #132939)', fg: 'light-dark(#0d47a1, #5a91e7)' },
+  'Improvement Opportunity': { bg: 'light-dark(#fdecea, #391713)', fg: 'light-dark(#b71c1c, #e76464)' },
   // Not ranked — neutral colours on purpose.
-  'Onboarding': { bg: '#ede7f6', fg: '#4527a0' },
-  'Unrated': { bg: '#eceff1', fg: '#455a64' },
-  'Not Working': { bg: '#eceff1', fg: '#607d8b' },
+  'Onboarding': { bg: 'light-dark(#ede7f6, #1b2327)', fg: 'light-dark(#4527a0, #9880e0)' },
+  'Unrated': { bg: 'light-dark(#eceff1, #1b2327)', fg: 'light-dark(#455a64, #b3c1c7)' },
+  'Not Working': { bg: 'light-dark(#eceff1, #1b2327)', fg: 'light-dark(#607d8b, #9fb4bb)' },
 }
 
 export default function Scorecard() {
@@ -455,12 +455,12 @@ function AgentScorecard({ row, canCoach, canSeeNotes, isOwn, onBack }) {
           <div>
             {visibleQa.map(a => {
               const s = a.score
-              const col = a.autoFail ? { bg: '#fdecea', fg: '#b71c1c' }
+              const col = a.autoFail ? { bg: 'light-dark(#fdecea, #391713)', fg: 'light-dark(#b71c1c, #e76464)' }
                 : s == null ? { bg: 'var(--line-soft)', fg: 'var(--ink-soft)' }
-                : s >= 90 ? { bg: '#e8f5e9', fg: '#1b5e20' }
-                : s >= 80 ? { bg: '#fff8e1', fg: '#8d6e00' }
-                : s >= 70 ? { bg: '#e3f2fd', fg: '#0d47a1' }
-                : { bg: '#fdecea', fg: '#b71c1c' }
+                : s >= 90 ? { bg: 'light-dark(#e8f5e9, #1b2327)', fg: 'light-dark(#1b5e20, #33b23d)' }
+                : s >= 80 ? { bg: 'light-dark(#fff8e1, #393013)', fg: 'light-dark(#8d6e00, #c9a31d)' }
+                : s >= 70 ? { bg: 'light-dark(#e3f2fd, #132939)', fg: 'light-dark(#0d47a1, #5a91e7)' }
+                : { bg: 'light-dark(#fdecea, #391713)', fg: 'light-dark(#b71c1c, #e76464)' }
               const isRead = a.auditId ? reads.has(a.auditId) : false
               return (
                 <div key={a.key} style={{ padding: '10px 0', borderTop: '1px solid var(--line-soft)' }}>
@@ -581,7 +581,7 @@ function AgentScorecard({ row, canCoach, canSeeNotes, isOwn, onBack }) {
               <div key={n.id} style={{ display: 'flex', gap: 12, padding: '10px 0', borderTop: '1px solid var(--line-soft)' }}>
                 <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', flex: 'none', width: 90 }}>{fmtDate(n.note_date)}</div>
                 <div style={{ fontSize: 14, flex: 1 }}>
-                  {n.focus && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#ede7f6', color: '#4527a0', marginRight: 8 }}>{n.focus}</span>}
+                  {n.focus && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'light-dark(#ede7f6, #1b2327)', color: 'light-dark(#4527a0, #9880e0)', marginRight: 8 }}>{n.focus}</span>}
                   {n.body}
                 </div>
               </div>

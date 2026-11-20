@@ -53,9 +53,9 @@ export function prettyPhone(p) {
   return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : (p || '')
 }
 const DISPO_GROUPS = [
-  { key: 'sales', label: 'Wanted service or a new door', color: '#15803d' },
-  { key: 'service', label: 'Existing customer', color: '#0e7490' },
-  { key: 'none', label: 'Not a customer / no answer', color: '#64748b' },
+  { key: 'sales', label: 'Wanted service or a new door', color: 'light-dark(#15803d, #20c55e)' },
+  { key: 'service', label: 'Existing customer', color: 'light-dark(#0e7490, #1da4c9)' },
+  { key: 'none', label: 'Not a customer / no answer', color: 'light-dark(#64748b, #9fb4bb)' },
 ]
 const TONES = {
   info: { bg: 'rgba(8,145,178,0.08)', border: 'rgba(8,145,178,0.35)', chip: '#0e7490', text: '#0e7490' },
@@ -161,7 +161,7 @@ export default function CallScreen({
                 <div style={S.fieldGrid}>
                   {sc.fields.map(f => (
                     <label key={f.key} style={S.fieldLbl}>
-                      {f.label}{f.required && <span style={{ color: '#dc2626' }}> *</span>}
+                      {f.label}{f.required && <span style={{ color: 'light-dark(#dc2626, #e76c6c)' }}> *</span>}
                       {f.type === 'select'
                         ? <select value={fields[f.key] || ''} onChange={e => setFields(x => ({ ...x, [f.key]: e.target.value }))} style={S.input}>
                             <option value="">—</option>{(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
@@ -289,7 +289,7 @@ export default function CallScreen({
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Notes"
                 style={{ ...S.input, marginTop: 10, resize: 'vertical' }} />
               {missingRequired.length > 0 && code && dispo?.is_contact && (
-                <div style={{ fontSize: 12.5, color: '#b45309', marginTop: 6 }}>Still needed: {missingRequired.map(f => f.label).join(', ')}</div>
+                <div style={{ fontSize: 12.5, color: 'light-dark(#b45309, #e07524)', marginTop: 6 }}>Still needed: {missingRequired.map(f => f.label).join(', ')}</div>
               )}
               {error && <div style={S.error}>{error}</div>}
               <button onClick={save} disabled={!canSave || !code || saving || (dispo?.is_contact && missingRequired.length > 0)}
@@ -356,7 +356,7 @@ const S = {
   kb: { padding: '8px 14px', borderRadius: 999, background: '#22d3ee', color: '#083344', fontWeight: 800, fontSize: 13, textDecoration: 'none' },
   grid: { display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)', gap: 12, alignItems: 'start' },
   card: { padding: 14, borderRadius: 14, border: '1px solid rgba(100,116,139,0.22)', background: 'var(--card, #fff)' },
-  cardTitle: { fontSize: 12.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: '#0e7490', marginBottom: 8 },
+  cardTitle: { fontSize: 12.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: 'light-dark(#0e7490, #1da4c9)', marginBottom: 8 },
   cardHint: { textTransform: 'none', letterSpacing: 0, fontWeight: 500, color: 'inherit', opacity: 0.6, fontSize: 12 },
   ctxGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginBottom: 10 },
   ctxLabel: { fontSize: 10.5, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', opacity: 0.6 },
@@ -374,21 +374,21 @@ const S = {
   stepNumDone: { background: '#16a34a', color: '#fff' },
   principles: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 },
   principle: { padding: 12, borderRadius: 12, border: '1px solid rgba(100,116,139,0.18)', background: 'rgba(14,116,144,0.04)' },
-  principleTitle: { fontSize: 11.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: '#0e7490', marginBottom: 4 },
+  principleTitle: { fontSize: 11.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: 'light-dark(#0e7490, #1da4c9)', marginBottom: 4 },
   say: { margin: 0, padding: '10px 14px', borderLeft: '4px solid #0e7490', background: 'rgba(14,116,144,0.05)', borderRadius: '0 10px 10px 0', fontSize: 16, lineHeight: 1.55 },
   note: { padding: '8px 12px', borderRadius: 10, border: '1px dashed rgba(100,116,139,0.4)', fontSize: 13.5, opacity: 0.9 },
   ask: { margin: 0, paddingLeft: 20, fontSize: 14.5, lineHeight: 1.5 },
   check: { display: 'flex', gap: 8, alignItems: 'flex-start', margin: '6px 0', fontSize: 14, cursor: 'pointer' },
   btn: { padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'transparent', color: 'inherit', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
   vmBadge: { display: 'inline-block', marginRight: 6, padding: '2px 6px', borderRadius: 999, background: '#a16207', color: '#fff', fontSize: 11 },
-  vmChip: { fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 999, border: '1px solid rgba(202,138,4,0.5)', color: '#a16207', whiteSpace: 'nowrap' },
+  vmChip: { fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 999, border: '1px solid rgba(202,138,4,0.5)', color: 'light-dark(#a16207, #c9821d)', whiteSpace: 'nowrap' },
   cbRow: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 10, padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(202,138,4,0.35)' },
   objQ: { display: 'flex', justifyContent: 'space-between', width: '100%', padding: '10px 2px', border: 'none', background: 'none', color: 'inherit', fontWeight: 700, fontSize: 14, textAlign: 'left', cursor: 'pointer' },
   chip: { padding: '7px 11px', borderRadius: 999, border: '1px solid rgba(100,116,139,0.35)', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
   saveBtn: { marginTop: 10, width: '100%', padding: '10px 0', borderRadius: 10, border: 'none', background: '#0e7490', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer' },
   error: { marginTop: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(220,38,38,0.1)', color: '#b91c1c', fontSize: 12.5 },
   copyRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(100,116,139,0.2)', marginTop: 6 },
-  copyBtn: { border: 'none', background: 'none', color: '#0e7490', fontWeight: 800, fontSize: 12.5, cursor: 'pointer' },
+  copyBtn: { border: 'none', background: 'none', color: 'light-dark(#0e7490, #1da4c9)', fontWeight: 800, fontSize: 12.5, cursor: 'pointer' },
   zipRes: { marginTop: 8, padding: '8px 10px', borderRadius: 8, fontWeight: 700, fontSize: 13.5 },
   fact: { padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(100,116,139,0.2)', marginTop: 6 },
 }

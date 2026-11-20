@@ -278,8 +278,8 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
                 <p style={{ fontSize: 13.5, color: 'var(--ink-soft)' }}>Pick an email on the left.</p>
               ) : (
                 <>
-                  {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{err}</div>}
-                  {flash && <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{flash}</div>}
+                  {err && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{err}</div>}
+                  {flash && <div style={{ background: 'light-dark(#ECFDF5, #133927)', border: '1px solid light-dark(#A7F3D0, #2b644a)', color: 'light-dark(#065F46, #1dc998)', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{flash}</div>}
 
                   <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--ink-soft)' }}>{draft.help}</p>
 
@@ -430,7 +430,7 @@ export default function SalesEmailTemplates({ onClose, onSaved }) {
                         <b>Subject:</b> {preview.subject}
                       </div>
                       <iframe title="Email preview" srcDoc={preview.html} sandbox=""
-                        style={{ width: '100%', height: 460, border: 0, background: '#fff', display: 'block' }} />
+                        style={{ width: '100%', height: 460, border: 0, background: 'light-dark(#fff, #161d21)', display: 'block' }} />
                     </div>
                   )}
                 </>
@@ -546,8 +546,8 @@ export function ManageSalesLists({ onClose, onSaved }) {
           ))}
         </div>
 
-        {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', borderRadius: 8, padding: '9px 12px', fontSize: 13, marginBottom: 12 }}>{err}</div>}
-        {flash && <div style={{ background: '#e8f5e9', border: '1px solid #c8e6c9', color: '#1b5e20', borderRadius: 8, padding: '9px 12px', fontSize: 13, marginBottom: 12 }}>{flash}</div>}
+        {err && <div style={{ background: 'light-dark(#FEF2F2, #391313)', border: '1px solid light-dark(#FECACA, #642b2b)', color: 'light-dark(#B91C1C, #e86464)', borderRadius: 8, padding: '9px 12px', fontSize: 13, marginBottom: 12 }}>{err}</div>}
+        {flash && <div style={{ background: 'light-dark(#e8f5e9, #1b2327)', border: '1px solid light-dark(#c8e6c9, #2d622e)', color: 'light-dark(#1b5e20, #33b23d)', borderRadius: 8, padding: '9px 12px', fontSize: 13, marginBottom: 12 }}>{flash}</div>}
 
         {canEdit && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
@@ -577,7 +577,7 @@ export function ManageSalesLists({ onClose, onSaved }) {
                         <button onClick={() => toggle(r)} disabled={busy} style={{ ...btn, marginRight: 6 }}>
                           {r.is_active ? 'Switch off' : 'Switch on'}
                         </button>
-                        <button onClick={() => remove(r)} disabled={busy} style={{ ...btn, color: '#B91C1C' }}>Delete</button>
+                        <button onClick={() => remove(r)} disabled={busy} style={{ ...btn, color: 'light-dark(#B91C1C, #e86464)' }}>Delete</button>
                       </>
                     )}
                   </td>

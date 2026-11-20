@@ -297,7 +297,7 @@ function AskTurri() {
           ) : (
             <div key={i} style={{ alignSelf: 'flex-start', display: 'flex', gap: 7, alignItems: 'flex-end', maxWidth: '100%' }}>
               <span style={{ fontSize: 16, flex: 'none' }}>{emoji}</span>
-              <div style={{ ...bubble(false), ...(m.error ? { background: '#fde8e8', color: '#b42318' } : {}) }}>
+              <div style={{ ...bubble(false), ...(m.error ? { background: 'light-dark(#fde8e8, #391313)', color: 'light-dark(#b42318, #e96c63)' } : {}) }}>
                 <TurriText text={m.content} />
                 {m.sources?.length > 0 && (
                   <div style={{ marginTop: 7, fontSize: 12, color: 'var(--ink-soft)' }}>

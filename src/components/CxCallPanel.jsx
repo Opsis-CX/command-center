@@ -13,6 +13,7 @@ import { useVoice } from '../lib/voice'
 import { cxControl, cxAssistNow, cxWrapNow } from '../lib/cx'
 
 const G = '#14302A'
+const GT = 'light-dark(#14302A, #9fd6bd)'  // brand green for text/lines: lighter in dark mode
 const mmss = s => `${Math.floor(s / 60)}:${String(Math.max(0, s) % 60).padStart(2, '0')}`
 const ago = t => { const s = Math.round((Date.now() - new Date(t).getTime()) / 1000); return s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : new Date(t).toLocaleDateString() }
 const INTENT = { new_service: 'New door / install', repair: 'Repair', existing_customer: 'Existing customer', price_shopping: 'Price shopping', not_a_customer: 'Not a customer', other: 'Other' }
@@ -131,12 +132,12 @@ export default function CxCallPanel() {
 
       {liveNow && (
         <div style={S.badges}>
-          {i.recording_paused ? <span style={{ ...S.badge, background: '#fef3c7', color: '#92400e' }}>⏸ Recording paused</span> : i.recording_sid ? <span style={S.badge}>● Recording</span> : null}
+          {i.recording_paused ? <span style={{ ...S.badge, background: 'light-dark(#fef3c7, #393213)', color: 'light-dark(#92400e, #e1712d)' }}>⏸ Recording paused</span> : i.recording_sid ? <span style={S.badge}>● Recording</span> : null}
           {i.transcribing ? <span style={S.badge}>Live transcript on</span> : <button style={S.badgeBtn} onClick={() => act('transcribe_on', {}, 'tr')}>Turn on live transcript</button>}
-          {i.status === 'held' && <span style={{ ...S.badge, background: '#fee2e2', color: '#991b1b' }}>Caller on hold {mmss(holdSecs)}</span>}
-          {/^machine|^fax/.test(i.pending?.answered_by || '') && <span style={{ ...S.badge, background: '#e0f2fe', color: '#075985' }}>{i.pending?.vm_dropped ? '📼 Voicemail left' : '📼 Answering machine'}</span>}
-          {i.pending?.answered_by === 'human' && <span style={{ ...S.badge, background: '#dcfce7', color: '#166534' }}>Live person</span>}
-          {parts.filter(p => p.kind === 'supervisor' && !p.left_at && p.mode !== 'listen').map(p => <span key={p.id} style={{ ...S.badge, background: '#ede9fe', color: '#5b21b6' }}>{p.label} {p.mode === 'whisper' ? 'is coaching you' : 'joined'}</span>)}
+          {i.status === 'held' && <span style={{ ...S.badge, background: 'light-dark(#fee2e2, #391313)', color: 'light-dark(#991b1b, #e46767)' }}>Caller on hold {mmss(holdSecs)}</span>}
+          {/^machine|^fax/.test(i.pending?.answered_by || '') && <span style={{ ...S.badge, background: 'light-dark(#e0f2fe, #132a39)', color: 'light-dark(#075985, #1f99db)' }}>{i.pending?.vm_dropped ? '📼 Voicemail left' : '📼 Answering machine'}</span>}
+          {i.pending?.answered_by === 'human' && <span style={{ ...S.badge, background: 'light-dark(#dcfce7, #133920)', color: 'light-dark(#166534, #29bc61)' }}>Live person</span>}
+          {parts.filter(p => p.kind === 'supervisor' && !p.left_at && p.mode !== 'listen').map(p => <span key={p.id} style={{ ...S.badge, background: 'light-dark(#ede9fe, #1a1339)', color: 'light-dark(#5b21b6, #a479e7)' }}>{p.label} {p.mode === 'whisper' ? 'is coaching you' : 'joined'}</span>)}
         </div>
       )}
 
@@ -166,7 +167,7 @@ export default function CxCallPanel() {
         </div>
       )}
       {xfer && liveNow && <TransferBox iid={iid} onDone={() => { setXfer(false); load() }} onErr={setErr} inbound={i.direction === 'in'} />}
-      {err && <div style={{ ...S.note, color: /notified|blocked/.test(err) ? '#166534' : '#b91c1c' }}>{err}</div>}
+      {err && <div style={{ ...S.note, color: /notified|blocked/.test(err) ? 'light-dark(#166534, #29bc61)' : 'light-dark(#b91c1c, #e86464)' }}>{err}</div>}
 
       {alerts.length > 0 && liveNow && (
         <div style={S.alert}>⚠ {alerts[0].payload?.text}</div>
@@ -187,13 +188,13 @@ export default function CxCallPanel() {
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {assist.step && <span style={S.chip}>Step: {String(assist.step).replace(/[[\]]/g, '')}</span>}
                 {assist.intent && <span style={S.chip}>{INTENT[assist.intent] || assist.intent}</span>}
-                {Number.isFinite(Number(assist.booking_likelihood)) && <span style={{ ...S.chip, background: assist.booking_likelihood >= 60 ? '#dcfce7' : assist.booking_likelihood >= 35 ? '#fef9c3' : '#fee2e2' }}>Booking chance {assist.booking_likelihood}%</span>}
-                {assist.objection && <span style={{ ...S.chip, background: '#ffedd5' }}>Objection: {assist.objection}</span>}
+                {Number.isFinite(Number(assist.booking_likelihood)) && <span style={{ ...S.chip, background: assist.booking_likelihood >= 60 ? 'light-dark(#dcfce7, #133920)' : assist.booking_likelihood >= 35 ? 'light-dark(#fef9c3, #393613)' : 'light-dark(#fee2e2, #391313)' }}>Booking chance {assist.booking_likelihood}%</span>}
+                {assist.objection && <span style={{ ...S.chip, background: 'light-dark(#ffedd5, #392913)' }}>Objection: {assist.objection}</span>}
                 {Number.isFinite(Number(assist.sentiment)) && <span style={S.chip}>Mood {assist.sentiment >= 0.3 ? '🙂' : assist.sentiment <= -0.3 ? '🙁' : '😐'}</span>}
               </div>
               {(assist.checklist || []).length > 0 && (
                 <div><div style={S.cap}>Call checklist</div>
-                  {assist.checklist.map(c => <div key={c.key || c.label} style={{ fontSize: 13, padding: '2px 0', color: c.done ? '#166534' : '#334155' }}>{c.done ? '✓' : '○'} {c.label}</div>)}
+                  {assist.checklist.map(c => <div key={c.key || c.label} style={{ fontSize: 13, padding: '2px 0', color: c.done ? 'light-dark(#166534, #29bc61)' : 'light-dark(#334155, #b3c1c7)' }}>{c.done ? '✓' : '○'} {c.label}</div>)}
                 </div>
               )}
               {(assist.facts || []).length > 0 && (
@@ -252,7 +253,7 @@ export default function CxCallPanel() {
             <div style={{ display: 'grid', gap: 10 }}>
               <div style={S.next}><div style={S.cap}>AI summary</div>{wrap.summary}</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {wrap.disposition && <span style={{ ...S.chip, background: wrap.booked ? '#dcfce7' : '#f1f5f9' }}>Suggested disposition: <b>{wrap.disposition}</b></span>}
+                {wrap.disposition && <span style={{ ...S.chip, background: wrap.booked ? 'light-dark(#dcfce7, #133920)' : 'light-dark(#f1f5f9, #1b2327)' }}>Suggested disposition: <b>{wrap.disposition}</b></span>}
               </div>
               {(wrap.follow_ups || []).length > 0 && <div><div style={S.cap}>Follow-ups</div>{wrap.follow_ups.map((f, n) => <div key={n} style={{ fontSize: 13 }}>• {f}</div>)}</div>}
               {wrap.notes && (
@@ -329,31 +330,31 @@ function TransferBox({ iid, onDone, onErr, inbound }) {
 }
 
 const S = {
-  panel: { position: 'fixed', top: 72, right: 16, zIndex: 999, width: 380, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', background: '#fff', color: '#0f172a', borderRadius: 16, border: '1px solid rgba(20,48,42,0.15)', boxShadow: '0 16px 48px rgba(0,0,0,0.22)', fontFamily: 'inherit' },
+  panel: { position: 'fixed', top: 72, right: 16, zIndex: 999, width: 380, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', background: 'light-dark(#fff, #161d21)', color: 'light-dark(#0f172a, #e8eef0)', borderRadius: 16, border: '1px solid rgba(20,48,42,0.15)', boxShadow: '0 16px 48px rgba(0,0,0,0.22)', fontFamily: 'inherit' },
   head: { display: 'flex', justifyContent: 'space-between', gap: 10, padding: '12px 14px', background: G, color: '#fff', borderRadius: '16px 16px 0 0' },
   min: { background: 'transparent', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', padding: '0 4px', opacity: 0.85 },
   tab: { position: 'fixed', top: 72, right: 16, zIndex: 999, color: '#fff', border: 'none', borderRadius: 999, padding: '8px 14px', fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,0.25)' },
   badges: { display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 14px 0' },
-  badge: { fontSize: 11.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: '#E6F0EA', color: G },
-  badgeBtn: { fontSize: 11.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: '#fff', color: G, border: `1px dashed ${G}`, cursor: 'pointer' },
+  badge: { fontSize: 11.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: 'light-dark(#E6F0EA, #222c31)', color: GT },
+  badgeBtn: { fontSize: 11.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: 'light-dark(#fff, #161d21)', color: GT, border: `1px dashed ${GT}`, cursor: 'pointer' },
   controls: { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, padding: '10px 14px' },
-  ctl: { padding: '8px 2px', fontSize: 11.5, fontWeight: 700, borderRadius: 10, border: '1px solid rgba(100,116,139,0.35)', background: '#fff', color: '#0f172a', cursor: 'pointer' },
-  pending: { margin: '0 14px 8px', padding: 10, borderRadius: 10, background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: 13, display: 'grid', gap: 6 },
-  xfer: { margin: '0 14px 8px', padding: 10, borderRadius: 10, background: '#f8fafc', border: '1px solid #e2e8f0' },
-  alert: { margin: '0 14px 8px', padding: '8px 10px', borderRadius: 10, background: '#fff7ed', color: '#9a3412', fontSize: 13, fontWeight: 600, border: '1px solid #fed7aa' },
+  ctl: { padding: '8px 2px', fontSize: 11.5, fontWeight: 700, borderRadius: 10, border: '1px solid rgba(100,116,139,0.35)', background: 'light-dark(#fff, #161d21)', color: 'light-dark(#0f172a, #e8eef0)', cursor: 'pointer' },
+  pending: { margin: '0 14px 8px', padding: 10, borderRadius: 10, background: 'light-dark(#f8fafc, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)', fontSize: 13, display: 'grid', gap: 6 },
+  xfer: { margin: '0 14px 8px', padding: 10, borderRadius: 10, background: 'light-dark(#f8fafc, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)' },
+  alert: { margin: '0 14px 8px', padding: '8px 10px', borderRadius: 10, background: 'light-dark(#fff7ed, #392813)', color: 'light-dark(#9a3412, #e56f48)', fontSize: 13, fontWeight: 600, border: '1px solid light-dark(#fed7aa, #64492b)' },
   note: { margin: '0 14px 8px', fontSize: 12.5 },
-  tabs: { display: 'flex', gap: 4, padding: '0 14px', borderBottom: '1px solid #e2e8f0' },
-  tabBtn: { padding: '8px 10px', fontSize: 12.5, fontWeight: 700, border: 'none', background: 'transparent', color: '#64748b', cursor: 'pointer', borderBottom: '2px solid transparent' },
-  tabOn: { color: G, borderBottom: `2px solid ${G}` },
+  tabs: { display: 'flex', gap: 4, padding: '0 14px', borderBottom: '1px solid light-dark(#e2e8f0, #2a3439)' },
+  tabBtn: { padding: '8px 10px', fontSize: 12.5, fontWeight: 700, border: 'none', background: 'transparent', color: 'light-dark(#64748b, #9fb4bb)', cursor: 'pointer', borderBottom: '2px solid transparent' },
+  tabOn: { color: GT, borderBottom: `2px solid ${GT}` },
   body: { padding: 14 },
-  cap: { fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.6, color: '#64748b', marginBottom: 4 },
-  next: { padding: 10, borderRadius: 12, background: '#E6F0EA', color: G, fontWeight: 700, fontSize: 14, lineHeight: 1.4 },
-  say: { padding: 10, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: 13.5, lineHeight: 1.45 },
-  chip: { fontSize: 11.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: '#f1f5f9', color: '#334155' },
-  empty: { fontSize: 13, color: '#64748b', padding: '6px 0' },
+  cap: { fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.6, color: 'light-dark(#64748b, #9fb4bb)', marginBottom: 4 },
+  next: { padding: 10, borderRadius: 12, background: 'light-dark(#E6F0EA, #222c31)', color: GT, fontWeight: 700, fontSize: 14, lineHeight: 1.4 },
+  say: { padding: 10, borderRadius: 12, background: 'light-dark(#f8fafc, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)', fontSize: 13.5, lineHeight: 1.45 },
+  chip: { fontSize: 11.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: 'light-dark(#f1f5f9, #1b2327)', color: 'light-dark(#334155, #b3c1c7)' },
+  empty: { fontSize: 13, color: 'light-dark(#64748b, #9fb4bb)', padding: '6px 0' },
   bubble: { maxWidth: '85%', padding: '6px 10px', borderRadius: 12, fontSize: 13, lineHeight: 1.4 },
-  box: { padding: 8, borderRadius: 10, background: '#f8fafc', border: '1px solid #e2e8f0' },
-  small: { padding: '5px 10px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: '#fff', cursor: 'pointer', color: '#0f172a' },
-  input: { width: '100%', boxSizing: 'border-box', padding: '7px 9px', fontSize: 13, borderRadius: 8, border: '1px solid #cbd5e1' },
-  row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '7px 8px', fontSize: 13, border: 'none', borderBottom: '1px solid #eef2f7', background: 'transparent', cursor: 'pointer', textAlign: 'left', color: '#0f172a' },
+  box: { padding: 8, borderRadius: 10, background: 'light-dark(#f8fafc, #161d21)', border: '1px solid light-dark(#e2e8f0, #2a3439)' },
+  small: { padding: '5px 10px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1px solid rgba(100,116,139,0.35)', background: 'light-dark(#fff, #161d21)', cursor: 'pointer', color: 'light-dark(#0f172a, #e8eef0)' },
+  input: { width: '100%', boxSizing: 'border-box', padding: '7px 9px', fontSize: 13, borderRadius: 8, border: '1px solid light-dark(#cbd5e1, #3a464c)' },
+  row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '7px 8px', fontSize: 13, border: 'none', borderBottom: '1px solid light-dark(#eef2f7, #2a3439)', background: 'transparent', cursor: 'pointer', textAlign: 'left', color: 'light-dark(#0f172a, #e8eef0)' },
 }

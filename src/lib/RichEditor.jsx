@@ -484,7 +484,7 @@ function LinkMenu({ editor }) {
               }}
               style={{ width: '100%', boxSizing: 'border-box', height: 30, padding: '0 8px', border: '1px solid var(--line)',
                 borderRadius: 6, background: 'var(--canvas)', color: 'var(--ink)', fontSize: 13, fontFamily: 'inherit' }} />
-            {err && <div style={{ color: '#c0392b', fontSize: 11.5, marginTop: 4 }}>{err}</div>}
+            {err && <div style={{ color: 'light-dark(#c0392b, #dd7469)', fontSize: 11.5, marginTop: 4 }}>{err}</div>}
             <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
               <button type="button" className="re-clear" style={{ background: 'var(--accent, #1a73e8)', color: '#fff', borderColor: 'transparent' }}
                 onMouseDown={e => { e.preventDefault(); apply() }}>Apply</button>

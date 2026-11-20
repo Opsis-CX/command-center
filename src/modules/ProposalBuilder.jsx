@@ -19,10 +19,10 @@ const CONTACT_PHONE = '656-234-8009'
 const CONTACT_EMAIL = 'hello@opsiscx.com'
 
 const STATUS_META = {
-  draft:    { label: 'Draft',    bg: '#eef2f4', fg: '#475b63' },
-  sent:     { label: 'Sent',     bg: '#e3f2fd', fg: '#0d47a1' },
-  accepted: { label: 'Accepted', bg: '#e8f5e9', fg: '#1b5e20' },
-  declined: { label: 'Declined', bg: '#fdecea', fg: '#b71c1c' },
+  draft:    { label: 'Draft',    bg: 'light-dark(#eef2f4, #1b2327)', fg: 'light-dark(#475b63, #b3c1c7)' },
+  sent:     { label: 'Sent',     bg: 'light-dark(#e3f2fd, #132939)', fg: 'light-dark(#0d47a1, #5a91e7)' },
+  accepted: { label: 'Accepted', bg: 'light-dark(#e8f5e9, #1b2327)', fg: 'light-dark(#1b5e20, #33b23d)' },
+  declined: { label: 'Declined', bg: 'light-dark(#fdecea, #391713)', fg: 'light-dark(#b71c1c, #e76464)' },
 }
 
 const todayLong = () => new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })

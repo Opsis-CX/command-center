@@ -279,7 +279,7 @@ function CsrPortal({ session }) {
   const accent = brand.portal_accent || '#0f766e'
   const name = brand.portal_name || 'GarageCo'
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+    <div style={{ minHeight: '100vh', background: 'light-dark(#f1f5f9, #1b2327)' }}>
       <header style={{ background: accent, color: '#fff', padding: '0 20px', minHeight: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {brand.portal_logo_url
@@ -365,7 +365,7 @@ function ClientPortal({ session, clientId }) {
     <button onClick={() => setTab(k)} style={{ background: tab === k ? '#fff' : 'rgba(255,255,255,0.12)', color: tab === k ? accent : '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>{label}</button>
   )
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+    <div style={{ minHeight: '100vh', background: 'light-dark(#f1f5f9, #1b2327)' }}>
       <header style={{ background: accent, color: '#fff', padding: '0 20px', height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {brand.portal_logo_url
@@ -436,7 +436,7 @@ function TraineePortal({ session }) {
     <button onClick={() => setTab(k)} style={{ background: tab === k ? '#0077B6' : 'transparent', color: tab === k ? '#fff' : '#0f172a', border: '1px solid #0077B6', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>{label}</button>
   )
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+    <div style={{ minHeight: '100vh', background: 'light-dark(#f1f5f9, #1b2327)' }}>
       <header style={{ background: '#0077B6', color: '#fff', padding: '0 20px', height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontWeight: 800, fontSize: 18 }}>Opsis Command Center</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -445,13 +445,13 @@ function TraineePortal({ session }) {
         </div>
       </header>
       <div style={{ maxWidth: 1000, margin: '0 auto', padding: '20px 16px 40px' }}>
-        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 14 }}>
+        <div style={{ background: 'light-dark(#eff6ff, #1b2327)', border: '1px solid light-dark(#bfdbfe, #2b4464)', color: 'light-dark(#1e3a8a, #7591e1)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 14 }}>
           {mock?.ok && !mock?.booked
             ? <>🎧 You're almost done! Your last step is a <strong>mock call</strong> with {mock.provider_name || 'our team'} — pick a time on the <strong>Schedule my mock call</strong> tab below.</>
             : mock?.ok && mock?.booked
               ? <>🎧 Your <strong>mock call</strong> is booked — see the details on the <strong>My mock call</strong> tab below.</>
               : <>👋 Welcome! Your first step is <strong>certification</strong> — complete it below to move forward in onboarding. The rest of Command Center unlocks once you're all set.</>}
-          <div style={{ marginTop: 6 }}>Questions? Email <a href="mailto:onboarding@opsiscx.com" style={{ color: '#1d4ed8', fontWeight: 600 }}>onboarding@opsiscx.com</a>.</div>
+          <div style={{ marginTop: 6 }}>Questions? Email <a href="mailto:onboarding@opsiscx.com" style={{ color: 'light-dark(#1d4ed8, #7090eb)', fontWeight: 600 }}>onboarding@opsiscx.com</a>.</div>
         </div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
           {tabBtn('certs', 'My Certifications')}
@@ -461,7 +461,7 @@ function TraineePortal({ session }) {
           {certPassed && tabBtn('trades', '🔁 Trade Board')}
         </div>
         {certPassed && (tab === 'schedule' || tab === 'trades') && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#14532d', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}>
+          <div style={{ background: 'light-dark(#f0fdf4, #13391f)', border: '1px solid light-dark(#bbf7d0, #2b643f)', color: 'light-dark(#14532d, #2db964)', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}>
             🎉 Certification passed — you can pick up intervals while you finish onboarding. Accepting an interval is a commitment to service it.
           </div>
         )}

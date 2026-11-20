@@ -25,11 +25,11 @@ function uiDialog({ message, input = false, okLabel = 'OK', danger = false }) {
     wrap.setAttribute('role', 'dialog'); wrap.setAttribute('aria-modal', 'true')
     wrap.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px'
     const box = document.createElement('div')
-    box.style.cssText = 'background:#fff;border-radius:14px;max-width:440px;width:100%;padding:20px 20px 16px;box-shadow:0 20px 50px rgba(0,0,0,.25);font:14px/1.5 Montserrat,Arial,sans-serif;color:#1C2421'
+    box.style.cssText = 'background:light-dark(#fff, #161d21);border-radius:14px;max-width:440px;width:100%;padding:20px 20px 16px;box-shadow:0 20px 50px rgba(0,0,0,.25);font:14px/1.5 Montserrat,Arial,sans-serif;color:#1C2421'
     const msg = document.createElement('div'); msg.style.cssText = 'white-space:pre-wrap;margin-bottom:14px'; msg.textContent = message
     box.appendChild(msg)
     let field = null
-    if (input) { field = document.createElement('textarea'); field.rows = 3; field.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid #CBD5E1;border-radius:10px;padding:8px 10px;font:inherit;margin-bottom:14px;resize:vertical'; box.appendChild(field) }
+    if (input) { field = document.createElement('textarea'); field.rows = 3; field.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid light-dark(#CBD5E1, #3a464c);border-radius:10px;padding:8px 10px;font:inherit;margin-bottom:14px;resize:vertical'; box.appendChild(field) }
     const row = document.createElement('div'); row.style.cssText = 'display:flex;justify-content:flex-end;gap:8px'
     const btn = (label, primary) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.style.cssText = 'border-radius:10px;padding:8px 16px;font:inherit;font-weight:600;cursor:pointer;border:1px solid ' + (primary ? (danger ? '#B4231A' : '#14302A') : '#CBD5E1') + ';background:' + (primary ? (danger ? '#B4231A' : '#14302A') : '#fff') + ';color:' + (primary ? '#fff' : '#1C2421'); return b }
     const cancel = btn('Cancel', false), ok = btn(okLabel, true)
@@ -231,7 +231,7 @@ function PersonHoverCard({ profiles, me }) {
         </div>
         {p?.job_title && <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 1 }}>{p.job_title}</div>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, marginTop: 8 }}>
-          <span style={{ width: 9, height: 9, borderRadius: '50%', flex: 'none', background: ooo ? '#a855f7' : online ? '#22c55e' : '#cbd5e1' }} />
+          <span style={{ width: 9, height: 9, borderRadius: '50%', flex: 'none', background: ooo ? '#a855f7' : online ? '#22c55e' : 'light-dark(#cbd5e1, #222c31)' }} />
           <span>{ooo ? 'Out of office' : online ? 'Active now' : lastSeenText(p)}</span>
         </div>
         {st && (st.emoji || st.text) && (
@@ -240,7 +240,7 @@ function PersonHoverCard({ profiles, me }) {
             <span style={{ minWidth: 0 }}>{st.text || ''}{until && <span className="page-sub" style={{ display: 'block', margin: 0, fontSize: 11.5 }}>Until {until}</span>}</span>
           </div>
         )}
-        {bday && <div style={{ margin: '8px 0 0', fontSize: 13, fontWeight: 700, color: '#DB2777' }}>🎂 Happy birthday{name === 'You' ? ' to you' : ''}! 🎉</div>}
+        {bday && <div style={{ margin: '8px 0 0', fontSize: 13, fontWeight: 700, color: 'light-dark(#DB2777, #e5649e)' }}>🎂 Happy birthday{name === 'You' ? ' to you' : ''}! 🎉</div>}
         {p && <div className="page-sub" style={{ margin: '8px 0 0', fontSize: 12 }}>🕒 {localTimeIn(p.timezone)}</div>}
       </div>
     </div>
@@ -1434,7 +1434,7 @@ export default function Chat() {
 
   const menuItem = (label, onClick, { danger = false, checked = false } = {}) => (
     <button key={label} onClick={(e) => { e.stopPropagation(); onClick() }}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', border: 0, background: 'transparent', padding: '8px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: danger ? '#DC2626' : 'var(--ink)' }}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', border: 0, background: 'transparent', padding: '8px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: danger ? 'light-dark(#DC2626, #e76c6c)' : 'var(--ink)' }}
       onMouseEnter={e => { e.currentTarget.style.background = 'var(--canvas)' }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
       <span style={{ flex: 1 }}>{label}</span>{checked && <span>✓</span>}
@@ -2618,7 +2618,7 @@ function ChannelPaneInner({ channelId, me, isAdmin, isOwner, channel, dmName, pr
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {!grouped && <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
                     <b style={{ fontSize: 13.5 }}>{name}</b>
-                    {authorStatus && (authorStatus.emoji || authorStatus.text) && <span title={authorStatus.text || ''} style={{ fontSize: 12, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>{authorStatus.emoji && <span>{authorStatus.emoji}</span>}{authorStatus.type === 'ooo' && <span style={{ fontWeight: 700, color: '#7c3aed' }}>OOO</span>}</span>}
+                    {authorStatus && (authorStatus.emoji || authorStatus.text) && <span title={authorStatus.text || ''} style={{ fontSize: 12, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>{authorStatus.emoji && <span>{authorStatus.emoji}</span>}{authorStatus.type === 'ooo' && <span style={{ fontWeight: 700, color: 'light-dark(#7c3aed, #a378ec)' }}>OOO</span>}</span>}
                     <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{timeLabel(m.created_at)}</span>
                     {m.edited_at && <span style={{ fontSize: 10.5, color: 'var(--ink-soft)', fontStyle: 'italic' }}>(edited)</span>}
                     {m.is_here && <span className="badge" style={{ background: 'var(--accent-bg)', color: 'var(--accent)', fontSize: 10 }}>@here</span>}
@@ -3190,7 +3190,7 @@ function ChannelMembersPanel({ channelId, channelName, profiles, meId, isOwner, 
                 </span>
                 <span style={{ flex: 1, fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                   <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.full_name}{p.id === meId ? ' (you)' : ''}</span>
-                  {effStatus(p) && (effStatus(p).emoji || effStatus(p).text) && <span title={effStatus(p).text || ''} style={{ fontSize: 12.5, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 3, minWidth: 0 }}>{effStatus(p).emoji && <span>{effStatus(p).emoji}</span>}{effStatus(p).type === 'ooo' ? <span style={{ fontWeight: 700, color: '#7c3aed' }}>OOO</span> : <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140 }}>{effStatus(p).text}</span>}</span>}
+                  {effStatus(p) && (effStatus(p).emoji || effStatus(p).text) && <span title={effStatus(p).text || ''} style={{ fontSize: 12.5, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 3, minWidth: 0 }}>{effStatus(p).emoji && <span>{effStatus(p).emoji}</span>}{effStatus(p).type === 'ooo' ? <span style={{ fontWeight: 700, color: 'light-dark(#7c3aed, #a378ec)' }}>OOO</span> : <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140 }}>{effStatus(p).text}</span>}</span>}
                 </span>
                 {isOwner && p.id !== meId && (
                   <button onClick={() => removeMember(p.id)} title="Remove from channel"
@@ -3420,7 +3420,7 @@ function CustomEmojiModal({ onClose }) {
                     style={{ flex: 1, minWidth: 0, border: 0, outline: 'none', padding: '7px 4px', background: 'transparent', color: 'var(--ink)', fontFamily: 'inherit', fontSize: 14 }} />
                   <span style={{ color: 'var(--ink-soft)' }}>:</span>
                 </div>
-                <div style={{ fontSize: 11.5, marginTop: 4, color: taken ? '#DC2626' : 'var(--ink-soft)' }}>
+                <div style={{ fontSize: 11.5, marginTop: 4, color: taken ? 'light-dark(#DC2626, #e76c6c)' : 'var(--ink-soft)' }}>
                   {!name ? 'Lowercase letters, numbers and _' : taken ? `:${code}: is already taken` : !validName ? '2–32 characters: a–z, 0–9, _' : `Saved as :${code}:`}
                 </div>
               </div>
@@ -3434,7 +3434,7 @@ function CustomEmojiModal({ onClose }) {
           <div className="page-sub" style={{ fontSize: 12.5, marginTop: 6 }}>Ask a team lead if you'd like a new emoji added.</div>
         )}
 
-        {err && <div style={{ color: '#DC2626', fontSize: 12.5, marginTop: 8 }}>{err}</div>}
+        {err && <div style={{ color: 'light-dark(#DC2626, #e76c6c)', fontSize: 12.5, marginTop: 8 }}>{err}</div>}
 
         <div style={{ fontSize: 13, fontWeight: 600, margin: '16px 0 8px' }}>All custom emoji ({list.length})</div>
         {list.length === 0 && <div className="page-sub" style={{ fontSize: 12.5 }}>None yet.</div>}
@@ -3539,7 +3539,7 @@ function ReactionBar({ messageId, reactions, meId, profiles, senders, onToggle, 
       {hover && groups[hover.emoji] && (
         <div role="tooltip" style={{ position: 'fixed', left: Math.max(8, Math.min(hover.x, window.innerWidth - 8)), top: hover.y - 8, transform: 'translate(-50%, -100%)',
           zIndex: 70, pointerEvents: 'none', background: '#1d1d1f', color: '#fff', borderRadius: 10, padding: '10px 12px', maxWidth: 240, textAlign: 'center', boxShadow: '0 8px 24px rgba(0,0,0,.25)' }}>
-          <div style={{ display: 'grid', placeItems: 'center', marginBottom: 6, background: '#fff', borderRadius: 8, width: 52, height: 52, marginLeft: 'auto', marginRight: 'auto' }}>
+          <div style={{ display: 'grid', placeItems: 'center', marginBottom: 6, background: 'light-dark(#fff, #161d21)', borderRadius: 8, width: 52, height: 52, marginLeft: 'auto', marginRight: 'auto' }}>
             <EmojiGlyph emoji={hover.emoji} size={36} custom={custom} animate />
           </div>
           <div style={{ fontSize: 12.5, lineHeight: 1.4 }}>

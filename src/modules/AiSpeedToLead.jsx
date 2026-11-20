@@ -19,7 +19,7 @@ import { supabase } from '../lib/supabase'
 const OUTCOME = {
   booked: { l: 'Booked', c: 'var(--passed)', bg: 'var(--passed-bg)' },
   transferred: { l: 'Live transfer', c: 'var(--accent)', bg: 'var(--accent-bg)' },
-  callback: { l: 'Callback set', c: '#8a5a00', bg: '#fff3d6' },
+  callback: { l: 'Callback set', c: '#8a5a00', bg: 'light-dark(#fff3d6, #392e13)' },
   question_answered: { l: 'Answered', c: 'var(--accent)', bg: 'var(--accent-bg)' },
   voicemail: { l: 'Voicemail left', c: 'var(--ink-soft)', bg: 'var(--canvas)' },
   no_answer: { l: 'No answer', c: 'var(--ink-soft)', bg: 'var(--canvas)' },
@@ -324,7 +324,7 @@ function TestAi({ cfg, brand, onStarted }) {
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
         <button className="btn btn-primary" disabled={busy} onClick={go}>{busy ? 'Calling…' : 'Send test lead'}</button>
         {res && !res.error && !res.skipped && <span style={{ color: 'var(--passed)', fontWeight: 600 }}>✓ AI dialing{res.seconds_to_dial != null ? ` ${res.seconds_to_dial}s after the lead came in` : ''}. Answer your phone.</span>}
-        {res?.skipped && <span style={{ color: '#8a5a00' }}>{res.skipped}</span>}
+        {res?.skipped && <span style={{ color: 'light-dark(#8a5a00, #c98d1d)' }}>{res.skipped}</span>}
         {res?.error && <span style={{ color: 'var(--failed)' }}>{res.error}</span>}
         {err && <span style={{ color: 'var(--failed)' }}>{err}</span>}
       </div>
@@ -360,7 +360,7 @@ function Settings({ cfg, brand: pickBrand, onSaved }) {
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600 }}><input type="checkbox" checked={f.enabled} onChange={e => set('enabled', e.target.checked)} />AI calls new leads for this brand</label>
           <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" checked={f.consent_ok} onChange={e => set('consent_ok', e.target.checked)} />This brand's lead forms include consent to automated / AI calls</label>
         </div>
-        {f.enabled && !f.consent_ok && <div style={{ fontSize: 13, color: '#8a5a00' }}>The AI won't call real leads until consent is confirmed (TCPA: AI-voice calls need prior express written consent). Test calls still work.</div>}
+        {f.enabled && !f.consent_ok && <div style={{ fontSize: 13, color: 'light-dark(#8a5a00, #c98d1d)' }}>The AI won't call real leads until consent is confirmed (TCPA: AI-voice calls need prior express written consent). Test calls still work.</div>}
         <div style={S.note}>Sources feeding this brand: {(cur?.sources || []).map(s => `${s.label || SRC[s.source] || s.source}${s.ai_first ? ' (AI first)' : ''}`).join(', ') || 'none yet'}{cur?.updated_by_name ? ` · last saved by ${cur.updated_by_name}` : ''}</div>
       </Card>
       <Card title="Voice and script">

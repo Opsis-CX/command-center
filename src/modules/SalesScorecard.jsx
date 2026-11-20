@@ -193,7 +193,7 @@ export default function SalesScorecard() {
                         {setters.map(s => <td key={s.id} style={{ ...S.td, ...S.num }}>{cell(dayTotal(lastDay, s.id), row)}</td>)}
                         <td style={{ ...S.td, ...S.num, fontWeight: 700 }}>{cell(d1, row)}</td>
                         <td style={{ ...S.td, ...S.num }}>{cell(d0, row)}</td>
-                        <td style={{ ...S.td, ...S.num, color: delta > 0 ? '#1f8a53' : delta < 0 ? '#c0392b' : undefined }}>{isRate ? '' : (delta > 0 ? '+' : '') + delta}</td>
+                        <td style={{ ...S.td, ...S.num, color: delta > 0 ? 'light-dark(#1f8a53, #2abb71)' : delta < 0 ? 'light-dark(#c0392b, #dd7469)' : undefined }}>{isRate ? '' : (delta > 0 ? '+' : '') + delta}</td>
                         <td style={{ ...S.td, ...S.num }}>{isRate || !b ? '' : Math.round((delta / b) * 100) + '%'}</td>
                       </tr>
                     )

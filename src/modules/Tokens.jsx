@@ -446,7 +446,7 @@ function AdminTab() {
       <div className="card" style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Available to send (Tremendous balance)</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: bal?.error ? 'var(--ink-soft)' : low ? '#b71c1c' : 'var(--passed, #16a34a)' }}>
+          <div style={{ fontSize: 26, fontWeight: 800, color: bal?.error ? 'var(--ink-soft)' : low ? 'light-dark(#b71c1c, #e76464)' : 'var(--passed, #16a34a)' }}>
             {balLoading ? '…' : bal?.error ? '—' : `$${avail.toFixed(2)}`}
           </div>
           {!balLoading && !bal?.error && pending > 0 && <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>+ ${pending.toFixed(2)} pending</div>}
@@ -454,7 +454,7 @@ function AdminTab() {
         </div>
         <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={loadBal} disabled={balLoading}>↻ Refresh</button>
       </div>
-      {low && !bal?.error && <div style={{ marginBottom: 14, fontSize: 13, color: '#b71c1c', fontWeight: 600 }}>⚠ Low balance — top up in Tremendous → Billing → Balance → Add funds.</div>}
+      {low && !bal?.error && <div style={{ marginBottom: 14, fontSize: 13, color: 'light-dark(#b71c1c, #e76464)', fontWeight: 600 }}>⚠ Low balance — top up in Tremendous → Billing → Balance → Add funds.</div>}
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
         {['budgets', 'catalog', 'adjust', 'redemptions', 'settings'].map(s => (

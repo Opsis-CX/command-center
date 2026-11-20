@@ -39,9 +39,9 @@ export function renderContractBody(text) {
 export function contractHtml(c) {
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(c.title)}</title><style>
   @page { margin: 0.9in }
-  body { font-family: Georgia, 'Times New Roman', serif; color: #111; line-height: 1.5; font-size: 12.5pt; max-width: 7in; margin: 0 auto }
+  body { font-family: Georgia, 'Times New Roman', serif; color: light-dark(#111, #e8eef0); line-height: 1.5; font-size: 12.5pt; max-width: 7in; margin: 0 auto }
   h1 { font-size: 20pt; text-align: center; margin: 0 0 18pt } h2 { font-size: 13pt; margin: 16pt 0 4pt } p { margin: 0 0 9pt } ul { margin: 0 0 9pt 18pt; padding: 0 } li { margin: 0 0 3pt }
-  .draft { color: #b45309; text-align: center; font: 600 10pt sans-serif; margin-bottom: 10pt }
+  .draft { color: light-dark(#b45309, #e07524); text-align: center; font: 600 10pt sans-serif; margin-bottom: 10pt }
   </style></head><body>${c.status === 'draft' ? '<div class="draft">DRAFT. Not yet final.</div>' : ''}${renderContractBody(c.body)}</body></html>`
 }
 function printContract(c) {
@@ -197,7 +197,7 @@ function EditorModal({ contract: c, documents, onClose, reload, flash, onUploadS
       {err && <div className="login-err" role="alert">{err}</div>}
       <p className="page-sub" style={{ margin: '0 0 6px' }}><span className={BADGE[c.status]}>{CONTRACT_STATUS[c.status]}</span> Version {c.version}{c.status === 'void' ? `. Void: ${c.void_reason}` : ''}</p>
       {draft && <div className="field"><label htmlFor="ce-title">Title</label><input id="ce-title" value={title} onChange={e => setTitle(e.target.value)} maxLength={120} /></div>}
-      {blanks.length > 0 && <div role="note" data-blanks style={{ color: '#b45309', margin: '4px 0 8px', fontSize: 13 }}>Still to fill in: {blanks.map(b => `{{${b}}}`).join(', ')}. Type over each one, or delete it.</div>}
+      {blanks.length > 0 && <div role="note" data-blanks style={{ color: 'light-dark(#b45309, #e07524)', margin: '4px 0 8px', fontSize: 13 }}>Still to fill in: {blanks.map(b => `{{${b}}}`).join(', ')}. Type over each one, or delete it.</div>}
       {draft ? <textarea id="ce-body" aria-label="Contract wording" value={body} onChange={e => setBody(e.target.value)} rows={22} style={{ width: '100%', fontFamily: 'Georgia, serif', fontSize: 14, lineHeight: 1.5, padding: 10, border: '1px solid var(--line)', borderRadius: 8 }} />
         : <div data-preview style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '4px 16px', maxHeight: 460, overflowY: 'auto', fontFamily: 'Georgia, serif', lineHeight: 1.5 }} dangerouslySetInnerHTML={{ __html: renderContractBody(c.body) }} />}
       {draft && <div className="hint">Formatting: start a line with # for a heading or ## for a subheading, - for a bullet, and put **two stars** around bold words. Starter wording is only a starting point: have your attorney review a contract before it is used.</div>}
