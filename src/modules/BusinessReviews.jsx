@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { printReport } from '../lib/printReport'
 
 // ============================================================
 // BUSINESS REVIEWS (internal, Opsis CX) — Becky 11/19
@@ -93,7 +94,7 @@ function Bar({ label, v, max, txt, color }) {
 }
 function Hero({ title, big, sub, children, foot }) {
   return (
-    <div style={{ ...card, display: 'flex', flexDirection: 'column' }}>
+    <div data-pk="1" style={{ ...card, display: 'flex', flexDirection: 'column' }}>
       <div style={cap}>{title}</div>
       <div style={{ fontSize: 42, fontWeight: 700, margin: '8px 0 2px', letterSpacing: '-.02em' }}>{big}</div>
       <div style={{ marginBottom: 10 }}>{sub}</div>
@@ -140,6 +141,7 @@ export default function BusinessReviews() {
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
   const [open, setOpen] = useState({})
+  const root = useRef(null)
   const list = useMemo(() => periods(tab), [tab])
   const p = list.find((x) => x.k === pick[tab]) || defaultPeriod(tab, list)
 
@@ -153,8 +155,8 @@ export default function BusinessReviews() {
 
   const name = { wbr: 'week', mbr: 'month', qbr: 'quarter', annual: 'year' }[tab]
   return (
-    <div style={{ padding: '20px 24px 40px', maxWidth: 1280, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+    <div ref={root} style={{ padding: '20px 24px 40px', maxWidth: 1280, margin: '0 auto' }}>
+      <div data-noprint="1" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 4, background: 'var(--surface-2, #EFECE6)', padding: 4, borderRadius: 12 }}>
           {TABS.map(([k, l]) => <button key={k} className="btn" onClick={() => setTab(k)} style={{ border: 'none', minHeight: 34, padding: '6px 16px', background: tab === k ? GD : 'transparent', color: tab === k ? '#fff' : 'inherit', fontWeight: 600 }}>{l}</button>)}
         </div>
@@ -170,7 +172,7 @@ export default function BusinessReviews() {
           <h1 style={{ fontSize: 30, margin: '2px 0 6px', letterSpacing: '-.02em' }}>Opsis CX · {p.label}</h1>
           <Pill tone="mut">{fdl(p.start)} – {fdl(p.end)}</Pill> <Pill tone="mut">compared with {p.cmp}</Pill>
         </div>
-        <button className="btn btn-ghost" onClick={() => window.print()}>Print / PDF</button>
+        <button data-noprint="1" className="btn btn-ghost" disabled={!data} onClick={() => printReport(root.current, { title: `Opsis CX ${tab.toUpperCase()} · ${p.label}` })}>Print / PDF</button>
       </div>
       {err && <div style={{ ...card, marginTop: 16, color: BAD }}>{err}</div>}
       {!data && !err && <div style={{ ...card, marginTop: 16, color: 'var(--muted)' }}>Loading…</div>}
@@ -280,7 +282,7 @@ function Review({ d, p, name, metric, setMetric, open, setOpen }) {
 
       <Sec n="04" t="Performance over time" h={`${METRICS.find((m) => m[0] === metric)[1]} by ${d.range.grain}`}>
         <div style={card}>
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', background: 'var(--surface-2, #EFECE6)', padding: 3, borderRadius: 10, width: 'fit-content' }}>
+          <div data-noprint="1" style={{ display: 'flex', gap: 4, flexWrap: 'wrap', background: 'var(--surface-2, #EFECE6)', padding: 3, borderRadius: 10, width: 'fit-content' }}>
             {METRICS.map(([k, l]) => <button key={k} className="btn" onClick={() => setMetric(k)} style={{ border: 'none', minHeight: 30, padding: '4px 10px', fontSize: 12, background: metric === k ? GD : 'transparent', color: metric === k ? '#fff' : 'inherit' }}>{l}</button>)}
           </div>
           <Trend d={d} metric={metric} p={p} />
