@@ -997,7 +997,7 @@ export function mountOpsisQA(ROOT, cfg) {
       return '<div class="oq-card" style="padding:14px 16px">' + capRow(d[0], KDEF[d[0]]) + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px"><span class="num" style="font-size:28px;font-weight:600;letter-spacing:-0.03em">' + d[3](d[1]) + '</span>' + (d[4] === null ? '' : delta(d[1], d[2], d[4])) + '</div><div class="mut num" style="font-size:11.5px;margin-top:6px">before: ' + d[3](d[2]) + '</div></div>';
     }).join('');
   }
-  var PROGRAM_MARKS = [['2026-08-26', 'Card program starts'], ['2026-10-27', 'Training starts']];
+  var PROGRAM_MARKS = [['2026-10-27', 'Training starts']];
   function focusWeekly(f) {
     var T1 = 'QA Score and Booking Rate, Week by Week';
     var w = (f.weekly || []).filter(function (x) { return x.calls >= 10; });
@@ -1020,7 +1020,7 @@ export function mountOpsisQA(ROOT, cfg) {
       return '<line x1="' + x + '" x2="' + x + '" y1="' + tp + '" y2="' + Hd + '" stroke="#1F5A41" stroke-width="1.5" stroke-dasharray="3 3"/><text x="' + (+x + 5) + '" y="' + (tp + 10) + '" font-size="11" font-weight="700" fill="#1F5A41">' + m[1] + ' · ' + fdate(dt) + '</text>'; }).join('');
     var last = w[n - 1], lr = rates[n - 1];
     var endl = '<text x="' + (+px(n - 1) - 8) + '" y="' + (+py(last.avg) - 9) + '" text-anchor="end" font-size="12" font-weight="700" fill="#14302A">' + (+last.avg).toFixed(1) + '</text>' + (lr != null ? '<text x="' + (+px(n - 1) - 8) + '" y="' + (+py(lr) + 16) + '" text-anchor="end" font-size="12" font-weight="700" fill="#E0662A">' + Math.round(lr) + '%</text>' : '');
-    $('fweek').innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">' + T1 + '</h2><p class="sub">Last 12 weeks. Solid line: average QA score (0–100). Dashed line: booking rate (%). Both read off the scale on the left. Shaded = the period you’re viewing. Dotted lines = when the card program and training started · hover a dot for details.</p></div><div class="mut" style="font-size:12px;display:flex;gap:14px"><span style="color:#14302A">● QA score</span><span style="color:#E0662A">- - booking rate %</span></div></div>' +
+    $('fweek').innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">' + T1 + '</h2><p class="sub">Last 12 weeks. Solid line: average QA score (0–100). Dashed line: booking rate (%). Both read off the scale on the left. Shaded = the period you’re viewing. Dotted line = when CSR call standard training started · hover a dot for details.</p></div><div class="mut" style="font-size:12px;display:flex;gap:14px"><span style="color:#14302A">● QA score</span><span style="color:#E0662A">- - booking rate %</span></div></div>' +
       '<svg viewBox="0 0 ' + Wd + ' ' + (Hd + 8) + '" style="width:100%;height:auto;margin-top:12px;overflow:visible" role="img" aria-label="Weekly QA score and booking rate">' + shade + grid + marks + '<path d="' + rl + '" fill="none" stroke="#E0662A" stroke-width="2" stroke-dasharray="5 4"/><path d="' + line + '" fill="none" stroke="#14302A" stroke-width="2.4"/>' + dots + endl + '</svg>' +
       '<div style="display:flex;margin-top:4px;padding-left:4.4%">' + w.map(function (x, i) { return '<div style="flex:1;text-align:center;font-size:10px;color:#5F6763">' + (i % 2 === 0 ? 'Wk of ' + fdate(x.w) : '') + '</div>'; }).join('') + '</div>';
   }
@@ -2367,7 +2367,7 @@ export function mountOpsisQA(ROOT, cfg) {
       urgent: real.filter(function (c) { return c.urgent; }).length };
   }
   var RD_F = {
-    outcome: function (c, v) { return c.outcome === v; }, real: function (c) { return c.real; }, lead: function (c) { return c.lead; }, cat: function (c, v) { return c.cat === v; },
+    all: function () { return true; }, outcome: function (c, v) { return c.outcome === v; }, real: function (c) { return c.real; }, lead: function (c) { return c.lead; }, cat: function (c, v) { return c.cat === v; },
     why: function (c, v) { return c.why === v; }, xf: function (c, v) { return c.xf === v; }, miss: function (c, v) { return c.miss.indexOf(v) >= 0; },
     cell: function (c, v) { var p = v.split('-'); return c.L.dow === +p[0] && c.L.h === +p[1]; }, day: function (c, v) { return rdLocal(c.at, 'America/New_York').ymd === v; },
     phone: function (c, v) { return c.phone === v; }, after: function (c, v) { return c.real && c.after === (v === '1'); }, urgent: function (c) { return c.urgent; },
@@ -2418,7 +2418,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (ins.length) h += '<div class="oq-card" style="background:#F4F8F5;border-color:#D6E7DD"><h2 class="ttl" style="margin-bottom:6px">What stands out</h2><ul style="margin:0;padding-left:18px;line-height:1.6;font-size:13.5px">' + ins.slice(0, 5).map(function (x) { return '<li><button class="lnk" data-rdf="' + x[0] + '" data-rdv="' + esc(x[1]) + '" style="all:unset;cursor:pointer">' + x[2] + ' <span style="color:#1F5A41;font-weight:600">See calls →</span></button></li>'; }).join('') + '</ul></div>';
 
     // flow + daily
-    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px"><div class="oq-card"><h2 class="ttl">Where calls ended up</h2><p class="sub">Every call, from pickup to outcome. Click a band.</p>' + rdFlow(A) + '</div>' +
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px"><div class="oq-card"><h2 class="ttl">Where calls ended up</h2><p class="sub">From pickup to outcome. Click any number, bar or row to see those calls.</p>' + rdFlow(A) + '</div>' +
       '<div class="oq-card"><h2 class="ttl">Calls by day</h2><p class="sub">Click a day to see its calls.</p>' + rdDays(A, RD.d.start, RD.d.end) + '</div></div>';
     // heatmap
     h += '<div class="oq-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-end"><div><h2 class="ttl">When people call</h2><p class="sub">Conversations by day and hour, in each brand’s time zone. Outlined = office hours.</p></div>' + rdHoursSplit(A) + '</div>' + rdHeat(A, P.B) + '</div>';
@@ -2444,21 +2444,15 @@ export function mountOpsisQA(ROOT, cfg) {
   function fphone(p) { var d = String(p || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); return d.length === 10 ? '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6) : (p || ''); }
   function rdPill(o) { var c = RD_COL[o] || '#A9A398'; return o ? '<span class="pill" style="background:' + c + '1A;color:' + (o === 'No one on the line' ? '#5F6763' : c) + ';border:1px solid ' + c + '55">' + esc(o) + '</span>' : ''; }
   function rdFlow(A) {
-    var W = 640, H = 230, n = A.length, real = A.filter(function (c) { return c.real; }), none = n - real.length, y0 = 14, hh = H - 28, sc = hh / Math.max(1, n);
-    var ends = RD_OUT.slice(0, 4).map(function (o) { return [o[0], real.filter(function (c) { return c.outcome === o[0]; }).length, o[2]]; }).filter(function (x) { return x[1]; });
-    var other = real.length - ends.reduce(function (s, x) { return s + x[1]; }, 0); if (other > 0) ends.push(['Other', other, '#A9A398']);
-    var band = function (x1, a1, b1, x2, a2, b2, col, k, v, tip) { var m = (x1 + x2) / 2; return '<path data-rdf="' + k + '" data-rdv="' + esc(v) + '" d="M' + x1 + ',' + a1 + ' C' + m + ',' + a1 + ' ' + m + ',' + a2 + ' ' + x2 + ',' + a2 + ' L' + x2 + ',' + b2 + ' C' + m + ',' + b2 + ' ' + m + ',' + b1 + ' ' + x1 + ',' + b1 + ' Z" fill="' + col + '" fill-opacity=".32" style="cursor:pointer"><title>' + esc(tip) + '</title></path>'; };
-    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;margin-top:6px" role="img" aria-label="Call flow">';
-    var gap = 6, realH = real.length * sc, noneH = none * sc, midTop = y0, x0 = 70, x1 = 250, x2 = 470;
-    s += '<rect x="' + (x0 - 8) + '" y="' + y0 + '" width="8" height="' + (n * sc) + '" rx="3" fill="#14302A"/><text x="' + (x0 - 14) + '" y="' + (y0 + n * sc / 2) + '" text-anchor="end" font-size="12" fill="#1C2421" dominant-baseline="middle">' + n + ' calls</text>';
-    s += band(x0, y0, y0 + realH, x1, midTop, midTop + realH, '#1F5A41', 'real', '1', real.length + ' real conversations');
-    if (none) s += band(x0, y0 + realH, y0 + n * sc, x1, midTop + realH + gap, midTop + realH + gap + noneH, '#A9A398', 'outcome', 'No one on the line', none + ' hang-ups or silent calls');
-    s += '<rect x="' + x1 + '" y="' + midTop + '" width="8" height="' + realH + '" rx="3" fill="#1F5A41" data-rdf="real" data-rdv="1" style="cursor:pointer"/><text x="' + (x1 + 14) + '" y="' + (midTop + 12) + '" font-size="12" fill="#1C2421">Talked to ' + real.length + '</text>';
-    if (none) s += '<rect x="' + x1 + '" y="' + (midTop + realH + gap) + '" width="8" height="' + Math.max(2, noneH) + '" rx="3" fill="#A9A398" data-rdf="outcome" data-rdv="No one on the line" style="cursor:pointer"/><text x="' + (x1 + 14) + '" y="' + (midTop + realH + gap + Math.max(10, noneH / 2)) + '" font-size="12" fill="#5F6763" dominant-baseline="middle">No one on the line ' + none + '</text>';
-    var tot = ends.reduce(function (s2, x) { return s2 + x[1]; }, 0), g2 = 10, avail = hh - g2 * Math.max(0, ends.length - 1), sc2 = avail / Math.max(1, tot), yy = y0, ya = midTop;
-    ends.forEach(function (e) { var hgt = e[1] * sc2, ha = e[1] * sc; s += band(x1 + 8, ya, ya + ha, x2, yy, yy + hgt, e[2], e[0] === 'Other' ? 'real' : 'outcome', e[0] === 'Other' ? '1' : e[0], e[1] + ' ' + e[0].toLowerCase());
-      s += '<rect x="' + x2 + '" y="' + yy + '" width="8" height="' + Math.max(2, hgt) + '" rx="3" fill="' + e[2] + '" data-rdf="outcome" data-rdv="' + esc(e[0]) + '" style="cursor:pointer"/><text x="' + (x2 + 14) + '" y="' + (yy + Math.max(2, hgt) / 2) + '" font-size="12" fill="#1C2421" dominant-baseline="middle">' + esc(e[0]) + ' <tspan font-weight="700">' + e[1] + '</tspan></text>'; ya += ha; yy += hgt + g2; });
-    return s + '</svg>';
+    var n = A.length, real = A.filter(function (c) { return c.real; }), got = real.filter(function (c) { return c.outcome === 'Request taken' || c.outcome === 'Message taken'; }).length;
+    var pc = function (a, b) { return b ? Math.round(100 * a / b) + '%' : '—'; };
+    var step = function (k, v, big, lbl, sub) { return '<button data-rdf="' + k + '" data-rdv="' + esc(v) + '" style="all:unset;cursor:pointer;flex:1;min-width:120px;padding:10px 12px;border-radius:12px;background:#FAF9F6;border:1px solid #EEEBE4"><div class="num" style="font-size:26px;font-weight:700;color:#14302A">' + big + '</div><div style="font-size:12.5px;font-weight:600">' + lbl + '</div><div class="mut" style="font-size:11.5px">' + sub + '</div></button>'; };
+    var arrow = '<span aria-hidden="true" style="align-self:center;color:#A9A398;font-size:18px">→</span>';
+    var h = '<div style="display:flex;gap:8px;margin:10px 0 14px;flex-wrap:wrap">' + step('all', '1', fmt(n), 'Calls', 'every pickup') + arrow + step('real', '1', fmt(real.length), 'Conversations', pc(real.length, n) + ' of calls') + arrow + step('outcome', 'Request taken', fmt(got), 'Request or message', pc(got, real.length) + ' of conversations') + '</div>';
+    var segs = RD_OUT.map(function (o) { return [o[0], A.filter(function (c) { return c.outcome === o[0]; }).length, o[2]]; }).filter(function (x) { return x[1]; });
+    h += '<div style="display:flex;height:16px;gap:2px;border-radius:8px;overflow:hidden">' + segs.map(function (x) { return '<button data-rdf="outcome" data-rdv="' + esc(x[0]) + '" title="' + esc(x[0] + ': ' + x[1]) + '" style="all:unset;cursor:pointer;background:' + x[2] + ';flex:' + x[1] + ' 1 0"></button>'; }).join('') + '</div>';
+    h += '<div style="margin-top:8px">' + segs.map(function (x) { return '<button data-rdf="outcome" data-rdv="' + esc(x[0]) + '" style="all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:14px minmax(0,1fr) 44px 44px;gap:8px;align-items:center;width:100%;padding:6px 0;border-top:1px solid var(--line2);font-size:13px"><span style="width:10px;height:10px;border-radius:3px;background:' + x[2] + '"></span><span>' + esc(x[0]) + '</span><b class="num" style="text-align:right">' + x[1] + '</b><span class="num mut" style="text-align:right;font-size:12px">' + pc(x[1], n) + '</span></button>'; }).join('') + '</div>';
+    return h;
   }
   function rdDays(A, start, end) {
     var days = [], d = new Date(start + 'T12:00:00Z'), e = new Date(end + 'T12:00:00Z'); while (d <= e && days.length < 93) { days.push(d.toISOString().slice(0, 10)); d.setUTCDate(d.getUTCDate() + 1); }
@@ -2491,7 +2485,7 @@ export function mountOpsisQA(ROOT, cfg) {
       return '<td data-rdf="' + (v ? 'cell' : '') + '" data-rdv="' + k + '" title="' + d + ' ' + lab(h3) + 'm: ' + v + ' conversation' + (v === 1 ? '' : 's') + (office[k] ? ' (office hours)' : ' (after hours)') + '" style="height:22px;border-radius:4px;text-align:center;' + (v ? 'cursor:pointer;' : '') + 'background:' + (v ? 'rgba(31,138,91,' + a.toFixed(2) + ')' : '#F6F4EF') + ';color:' + (a > 0.55 ? '#fff' : '#1C2421') + ';' + (office[k] ? 'box-shadow:inset 0 0 0 1.5px #14302A55' : '') + '">' + (v || '') + '</td>'; }).join('') + '</tr>'; });
     return s + '</tbody></table></div>' + (Object.keys(B).length > 1 ? '<p class="mut" style="font-size:11.5px;margin:6px 0 0">Office-hours outline uses ' + esc(short((A[0] || {}).brand || '')) + '’s hours; the after-hours split above uses each brand’s own.</p>' : '');
   }
-  var RD_FL = { outcome: 'Outcome', real: 'Real conversations', lead: 'Service callers', cat: 'Needed', why: 'Not a request because', xf: 'Handed off to', miss: 'Missed', cell: 'Day & hour', day: 'Day', phone: 'Caller', after: '', urgent: 'Urgent', sent: 'Caller mood', incomplete: 'Info incomplete' };
+  var RD_FL = { all: 'All calls', outcome: 'Outcome', real: 'Real conversations', lead: 'Service callers', cat: 'Needed', why: 'Not a request because', xf: 'Handed off to', miss: 'Missed', cell: 'Day & hour', day: 'Day', phone: 'Caller', after: '', urgent: 'Urgent', sent: 'Caller mood', incomplete: 'Info incomplete' };
   function rdList(A) {
     var el = $('rdlist'); if (!el) return;
     var f = RD.f, rows = f ? A.filter(function (c) { return RD_F[f.k](c, f.v); }) : A, show = 25 + RD.more;
