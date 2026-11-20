@@ -1141,12 +1141,12 @@ export function mountOpsisQA(ROOT, cfg) {
     var el = $('fnotes'); if (!el) return;
     var att = notes.filter(function (n) { return !n.no_show; }).length, ns = notes.length - att;
     var md = function (t) { return esc(String(t || '')).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>'); };
-    var head = '<h2 class="ttl">Coaching Notes</h2><p class="sub">Every coaching session Opsis CX has logged for this CSR, newest first · ' +
-      notes.length + ' session' + (notes.length === 1 ? '' : 's') + itip('Coaching sessions logged by an Opsis CX coach for this CSR, across all dates (not limited to the date range above).') + ' · ' +
+    var head = '<h2 class="ttl">Coaching Notes</h2><p class="sub">Every Opsis CX coaching session for this CSR (coach notes and recorded sessions), newest first · ' +
+      notes.length + ' session' + (notes.length === 1 ? '' : 's') + itip('Coaching sessions for this CSR across all dates (not limited to the date range above): notes written by the coach, plus the AI summary of recorded sessions the CSR joined (1:1s and group trainings). A note and a recording on the same day count once.') + ' · ' +
       att + ' attended' + itip('Sessions the CSR showed up for.') + ' · ' + ns + ' no-show' + (ns === 1 ? '' : 's') + itip('Sessions where the note says the CSR did not attend.') + '</p>';
     if (!notes.length) { el.innerHTML = head + '<p class="mut" style="font-size:12.5px;margin:8px 0 0">No coaching sessions logged for this CSR yet.</p>'; return; }
     el.innerHTML = head + notes.map(function (n, i) {
-      var pill = n.no_show ? '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#FCEBDD;color:#A8441A">No-show</span>' : '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#E6F0EA;color:#1F5A41">Attended</span>';
+      var pill = n.kind === 'session' ? '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#EEF0F8;color:#3A4380">Recorded session</span>' : n.no_show ? '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#FCEBDD;color:#A8441A">No-show</span>' : '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#E6F0EA;color:#1F5A41">Attended</span>';
       var body = String(n.body || ''), long = body.length > 320;
       return '<div style="border-top:1px solid var(--line2);padding:12px 0' + (i ? '' : ';margin-top:8px') + '"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b class="num" style="font-size:13px">' + esc(fdate(String(n.date || '').slice(0, 10))) + '</b>' + pill +
         (n.title ? '<b style="font-size:13px">' + esc(n.title) + '</b>' : '') + '<span class="mut" style="font-size:12px;margin-left:auto">' + esc(n.coach || 'Opsis CX coach') + '</span></div>' +
