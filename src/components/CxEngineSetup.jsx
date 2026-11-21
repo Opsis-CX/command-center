@@ -321,6 +321,22 @@ function CallerIds({ d, args, can, reload, onErr, flash }) {
 // Also shown on the supervisor Wallboard (Becky 11/18): RMs/GMs can close and reopen their own lines there without
 // Phone setup. The server (cx_emergency_close / cx_emergency_lift) still decides who may change which line.
 // collapsible (Becky 11/20, Supervisor page): folded behind an arrow since it's rarely used; any closed lines still show.
+// Blocked numbers for the Supervisor page (go-live CX-13: testers couldn't find how to unblock a number).
+export function SpamBlocks({ clientId = null }) {
+  const [msg, setMsg] = useState('')
+  const [err, setErr] = useState('')
+  const args = useCallback(x => (clientId ? { ...x, p_client: clientId } : x), [clientId])
+  const flash = useCallback(t => { setMsg(t); setErr(''); setTimeout(() => setMsg(''), 4000) }, [])
+  if (err === 'Not allowed') return null
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      <BlockedNumbers args={args} flash={flash} onErr={setErr} />
+      {msg && <div style={S.ok}>{msg}</div>}
+      {err && <div style={{ color: 'light-dark(#b91c1c, #e86464)', fontSize: 13 }}>{err}</div>}
+    </div>
+  )
+}
+
 export function StormSwitch({ clientId = null, collapsible = false }) {
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
@@ -434,13 +450,13 @@ function BlockedNumbers({ args, flash, onErr }) {
   }
   async function unblock(id) {
     const { error } = await supabase.rpc('cx_unblock_number', args({ p_id: id }))
-    if (error) onErr(error.message); else load()
+    if (error) onErr(error.message); else { flash('Unblocked. That number can call in again.'); load() }
   }
   const src = { manual: 'Added by hand', auto: 'Auto (too many calls)', report: 'Reported by CSR' }
   return (
     <div style={S.card}>
       <button onClick={() => setShow(v => !v)} style={S.rowBtn}>
-        <span><b style={{ fontSize: 15, color: GT }}>Blocked numbers</b><div style={S.mut}>Spam and robocallers that can’t reach your lines.</div></span>
+        <span><b style={{ fontSize: 15, color: GT }}>Blocked numbers</b><div style={S.mut}>Spam and robocallers that can’t reach your lines. Open to see them; Unblock lets a number call in again.</div></span>
         <span style={S.mut}>{show ? '▴' : '▾'}</span>
       </button>
       {show && (

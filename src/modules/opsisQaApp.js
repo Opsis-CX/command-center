@@ -2117,7 +2117,9 @@ export function mountOpsisQA(ROOT, cfg) {
     prList().then(function (r) { if (tok !== T) return; PR.d = r; if (!PR.brand) PR.brand = r.lock || 'Quality Overhead Door'; drawPractice(); })
       .catch(function (e) { if (tok === T && $('prwrap')) $('prwrap').innerHTML = errBox(e); });
   }
-  function prMine(sid) { var me = PR.d && PR.d.me; return ((PR.d && PR.d.sessions) || []).filter(function (s) { return s.scenario_id === sid && s.user_id === me && s.status === 'scored'; }); }
+  // go-live PRAC-06 (11/20): tries / best and the history follow the "Practice as" brand.
+  function prBrandNow() { return LOCK || PR.brand || 'Quality Overhead Door'; }
+  function prMine(sid) { var me = PR.d && PR.d.me, b = prBrandNow(); return ((PR.d && PR.d.sessions) || []).filter(function (s) { return s.scenario_id === sid && s.user_id === me && s.status === 'scored' && (!s.brand || s.brand === b); }); }
   function prScoreChip(v) { return v == null ? '<span class="mut">—</span>' : '<span class="pill num" style="' + chipScore(Math.round(v)) + '">' + Math.round(v) + '</span>'; }
   function drawPractice() {
     var w = $('prwrap'); if (!w || !PR.d) return; var d = PR.d;
@@ -2142,13 +2144,13 @@ export function mountOpsisQA(ROOT, cfg) {
         '<div style="font-size:12.5px;line-height:1.5;color:#3B4541;flex:1">' + esc(s.goal.length > 190 ? s.goal.slice(0, 187) + '…' : s.goal) + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="mut" style="font-size:12px">' + (mine.length ? mine.length + ' tr' + (mine.length === 1 ? 'y' : 'ies') + ' · best ' + Math.round(best || 0) : 'Not tried yet') + '</span><button class="sel btnd" data-act="prstart" data-id="' + esc(s.id) + '"' + (d.ready && !PR.busy ? '' : ' disabled') + '>☎ Start call</button></div></div>';
     }).join('') + '</div>';
-    var hist = (d.sessions || []).filter(function (x) { return x.status === 'scored' || x.status === 'failed'; });
+    var hist = (d.sessions || []).filter(function (x) { return (x.status === 'scored' || x.status === 'failed') && (LOCK || !x.brand || x.brand === prBrandNow()); });
     var names = {}; (d.scenarios || []).forEach(function (s) { names[s.id] = s.title; });
     var showWho = hist.some(function (x) { return x.user_id !== d.me; });
     var htbl = '<div class="oq-card"><h2 class="ttl">Practice history</h2><p class="sub">' + esc(d.teamLabel || (showWho ? 'Everyone in the pilot' : 'Your practice calls')) + ' · click one to see the debrief.</p>' + (hist.length ? '<div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="font-size:13px"><thead><tr><th>When</th>' + (showWho ? '<th>Who</th>' : '') + '<th>Scenario</th>' + (LOCK ? '' : '<th>Brand</th>') + '<th style="text-align:right">Length</th><th style="text-align:right">Booked</th><th style="text-align:right">Score</th></tr></thead><tbody>' +
       hist.map(function (x) { return '<tr style="cursor:pointer" data-act="prview" data-id="' + esc(x.id) + '"><td>' + fdate(String(x.started_at).slice(0, 10)) + '</td>' + (showWho ? '<td>' + esc(x.user_name || '') + '</td>' : '') + '<td>' + esc(names[x.scenario_id] || '') + '</td>' + (LOCK ? '' : '<td class="mut">' + esc(short(x.brand || '')) + '</td>') + '<td class="num" style="text-align:right">' + (x.duration_secs ? fsecs(x.duration_secs) : '—') + '</td><td style="text-align:right">' + (x.status === 'failed' ? '<span class="mut">too short</span>' : x.booked ? 'Yes' : 'No') + '</td><td style="text-align:right">' + prScoreChip(x.score_pct) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="mut" style="margin-top:8px">No practice calls yet.</p>') + '</div>';
     w.innerHTML = intro + cards + htbl;
-    var bs = $('prbrand'); if (bs) bs.addEventListener('change', function () { PR.brand = bs.value; });
+    var bs = $('prbrand'); if (bs) bs.addEventListener('change', function () { PR.brand = bs.value; drawPractice(); });
   }
   function prLiveHtml() {
     var L = PR.live, sc = L.sc;
