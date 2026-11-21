@@ -247,7 +247,7 @@ function StatusBar({ d, look, since, dayLen, loggedIn, busy, act, accent }) {
     <div style={{ ...S.card, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ ...S.pill, color: look.color, background: look.bg }}><span style={{ ...S.dot, background: look.color }} />{look.label}{st === 'not_ready' && d.status?.reason ? ` · ${d.status.reason}` : ''}</span>
-        {loggedIn && <span style={S.mut}>for {mmss(since)} · logged in since {tme(d.day.started_at)} ({Math.floor(dayLen / 3600)}h {Math.floor((dayLen % 3600) / 60)}m)</span>}
+        {loggedIn && <span style={S.mut}>for {since >= 3600 ? hhmm(since) : mmss(since)} · logged in since {tme(d.day.started_at)} ({Math.floor(dayLen / 3600)}h {Math.floor((dayLen % 3600) / 60)}m)</span>}
         {d.me?.location && <span style={S.mut}>{d.me.brand} · {d.me.location}</span>}
       </div>
       {loggedIn && (
