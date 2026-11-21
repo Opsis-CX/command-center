@@ -42,7 +42,8 @@ function scriptFor(campaign) {
   }
 }
 
-export default function Dialer() {
+// embedded (Becky 11/20): inside the CSR phone, which has its own status bar — one status control, not two.
+export default function Dialer({ embedded = false } = {}) {
   const voice = useVoice()
   const [me, setMe] = useState({ name: '', first: '' })
   useEffect(() => {
@@ -58,13 +59,13 @@ export default function Dialer() {
   if (!voice) return <div className="card">Calling isn't available for your login.</div>
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+      {!embedded && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <div>
           <h1 className="page-title" style={{ marginBottom: 2 }}>Agent workspace</h1>
           <p className="page-sub" style={{ margin: 0 }}>Set yourself Ready — inbound calls ring you first, and the Dialer feeds you outbound contacts in between.</p>
         </div>
         <AgentStatus />
-      </div>
+      </div>}
       {voice.inboundCall
         ? <InboundWork key={voice.inboundCall.id || voice.inboundCall.answeredAt} call={voice.inboundCall} me={me} />
         : <OutboundWork me={me} />}
@@ -380,7 +381,7 @@ function OutboundWork({ me }) {
           <>
             <div style={{ fontSize: 17, fontWeight: 700 }}>{ready ? 'Waiting for your next call…' : "You're not Ready"}</div>
             <div className="page-sub" style={{ margin: '6px 0 14px' }}>
-              {ready ? (msg || 'Looking…') : `Set yourself Ready (top right) to start. ${totalReady} contact${totalReady === 1 ? '' : 's'} ready to call now.`}
+              {ready ? (msg || 'Looking…') : `Set yourself Ready at the top to start. ${totalReady} contact${totalReady === 1 ? '' : 's'} ready to call now.`}
             </div>
             <div style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
               <span style={S.small}>Outbound from</span>

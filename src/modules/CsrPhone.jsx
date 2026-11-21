@@ -112,7 +112,7 @@ export default function CsrPhone({ accent = '#14302A' }) {
 
   // ---------- an answered inbound call: the guided call screen ----------
   if (onInbound && phase === 'idle') {
-    return <div style={S.wrap}><StatusBar {...{ d, look, since, dayLen, loggedIn, busy, act, accent }} /><div style={{ marginTop: 12 }}><Dialer /></div></div>
+    return <div style={S.wrap}><StatusBar {...{ d, look, since, dayLen, loggedIn, busy, act, accent }} /><div style={{ marginTop: 12 }}><Dialer embedded /></div></div>
   }
 
   // ---------- a manual call in progress / wrapping up ----------
@@ -233,7 +233,7 @@ export default function CsrPhone({ accent = '#14302A' }) {
       {loggedIn && (d.queue_campaigns || 0) > 0 && (
         <div style={{ marginTop: 12 }}>
           <div style={{ ...S.h, margin: '4px 2px 8px' }}>Calls from your lists</div>
-          <Dialer />
+          <Dialer embedded />
         </div>
       )}
     </div>
