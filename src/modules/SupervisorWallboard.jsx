@@ -102,7 +102,9 @@ function Leaderboard({ data, failed, tv }) {
   )
 }
 
-export default function SupervisorWallboard({ clientId = null, brands = null, locations = null }) {
+// section (Becky 11/20): 'board' = the wallboard (top metrics, leaderboard, lines, latest calls — what the TV shows);
+// 'csrs' = the CSR table with Not ready / Log out actions, shown on the Supervisor page.
+export default function SupervisorWallboard({ clientId = null, brands = null, locations = null, section = 'board' }) {
   // brand / location picks from the GarageCo portal's top bar (Becky 11/20); empty = everything this login can see
   const pickB = (brands || []).join('|'), pickL = (locations || []).join('|')
   const [range, setRange] = useState('today')
@@ -117,6 +119,8 @@ export default function SupervisorWallboard({ clientId = null, brands = null, lo
   const [leaders, setLeaders] = useState(null)
   const [leadersFailed, setLeadersFailed] = useState(false)
   const [, tick] = useState(0)
+  const [busyId, setBusyId] = useState(null)
+  const [actErr, setActErr] = useState('')
 
   const dates = useMemo(() => {
     const now = new Date()
@@ -180,6 +184,69 @@ export default function SupervisorWallboard({ clientId = null, brands = null, lo
   const shown = TILES.filter(t => tiles.includes(t[0]))
   const groups = [...new Set(shown.map(t => t[2]))]
 
+  async function setAgent(r, state) {
+    if (state === 'offline' && !window.confirm(`Log ${r.full_name} out for the day?`)) return
+    setBusyId(r.id); setActErr('')
+    const { error } = await supabase.rpc('sup_agent_set', { p_profile: r.id, p_state: state, p_client: clientId || null })
+    setBusyId(null)
+    if (error) setActErr(error.message); else load()
+  }
+  const csrCard = (
+      <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 16px 6px', display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ fontWeight: 800 }}>CSRs <span style={S.mut}>· {rows.length}</span></div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select value={range} onChange={e => setRange(e.target.value)} style={S.sel} aria-label="Dates">{RANGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+            {range === 'custom' && (<><input type="date" value={cs} onChange={e => setCs(e.target.value)} style={S.sel} aria-label="Start" /><input type="date" value={ce} onChange={e => setCe(e.target.value)} style={S.sel} aria-label="End" /></>)}
+            <button onClick={exportCsv} style={S.btn}>Export CSV</button>
+          </div>
+        </div>
+        {actErr && <div style={{ padding: '0 16px 8px', color: 'light-dark(#b91c1c, #e86464)', fontSize: 13 }}>{actErr}</div>}
+        <div style={{ overflowX: 'auto' }}>
+          <table style={S.tbl}>
+            <thead><tr>
+              {th('full_name', 'CSR')}{th('state', 'Status')}{th('calls_in', 'In')}{th('calls_out', 'Out')}{th('handled', 'Handled')}
+              {th('intent', 'Intent', 'Wanted service or a new door')}{th('booked', 'Booked')}
+              {th('intent_rate', 'Intent rate')}{th('book_decision', 'Book / decision')}{th('book_all', 'Book / all')}
+              {th('avg_talk', 'Avg talk')}{th('avg_acw', 'Avg ACW', 'After-call work per handled call')}{th('logged_secs', 'Logged in')}<th style={S.th}></th>
+            </tr></thead>
+            <tbody>
+              {rows.length === 0 && <tr><td colSpan={14} style={{ ...S.td, textAlign: 'center', color: 'light-dark(#5F6763, #b3c1c7)' }}>No CSRs in your view yet.</td></tr>}
+              {rows.map(r => {
+                const since = r.since ? Math.floor((Date.now() - new Date(r.since).getTime()) / 1000) : 0
+                // wrap-up over the location's target shows red (Blending → wrap-up time)
+                const wrapOver = r.state === 'wrap' && since > Number(d.wrap_limit || 60)
+                const st = wrapOver ? { label: 'Wrap-up over', color: 'light-dark(#b91c1c, #e86464)', bg: 'light-dark(#fee2e2, #391313)' } : (STATE[r.state] || STATE.offline)
+                const inOnly = (d.inbound_only || []).includes(r.id)
+                return (
+                  <tr key={r.id}>
+                    <td style={{ ...S.td, fontWeight: 700 }}>{r.full_name}<div style={{ fontWeight: 400, fontSize: 11.5, color: '#8a918d' }}>{[r.brand, r.location].filter(Boolean).join(' · ')}</div></td>
+                    <td style={S.td}>
+                      <span style={{ ...S.pill, color: st.color, background: st.bg }}>{st.label}{r.state === 'not_ready' && r.reason ? ` · ${r.reason}` : ''}</span>
+                      {r.state !== 'offline' && <div style={{ fontSize: 11.5, color: 'light-dark(#5F6763, #b3c1c7)', marginTop: 3 }}>{mmss(since)}{r.on_call_src ? ` · ${r.on_call_src}` : ''}</div>}
+                      {inOnly && <div style={{ fontSize: 11, fontWeight: 700, color: 'light-dark(#a16207, #c9821d)', marginTop: 2 }}>Inbound only</div>}
+                    </td>
+                    <td style={S.tdn}>{r.calls_in}</td><td style={S.tdn}>{r.calls_out}</td><td style={S.tdn}>{r.handled}</td>
+                    <td style={S.tdn}>{r.intent}</td><td style={{ ...S.tdn, fontWeight: 800, color: 'light-dark(#15803d, #20c55e)' }}>{r.booked}</td>
+                    <td style={S.tdn}>{pct(r.intent, r.handled)}</td><td style={S.tdn}>{pct(r.booked, r.intent)}</td><td style={S.tdn}>{pct(r.booked, r.handled)}</td>
+                    <td style={S.tdn}>{r.handled ? mmss(r.talk / r.handled) : '—'}</td><td style={S.tdn}>{r.handled ? mmss(r.wrap_secs / r.handled) : '—'}</td>
+                    <td style={S.tdn}>{hm(r.logged_secs)}</td>
+                    <td style={{ ...S.td, whiteSpace: 'nowrap' }}>
+                      {r.state !== 'offline' && r.state !== 'on_call' && (<>
+                        {r.state !== 'not_ready' && <button disabled={busyId === r.id} onClick={() => setAgent(r, 'not_ready')} style={{ ...S.btn, padding: '4px 9px', fontSize: 12 }}>Not ready</button>}{' '}
+                        <button disabled={busyId === r.id} onClick={() => setAgent(r, 'offline')} style={{ ...S.btn, padding: '4px 9px', fontSize: 12 }}>Log out</button>
+                      </>)}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+  )
+  if (section === 'csrs') return csrCard
+
   const body = (
     <div style={{ display: 'grid', gap: 14 }}>
       {/* header */}
@@ -237,46 +304,6 @@ export default function SupervisorWallboard({ clientId = null, brands = null, lo
       ))}
       </div>
       {tiles.includes('leaders') && <Leaderboard data={leaders} failed={leadersFailed} tv={tv} />}
-      </div>
-
-      {/* CSR board */}
-      <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px 6px', fontWeight: 800 }}>CSRs <span style={S.mut}>· {rows.length}</span></div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={S.tbl}>
-            <thead><tr>
-              {th('full_name', 'CSR')}{th('state', 'Status')}{th('calls_in', 'In')}{th('calls_out', 'Out')}{th('handled', 'Handled')}
-              {th('intent', 'Intent', 'Wanted service or a new door')}{th('booked', 'Booked')}
-              {th('intent_rate', 'Intent rate')}{th('book_decision', 'Book / decision')}{th('book_all', 'Book / all')}
-              {th('avg_talk', 'Avg talk')}{th('avg_acw', 'Avg ACW', 'After-call work per handled call')}{th('logged_secs', 'Logged in')}
-            </tr></thead>
-            <tbody>
-              {rows.length === 0 && <tr><td colSpan={13} style={{ ...S.td, textAlign: 'center', color: 'light-dark(#5F6763, #b3c1c7)' }}>No CSRs in your view yet.</td></tr>}
-              {rows.map(r => {
-                const since = r.since ? Math.floor((Date.now() - new Date(r.since).getTime()) / 1000) : 0
-                // wrap-up over the location's target shows red (Blending → wrap-up time)
-                const wrapOver = r.state === 'wrap' && since > Number(d.wrap_limit || 60)
-                const st = wrapOver ? { label: 'Wrap-up over', color: 'light-dark(#b91c1c, #e86464)', bg: 'light-dark(#fee2e2, #391313)' } : (STATE[r.state] || STATE.offline)
-                const inOnly = (d.inbound_only || []).includes(r.id)
-                return (
-                  <tr key={r.id}>
-                    <td style={{ ...S.td, fontWeight: 700 }}>{r.full_name}<div style={{ fontWeight: 400, fontSize: 11.5, color: '#8a918d' }}>{[r.brand, r.location].filter(Boolean).join(' · ')}</div></td>
-                    <td style={S.td}>
-                      <span style={{ ...S.pill, color: st.color, background: st.bg }}>{st.label}{r.state === 'not_ready' && r.reason ? ` · ${r.reason}` : ''}</span>
-                      {r.state !== 'offline' && <div style={{ fontSize: 11.5, color: 'light-dark(#5F6763, #b3c1c7)', marginTop: 3 }}>{mmss(since)}{r.on_call_src ? ` · ${r.on_call_src}` : ''}</div>}
-                      {inOnly && <div style={{ fontSize: 11, fontWeight: 700, color: 'light-dark(#a16207, #c9821d)', marginTop: 2 }}>Inbound only</div>}
-                    </td>
-                    <td style={S.tdn}>{r.calls_in}</td><td style={S.tdn}>{r.calls_out}</td><td style={S.tdn}>{r.handled}</td>
-                    <td style={S.tdn}>{r.intent}</td><td style={{ ...S.tdn, fontWeight: 800, color: 'light-dark(#15803d, #20c55e)' }}>{r.booked}</td>
-                    <td style={S.tdn}>{pct(r.intent, r.handled)}</td><td style={S.tdn}>{pct(r.booked, r.intent)}</td><td style={S.tdn}>{pct(r.booked, r.handled)}</td>
-                    <td style={S.tdn}>{r.handled ? mmss(r.talk / r.handled) : '—'}</td><td style={S.tdn}>{r.handled ? mmss(r.wrap_secs / r.handled) : '—'}</td>
-                    <td style={S.tdn}>{hm(r.logged_secs)}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
