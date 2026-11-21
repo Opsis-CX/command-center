@@ -137,6 +137,18 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         if (error) throw new Error(error.message || 'Could not save the note.')
         return data
       },
+      // Tasks (Becky 11/20): customer follow-ups with an owner and an outcome. cx_task_* RPCs with the user's own session.
+      tasks: csrSelf ? null : (() => {
+        const cid = clientId || me.client
+        const rpc = async (fn, args, msg) => { const { data, error } = await supabase.rpc(fn, args); if (error) throw new Error(error.message || msg); return data }
+        return {
+          list: ({ view, brands, locations, mine }) => rpc('cx_task_list', { p_client: cid, p_view: view || 'open', p_brands: brands && brands.length ? brands : null, p_locations: locations && locations.length ? locations : null, p_mine: !!mine }, 'Could not load tasks.'),
+          set: ({ id, status, outcome, assign, unassign }) => rpc('cx_task_set', { p_id: id, p_status: status || null, p_outcome: outcome || null, p_assign: assign || null, p_unassign: !!unassign }, 'Could not save the task.'),
+          settings: () => rpc('cx_task_settings', { p_client: cid }, 'Could not load task settings.'),
+          ruleSet: ({ brand, location, kind, assignee }) => rpc('cx_task_rule_set', { p_client: cid, p_brand: brand, p_location: location || null, p_kind: kind || null, p_assignee: assignee || null }, 'Could not save.'),
+          dueSet: ({ kind, minutes, business_hours }) => rpc('cx_task_due_set', { p_client: cid, p_kind: kind, p_minutes: minutes, p_business_hours: business_hours }, 'Could not save.'),
+        }
+      })(),
       // Team & access (Becky 11/20): real roles admin / rm / gm / coach / viewer, read and set with the user's own session.
       teamList: csrSelf ? null : async () => {
         const { data, error } = await supabase.rpc('qa_team_list', { p_client: clientId || me.client })

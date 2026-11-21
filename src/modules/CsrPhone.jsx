@@ -226,6 +226,8 @@ export default function CsrPhone({ accent = '#14302A' }) {
           </div>
         </div>
       )}
+      {/* My tasks (Becky 11/20): follow-ups assigned to this CSR (csr_tasks_mine / csr_task_set). "Call" fills the dial pad. */}
+      <MyTasks onCall={(p, n) => { setNum(p || ''); setName(n || ''); window.scrollTo({ top: 0, behavior: 'smooth' }) }} />
       {/* Calls from your lists (2026-11-10): blended outbound — next contact comes in the location's order
           (missed calls, speed to lead, callbacks…), paused while a customer is waiting on your line. */}
       {loggedIn && (d.queue_campaigns || 0) > 0 && (
@@ -262,6 +264,71 @@ function StatusBar({ d, look, since, dayLen, loggedIn, busy, act, accent }) {
   )
 }
 function Stat({ label, value }) { return <div><div style={{ fontSize: 22, fontWeight: 800 }}>{value}</div><div style={{ fontSize: 12, color: 'light-dark(#64748b, #9fb4bb)' }}>{label}</div></div> }
+
+const TASK_KIND = { ai_csr: 'AI CSR message', billing: 'Billing / collections', phone_callback: 'Queue callback', abandoned: 'Hung up waiting', csr_callback: 'Your callback', s2l: 'Speed to lead', manual: 'Task' }
+function MyTasks({ onCall }) {
+  const [d, setD] = useState(null)
+  const [close, setClose] = useState(null) // { id, st }
+  const [out, setOut] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.rpc('csr_tasks_mine')
+    if (error) { setErr(error.message); return }
+    setErr(''); setD(data)
+  }, [])
+  useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t) }, [load])
+  const save = async (id, st, outcome) => {
+    setBusy(true)
+    const { error } = await supabase.rpc('csr_task_set', { p_id: id, p_status: st, p_outcome: outcome || null })
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    setClose(null); setOut(''); load()
+  }
+  const tasks = d?.tasks || []
+  if (!d || (!tasks.length && !err)) return null
+  return (
+    <div style={{ ...S.card, marginTop: 12 }}>
+      <div style={{ ...S.h, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <span>My tasks ({tasks.length})</span>
+        {d.counts?.overdue ? <span style={{ fontSize: 12.5, color: 'light-dark(#9a3412, #f0905a)' }}>{d.counts.overdue} overdue</span> : null}
+      </div>
+      {err && <div style={S.error}>{err}</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {tasks.map(t => {
+          const overdue = t.overdue
+          return (
+            <div key={t.id} style={{ border: '1px solid light-dark(#e2e8f0, #2a3439)', borderRadius: 10, padding: 12, borderColor: overdue ? 'light-dark(#fdba74, #7c3a12)' : undefined }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <div>
+                  <b>{t.name || 'Unknown caller'}</b> {t.phone ? <span style={S.mut}>{fmtPhone(t.phone)}</span> : null}
+                  <div style={S.mut}>{TASK_KIND[t.kind] || t.kind}{t.calls > 1 ? ` · ${t.calls} calls` : ''} · {overdue ? 'overdue' : 'due'} {new Date(t.due).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}{t.urgent ? ' · URGENT' : ''}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  {t.phone && <button style={S.btn} onClick={() => onCall(t.phone, t.name)}>Call</button>}
+                  {t.status === 'open' && <button style={S.btn} disabled={busy} onClick={() => save(t.id, 'in_progress')}>Start</button>}
+                  <button style={S.btn} onClick={() => { setClose({ id: t.id, st: 'done' }); setOut('') }}>Done</button>
+                  <button style={S.btn} onClick={() => { setClose({ id: t.id, st: 'cant_reach' }); setOut('') }}>Can’t reach</button>
+                </div>
+              </div>
+              {t.reason && <div style={{ marginTop: 6, fontWeight: 600, fontSize: 13.5 }}>{t.reason}</div>}
+              {t.summary && <div style={{ ...S.mut, marginTop: 2 }}>{t.summary}</div>}
+              {close?.id === t.id && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  <label style={{ flex: '1 1 220px' }}><span style={{ position: 'absolute', left: -9999 }}>Outcome</span>
+                    <input autoFocus style={{ ...S.input, marginTop: 0, fontSize: 13.5 }} value={out} onChange={e => setOut(e.target.value)} placeholder={close.st === 'done' ? 'What happened? e.g. booked Tue 9–12' : 'How many tries, and how?'} />
+                  </label>
+                  <button style={S.btn} disabled={busy || !out.trim()} onClick={() => save(t.id, close.st, out.trim())}>Save</button>
+                  <button style={S.btn} onClick={() => setClose(null)}>Cancel</button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 const S = {
   wrap: { maxWidth: 1180, margin: '0 auto', padding: '16px 16px 8px' },

@@ -174,7 +174,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (k === 'brandset') k = 'settings';
     return {
       overview: 'M4 5h16v14H4zM4 9h16M9 9v10', reviews: 'M5 3h10l4 4v14H5zM14 3v5h5M8 17v-3M12 17v-6M16 17v-4', coach: 'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8M4 21v-1a6 6 0 0 1 9-5.2M16 15l2 2 4-4', leadtime: 'M4 5h16v15H4zM4 10h16M9 3v4M15 3v4M8 14h3', dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', wallboard: 'M3 4h18v12H3zM8 20h8M12 16v4M7 12V9M11 12V7M15 12v-2', trends: 'M3 17l5-5 4 4 8-8M15 8h5v5', coachclips: 'M4 5h16v11H8l-4 4zM10 8.5v4l3.5-2z', phonesetup: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4', myphone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', aistl: 'M13 2L4 14h7l-1 8 9-12h-7z', wfm: 'M4 20V10M10 20V4M16 20v-7M22 20H2', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
-      cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', receptionist: 'M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zM4 21v-1a8 8 0 0 1 16 0v1M19 9h2M3 9h2', practice: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2', pricetalk: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+      cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', tasks: 'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9', receptionist: 'M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zM4 21v-1a8 8 0 0 1 16 0v1M19 9h2M3 9h2', practice: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2', pricetalk: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
       kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
       scorecards: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8 11h8M8 15h8M8 19h5', reporting: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3', money: 'M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5s-5 1.6-5 3.5 2.2 3.2 5 3.5 5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5', team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
@@ -192,6 +192,7 @@ export function mountOpsisQA(ROOT, cfg) {
     .concat(!OPSIS && (!LOCK || CFG.supervisor) && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])
     .concat(!OPSIS && CFG.supervisor && CFG.coachHistory ? [['coach', 'Coach view']] : [])
     .concat(OPSIS ? [] : [['hub', 'Coaching Hub']]).concat(CFG.mountExt && CFG.supervisor ? [['coachclips', 'Coaching clips']] : [])
+    .concat(!OPSIS && CFG.tasks ? [['tasks', 'Tasks']] : [])
     .concat([['reporting', 'Reporting']])
     .concat(CFG.mountExt ? [['aistl', 'AI Speed to Lead']] : [])
     .concat(CFG.mountExt && CFG.supervisor ? [['wallboard', 'Wallboard'], ['myphone', 'Phone']] : [])
@@ -207,7 +208,7 @@ export function mountOpsisQA(ROOT, cfg) {
   var COACH_ROLE = !CFG.csrSelf && !OPSIS && CFG.portalRole === 'coach';
   // Becky 11/18 (S2L-12): RMs/GMs also see AI Speed to Lead — read-only for their brand (opsis-portal-ops: can_edit is admin only,
   // dialer campaigns hidden for non-staff).
-  var MGR_NAV = ['overview', 'trends', 'coach', 'hub', 'coachclips', 'receptionist', 'aistl', 'wallboard', 'myphone', 'wfm', 'intraday'];
+  var MGR_NAV = ['overview', 'trends', 'coach', 'hub', 'coachclips', 'tasks', 'receptionist', 'aistl', 'wallboard', 'myphone', 'wfm', 'intraday'];
   // reachable by drilling down from the dashboard, but not in the sidebar
   var MGR_OK = MGR_NAV.concat(['brand', 'csr', 'calls', 'hubqs', 'repeat', 'kpi']).concat(TILE_VIEWS);
   function mgrNav() { if (!MGR) return; NAV = [['', NAV[0][1].filter(function (n) { return MGR_NAV.indexOf(n[0]) >= 0; })]]; }
@@ -241,7 +242,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var cur = S.view === 'brand' ? 'brands' : (S.view === 'csr' ? 'csrs' : (S.view === 'repeat' ? 'insights' : (S.view === 'hubqs' ? 'hub' : S.view)));
     var GRP = { phone: 'Performance', brands: 'Performance', csrs: 'Performance', calls: 'Performance', cardcap: 'Performance', pricetalk: 'Performance', money: 'Performance', leadtime: 'Performance',
       reviews: 'Performance', calib: 'Coaching', coach: 'Coaching', hub: 'Coaching', practice: 'Coaching', coachclips: 'Coaching',
-      reporting: 'Tools', receptionist: 'Tools', aistl: 'Tools', wallboard: 'Tools', myphone: 'Tools', wfm: 'Tools', intraday: 'Tools' };
+      reporting: 'Tools', tasks: 'Tools', receptionist: 'Tools', aistl: 'Tools', wallboard: 'Tools', myphone: 'Tools', wfm: 'Tools', intraday: 'Tools' };
     var ORD = { '': 0, Performance: 1, Coaching: 2, Tools: 3 };
     var NAV0 = NAV; if (COACHMODE) NAV = [['', NAV0[0][1].filter(function (n) { return COACH_NAV.indexOf(n[0]) >= 0; })]];
     $('nav').innerHTML = NAV.map(function (sec, si) {
@@ -3092,6 +3093,106 @@ export function mountOpsisQA(ROOT, cfg) {
       .catch(function (e) { TM.busy = false; busyBtn(btn, false); drawTeam(); toast(e.message || 'Couldn’t save. Try again.'); });
   }
 
+
+  // ---------- Tasks (Becky 11/20, scope doc "Product catalog + Task dashboard") ----------
+  // Every customer follow-up the platform creates (AI CSR messages and requests, queue callbacks, callers who hung up
+  // waiting, CSR callbacks), each assigned to a person, closed with a one-line outcome. RPCs: cx_task_* (CFG.tasks).
+  var TK = { view: 'open', d: null, busy: false, close: null, set: null, showSet: false };
+  var TK_KIND = { ai_csr: 'AI CSR message', billing: 'Billing / collections', phone_callback: 'Queue callback', abandoned: 'Hung up waiting', csr_callback: 'CSR callback', s2l: 'Speed to lead', manual: 'Added by hand' };
+  var TK_KINDS = ['phone_callback', 'abandoned', 'ai_csr', 'billing', 'csr_callback', 's2l'];
+  function tkDue(t) {
+    var ms = new Date(t.due).getTime() - Date.now(), m = Math.round(Math.abs(ms) / 60000);
+    var span = m < 60 ? m + 'm' : m < 1440 ? Math.round(m / 60) + 'h' : Math.round(m / 1440) + 'd';
+    if (t.status === 'done' || t.status === 'cant_reach') return '<span class="mut">' + esc(ago(t.closed_at)) + '</span>';
+    if (ms < 0) return '<span class="pill" style="background:#FBE9E4;color:#9A3412">Overdue ' + span + '</span>';
+    return ms < 86400000 ? 'in ' + span : esc(new Date(t.due).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }));
+  }
+  function tkPhone(p) { p = String(p || ''); return p.length === 10 ? '(' + p.slice(0, 3) + ') ' + p.slice(3, 6) + '-' + p.slice(6) : p; }
+  function vTasks(tok) {
+    setMain(crumb([['Tasks']]) + '<div id="tkwrap"><div class="oq-card">' + skel(40, 6) + '</div></div>');
+    tkLoad(tok);
+  }
+  function tkLoad(tok) {
+    var brands = LOCK ? [LOCK] : (S.brands.length ? S.brands : null), locs = S.locs && S.locs.length ? S.locs : null;
+    CFG.tasks.list({ view: TK.view === 'mine' ? 'open' : TK.view, brands: brands, locations: locs, mine: TK.view === 'mine' }).then(function (d) {
+      if (tok != null && tok !== T) return; TK.d = d; drawTasks();
+      if (TK.showSet && d.can_settings && !TK.set) tkLoadSet();
+    }).catch(function (e) { var w = $('tkwrap'); if (w) w.innerHTML = errBox(e); });
+  }
+  function tkLoadSet() { CFG.tasks.settings().then(function (x) { TK.set = x; drawTasks(); }).catch(function (e) { toast(e.message || 'Couldn’t load task settings.'); }); }
+  function drawTasks() {
+    var w = $('tkwrap'), d = TK.d; if (!w || !d) return;
+    var c = d.counts || {}, dis = TK.busy ? ' disabled' : '';
+    var stat = function (l, v, warn) { return '<div style="min-width:110px"><div class="cap" style="font-size:11px">' + l + '</div><div style="font-size:26px;font-weight:600;letter-spacing:-0.02em;' + (warn && v ? 'color:#9A3412' : '') + '">' + fmt(v || 0) + '</div></div>'; };
+    var tabs = [['open', 'Open'], ['overdue', 'Overdue'], ['mine', 'Mine'], ['done', 'Done (14 days)']].map(function (t) { return '<button class="sel' + (TK.view === t[0] ? ' btnd' : '') + '" data-tkview="' + t[0] + '">' + t[1] + '</button>'; }).join('');
+    var people = d.people || [];
+    var rows = (d.tasks || []).map(function (t, i) {
+      var owner = d.can_manage && t.status !== 'done' && t.status !== 'cant_reach'
+        ? '<label class="sr" for="tko-' + i + '">Owner</label><select id="tko-' + i + '" class="oq-field" style="padding:5px 8px;font-size:12.5px;width:auto;max-width:180px" data-tkown="' + i + '"' + dis + '><option value="">Unassigned</option>' + people.map(function (p) { return '<option value="' + p.id + '"' + (p.id === t.assigned_to ? ' selected' : '') + '>' + esc(p.name || '') + '</option>'; }).join('') + '</select>'
+        : esc(t.assignee || 'Unassigned');
+      var open = t.status === 'open' || t.status === 'in_progress';
+      var act = !open ? '<div style="font-size:12.5px"><b>' + (t.status === 'done' ? 'Done' : 'Couldn’t reach') + '</b> · ' + esc(t.outcome || '') + (t.closed_by ? '<div class="mut">' + esc(t.closed_by) + '</div>' : '') + '</div>'
+        : TK.close && TK.close.i === i ? '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><label class="sr" for="tkout">Outcome</label><input id="tkout" class="oq-field" style="padding:6px 8px;font-size:12.5px;min-width:200px" placeholder="' + (TK.close.st === 'done' ? 'What happened? e.g. booked Tue 9–12' : 'Tried how many times?') + '"><button class="sel btnd" data-tkdo="1"' + dis + '>Save</button><button class="sel" data-tkcancel="1">Cancel</button></div>'
+        : '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (t.status === 'open' ? '<button class="sel" data-tkst="in_progress" data-i="' + i + '" style="padding:5px 10px;font-size:12px"' + dis + '>Start</button>' : '<span class="pill" style="background:#E8F0FC;color:#1E4E9C">In progress</span>') +
+          '<button class="sel btnd" data-tkclose="done" data-i="' + i + '" style="padding:5px 10px;font-size:12px">Done</button><button class="sel" data-tkclose="cant_reach" data-i="' + i + '" style="padding:5px 10px;font-size:12px">Can’t reach</button></div>';
+      return '<tr><td style="white-space:nowrap">' + tkDue(t) + (t.urgent ? '<div><span class="pill" style="background:#FBE9E4;color:#9A3412">Urgent</span></div>' : '') + '</td>' +
+        '<td><b style="font-weight:600">' + esc(t.name || 'Unknown caller') + '</b>' + (t.phone ? '<div><a href="tel:+1' + esc(t.phone) + '" style="font-size:12.5px">' + esc(tkPhone(t.phone)) + '</a></div>' : '') + '<div class="mut" style="font-size:12px">' + esc(short(t.brand || '') + (t.location ? ' · ' + t.location : '')) + '</div></td>' +
+        '<td><div style="font-size:12px" class="mut">' + esc(TK_KIND[t.kind] || t.kind) + (t.calls > 1 ? ' · ' + t.calls + ' calls' : '') + '</div><div style="font-weight:500">' + esc(t.reason || '') + '</div>' + (t.summary ? '<div class="mut" style="font-size:12.5px;max-width:420px">' + esc(t.summary) + '</div>' : '') + '</td>' +
+        '<td>' + owner + '</td><td>' + act + '</td></tr>';
+    }).join('');
+    var empty = '<div class="mut" style="padding:28px 4px;text-align:center">' + (TK.view === 'done' ? 'Nothing closed in the last 14 days.' : TK.view === 'mine' ? 'Nothing assigned to you right now.' : 'No open tasks. New ones appear here as calls come in.') + '</div>';
+    w.innerHTML = '<div style="display:flex;flex-direction:column;gap:16px"><div class="oq-card"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start"><div><h2 class="ttl">Tasks</h2><p class="sub">Callbacks and follow-ups from AI CSR, the phone queue and CSR calls. Each has an owner and closes with an outcome.</p></div>' +
+      (d.can_settings ? '<button class="sel" data-tkset="1">' + (TK.showSet ? 'Hide settings' : 'Settings') + '</button>' : '') + '</div>' +
+      '<div style="display:flex;gap:28px;flex-wrap:wrap;margin-top:14px">' + stat('Open', c.open) + stat('Overdue', c.overdue, true) + stat('Unassigned', c.unassigned, true) + stat('Closed today', c.done_today) + '</div></div>' +
+      (TK.showSet ? '<div class="oq-card" id="tkset">' + (TK.set ? tkSetHtml() : skel(30, 4)) + '</div>' : '') +
+      '<div class="oq-card"><div class="row" style="gap:8px;flex-wrap:wrap">' + tabs + '</div>' +
+      ((d.tasks || []).length ? '<div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="font-size:13.5px;text-align:left"><thead><tr><th style="text-align:left">Due</th><th style="text-align:left">Customer</th><th style="text-align:left">Why</th><th style="text-align:left">Owner</th><th style="text-align:left"></th></tr></thead><tbody>' + rows + '</tbody></table></div>' : empty) + '</div></div>';
+    if (TK.close) { var o = $('tkout'); if (o) o.focus(); }
+  }
+  function tkSetHtml() {
+    var X = TK.set, d = TK.d || {}, people = d.people || [];
+    var due = (X.due || []).map(function (r) {
+      return '<tr><td>' + esc(TK_KIND[r.kind]) + '</td><td><label class="sr" for="tkm-' + r.kind + '">Minutes</label><input id="tkm-' + r.kind + '" class="oq-field" type="number" min="1" max="10080" value="' + r.minutes + '" style="width:90px;padding:5px 8px"' + (X.can_due ? '' : ' disabled') + '> min</td>' +
+        '<td><label style="display:flex;gap:6px;align-items:center;font-size:12.5px"><input type="checkbox" id="tkb-' + r.kind + '"' + (r.business_hours ? ' checked' : '') + (X.can_due ? '' : ' disabled') + '> Business hours only</label></td>' +
+        '<td>' + (X.can_due ? '<button class="sel" data-tkdue="' + r.kind + '" style="padding:5px 10px;font-size:12px">Save</button>' : '') + '</td></tr>';
+    }).join('');
+    var rules = (X.rules || []).map(function (r, i) { return '<tr><td>' + esc(short(r.brand)) + '</td><td>' + esc(r.location || 'Every location') + '</td><td>' + esc(r.kind ? TK_KIND[r.kind] : 'Every kind') + '</td><td>' + esc(r.name || '—') + '</td><td><button class="sel" data-tkrdel="' + i + '" style="padding:5px 10px;font-size:12px">Remove</button></td></tr>'; }).join('');
+    var brands = X.brand ? [X.brand] : KNOWN.brands.slice().sort();
+    var locs = {}; people.forEach(function (p) { if (p.location) locs[p.location] = 1; }); (d.tasks || []).forEach(function (t) { if (t.location) locs[t.location] = 1; });
+    var locList = X.location ? [X.location] : Object.keys(locs).sort();
+    return '<h2 class="ttl">Task settings</h2>' +
+      '<div class="cap" style="margin-top:12px">Who gets each kind of task</div><p class="mut" style="font-size:12.5px;margin:4px 0 8px">The most specific match wins: a location and kind beats a location, which beats the whole brand. New tasks with no match stay unassigned.</p>' +
+      (rules ? '<div style="overflow-x:auto"><table class="tbl" style="font-size:13px;text-align:left"><thead><tr><th style="text-align:left">Brand</th><th style="text-align:left">Location</th><th style="text-align:left">Kind</th><th style="text-align:left">Goes to</th><th></th></tr></thead><tbody>' + rules + '</tbody></table></div>' : '<p class="mut" style="font-size:12.5px">No owners set yet.</p>') +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">' +
+      '<div><label class="l" for="tkrb">Brand</label><select id="tkrb" class="oq-field" style="padding:6px 8px;width:auto">' + brands.map(function (b) { return '<option value="' + esc(b) + '">' + esc(b) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label class="l" for="tkrl">Location</label><select id="tkrl" class="oq-field" style="padding:6px 8px;width:auto">' + (X.location ? '' : '<option value="">Every location</option>') + locList.map(function (l) { return '<option value="' + esc(l) + '">' + esc(l) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label class="l" for="tkrk">Kind</label><select id="tkrk" class="oq-field" style="padding:6px 8px;width:auto"><option value="">Every kind</option>' + TK_KINDS.map(function (k) { return '<option value="' + k + '">' + esc(TK_KIND[k]) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label class="l" for="tkrp">Goes to</label><select id="tkrp" class="oq-field" style="padding:6px 8px;width:auto">' + people.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name || '') + '</option>'; }).join('') + '</select></div>' +
+      '<button class="sel btnd" data-tkradd="1">Add</button></div>' +
+      '<div class="cap" style="margin-top:20px">How fast each kind is due</div>' + (X.can_due ? '' : '<p class="mut" style="font-size:12.5px;margin:4px 0">Only account admins can change these.</p>') +
+      '<div style="overflow-x:auto;margin-top:6px"><table class="tbl" style="font-size:13px;text-align:left"><tbody>' + due + '</tbody></table></div>' +
+      '<p class="mut" style="font-size:12px;margin-top:6px">Business hours are Monday–Friday, 8 am–5 pm Central.</p>';
+  }
+  function tkAct(el) {
+    var d = el.dataset, D = TK.d; if (!D) return false;
+    if (d.tkview) { TK.view = d.tkview; TK.close = null; tkLoad(); return true; }
+    if (d.tkset) { TK.showSet = !TK.showSet; drawTasks(); if (TK.showSet && !TK.set) tkLoadSet(); return true; }
+    if (d.tkcancel) { TK.close = null; drawTasks(); return true; }
+    if (d.tkclose) { TK.close = { i: +d.i, st: d.tkclose }; drawTasks(); return true; }
+    var save = function (p, msg) { if (TK.busy) return; TK.busy = true; CFG.tasks.set(p).then(function () { TK.busy = false; TK.close = null; toast(msg); tkLoad(); }).catch(function (e) { TK.busy = false; toast(e.message || 'Couldn’t save.'); drawTasks(); }); };
+    if (d.tkst) { save({ id: D.tasks[+d.i].id, status: d.tkst }, 'Started'); return true; }
+    if (d.tkdo) { var o = $('tkout'), v = o ? o.value.trim() : ''; if (!v) { toast('Add a one-line outcome'); return true; } save({ id: D.tasks[TK.close.i].id, status: TK.close.st, outcome: v }, TK.close.st === 'done' ? 'Task closed' : 'Marked can’t reach'); return true; }
+    var setSave = function (pr, msg) { pr.then(function (x) { TK.set = x; toast(msg); drawTasks(); tkLoad(); }).catch(function (e) { toast(e.message || 'Couldn’t save.'); }); };
+    if (d.tkdue) { var k = d.tkdue, m = $('tkm-' + k), b = $('tkb-' + k); setSave(CFG.tasks.dueSet({ kind: k, minutes: +(m && m.value), business_hours: !!(b && b.checked) }), 'Due time saved'); return true; }
+    if (d.tkradd) { setSave(CFG.tasks.ruleSet({ brand: $('tkrb').value, location: $('tkrl').value || null, kind: $('tkrk').value || null, assignee: $('tkrp').value || null }), 'Owner saved'); return true; }
+    if (d.tkrdel) { var r = TK.set.rules[+d.tkrdel]; setSave(CFG.tasks.ruleSet({ brand: r.brand, location: r.location, kind: r.kind, assignee: null }), 'Owner removed'); return true; }
+    return false;
+  }
+  function tkOwn(el) {
+    var t = TK.d && TK.d.tasks[+el.dataset.tkown]; if (!t) return;
+    TK.busy = true; CFG.tasks.set(el.value ? { id: t.id, assign: el.value } : { id: t.id, unassign: true }).then(function () { TK.busy = false; toast('Owner changed'); tkLoad(); }).catch(function (e) { TK.busy = false; toast(e.message || 'Couldn’t save.'); drawTasks(); });
+  }
+
   // CSR scorecards (the existing Command Center scorecard, mounted inside this shell)
   var EXT = null;
   // Workforce (Erlang C) + AI Speed to Lead (2026-11-09): Command Center pages mounted inside this shell (CFG.mountExt).
@@ -5419,7 +5520,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; if (MGR && MGR_OK.indexOf(S.view) < 0) S.view = 'overview'; if (COACH_ROLE && COACH_NAV.concat(['csr', 'hubqs', 'kpi', 'repeat']).indexOf(S.view) < 0) S.view = 'coach'; renderNav(); renderWho(); writeHash(); trackHist();
-    var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, coach: vCoach, reviews: vReviews, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, coach: vCoach, reviews: vReviews, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, tasks: vTasks, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
   }
@@ -5482,6 +5583,7 @@ export function mountOpsisQA(ROOT, cfg) {
     }
     var ap = t.closest('[data-autoplay]');
     if (ap) { var aid = ap.getAttribute('data-autoplay'); S.fromAsk = !!S.ask.open; S.ask.open = false; S.autoplay = aid; if (P.id === aid && P.info && P.info.url) { S.autoplay = null; AU.play().catch(function () {}); } S.callId = aid; callDrawer(); return; }
+    var tkb = t.closest('[data-tkview],[data-tkset],[data-tkcancel],[data-tkclose],[data-tkst],[data-tkdo],[data-tkdue],[data-tkradd],[data-tkrdel]'); if (tkb && tkAct(tkb)) return;
     var tra = t.closest('[data-trall]'); if (tra) { var tid = tra.getAttribute('data-trall'); TR.open[tid] = !TR.open[tid]; var tc = $('trc'); if (tc && S.cur) { tc.outerHTML = trCard(S.cur); bindTr(); } return; }
     var ppt = t.closest('[data-ppart]'); if (ppt && P.legs) { P.step = null; P.stepEnd = null; vseek(P.legs[+ppt.getAttribute('data-ppart')].offset, true); paintPlayer(); return; }
     if (t.closest('[data-pplay]')) { if (AU.paused) { P.step = null; P.stepEnd = null; if (AU.ended && (!P.legs || (P.li || 0) === P.legs.length - 1)) vseek(0); AU.play().catch(function () {}); } else AU.pause(); return; }
@@ -5766,6 +5868,7 @@ export function mountOpsisQA(ROOT, cfg) {
     else if (t.hasAttribute && t.hasAttribute('data-rpcsr')) { RP.csr = t.value; }
     else if (t.hasAttribute && t.hasAttribute('data-hubqbrand')) { HQ.brand = t.value; HQ.csr = null; HQ.topic = null; S.brands = t.value ? [t.value] : []; render(); }
     else if (t.hasAttribute && t.hasAttribute('data-hubweek')) { HUB.week = t.value; HUB.home = {}; HUB.wins = {}; HUB.roster = null; render(); }
+    else if (t.hasAttribute && t.hasAttribute('data-tkown')) tkOwn(t);
     else if (t.hasAttribute && t.hasAttribute('data-trow') && TM.list) {
       var u = TM.list[+t.getAttribute('data-trow')], rs = $('tr-' + u.id), bs = $('tb-' + u.id), ls = $('tl-' + u.id);
       var role = rs ? rs.value : u.role, brand = role === 'admin' ? null : (bs ? (bs.value || null) : (u.brand || null)), loc = role === 'gm' ? (ls && brand === u.brand ? (ls.value || null) : (brand === u.brand ? u.location : null)) : null;
