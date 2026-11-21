@@ -71,6 +71,8 @@ export function mountOpsisQA(ROOT, cfg) {
   var OPSIS = CFG.clientId === OPSIS_ID;
   if (OPSIS) { CFG.phone = false; CFG.clientName = 'Opsis CX'; }
   var W_BRAND = OPSIS ? 'Campaign' : 'Brand', W_BRANDS = OPSIS ? 'Campaigns' : 'Brands', W_CSR = OPSIS ? 'Agent' : 'CSR', W_CSRS = OPSIS ? 'Agents' : 'CSRs';
+  // Multi-brand coach (Becky 11/20): brands this coach may switch between (CFG.myBrands -> RPC my_portal_brands).
+  var MYBR = [];
   var ROLE = CFG.role || 'manager', LOCK = CFG.brandLock || null, CAN_EDIT = ROLE !== 'viewer', IS_ADMIN = ROLE === 'admin';
   var CLIENT = CFG.clientName || 'GarageCo';
   var LISTENERS = [];
@@ -206,6 +208,7 @@ export function mountOpsisQA(ROOT, cfg) {
   var MGR = !CFG.csrSelf && !OPSIS && (CFG.portalRole === 'rm' || CFG.portalRole === 'gm');
   // Coach logins (portal_role 'coach', Becky 11/20): always in Coach mode, coaching pages only.
   var COACH_ROLE = !CFG.csrSelf && !OPSIS && CFG.portalRole === 'coach';
+  if (COACH_ROLE && CFG.myBrands) CFG.myBrands().then(function (b) { if (b && b.length > 1) { MYBR = b; try { render(); } catch (e) {} } }).catch(function () {});
   // Becky 11/18 (S2L-12): RMs/GMs also see AI Speed to Lead — read-only for their brand (opsis-portal-ops: can_edit is admin only,
   // dialer campaigns hidden for non-staff).
   var MGR_NAV = ['overview', 'trends', 'coach', 'hub', 'coachclips', 'tasks', 'receptionist', 'aistl', 'supervisor', 'wallboard', 'myphone', 'wfm', 'intraday'];
@@ -279,7 +282,8 @@ export function mountOpsisQA(ROOT, cfg) {
       '<button class="sel btnd" type="submit" style="min-height:36px;padding:6px 14px">Ask</button></form>' +
       '<div style="flex:1 1 0"></div>' +
       (/^hub/.test(S.view) ? '' : '<button class="sel" data-pop="export" aria-haspopup="true" title="Download what this page shows">\u2913 Export</button>') +
-      (LOCK ? '<span class="sel" style="cursor:default">' + esc(short(LOCK)) + '</span>' : '<button class="sel" data-pop="brands" aria-haspopup="true">' + esc(bl) + ' ▾</button>') +
+      (LOCK && MYBR.length > 1 ? '<label class="sr" for="mybr">Brand</label><select id="mybr" class="sel" data-mybr="1" title="Switch between your brands" style="cursor:pointer">' + MYBR.map(function (b) { return '<option value="' + esc(b) + '"' + (b === LOCK ? ' selected' : '') + '>' + esc(short(b)) + '</option>'; }).join('') + '</select>'
+        : LOCK ? '<span class="sel" style="cursor:default">' + esc(short(LOCK)) + '</span>' : '<button class="sel" data-pop="brands" aria-haspopup="true">' + esc(bl) + ' ▾</button>') +
       (/^hub/.test(S.view) ? (SELF ? '<span class="sel" style="cursor:default" title="The Coaching Hub runs week by week, Monday to Sunday">' + esc((HUB.roster && HUB.roster.week_label) || 'This week') + '</span>' : '<label class="sr" for="hubwk">Week</label><select id="hubwk" class="sel" data-hubweek="1" title="The Coaching Hub runs week by week, Monday to Sunday. Pick a past week to look back." style="cursor:pointer">' + hubWeeks().map(function (w) { return '<option value="' + w[0] + '"' + (HUB.week === w[0] ? ' selected' : '') + '>' + esc(w[1]) + '</option>'; }).join('') + '</select>') : '<button class="sel" data-pop="range" aria-haspopup="true">' + esc(rangeLabel()) + ' ▾</button>') +
       popHtml() + '</div>' +
       (CFG.staff ? '<div class="banner"><b>Opsis view</b> · You’re seeing ' + esc(CLIENT) + '’s portal as an account admin. Changes you make here are real and are logged.</div>' : '');
@@ -3042,14 +3046,14 @@ export function mountOpsisQA(ROOT, cfg) {
   var ROLES = [['admin', 'Account admin', 'Everything, plus people, QA settings and the knowledge base', ['All brands', 'Change scores and add notes', 'Edit knowledge base + QA settings', 'Invite and remove people']],
     ['rm', 'Regional manager', 'Runs their brand — every page for it', ['One brand or all brands', 'Change scores and add notes', 'Phone setup, wallboard, workforce']],
     ['gm', 'General manager', 'Runs one location', ['One brand and location', 'Change scores and add notes', 'Phone setup and wallboard for the location']],
-    ['coach', 'Coach', 'Coaching pages only', ['One brand or all brands', 'Coach view, Coaching hub, CSRs, calls', 'Change scores and add notes']],
+    ['coach', 'Coach', 'Coaching pages only', ['One or several brands — they switch at the top right', 'Coach view, Coaching hub, CSRs, calls', 'Change scores and add notes']],
     ['viewer', 'Viewer', 'Read-only dashboards and call reviews', ['One brand or all brands', 'Play recordings, ask the AI', 'No changes']]];
   var RNAME = { admin: 'Account admin', rm: 'Regional manager', gm: 'General manager', coach: 'Coach', manager: 'Brand manager (older role)', viewer: 'Viewer', csr: 'CSR' };
   var NEWROLE = { rm: 1, gm: 1, coach: 1 };
   function roleOpts(cur) { return ROLES.concat(cur === 'manager' ? [['manager', RNAME.manager]] : []).map(function (r) { return '<option value="' + r[0] + '"' + (cur === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; }).join(''); }
   function locSel(id, brand, cur, dis, trow) { var L = (TM.locs || {})[brand] || []; return '<select id="' + id + '" class="oq-field" style="padding:6px 10px;font-size:13px;width:auto"' + (trow != null ? ' data-trow="' + trow + '"' : '') + (dis ? ' disabled' : '') + '><option value="">Pick a location</option>' + L.concat(cur && L.indexOf(cur) < 0 ? [cur] : []).map(function (l) { return '<option' + (cur === l ? ' selected' : '') + ' value="' + esc(l) + '">' + esc(l) + '</option>'; }).join('') + '</select>'; }
   // merge the real role / location (qa_team_list) over the edge list, which only knows admin / manager / viewer
-  function teamMerge(people) { return (CFG.teamList ? CFG.teamList().then(function (x) { TM.locs = (x && x.locations) || {}; var m = {}; ((x && x.people) || []).forEach(function (q) { m[q.id] = q; }); return people.map(function (u) { var q = m[u.id]; return q ? Object.assign({}, u, { role: q.role, brand: q.brand, location: q.location }) : u; }); }).catch(function () { return people; }) : Promise.resolve(people)); }
+  function teamMerge(people) { return (CFG.teamList ? CFG.teamList().then(function (x) { TM.locs = (x && x.locations) || {}; var m = {}; ((x && x.people) || []).forEach(function (q) { m[q.id] = q; }); return people.map(function (u) { var q = m[u.id]; return q ? Object.assign({}, u, { role: q.role, brand: q.brand, location: q.location, brands: q.brands || null }) : u; }); }).catch(function () { return people; }) : Promise.resolve(people)); }
   function vTeam(tok) {
     if (!IS_ADMIN) { setMain(crumb([['Team & access']]) + noRights('Team & access')); return; }
     setMain(crumb([['Team & access']]) + '<div id="tmwrap"><div class="oq-card">' + skel(40, 6) + '</div></div>');
@@ -3057,6 +3061,13 @@ export function mountOpsisQA(ROOT, cfg) {
       .catch(function (e) { if (tok === T && $('tmwrap')) $('tmwrap').innerHTML = errBox(e); });
   }
   function brandSel(id, cur, dis) { return '<select id="' + id + '" class="oq-field" style="padding:6px 10px;font-size:13px;width:auto"' + (dis ? ' disabled' : '') + '><option value="">All brands</option>' + KNOWN.brands.slice().sort().map(function (b) { return '<option' + (cur === b ? ' selected' : '') + ' value="' + esc(b) + '">' + esc(short(b)) + '</option>'; }).join('') + (cur && KNOWN.brands.indexOf(cur) < 0 ? '<option selected value="' + esc(cur) + '">' + esc(short(cur)) + '</option>' : '') + '</select>'; }
+  // Coach: tick every brand they coach (Becky 11/20). None ticked = all brands.
+  function coachBoxes(u, i, dis) {
+    var cur = u.brands || (u.brand ? [u.brand] : []), all = KNOWN.brands.slice().sort();
+    cur.forEach(function (b) { if (all.indexOf(b) < 0) all.push(b); });
+    return '<div style="display:flex;flex-direction:column;gap:4px;max-height:170px;overflow:auto;padding-right:6px">' + all.map(function (b) { return '<label style="display:flex;gap:7px;align-items:center;font-size:12.5px;white-space:nowrap"><input type="checkbox" data-tcb="' + i + '" value="' + esc(b) + '"' + (cur.indexOf(b) >= 0 ? ' checked' : '') + (dis ? ' disabled' : '') + '>' + esc(short(b)) + '</label>'; }).join('') +
+      '</div><div class="mut" style="font-size:11.5px;margin-top:4px">' + (cur.length ? cur.length + ' brand' + (cur.length > 1 ? 's' : '') + ' · they switch at the top right' : 'None ticked = all brands') + '</div>';
+  }
   function drawTeam() {
     var w = $('tmwrap'); if (!w || !TM.list) return;
     var I = TM.inv, dis = TM.busy ? ' disabled' : '';
@@ -3072,7 +3083,7 @@ export function mountOpsisQA(ROOT, cfg) {
       var lock = !u.active || me || TM.busy;
       return '<tr><td><div style="display:flex;align-items:center;gap:10px"><span class="av">' + esc(String(u.name || '?').split(' ').map(function (x) { return x[0]; }).join('').slice(0, 2).toUpperCase()) + '</span><div><div style="font-weight:600">' + esc(u.name) + (me ? ' <span class="mut" style="font-weight:400">(you)</span>' : '') + '</div><div class="mut" style="font-size:12px">' + esc(u.email || '') + '</div></div></div></td>' +
         '<td><label class="sr" for="tr-' + u.id + '">Role for ' + esc(u.name) + '</label><select id="tr-' + u.id + '" class="oq-field" style="padding:6px 10px;font-size:13px;width:auto" data-trow="' + i + '"' + (lock ? ' disabled' : '') + '>' + roleOpts(u.role) + '</select></td>' +
-        '<td>' + (u.role === 'admin' ? '<span class="mut" style="font-size:12.5px">All brands</span>' : '<label class="sr" for="tb-' + u.id + '">Brand for ' + esc(u.name) + '</label>' + brandSel('tb-' + u.id, u.brand, lock).replace('<select ', '<select data-trow="' + i + '" ') + (u.role === 'gm' ? '<div style="margin-top:6px"><label class="sr" for="tl-' + u.id + '">Location for ' + esc(u.name) + '</label>' + locSel('tl-' + u.id, u.brand, u.location, lock || !u.brand, i) + '</div>' : '')) + '</td>' +
+        '<td>' + (u.role === 'admin' ? '<span class="mut" style="font-size:12.5px">All brands</span>' : u.role === 'coach' ? coachBoxes(u, i, lock) : '<label class="sr" for="tb-' + u.id + '">Brand for ' + esc(u.name) + '</label>' + brandSel('tb-' + u.id, u.brand, lock).replace('<select ', '<select data-trow="' + i + '" ') + (u.role === 'gm' ? '<div style="margin-top:6px"><label class="sr" for="tl-' + u.id + '">Location for ' + esc(u.name) + '</label>' + locSel('tl-' + u.id, u.brand, u.location, lock || !u.brand, i) + '</div>' : '')) + '</td>' +
         '<td><span class="pill" style="' + st[1] + '">' + st[0] + '</span></td><td class="mut" style="font-size:12.5px">' + (u.last ? ago(u.last) : '—') + '</td>' +
         '<td style="text-align:right;white-space:nowrap">' + (me ? '' : !u.active ? '<button class="sel" data-act="prestore" data-i="' + i + '" style="padding:5px 10px;font-size:12px"' + dis + '>Restore</button>' : TM.del === i ? '<span class="mut" style="font-size:12px;margin-right:6px">Remove access?</span><button class="sel" data-act="pdelyes" data-i="' + i + '" style="padding:5px 10px;font-size:12px;color:#B4461F"' + dis + '>Remove</button> <button class="sel" data-act="pdelno" style="padding:5px 10px;font-size:12px">Keep</button>'
           : (u.invited ? '<button class="sel" data-act="presend" data-i="' + i + '" style="padding:5px 10px;font-size:12px"' + dis + '>Resend invite</button> ' : '') + '<button class="sel" data-act="pdel" data-i="' + i + '" style="padding:5px 10px;font-size:12px">Remove</button>') + '</td></tr>';
@@ -5878,9 +5889,14 @@ export function mountOpsisQA(ROOT, cfg) {
     else if (t.hasAttribute && t.hasAttribute('data-rpteam')) { RP.team = t.value; }
     else if (t.hasAttribute && t.hasAttribute('data-rpcsr')) { RP.csr = t.value; }
     else if (t.hasAttribute && t.hasAttribute('data-hubqbrand')) { HQ.brand = t.value; HQ.csr = null; HQ.topic = null; S.brands = t.value ? [t.value] : []; render(); }
+    else if (t.hasAttribute && t.hasAttribute('data-mybr') && CFG.pickBrand) { var nb = t.value; t.disabled = true; CFG.pickBrand(nb).then(function () { window.location.reload(); }).catch(function (e) { t.disabled = false; t.value = LOCK; toast(e.message || 'Couldn’t switch brands.'); }); }
     else if (t.hasAttribute && t.hasAttribute('data-hubweek')) { HUB.week = t.value; HUB.home = {}; HUB.wins = {}; HUB.roster = null; render(); }
     else if (t.hasAttribute && t.hasAttribute('data-tkown')) tkOwn(t);
     else if (t.hasAttribute && t.hasAttribute('data-tkrf')) { var kk = $('tkrk'), kv = kk ? kk.value : ''; if (t.id === 'tkrb') { TK.rb = t.value; TK.rl = ''; } else TK.rl = t.value; drawTasks(); var k2 = $('tkrk'); if (k2) k2.value = kv; }
+    else if (t.hasAttribute && t.hasAttribute('data-tcb') && TM.list) {
+      var cu = TM.list[+t.getAttribute('data-tcb')], picked = [].slice.call(document.querySelectorAll('input[data-tcb="' + t.getAttribute('data-tcb') + '"]:checked')).map(function (x) { return x.value; });
+      teamWrite({ op: 'update', id: cu.id, role: 'coach', brand: picked.length === 1 ? picked[0] : null, location: null, brands: picked }, cu.name + ' coaches ' + (picked.length ? picked.map(short).join(', ') : 'all brands'));
+    }
     else if (t.hasAttribute && t.hasAttribute('data-trow') && TM.list) {
       var u = TM.list[+t.getAttribute('data-trow')], rs = $('tr-' + u.id), bs = $('tb-' + u.id), ls = $('tl-' + u.id);
       var role = rs ? rs.value : u.role, brand = role === 'admin' ? null : (bs ? (bs.value || null) : (u.brand || null)), loc = role === 'gm' ? (ls && brand === u.brand ? (ls.value || null) : (brand === u.brand ? u.location : null)) : null;

@@ -156,10 +156,20 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         if (error) throw new Error(error.message || 'Could not load the team.')
         return data
       },
-      teamSet: csrSelf ? null : async ({ id, role, brand, location }) => {
-        const { data, error } = await supabase.rpc('qa_team_set', { p_client: clientId || me.client, p_id: id, p_role: role, p_brand: brand || null, p_location: location || null })
+      teamSet: csrSelf ? null : async ({ id, role, brand, location, brands }) => {
+        const { data, error } = await supabase.rpc('qa_team_set', { p_client: clientId || me.client, p_id: id, p_role: role, p_brand: brand || null, p_location: location || null, p_brands: brands && brands.length ? brands : null })
         if (error) throw new Error(error.message || 'Could not change access.')
         return data
+      },
+      // Multi-brand coach (Becky 11/20): the brands this login may switch between, and the switch itself.
+      myBrands: csrSelf ? null : async () => {
+        const { data, error } = await supabase.rpc('my_portal_brands')
+        if (error) return null
+        return data
+      },
+      pickBrand: csrSelf ? null : async (brand) => {
+        const { error } = await supabase.rpc('coach_pick_brand', { p_brand: brand })
+        if (error) throw new Error(error.message || 'Could not switch brands.')
       },
       csrNoteDelete: csrSelf ? null : async (id) => {
         const { error } = await supabase.rpc('qa_csr_note_delete', { p_client: clientId || me.client, p_id: id })
