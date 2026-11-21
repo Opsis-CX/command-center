@@ -31,7 +31,9 @@ function chime() {
 }
 const soundPref = () => { try { return localStorage.getItem('cx_alert_sound') !== 'off' } catch { return true } }
 
-export default function CxLiveBoard({ clientId = null }) {
+// controls=false (Becky 11/20): the wallboard is informational only — no Listen / Whisper / Barge or TV-link controls.
+// Those live on the Supervisor page.
+export default function CxLiveBoard({ clientId = null, controls = true }) {
   const voice = useVoice()
   const [m, setM] = useState(null)
   const [calls, setCalls] = useState([])
@@ -96,7 +98,7 @@ export default function CxLiveBoard({ clientId = null }) {
     return (
       <div style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
         <div style={S.mut}>Live call monitoring, service level and TV links show here once a line or campaign is on the Advanced engine (Phone setup → Advanced engine).</div>
-        <button style={S.btn} onClick={() => { setShowLinks(true); loadLinks() }}>TV links</button>
+        {controls && <button style={S.btn} onClick={() => { setShowLinks(true); loadLinks() }}>TV links</button>}
       </div>
     )
   }
@@ -119,9 +121,9 @@ export default function CxLiveBoard({ clientId = null }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
           <div style={{ fontWeight: 800, color: GT }}>Live calls · today</div>
           <div style={{ display: 'flex', gap: 6 }}>
-            {mon && <button style={{ ...S.btn, background: 'light-dark(#fee2e2, #391313)', borderColor: 'light-dark(#fecaca, #642b2b)' }} onClick={leave}>Leave the call</button>}
+            {controls && mon && <button style={{ ...S.btn, background: 'light-dark(#fee2e2, #391313)', borderColor: 'light-dark(#fecaca, #642b2b)' }} onClick={leave}>Leave the call</button>}
             <button style={S.btn} title="Play a chime when a new alert appears (a caller waiting too long, a CSR asking for help)" onClick={() => { const v = !sound; setSound(v); try { localStorage.setItem('cx_alert_sound', v ? 'on' : 'off') } catch { /* ignore */ } if (v) chime() }}>{sound ? '🔔 Alert sound on' : '🔕 Alert sound off'}</button>
-            <button style={S.btn} onClick={() => { setShowLinks(s => !s); loadLinks() }}>{showLinks ? 'Hide TV links' : 'TV links'}</button>
+            {controls && <button style={S.btn} onClick={() => { setShowLinks(s => !s); loadLinks() }}>{showLinks ? 'Hide TV links' : 'TV links'}</button>}
           </div>
         </div>
         <div style={S.tiles}>
@@ -140,7 +142,7 @@ export default function CxLiveBoard({ clientId = null }) {
           {alerts.map((a, n) => (
             <div key={n} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 0', borderBottom: '1px solid light-dark(#fde7d0, #64482b)', fontSize: 13.5 }}>
               <span>{a.level === 'high' ? '🔴' : a.level === 'medium' ? '🟠' : '🟡'} {a.text}</span>
-              {a.interaction_id && calls.some(c => c.id === a.interaction_id && c.status !== 'queued') && (
+              {controls && a.interaction_id && calls.some(c => c.id === a.interaction_id && c.status !== 'queued') && (
                 <span style={{ display: 'flex', gap: 4 }}>
                   <button style={S.small} onClick={() => join(a.interaction_id, 'listen', a.text)}>Listen</button>
                   <button style={S.small} onClick={() => join(a.interaction_id, 'whisper', a.text)}>Whisper</button>
@@ -169,7 +171,7 @@ export default function CxLiveBoard({ clientId = null }) {
                       <td style={S.td}>{c.sentiment == null ? '—' : c.sentiment >= 0.3 ? '🙂' : c.sentiment <= -0.3 ? '🙁' : '😐'}</td>
                       <td style={{ ...S.td, maxWidth: 280, color: 'light-dark(#475569, #b3c1c7)' }}>{c.alert ? <span style={{ color: 'light-dark(#9a3412, #e56f48)' }}>⚠ {c.alert}</span> : c.last_line || '—'}</td>
                       <td style={{ ...S.td, whiteSpace: 'nowrap' }}>
-                        {c.status !== 'queued' && (['listen', 'whisper', 'barge']).map(md => (
+                        {controls && c.status !== 'queued' && (['listen', 'whisper', 'barge']).map(md => (
                           <button key={md} onClick={() => join(c.id, md, c.customer)} style={{ ...S.small, marginRight: 4, ...(on && mon.mode === md ? { background: G, color: '#fff', borderColor: G } : {}) }}>
                             {md === 'listen' ? 'Listen' : md === 'whisper' ? 'Whisper' : 'Barge'}
                           </button>
@@ -182,11 +184,11 @@ export default function CxLiveBoard({ clientId = null }) {
               </tbody>
             </table>
           </div>
-          <div style={{ ...S.mut, marginTop: 6 }}>Listen: you hear the call, nobody hears you. Whisper: only the CSR hears you. Barge: everyone hears you. Stop leaves the call. Every join is logged.</div>
+          {controls && <div style={{ ...S.mut, marginTop: 6 }}>Listen: you hear the call, nobody hears you. Whisper: only the CSR hears you. Barge: everyone hears you. Stop leaves the call. Every join is logged.</div>}
         </div>
       )}
 
-      {showLinks && (
+      {controls && showLinks && (
         <div style={S.card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <div style={{ fontWeight: 800, color: GT }}>TV wallboard links</div>

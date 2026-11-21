@@ -25,6 +25,7 @@ import Workforce, { portalWfmData } from './Workforce'
 import AiSpeedToLead, { portalS2lData } from './AiSpeedToLead'
 // Supervisor tools (2026-11-10): Wallboard + the phone for RMs, GMs, admins and Opsis staff.
 import { MemoryRouter } from 'react-router-dom'
+import SupervisorDashboard from './SupervisorDashboard'
 import SupervisorWallboard from './SupervisorWallboard'
 // Phone setup (2026-11-10): clients build their own inbound lines + outbound campaigns
 import PhoneSetup from './PhoneSetup'
@@ -205,7 +206,8 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         const scoped = (b) => invoke(clientId ? { ...b, client_id: clientId } : b)
         root.render(
           <div style={PORTAL_THEME}>
-            {kind === 'wallboard' ? <SupervisorWallboard clientId={clientId} brands={pick.brands} locations={pick.locations} />
+            {kind === 'supervisor' ? <SupervisorDashboard clientId={clientId} />
+              : kind === 'wallboard' ? <SupervisorWallboard clientId={clientId} brands={pick.brands} locations={pick.locations} />
               : kind === 'phonesetup' ? <PhoneSetup clientId={clientId} />
               : kind === 'trends' ? <CxTrends clientId={clientId} />
               : kind === 'coachclips' ? <CoachingDesk />

@@ -215,7 +215,7 @@ export default function SupervisorWallboard({ clientId = null, brands = null, lo
       )}
 
       {/* Advanced engine: live calls, monitoring, service level, TV links (2026-11-13) */}
-      {!tv && <CxLiveBoard clientId={clientId} />}
+      {!tv && <CxLiveBoard clientId={clientId} controls={false} />}
 
       {/* widgets (left) + leaderboard (right) */}
       <style>{'@media (max-width: 1000px){.wb-split{grid-template-columns:minmax(0,1fr) !important}}'}</style>
