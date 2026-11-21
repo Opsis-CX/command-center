@@ -1006,9 +1006,13 @@ export function mountOpsisQA(ROOT, cfg) {
   // Rubric changes (Becky 11/20) shown in gray, so a score move can be read against the scoring change, not just the CSRs:
   // 11-step Universal CSR Call Flow live 9/27 (migration garageco_11_step_rubric_and_hold_timing), Rob's 5-step talk path 10/20.
   var PROGRAM_MARKS = [['2026-09-27', '11-step rubric', 'rubric'], ['2026-10-20', '5-step call flow', 'rubric'], ['2026-10-27', 'Training starts', 'program']];
+  // 4 / 6 / 12-week toggle (Becky 11/20), remembered per browser
+  var WKN = (function () { try { var v = +localStorage.getItem('oq_weeks'); return [4, 6, 12].indexOf(v) >= 0 ? v : 12; } catch (e) { return 12; } })();
+  var WKF = null;
   function focusWeekly(f) {
+    WKF = f;
     var T1 = 'QA Score and Booking Rate, Week by Week';
-    var w = (f.weekly || []).filter(function (x) { return x.calls >= 10; });
+    var w = (f.weekly || []).filter(function (x) { return x.calls >= 10; }).slice(-WKN);
     if (w.length < 2) { $('fweek').innerHTML = '<h2 class="ttl">' + T1 + '</h2><p class="mut">Not enough weeks yet.</p>'; return; }
     var n = w.length, rates = w.map(function (x) { return x.decided ? x.booked / x.decided * 100 : null; });
     var all = w.map(function (x) { return +x.avg; }).concat(rates.filter(function (v) { return v != null; }));
@@ -1028,9 +1032,9 @@ export function mountOpsisQA(ROOT, cfg) {
       return '<line x1="' + x + '" x2="' + x + '" y1="' + tp + '" y2="' + Hd + '" stroke="' + col + '" stroke-width="1.5" stroke-dasharray="3 3"/><text x="' + (+x + 5) + '" y="' + ly + '" font-size="11" font-weight="700" fill="' + col + '"><title>' + (m[2] === 'rubric' ? 'QA scoring switched to the ' + m[1] + ' on this date. Scores before and after aren’t scored the same way.' : m[1]) + '</title>' + m[1] + ' · ' + fdate(dt) + '</text>'; }).join('');
     var last = w[n - 1], lr = rates[n - 1];
     var endl = '<text x="' + (+px(n - 1) - 8) + '" y="' + (+py(last.avg) - 9) + '" text-anchor="end" font-size="12" font-weight="700" fill="#14302A">' + (+last.avg).toFixed(1) + '</text>' + (lr != null ? '<text x="' + (+px(n - 1) - 8) + '" y="' + (+py(lr) + 16) + '" text-anchor="end" font-size="12" font-weight="700" fill="#E0662A">' + Math.round(lr) + '%</text>' : '');
-    $('fweek').innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">' + T1 + '</h2><p class="sub">Last 12 weeks</p></div><div class="mut" style="font-size:12px;display:flex;gap:14px"><span style="color:#14302A">● QA score</span><span style="color:#E0662A">- - booking rate %</span></div></div>' +
+    $('fweek').innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h2 class="ttl">' + T1 + '</h2><div class="row" role="group" aria-label="Weeks shown" style="gap:6px;margin-top:6px">' + [4, 6, 12].map(function (k) { return '<button class="sel' + (k === WKN ? ' btnd' : '') + '" data-wkn="' + k + '" aria-pressed="' + (k === WKN) + '" style="padding:4px 10px;font-size:12px">' + k + ' weeks</button>'; }).join('') + '</div></div><div class="mut" style="font-size:12px;display:flex;gap:14px"><span style="color:#14302A">● QA score</span><span style="color:#E0662A">- - booking rate %</span></div></div>' +
       '<svg viewBox="0 0 ' + Wd + ' ' + (Hd + 8) + '" style="width:100%;height:auto;margin-top:12px;overflow:visible" role="img" aria-label="Weekly QA score and booking rate">' + shade + grid + marks + '<path d="' + rl + '" fill="none" stroke="#E0662A" stroke-width="2" stroke-dasharray="5 4"/><path d="' + line + '" fill="none" stroke="#14302A" stroke-width="2.4"/>' + dots + endl + '</svg>' +
-      '<div style="display:flex;margin-top:4px;padding-left:4.4%">' + w.map(function (x, i) { return '<div style="flex:1;text-align:center;font-size:10px;color:#5F6763">' + (i % 2 === 0 ? 'Wk of ' + fdate(x.w) : '') + '</div>'; }).join('') + '</div>';
+      '<div style="display:flex;margin-top:4px;padding-left:4.4%">' + w.map(function (x, i) { return '<div style="flex:1;text-align:center;font-size:10px;color:#5F6763">' + (n <= 6 || i % 2 === 0 ? 'Wk of ' + fdate(x.w) : '') + '</div>'; }).join('') + '</div>';
   }
 
   // Locations (Becky 10/29): group CSRs by their roster location (Richmond, Chesapeake, ...).
@@ -5589,6 +5593,7 @@ export function mountOpsisQA(ROOT, cfg) {
     }
     var ap = t.closest('[data-autoplay]');
     if (ap) { var aid = ap.getAttribute('data-autoplay'); S.fromAsk = !!S.ask.open; S.ask.open = false; S.autoplay = aid; if (P.id === aid && P.info && P.info.url) { S.autoplay = null; AU.play().catch(function () {}); } S.callId = aid; callDrawer(); return; }
+    var wkb = t.closest('[data-wkn]'); if (wkb && WKF) { WKN = +wkb.getAttribute('data-wkn'); try { localStorage.setItem('oq_weeks', String(WKN)); } catch (x) {} focusWeekly(WKF); return; }
     var tkb = t.closest('[data-tkview],[data-tkset],[data-tkcancel],[data-tkclose],[data-tkst],[data-tkdo],[data-tkdue],[data-tkradd],[data-tkrdel]'); if (tkb && tkAct(tkb)) return;
     var tra = t.closest('[data-trall]'); if (tra) { var tid = tra.getAttribute('data-trall'); TR.open[tid] = !TR.open[tid]; var tc = $('trc'); if (tc && S.cur) { tc.outerHTML = trCard(S.cur); bindTr(); } return; }
     var ppt = t.closest('[data-ppart]'); if (ppt && P.legs) { P.step = null; P.stepEnd = null; vseek(P.legs[+ppt.getAttribute('data-ppart')].offset, true); paintPlayer(); return; }
