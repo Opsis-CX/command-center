@@ -323,7 +323,7 @@ export default function SupervisorWallboard({ clientId = null, brands = null, lo
             <table style={S.tbl}><tbody>{d.recent.slice(0, 12).map((c, i) => (
               <tr key={i}>
                 <td style={{ ...S.td, whiteSpace: 'nowrap', color: 'light-dark(#5F6763, #b3c1c7)' }}>{tme(c.at)}</td>
-                <td style={S.td}>{c.dir === 'in' ? '↘' : '↗'} {c.csr}<div style={{ fontSize: 11.5, color: '#8a918d' }}>{c.src} · …{c.last4}</div></td>
+                <td style={S.td}><span style={{ fontSize: 11, fontWeight: 700, color: 'light-dark(#5F6763, #b3c1c7)', marginRight: 6 }}>{c.dir === 'in' ? 'IN' : 'OUT'}</span>{c.csr}<div style={{ fontSize: 11.5, color: '#8a918d' }}>{c.src} · …{c.last4}</div></td>
                 <td style={S.td}><span style={{ ...S.pill, fontSize: 11.5, color: c.group === 'sales' ? '#15803d' : c.group === 'service' ? '#0e7490' : '#64748b', background: 'light-dark(#f5f5f4, #1b2327)' }}>{c.label || 'No disposition'}</span></td>
                 <td style={{ ...S.tdn, color: 'light-dark(#5F6763, #b3c1c7)' }}>{mmss(c.talk)}</td>
               </tr>
