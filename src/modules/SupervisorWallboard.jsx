@@ -103,7 +103,8 @@ function Leaderboard({ data, failed, tv }) {
 }
 
 // section (Becky 11/20): 'board' = the wallboard (top metrics, leaderboard, lines, latest calls — what the TV shows);
-// 'csrs' = the CSR table with Not ready / Log out actions, shown on the Supervisor page.
+// 'supervisor' = the CSR table with Not ready / Log out actions, plus phone lines + latest calls, on the Supervisor page
+// (Becky 11/20: the wallboard is just stats and calls in queue).
 export default function SupervisorWallboard({ clientId = null, brands = null, locations = null, section = 'board' }) {
   // brand / location picks from the GarageCo portal's top bar (Becky 11/20); empty = everything this login can see
   const pickB = (brands || []).join('|'), pickL = (locations || []).join('|')
@@ -245,7 +246,34 @@ export default function SupervisorWallboard({ clientId = null, brands = null, lo
         </div>
       </div>
   )
-  if (section === 'csrs') return csrCard
+  const activity = (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+        <div style={S.card}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Phone lines</div>
+          {(d.lines || []).length === 0 ? <p style={S.mut}>No lines in your view.</p> : (
+            <table style={S.tbl}><thead><tr><th style={S.th}>Line</th><th style={S.th}>Calls</th><th style={S.th}>Answered</th><th style={S.th}>Missed</th></tr></thead>
+              <tbody>{d.lines.map((l, i) => (
+                <tr key={i}><td style={S.td}>{l.name}{!l.live && <div style={{ fontSize: 11.5, color: 'light-dark(#b45309, #e07524)' }}>No number connected (test)</div>}</td>
+                  <td style={S.tdn}>{l.calls}</td><td style={S.tdn}>{l.answered}</td><td style={{ ...S.tdn, color: l.missed ? 'light-dark(#b91c1c, #e86464)' : undefined, fontWeight: l.missed ? 800 : 400 }}>{l.missed}</td></tr>
+              ))}</tbody></table>
+          )}
+        </div>
+        <div style={S.card}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Latest calls</div>
+          {(d.recent || []).length === 0 ? <p style={S.mut}>No calls in this range.</p> : (
+            <table style={S.tbl}><tbody>{d.recent.slice(0, 12).map((c, i) => (
+              <tr key={i}>
+                <td style={{ ...S.td, whiteSpace: 'nowrap', color: 'light-dark(#5F6763, #b3c1c7)' }}>{tme(c.at)}</td>
+                <td style={S.td}><span style={{ fontSize: 11, fontWeight: 700, color: 'light-dark(#5F6763, #b3c1c7)', marginRight: 6 }}>{c.dir === 'in' ? 'IN' : 'OUT'}</span>{c.csr}<div style={{ fontSize: 11.5, color: '#8a918d' }}>{c.src} · …{c.last4}</div></td>
+                <td style={S.td}><span style={{ ...S.pill, fontSize: 11.5, color: c.group === 'sales' ? '#15803d' : c.group === 'service' ? '#0e7490' : '#64748b', background: 'light-dark(#f5f5f4, #1b2327)' }}>{c.label || 'No disposition'}</span></td>
+                <td style={{ ...S.tdn, color: 'light-dark(#5F6763, #b3c1c7)' }}>{mmss(c.talk)}</td>
+              </tr>
+            ))}</tbody></table>
+          )}
+        </div>
+      </div>
+  )
+  if (section === 'supervisor') return <div style={{ display: 'grid', gap: 14 }}>{csrCard}{activity}</div>
 
   const body = (
     <div style={{ display: 'grid', gap: 14 }}>
@@ -306,31 +334,6 @@ export default function SupervisorWallboard({ clientId = null, brands = null, lo
       {tiles.includes('leaders') && <Leaderboard data={leaders} failed={leadersFailed} tv={tv} />}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
-        <div style={S.card}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Phone lines</div>
-          {(d.lines || []).length === 0 ? <p style={S.mut}>No lines in your view.</p> : (
-            <table style={S.tbl}><thead><tr><th style={S.th}>Line</th><th style={S.th}>Calls</th><th style={S.th}>Answered</th><th style={S.th}>Missed</th></tr></thead>
-              <tbody>{d.lines.map((l, i) => (
-                <tr key={i}><td style={S.td}>{l.name}{!l.live && <div style={{ fontSize: 11.5, color: 'light-dark(#b45309, #e07524)' }}>No number connected (test)</div>}</td>
-                  <td style={S.tdn}>{l.calls}</td><td style={S.tdn}>{l.answered}</td><td style={{ ...S.tdn, color: l.missed ? 'light-dark(#b91c1c, #e86464)' : undefined, fontWeight: l.missed ? 800 : 400 }}>{l.missed}</td></tr>
-              ))}</tbody></table>
-          )}
-        </div>
-        <div style={S.card}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Latest calls</div>
-          {(d.recent || []).length === 0 ? <p style={S.mut}>No calls in this range.</p> : (
-            <table style={S.tbl}><tbody>{d.recent.slice(0, 12).map((c, i) => (
-              <tr key={i}>
-                <td style={{ ...S.td, whiteSpace: 'nowrap', color: 'light-dark(#5F6763, #b3c1c7)' }}>{tme(c.at)}</td>
-                <td style={S.td}><span style={{ fontSize: 11, fontWeight: 700, color: 'light-dark(#5F6763, #b3c1c7)', marginRight: 6 }}>{c.dir === 'in' ? 'IN' : 'OUT'}</span>{c.csr}<div style={{ fontSize: 11.5, color: '#8a918d' }}>{c.src} · …{c.last4}</div></td>
-                <td style={S.td}><span style={{ ...S.pill, fontSize: 11.5, color: c.group === 'sales' ? '#15803d' : c.group === 'service' ? '#0e7490' : '#64748b', background: 'light-dark(#f5f5f4, #1b2327)' }}>{c.label || 'No disposition'}</span></td>
-                <td style={{ ...S.tdn, color: 'light-dark(#5F6763, #b3c1c7)' }}>{mmss(c.talk)}</td>
-              </tr>
-            ))}</tbody></table>
-          )}
-        </div>
-      </div>
     </div>
   )
 

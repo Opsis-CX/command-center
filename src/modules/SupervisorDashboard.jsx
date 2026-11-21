@@ -14,7 +14,7 @@ export default function SupervisorDashboard({ clientId = null, brands = null, lo
     <div style={{ display: 'grid', gap: 14 }}>
       <StormSwitch clientId={clientId} collapsible />
       <CxLiveBoard clientId={clientId} controls />
-      <SupervisorWallboard clientId={clientId} brands={brands} locations={locations} section="csrs" />
+      <SupervisorWallboard clientId={clientId} brands={brands} locations={locations} section="supervisor" />
     </div>
   )
 }
