@@ -320,20 +320,22 @@ function CallerIds({ d, args, can, reload, onErr, flash }) {
 // ---------- storm / emergency closure (works on every line, Standard or Advanced) ----------
 // Also shown on the supervisor Wallboard (Becky 11/18): RMs/GMs can close and reopen their own lines there without
 // Phone setup. The server (cx_emergency_close / cx_emergency_lift) still decides who may change which line.
-export function StormSwitch({ clientId = null }) {
+// collapsible (Becky 11/20, Supervisor page): folded behind an arrow since it's rarely used; any closed lines still show.
+export function StormSwitch({ clientId = null, collapsible = false }) {
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const args = useCallback(x => (clientId ? { ...x, p_client: clientId } : x), [clientId])
   const flash = useCallback(t => { setMsg(t); setErr(''); setTimeout(() => setMsg(''), 4000) }, [])
   return (
     <div style={{ display: 'grid', gap: 6 }}>
-      <EmergencySwitch args={args} can={true} flash={flash} onErr={setErr} />
+      <EmergencySwitch args={args} can={true} flash={flash} onErr={setErr} collapsible={collapsible} />
       {msg && <div style={S.ok}>{msg}</div>}
       {err && <div style={{ color: 'light-dark(#b91c1c, #e86464)', fontSize: 13 }}>{err === 'Not allowed' ? 'Your login can’t close these lines.' : err}</div>}
     </div>
   )
 }
-function EmergencySwitch({ args, can, flash, onErr }) {
+function EmergencySwitch({ args, can, flash, onErr, collapsible = false }) {
+  const [open, setOpen] = useState(!collapsible)
   const [rows, setRows] = useState(null)
   const [pick, setPick] = useState({})
   const [msg, setMsg] = useState('')
@@ -364,10 +366,21 @@ function EmergencySwitch({ args, can, flash, onErr }) {
   return (
     <div style={{ ...S.card, borderColor: closed.length ? 'light-dark(#fca5a5, #642b2b)' : 'light-dark(#e2e8f0, #2a3439)', background: closed.length ? 'light-dark(#fef2f2, #391313)' : 'light-dark(#fff, #161d21)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        {collapsible ? (
+          <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', color: 'inherit', font: 'inherit', minHeight: 32 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true" style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}><path d="M9 6l6 6-6 6" /></svg>
+            <span>
+              <span style={{ ...S.h3, display: 'block' }}>Storm / emergency closure{closed.length ? ` · ${closed.length} closed` : ''}</span>
+              {open && <span style={{ ...S.mut, display: 'block' }}>Close lines right now (weather, power outage, emergency). Callers hear your message, then go to the AI CSR or voicemail.</span>}
+            </span>
+          </button>
+        ) : (
         <div>
           <div style={S.h3}>Storm / emergency closure</div>
           <div style={S.mut}>Close lines right now (weather, power outage, emergency). Callers hear your message, then go to the AI CSR or voicemail. Works on every line.</div>
         </div>
+        )}
         {closed.length > 0 && can && <button disabled={busy} style={{ ...S.primary, background: '#15803d' }} onClick={() => lift(closed.map(r => r.line_id))}>Reopen all ({closed.length})</button>}
       </div>
       {closed.length > 0 && (
@@ -380,7 +393,7 @@ function EmergencySwitch({ args, can, flash, onErr }) {
           ))}
         </div>
       )}
-      {can && (
+      {can && open && (
         <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             <button style={S.small} onClick={() => setPick(Object.fromEntries(rows.filter(r => !r.closure).map(r => [r.line_id, true])))}>Select all open</button>
