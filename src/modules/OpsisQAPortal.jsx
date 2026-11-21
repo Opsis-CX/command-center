@@ -79,7 +79,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       const uid = data?.user?.id
       if (!uid) { if (active) setSup(false); return }
       supabase.from('profiles').select('role, portal_role, portal_location').eq('id', uid).maybeSingle()
-        .then(({ data: p }) => { if (active) setProle(String(p?.portal_role || '').toLowerCase() || null); if (active) setPloc(p?.portal_location || null); if (active) setProfRole(String(p?.role || '').toLowerCase() || null); if (active) setSup(!!p && (String(p.role || '').toLowerCase() !== 'client' || ['admin', 'manager', 'rm', 'gm'].includes(p.portal_role || 'manager'))) })
+        .then(({ data: p }) => { if (active) setProle(String(p?.portal_role || '').toLowerCase() || null); if (active) setPloc(p?.portal_location || null); if (active) setProfRole(String(p?.role || '').toLowerCase() || null); if (active) setSup(!!p && (String(p.role || '').toLowerCase() !== 'client' || ['admin', 'manager', 'rm', 'gm', 'coach'].includes(p.portal_role || 'manager'))) })
         .catch(() => { if (active) setSup(false) })
     })
     return () => { active = false }
@@ -135,6 +135,17 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       csrNoteSave: csrSelf ? null : async ({ agent, id, date, attended, ask_rate, title, note }) => {
         const { data, error } = await supabase.rpc('qa_csr_note_save', { p_client: clientId || me.client, p_agent: agent, p_id: id, p_date: date, p_attended: attended, p_ask_rate: ask_rate, p_title: title, p_note: note })
         if (error) throw new Error(error.message || 'Could not save the note.')
+        return data
+      },
+      // Team & access (Becky 11/20): real roles admin / rm / gm / coach / viewer, read and set with the user's own session.
+      teamList: csrSelf ? null : async () => {
+        const { data, error } = await supabase.rpc('qa_team_list', { p_client: clientId || me.client })
+        if (error) throw new Error(error.message || 'Could not load the team.')
+        return data
+      },
+      teamSet: csrSelf ? null : async ({ id, role, brand, location }) => {
+        const { data, error } = await supabase.rpc('qa_team_set', { p_client: clientId || me.client, p_id: id, p_role: role, p_brand: brand || null, p_location: location || null })
+        if (error) throw new Error(error.message || 'Could not change access.')
         return data
       },
       csrNoteDelete: csrSelf ? null : async (id) => {

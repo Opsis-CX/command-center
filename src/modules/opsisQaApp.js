@@ -203,6 +203,8 @@ export function mountOpsisQA(ROOT, cfg) {
   // RM / GM logins (Becky 11/16): Overview (their dashboard), Call trends, Coaching Hub, Coaching clips, AI CSR.
   // Becky 11/18 (go-live test plan): plus the supervisor tools Wallboard, Phone, Workforce and Intraday. Still no settings or Calibration.
   var MGR = !CFG.csrSelf && !OPSIS && (CFG.portalRole === 'rm' || CFG.portalRole === 'gm');
+  // Coach logins (portal_role 'coach', Becky 11/20): always in Coach mode, coaching pages only.
+  var COACH_ROLE = !CFG.csrSelf && !OPSIS && CFG.portalRole === 'coach';
   // Becky 11/18 (S2L-12): RMs/GMs also see AI Speed to Lead — read-only for their brand (opsis-portal-ops: can_edit is admin only,
   // dialer campaigns hidden for non-staff).
   var MGR_NAV = ['overview', 'trends', 'coach', 'hub', 'coachclips', 'receptionist', 'aistl', 'wallboard', 'myphone', 'wfm', 'intraday'];
@@ -212,7 +214,7 @@ export function mountOpsisQA(ROOT, cfg) {
   mgrNav();
   function renderWho() {
     var w = $('oqwho'); if (!w) return;
-    w.innerHTML = '<b>' + esc(CFG.userName || '') + '</b><span>' + esc(MGR ? (CFG.portalRole === 'rm' ? 'Regional manager' : 'General manager') : (RNAME[ROLE] || '')) + (LOCK ? ' · ' + esc(short(LOCK)) : '') + '</span>' +
+    w.innerHTML = '<b>' + esc(CFG.userName || '') + '</b><span>' + esc(MGR ? (CFG.portalRole === 'rm' ? 'Regional manager' : 'General manager') : COACH_ROLE ? 'Coach' : ROLE === 'manager' ? 'Brand manager' : (RNAME[ROLE] || '')) + (LOCK ? ' · ' + esc(short(LOCK)) : '') + '</span>' +
       (CFG.staff ? '<a href="' + esc(location.pathname + (OPSIS ? '' : '?portal=opsiscx')) + '" style="color:#9CC6B2;font-size:12px;font-weight:600;text-decoration:none">Switch to ' + (OPSIS ? 'GarageCo' : 'Opsis CX') + ' →</a>' : '') + '<span style="display:flex;gap:14px;flex-wrap:wrap">' + (CFG.onClassic ? '<button data-act="classic">Classic view</button>' : '') + (CFG.onSignOut ? '<button data-act="signout">Sign out</button>' : '') + '</span>';
       // "View as" Admin / RM / GM / CSR (2026-11-10): your own +rm / +gm / +csr logins
     if (CFG.accounts && CFG.accounts.length > 1 && CFG.onSwitchAccount) {
@@ -233,8 +235,8 @@ export function mountOpsisQA(ROOT, cfg) {
   // Opsis coaches (staff who aren't app admins); anyone with the Coach view can switch it on or off (remembered per browser).
   var COACH_NAV = ['coach', 'hub', 'csrs', 'calls', 'cardcap', 'calib', 'practice', 'coachclips'];
   function COACH_OK() { return !OPSIS && !CFG.csrSelf && !!CFG.coachHistory && !!CFG.supervisor; }
-  var COACHMODE = (function () { if (!COACH_OK()) return false; try { var v = localStorage.getItem('oq_coachmode'); if (v === '1' || v === '0') return v === '1'; } catch (e) {} return !!CFG.coachDefault; })();
-  function setCoachMode(on) { COACHMODE = !!on; try { localStorage.setItem('oq_coachmode', on ? '1' : '0'); } catch (e) {} if (on) go('coach'); else { renderNav(); renderWho(); } toast(on ? 'Coach mode on: just the coaching pages.' : 'Coach mode off: full menu.'); }
+  var COACHMODE = (function () { if (COACH_ROLE) return true; if (!COACH_OK()) return false; try { var v = localStorage.getItem('oq_coachmode'); if (v === '1' || v === '0') return v === '1'; } catch (e) {} return !!CFG.coachDefault; })();
+  function setCoachMode(on) { if (COACH_ROLE && !on) return; COACHMODE = !!on; try { localStorage.setItem('oq_coachmode', on ? '1' : '0'); } catch (e) {} if (on) go('coach'); else { renderNav(); renderWho(); } toast(on ? 'Coach mode on: just the coaching pages.' : 'Coach mode off: full menu.'); }
   function renderNav() {
     var cur = S.view === 'brand' ? 'brands' : (S.view === 'csr' ? 'csrs' : (S.view === 'repeat' ? 'insights' : (S.view === 'hubqs' ? 'hub' : S.view)));
     var GRP = { phone: 'Performance', brands: 'Performance', csrs: 'Performance', calls: 'Performance', cardcap: 'Performance', pricetalk: 'Performance', money: 'Performance', leadtime: 'Performance',
@@ -253,7 +255,7 @@ export function mountOpsisQA(ROOT, cfg) {
       }).join('');
     }).join('');
     NAV = NAV0;
-    if (COACH_OK() && !(CFG.accounts && CFG.accounts.length > 1 && CFG.onSwitchAccount)) {
+    if (COACH_OK() && !COACH_ROLE && !(CFG.accounts && CFG.accounts.length > 1 && CFG.onSwitchAccount)) {
       var tg = document.createElement('button'); tg.setAttribute('data-coachmode', COACHMODE ? '0' : '1');
       tg.style.cssText = 'margin-top:10px;font-size:12px;opacity:.85;justify-content:center';
       tg.textContent = COACHMODE ? 'Show the full menu' : 'Coach mode';
@@ -3030,12 +3032,23 @@ export function mountOpsisQA(ROOT, cfg) {
 
   // Team & access
   var TM = { list: null, inv: null, del: null, busy: false };
-  var ROLES = [['admin', 'Account admin', 'Everything, plus people, QA settings and the knowledge base', ['All brands', 'Change scores and add notes', 'Edit knowledge base + QA settings', 'Invite and remove people']], ['manager', 'Brand manager', 'Coach their brand — notes and score changes', ['One brand or all brands', 'Change scores and add notes', 'Ask the AI, play recordings']], ['viewer', 'Viewer', 'Read-only dashboards and call reviews', ['One brand or all brands', 'Play recordings, ask the AI', 'No changes']]];
-  var RNAME = { admin: 'Account admin', manager: 'Brand manager', viewer: 'Viewer', csr: 'CSR' };
+  // 11/20 Becky: the real portal roles. RM / GM / Coach are set through qa_team_set (CFG.teamSet); "Brand manager" is the older role,
+  // kept only on the people who still have it until an admin picks a new one.
+  var ROLES = [['admin', 'Account admin', 'Everything, plus people, QA settings and the knowledge base', ['All brands', 'Change scores and add notes', 'Edit knowledge base + QA settings', 'Invite and remove people']],
+    ['rm', 'Regional manager', 'Runs their brand — every page for it', ['One brand or all brands', 'Change scores and add notes', 'Phone setup, wallboard, workforce']],
+    ['gm', 'General manager', 'Runs one location', ['One brand and location', 'Change scores and add notes', 'Phone setup and wallboard for the location']],
+    ['coach', 'Coach', 'Coaching pages only', ['One brand or all brands', 'Coach view, Coaching hub, CSRs, calls', 'Change scores and add notes']],
+    ['viewer', 'Viewer', 'Read-only dashboards and call reviews', ['One brand or all brands', 'Play recordings, ask the AI', 'No changes']]];
+  var RNAME = { admin: 'Account admin', rm: 'Regional manager', gm: 'General manager', coach: 'Coach', manager: 'Brand manager (older role)', viewer: 'Viewer', csr: 'CSR' };
+  var NEWROLE = { rm: 1, gm: 1, coach: 1 };
+  function roleOpts(cur) { return ROLES.concat(cur === 'manager' ? [['manager', RNAME.manager]] : []).map(function (r) { return '<option value="' + r[0] + '"' + (cur === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; }).join(''); }
+  function locSel(id, brand, cur, dis, trow) { var L = (TM.locs || {})[brand] || []; return '<select id="' + id + '" class="oq-field" style="padding:6px 10px;font-size:13px;width:auto"' + (trow != null ? ' data-trow="' + trow + '"' : '') + (dis ? ' disabled' : '') + '><option value="">Pick a location</option>' + L.concat(cur && L.indexOf(cur) < 0 ? [cur] : []).map(function (l) { return '<option' + (cur === l ? ' selected' : '') + ' value="' + esc(l) + '">' + esc(l) + '</option>'; }).join('') + '</select>'; }
+  // merge the real role / location (qa_team_list) over the edge list, which only knows admin / manager / viewer
+  function teamMerge(people) { return (CFG.teamList ? CFG.teamList().then(function (x) { TM.locs = (x && x.locations) || {}; var m = {}; ((x && x.people) || []).forEach(function (q) { m[q.id] = q; }); return people.map(function (u) { var q = m[u.id]; return q ? Object.assign({}, u, { role: q.role, brand: q.brand, location: q.location }) : u; }); }).catch(function () { return people; }) : Promise.resolve(people)); }
   function vTeam(tok) {
     if (!IS_ADMIN) { setMain(crumb([['Team & access']]) + noRights('Team & access')); return; }
     setMain(crumb([['Team & access']]) + '<div id="tmwrap"><div class="oq-card">' + skel(40, 6) + '</div></div>');
-    Promise.all([api({ action: 'team' }), KNOWN.brands.length ? null : loadReport().then(noteKnown).catch(function () {})]).then(function (r) { if (tok !== T) return; TM.list = r[0].people || []; drawTeam(); })
+    Promise.all([api({ action: 'team' }).then(function (x) { return teamMerge(x.people || []); }), KNOWN.brands.length ? null : loadReport().then(noteKnown).catch(function () {})]).then(function (r) { if (tok !== T) return; TM.list = r[0] || []; drawTeam(); })
       .catch(function (e) { if (tok === T && $('tmwrap')) $('tmwrap').innerHTML = errBox(e); });
   }
   function brandSel(id, cur, dis) { return '<select id="' + id + '" class="oq-field" style="padding:6px 10px;font-size:13px;width:auto"' + (dis ? ' disabled' : '') + '><option value="">All brands</option>' + KNOWN.brands.slice().sort().map(function (b) { return '<option' + (cur === b ? ' selected' : '') + ' value="' + esc(b) + '">' + esc(short(b)) + '</option>'; }).join('') + (cur && KNOWN.brands.indexOf(cur) < 0 ? '<option selected value="' + esc(cur) + '">' + esc(short(cur)) + '</option>' : '') + '</select>'; }
@@ -3043,8 +3056,9 @@ export function mountOpsisQA(ROOT, cfg) {
     var w = $('tmwrap'); if (!w || !TM.list) return;
     var I = TM.inv, dis = TM.busy ? ' disabled' : '';
     var form = I ? '<div style="margin-top:14px;padding:18px;border:1px solid var(--line);border-radius:14px;background:#FAF8F4"><div style="font-weight:600;font-size:15px">Invite someone</div><div class="mut" style="font-size:12.5px;margin-top:3px">We’ll create their login and open an email from you with their sign-in link, ready to send from your own mailbox. They only ever see ' + esc(CLIENT) + ' call quality.</div>' +
-      '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:14px"><div><label class="l" for="ivn">Full name</label><input id="ivn" class="oq-field" placeholder="e.g. Jordan Smith" value="' + esc(I.name) + '"></div><div><label class="l" for="ive">Email</label><input id="ive" class="oq-field" type="email" placeholder="name@company.com" value="' + esc(I.email) + '"></div><div><label class="l" for="ivr">Role</label><select id="ivr" class="oq-field" data-invrole="1">' + ROLES.map(function (r) { return '<option value="' + r[0] + '"' + (I.role === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') + '</select></div>' +
-      (I.role !== 'admin' ? '<div><label class="l" for="ivb">Brand</label>' + brandSel('ivb', I.brand, false).replace('style="padding:6px 10px;font-size:13px;width:auto"', '') + '</div>' : '') + '</div>' +
+      '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:14px"><div><label class="l" for="ivn">Full name</label><input id="ivn" class="oq-field" placeholder="e.g. Jordan Smith" value="' + esc(I.name) + '"></div><div><label class="l" for="ive">Email</label><input id="ive" class="oq-field" type="email" placeholder="name@company.com" value="' + esc(I.email) + '"></div><div><label class="l" for="ivr">Role</label><select id="ivr" class="oq-field" data-invrole="1">' + roleOpts(I.role) + '</select></div>' +
+      (I.role !== 'admin' ? '<div><label class="l" for="ivb">Brand</label>' + brandSel('ivb', I.brand, false).replace('<select ', '<select data-invrole="1" ').replace('style="padding:6px 10px;font-size:13px;width:auto"', '') + '</div>' : '') +
+      (I.role === 'gm' ? '<div><label class="l" for="ivl">Location</label>' + locSel('ivl', I.brand, I.location, !I.brand).replace('style="padding:6px 10px;font-size:13px;width:auto"', '') + '</div>' : '') + '</div>' +
       '<div style="display:flex;gap:8px;margin-top:16px"><button class="sel btnd" data-act="invsend"' + dis + '>' + (TM.busy ? 'Creating…' : 'Create invite') + '</button><button class="sel" data-act="invcancel">Cancel</button></div></div>' : '';
     var mailBox = TM.mail ? inviteBox(TM.mail) : '';
     var rows = TM.list.map(function (u, i) {
@@ -3052,8 +3066,8 @@ export function mountOpsisQA(ROOT, cfg) {
       var st = !u.active ? ['Removed', 'background:#F3F1EC;color:#56605B'] : u.invited ? ['Invited', 'background:#FFF4DE;color:#8A5A00'] : ['Active', 'background:#E6F0EA;color:#1F5A41'];
       var lock = !u.active || me || TM.busy;
       return '<tr><td><div style="display:flex;align-items:center;gap:10px"><span class="av">' + esc(String(u.name || '?').split(' ').map(function (x) { return x[0]; }).join('').slice(0, 2).toUpperCase()) + '</span><div><div style="font-weight:600">' + esc(u.name) + (me ? ' <span class="mut" style="font-weight:400">(you)</span>' : '') + '</div><div class="mut" style="font-size:12px">' + esc(u.email || '') + '</div></div></div></td>' +
-        '<td><label class="sr" for="tr-' + u.id + '">Role for ' + esc(u.name) + '</label><select id="tr-' + u.id + '" class="oq-field" style="padding:6px 10px;font-size:13px;width:auto" data-trow="' + i + '"' + (lock ? ' disabled' : '') + '>' + ROLES.map(function (r) { return '<option value="' + r[0] + '"' + (u.role === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') + '</select></td>' +
-        '<td>' + (u.role === 'admin' ? '<span class="mut" style="font-size:12.5px">All brands</span>' : '<label class="sr" for="tb-' + u.id + '">Brand for ' + esc(u.name) + '</label>' + brandSel('tb-' + u.id, u.brand, lock).replace('<select ', '<select data-trow="' + i + '" ')) + '</td>' +
+        '<td><label class="sr" for="tr-' + u.id + '">Role for ' + esc(u.name) + '</label><select id="tr-' + u.id + '" class="oq-field" style="padding:6px 10px;font-size:13px;width:auto" data-trow="' + i + '"' + (lock ? ' disabled' : '') + '>' + roleOpts(u.role) + '</select></td>' +
+        '<td>' + (u.role === 'admin' ? '<span class="mut" style="font-size:12.5px">All brands</span>' : '<label class="sr" for="tb-' + u.id + '">Brand for ' + esc(u.name) + '</label>' + brandSel('tb-' + u.id, u.brand, lock).replace('<select ', '<select data-trow="' + i + '" ') + (u.role === 'gm' ? '<div style="margin-top:6px"><label class="sr" for="tl-' + u.id + '">Location for ' + esc(u.name) + '</label>' + locSel('tl-' + u.id, u.brand, u.location, lock || !u.brand, i) + '</div>' : '')) + '</td>' +
         '<td><span class="pill" style="' + st[1] + '">' + st[0] + '</span></td><td class="mut" style="font-size:12.5px">' + (u.last ? ago(u.last) : '—') + '</td>' +
         '<td style="text-align:right;white-space:nowrap">' + (me ? '' : !u.active ? '<button class="sel" data-act="prestore" data-i="' + i + '" style="padding:5px 10px;font-size:12px"' + dis + '>Restore</button>' : TM.del === i ? '<span class="mut" style="font-size:12px;margin-right:6px">Remove access?</span><button class="sel" data-act="pdelyes" data-i="' + i + '" style="padding:5px 10px;font-size:12px;color:#B4461F"' + dis + '>Remove</button> <button class="sel" data-act="pdelno" style="padding:5px 10px;font-size:12px">Keep</button>'
           : (u.invited ? '<button class="sel" data-act="presend" data-i="' + i + '" style="padding:5px 10px;font-size:12px"' + dis + '>Resend invite</button> ' : '') + '<button class="sel" data-act="pdel" data-i="' + i + '" style="padding:5px 10px;font-size:12px">Remove</button>') + '</td></tr>';
@@ -3070,10 +3084,11 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div class="row" style="gap:8px;margin-top:12px"><a class="sel btnd" href="' + esc(owa) + '" target="_blank" rel="noopener" style="text-decoration:none">Open draft in Outlook</a><a class="sel" href="' + esc(mt) + '" style="text-decoration:none">Open in my email app</a><button class="sel" data-act="mailcopy">Copy email text</button></div>' +
       '<pre style="white-space:pre-wrap;font-family:inherit;font-size:12.5px;line-height:1.5;background:#fff;border:1px solid var(--line2);border-radius:10px;padding:10px 12px;margin-top:12px"><b>Subject:</b> ' + esc(M.subject) + '\n\n' + esc(M.body) + '</pre></div>';
   }
-  function keepInv() { if (!TM.inv) return; var n = $('ivn'), e = $('ive'), b = $('ivb'); if (n) TM.inv.name = n.value; if (e) TM.inv.email = e.value; if (b) TM.inv.brand = b.value; }
+  function keepInv() { if (!TM.inv) return; var n = $('ivn'), e = $('ive'), b = $('ivb'), r = $('ivr'), l = $('ivl'); if (n) TM.inv.name = n.value; if (e) TM.inv.email = e.value; if (r) TM.inv.role = r.value; if (b) { if (b.value !== TM.inv.brand) TM.inv.location = ''; TM.inv.brand = b.value; } if (l) TM.inv.location = l.value; }
   function teamWrite(body, done, btn) {
     if (TM.busy) return; TM.busy = true; busyBtn(btn, true);
-    api(Object.assign({ action: 'team' }, body)).then(function (r) { TM.busy = false; TM.list = r.people || []; TM.del = null; if (body.op === 'invite') TM.inv = null; drawTeam(); toast(done); })
+    var call = body.op === 'update' && CFG.teamSet ? CFG.teamSet(body).then(function () { return api({ action: 'team' }); }) : api(Object.assign({ action: 'team' }, body));
+    call.then(function (r) { return teamMerge(r.people || []); }).then(function (pl) { TM.busy = false; TM.list = pl; TM.del = null; if (body.op === 'invite') TM.inv = null; drawTeam(); toast(done); })
       .catch(function (e) { TM.busy = false; busyBtn(btn, false); drawTeam(); toast(e.message || 'Couldn’t save. Try again.'); });
   }
 
@@ -5403,7 +5418,7 @@ export function mountOpsisQA(ROOT, cfg) {
     prCheckAccess();
     if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
-    T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; if (MGR && MGR_OK.indexOf(S.view) < 0) S.view = 'overview'; renderNav(); renderWho(); writeHash(); trackHist();
+    T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; if (MGR && MGR_OK.indexOf(S.view) < 0) S.view = 'overview'; if (COACH_ROLE && COACH_NAV.concat(['csr', 'hubqs', 'kpi', 'repeat']).indexOf(S.view) < 0) S.view = 'coach'; renderNav(); renderWho(); writeHash(); trackHist();
     var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, coach: vCoach, reviews: vReviews, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
@@ -5583,12 +5598,19 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'cereqok' || a === 'cereqno') { ceDecide(d.r, a === 'cereqok', el); }
       else if (a === 'reqok' || a === 'reqno') { decideReq(d.r, a === 'reqok', el); }
       else if (a === 'restore') { var rk = d.k, st = ((S.cur && S.cur.steps) || []).filter(function (x) { return x.key === rk; })[0]; if (st) { el.disabled = true; saveAdjust(rk, st.ai_answer, null).then(function () { toast('Change undone'); }).catch(function (e2) { el.disabled = false; toast(e2.message || 'Couldn’t restore.'); }); } }
-      else if (a === 'invite') { TM.inv = { name: '', email: '', role: 'manager', brand: '' }; drawTeam(); }
+      else if (a === 'invite') { TM.inv = { name: '', email: '', role: 'rm', brand: '', location: '' }; drawTeam(); }
       else if (a === 'invcancel') { TM.inv = null; drawTeam(); }
       else if (a === 'invsend') { keepInv(); var I = TM.inv, nm = I.name.trim(), em = I.email.trim();
         if (!nm) { toast('Add their full name'); return; } if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { toast('Add a valid email'); return; }
+        if (I.role === 'gm' && (!I.brand || !I.location)) { toast('A GM needs a brand and a location'); return; }
+        if (NEWROLE[I.role] && !CFG.teamSet) { toast('Couldn’t set that role here. Try again later.'); return; }
         if (TM.busy) return; TM.busy = true; busyBtn(el, true);
-        api({ action: 'teaminvite', op: 'invite', name: nm, email: em, role: I.role, brand: I.role === 'admin' ? null : (I.brand || null) }).then(function (r) { TM.mail = r.mail; TM.inv = null; return api({ action: 'team' }); }).then(function (r2) { TM.busy = false; TM.list = r2.people || TM.list; drawTeam(); toast('Login created · send the invite from your mailbox'); })
+        // the invite itself starts as view-only; the real role (RM / GM / Coach) is set right after through qa_team_set
+        var ib = I.role === 'admin' ? null : (I.brand || null), irole = I.role, iloc = I.location || null;
+        api({ action: 'teaminvite', op: 'invite', name: nm, email: em, role: NEWROLE[irole] ? 'viewer' : irole, brand: ib }).then(function (r) { TM.mail = r.mail; TM.inv = null; return api({ action: 'team' }); })
+          .then(function (r2) { var nu = (r2.people || []).filter(function (u) { return String(u.email || '').toLowerCase() === em.toLowerCase(); })[0];
+            return NEWROLE[irole] && nu ? CFG.teamSet({ id: nu.id, role: irole, brand: ib, location: iloc }).then(function () { return r2; }) : r2; })
+          .then(function (r2) { return teamMerge(r2.people || []); }).then(function (pl) { TM.busy = false; TM.list = pl.length ? pl : TM.list; drawTeam(); toast('Login created · send the invite from your mailbox'); })
           .catch(function (e2) { TM.busy = false; busyBtn(el, false); drawTeam(); toast(e2.message || 'Couldn’t create the invite.'); }); }
       else if (a === 'mailclose') { TM.mail = null; drawTeam(); }
       else if (a === 'mailcopy') { var MM = TM.mail; if (MM && navigator.clipboard) navigator.clipboard.writeText('Subject: ' + MM.subject + '\n\n' + MM.body).then(function () { toast('Copied'); }, function () { toast('Couldn’t copy. Select the text instead.'); }); }
@@ -5733,7 +5755,7 @@ export function mountOpsisQA(ROOT, cfg) {
   });
   on(document, 'change', function (e) {
     var t = e.target;
-    if (t.hasAttribute && t.hasAttribute('data-invrole') && TM.inv) { keepInv(); TM.inv.role = t.value; drawTeam(); }
+    if (t.hasAttribute && t.hasAttribute('data-invrole') && TM.inv) { keepInv(); drawTeam(); }
     else if (t.hasAttribute && t.hasAttribute('data-rpscope')) { RP.scope = t.getAttribute('data-rpscope'); drawReporting(); }
     else if (t.hasAttribute && t.hasAttribute('data-rpagent')) { RP.agent = t.value; }
     else if (t.hasAttribute && t.hasAttribute('data-rptypes')) { RP.allTypes = t.checked; }
@@ -5745,9 +5767,11 @@ export function mountOpsisQA(ROOT, cfg) {
     else if (t.hasAttribute && t.hasAttribute('data-hubqbrand')) { HQ.brand = t.value; HQ.csr = null; HQ.topic = null; S.brands = t.value ? [t.value] : []; render(); }
     else if (t.hasAttribute && t.hasAttribute('data-hubweek')) { HUB.week = t.value; HUB.home = {}; HUB.wins = {}; HUB.roster = null; render(); }
     else if (t.hasAttribute && t.hasAttribute('data-trow') && TM.list) {
-      var u = TM.list[+t.getAttribute('data-trow')], rs = $('tr-' + u.id), bs = $('tb-' + u.id);
-      var role = rs ? rs.value : u.role, brand = role === 'admin' ? null : (bs ? (bs.value || null) : (u.brand || null));
-      teamWrite({ op: 'update', id: u.id, role: role, brand: brand }, u.name + ' is now ' + RNAME[role] + (role === 'admin' ? '' : ' · ' + (brand ? short(brand) : 'all brands')));
+      var u = TM.list[+t.getAttribute('data-trow')], rs = $('tr-' + u.id), bs = $('tb-' + u.id), ls = $('tl-' + u.id);
+      var role = rs ? rs.value : u.role, brand = role === 'admin' ? null : (bs ? (bs.value || null) : (u.brand || null)), loc = role === 'gm' ? (ls && brand === u.brand ? (ls.value || null) : (brand === u.brand ? u.location : null)) : null;
+      // a GM needs a location: show the picker first, save once one is chosen
+      if (role === 'gm' && (!brand || !loc)) { u.role = 'gm'; u.brand = brand; u.location = null; drawTeam(); toast(brand ? 'Pick ' + u.name + '’s location' : 'Pick a brand, then a location'); return; }
+      teamWrite({ op: 'update', id: u.id, role: role, brand: brand, location: loc }, u.name + ' is now ' + RNAME[role] + (role === 'admin' ? '' : ' · ' + (brand ? short(brand) : 'all brands')) + (loc ? ' · ' + loc : ''));
     }
   });
   on(document, 'keydown', function (e) {
