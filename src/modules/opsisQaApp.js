@@ -3107,6 +3107,9 @@ export function mountOpsisQA(ROOT, cfg) {
     if (ms < 0) return '<span class="pill" style="background:#FBE9E4;color:#9A3412">Overdue ' + span + '</span>';
     return ms < 86400000 ? 'in ' + span : esc(new Date(t.due).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }));
   }
+  // Becky 11/20: a rule or task for Apple only offers Apple's people (and that location's, when one is picked)
+  function tkBrandOk(p, brand) { return !brand || (p.brand && String(p.brand).toLowerCase().split(' ')[0] === String(brand).toLowerCase().split(' ')[0]); }
+  function tkPeople(brand, loc) { return ((TK.d && TK.d.people) || []).filter(function (p) { return p.brand && tkBrandOk(p, brand) && (!loc || !p.location || String(p.location).toLowerCase() === String(loc).toLowerCase()); }); }
   function tkPhone(p) { p = String(p || ''); return p.length === 10 ? '(' + p.slice(0, 3) + ') ' + p.slice(3, 6) + '-' + p.slice(6) : p; }
   function vTasks(tok) {
     setMain(crumb([['Tasks']]) + '<div id="tkwrap"><div class="oq-card">' + skel(40, 6) + '</div></div>');
@@ -3128,7 +3131,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var people = d.people || [];
     var rows = (d.tasks || []).map(function (t, i) {
       var owner = d.can_manage && t.status !== 'done' && t.status !== 'cant_reach'
-        ? '<label class="sr" for="tko-' + i + '">Owner</label><select id="tko-' + i + '" class="oq-field" style="padding:5px 8px;font-size:12.5px;width:auto;max-width:180px" data-tkown="' + i + '"' + dis + '><option value="">Unassigned</option>' + people.map(function (p) { return '<option value="' + p.id + '"' + (p.id === t.assigned_to ? ' selected' : '') + '>' + esc(p.name || '') + '</option>'; }).join('') + '</select>'
+        ? '<label class="sr" for="tko-' + i + '">Owner</label><select id="tko-' + i + '" class="oq-field" style="padding:5px 8px;font-size:12.5px;width:auto;max-width:180px" data-tkown="' + i + '"' + dis + '><option value="">Unassigned</option>' + tkPeople(t.brand, t.location).concat(people.filter(function (p) { return p.id === t.assigned_to && !(p.brand && tkBrandOk(p, t.brand)); })).map(function (p) { return '<option value="' + p.id + '"' + (p.id === t.assigned_to ? ' selected' : '') + '>' + esc(p.name || '') + '</option>'; }).join('') + '</select>'
         : esc(t.assignee || 'Unassigned');
       var open = t.status === 'open' || t.status === 'in_progress';
       var act = !open ? '<div style="font-size:12.5px"><b>' + (t.status === 'done' ? 'Done' : 'Couldn’t reach') + '</b> · ' + esc(t.outcome || '') + (t.closed_by ? '<div class="mut">' + esc(t.closed_by) + '</div>' : '') + '</div>'
@@ -3158,17 +3161,20 @@ export function mountOpsisQA(ROOT, cfg) {
     }).join('');
     var rules = (X.rules || []).map(function (r, i) { return '<tr><td>' + esc(short(r.brand)) + '</td><td>' + esc(r.location || 'Every location') + '</td><td>' + esc(r.kind ? TK_KIND[r.kind] : 'Every kind') + '</td><td>' + esc(r.name || '—') + '</td><td><button class="sel" data-tkrdel="' + i + '" style="padding:5px 10px;font-size:12px">Remove</button></td></tr>'; }).join('');
     var brands = X.brand ? [X.brand] : KNOWN.brands.slice().sort();
-    var locs = {}; people.forEach(function (p) { if (p.location) locs[p.location] = 1; }); (d.tasks || []).forEach(function (t) { if (t.location) locs[t.location] = 1; });
+    if (!TK.rb || brands.indexOf(TK.rb) < 0) TK.rb = brands[0] || '';
+    var locs = {}; people.forEach(function (p) { if (p.location && p.brand && tkBrandOk(p, TK.rb)) locs[p.location] = 1; }); (d.tasks || []).forEach(function (t) { if (t.location && tkBrandOk({ brand: t.brand }, TK.rb)) locs[t.location] = 1; });
     var locList = X.location ? [X.location] : Object.keys(locs).sort();
+    if (TK.rl && locList.indexOf(TK.rl) < 0) TK.rl = '';
+    var who = tkPeople(TK.rb, X.location || TK.rl);
     return '<h2 class="ttl">Task settings</h2>' +
       '<div class="cap" style="margin-top:12px">Who gets each kind of task</div><p class="mut" style="font-size:12.5px;margin:4px 0 8px">The most specific match wins: a location and kind beats a location, which beats the whole brand. New tasks with no match stay unassigned.</p>' +
       (rules ? '<div style="overflow-x:auto"><table class="tbl" style="font-size:13px;text-align:left"><thead><tr><th style="text-align:left">Brand</th><th style="text-align:left">Location</th><th style="text-align:left">Kind</th><th style="text-align:left">Goes to</th><th></th></tr></thead><tbody>' + rules + '</tbody></table></div>' : '<p class="mut" style="font-size:12.5px">No owners set yet.</p>') +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">' +
-      '<div><label class="l" for="tkrb">Brand</label><select id="tkrb" class="oq-field" style="padding:6px 8px;width:auto">' + brands.map(function (b) { return '<option value="' + esc(b) + '">' + esc(b) + '</option>'; }).join('') + '</select></div>' +
-      '<div><label class="l" for="tkrl">Location</label><select id="tkrl" class="oq-field" style="padding:6px 8px;width:auto">' + (X.location ? '' : '<option value="">Every location</option>') + locList.map(function (l) { return '<option value="' + esc(l) + '">' + esc(l) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label class="l" for="tkrb">Brand</label><select id="tkrb" class="oq-field" style="padding:6px 8px;width:auto" data-tkrf="1">' + brands.map(function (b) { return '<option value="' + esc(b) + '"' + (b === TK.rb ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label class="l" for="tkrl">Location</label><select id="tkrl" class="oq-field" style="padding:6px 8px;width:auto" data-tkrf="1">' + (X.location ? '' : '<option value="">Every location</option>') + locList.map(function (l) { return '<option value="' + esc(l) + '"' + (l === TK.rl ? ' selected' : '') + '>' + esc(l) + '</option>'; }).join('') + '</select></div>' +
       '<div><label class="l" for="tkrk">Kind</label><select id="tkrk" class="oq-field" style="padding:6px 8px;width:auto"><option value="">Every kind</option>' + TK_KINDS.map(function (k) { return '<option value="' + k + '">' + esc(TK_KIND[k]) + '</option>'; }).join('') + '</select></div>' +
-      '<div><label class="l" for="tkrp">Goes to</label><select id="tkrp" class="oq-field" style="padding:6px 8px;width:auto">' + people.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name || '') + '</option>'; }).join('') + '</select></div>' +
-      '<button class="sel btnd" data-tkradd="1">Add</button></div>' +
+      '<div><label class="l" for="tkrp">Goes to</label><select id="tkrp" class="oq-field" style="padding:6px 8px;width:auto">' + (who.length ? who.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name || '') + (p.location && !(X.location || TK.rl) ? ' · ' + esc(p.location) : '') + '</option>'; }).join('') : '<option value="">No one at ' + esc(short(TK.rb) + ((X.location || TK.rl) ? ' · ' + (X.location || TK.rl) : '')) + '</option>') + '</select></div>' +
+      '<button class="sel btnd" data-tkradd="1"' + (who.length ? '' : ' disabled') + '>Add</button></div>' +
       '<div class="cap" style="margin-top:20px">How fast each kind is due</div>' + (X.can_due ? '' : '<p class="mut" style="font-size:12.5px;margin:4px 0">Only account admins can change these.</p>') +
       '<div style="overflow-x:auto;margin-top:6px"><table class="tbl" style="font-size:13px;text-align:left"><tbody>' + due + '</tbody></table></div>' +
       '<p class="mut" style="font-size:12px;margin-top:6px">Business hours are Monday–Friday, 8 am–5 pm Central.</p>';
@@ -5869,6 +5875,7 @@ export function mountOpsisQA(ROOT, cfg) {
     else if (t.hasAttribute && t.hasAttribute('data-hubqbrand')) { HQ.brand = t.value; HQ.csr = null; HQ.topic = null; S.brands = t.value ? [t.value] : []; render(); }
     else if (t.hasAttribute && t.hasAttribute('data-hubweek')) { HUB.week = t.value; HUB.home = {}; HUB.wins = {}; HUB.roster = null; render(); }
     else if (t.hasAttribute && t.hasAttribute('data-tkown')) tkOwn(t);
+    else if (t.hasAttribute && t.hasAttribute('data-tkrf')) { var kk = $('tkrk'), kv = kk ? kk.value : ''; if (t.id === 'tkrb') { TK.rb = t.value; TK.rl = ''; } else TK.rl = t.value; drawTasks(); var k2 = $('tkrk'); if (k2) k2.value = kv; }
     else if (t.hasAttribute && t.hasAttribute('data-trow') && TM.list) {
       var u = TM.list[+t.getAttribute('data-trow')], rs = $('tr-' + u.id), bs = $('tb-' + u.id), ls = $('tl-' + u.id);
       var role = rs ? rs.value : u.role, brand = role === 'admin' ? null : (bs ? (bs.value || null) : (u.brand || null)), loc = role === 'gm' ? (ls && brand === u.brand ? (ls.value || null) : (brand === u.brand ? u.location : null)) : null;
