@@ -773,6 +773,30 @@ export function mountOpsisQA(ROOT, cfg) {
     $('coachcard').innerHTML = h;
   }
 
+  // Coaching flag on the CSR scorecard (Rob + Marc 11/18, Becky 11/20: show it here instead of anywhere else).
+  // Same playbook as the credit-card push: low QA and/or low booking rate = a 15–20 minute coaching session, plus a few
+  // specific kudos. Thresholds are placeholders until Becky and Rob set the targets (COACH_T).
+  var COACH_T = { qa: 80, book: 60, minOpps: 5 };
+  function coachFlag(f, agent) {
+    var el = $('fcoach'); if (!el) return;
+    var c = (f.kpis || {}).cur || {}, qa = c.avg != null ? Number(c.avg) : null, br = pct(c.booked, c.decided);
+    var lowQa = qa != null && qa < COACH_T.qa, lowBk = br != null && (c.decided || 0) >= COACH_T.minOpps && br < COACH_T.book;
+    var steps = (f.steps || []).filter(function (s) { return s.applies >= 3; });
+    var best = steps.slice().sort(function (a, b) { return b.rate - a.rate; }).filter(function (s) { return s.rate >= 70; }).slice(0, 2);
+    var worst = steps.slice().sort(function (a, b) { return a.rate - b.rate; }).filter(function (s) { return s.rate < 70; }).slice(0, 2);
+    var nm = function (s) { return STEPNAMES[s.key] || s.label || s.key; };
+    var kudos = best.map(function (s) { return '<li><b>' + esc(nm(s)) + '</b> on ' + Math.round(s.rate) + '% of calls</li>'; }).join('');
+    if (!lowQa && !lowBk) {
+      el.innerHTML = kudos ? '<div class="oq-card" style="border-color:#B9D7C6;background:#F2F8F4"><h2 class="ttl" style="margin:0">On track · kudos to share</h2><p class="sub">QA ' + (qa != null ? Math.round(qa) : '—') + ' · booking ' + (br != null ? Math.round(br) + '%' : '—') + '. No coaching session needed. Call out what’s working:</p><ul style="margin:8px 0 0 18px;font-size:13.5px;line-height:1.6">' + kudos + '</ul></div>' : '';
+      return;
+    }
+    var why = [lowQa ? 'QA ' + Math.round(qa) + ' (target ' + COACH_T.qa + ')' : null, lowBk ? 'booking ' + Math.round(br) + '% (target ' + COACH_T.book + '%)' : null].filter(Boolean).join(' · ');
+    el.innerHTML = '<div class="oq-card" style="border-color:#F1C9A8;background:#FFF7EF"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><h2 class="ttl" style="margin:0">Coaching session: 15–20 minutes</h2><p class="sub">' + esc(agent) + ' · ' + esc(why) + ' · ' + esc(rangeLabel()) + '</p></div>' +
+      '<button class="sel btnd" data-ask="' + esc('Give me a 15–20 minute coaching plan for ' + agent + ': the 2 things to work on with call examples, and 2 specific kudos.') + '">Build the session</button></div>' +
+      '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:10px">' +
+      '<div><div class="cap">Work on</div><ul style="margin:6px 0 0 18px;font-size:13.5px;line-height:1.6">' + (worst.length ? worst.map(function (s) { return '<li><button class="lnk" data-step="' + s.key + '" data-sagent="' + esc(agent) + '">' + esc(nm(s)) + '</button>: done on ' + Math.round(s.rate) + '% of calls · ' + fmt(s.missed) + ' missed</li>'; }).join('') : '<li>Review the low-scoring calls below</li>') + '</ul></div>' +
+      '<div><div class="cap">Kudos to give</div><ul style="margin:6px 0 0 18px;font-size:13.5px;line-height:1.6">' + (kudos || '<li>Find one recent call they handled well</li>') + '</ul></div></div></div>';
+  }
   function stepCard(f, el, brand, agent) {
     var steps = (f.steps || []).filter(function (s) { return s.applies > 0; });
     var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><h2 class="ttl">Call Flow Performance</h2><p class="sub">How often each step is done when it applies · click a step to hear the calls that missed it. Calls before Oct 22, 2026 count through the matching step of the earlier call flow; Card on file, Overcome the objection and Tech is the expert are tracked from Oct 22 on.</p></div></div><div style="display:flex;flex-direction:column;gap:2px;margin-top:10px"><div class="cap" style="display:grid;grid-template-columns:minmax(120px,190px) minmax(0,1fr) 44px 64px;gap:12px;padding:0 4px 4px;border-bottom:1px solid var(--line2)"><span>Step</span><span></span><span style="text-align:right">Done</span><span style="text-align:right">Change</span></div>';
@@ -907,6 +931,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div class="row"><button class="sel" data-callsfor="' + kind + '">All calls →</button><button class="sel btnd" data-ask="' + esc(kind === 'brand' ? 'What should we focus on at ' + name + ' this week?' : 'How should we coach ' + name + ' this week?') + '">Ask about ' + esc(title) + '</button></div></div>' +
       (kind === 'brand' && DASHON() ? '<div id="dphone">' + skel(110, 1) + '</div><div id="dbook">' + skel(110, 1) + '</div><div class="oq-card" id="fsteps" style="display:none">' + skel(18, 9) + '</div><div class="oq-card" id="fmood" style="display:none">' + skel(30, 4) + '</div><div class="oq-card" id="dtrend">' + skel(180, 1) + '</div><div class="oq-card" id="dcsr">' + skel(30, 8) + '</div>' : '') +
       '<div class="ai" id="why"><div class="click" data-whytog="1" role="button" tabindex="0" aria-expanded="false" style="display:flex;gap:10px;align-items:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><b>Why ' + esc(title) + ' is trending this way</b><span class="mut" style="margin-left:auto;font-size:12.5px">Show</span><svg id="whychev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F7D5B" stroke-width="2" style="transition:transform .15s" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></div><div class="md" style="margin-top:10px;display:none"><span class="dots"><span></span><span></span><span></span></span> <span class="mut">Reading this period’s calls…</span></div></div>' +
+      (kind === 'csr' ? '<div id="fcoach"></div>' : '') +
       '<div id="fk" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))' + (kind === 'brand' && DASHON() ? ';display:none' : '') + '">' + skel(90, 1).repeat(4) + '</div>' +
       (kind === 'brand' && DASHON() ? '<div class="oq-card" id="fweek">' + skel(200, 1) + '</div>' : '<div class="row" style="align-items:flex-start"><div style="flex:999 1 520px;min-width:0;display:flex;flex-direction:column;gap:12px"><div class="oq-card" id="fweek">' + skel(200, 1) + '</div><div class="oq-card" id="feff">' + skel(30, 5) + '</div></div><div class="oq-card" style="flex:1 1 360px" id="fsteps">' + skel(18, 9) + '</div></div>') +
       // 11/20 Becky: Call Center Efficiency sits under the week-by-week chart (left column) so it isn't pushed below Call Flow Performance
@@ -921,6 +946,7 @@ export function mountOpsisQA(ROOT, cfg) {
       if (tok !== T) return;
       if (FOCUSWHY) FOCUSWHY(f); focusKpis(f, brand, agent); focusWeekly(f); stepCard(f, 'fsteps', brand, agent); focusMix(f, brand, agent);
       if (kind === 'brand') focusMovers(f);
+      if (kind === 'csr') coachFlag(f, agent);
     }).catch(function (e) { if (tok === T) $('fk').innerHTML = errBox(e); });
     if (kind === 'csr' && CFG.csrNotes) CFG.csrNotes(agent).then(function (n) { if (tok === T) drawCsrNotes(n || [], agent); }).catch(function () { var x = $('fnotes'); if (x) x.remove(); });
     if (kind === 'csr') api(Object.assign({ action: 'calls' }, win({ agent: agent, limit: 6 }))).then(function (c) { if (tok !== T) return; $('fcalls').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start"><div><h2 class="ttl">Recent Calls</h2><p class="sub">' + fmt(c.total) + ' scored calls in this period</p></div><button class="more" data-callsfor="csr">All →</button></div>' + (c.rows || []).map(callRow).join(''); }).catch(function () {});
