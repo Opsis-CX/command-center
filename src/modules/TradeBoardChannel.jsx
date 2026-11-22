@@ -43,6 +43,8 @@ const SEAT_CAP = 60   // cap open-seat cards rendered at once (agents see far fe
 
 // ---- date/time helpers (Eastern), mirrored from Schedule.jsx ----
 function etNow() { return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })) }
+// Matches the DB's enforce_claim_rules: agents can't claim before release_at.
+function isReleased(block) { return !block?.release_at || new Date(block.release_at).getTime() <= Date.now() }
 function isoDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -204,6 +206,7 @@ export default function TradeBoardChannel({ me: meProp, isMobile, onBack }) {
     .filter(b => {
       if (b.block_date < todayStr || hasIntervalStarted(b)) return false
       if (b.block_date > horizon) return false
+      if (!noReleaseTimes && !isReleased(b)) return false   // not released yet — DB would refuse
       const s = scheduleOf(b)
       if (!s || s.status !== 'published') return false
       if (!(isAdmin || canViewAll || inAudience(b.schedule_id))) return false
