@@ -542,7 +542,9 @@ function TgFrame() {
     return { left: left + x - cx * kk, top: top + y - cy * kk, w: nw * kk, h: nh * kk, rel: { left: x - cx * kk, top: y - cy * kk } }
   } })
   // just two touches: the leaf cluster in the bottom-left corner and the pumpkin patch on the bottom edge
-  const pieces = [piece('bl', 3, 146, L, B), piece('pumpkins', 314, 92, R, B)]
+  // always shown in their corners (Brittney, 2026-11-22). Chat names, buttons and Send sit in front of them;
+  // the pumpkins sit over the empty corner of the message box (noLift) so they stay visible
+  const pieces = [{ ...piece('bl', 3, 146, L, B), always: true }, { ...piece('pumpkins', 314, 92, R, B), always: true, noLift: '.re-wrap' }]
   layoutRef.current = pieces
   return (
     // zIndex 29: under the app's header (30), so menus that open from the header always sit on top
@@ -552,7 +554,7 @@ function TgFrame() {
         const sc = fit[p.name] ?? 0
         if (!sc) return null
         const g = p.place(sc)
-        return <FrameImg key={p.name} name={p.art} w={g.w} style={{ left: g.rel.left, top: g.rel.top, transition: 'width .3s, height .3s, left .3s, top .3s' }} />
+        return <FrameImg key={p.name} name={p.art} w={g.w} style={{ left: g.rel.left, top: g.rel.top + (fit[p.name + ':dy'] || 0), transition: 'width .3s, height .3s, left .3s, top .3s' }} />
       })}
     </div>
   )
@@ -1170,23 +1172,53 @@ function xmMask(name, skip, src) {
   img.src = src || (XART + name + '.webp')
   return null
 }
-function xmCovers(x, y, inHeader) {
+// 2026-11-22: when a decoration would sit on something people click or read, we first try to LIFT that
+// thing above the decoration (position:relative + z-index 30, the same trick as the chat Send button),
+// so the leaves and pumpkins can stay and simply tuck behind it. Only if it can't be lifted (it sits in
+// a layer of its own, like the header or a popup) does the piece shrink or hide as before.
+const _lifted = new Map()   // element -> its original inline position / z-index
+function stackingAncestor(el) {
+  for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+    const cs = getComputedStyle(n)
+    if ((cs.position !== 'static' && cs.zIndex !== 'auto') || cs.transform !== 'none' || cs.filter !== 'none' || Number(cs.opacity) < 1 ||
+        cs.isolation === 'isolate' || /transform|opacity|filter/.test(cs.willChange) || /paint|layout|strict|content/.test(cs.contain)) return n
+  }
+  return null
+}
+function liftAbove(el) {
+  if (_lifted.has(el)) return true
+  if (el.closest('.header-wrap, .sidebar')) return false
+  const cs = getComputedStyle(el)
+  if (cs.position === 'fixed' || cs.position === 'sticky') return false
+  if (stackingAncestor(el)) return false
+  _lifted.set(el, { position: el.style.position, zIndex: el.style.zIndex })
+  if (cs.position === 'static') el.style.position = 'relative'
+  if (cs.zIndex === 'auto' || (parseInt(cs.zIndex, 10) || 0) < 30) el.style.zIndex = '30'
+  return true
+}
+function dropLifts() {
+  for (const [el, prev] of _lifted) { if (el.isConnected) { el.style.position = prev.position; el.style.zIndex = prev.zIndex } }
+  _lifted.clear()
+}
+function xmCovers(x, y, inHeader, noLift) {
   if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) return false
   const el = document.elementFromPoint(x, y)
   if (!el || el === document.body || el === document.documentElement) return false
   if (!inHeader && el.closest('.header-wrap')) return false   // the header sits on top of the garlands anyway
-  if (el.closest('[data-cc-chatpane] .btn-primary, [data-cc-chatpane] .btn-cta')) return false   // raised above the art
+  for (let n = el; n && n !== document.body; n = n.parentElement) if (_lifted.has(n)) return n   // already tucked behind it
   let n = el
   for (let i = 0; n && i < 6; i++, n = n.parentElement) {   // floating things (phone button, popups) sit on top of us
     const cs = getComputedStyle(n)
     if (cs.position === 'fixed' && (parseInt(cs.zIndex, 10) || 0) > 29) return false
   }
-  if (el.closest(XM_BLOCKERS)) return true
+  const blocker = el.closest(XM_BLOCKERS)
+  // the message box lifts as a whole (its white box with it), so nothing shows through behind the typing
+  if (blocker) { const t = blocker.closest('.re-wrap') || blocker; if (noLift && t.closest(noLift)) return true; return liftAbove(t) ? t : true }
   // text: only counts if the words themselves are under this spot (not just somewhere in a big box)
   for (const t of el.childNodes) {
     if (t.nodeType !== 3 || !t.textContent.trim()) continue
     const r = document.createRange(); r.selectNodeContents(t)
-    for (const q of r.getClientRects()) if (x >= q.left - 4 && x <= q.right + 4 && y >= q.top - 4 && y <= q.bottom + 4) return true
+    for (const q of r.getClientRects()) if (x >= q.left - 4 && x <= q.right + 4 && y >= q.top - 4 && y <= q.bottom + 4) return (noLift && el.closest(noLift)) ? true : liftAbove(el) ? el : true
   }
   return false
 }
@@ -1204,23 +1236,42 @@ function useFitPieces(layoutRef) {
       for (const p of L) {
         const pts = xmMask(p.name, p.skip, p.src)
         if (!pts) { next[p.name] = 0; waiting = true; continue }   // picture still loading: check again shortly
-        let chosen = 0
+        let chosen = 0, dy = 0
+        // look at every other sample point (plenty to catch a button, cheap enough to run each second)
+        const probe = (g, off) => {
+          let behind = 0, n = 0, under = null
+          for (let i = 0; i < pts.length; i += 2) {
+            const r = xmCovers(g.left + pts[i][0] * g.w, g.top + off + pts[i][1] * g.h, p.inHeader, p.noLift)
+            if (r === true && !p.always) return { hit: true }
+            n++; if (r) { behind++; under = r }
+          }
+          return { hit: false, behind: n ? behind / n : 0, under }
+        }
+        // always-on pieces (Thanksgiving leaves + pumpkins, 2026-11-22): full size in their spot every time;
+        // the probe still runs so buttons and names underneath get lifted in front of them
+        if (p.always) { probe(p.place(1), 0); next[p.name] = 1; next[p.name + ':dy'] = 0; continue }
         for (const sc of XM_PIECE_SCALES) {
           const g = p.place(sc)
-          // look at every other sample point (plenty to catch a button, cheap enough to run each second)
-          let hit = false
-          for (let i = 0; i < pts.length && !hit; i += 2) hit = xmCovers(g.left + pts[i][0] * g.w, g.top + pts[i][1] * g.h, p.inHeader)
-          if (!hit) { chosen = sc; break }
+          const a = probe(g, 0)
+          if (a.hit) continue
+          // mostly tucked out of sight (e.g. pumpkins behind the chat message box)? let it peek over the top of
+          // whatever hides it instead — the lower part stays tucked behind, the upper part shows
+          if (p.rise && a.behind > 0.5 && a.under) {
+            const off = Math.round(a.under.getBoundingClientRect().top + g.h * 0.3 - (g.top + g.h))
+            if (off < 0 && !probe(g, off).hit) { chosen = sc; dy = off; break }
+            continue
+          }
+          chosen = sc; break
         }
-        next[p.name] = chosen
+        next[p.name] = chosen; next[p.name + ':dy'] = dy
       }
-      setFit(prev => (L.every(p => prev[p.name] === next[p.name]) ? prev : next))
+      setFit(prev => (L.every(p => prev[p.name] === next[p.name] && (prev[p.name + ':dy'] || 0) === (next[p.name + ':dy'] || 0)) ? prev : next))
       if (waiting) setTimeout(check, 300)
     }
     const t0 = setTimeout(check, 400)
     const iv = setInterval(() => { if (document.visibilityState === 'visible') check() }, 1100)
     window.addEventListener('resize', check)
-    return () => { alive = false; clearTimeout(t0); clearInterval(iv); window.removeEventListener('resize', check) }
+    return () => { alive = false; clearTimeout(t0); clearInterval(iv); window.removeEventListener('resize', check); dropLifts() }
   }, [])
   return fit
 }
@@ -1262,7 +1313,7 @@ function XmFrame() {
         const sc = fit[p.name] ?? 0
         if (!sc) return null
         const g = p.place(sc)
-        return <XImg key={p.name} name={p.name} w={g.w} style={{ ...pos, left: g.left, top: g.top, ...(p.style || {}) }} />
+        return <XImg key={p.name} name={p.name} w={g.w} style={{ ...pos, left: g.left, top: g.top + (fit[p.name + ':dy'] || 0), ...(p.style || {}) }} />
       })}
     </div>
   )
