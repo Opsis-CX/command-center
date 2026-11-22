@@ -50,6 +50,12 @@ function mondayOf(d) {
   x.setDate(x.getDate() + diff); x.setHours(0, 0, 0, 0); return x
 }
 
+// True once the database's release_at for this interval has passed (or it has
+// none). This is the SAME moment the enforce_claim_rules trigger allows agent
+// claims — keeping the UI on it means an agent never sees an interval the
+// database will refuse ("isn't released yet").
+function isReleased(block) { return !block?.release_at || new Date(block.release_at).getTime() <= Date.now() }
+
 function isoDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -370,6 +376,10 @@ export default function Schedule() {
       if (block.block_date > isoDate(horizon)) {
         flash(`That interval isn't available yet — it unlocks at your release time.`); return
       }
+      if (!isReleased(block)) {
+        const at = new Date(block.release_at).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+        flash(`That interval isn't released yet — it opens ${at} ET.`); load(true); return
+      }
     }
     const existing = claims.filter(c => c.shift_block_id === block.id)
     if (existing.length >= block.total_spots) { flash('That interval just filled up'); load(true); return }
@@ -395,7 +405,8 @@ export default function Schedule() {
       else if (msg.includes('overlaps')) flash('That overlaps an interval you already claimed')
       else if (msg.includes('40 hours')) flash('That would put you over 40 hours this week')
       else if (msg.includes('no longer exists')) flash('That interval was removed')
-      else flash('Could not claim that interval')
+      else if (msg.includes('released yet') || msg.includes('opens for you')) flash(msg)
+      else flash(msg ? `Could not claim that interval: ${msg}` : 'Could not claim that interval')
       load(true)
       return
     }
@@ -819,6 +830,8 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
   const horizonStr = (() => {
     const d = etNow(); d.setDate(d.getDate() + (horizonDays ?? 13)); return isoDate(d)
   })()
+  // Agents (horizon < 3650) are held to each interval's release_at; no-release roles aren't.
+  const gateRelease = (horizonDays ?? 13) < 3650
   // Mon–Sun total for the week on screen. Shown under "Your intervals".
   const myHours = personWeekHours(me.id, weekBlocks, claims, isoDate(days[0]), isoDate(days[6]))
   const myOver = myHours > WEEKLY_HOUR_CAP
@@ -853,6 +866,7 @@ function AgentGrid({ days, todayStr, weekBlocks, claims, me, hasIntervalStarted,
     const items = weekBlocks.filter(b => {
       if (b.block_date !== ds) return false
       if (b.block_date > horizonStr) return false   // beyond the rolling window — not visible yet
+      if (gateRelease && !isReleased(b)) return false   // DB release_at not reached yet — hide it
       // (started/ended intervals stay claimable — late pickup is allowed)
       const cl = claims.filter(c => c.shift_block_id === b.id)
       if (cl.some(c => c.profile_id === me.id)) return false   // I already hold it
