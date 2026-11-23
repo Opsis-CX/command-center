@@ -1975,15 +1975,15 @@ export function mountOpsisQA(ROOT, cfg) {
   var CC_PROV = [
     { k: 'five9', n: 'Five9', f: [['domain', 'Five9 domain name'], ['username', 'API user name']], s: 'API user password',
       st: ['In Five9 VCC Admin, add a new user just for Opsis (for example opsis.api).', 'Give that user the <b>Reporting</b> and <b>Call recording</b> permissions.', 'Make sure call recording is turned on for the campaigns you want scored.', 'Paste the domain, user name and password below.'] },
-    { k: 'ringcentral', n: 'RingCentral', f: [['client_id', 'App client ID']], s: 'JWT credential',
-      st: ['Go to developers.ringcentral.com and sign in with an admin account.', 'Create a <b>REST API app</b> with <b>JWT auth</b> and the <b>Read Call Log</b> and <b>Read Call Recording</b> permissions.', 'Under Credentials, create a JWT for the same admin user.', 'Paste the app client ID and the JWT below.'] },
-    { k: 'twilio', n: 'Twilio', f: [['account_sid', 'Account SID (starts with AC)']], s: 'Auth token',
+    { k: 'ringcentral', n: 'RingCentral', auto: 1, f: [['client_id', 'App client ID']], s: 'JWT credential', s2: ['client_secret', 'App client secret'],
+      st: ['Go to developers.ringcentral.com and sign in with an admin account.', 'Create a <b>REST API app</b> with <b>JWT auth</b> and the <b>Read Call Log</b> and <b>Read Call Recording</b> permissions.', 'Under Credentials, create a JWT for the same admin user.', 'Paste the app client ID, client secret and the JWT below.'] },
+    { k: 'twilio', n: 'Twilio', auto: 1, f: [['account_sid', 'Account SID (starts with AC)']], s: 'Auth token',
       st: ['Sign in to console.twilio.com.', 'On the home page, find <b>Account Info</b>.', 'Copy the Account SID and the Auth token (click “show”).', 'Make sure your calls are set to record.'] },
     { k: 'dialpad', n: 'Dialpad', f: [], s: 'API key',
       st: ['In Dialpad, open <b>Admin settings → My company → Authentication → API keys</b>.', 'Create a key named “Opsis”.', 'Turn on call recording for the offices you want scored.', 'Paste the key below.'] },
-    { k: 'zoom', n: 'Zoom Phone', f: [['account_id', 'Account ID'], ['client_id', 'Client ID']], s: 'Client secret',
+    { k: 'zoom', n: 'Zoom Phone', auto: 1, f: [['account_id', 'Account ID'], ['client_id', 'Client ID']], s: 'Client secret',
       st: ['Go to marketplace.zoom.us → <b>Develop → Build app → Server-to-Server OAuth</b>.', 'Add the scopes <b>phone:read:admin</b> and <b>phone_recording:read:admin</b>, then activate the app.', 'Copy the Account ID, Client ID and Client secret.'] },
-    { k: 'aircall', n: 'Aircall', f: [['api_id', 'API ID']], s: 'API token',
+    { k: 'aircall', n: 'Aircall', auto: 1, f: [['api_id', 'API ID']], s: 'API token',
       st: ['In the Aircall dashboard, open <b>Integrations & API → API keys</b>.', 'Create a key named “Opsis”.', 'Paste the API ID and API token below.'] },
     { k: 'lightspeed', n: 'LightSpeed', f: [['account', 'Company / account name']], s: 'API key',
       st: ['Ask your LightSpeed account rep to turn on <b>API access to call recordings</b>.', 'They will send you an API key.', 'Paste it below.'] },
@@ -1996,12 +1996,12 @@ export function mountOpsisQA(ROOT, cfg) {
     CFG.callSources().then(function (d) { if (tok !== T) return; CC.d = d; drawConnect(); })
       .catch(function (e) { if (tok === T && $('ccwrap')) $('ccwrap').innerHTML = errBox(e); });
   }
-  function ccStatus(s) { return { connected: ['Connected', '#1F7A4D'], pending: ['Saved · waiting for first calls', '#8A6A12'], error: ['Needs attention', '#B4461F'] }[s] || [s, '#55615C']; }
+  function ccStatus(s, p) { if (s === 'pending' && !(p && p.auto)) return ['Saved · automatic pulling coming soon', '#8A6A12']; return { connected: ['Connected · pulls new calls every hour', '#1F7A4D'], pending: ['Saved · checking…', '#8A6A12'], error: ['Needs attention', '#B4461F'] }[s] || [s, '#55615C']; }
   function drawConnect() {
     var w = $('ccwrap'); if (!w || !CC.d) return; var d = CC.d, ed = d.can_edit, u = d.uploads || {};
-    var have = (d.sources || []).map(function (s) { var p = CC_PROV.filter(function (x) { return x.k === s.provider; })[0] || { n: s.provider }, st = ccStatus(s.status);
-      return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line2)"><div><b>' + esc(p.n) + '</b>' + (s.label ? ' · ' + esc(s.label) : '') + '<div class="mut" style="font-size:12px">Key ending ••••' + esc(s.secret_hint || '') + ' · added ' + ago(s.created_at) + (s.created_by_name ? ' by ' + esc(s.created_by_name) : '') + (s.last_error ? ' · ' + esc(s.last_error) : '') + '</div></div>' +
-        '<div style="display:flex;gap:8px;align-items:center"><span style="font-size:12px;font-weight:600;color:' + st[1] + '">' + st[0] + '</span>' + (ed ? '<button class="sel" data-act="ccrm" data-id="' + s.id + '" style="padding:5px 10px;font-size:12px">Disconnect</button>' : '') + '</div></div>'; }).join('');
+    var have = (d.sources || []).map(function (s) { var p = CC_PROV.filter(function (x) { return x.k === s.provider; })[0] || { n: s.provider }, st = ccStatus(s.status, p);
+      return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line2)"><div><b>' + esc(p.n) + '</b>' + (s.label ? ' · ' + esc(s.label) : '') + '<div class="mut" style="font-size:12px">Key ending ••••' + esc(s.secret_hint || '') + ' · added ' + ago(s.created_at) + (s.created_by_name ? ' by ' + esc(s.created_by_name) : '') + (s.last_sync_at ? ' · last checked ' + ago(s.last_sync_at) : '') + '</div>' + (s.last_error ? '<div style="font-size:12.5px;color:#B4461F;margin-top:3px">' + esc(s.last_error) + '</div>' : '') + (CC.msg && CC.msg.id === s.id ? '<div style="font-size:12.5px;color:#1F5A41;margin-top:3px">' + esc(CC.msg.t) + '</div>' : '') + '</div>' +
+        '<div style="display:flex;gap:8px;align-items:center"><span style="font-size:12px;font-weight:600;color:' + st[1] + '">' + st[0] + '</span>' + (ed && p.auto ? '<button class="sel" data-act="cctest" data-id="' + s.id + '" style="padding:5px 10px;font-size:12px"' + (CC.testing === s.id ? ' disabled' : '') + '>' + (CC.testing === s.id ? 'Checking…' : 'Check now') + '</button>' : '') + (ed ? '<button class="sel" data-act="ccrm" data-id="' + s.id + '" style="padding:5px 10px;font-size:12px">Disconnect</button>' : '') + '</div></div>'; }).join('');
     var upCard = '<div class="oq-card" style="flex:1 1 340px;align-self:flex-start"><h2 class="ttl">1 · Upload recordings</h2><p class="sub">The fastest way to start. Drop in MP3, WAV or M4A files — each one is transcribed and scored, usually within a few minutes.</p>' +
       (ed ? '<label id="ccdrop" for="ccfile" style="display:block;margin-top:14px;border:2px dashed var(--line2);border-radius:12px;padding:26px 14px;text-align:center;cursor:pointer"><b>Drag files here</b> or click to choose<div class="mut" style="font-size:12px;margin-top:4px">Up to 50 files at a time · 100 MB each · 500 calls a day</div></label><input id="ccfile" type="file" multiple accept="audio/*,.mp3,.wav,.m4a" class="sr">' +
         '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><div style="flex:1 1 140px"><label class="l" for="ccagent">CSR name (optional)</label><input id="ccagent" class="oq-field" placeholder="Who took these calls"></div><div style="flex:1 1 140px"><label class="l" for="ccdate">Call date</label><input id="ccdate" type="date" class="oq-field" value="' + todayET() + '"></div></div>' +
@@ -2014,7 +2014,7 @@ export function mountOpsisQA(ROOT, cfg) {
       (ed ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">' + CC_PROV.map(function (p) { return '<button class="sel' + (CC.prov === p.k ? ' btnd' : '') + '" data-act="ccprov" data-k="' + p.k + '">' + esc(p.n) + '</button>'; }).join('') + '</div>' : '<p class="mut" style="margin-top:12px">Only account admins can connect a phone system.</p>') +
       (P && ed ? '<div style="margin-top:16px;padding:14px;border-radius:12px;background:#F5F7F6"><b>' + esc(P.n) + ' — steps</b><ol style="margin:8px 0 0;padding-left:20px;font-size:13.5px;line-height:1.65">' + P.st.map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ol>' +
         '<div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">' + P.f.map(function (f) { return '<div><label class="l" for="ccf_' + f[0] + '">' + esc(f[1]) + '</label><input id="ccf_' + f[0] + '" class="oq-field" autocomplete="off"></div>'; }).join('') +
-        '<div><label class="l" for="ccsec">' + esc(P.s) + '</label><input id="ccsec" type="password" class="oq-field" autocomplete="new-password"></div>' +
+        (P.s2 ? '<div><label class="l" for="ccsec2">' + esc(P.s2[1]) + '</label><input id="ccsec2" type="password" class="oq-field" autocomplete="new-password"></div>' : '') + '<div><label class="l" for="ccsec">' + esc(P.s) + '</label><input id="ccsec" type="password" class="oq-field" autocomplete="new-password"></div>' +
         (CC.err ? '<div style="color:#A8441A;font-size:13px">' + esc(CC.err) + '</div>' : '') +
         '<div style="display:flex;gap:8px"><button class="sel btnd" data-act="ccsave"' + (CC.busy ? ' disabled' : '') + '>' + (CC.busy ? 'Saving…' : 'Save and connect') + '</button><button class="sel" data-act="ccprov" data-k="">Cancel</button></div></div></div>' : '') + '</div>';
     var ownCard = '<div class="oq-card" style="flex:1 1 100%"><h2 class="ttl">3 · No phone system? Use ours</h2><p class="sub">Get local phone numbers, an AI receptionist and a softphone for your team, all inside this portal. Calls on our lines are scored automatically — nothing to connect.</p>' +
@@ -2040,20 +2040,28 @@ export function mountOpsisQA(ROOT, cfg) {
     }
     next(); next();
   }
+  function ccTest(id) {
+    if (!CFG.callSourceTest) return; CC.testing = id; CC.msg = null; drawConnect();
+    CFG.callSourceTest(id).then(function (r) { CC.msg = { id: id, t: r.message || 'Checked.' }; })
+      .catch(function (e) { CC.msg = { id: id, t: '' }; toast(e.message); })
+      .then(function () { CC.testing = null; return CFG.callSources().then(function (x) { CC.d = x; }); }).then(function () { drawConnect(); });
+  }
   function ccAct(a, d) {
     if (a === 'ccprov') { CC.prov = d.k || null; CC.err = null; drawConnect(); return; }
     if (a === 'ccsave') {
       var P = CC_PROV.filter(function (x) { return x.k === CC.prov; })[0]; if (!P) return;
       var cfg = {}, miss = null; P.f.forEach(function (f) { var v = (($('ccf_' + f[0]) || {}).value || '').trim(); cfg[f[0]] = v; if (!v && f[0] !== 'docs' && !miss) miss = f[1]; });
-      var sec = (($('ccsec') || {}).value || '').trim();
+      var sec = (($('ccsec') || {}).value || '').trim(), sec2 = P.s2 ? (($('ccsec2') || {}).value || '').trim() : '';
+      if (P.s2 && !sec2) { CC.err = 'Paste your ' + P.s2[1].toLowerCase() + '.'; drawConnect(); return; }
       if (miss) { CC.err = 'Fill in: ' + miss + '.'; drawConnect(); return; }
       if (!sec) { CC.err = 'Paste your ' + P.s.toLowerCase() + '.'; drawConnect(); return; }
       CC.busy = true; CC.err = null; drawConnect();
-      CFG.callSourceSave({ provider: P.k, config: cfg, secret: sec, label: cfg.system || null })
-        .then(function () { return CFG.callSources(); }).then(function (x) { CC.d = x; CC.prov = null; toast('Saved. Your key is stored encrypted.'); })
+      CFG.callSourceSave({ provider: P.k, config: cfg, secret: P.s2 ? JSON.stringify({ jwt: sec, client_secret: sec2 }) : sec, label: cfg.system || null })
+        .then(function (r) { return CFG.callSources().then(function (x) { CC.d = x; CC.prov = null; toast('Saved. Your key is stored encrypted.'); if (P.auto && r && r.id) ccTest(r.id); }); })
         .catch(function (e) { CC.err = e.message; }).then(function () { CC.busy = false; drawConnect(); });
       return;
     }
+    if (a === 'cctest') { ccTest(d.id); return; }
     if (a === 'ccrm') {
       if (!confirm('Disconnect this phone system? Its key is deleted and new calls stop coming in.')) return;
       CFG.callSourceRemove(d.id).then(function () { return CFG.callSources(); }).then(function (x) { CC.d = x; drawConnect(); toast('Disconnected.'); }).catch(function (e) { toast(e.message); });
@@ -6032,7 +6040,7 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rcssave') { rcSave(); }
       else if (a === 'rasave') { rcAlertsSave(); }
       else if (a === 'rcpsave') { recapSave(); }
-      else if (a === 'ccprov' || a === 'ccsave' || a === 'ccrm') { ccAct(a, d); }
+      else if (a === 'ccprov' || a === 'ccsave' || a === 'ccrm' || a === 'cctest') { ccAct(a, d); }
       else if (/^oc/.test(a) && ['ocaddtech', 'ocedit', 'occancel', 'ocsavetech', 'ocdel', 'ocreset', 'ocrotsave'].indexOf(a) >= 0) { ocAct(a, d); }
       else if (a === 'rchltok') { var tk = ($('hltok') || {}).value || ''; api({ action: 'receptionist', op: 'hl_token', token: tk }).then(function () { toast('Token saved.'); RC.s.has_hl_token = true; drawRcSettings(); }).catch(function (e) { toast(e.message); }); }
       else if (a === 'rchlcals') { api({ action: 'receptionist', op: 'hl_calendars' }).then(function (r) { RC.hlCals = r.calendars || []; drawRcSettings(); }).catch(function (e) { toast(e.message); }); }

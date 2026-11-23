@@ -273,6 +273,11 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         const { error } = await supabase.rpc('qa_source_remove', { p_client: clientId || me.client, p_id: id })
         if (error) throw new Error(error.message || 'Could not disconnect.')
       },
+      callSourceTest: csrSelf ? null : async (id) => {
+        const { data, error } = await supabase.functions.invoke('callsrc-pull', { body: { source_id: id, test: true } })
+        if (error) { let m = error.message; try { const j = await error.context.json(); m = j.error || m } catch { /* keep */ } throw new Error(m || 'Could not reach your phone system.') }
+        return data
+      },
       callUpload: csrSelf ? null : async ({ file, agent, date }) => {
         const cid = clientId || me.client
         const safe = String(file.name || 'call').replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80)
