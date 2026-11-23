@@ -18,6 +18,7 @@
 // which scopes everything to the login's client and brand.
 import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import CsrScorecard from './CsrScorecard'
 import { mountOpsisQA } from './opsisQaApp'
@@ -36,7 +37,7 @@ import { CoachingDesk, CoachingInbox } from '../components/Coaching'
 import WfmIntraday from '../components/WfmIntraday'
 import CallFlowBuilder from '../components/CallFlowBuilder'
 import Softphone from '../components/Softphone'
-import { VoiceProvider } from '../lib/voice'
+import { VoiceProvider, RingBounce } from '../lib/voice'
 import { loadAccounts, switchAccount } from '../components/AccountSwitcher'
 
 // Portal palette for the mounted Command Center pages (they read these CSS variables).
@@ -93,6 +94,39 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       .catch((e) => { if (active) setErr(e.message || 'Could not load your account.') })
     return () => { active = false }
   }, [clientId])
+
+  // The phone lives for the whole portal visit, not just the Phone page (Becky 11/22): a Ready CSR / RM / GM
+  // stays Ready and keeps ringing whatever page they click to, and a ringing call jumps them to the Phone page
+  // (guided call screen + script). CsrPhone renders into phoneEl, which is parked off-screen and moved into the
+  // Phone page while it's open, so the phone never unmounts.
+  const phoneRef = useRef(null)
+  useEffect(() => {
+    if (!sup || csrSelf) return
+    const phoneEl = document.createElement('div')
+    Object.entries(PORTAL_THEME).forEach(([k, v]) => { if (k.startsWith('--')) phoneEl.style.setProperty(k, v); else phoneEl.style[k] = v })
+    const parking = document.createElement('div'); parking.style.display = 'none'; parking.appendChild(phoneEl)
+    const host = document.createElement('div')
+    document.body.appendChild(parking); document.body.appendChild(host)
+    const toPhone = () => {
+      if (/(^#|&)v=myphone(&|$)/.test(location.hash)) return
+      const rest = location.hash.replace(/^#/, '').split('&').filter(p => p && !p.startsWith('v='))
+      location.hash = ['v=myphone', ...rest].join('&')
+    }
+    const root = createRoot(host)
+    root.render(
+      <div style={PORTAL_THEME}>
+        <MemoryRouter>
+          <VoiceProvider canCallPeople={false} canDialNumbers={false}>
+            {createPortal(<CsrPhone accent="#14302A" />, phoneEl)}
+            <Softphone />
+            <RingBounce onRing={toPhone} />
+          </VoiceProvider>
+        </MemoryRouter>
+      </div>
+    )
+    phoneRef.current = { show: (el) => el.appendChild(phoneEl), park: () => parking.appendChild(phoneEl) }
+    return () => { phoneRef.current = null; setTimeout(() => { root.unmount(); parking.remove(); host.remove() }, 0) }
+  }, [sup, csrSelf])
 
   useEffect(() => {
     if (!me || !ref.current || sup === null || accounts === null) return
@@ -212,6 +246,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       },
       // Workforce (Erlang C) and AI Speed to Lead, scoped to this login's client through opsis-portal-ops.
       mountExt: (kind, el, pick = {}) => {
+        if (kind === 'myphone' && phoneRef.current) { const ph = phoneRef.current; ph.show(el); return () => ph.park() }
         const root = createRoot(el)
         const scoped = (b) => invoke(clientId ? { ...b, client_id: clientId } : b)
         root.render(

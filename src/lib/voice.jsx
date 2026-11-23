@@ -140,8 +140,14 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
     call.on('disconnect', clear)
   }, [patch])
 
-  const getDevice = useCallback(async () => {
-    if (deviceRef.current) return deviceRef.current
+  // One device per page, even if two callers ask at once (2026-11-22).
+  const devicePromiseRef = useRef(null)
+  const getDevice = useCallback(() => {
+    if (deviceRef.current) return Promise.resolve(deviceRef.current)
+    if (!devicePromiseRef.current) devicePromiseRef.current = makeDevice().catch(e => { devicePromiseRef.current = null; throw e })
+    return devicePromiseRef.current
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const makeDevice = async () => {
     const Twilio = await loadSdk()
     const token = await fetchToken()
     const device = new Twilio.Device(token, {
@@ -184,7 +190,7 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
     device.on('incoming', handleIncoming)
     deviceRef.current = device
     return device
-  }, [patch, handleIncoming])
+  }
 
   // ---------- single agent status ----------
   const applyRegistration = useCallback(async (a) => {
@@ -192,7 +198,7 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
       if (a.state === 'ready' && a.inbound_member) {
         const d = await getDevice()
         d._wantRegistered = true
-        if (d.state !== 'registered') await d.register()
+        if (!['registered', 'registering'].includes(d.state)) await d.register()
       } else if (deviceRef.current?.state === 'registered' && !['on_call', 'wrap'].includes(a.state)) {
         deviceRef.current._wantRegistered = false
         await deviceRef.current.unregister()
@@ -223,6 +229,15 @@ export function VoiceProvider({ children, canDialNumbers = false, canCallPeople 
       setStatusBusy(false)
     }
   }, [applyRegistration, patch])
+
+  // 2026-11-22 (Becky): Ready took forever on the CSR phone — the Ready button there saves the status and
+  // re-reads it, but only setStatus() connected the phone. Now ANY status change (button, poll, another screen)
+  // connects or disconnects the phone right away.
+  useEffect(() => {
+    if (agent.loaded) applyRegistration(agent)
+  }, [agent.loaded, agent.state, agent.inbound_member]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Load the calling library in the background so the first Ready doesn't wait on the download.
+  useEffect(() => { loadSdk().catch(() => {}) }, [])
 
   // On load: read my status and, if I'm Ready on an inbound line, register this browser.
   useEffect(() => {
@@ -395,4 +410,13 @@ export function CallButton({ profileId, name, label, hasPhone = true, style }) {
       <span aria-hidden="true">📞</span>{label ? <span>{label}</span> : null}
     </button>
   )
+}
+
+// Calls onRing() when a call starts ringing this browser (or one was just answered). Used by the portals to
+// jump the CSR to the phone page — the guided call screen with the script — from wherever they are (2026-11-22).
+export function RingBounce({ onRing }) {
+  const voice = useVoice()
+  const ringing = !!(voice?.incoming || voice?.inboundCall)
+  useEffect(() => { if (ringing) onRing?.() }, [ringing]) // eslint-disable-line react-hooks/exhaustive-deps
+  return null
 }

@@ -117,7 +117,7 @@ import SmsConsentBanner from './components/SmsConsentBanner'
 // server-side (can_place_calls() + the voice-token / voice-twiml edge functions).
 // Add a call button anywhere:  import { CallButton } from './lib/voice'
 //                              <CallButton profileId={p.id} name={p.full_name} />
-import { VoiceProvider } from './lib/voice'
+import { VoiceProvider, RingBounce } from './lib/voice'
 import Softphone from './components/Softphone'
 import Phone from './modules/Phone'
 // --- Dialer (Opsis Voice phase 1, 2026-10-15) ---
@@ -303,6 +303,8 @@ function CsrPortal({ session }) {
       {hasPhone
         ? <MaybeVoice enabled canCallPeople={false} canDialNumbers={false}>
             {/* keep the phone mounted while on the Scorecard so calls still ring */}
+            {/* a ringing call jumps the CSR to the Phone tab (guided call screen + script) — Becky 11/22 */}
+            <RingBounce onRing={() => pickTab('phone')} />
             <div style={{ display: tab === 'phone' ? 'block' : 'none' }}><CsrPhone accent={accent} /></div>
             {tab !== 'phone' && <CsrScorecard supabase={supabase} mode="csr" accent={accent} />}
           </MaybeVoice>
