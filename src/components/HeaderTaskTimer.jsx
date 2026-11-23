@@ -50,7 +50,9 @@ export default function HeaderTaskTimer() {
     if (!userId || !isSupport) return
     const [taskRes, taRes, timeRes, projRes, cliRes] = await Promise.all([
       fetchAllRows(() => supabase.from('tasks').select('id, name, status, project_id, client_id').is('deleted_at', null).order('id')),
-      supabase.from('task_assignees').select('task_id, profile_id').eq('profile_id', userId),
+      // only MY OPEN tasks: asking for every assignment ever made (done ones included) hit the 1,000-row
+      // cap for people with daily recurring tasks, which cut today's tasks out of the pick-list
+      supabase.from('task_assignees').select('task_id, profile_id, tasks!inner(id)').eq('profile_id', userId).neq('tasks.status', 'done').is('tasks.deleted_at', null),
       // only the open entry matters here (the running timer), not a person's whole history
       supabase.from('time_entries').select('id, task_id, user_id, client_id, started_at, ended_at').eq('user_id', userId).is('ended_at', null),
       supabase.from('projects').select('id, name').order('name'),
