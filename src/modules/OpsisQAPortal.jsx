@@ -226,6 +226,22 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         if (error) { const e = new Error(error.message || 'Could not load the AI CSR dashboard.'); e.status = 400; throw e }
         return data
       },
+      // Recapture (Becky 11/16, rebuilt 11/23): per-client on/off switch + the "recaptured" line under the Overview numbers.
+      recapSettings: csrSelf ? null : async () => {
+        const { data, error } = await supabase.rpc('qa_client_settings_get', { p_client: clientId || me.client })
+        if (error) throw new Error(error.message || 'Could not load the recapture setting.')
+        return data
+      },
+      recapSave: csrSelf ? null : async ({ on, days }) => {
+        const { data, error } = await supabase.rpc('qa_client_settings_set', { p_client: clientId || me.client, p_recapture: !!on, p_days: days || 7 })
+        if (error) throw new Error(error.message || 'Could not save the recapture setting.')
+        return data
+      },
+      recapture: csrSelf ? null : async ({ start, end, brands }) => {
+        const { data, error } = await supabase.rpc('qa_recapture', { p_client: clientId || me.client, p_start: start, p_end: end, p_brands: brands && brands.length ? brands : null })
+        if (error) throw new Error(error.message || 'Could not load recapture.')
+        return data
+      },
       // Coach view (Becky 11/19): coaching history per CSR for the signed-in login's scope.
       coachHistory: csrSelf ? null : async () => {
         const { data, error } = await supabase.rpc('qa_coach_history', { p_client: clientId || me.client })

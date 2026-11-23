@@ -232,7 +232,44 @@ function CampForm({ c, can, onSave }) {
           <div><TransferNumbers list={cx.transfer_numbers} set={v => set('transfer_numbers', v)} disabled={off} /></div>
         </div>
       )}
+      <Exclusions c={c} x={cx.exclusions || {}} set={v => set('exclusions', v)} disabled={off} />
       {can && <div><button style={S.primary} onClick={() => onSave(engine, { ...cx, transfer_numbers: (cx.transfer_numbers || []).filter(x => String(x.number || '').replace(/\D/g, '').length >= 10) })}>Save</button></div>}
+    </div>
+  )
+}
+
+// "Who the dialer skips" (Becky 11/16, rebuilt 11/23). Works on Standard and Advanced campaigns: dialer_next skips
+// any lead dialer_exclusion() names a reason for. Saved in dial_campaigns.cx.exclusions.
+function Exclusions({ c, x, set, disabled }) {
+  const [counts, setCounts] = useState(null)
+  useEffect(() => {
+    let live = true
+    supabase.rpc('dialer_exclusion_counts', { p_campaign: c.id }).then(({ data }) => { if (live) setCounts(data || {}) })
+    return () => { live = false }
+  }, [c.id, c.cx])
+  const put = (k, v) => set({ ...x, [k]: v })
+  const total = counts ? Object.values(counts).reduce((a, b) => a + Number(b || 0), 0) : 0
+  return (
+    <div style={{ borderTop: '1px solid light-dark(#eef2f7, #2a3439)', paddingTop: 10 }}>
+      <div style={S.cap}>Who the dialer skips</div>
+      <div style={S.mut}>Skipped leads stay in the list; they are dialed once the reason no longer applies (for example, after the weekend).</div>
+      <div style={S.cols}>
+        <div>
+          <Toggle label="Don’t dial the same number twice in 24 hours" hint="Across every campaign for this client." v={x.dedupe_24h} on={v => put('dedupe_24h', v)} disabled={disabled} />
+          <Toggle label="Skip weekends" hint="Uses the customer’s time zone when we know it." v={x.skip_weekends} on={v => put('skip_weekends', v)} disabled={disabled} />
+          <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center', padding: '4px 0' }}>Skip anyone we talked to in the last
+            <input type="number" min="0" max="365" value={x.recent_days ?? ''} disabled={disabled} onChange={e => put('recent_days', e.target.value === '' ? null : Math.max(0, Math.min(365, Number(e.target.value))))} style={{ ...S.input, width: 70 }} /> days</label>
+          <div style={S.mut}>Leave empty or 0 to turn off. Counts calls with talk time from any campaign for this client.</div>
+        </div>
+        <div>
+          <Toggle label="Skip anyone with a future appointment" hint="Appointments we booked, plus HubSpot’s next appointment date once HubSpot sends it." v={x.skip_booked} on={v => put('skip_booked', v)} disabled={disabled} />
+          <Toggle label="Skip contacts inactive in the CRM" hint="HubSpot lead status Unqualified / Inactive, or lifecycle stage Other, when it comes in with the lead." v={x.skip_inactive} on={v => put('skip_inactive', v)} disabled={disabled} />
+          <Toggle label="Skip Gold Star / members" hint="When the lead arrives marked as a member." v={x.skip_member} on={v => put('skip_member', v)} disabled={disabled} />
+        </div>
+      </div>
+      {counts && total > 0 && (
+        <div style={{ fontSize: 12.5, marginTop: 6 }}><b>Being skipped right now (saved settings):</b> {Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(' · ')}</div>
+      )}
     </div>
   )
 }

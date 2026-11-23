@@ -556,7 +556,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var ovBrand = LOCK ? short(LOCK) : S.brands.length === 1 ? short(S.brands[0]) : S.brands.length ? S.brands.length + ' ' + W_BRANDS.toLowerCase() : 'All ' + W_BRANDS.toLowerCase();
     setMain('<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">' + esc(ovBrand) + '</h1><span class="mut" style="font-size:13px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · vs the ' + daysBetween(S.start, S.end) + ' days before</span></div>' +
       (DASHON() ? '<div id="dphone">' + skel(110, 1) + '</div>' : '') +
-      '<div id="kpis" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">' + skel(118, 1).repeat(5) + '</div>' +
+      '<div id="kpis" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">' + skel(118, 1).repeat(5) + '</div>' + '<div id="recapln"></div>' +
       '<div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:3 1 520px;min-width:0" id="fcrcard">' + skel(24, 6) + '</div><div class="oq-card" style="flex:2 1 420px;min-width:0" id="sentcard">' + skel(24, 6) + '</div></div>' +
       '<div class="oq-card" id="tempcard">' + skel(24, 4) + '</div>' +
       '<div class="row"><div class="oq-card" style="flex:999 1 520px" id="brandcard">' + skel(30, 8) + '</div><div class="oq-card" style="flex:1 1 320px" id="coachcard">' + skel(40, 5) + '</div></div>' +
@@ -574,6 +574,7 @@ export function mountOpsisQA(ROOT, cfg) {
     loadFocus(null, null).then(function (f) { if (tok === T) stepCard(f, 'stepcard', null, null); fitReview(); }).catch(function () {});
     api(Object.assign({ action: 'calls' }, win({ winnable: true, score_max: 40, limit: 5 }))).then(function (c) { if (tok === T) reviewCard(c); }).catch(function () {});
     needsCard(tok);
+    recapLine(tok);
     api(Object.assign({ action: 'qaextras' }, win())).then(function (x) { if (tok === T) { EXTRAS = x || {}; drawFcr(); drawSent(); drawTemper(); kpiLate(); if (LASTBR) brandTable(LASTBR[0], LASTBR[1], 'brandcard', 8); } }).catch(function () { var a = $('fcrcard'), b = $('sentcard'); if (a) a.innerHTML = '<div class="mut">First contact resolution couldn\u2019t load.</div>'; if (b) b.innerHTML = '<div class="mut">Sentiment couldn\u2019t load.</div>'; var c = $('tempcard'); if (c) c.innerHTML = '<div class="mut">Temper shift couldn\u2019t load.</div>'; });
   }
 
@@ -583,11 +584,12 @@ export function mountOpsisQA(ROOT, cfg) {
     if (!LOCK && !MGR) { vExec(tok); return; }
     var ovBrand = LOCK ? short(LOCK) : S.brands.length === 1 ? short(S.brands[0]) : S.brands.length ? S.brands.length + ' ' + W_BRANDS.toLowerCase() : 'All ' + W_BRANDS.toLowerCase();
     setMain('<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">' + esc(ovBrand) + '</h1><span class="mut" style="font-size:13px">' + fdate(S.start) + ' – ' + fdate(S.end) + ' · vs the ' + daysBetween(S.start, S.end) + ' days before · click a tile for the details</span></div>' +
-      '<div id="dphone">' + skel(110, 1) + '</div><div id="dbook">' + skel(110, 1) + '</div>' +
+      '<div id="dphone">' + skel(110, 1) + '</div><div id="dbook">' + skel(110, 1) + '</div>' + '<div id="recapln"></div>' +
       '<div class="oq-card" id="fsteps" style="display:none">' + skel(18, 9) + '</div>' +
       '<div id="fmood" style="display:none"><div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:2 1 420px;min-width:0" id="sentcard">' + skel(24, 6) + '</div><div class="oq-card" style="flex:3 1 420px;min-width:0" id="tempcard">' + skel(24, 4) + '</div></div></div>' +
       '<div class="oq-card" id="brandcard">' + skel(30, 8) + '</div>' +
       '<div class="oq-card" id="dtrend">' + skel(180, 1) + '</div>');
+    recapLine(tok);
     loadDash().then(function (d) { if (tok !== T) return; DASH.d = d || {}; drawDash(); }).catch(function (e) { if (tok === T && $('dphone')) $('dphone').innerHTML = errBox(e); });
     Promise.all([loadReport(), loadPrevReport()]).then(function (r) { if (tok !== T) return; noteKnown(r[0]); LASTBR = [r[0], r[1]]; brandTable(r[0], r[1], 'brandcard', 12); }).catch(function (e) { if (tok === T && $('brandcard')) $('brandcard').innerHTML = errBox(e); });
     loadFocus(null, null).then(function (f) { if (tok === T && $('fsteps')) stepCard(f, 'fsteps', null, null); }).catch(function () {});
@@ -614,12 +616,13 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div class="cap" style="margin:4px 0 8px 2px;font-size:11px;letter-spacing:.14em">Revenue</div>' +
       '<div id="xhero" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">' + skel(120, 1).repeat(4) + '</div>' +
       '<div class="cap" style="margin:4px 0 8px 2px;font-size:11px;letter-spacing:.14em">Phones &amp; quality</div>' +
-      '<div id="xops" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">' + skel(110, 1).repeat(5) + '</div>' +
+      '<div id="xops" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">' + skel(110, 1).repeat(5) + '</div>' + '<div id="recapln"></div>' +
       '<div class="oq-card" id="fsteps" style="display:none">' + skel(18, 9) + '</div>' +
       '<div id="fmood" style="display:none"><div class="row" style="align-items:flex-start"><div class="oq-card" style="flex:2 1 420px;min-width:0" id="sentcard">' + skel(24, 6) + '</div><div class="oq-card" style="flex:3 1 420px;min-width:0" id="tempcard">' + skel(24, 4) + '</div></div></div>' +
       '<div class="oq-card" id="xbrands">' + skel(30, 8) + '</div>' +
       '<div class="row" style="align-items:flex-start"><div class="ai" style="flex:1 1 320px;min-width:0" id="insightcard">' + skel(30, 4) + '</div><div class="oq-card" style="flex:2 1 560px;min-width:0" id="fweek">' + skel(180, 1) + '</div></div>');
     var X = { d: null, m: null, mp: null };
+    recapLine(tok);
     var paint = function () { if (tok !== T) return; var d = X.d, m = X.m; if (!d || !m) return;
       var c = d.cur || {}, p = d.prev || {}, x = d.cdr, xp = d.cdr_prev || {}, cd = d.card || {}, t = m.totals || {}, tp = (X.mp || {}).totals || {};
       var aov = function (tt) { var k = (+tt.booked || 0) - (+tt.booked_unvalued || 0); return k > 0 && +tt.booked_value ? tt.booked_value / k : null; };
@@ -1907,7 +1910,8 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div class="oq-card" style="flex:1 1 360px"><h2 class="ttl">Preview</h2><p class="sub">Updates as you change colors. Save to apply.</p><div style="margin-top:12px">' + preview + '</div></div></div>' +
       '<div class="oq-card"><h2 class="ttl">Company Information</h2><p class="sub">Your company details, used on reports and so our team knows who to reach.</p><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:12px">' +
         BR_FIELDS.map(function (f) { return '<div' + (f[0] === 'address' ? ' style="grid-column:1/-1"' : '') + '><label class="l" for="bsp_' + f[0] + '">' + f[1] + '</label><input class="oq-field" id="bsp_' + f[0] + '" data-bsprof="' + f[0] + '" value="' + esc(d.profile[f[0]] || '') + '" placeholder="' + esc(f[2]) + '"' + dis + ' maxlength="' + (f[0] === 'address' ? 300 : 160) + '"></div>'; }).join('') + '</div>' +
-        (can ? '<div style="margin-top:14px"><button class="sel btnd" data-act="bssave"' + (BR.busy ? ' disabled' : '') + '>Save company information</button></div>' : '') + '</div>';
+        (can ? '<div style="margin-top:14px"><button class="sel btnd" data-act="bssave"' + (BR.busy ? ' disabled' : '') + '>Save company information</button></div>' : '') + '</div>' + '<div id="recapset"></div>';
+    recapCard();
     var nm = $('bs_name'); if (nm) nm.addEventListener('input', function () { d.name = nm.value; });
     [].forEach.call(el.querySelectorAll('[data-bsprof]'), function (inp) { inp.addEventListener('input', function () { d.profile[inp.getAttribute('data-bsprof')] = inp.value; }); });
     [].forEach.call(el.querySelectorAll('[data-bscolor]'), function (inp) { inp.addEventListener('input', function () { var k = inp.getAttribute('data-bscolor'); d[k] = inp.value; bsAuto(k); drawBrandSet(); }); });
@@ -1924,6 +1928,40 @@ export function mountOpsisQA(ROOT, cfg) {
         im.onerror = function () { toast('That file isn’t an image we can read. Use PNG, JPG, SVG or WebP.'); };
         im.src = src; };
       rd.readAsDataURL(f); });
+  }
+  // ---------- Recapture switch (Becky 11/16, rebuilt 11/23) ----------
+  // A not-booked inbound opportunity counts as "recaptured" when the same caller books on a later call within N days.
+  // Off by default (some clients won't favor it). Shown as its own line under the Overview numbers; the booking rate tile never changes.
+  var RCP = { d: null, busy: false, err: null };
+  function recapCard() {
+    var el = $('recapset'); if (!el || !CFG.recapSettings) return;
+    var head = '<div class="oq-card"><h2 class="ttl">Recapture</h2><p class="sub">Give credit when a caller who didn’t book on the first call books on a later call. When it’s on, the Overview shows a “Recaptured” line under the numbers. The booking rate itself never changes.</p>';
+    if (RCP.err && !RCP.d) { el.innerHTML = head + '<div class="banner" style="margin-top:10px">' + esc(RCP.err) + '</div></div>'; return; }
+    if (!RCP.d) { el.innerHTML = head + skel(20, 2) + '</div>'; CFG.recapSettings().then(function (r) { RCP.d = r; recapCard(); }).catch(function (e) { RCP.err = e.message; recapCard(); }); return; }
+    var d = RCP.d, dis = d.can_edit && !RCP.busy ? '' : ' disabled';
+    el.innerHTML = head + '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:12px"><label style="display:inline-flex;gap:6px;align-items:center;font-size:13.5px"><input type="checkbox" id="rcpon"' + (d.recapture ? ' checked' : '') + dis + '> Turn on recapture</label>' +
+      '<span style="font-size:13.5px">Count bookings within <input type="number" id="rcpdays" class="oq-field" min="1" max="30" value="' + esc(d.recapture_days || 7) + '" style="width:70px"' + dis + '> days of the first call</span>' +
+      (d.can_edit ? '<button class="sel btnd" data-act="rcpsave"' + dis + '>' + (RCP.busy ? 'Saving…' : 'Save') + '</button>' : '<span class="mut" style="font-size:12.5px">Only account admins can change this.</span>') + '</div></div>';
+  }
+  function recapSave() {
+    if (RCP.busy) return; var on = !!($('rcpon') || {}).checked, days = Math.max(1, Math.min(30, +(($('rcpdays') || {}).value) || 7));
+    RCP.busy = true; recapCard();
+    CFG.recapSave({ on: on, days: days }).then(function (r) { RCP.busy = false; RCP.d = r; recapCard(); toast(on ? 'Recapture is on' : 'Recapture is off'); })
+      .catch(function (e) { RCP.busy = false; recapCard(); toast(e.message); });
+  }
+  // The line under the Overview numbers: only shows when the client has recapture turned on.
+  function recapLine(tok) {
+    var el = $('recapln'); if (!el || !CFG.recapture) return;
+    CFG.recapture({ start: S.start, end: S.end, brands: S.brands }).then(function (r) {
+      if (tok !== T || !$('recapln')) return;
+      if (!r || !r.enabled) { el.innerHTML = ''; return; }
+      var dec = +r.decided || 0, bk = +r.booked || 0, rc = +r.recaptured || 0, nb = +r.not_booked || 0;
+      var base = dec ? 100 * bk / dec : null, withR = dec ? 100 * (bk + rc) / dec : null;
+      el.innerHTML = '<div class="oq-card" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;padding:12px 16px">' +
+        '<div><span class="cap">Recaptured' + itip('Opportunities that didn’t book on the call, where the same caller booked on a later call within ' + r.days + ' days. Booking rate with recapture = (booked + recaptured) ÷ booked + not booked. The booking rate tile above doesn’t include these.') + '</span><div class="num" style="font-size:20px;font-weight:600;margin-top:4px">' + fmt(rc) + ' <span class="mut" style="font-size:13px;font-weight:500">of ' + fmt(nb) + ' not booked</span></div></div>' +
+        '<div><span class="cap">Booking rate with recapture' + itip('(Booked + recaptured) ÷ booked + not booked, for the dates and brands picked.') + '</span><div class="num" style="font-size:20px;font-weight:600;margin-top:4px">' + (withR == null ? '—' : withR.toFixed(1) + '%') + '</div></div>' +
+        '<div><span class="cap">Booked on the first call' + itip('Booked ÷ booked + not booked. Same as the booking rate above.') + '</span><div class="num" style="font-size:20px;font-weight:600;margin-top:4px">' + (base == null ? '—' : base.toFixed(1) + '%') + '</div></div></div>';
+    }).catch(function () { if ($('recapln')) $('recapln').innerHTML = ''; });
   }
   // Menu highlight follows the sidebar color until someone picks it on purpose.
   function bsAuto(k) { var d = BR.draft; if (k === 'highlight') d.hlAuto = false; else if (k === 'sidebar' && d.hlAuto) d.highlight = shade(d.sidebar, 0.18); }
@@ -2676,7 +2714,7 @@ export function mountOpsisQA(ROOT, cfg) {
       rcSec('loc', 'Locations and service area', 'towns and zip codes each location covers', lc) +
       rcSec('web', 'Website', 'pages she can look up to answer questions', wb) +
       rcSec('beh', 'Call behavior', 'interruptions, silence, speed, call length', bh) +
-      rcSec('notes', 'Extra instructions', 'optional', nt) + '<div id="rclocs"></div><div id="rcalerts"></div>' +
+      rcSec('notes', 'Extra instructions', 'optional', nt) + '<div id="rclocs"></div><div id="rconcall"></div><div id="rcalerts"></div>' +
       (R.can_edit ? '<div id="rcsavebar" style="position:sticky;bottom:12px;display:' + (RC.dirty ? 'flex' : 'none') + ';gap:10px;align-items:center;justify-content:flex-end;padding:12px 16px;background:#14302A;color:#fff;border-radius:12px;margin-top:10px"><span style="margin-right:auto;font-size:13.5px">Unsaved changes for ' + esc(short(brand)) + '</span><button class="sel" data-act="rcsreset" style="background:transparent;color:#fff;border-color:#fff">Discard</button><button class="sel btnd" data-act="rcssave"' + (RC.saving ? ' disabled' : '') + '>' + (RC.saving ? 'Saving…' : 'Save') + '</button></div>' : '');
     var sb = $('rcsbrand'); if (sb) sb.addEventListener('change', function () { if (RC.dirty && !confirm('Discard unsaved changes?')) { sb.value = brand; return; } RC.brand = sb.value; rcLoadSettings(sb.value); });
     [].forEach.call(el.querySelectorAll('[data-k]'), function (inp) {
@@ -2688,7 +2726,7 @@ export function mountOpsisQA(ROOT, cfg) {
     });
     [].forEach.call(el.querySelectorAll('[data-zips]'), function (ta) { ta.addEventListener('input', function () { rcSet('locations.' + ta.getAttribute('data-zips') + '.zips', rcZips(ta.value)); }); ta.addEventListener('blur', function () { drawRcSettings(); }); });
     [].forEach.call(el.querySelectorAll('[data-days]'), function (cb) { cb.addEventListener('change', function () { var p = cb.getAttribute('data-days'), cur = (rcGet(p) || []).slice(), dd = cb.getAttribute('data-day'), ix = cur.indexOf(dd); if (cb.checked && ix < 0) cur.push(dd); if (!cb.checked && ix >= 0) cur.splice(ix, 1); rcSet(p, cur); }); });
-    rcAlertsBox(brand); rcLocBox(brand);
+    rcAlertsBox(brand); rcLocBox(brand); rcOncallBox(brand);
   }
   // ---------- One AI CSR per location (Becky 11/18) ----------
   // Each location's AI CSR is a copy of the brand settings above plus what differs for that office. Edge function recep-locations.
@@ -2743,6 +2781,85 @@ export function mountOpsisQA(ROOT, cfg) {
       RL.busy = null; RL.msg[loc] = /^ok/.test(r.result || '') ? 'Saved. This location’s AI CSR is up to date.' : (r.result || 'Saved.');
       var L = RL.d.locations; for (var i = 0; i < L.length; i++) if (L[i].location === loc) L[i] = r.location; rcLocBox(RL.brand);
     }).catch(function (e) { RL.busy = null; RL.msg[loc] = e.message; rcLocBox(RL.brand); });
+  }
+  // ---------- On-call technicians (Becky 11/16, rebuilt 11/23): a rolling 30-day schedule per brand. ----------
+  // Ava transfers emergencies to whoever is on call when the office's own Emergency transfer isn't available.
+  // Edge function ai-csr-oncall (ops get, tech_save, tech_remove, day, day_reset, rotation); a cron keeps the transfers current.
+  var OC = { brand: null, d: null, err: null, busy: false, edit: null, rot: null };
+  function ocCall(body) {
+    var tok = vxTok(); if (!tok) return Promise.reject(new Error('Please sign in again.'));
+    if (CFG.clientId) body = Object.assign({ client_id: CFG.clientId }, body);
+    return fetch('https://dqvuviyqrcrgapmxkoyx.supabase.co/functions/v1/ai-csr-oncall', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || 'Couldn’t reach the on-call schedule.'); return j; }); });
+  }
+  function ocDo(body, done) {
+    if (OC.busy) return; OC.busy = true; rcOncallBox(OC.brand);
+    ocCall(Object.assign({ brand: OC.brand }, body)).then(function (r) { OC.busy = false; OC.d = r; OC.rot = null; if (r.warning) toast('Saved, but the AI CSR line didn’t update: ' + r.warning); else if (done) toast(done); rcOncallBox(OC.brand); })
+      .catch(function (e) { OC.busy = false; toast(e.message); rcOncallBox(OC.brand); });
+  }
+  function ocWeekday(ymd) { return new Date(ymd + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }); }
+  function ocPhone(p) { var d = String(p || '').replace(/\D/g, '').slice(-10); return d.length === 10 ? '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6) : (p || ''); }
+  function rcOncallBox(brand) {
+    var el = $('rconcall'); if (!el) return;
+    if (OC.brand !== brand) {
+      OC.brand = brand; OC.d = null; OC.err = null; OC.edit = null; OC.rot = null;
+      ocCall({ op: 'get', brand: brand }).then(function (r) { if (OC.brand !== brand) return; OC.d = r; rcOncallBox(brand); }).catch(function (e) { if (OC.brand !== brand) return; OC.err = e.message; rcOncallBox(brand); });
+    }
+    var head = '<div class="oq-card" style="margin-top:10px"><h2 class="ttl" style="margin:0">On-call technicians</h2><p class="sub" style="margin:2px 0 0">Who she sends emergencies to when the office’s own Emergency transfer isn’t available (after hours, weekends). The schedule always runs 30 days ahead. If no one is on call, she takes an urgent callback instead.</p>';
+    if (OC.err && !OC.d) { el.innerHTML = head + '<div class="banner" style="margin-top:10px">' + esc(OC.err) + '</div></div>'; return; }
+    if (!OC.d) { el.innerHTML = head + '<div style="margin-top:10px">' + skel(18, 4) + '</div></div>'; return; }
+    var d = OC.d, can = d.can_edit, dis = can && !OC.busy ? '' : ' disabled', T2 = d.techs || [], byId = {};
+    T2.forEach(function (t) { byId[t.id] = t; });
+    var rot = OC.rot || { enabled: !!(d.rotation || {}).enabled, tech_ids: ((d.rotation || {}).tech_ids || []).slice(), every_days: (d.rotation || {}).every_days || 7, start_date: (d.rotation || {}).start_date || d.today, handoff: String((d.rotation || {}).handoff || '08:00').slice(0, 5), overwrite: false };
+    OC.rot = rot;
+    var now = d.now ? '<span class="pill" style="background:#E6F0EA;color:#1F5A41">On call now: ' + esc(d.now.name) + ' · ' + esc(ocPhone(d.now.phone)) + '</span>' : '<span class="pill" style="background:#F3F1EC;color:#5F6763">No one on call right now</span>';
+    var h = head + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">' + now + (d.office_emergency_now ? '<span class="mut" style="font-size:12.5px">The office Emergency transfer is covering right now.</span>' : '') + '<span class="mut" style="font-size:12px;margin-left:auto">Times are ' + esc(d.timezone || '') + '</span></div>';
+    if (!d.set_up) h += '<div class="banner" style="margin-top:10px">This brand’s AI CSR isn’t set up yet. You can add technicians now; they’re used once it is.</div>';
+    // roster
+    h += '<div style="margin-top:16px"><div style="font-size:13px;font-weight:600">Technicians</div>' +
+      (T2.length ? T2.map(function (t) {
+        if (OC.edit === t.id) return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px"><input id="ocen" class="oq-field" value="' + esc(t.name) + '" style="flex:1 1 180px" aria-label="Name"><input id="ocep" class="oq-field" value="' + esc(ocPhone(t.phone)) + '" style="flex:1 1 150px" aria-label="Phone"><button class="sel btnd" data-act="ocsavetech" data-id="' + t.id + '"' + dis + '>Save</button><button class="sel" data-act="occancel">Cancel</button></div>';
+        return '<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line2);margin-top:6px"><b style="font-size:13.5px">' + esc(t.name) + '</b><span class="mut" style="font-size:13px">' + esc(ocPhone(t.phone)) + '</span>' +
+          (can ? '<span style="margin-left:auto;display:flex;gap:6px"><button class="sel" data-act="ocedit" data-id="' + t.id + '" style="padding:5px 10px;font-size:12px"' + dis + '>Edit</button><button class="sel" data-act="ocdel" data-id="' + t.id + '" style="padding:5px 10px;font-size:12px"' + dis + ' aria-label="Remove ' + esc(t.name) + '">Remove</button></span>' : '') + '</div>';
+      }).join('') : '<p class="mut" style="font-size:13px;margin:6px 0 0">No technicians yet.</p>') +
+      (can ? '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px"><input id="ocnn" class="oq-field" placeholder="Technician name" style="flex:1 1 180px" aria-label="New technician name"><input id="ocnp" class="oq-field" placeholder="Cell phone (10 digits)" style="flex:1 1 150px" aria-label="New technician phone"><button class="sel btnd" data-act="ocaddtech"' + dis + '>Add technician</button></div>' : '') + '</div>';
+    // rotation
+    if (T2.length) {
+      h += '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line2)"><div style="font-size:13px;font-weight:600">Rotation</div><div class="mut" style="font-size:12px;margin:2px 0 8px">Fills the schedule automatically, in the order ticked. Days you change by hand below are kept unless you tick “Also replace days changed by hand”.</div>' +
+        '<label style="display:inline-flex;gap:6px;align-items:center;font-size:13.5px"><input type="checkbox" id="ocron"' + (rot.enabled ? ' checked' : '') + dis + '> Use a rotation</label>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">' + T2.map(function (t) { var ix = rot.tech_ids.indexOf(t.id); return '<label class="pill" style="cursor:pointer;background:' + (ix >= 0 ? '#E6F0EA;color:#1F5A41' : '#F3F1EC;color:#5F6763') + ';display:inline-flex;gap:6px;align-items:center"><input type="checkbox" data-ocrt="' + t.id + '"' + (ix >= 0 ? ' checked' : '') + dis + '>' + (ix >= 0 ? (ix + 1) + '. ' : '') + esc(t.name) + '</label>'; }).join('') + '</div>' +
+        '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;align-items:flex-end">' +
+          '<div><div class="cap">Each person is on for</div><input type="number" id="ocrev" class="oq-field" min="1" max="31" value="' + esc(rot.every_days) + '" style="width:80px"' + dis + '> <span class="mut" style="font-size:13px">days</span></div>' +
+          '<div><div class="cap">Starting</div><input type="date" id="ocrst" class="oq-field" value="' + esc(rot.start_date) + '"' + dis + '></div>' +
+          '<div><div class="cap">Hand-off time' + itip('An on-call day runs from this time to the same time the next morning, in the brand’s time zone.') + '</div><input type="time" id="ocrho" class="oq-field" value="' + esc(rot.handoff) + '"' + dis + '></div></div>' +
+        '<label style="display:inline-flex;gap:6px;align-items:center;font-size:13px;margin-top:10px"><input type="checkbox" id="ocrow"' + (rot.overwrite ? ' checked' : '') + dis + '> Also replace days changed by hand</label>' +
+        (can ? '<div style="margin-top:10px"><button class="sel btnd" data-act="ocrotsave"' + dis + '>' + (OC.busy ? 'Saving…' : 'Save rotation') + '</button></div>' : '') + '</div>';
+    }
+    // 30-day schedule
+    var days = (d.days || []).filter(function (x) { return x.day >= d.today; });
+    var opts = function (sel) { return '<option value="">No one on call</option>' + T2.map(function (t) { return '<option value="' + t.id + '"' + (t.id === sel ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join(''); };
+    h += '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line2)"><div style="font-size:13px;font-weight:600">Next 30 days</div><div class="mut" style="font-size:12px;margin:2px 0 6px">Change any day by hand. “Back to rotation” undoes a hand change.</div>' +
+      (!days.length ? '<p class="mut" style="font-size:13px">' + (T2.length ? 'Nothing scheduled yet. Set up a rotation above, or pick people day by day once days appear.' : 'Add a technician to start the schedule.') + '</p>' :
+      '<div style="overflow-x:auto"><table class="tbl" style="font-size:13px;width:100%"><thead><tr><th>Day</th><th>On call</th><th>Set by</th><th></th></tr></thead><tbody>' +
+      days.map(function (x) { var man = x.source === 'manual'; return '<tr><td style="white-space:nowrap">' + esc(ocWeekday(x.day)) + (x.day === d.today ? ' <span class="pill" style="background:#EEF2FB;color:#2B3A67">Today</span>' : '') + '</td><td>' + (can ? '<select class="oq-field" data-ocday="' + x.day + '" style="width:auto"' + dis + ' aria-label="On call ' + esc(x.day) + '">' + opts(x.tech_id) + '</select>' : esc((byId[x.tech_id] || {}).name || 'No one')) + '</td><td class="mut">' + (man ? 'By hand' + (x.updated_by_name ? ' · ' + esc(x.updated_by_name) : '') : 'Rotation') + '</td><td>' + (can && man ? '<button class="sel" data-act="ocreset" data-day="' + x.day + '" style="padding:4px 9px;font-size:12px"' + dis + '>Back to rotation</button>' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>') + '</div>';
+    el.innerHTML = h + '</div>';
+    [].forEach.call(el.querySelectorAll('[data-ocday]'), function (s2) { s2.addEventListener('change', function () { ocDo({ op: 'day', day: s2.getAttribute('data-ocday'), tech_id: s2.value || null }, 'On-call day updated'); }); });
+    [].forEach.call(el.querySelectorAll('[data-ocrt]'), function (cb) { cb.addEventListener('change', function () { var id = cb.getAttribute('data-ocrt'), ix = rot.tech_ids.indexOf(id); if (cb.checked && ix < 0) rot.tech_ids.push(id); if (!cb.checked && ix >= 0) rot.tech_ids.splice(ix, 1); ocRotRead(); rcOncallBox(OC.brand); }); });
+    ['ocron', 'ocrev', 'ocrst', 'ocrho', 'ocrow'].forEach(function (k) { var n = $(k); if (n) n.addEventListener('change', ocRotRead); });
+  }
+  function ocRotRead() {
+    var r = OC.rot; if (!r) return; var g = function (k) { return $(k); };
+    if (g('ocron')) r.enabled = g('ocron').checked; if (g('ocrev')) r.every_days = +g('ocrev').value || 7; if (g('ocrst')) r.start_date = g('ocrst').value || r.start_date;
+    if (g('ocrho')) r.handoff = g('ocrho').value || '08:00'; if (g('ocrow')) r.overwrite = g('ocrow').checked;
+  }
+  function ocAct(a, dd) {
+    if (a === 'ocaddtech') { var n = ($('ocnn') || {}).value, ph = ($('ocnp') || {}).value; if (!n || String(ph || '').replace(/\D/g, '').length < 10) { toast('Enter a name and a 10-digit phone number.'); return; } ocDo({ op: 'tech_save', name: n, phone: ph }, 'Technician added'); }
+    else if (a === 'ocedit') { OC.edit = dd.id; rcOncallBox(OC.brand); }
+    else if (a === 'occancel') { OC.edit = null; rcOncallBox(OC.brand); }
+    else if (a === 'ocsavetech') { OC.edit = null; ocDo({ op: 'tech_save', id: dd.id, name: ($('ocen') || {}).value, phone: ($('ocep') || {}).value }, 'Technician saved'); }
+    else if (a === 'ocdel') { if (!confirm('Remove this technician? Their scheduled days become “No one on call” until the rotation fills them.')) return; ocDo({ op: 'tech_remove', id: dd.id }, 'Technician removed'); }
+    else if (a === 'ocreset') { ocDo({ op: 'day_reset', day: dd.day }, 'Back on the rotation'); }
+    else if (a === 'ocrotsave') { ocRotRead(); var r = OC.rot; if (r.enabled && !r.tech_ids.length) { toast('Tick at least one technician for the rotation.'); return; } ocDo({ op: 'rotation', enabled: r.enabled, tech_ids: r.tech_ids, every_days: r.every_days, start_date: r.start_date, handoff: r.handoff, overwrite: r.overwrite }, 'Rotation saved'); }
   }
   // Call alert emails (2026-11-05): per-brand list of who gets the email after every AI CSR call.
   // Stored in qa_receptionist_alerts through the ai-csr-alerts function, separate from the receptionist settings save.
@@ -5825,6 +5942,8 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rcdel') { rcGet(d.list).splice(+d.i, 1); RC.dirty = true; drawRcSettings(); }
       else if (a === 'rcssave') { rcSave(); }
       else if (a === 'rasave') { rcAlertsSave(); }
+      else if (a === 'rcpsave') { recapSave(); }
+      else if (/^oc/.test(a) && ['ocaddtech', 'ocedit', 'occancel', 'ocsavetech', 'ocdel', 'ocreset', 'ocrotsave'].indexOf(a) >= 0) { ocAct(a, d); }
       else if (a === 'rchltok') { var tk = ($('hltok') || {}).value || ''; api({ action: 'receptionist', op: 'hl_token', token: tk }).then(function () { toast('Token saved.'); RC.s.has_hl_token = true; drawRcSettings(); }).catch(function (e) { toast(e.message); }); }
       else if (a === 'rchlcals') { api({ action: 'receptionist', op: 'hl_calendars' }).then(function (r) { RC.hlCals = r.calendars || []; drawRcSettings(); }).catch(function (e) { toast(e.message); }); }
       else if (a === 'rcsreset') { rcLoadSettings(RC.sBrand); }
