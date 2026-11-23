@@ -18,7 +18,7 @@ const C = { ink: '#1C2421', soft: '#5F6763', line: '#E8E4DC', bg: '#F5F3EE', car
 
 const QUESTIONS = [
   ['business', 'What does your business do?', 'e.g. A CPA firm: tax returns, bookkeeping and payroll for individuals and small businesses', 3, true],
-  ['locations', 'Your locations or brands', 'e.g. Downtown, Northside, Lakeview (leave empty if you have one)', 1, false],
+  ['locations', 'Your locations or brands', 'One per line, e.g.\nDowntown\nNorthside\nRiverview, FL\n(leave empty if you have one)', 3, false],
   ['outcome', 'What should a great call end in?', 'e.g. A booked consultation, a sale, an item on hold, a scheduled visit', 1, true],
   ['not_opps', 'Which calls are NOT a chance to win that outcome?', 'e.g. Billing questions, existing customers checking status, vendors', 2, false],
   ['steps', 'How should your team handle a call today? (optional)', 'e.g. Greet, find out what they need, get their details, offer a time, recap. Leave empty and we will suggest one.', 3, false],
@@ -55,7 +55,7 @@ export default function QaSetupInterview({ clientId, company, onDone }) {
     if (total !== 100) { setErr(`Points must add up to 100 (now ${total}).`); return }
     if (draft.steps.some(s => !String(s.label).trim())) { setErr('Every step needs a name.'); return }
     setErr(''); setBusy('save')
-    const locs = a.locations.split(/[,\n]/).map(x => x.trim()).filter(Boolean)
+    const locs = a.locations.split(/\n/).map(x => x.trim()).filter(Boolean)
     const { error } = await supabase.rpc('qa_setup_save', {
       p_client: clientId, p_campaign: draft.call_type || 'calls', p_guidance: draft.guidance,
       p_steps: draft.steps.map(s => ({ ...s, points: Number(s.points) || 0 })), p_locations: locs.length ? locs : null, p_inbound_only: inbound,

@@ -1910,8 +1910,8 @@ export function mountOpsisQA(ROOT, cfg) {
       '<div class="oq-card" style="flex:1 1 360px"><h2 class="ttl">Preview</h2><p class="sub">Updates as you change colors. Save to apply.</p><div style="margin-top:12px">' + preview + '</div></div></div>' +
       '<div class="oq-card"><h2 class="ttl">Company Information</h2><p class="sub">Your company details, used on reports and so our team knows who to reach.</p><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:12px">' +
         BR_FIELDS.map(function (f) { return '<div' + (f[0] === 'address' ? ' style="grid-column:1/-1"' : '') + '><label class="l" for="bsp_' + f[0] + '">' + f[1] + '</label><input class="oq-field" id="bsp_' + f[0] + '" data-bsprof="' + f[0] + '" value="' + esc(d.profile[f[0]] || '') + '" placeholder="' + esc(f[2]) + '"' + dis + ' maxlength="' + (f[0] === 'address' ? 300 : 160) + '"></div>'; }).join('') + '</div>' +
-        (can ? '<div style="margin-top:14px"><button class="sel btnd" data-act="bssave"' + (BR.busy ? ' disabled' : '') + '>Save company information</button></div>' : '') + '</div>' + '<div id="recapset"></div>';
-    recapCard();
+        (can ? '<div style="margin-top:14px"><button class="sel btnd" data-act="bssave"' + (BR.busy ? ' disabled' : '') + '>Save company information</button></div>' : '') + '</div>' + '<div id="locset"></div><div id="recapset"></div>';
+    locCard(); recapCard();
     var nm = $('bs_name'); if (nm) nm.addEventListener('input', function () { d.name = nm.value; });
     [].forEach.call(el.querySelectorAll('[data-bsprof]'), function (inp) { inp.addEventListener('input', function () { d.profile[inp.getAttribute('data-bsprof')] = inp.value; }); });
     [].forEach.call(el.querySelectorAll('[data-bscolor]'), function (inp) { inp.addEventListener('input', function () { var k = inp.getAttribute('data-bscolor'); d[k] = inp.value; bsAuto(k); drawBrandSet(); }); });
@@ -1933,6 +1933,22 @@ export function mountOpsisQA(ROOT, cfg) {
   // A not-booked inbound opportunity counts as "recaptured" when the same caller books on a later call within N days.
   // Off by default (some clients won't favor it). Shown as its own line under the Overview numbers; the booking rate tile never changes.
   var RCP = { d: null, busy: false, err: null };
+  // Your locations (Becky 11/23): one per line; feeds the location pickers (Phone setup, dashboard, call routing).
+  var LOCS = { d: null, busy: false };
+  function locCard() {
+    var el = $('locset'); if (!el || !CFG.locationsGet) return;
+    var head = '<div class="oq-card" style="margin-top:16px"><h2 class="ttl">Your locations</h2><p class="sub">One per line. These show up wherever you pick a location — phone lines, campaigns and reports.</p>';
+    if (!LOCS.d) { el.innerHTML = head + skel(20, 2) + '</div>'; CFG.locationsGet().then(function (r) { LOCS.d = r || { locations: [] }; locCard(); }).catch(function (e) { el.innerHTML = head + '<p style="color:#A8441A">' + esc(e.message) + '</p></div>'; }); return; }
+    var can = LOCS.d.can_edit;
+    el.innerHTML = head + '<label class="sr" for="loclist">Locations, one per line</label><textarea id="loclist" class="oq-field" rows="' + Math.min(12, Math.max(4, (LOCS.d.locations || []).length + 2)) + '" style="margin-top:12px;resize:vertical" placeholder="Downtown\nNorthside\nRiverview, FL"' + (can ? '' : ' disabled') + '>' + esc((LOCS.d.locations || []).join('\n')) + '</textarea>' +
+      (can ? '<div style="margin-top:10px"><button class="sel btnd" data-act="locsave"' + (LOCS.busy ? ' disabled' : '') + '>' + (LOCS.busy ? 'Saving…' : 'Save locations') + '</button></div>' : '<p class="mut" style="font-size:12.5px;margin-top:8px">Only account admins can change this.</p>') + '</div>';
+  }
+  function locSave() {
+    var L = (($('loclist') || {}).value || '').split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+    LOCS.busy = true; locCard();
+    CFG.locationsSet(L).then(function (r) { LOCS.busy = false; LOCS.d.locations = r || L; locCard(); toast('Locations saved.'); })
+      .catch(function (e) { LOCS.busy = false; locCard(); toast(e.message); });
+  }
   function recapCard() {
     var el = $('recapset'); if (!el || !CFG.recapSettings) return;
     var head = '<div class="oq-card"><h2 class="ttl">Recapture</h2><p class="sub">Give credit when a caller who didn’t book on the first call books on a later call. When it’s on, the Overview shows a “Recaptured” line under the numbers. The booking rate itself never changes.</p>';
@@ -6134,6 +6150,7 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rcssave') { rcSave(); }
       else if (a === 'rasave') { rcAlertsSave(); }
       else if (a === 'rcpsave') { recapSave(); }
+      else if (a === 'locsave') { locSave(); }
       else if (/^ob(go|min|open|hide|show)$/.test(a)) { obAct(a, d); }
       else if (a === 'featcard') { el.disabled = true; CFG.featureSet('card_capture', true).then(function () { FEAT_AT = 0; return featLoad(); }).then(function () { toast('Card capture is on.'); render(); }).catch(function (e) { el.disabled = false; toast(e.message); }); }
       else if (a === 'ccprov' || a === 'ccsave' || a === 'ccrm' || a === 'cctest') { ccAct(a, d); }

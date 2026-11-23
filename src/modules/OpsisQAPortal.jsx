@@ -273,6 +273,17 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         const { error } = await supabase.rpc('qa_source_remove', { p_client: clientId || me.client, p_id: id })
         if (error) throw new Error(error.message || 'Could not disconnect.')
       },
+      // Your locations (Becky 11/23)
+      locationsGet: csrSelf ? null : async () => {
+        const { data, error } = await supabase.rpc('qa_locations_get', { p_client: clientId || me.client })
+        if (error) throw new Error(error.message)
+        return data
+      },
+      locationsSet: csrSelf ? null : async (list) => {
+        const { data, error } = await supabase.rpc('qa_locations_set', { p_client: clientId || me.client, p_locations: list })
+        if (error) throw new Error(error.message || 'Could not save locations.')
+        return data
+      },
       // Turn-it-on gates (Becky 11/23): which data-backed pages this company can use yet
       features: csrSelf ? null : async () => {
         const { data, error } = await supabase.rpc('qa_feature_status', { p_client: clientId || me.client })
