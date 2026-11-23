@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useUnread } from '../lib/unread'
 import { categoryForType } from '../lib/notify'
 import { loadNotifPrefs, allowsSound, allowsInApp } from '../lib/notif_prefs'
 import { primeAudio, loadSoundPrefs, playForNotification } from '../lib/sounds'
@@ -35,6 +36,7 @@ function shouldToast(n, prefs) {
 
 export default function NotificationBell() {
   const [items, setItems] = useState([])
+  const { total: chatUnread, markAllRead: markAllChatRead } = useUnread()
   const [open, setOpen] = useState(false)
   const [meId, setMeId] = useState(null)
   const [prefs, setPrefs] = useState(null)
@@ -146,11 +148,14 @@ export default function NotificationBell() {
   const unread = items.filter(n => !n.read_at).length
 
 
+  // "Mark all read" also clears the chat sidebar's unread badges (Becky, 2026-11-23).
   async function markAllRead() {
+    markAllChatRead()
     const ids = items.filter(n => !n.read_at).map(n => n.id)
     if (!ids.length) return
-    setItems(prev => prev.map(n => n.read_at ? n : { ...n, read_at: new Date().toISOString() }))
-    await supabase.from('notifications').update({ read_at: new Date().toISOString() }).in('id', ids)
+    const now = new Date().toISOString()
+    setItems(prev => prev.map(n => n.read_at ? n : { ...n, read_at: now }))
+    await supabase.from('notifications').update({ read_at: now }).in('id', ids)
   }
 
   async function openItem(n) {
@@ -201,7 +206,7 @@ export default function NotificationBell() {
           <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <b style={{ fontSize: 14 }}>Notifications</b>
             <div style={{ display: 'flex', gap: 8 }}>
-              {unread > 0 && <button onClick={markAllRead} style={{ border: 0, background: 'transparent', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Mark all read</button>}
+              {(unread > 0 || chatUnread > 0) && <button onClick={markAllRead} style={{ border: 0, background: 'transparent', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Mark all read</button>}
               {items.length > 0 && <button onClick={clearAll} style={{ border: 0, background: 'transparent', color: 'var(--ink-soft)', fontSize: 12, cursor: 'pointer' }}>Clear</button>}
             </div>
           </div>
