@@ -116,7 +116,8 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
   // Phone page while it's open, so the phone never unmounts.
   const phoneRef = useRef(null)
   useEffect(() => {
-    if (!sup || csrSelf) return
+    // No phone on the setup interview (Becky 11/23): it mounts once setup is done.
+    if (!sup || csrSelf || setup === null || needsSetup) return
     const phoneEl = document.createElement('div')
     Object.entries(PORTAL_THEME).forEach(([k, v]) => { if (k.startsWith('--')) phoneEl.style.setProperty(k, v); else phoneEl.style[k] = v })
     const parking = document.createElement('div'); parking.style.display = 'none'; parking.appendChild(phoneEl)
@@ -141,7 +142,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
     )
     phoneRef.current = { show: (el) => el.appendChild(phoneEl), park: () => parking.appendChild(phoneEl) }
     return () => { phoneRef.current = null; setTimeout(() => { root.unmount(); parking.remove(); host.remove() }, 0) }
-  }, [sup, csrSelf])
+  }, [sup, csrSelf, setup === null, needsSetup]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!me || !ref.current || sup === null || accounts === null || setup === null || needsSetup) return
