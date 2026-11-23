@@ -39,6 +39,8 @@ import CallFlowBuilder from '../components/CallFlowBuilder'
 import Softphone from '../components/Softphone'
 import { VoiceProvider, RingBounce } from '../lib/voice'
 import { loadAccounts, switchAccount } from '../components/AccountSwitcher'
+// Self-serve setup (Becky 11/23): a company with no scoring checklist yet gets the setup interview first.
+import QaSetupInterview from '../components/QaSetupInterview'
 
 // Portal palette for the mounted Command Center pages (they read these CSS variables).
 const PORTAL_THEME = {
@@ -73,6 +75,8 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
   const [profRole, setProfRole] = useState(null)
   // "View as" Admin / RM / GM / CSR — your own +rm/+gm/+csr logins (2026-11-10)
   const [accounts, setAccounts] = useState(null)
+  // { needs_setup, can_edit, company } from RPC qa_setup_status; null while checking
+  const [setup, setSetup] = useState(null)
   useEffect(() => { let on = true; loadAccounts().then(a => { if (on) setAccounts(a) }); return () => { on = false } }, [])
   useEffect(() => {
     let active = true
@@ -94,6 +98,17 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       .catch((e) => { if (active) setErr(e.message || 'Could not load your account.') })
     return () => { active = false }
   }, [clientId])
+
+  useEffect(() => {
+    let active = true
+    if (!me || csrSelf) { if (csrSelf) setSetup({ needs_setup: false }); return }
+    const cid = clientId || me.client
+    if (!cid) { setSetup({ needs_setup: false }); return }
+    supabase.rpc('qa_setup_status', { p_client: cid })
+      .then(({ data, error }) => { if (active) setSetup(error ? { needs_setup: false } : (data || { needs_setup: false })) })
+    return () => { active = false }
+  }, [me, clientId, csrSelf])
+  const needsSetup = !!(setup?.needs_setup && setup?.can_edit)
 
   // The phone lives for the whole portal visit, not just the Phone page (Becky 11/22): a Ready CSR / RM / GM
   // stays Ready and keeps ringing whatever page they click to, and a ringing call jumps them to the Phone page
@@ -129,7 +144,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
   }, [sup, csrSelf])
 
   useEffect(() => {
-    if (!me || !ref.current || sup === null || accounts === null) return
+    if (!me || !ref.current || sup === null || accounts === null || setup === null || needsSetup) return
     const destroy = mountOpsisQA(ref.current, {
       supervisor: !!sup,
       portalRole: prole,
@@ -291,7 +306,7 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       },
     })
     return destroy
-  }, [me, sup, accounts]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [me, sup, accounts, setup]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (err) {
     return (
@@ -308,6 +323,10 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
       </div>
     )
   }
-  if (!me) return <div className="loading-screen">Loading…</div>
+  if (!me || setup === null) return <div className="loading-screen">Loading…</div>
+  if (needsSetup) {
+    return <QaSetupInterview clientId={clientId || me.client} company={setup.company}
+      onDone={() => setSetup({ ...setup, needs_setup: false })} />
+  }
   return <div ref={ref} />
 }
