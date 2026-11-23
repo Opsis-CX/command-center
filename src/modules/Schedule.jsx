@@ -648,7 +648,7 @@ export default function Schedule() {
         <FillRateView />
       ) : tab === 'claim' ? (
         <ClaimView
-          isAdmin={isAdmin} adminView={adminView} setAdminView={setAdminView}
+          isAdmin={isAdmin} canTeamView={isAdmin || !!me?.schedule_team_view} adminView={adminView} setAdminView={setAdminView}
           me={me} profiles={profiles} tiers={tiers}
           schedules={myVisibleSchedules(isAdmin && adminView === 'mine')} blocks={blocks} claims={claims}
           weekStart={weekStart} setWeekStart={setWeekStart}
@@ -702,7 +702,7 @@ function VtoBanner({ rows, schedules }) {
 }
 
 function ClaimView(props) {
-  const { isAdmin, adminView, setAdminView, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
+  const { isAdmin, canTeamView, adminView, setAdminView, me, profiles, schedules, blocks, claims, weekStart, setWeekStart, releaseStatus,
     claimedHoursInWeek, hasIntervalStarted, onClaim, onUnclaim, onCheckIn, onCheckOut, onNoShow,
     canAssign, audience, onAssign, onUnassign,
     trades, onOfferTrade, onAcceptTrade, onCancelTrade, certOkForBlock, myOpenTradeFor, callable } = props
@@ -710,7 +710,8 @@ function ClaimView(props) {
 
   // Admins in 'team' view see the team grid; everyone else (agents, and
   // admins who switched to 'My view') see the personal claim grid.
-  const teamMode = isAdmin && adminView === 'team'
+  // Becky 11/23: profiles.schedule_team_view lets a non-admin (e.g. Sarah VanEpps) see the Team view, view-only.
+  const teamMode = canTeamView && adminView === 'team'
 
   if (!schedules.length) {
     return <div className="card"><div className="page-sub" style={{ textAlign: 'center', padding: 30 }}>
@@ -730,7 +731,7 @@ function ClaimView(props) {
     <div>
       {!teamMode && !isAdmin && releaseStatus?.releaseDate && <ReleaseBanner status={releaseStatus} />}
 
-      {isAdmin && (
+      {canTeamView && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
           <button className={'btn ' + (adminView === 'team' ? 'btn-primary' : 'btn-ghost')} onClick={() => setAdminView('team')}>Team view</button>
           <button className={'btn ' + (adminView === 'mine' ? 'btn-primary' : 'btn-ghost')} onClick={() => setAdminView('mine')}>My view</button>
