@@ -188,12 +188,12 @@ export function mountOpsisQA(ROOT, cfg) {
   // Revenue, Calibration, Coaching Hub, Practice, Reporting, AI CSR, AI Speed to Lead, [Wallboard, Phone for supervisors], Workforce.
   // Wallboard + Phone sit under AI Speed to Lead until the CCaaS phone system is finished and ready for use.
   // Practice + AI CSR are added after the pilot check (see vPractice access below).
-  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']].concat(CFG.mountExt ? [['mycoach', 'My coaching']] : [])]] : [['', [['overview', 'Overview']].concat(!OPSIS && CFG.bizReview && (ROLE === 'admin' || CFG.staff) && !(CFG.portalRole === 'rm' || CFG.portalRole === 'gm') ? [['reviews', 'Business reviews']] : [])
+  var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview']].concat(!OPSIS && CFG.bizReview && (ROLE === 'admin' || CFG.staff) && !(CFG.portalRole === 'rm' || CFG.portalRole === 'gm') ? [['reviews', 'Business reviews']] : [])
     .concat([['insights', 'Insights']]).concat(CFG.mountExt ? [['trends', 'Call trends']] : []).concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', W_BRANDS]])
     .concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['pricetalk', 'Price talk'], ['money', 'Revenue']].concat(CFG.leadTime ? [['leadtime', 'Booking lead time']] : []))
     .concat(!OPSIS && (!LOCK || CFG.supervisor) && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])
     .concat(!OPSIS && CFG.supervisor && CFG.coachHistory ? [['coach', 'Coach view']] : [])
-    .concat(OPSIS ? [] : [['hub', 'Coaching Hub']]).concat(CFG.mountExt && CFG.supervisor ? [['coachclips', 'Coaching clips']] : [])
+    .concat(OPSIS ? [] : [['hub', 'Coaching Hub']])
     .concat(!OPSIS && CFG.tasks ? [['tasks', 'Tasks']] : [])
     .concat([['reporting', 'Reporting']])
     .concat(CFG.mountExt ? [['aistl', 'AI Speed to Lead']] : [])
@@ -5795,6 +5795,8 @@ export function mountOpsisQA(ROOT, cfg) {
     applyRange();
   }
   function render() {
+    // Coaching clips + My coaching removed from the portal (Becky 11/23: unused; coaching notes, Coaching Hub and Call reviews cover it).
+    if (S.view === 'coachclips') S.view = 'overview'; if (S.view === 'mycoach') S.view = 'hub';
     prCheckAccess();
     if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
