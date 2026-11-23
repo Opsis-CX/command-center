@@ -5784,9 +5784,40 @@ export function mountOpsisQA(ROOT, cfg) {
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; if (MGR && MGR_OK.indexOf(S.view) < 0) S.view = 'overview'; if (COACH_ROLE && COACH_NAV.concat(['csr', 'hubqs', 'kpi', 'repeat']).indexOf(S.view) < 0) S.view = 'coach'; renderNav(); renderWho(); writeHash(); trackHist();
     var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, coach: vCoach, reviews: vReviews, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, connect: vConnect, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, supervisor: function () { vExt('supervisor'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, tasks: vTasks, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var gk = GATE[S.view];
+    if (gk && CFG.features && !(FEAT && FEAT[gk])) {
+      if (!FEAT) { setMain('<div class="oq-card">' + skel(30, 4) + '</div>'); featLoad().then(function () { if (tok === T) render(); }); return; }
+      vLocked(S.view, gk); setTimeout(function () { obTick(); }, 0); return;
+    }
     v(tok);
     setTimeout(function () { obTick(); }, 0);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
+  }
+  // Turn-it-on pages (Becky 11/23): no GarageCo-only pages. Every company sees every page; pages that
+  // need a data source they haven't connected yet explain what it does and how to turn it on.
+  var FEAT = null, FEAT_AT = 0;
+  var GATE = { money: 'revenue', leadtime: 'leadtime', cardcap: 'card', aistl: 's2l', supervisor: 'lines', wallboard: 'lines', myphone: 'lines', wfm: 'lines', intraday: 'lines', callflow: 'lines', coachclips: 'lines', trends: 'lines' };
+  var GATE_TXT = {
+    lines: ['Runs on Opsis phone lines', 'This page shows live call activity — who’s on a call, who’s waiting, staffing and coaching clips. It works when your calls ring through Opsis phone lines, which also gives your team a softphone and an AI receptionist.', 'Calls you upload or pull from your own phone system are still scored on every other page.'],
+    revenue: ['Connect your job or CRM system', 'Revenue shows how much money your calls booked — and how much walked away — by location and by CSR.', 'It needs your job data (your CRM or field-service system) so we can match each call to what it was worth.'],
+    leadtime: ['Connect your job or CRM system', 'Booking lead time shows how far out customers are booked, so you can spot when the schedule is too full to win new work.', 'It needs appointment dates from your CRM or field-service system.'],
+    s2l: ['Connect a lead source', 'AI Speed to Lead calls every new web lead within seconds, day or night, and books them or hands them to your team.', 'It needs your web leads (website forms, Angi, Google, Facebook and similar) sent to us.'],
+    card: ['Turn on card capture', 'Card capture tracks whether your team asks for a card or deposit when booking, and how often they get one.', 'Turn it on if your business takes a card or deposit when booking. Scoring starts with the next calls.']
+  };
+  function featLoad() {
+    if (!CFG.features) return Promise.resolve(null);
+    if (FEAT && Date.now() - FEAT_AT < 60000) return Promise.resolve(FEAT);
+    return CFG.features().then(function (f) { FEAT = f || {}; FEAT_AT = Date.now(); return FEAT; }).catch(function () { FEAT = FEAT || {}; return FEAT; });
+  }
+  function vLocked(view, key) {
+    var t = GATE_TXT[key], nm = ((NAV.map(function (s) { return s[1]; }).reduce(function (a, b) { return a.concat(b); }, []).filter(function (n) { return n[0] === view; })[0]) || [view, view])[1];
+    var mail = 'mailto:support@opsiscx.com?subject=' + encodeURIComponent('Turn on ' + nm + ' for ' + CLIENT);
+    var btn = key === 'card' ? (FEAT && FEAT.can_edit ? '<button class="sel btnd" data-act="featcard">Turn on card capture</button>' : '<span class="mut">Ask an account admin to turn this on.</span>')
+      : key === 'lines' ? (obNavHas('phonesetup') ? '<button class="sel btnd" data-go="phonesetup">Set up phone lines</button>' : '') + '<a class="sel" href="' + mail + '">Ask the Opsis CX Support team</a>'
+      : '<a class="sel btnd" href="' + mail + '">Ask the Opsis CX Support team to connect it</a>' + (obNavHas('connect') ? '<button class="sel" data-go="connect">Connect your calls</button>' : '');
+    setMain(crumb([[nm]]) + '<div class="oq-card" style="max-width:720px"><div class="cap" style="margin-bottom:8px">Not turned on yet</div><h2 class="ttl" style="font-size:20px">' + esc(t[0]) + '</h2>' +
+      '<p style="font-size:14px;line-height:1.6;margin:10px 0 0;color:#3B4541">' + esc(t[1]) + '</p><p class="mut" style="font-size:13px;line-height:1.55;margin:8px 0 0">' + esc(t[2]) + '</p>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">' + btn + '</div></div>');
   }
   // Getting started (Becky 11/23): checklist that follows new customers around the portal + a pulsing
   // bubble on the next menu item. Customer logins only; hides itself when done or dismissed.
@@ -6104,6 +6135,7 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rasave') { rcAlertsSave(); }
       else if (a === 'rcpsave') { recapSave(); }
       else if (/^ob(go|min|open|hide|show)$/.test(a)) { obAct(a, d); }
+      else if (a === 'featcard') { el.disabled = true; CFG.featureSet('card_capture', true).then(function () { FEAT_AT = 0; return featLoad(); }).then(function () { toast('Card capture is on.'); render(); }).catch(function (e) { el.disabled = false; toast(e.message); }); }
       else if (a === 'ccprov' || a === 'ccsave' || a === 'ccrm' || a === 'cctest') { ccAct(a, d); }
       else if (/^oc/.test(a) && ['ocaddtech', 'ocedit', 'occancel', 'ocsavetech', 'ocdel', 'ocreset', 'ocrotsave'].indexOf(a) >= 0) { ocAct(a, d); }
       else if (a === 'rchltok') { var tk = ($('hltok') || {}).value || ''; api({ action: 'receptionist', op: 'hl_token', token: tk }).then(function () { toast('Token saved.'); RC.s.has_hl_token = true; drawRcSettings(); }).catch(function (e) { toast(e.message); }); }
