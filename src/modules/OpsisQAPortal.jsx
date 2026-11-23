@@ -258,6 +258,31 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         if (error) throw new Error(error.message || 'Could not load recapture.')
         return data
       },
+      // Connect your calls (Becky 11/23): upload recordings or save a phone system API key (stored in Vault).
+      callSources: csrSelf ? null : async () => {
+        const { data, error } = await supabase.rpc('qa_sources_list', { p_client: clientId || me.client })
+        if (error) throw new Error(error.message || 'Could not load your call connections.')
+        return data
+      },
+      callSourceSave: csrSelf ? null : async ({ provider, config, secret, label }) => {
+        const { data, error } = await supabase.rpc('qa_source_save', { p_client: clientId || me.client, p_provider: provider, p_config: config || {}, p_secret: secret, p_label: label || null })
+        if (error) throw new Error(error.message || 'Could not save that connection.')
+        return data
+      },
+      callSourceRemove: csrSelf ? null : async (id) => {
+        const { error } = await supabase.rpc('qa_source_remove', { p_client: clientId || me.client, p_id: id })
+        if (error) throw new Error(error.message || 'Could not disconnect.')
+      },
+      callUpload: csrSelf ? null : async ({ file, agent, date }) => {
+        const cid = clientId || me.client
+        const safe = String(file.name || 'call').replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80)
+        const path = `upload/${cid}/${crypto.randomUUID()}-${safe}`
+        const up = await supabase.storage.from('qa-recordings').upload(path, file, { contentType: file.type || 'audio/mpeg', upsert: false })
+        if (up.error) throw new Error(up.error.message || 'Upload failed.')
+        const { data, error } = await supabase.rpc('qa_upload_register', { p_client: cid, p_path: path, p_agent: agent || null, p_started_at: date ? `${date}T12:00:00-05:00` : null })
+        if (error) throw new Error(error.message || 'Could not queue that call.')
+        return data
+      },
       // Coach view (Becky 11/19): coaching history per CSR for the signed-in login's scope.
       coachHistory: csrSelf ? null : async () => {
         const { data, error } = await supabase.rpc('qa_coach_history', { p_client: clientId || me.client })

@@ -177,7 +177,7 @@ export function mountOpsisQA(ROOT, cfg) {
     return {
       overview: 'M4 5h16v14H4zM4 9h16M9 9v10', reviews: 'M5 3h10l4 4v14H5zM14 3v5h5M8 17v-3M12 17v-6M16 17v-4', coach: 'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8M4 21v-1a6 6 0 0 1 9-5.2M16 15l2 2 4-4', leadtime: 'M4 5h16v15H4zM4 10h16M9 3v4M15 3v4M8 14h3', dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', wallboard: 'M3 4h18v12H3zM8 20h8M12 16v4M7 12V9M11 12V7M15 12v-2', trends: 'M3 17l5-5 4 4 8-8M15 8h5v5', coachclips: 'M4 5h16v11H8l-4 4zM10 8.5v4l3.5-2z', phonesetup: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4', myphone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', aistl: 'M13 2L4 14h7l-1 8 9-12h-7z', wfm: 'M4 20V10M10 20V4M16 20v-7M22 20H2', phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z', brands: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6', csrs: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M20 19v-1a3 3 0 0 0-2-2.8M17 5.2a3 3 0 0 1 0 5.6',
       cardcap: 'M2 6h20v12H2zM2 10h20M6 15h4', supervisor: 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7zM9 12l2 2 4-4', tasks: 'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9', receptionist: 'M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zM4 21v-1a8 8 0 0 1 16 0v1M19 9h2M3 9h2', practice: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3a6 6 0 0 1 6 6M15 7a2 2 0 0 1 2 2', pricetalk: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', calib: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01', calls: 'M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21zM10 9v6l5-3z', insights: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
-      kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
+      connect: 'M12 22v-5M9 8V2M15 8V2M18 8v4a6 6 0 0 1-12 0V8z', kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
       scorecards: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8 11h8M8 15h8M8 19h5', reporting: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3', money: 'M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5s-5 1.6-5 3.5 2.2 3.2 5 3.5 5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5', team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
     }[k];
@@ -199,7 +199,7 @@ export function mountOpsisQA(ROOT, cfg) {
     .concat(CFG.mountExt ? [['aistl', 'AI Speed to Lead']] : [])
     .concat(CFG.mountExt && CFG.supervisor ? [['supervisor', 'Supervisor'], ['wallboard', 'Wallboard'], ['myphone', 'Phone']] : [])
     .concat(CFG.mountExt ? [['wfm', 'Workforce']] : []).concat(CFG.mountExt && CFG.supervisor ? [['intraday', 'Intraday']] : [])],
-    ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(CFG.mountExt && CFG.supervisor ? [['phonesetup', 'Phone setup'], ['callflow', 'Call flow']] : []).concat(IS_ADMIN ? [['team', 'Team & access'], ['brandset', 'Portal settings']] : [])]];
+    ['YOUR SETUP', [['qasettings', 'QA settings'], ['kb', 'Knowledge base']].concat(CFG.callSources && (IS_ADMIN || CFG.staff) ? [['connect', 'Connect your calls']] : []).concat(CFG.mountExt && CFG.supervisor ? [['phonesetup', 'Phone setup'], ['callflow', 'Call flow']] : []).concat(IS_ADMIN ? [['team', 'Team & access'], ['brandset', 'Portal settings']] : [])]];
   // Tile navigation (Becky 11/17): these pages also open from Overview / brand tiles.
   // They stay in the sidebar too (Becky 11/17 pm: removing them caused confusion).
   var TILE_VIEWS = ['phone', 'csrs', 'calls', 'cardcap', 'pricetalk', 'money', 'leadtime'];
@@ -1969,6 +1969,95 @@ export function mountOpsisQA(ROOT, cfg) {
     if (BR.busy) return; var d = BR.draft; BR.busy = 'save'; drawBrandSet();
     api(Object.assign({ action: 'branding', op: 'set', name: d.name, accent: d.accent, sidebar: d.sidebar, highlight: d.hlAuto ? null : d.highlight, profile: d.profile }, extra || {})).then(function (r) { BR.busy = false; BR.d = r; applyBranding(r); try { localStorage.setItem('oqa_brand_' + (CFG.clientId || 'own'), JSON.stringify(r)); } catch (x) {} toast('Saved'); renderNav(); drawBrandSet(); })
       .catch(function (e) { BR.busy = false; toast(e.message || 'Couldn’t save.'); drawBrandSet(); });
+  }
+  // Connect your calls (Becky 11/23): customers bring their own calls — upload recordings, or save their phone system's API key.
+  var CC = { d: null, prov: null, busy: false, up: [], err: null };
+  var CC_PROV = [
+    { k: 'five9', n: 'Five9', f: [['domain', 'Five9 domain name'], ['username', 'API user name']], s: 'API user password',
+      st: ['In Five9 VCC Admin, add a new user just for Opsis (for example opsis.api).', 'Give that user the <b>Reporting</b> and <b>Call recording</b> permissions.', 'Make sure call recording is turned on for the campaigns you want scored.', 'Paste the domain, user name and password below.'] },
+    { k: 'ringcentral', n: 'RingCentral', f: [['client_id', 'App client ID']], s: 'JWT credential',
+      st: ['Go to developers.ringcentral.com and sign in with an admin account.', 'Create a <b>REST API app</b> with <b>JWT auth</b> and the <b>Read Call Log</b> and <b>Read Call Recording</b> permissions.', 'Under Credentials, create a JWT for the same admin user.', 'Paste the app client ID and the JWT below.'] },
+    { k: 'twilio', n: 'Twilio', f: [['account_sid', 'Account SID (starts with AC)']], s: 'Auth token',
+      st: ['Sign in to console.twilio.com.', 'On the home page, find <b>Account Info</b>.', 'Copy the Account SID and the Auth token (click “show”).', 'Make sure your calls are set to record.'] },
+    { k: 'dialpad', n: 'Dialpad', f: [], s: 'API key',
+      st: ['In Dialpad, open <b>Admin settings → My company → Authentication → API keys</b>.', 'Create a key named “Opsis”.', 'Turn on call recording for the offices you want scored.', 'Paste the key below.'] },
+    { k: 'zoom', n: 'Zoom Phone', f: [['account_id', 'Account ID'], ['client_id', 'Client ID']], s: 'Client secret',
+      st: ['Go to marketplace.zoom.us → <b>Develop → Build app → Server-to-Server OAuth</b>.', 'Add the scopes <b>phone:read:admin</b> and <b>phone_recording:read:admin</b>, then activate the app.', 'Copy the Account ID, Client ID and Client secret.'] },
+    { k: 'aircall', n: 'Aircall', f: [['api_id', 'API ID']], s: 'API token',
+      st: ['In the Aircall dashboard, open <b>Integrations & API → API keys</b>.', 'Create a key named “Opsis”.', 'Paste the API ID and API token below.'] },
+    { k: 'lightspeed', n: 'LightSpeed', f: [['account', 'Company / account name']], s: 'API key',
+      st: ['Ask your LightSpeed account rep to turn on <b>API access to call recordings</b>.', 'They will send you an API key.', 'Paste it below.'] },
+    { k: 'other', n: 'Something else', f: [['system', 'Phone system name'], ['docs', 'Link to its API docs (if you have it)']], s: 'API key or password',
+      st: ['Most phone systems let an admin create an API key that can read call recordings.', 'Create one, paste it below and tell us the system’s name.', 'Not sure? Upload a few recordings on the left to get started today.'] }
+  ];
+  function vConnect(tok) {
+    setMain(crumb([['Connect your calls']]) + '<div id="ccwrap"><div class="oq-card">' + skel(40, 4) + '</div></div>');
+    if (!CFG.callSources) { $('ccwrap').innerHTML = '<div class="oq-card">This page isn’t available here.</div>'; return; }
+    CFG.callSources().then(function (d) { if (tok !== T) return; CC.d = d; drawConnect(); })
+      .catch(function (e) { if (tok === T && $('ccwrap')) $('ccwrap').innerHTML = errBox(e); });
+  }
+  function ccStatus(s) { return { connected: ['Connected', '#1F7A4D'], pending: ['Saved · waiting for first calls', '#8A6A12'], error: ['Needs attention', '#B4461F'] }[s] || [s, '#55615C']; }
+  function drawConnect() {
+    var w = $('ccwrap'); if (!w || !CC.d) return; var d = CC.d, ed = d.can_edit, u = d.uploads || {};
+    var have = (d.sources || []).map(function (s) { var p = CC_PROV.filter(function (x) { return x.k === s.provider; })[0] || { n: s.provider }, st = ccStatus(s.status);
+      return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line2)"><div><b>' + esc(p.n) + '</b>' + (s.label ? ' · ' + esc(s.label) : '') + '<div class="mut" style="font-size:12px">Key ending ••••' + esc(s.secret_hint || '') + ' · added ' + ago(s.created_at) + (s.created_by_name ? ' by ' + esc(s.created_by_name) : '') + (s.last_error ? ' · ' + esc(s.last_error) : '') + '</div></div>' +
+        '<div style="display:flex;gap:8px;align-items:center"><span style="font-size:12px;font-weight:600;color:' + st[1] + '">' + st[0] + '</span>' + (ed ? '<button class="sel" data-act="ccrm" data-id="' + s.id + '" style="padding:5px 10px;font-size:12px">Disconnect</button>' : '') + '</div></div>'; }).join('');
+    var upCard = '<div class="oq-card" style="flex:1 1 340px;align-self:flex-start"><h2 class="ttl">1 · Upload recordings</h2><p class="sub">The fastest way to start. Drop in MP3, WAV or M4A files — each one is transcribed and scored, usually within a few minutes.</p>' +
+      (ed ? '<label id="ccdrop" for="ccfile" style="display:block;margin-top:14px;border:2px dashed var(--line2);border-radius:12px;padding:26px 14px;text-align:center;cursor:pointer"><b>Drag files here</b> or click to choose<div class="mut" style="font-size:12px;margin-top:4px">Up to 50 files at a time · 100 MB each · 500 calls a day</div></label><input id="ccfile" type="file" multiple accept="audio/*,.mp3,.wav,.m4a" class="sr">' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><div style="flex:1 1 140px"><label class="l" for="ccagent">CSR name (optional)</label><input id="ccagent" class="oq-field" placeholder="Who took these calls"></div><div style="flex:1 1 140px"><label class="l" for="ccdate">Call date</label><input id="ccdate" type="date" class="oq-field" value="' + todayET() + '"></div></div>' +
+        (CC.up.length ? '<div style="margin-top:12px;font-size:13px">' + CC.up.map(function (f) { return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span><span class="mut">' + esc(f.st) + '</span></div>'; }).join('') + '</div>' : '')
+        : '<p class="mut" style="margin-top:12px">Only account admins can upload calls.</p>') +
+      '<div class="mut" style="font-size:12.5px;margin-top:14px;line-height:1.6">Uploaded so far: <b>' + (u.total || 0) + '</b> · scored <b>' + (u.scored || 0) + '</b>' + (u.working ? ' · in progress <b>' + u.working + '</b>' : '') + (u.failed ? ' · couldn’t be read <b>' + u.failed + '</b>' : '') + '</div></div>';
+    var P = CC.prov ? CC_PROV.filter(function (x) { return x.k === CC.prov; })[0] : null;
+    var apiCard = '<div class="oq-card" style="flex:1.4 1 420px;align-self:flex-start"><h2 class="ttl">2 · Connect your phone system</h2><p class="sub">Calls then come in on their own every day — no more uploads. Your key is stored encrypted and only used to read call recordings.</p>' +
+      (have ? '<div style="margin-top:10px">' + have + '</div>' : '') +
+      (ed ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">' + CC_PROV.map(function (p) { return '<button class="sel' + (CC.prov === p.k ? ' btnd' : '') + '" data-act="ccprov" data-k="' + p.k + '">' + esc(p.n) + '</button>'; }).join('') + '</div>' : '<p class="mut" style="margin-top:12px">Only account admins can connect a phone system.</p>') +
+      (P && ed ? '<div style="margin-top:16px;padding:14px;border-radius:12px;background:#F5F7F6"><b>' + esc(P.n) + ' — steps</b><ol style="margin:8px 0 0;padding-left:20px;font-size:13.5px;line-height:1.65">' + P.st.map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ol>' +
+        '<div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">' + P.f.map(function (f) { return '<div><label class="l" for="ccf_' + f[0] + '">' + esc(f[1]) + '</label><input id="ccf_' + f[0] + '" class="oq-field" autocomplete="off"></div>'; }).join('') +
+        '<div><label class="l" for="ccsec">' + esc(P.s) + '</label><input id="ccsec" type="password" class="oq-field" autocomplete="new-password"></div>' +
+        (CC.err ? '<div style="color:#A8441A;font-size:13px">' + esc(CC.err) + '</div>' : '') +
+        '<div style="display:flex;gap:8px"><button class="sel btnd" data-act="ccsave"' + (CC.busy ? ' disabled' : '') + '>' + (CC.busy ? 'Saving…' : 'Save and connect') + '</button><button class="sel" data-act="ccprov" data-k="">Cancel</button></div></div></div>' : '') + '</div>';
+    var ownCard = '<div class="oq-card" style="flex:1 1 100%"><h2 class="ttl">3 · No phone system? Use ours</h2><p class="sub">Get local phone numbers, an AI receptionist and a softphone for your team, all inside this portal. Calls on our lines are scored automatically — nothing to connect.</p>' +
+      (CFG.mountExt && CFG.supervisor ? '<button class="sel btnd" data-go="phonesetup" style="margin-top:10px">Open phone setup</button>' : '<p class="mut" style="font-size:12.5px;margin-top:8px">Ask the Opsis CX Support team to turn on phone lines for your account.</p>') + '</div>';
+    w.innerHTML = '<div class="row" style="align-items:flex-start">' + upCard + apiCard + ownCard + '</div>';
+    var fi = $('ccfile'), dz = $('ccdrop');
+    if (fi) fi.addEventListener('change', function () { ccUpload(fi.files); fi.value = ''; });
+    if (dz) { ['dragover', 'dragenter'].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); dz.style.background = '#EEF4EF'; }); });
+      dz.addEventListener('dragleave', function () { dz.style.background = ''; });
+      dz.addEventListener('drop', function (e) { e.preventDefault(); dz.style.background = ''; ccUpload(e.dataTransfer.files); }); }
+  }
+  function ccUpload(files) {
+    var L = Array.prototype.slice.call(files || []).slice(0, 50); if (!L.length) return;
+    var agent = ($('ccagent') || {}).value || '', day = ($('ccdate') || {}).value || todayET();
+    var items = L.map(function (f) { return { f: f, name: f.name, st: f.size > 100 * 1024 * 1024 ? 'Too big (100 MB max)' : /audio|\.(mp3|wav|m4a)$/i.test(f.type + ' ' + f.name) ? 'Waiting…' : 'Not an audio file' }; });
+    CC.up = items.concat(CC.up).slice(0, 60); drawConnect();
+    var q = items.filter(function (x) { return x.st === 'Waiting…'; }), i = 0;
+    function next() {
+      if (i >= q.length) { CFG.callSources().then(function (d) { CC.d = d; drawConnect(); }).catch(function () {}); return; }
+      var it = q[i++]; it.st = 'Uploading…'; drawConnect();
+      CFG.callUpload({ file: it.f, agent: agent, date: day }).then(function (r) { it.st = r && r.duplicate ? 'Already uploaded' : 'Scoring soon ✓'; })
+        .catch(function (e) { it.st = e.message || 'Failed'; }).then(function () { drawConnect(); next(); });
+    }
+    next(); next();
+  }
+  function ccAct(a, d) {
+    if (a === 'ccprov') { CC.prov = d.k || null; CC.err = null; drawConnect(); return; }
+    if (a === 'ccsave') {
+      var P = CC_PROV.filter(function (x) { return x.k === CC.prov; })[0]; if (!P) return;
+      var cfg = {}, miss = null; P.f.forEach(function (f) { var v = (($('ccf_' + f[0]) || {}).value || '').trim(); cfg[f[0]] = v; if (!v && f[0] !== 'docs' && !miss) miss = f[1]; });
+      var sec = (($('ccsec') || {}).value || '').trim();
+      if (miss) { CC.err = 'Fill in: ' + miss + '.'; drawConnect(); return; }
+      if (!sec) { CC.err = 'Paste your ' + P.s.toLowerCase() + '.'; drawConnect(); return; }
+      CC.busy = true; CC.err = null; drawConnect();
+      CFG.callSourceSave({ provider: P.k, config: cfg, secret: sec, label: cfg.system || null })
+        .then(function () { return CFG.callSources(); }).then(function (x) { CC.d = x; CC.prov = null; toast('Saved. Your key is stored encrypted.'); })
+        .catch(function (e) { CC.err = e.message; }).then(function () { CC.busy = false; drawConnect(); });
+      return;
+    }
+    if (a === 'ccrm') {
+      if (!confirm('Disconnect this phone system? Its key is deleted and new calls stop coming in.')) return;
+      CFG.callSourceRemove(d.id).then(function () { return CFG.callSources(); }).then(function (x) { CC.d = x; drawConnect(); toast('Disconnected.'); }).catch(function (e) { toast(e.message); });
+    }
   }
   function vKb(tok) {
     setMain(crumb([['Knowledge base']]) + '<div id="kbwrap"><div class="oq-card">' + skel(40, 5) + '</div></div>');
@@ -5686,7 +5775,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; if (MGR && MGR_OK.indexOf(S.view) < 0) S.view = 'overview'; if (COACH_ROLE && COACH_NAV.concat(['csr', 'hubqs', 'kpi', 'repeat']).indexOf(S.view) < 0) S.view = 'coach'; renderNav(); renderWho(); writeHash(); trackHist();
-    var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, coach: vCoach, reviews: vReviews, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, supervisor: function () { vExt('supervisor'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, tasks: vTasks, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, coach: vCoach, reviews: vReviews, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, connect: vConnect, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, supervisor: function () { vExt('supervisor'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, tasks: vTasks, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     v(tok);
     var cf = null; if (cf) cf.addEventListener('submit', function (e) { e.preventDefault(); var c = S.calls; c.q = $('cq').value.trim(); c.outcome = $('co').value || null; c.step = $('cs2').value || null; var sc = $('csc').value; c.scoreMax = sc === 'max40' ? 40 : sc === 'max70' ? 70 : null; c.scoreMin = sc === 'min90' ? 90 : null; c.xfer = $('cxf').value || null; c.offset = 0; render(); });
   }
@@ -5943,6 +6032,7 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rcssave') { rcSave(); }
       else if (a === 'rasave') { rcAlertsSave(); }
       else if (a === 'rcpsave') { recapSave(); }
+      else if (a === 'ccprov' || a === 'ccsave' || a === 'ccrm') { ccAct(a, d); }
       else if (/^oc/.test(a) && ['ocaddtech', 'ocedit', 'occancel', 'ocsavetech', 'ocdel', 'ocreset', 'ocrotsave'].indexOf(a) >= 0) { ocAct(a, d); }
       else if (a === 'rchltok') { var tk = ($('hltok') || {}).value || ''; api({ action: 'receptionist', op: 'hl_token', token: tk }).then(function () { toast('Token saved.'); RC.s.has_hl_token = true; drawRcSettings(); }).catch(function (e) { toast(e.message); }); }
       else if (a === 'rchlcals') { api({ action: 'receptionist', op: 'hl_calendars' }).then(function (r) { RC.hlCals = r.calendars || []; drawRcSettings(); }).catch(function (e) { toast(e.message); }); }
