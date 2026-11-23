@@ -44,7 +44,7 @@ export default function QaSetupInterview({ clientId, company, onDone }) {
       try { const j = await error.context.json(); if (j?.error) msg = j.error } catch { /* not JSON */ }
       setErr(msg); return
     }
-    setDraft(data)
+    setDraft({ ...data, not_booked_txt: (data.not_booked || []).join('\n'), existing_txt: (data.existing || []).join('\n') })
   }
 
   function setStep(i, patch) { setDraft(d => ({ ...d, steps: d.steps.map((s, j) => (j === i ? { ...s, ...patch } : s)) })) }
@@ -62,6 +62,9 @@ export default function QaSetupInterview({ clientId, company, onDone }) {
     })
     setBusy('')
     if (error) { setErr(error.message || 'We couldn’t save it. Try again.'); return }
+    // Call outcomes written for this business (Becky 11/23). Best effort: a general list is used if this fails.
+    const lines = v => String(v || '').split('\n').map(x => x.trim()).filter(Boolean)
+    await supabase.rpc('qa_outcomes_save', { p_client: clientId, p_sales_label: draft.sales_label || null, p_not_booked: lines(draft.not_booked_txt), p_existing: lines(draft.existing_txt) })
     onDone && onDone()
   }
 
@@ -126,6 +129,19 @@ export default function QaSetupInterview({ clientId, company, onDone }) {
               <div style={{ fontSize: 15, fontWeight: 600 }}>Instructions for the scoring AI</div>
               <p style={{ ...S.sub, margin: '4px 0 8px' }}>What counts as a chance to win the outcome, what doesn’t, and rules your team must follow.</p>
               <textarea rows={6} value={draft.guidance} onChange={e => setDraft({ ...draft, guidance: e.target.value })} style={S.input} />
+            </div>
+
+            <div style={S.card}>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>Call outcomes</div>
+              <p style={{ ...S.sub, margin: '4px 0 8px' }}>How your team marks how each call ended. “Booked”, “Callback set”, “No answer” and the other basics are added for you. One per line.</p>
+              <label style={{ fontSize: 12, fontWeight: 600 }}>What to call a new customer who could book</label>
+              <input value={draft.sales_label || ''} onChange={e => setDraft({ ...draft, sales_label: e.target.value })} style={{ ...S.input, margin: '4px 0 10px' }} />
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 240px' }}><label style={{ fontSize: 12, fontWeight: 600 }}>Why a new customer didn’t book</label>
+                  <textarea rows={4} value={draft.not_booked_txt || ''} onChange={e => setDraft({ ...draft, not_booked_txt: e.target.value })} style={{ ...S.input, marginTop: 4 }} /></div>
+                <div style={{ flex: '1 1 240px' }}><label style={{ fontSize: 12, fontWeight: 600 }}>Why existing customers call</label>
+                  <textarea rows={4} value={draft.existing_txt || ''} onChange={e => setDraft({ ...draft, existing_txt: e.target.value })} style={{ ...S.input, marginTop: 4 }} /></div>
+              </div>
             </div>
 
             {err && <div style={S.err}>{err}</div>}

@@ -350,7 +350,7 @@ function LineForm({ d, row, can, saving, msg, args, onData, onCancel, onSave }) 
         <Hours value={f.hours} onChange={v => set('hours', v)} disabled={dis} />
       </Section>
       <Section title="Dispositions" hint="What CSRs pick after an incoming call on this line. Add, remove, rename or reorder them.">
-        <DispoEditor value={f.dispositions || d.dispositions} standard={d.dispositions} disabled={dis} onChange={v => set('dispositions', v)} />
+        <DispoEditor salesLabel={d.sales_label} value={f.dispositions || d.dispositions} standard={d.dispositions} disabled={dis} onChange={v => set('dispositions', v)} />
       </Section>
       <Section title="When nobody answers">
         <div style={S.form}>
@@ -465,7 +465,7 @@ function CampForm({ d, row, can, saving, msg, args, reload, onCancel, onSave }) 
       </Section>
       <Section title="CSRs on this campaign"><People people={d.people} allowAll={!d.scope.brand} brand={d.scope.brand || f.brand} location={d.scope.location || f.location} selected={f.agents || []} onChange={v => set('agents', v)} disabled={dis} /></Section>
       <Section title="Dispositions" hint="What CSRs pick at the end of each call. Add, remove, rename or reorder them. The group decides Rob's intent and booking rates.">
-        <DispoEditor value={f.dispositions || d.dispositions} standard={d.dispositions} disabled={dis} onChange={v => set('dispositions', v)} />
+        <DispoEditor salesLabel={d.sales_label} value={f.dispositions || d.dispositions} standard={d.dispositions} disabled={dis} onChange={v => set('dispositions', v)} />
       </Section>
       {row && f._mode !== 'manual' && (
         <Section title="Contacts to call" hint={`${row.stats?.pending || 0} waiting · ${row.stats?.done || 0} finished`}>
@@ -516,7 +516,9 @@ function dispoCode(x) {
   if (cur.startsWith(pre) && !(pre === 's_' && cur.startsWith('s_booked'))) return cur
   return pre + base
 }
-function DispoEditor({ value, standard, onChange, disabled }) {
+function DispoEditor({ value, standard, onChange, disabled, salesLabel }) {
+  // Company's own heading for the sales group (GarageCo: "Wanted service or a new door"; others from setup).
+  const GROUPS = DGROUPS.map(([k, l, c]) => [k, k === 'sales' && salesLabel ? salesLabel : l, c])
   const list = Array.isArray(value) ? value : []
   const upd = (i, patch) => {
     const n = list.map((x, j) => {
@@ -539,7 +541,7 @@ function DispoEditor({ value, standard, onChange, disabled }) {
   const dupes = new Set(list.map(x => x.code).filter((c, i, a) => a.indexOf(c) !== i))
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      {DGROUPS.map(([g, gl, color]) => {
+      {GROUPS.map(([g, gl, color]) => {
         const rows = list.map((x, i) => [x, i]).filter(([x]) => (x.group || 'none') === g)
         return (
           <div key={g}>
@@ -550,7 +552,7 @@ function DispoEditor({ value, standard, onChange, disabled }) {
                 <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', padding: '6px 8px', border: '1px solid light-dark(#EEEAE2, #2a3439)', borderRadius: 10, background: x.is_success ? '#F0FBF4' : '#fff' }}>
                   <input disabled={disabled} value={x.label} onChange={e => upd(i, { label: e.target.value })} style={{ ...S.input, width: 220, marginTop: 0 }} />
                   <select disabled={disabled} value={x.group || 'none'} onChange={e => upd(i, { group: e.target.value })} style={{ ...S.inSm }}>
-                    {DGROUPS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                    {GROUPS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                   </select>
                   <select disabled={disabled} value={x.outcome || 'final'} onChange={e => upd(i, { outcome: e.target.value })} style={{ ...S.inSm }}>
                     {OUTCOMES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}

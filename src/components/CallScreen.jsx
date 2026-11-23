@@ -270,7 +270,7 @@ export default function CallScreen({
                   so one tap records both what the caller wanted and how it ended (intent → booking rates). */}
               {(dispositions.some(d => d.group) ? DISPO_GROUPS.filter(g => dispositions.some(d => (d.group || 'none') === g.key)) : [{ key: null }]).map(g => (
                 <div key={g.key || 'all'} style={{ marginBottom: g.key ? 8 : 0 }}>
-                  {g.key && <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: g.color, margin: '2px 0 5px' }}>{g.label}</div>}
+                  {g.key && <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: g.color, margin: '2px 0 5px' }}>{(dispositions.find(d => (d.group || 'none') === g.key && d.group_label) || {}).group_label || g.label}</div>}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {dispositions.filter(d => !g.key || (d.group || 'none') === g.key).map(d => (
                       <button key={d.code} onClick={() => setCode(d.code)}
