@@ -6060,7 +6060,7 @@ export function mountOpsisQA(ROOT, cfg) {
   on(window, 'resize', function () { clearTimeout(fitReview.t); fitReview.t = setTimeout(fitReview, 150); });
   on(window, 'hashchange', function () { var before = location.hash; readHash(); render(); });
   var lg = $('oqlogo'); if (lg && OPSIS) { lg.insertAdjacentHTML('afterend', '<div id="oqlogotxt" style="font-weight:700;font-size:20px;letter-spacing:-0.02em;color:#14302A;text-align:center;padding:6px 0">Opsis CX <span style="font-weight:500;font-size:13px;color:#2F7D5B">QA</span></div>'); lg.remove(); lg = null; }
-  if (lg) { lg.src = CFG.logo || 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/garageco/logo.png'; lg.alt = CLIENT; }
+  if (lg) { lg.src = CFG.logo || 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/9726e6eb-1364-4dba-8ddb-10c07a408ecb/logo-1793310857674.png'; /* Becky 11/23: Opsis CX is the default, never another client's logo */ lg.alt = CLIENT; }
   try { var bc0 = JSON.parse(localStorage.getItem('oqa_brand_' + (CFG.clientId || 'own')) || 'null'); if (bc0) applyBranding(bc0); } catch (x) {}
   if (!CFG.csrSelf) api({ action: 'branding' }).then(function (b) { try { localStorage.setItem('oqa_brand_' + (CFG.clientId || 'own'), JSON.stringify(b)); } catch (x) {} var g0 = G; applyBranding(b); if (G !== g0) render(); }).catch(function () {});
   var DEEP_CALL = (location.hash.match(/(?:^#|&)call=([0-9a-f-]{36})/i) || [])[1];

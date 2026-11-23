@@ -232,7 +232,7 @@ export default function App() {
 const isQaStaff = isAdmin || ['owner', 'admin', 'asc', 'certification', 'quality', 'marketing', 'support'].includes(String(appRole || '').toLowerCase())
   if (location.pathname === '/opsis-qa' && isQaStaff && !inTraining) {
     // ?client=<id> picks the portal (Portals ▾ menu); no param = GarageCo, as before.
-    return <StaffPortal OpsisQAPortal={OpsisQAPortal} defaultLogo={GARAGECO_PORTAL_LOGO} hasCsrs={canAny(appRole, 'quality_audit.call_reviews')} onSignOut={() => signOut()} />
+    return <StaffPortal OpsisQAPortal={OpsisQAPortal} defaultLogo={OPSIS_CX_PORTAL_LOGO} hasCsrs={canAny(appRole, 'quality_audit.call_reviews')} onSignOut={() => signOut()} />
   }
   // External client-portal login: a branded, single-purpose shell that shows ONLY
   // Call QA (their own data, RLS-enforced — CallRail/LightSpeed only, never Five9)
@@ -316,7 +316,8 @@ function CsrPortal({ session }) {
 // External client portal — a branded, single-page shell that renders ONLY the
 // Call QA module in portal mode, plus CSR Scorecards. Clients see their own calls
 // (RLS-enforced), can export and add notes, but never manager controls or any other module.
-const GARAGECO_PORTAL_LOGO = 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/garageco/logo.png'
+// Default portal logo for any company that hasn't uploaded its own: Opsis CX, never another client's (Becky 11/23).
+const OPSIS_CX_PORTAL_LOGO = 'https://dqvuviyqrcrgapmxkoyx.supabase.co/storage/v1/object/public/portal-assets/9726e6eb-1364-4dba-8ddb-10c07a408ecb/logo-1793310857674.png'
 function ClientPortal({ session, clientId }) {
   const { signOut, user } = useAuth()   // user is needed by PushEnrollmentBanner below
   const [brand, setBrand] = useState(null)          // { portal_name, portal_accent, portal_logo_url, name }
