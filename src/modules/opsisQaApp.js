@@ -810,9 +810,9 @@ export function mountOpsisQA(ROOT, cfg) {
     $(el).innerHTML = h + '</div>';
   }
 
-  var NEEDS_TIP = { upset: '<b>Upset customers</b><br>Customer conversations where the customer was upset, angry or complained.', low: '<b>Low scores</b><br>Real booking opportunities where the call scored 40 or under.', ctrl: '<b>Controllable misses</b><br>Booking opportunities that didn’t book for a reason the CSR could have fixed, such as not asking for the booking or not knowing the answer.', other: '<b>Other not booked</b><br>Booking opportunities that didn’t book where the customer said no after being asked, or another team owns the follow-up.' };
+  var NEEDS_TIP = { upset: '<b>Upset customers</b><br>Customer conversations where the customer was upset, angry or complained.', low: '<b>Low scores</b><br>Real booking opportunities where the call scored 40% or under.', ctrl: '<b>Controllable misses</b><br>Booking opportunities that didn’t book for a reason the CSR could have fixed, such as not asking for the booking or not knowing the answer.', other: '<b>Other not booked</b><br>Booking opportunities that didn’t book where the customer said no after being asked, or another team owns the follow-up.' };
   var NEEDS = [['upset', 'Upset customers', 'Upset, angry or complaint signs on the call', '#B42318', '#FDECEA'],
-    ['low', 'Low scores', 'Real opportunities scored 40 or under', '#C2551F', '#FFF4E8'],
+    ['low', 'Low scores', 'Real opportunities scored 40% or under', '#C2551F', '#FFF4E8'],
     ['ctrl', 'Controllable misses', 'Not booked for a reason the CSR could fix', '#8A5A00', '#FBF3DF'],
     ['other', 'Not booked: outside CSR control', 'Not booked for a reason the CSR couldn’t control', '#3B4541', '#F3F1EC']];
   function needsCard(tok) {
@@ -1730,7 +1730,7 @@ export function mountOpsisQA(ROOT, cfg) {
   // KPI drill (2026-10-23): click a top tile -> every brand side by side, then the calls behind the number.
   var KPID = {
     allcalls: { t: 'Inbound calls handled', bar: 'Inbound calls handled', unit: '', list: 'All inbound calls handled', hi: true },
-    lowscore: { t: 'Avg QA score', bar: 'Avg QA score', unit: '', list: 'Lowest-scoring calls (40 or under)', hi: true },
+    lowscore: { t: 'Avg QA score', bar: 'Avg QA score', unit: '', list: 'Lowest-scoring calls (40% or under)', hi: true },
     notbooked: { t: 'Booking rate', bar: 'Booking rate', unit: '%', list: 'Calls that didn’t book', hi: true },
     asknb: { t: 'Ask rate · not booked', bar: 'Asked for the booking on not-booked opportunities', unit: '%', list: 'Not booked and the CSR didn’t ask for the booking', hi: true },
     nocard: { t: 'Card asked', bar: 'Card asked on booked service calls', unit: '%', list: 'Booked service calls with no card ask', hi: true }
@@ -1777,14 +1777,14 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function vCalls(tok) {
     var c = S.calls, chips = [];
-    var BUCKETNAMES = { upset: 'Upset customers', low: 'Low scores (40 or under)', ctrl: 'Controllable misses (not booked)', other: 'Not booked: outside CSR control' };
+    var BUCKETNAMES = { upset: 'Upset customers', low: 'Low scores (40% or under)', ctrl: 'Controllable misses (not booked)', other: 'Not booked: outside CSR control' };
     if (c.bucket) chips.push([BUCKETNAMES[c.bucket] || c.bucket, 'bucket']);
     if (S.callsAgent) chips.push(['CSR: ' + S.callsAgent, 'agent']);
     if (c.outcome) chips.push(['Outcome: ' + c.outcome, 'outcome']);
     if (c.step) chips.push(['Missed: ' + (STEPNAMES[c.step] || c.step), 'step']);
     if (c.winnable) chips.push(['Winnable, didn’t book', 'winnable']);
-    if (c.scoreMax != null) chips.push(['Score ≤ ' + c.scoreMax, 'scoreMax']);
-    if (c.scoreMin != null) chips.push(['Score ≥ ' + c.scoreMin, 'scoreMin']);
+    if (c.scoreMax != null) chips.push(['Score ≤ ' + c.scoreMax + '%', 'scoreMax']);
+    if (c.scoreMin != null) chips.push(['Score ≥ ' + c.scoreMin + '%', 'scoreMin']);
     if (c.q) chips.push(['“' + c.q + '”', 'q']);
     if (c.nocard) chips.push(['Booked, card not asked', 'nocard']);
     if (c.ff) chips.push([c.ff.label, 'ff']);
@@ -1793,7 +1793,7 @@ export function mountOpsisQA(ROOT, cfg) {
       '<form id="callq" class="row" style="gap:8px"><label class="sr" for="cq">Search calls</label><input id="cq" class="oq-field" style="width:230px" placeholder="Search summaries, CSRs, brands, phone…" value="' + esc(c.q || '') + '"><select id="co" class="oq-field" style="width:auto" aria-label="Outcome">' + OUTCOMES.map(function (o) { return '<option value="' + o[0] + '"' + ((c.outcome || '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
       '<select id="cs2" class="oq-field" style="width:auto" aria-label="Missed step"><option value="">Any step</option>' + CUR_STEPS.map(function (x) { var k = x[0]; return '<option value="' + k + '"' + (c.step === k ? ' selected' : '') + '>Missed: ' + x[1] + '</option>'; }).join('') + '</select>' +
       '<select id="cxf" class="oq-field" style="width:auto" aria-label="Transfers"><option value="">Any transfer</option><option value="out"' + (c.xfer === 'out' ? ' selected' : '') + '>Transferred out</option><option value="in"' + (c.xfer === 'in' ? ' selected' : '') + '>Transferred in</option></select>' +
-      '<select id="csc" class="oq-field" style="width:auto" aria-label="Score"><option value="">Any score</option><option value="max40"' + (c.scoreMax === 40 ? ' selected' : '') + '>40 or lower</option><option value="max70"' + (c.scoreMax === 70 ? ' selected' : '') + '>70 or lower</option><option value="min90"' + (c.scoreMin === 90 ? ' selected' : '') + '>90 or higher</option></select><button class="sel btnd" type="submit">Search</button></form></div>' +
+      '<select id="csc" class="oq-field" style="width:auto" aria-label="Score"><option value="">Any score</option><option value="max40"' + (c.scoreMax === 40 ? ' selected' : '') + '>40% or lower</option><option value="max70"' + (c.scoreMax === 70 ? ' selected' : '') + '>70% or lower</option><option value="min90"' + (c.scoreMin === 90 ? ' selected' : '') + '>90% or higher</option></select><button class="sel btnd" type="submit">Search</button></form></div>' +
       (chips.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">' + chips.map(function (ch) { return '<button class="chip on" data-unfilter="' + ch[1] + '" aria-label="Remove filter ' + esc(ch[0]) + '">' + esc(ch[0]) + ' ✕</button>'; }).join('') + '<button class="more" data-unfilter="all">Clear all</button></div>' : '') +
       (c.xferWith ? '<div id="xwhy" style="margin-top:12px;background:#F5F3EE;border-radius:12px;padding:12px 14px"></div>' : '') + '<div id="clist" style="margin-top:8px">' + skel(54, 6) + '</div><div id="cpager" class="row" style="justify-content:space-between;align-items:center;margin-top:10px"></div></div>');
     var body = c.bucket ? Object.assign({ action: 'bucketcalls', bucket: c.bucket }, win({ limit: 25, offset: c.offset })) : Object.assign({ action: 'calls' }, win({ agent: S.callsAgent || null, outcome: c.nocard ? 'Booked' : c.outcome, step_missed: c.nocard ? 'cc_not_asked' : c.step, score_max: c.scoreMax, score_min: c.scoreMin, winnable: c.winnable || null, xfer: c.xfer || null, q: phoneQ(c.q) || c.q || null, limit: 25, offset: c.offset }));
@@ -3647,7 +3647,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var key = body.action + (body.op ? ':' + body.op : '') + (body.kind ? ':' + body.kind : '') + (EXP_LISTS[body.action] && body.limit ? ':l' + body.limit : '');
     pr.then(function (r) { if (EXP.sig !== sig || r == null || typeof r !== 'object') return; if (!(key in EXP.data)) EXP.order.push(key); EXP.data[key] = r; EXP.bodies[key] = body; if (EXP_LISTS[body.action] && body.op !== 'why' && (body.limit || 0) >= 20) EXP.list = key; }, function () {});
   }
-  var EXP_NAMES = { agent: 'CSR', agents: 'CSRs', avg: 'Avg score', pavg: 'Previous avg score', prev_avg: 'Previous avg score', n: 'Calls', opps: 'Opportunities', xfer_out: 'Transferred out', xfer_in: 'Transferred in', xfer: 'Transfer', tta: 'Avg seconds to answer', tab: 'Avg seconds to abandon', per_wd: 'Calls per weekday', ai_score: 'AI score', asked_for_cc: 'Asked for card', collected_cc: 'Card collected', review_id: 'Review ID', call_id: 'Call ID', pn: 'Previous count', prev_rate: 'Previous rate', ivr: 'Hung up in IVR', kpis: 'KPIs', prev: 'Previous period', csr: 'CSR', csrs: 'CSRs', qa: 'QA', cc: 'Card', id: 'ID', url: 'Link', receptionist: 'AI CSR', focus: 'Details', cardcap: 'Card capture', pricetalk: 'Price talk', ai: 'Human vs AI', kb: 'Knowledge base', report: 'Report', calls: 'Calls', phone: 'Phone', repeat: 'Repeat callers', practice: 'Practice', scorecards: 'Scorecards', settings: 'QA settings', team: 'Team' };
+  var EXP_NAMES = { agent: 'CSR', agents: 'CSRs', avg: 'Avg QA score %', pavg: 'Previous avg QA score %', prev_avg: 'Previous avg QA score %', n: 'Calls', opps: 'Opportunities', xfer_out: 'Transferred out', xfer_in: 'Transferred in', xfer: 'Transfer', tta: 'Avg seconds to answer', tab: 'Avg seconds to abandon', per_wd: 'Calls per weekday', ai_score: 'AI score', asked_for_cc: 'Asked for card', collected_cc: 'Card collected', review_id: 'Review ID', call_id: 'Call ID', pn: 'Previous count', prev_rate: 'Previous rate', ivr: 'Hung up in IVR', kpis: 'KPIs', prev: 'Previous period', csr: 'CSR', csrs: 'CSRs', qa: 'QA', cc: 'Card', id: 'ID', url: 'Link', receptionist: 'AI CSR', focus: 'Details', cardcap: 'Card capture', pricetalk: 'Price talk', ai: 'Human vs AI', kb: 'Knowledge base', report: 'Report', calls: 'Calls', phone: 'Phone', repeat: 'Repeat callers', practice: 'Practice', scorecards: 'Scorecards', settings: 'QA settings', team: 'Team' };
   function expHum(k) { k = String(k); if (EXP_NAMES[k]) return EXP_NAMES[k]; var t = k.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim(); return t.charAt(0).toUpperCase() + t.slice(1); }
   function expVal(v) { if (v == null) return ''; if (typeof v === 'object') { if (Array.isArray(v) && v.every(function (x) { return x == null || typeof x !== 'object'; })) return v.join(', '); var j = JSON.stringify(v); return j.length > 2000 ? j.slice(0, 2000) + '…' : j; } if (typeof v === 'string' && v.length > 32000) return v.slice(0, 32000) + '…'; return v; }
   function expIsScalar(v) { return v == null || typeof v !== 'object'; }
@@ -3716,7 +3716,7 @@ export function mountOpsisQA(ROOT, cfg) {
     var base = location.origin + location.pathname + location.search + '#v=calls&call=';
     var hr = function (h) { if (h == null || h === '') return ''; h = +h; return (h % 12 || 12) + (h < 12 ? ' AM' : ' PM'); };
     var len = function (x) { x = +x; return x ? Math.floor(x / 60) + ':' + String(Math.round(x % 60)).padStart(2, '0') : ''; };
-    var cols = ['Date', 'Time', 'CSR', 'Brand', 'Customer phone', 'Length', 'Score', 'Outcome', 'Topic', 'Transfer', 'Summary', 'Open call in portal'];
+    var cols = ['Date', 'Time', 'CSR', 'Brand', 'Customer phone', 'Length', 'QA score %', 'Outcome', 'Topic', 'Transfer', 'Summary', 'Open call in portal'];
     return { sheet: 'Calls', title: 'Calls', cols: cols, rows: rows.map(function (r) {
       var x = r.xfer_out ? 'Transferred out' + (r.xfer_to ? ' to ' + r.xfer_to : '') : r.xfer_in ? 'Transferred in' + (r.xfer_from ? ' from ' + r.xfer_from : '') : '';
       return [r.date || r.call_date || '', hr(r.hour), r.agent || '', r.brand || '', r.phone || '', len(r.secs || r.length), r.score == null ? 'Not scored' : r.score, r.outcome || '', r.topic || r.category || '', x, r.summary || '', r.id ? base + encodeURIComponent(r.id) : ''];
@@ -3724,7 +3724,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function expByCsr(cs) {
     var m = {}; cs.rows.forEach(function (r) { var k = r[2] || 'Unknown'; var x = m[k] || (m[k] = { n: 0, sum: 0, sc: 0 }); x.n++; if (typeof r[6] === 'number') { x.sum += r[6]; x.sc++; } });
-    return { sheet: 'By CSR', title: 'Calls by CSR', cols: ['CSR', 'Calls', 'Avg score'], rows: Object.keys(m).sort(function (a, b) { return m[b].n - m[a].n; }).map(function (k) { return [k, m[k].n, m[k].sc ? Math.round(m[k].sum / m[k].sc * 10) / 10 : '']; }) };
+    return { sheet: 'By CSR', title: 'Calls by CSR', cols: ['CSR', 'Calls', 'Avg QA score %'], rows: Object.keys(m).sort(function (a, b) { return m[b].n - m[a].n; }).map(function (k) { return [k, m[k].n, m[k].sc ? Math.round(m[k].sum / m[k].sc * 10) / 10 : '']; }) };
   }
   function pageExport(fmt) {
     var label = expPageName(), shown = expTables($('main')), data = [], lists = [];
