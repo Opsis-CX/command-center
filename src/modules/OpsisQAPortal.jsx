@@ -288,8 +288,8 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         if (error) throw new Error(error.message)
         return data
       },
-      excludedExport: csrSelf ? null : async ({ start, end }) => {
-        const { data, error } = await supabase.rpc('qa_excluded_calls_export', { p_client: clientId || me.client, p_from: start, p_to: end })
+      excludedExport: csrSelf ? null : async ({ start, end, brands }) => {
+        const { data, error } = await supabase.rpc('qa_excluded_calls_export', { p_client: clientId || me.client, p_from: start, p_to: end, p_brands: brands && brands.length ? brands : null })
         if (error) throw new Error(error.message)
         return data
       },
@@ -302,8 +302,8 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         const { error } = await supabase.rpc('qa_excluded_numbers_set', { p_client: clientId || me.client, p_phone: phone, p_label: label || null, p_active: active !== false })
         if (error) throw new Error(error.message || 'Could not save that number.')
       },
-      excludedAudit: csrSelf ? null : async ({ start, end }) => {
-        const { data, error } = await supabase.rpc('qa_excluded_audit', { p_client: clientId || me.client, p_from: start, p_to: end, p_sample: 25 })
+      excludedAudit: csrSelf ? null : async ({ start, end, brands }) => {
+        const { data, error } = await supabase.rpc('qa_excluded_audit', { p_client: clientId || me.client, p_from: start, p_to: end, p_sample: 25, p_brands: brands && brands.length ? brands : null })
         if (error) throw new Error(error.message)
         return data
       },

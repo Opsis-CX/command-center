@@ -2011,9 +2011,10 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function exAuditCard() {
     var el = $('exaudit'); if (!el || !CFG.excludedAudit) return;
-    var end = addDays(todayET(), -1), start = addDays(end, -6);
-    var head = '<div class="oq-card" style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><h2 class="ttl">Left-out calls check</h2>' + (CFG.excludedExport ? '<button class="sel" data-act="exaexp" data-s="' + start + '" data-e="' + end + '" style="padding:6px 12px;font-size:12.5px">Export all (CSV)</button>' : '') + '</div><p class="sub">The last 7 days (' + esc(start) + ' to ' + esc(end) + '): every call we left out of scoring and why, with a sample to spot-check. Anything that looks like a real customer should be scored.</p>';
-    if (!EXA.d) { el.innerHTML = head + skel(20, 3) + '</div>'; CFG.excludedAudit({ start: start, end: end }).then(function (r) { EXA.d = r || {}; exAuditCard(); }).catch(function (e) { el.innerHTML = head + '<p style="color:#A8441A">' + esc(e.message) + '</p></div>'; }); return; }
+    var start = S.start, end = S.end, bk = start + '|' + end + '|' + S.brands.join(',');
+    if (EXA.key !== bk) { EXA.d = null; EXA.key = bk; }
+    var head = '<div class="oq-card" style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><h2 class="ttl">Left-out calls check</h2>' + (CFG.excludedExport ? '<button class="sel" data-act="exaexp" data-s="' + start + '" data-e="' + end + '" style="padding:6px 12px;font-size:12.5px">Export all (CSV)</button>' : '') + '</div><p class="sub">' + esc(fdate(start)) + ' – ' + esc(fdate(end)) + (S.brands.length ? ' · ' + esc(S.brands.map(short).join(', ')) : ' · all ' + esc(W_BRANDS.toLowerCase())) + ' (uses the filters at the top): every call we left out of scoring and why, with a sample to spot-check. Anything that looks like a real customer should be scored.</p>';
+    if (!EXA.d) { el.innerHTML = head + skel(20, 3) + '</div>'; CFG.excludedAudit({ start: start, end: end, brands: S.brands }).then(function (r) { EXA.d = r || {}; exAuditCard(); }).catch(function (e) { el.innerHTML = head + '<p style="color:#A8441A">' + esc(e.message) + '</p></div>'; }); return; }
     var d = EXA.d, why = d.by_reason || [], smp = d.sample || [], mm = d.mismatches || [];
     el.innerHTML = head + '<div style="margin-top:10px;font-size:13.5px"><b>' + fmt(d.excluded_total || 0) + '</b> calls left out' + (why.length ? ': ' + why.map(function (x) { return esc(x.reason) + ' (' + x.n + ')'; }).join(' · ') : '') + '</div>' +
       (mm.length ? '<div class="banner" style="margin-top:10px">' + mm.length + ' call' + (mm.length > 1 ? 's' : '') + ' were marked as a sales opportunity in the review but not counted in reporting. Let the Opsis CX Support team know so they can check them.</div>' : '<div class="mut" style="font-size:12.5px;margin-top:6px">Every sales opportunity in the reviews is counted in reporting.</div>') +
@@ -2021,7 +2022,7 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function exAuditCsv(d, btn) {
     if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
-    CFG.excludedExport({ start: d.s, end: d.e }).then(function (rows) {
+    CFG.excludedExport({ start: d.s, end: d.e, brands: S.brands }).then(function (rows) {
       var q = function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
       var lines = [['Date', W_BRAND, W_CSR, 'Phone', 'Why it was left out', 'Call type', 'Length (sec)', 'Summary'].join(',')].concat((rows || []).map(function (r) {
         return [r.call_date, q(r.brand), q(r.agent), q(r.phone ? fphone(r.phone) : ''), q(r.reason), q(r.category), r.duration_seconds == null ? '' : r.duration_seconds, q(r.summary)].join(','); }));
