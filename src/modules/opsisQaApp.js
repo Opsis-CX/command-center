@@ -1972,7 +1972,8 @@ export function mountOpsisQA(ROOT, cfg) {
     h += brands.map(function (b, i) {
       var list = by[b], em = (own[b] || []).join(', ');
       return '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line2)"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><b style="font-size:15px">' + esc(b) + '</b> <span class="mut">· ' + list.length + ' to call back</span></div>' +
-        (ed ? '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><label class="mut" for="cbo' + i + '" style="font-size:12px">Email the list to</label><input id="cbo' + i + '" class="oq-field" style="width:280px" placeholder="name@company.com, another@company.com" value="' + esc(em) + '"><button class="sel" data-act="cbosave" data-i="' + i + '" data-b="' + esc(b) + '" style="padding:6px 10px;font-size:12px">Save</button></div>'
+        (ed ? '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px"><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">' + ((own[b] || []).length ? (own[b] || []).map(function (e) { return '<span class="pill" style="background:#EEF2FB;color:#2B3A67;display:inline-flex;gap:6px;align-items:center">' + esc(e) + '<button data-act="cbodel" data-b="' + esc(b) + '" data-e="' + esc(e) + '" aria-label="Remove ' + esc(e) + '" style="all:unset;cursor:pointer;font-weight:700">×</button></span>'; }).join('') : '<span class="mut" style="font-size:12px">No one gets this list by email yet</span>') + '</div>' +
+          '<div style="display:flex;gap:6px;align-items:center"><label class="sr" for="cbo' + i + '">Add an email for ' + esc(b) + '</label><input id="cbo' + i + '" class="oq-field" style="width:240px" placeholder="Add an email (or several, with commas)"><button class="sel" data-act="cbosave" data-i="' + i + '" data-b="' + esc(b) + '" style="padding:6px 10px;font-size:12px">Add</button></div></div>'
           : '<span class="mut" style="font-size:12px">' + (em ? 'Emailed to ' + esc(em) : 'No one gets this list by email yet') + '</span>') + '</div>' +
         '<div style="overflow-x:auto;margin-top:8px"><table class="tbl" style="font-size:13px"><thead><tr><th>Customer</th><th>Called</th><th>CSR</th><th>Why it didn’t book</th><th>What they needed</th><th></th></tr></thead><tbody>' +
         list.map(function (r) { return '<tr><td><b>' + esc(r.customer || 'Unknown name') + '</b><div class="num">' + (r.phone ? esc(fphone(r.phone)) : '<span style="color:#B4461F">no number</span>') + '</div></td><td class="mut" style="white-space:nowrap">' + esc(tm(r.started_at)) + '</td><td>' + esc(r.agent || '—') + '</td><td>' + esc(r.reason) + '</td><td style="max-width:360px">' + esc(String(r.what || r.summary || '').slice(0, 200)) + '</td><td><button class="sel" data-call="' + esc(r.review_id) + '" style="padding:4px 10px;font-size:12px">Listen</button></td></tr>'; }).join('') +
@@ -1980,11 +1981,17 @@ export function mountOpsisQA(ROOT, cfg) {
     }).join('');
     w.innerHTML = h;
   }
-  function cbOwnerSave(d) {
-    var v = (($('cbo' + d.i) || {}).value || '').split(/[,;\s]+/).map(function (x) { return x.trim(); }).filter(Boolean);
-    var bad = v.filter(function (x) { return !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x); });
-    if (bad.length) { toast('Check this email: ' + bad[0]); return; }
-    CFG.callbackOwnerSet(d.b, v).then(function () { CB.d.owners = CB.d.owners || {}; CB.d.owners[d.b] = v; toast(v.length ? 'Saved. ' + d.b + '’s list goes to ' + v.join(', ') + ' each morning.' : 'Saved. ' + d.b + '’s list won’t be emailed.'); })
+  function cbOwnerSave(d, remove) {
+    var cur = ((CB.d.owners || {})[d.b] || []).slice(), add = [];
+    if (remove) cur = cur.filter(function (x) { return x !== d.e; });
+    else {
+      add = (($('cbo' + d.i) || {}).value || '').split(/[,;\s]+/).map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+      var bad = add.filter(function (x) { return !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x); });
+      if (bad.length) { toast('Check this email: ' + bad[0]); return; }
+      if (!add.length) { toast('Type an email address first.'); return; }
+      add.forEach(function (x) { if (cur.indexOf(x) < 0) cur.push(x); });
+    }
+    CFG.callbackOwnerSet(d.b, cur).then(function () { CB.d.owners = CB.d.owners || {}; CB.d.owners[d.b] = cur; drawCallbacks(); toast(remove ? 'Removed.' : 'Added. ' + d.b + '’s list goes to ' + cur.length + ' ' + (cur.length === 1 ? 'person' : 'people') + ' each morning.'); })
       .catch(function (e) { toast(e.message); });
   }
   // ---------- Numbers we never score + excluded-call check (Rob 11/23, items 10 & 11) ----------
@@ -6255,6 +6262,7 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rcpsave') { recapSave(); }
       else if (a === 'locsave') { locSave(); }
       else if (a === 'cbosave') { cbOwnerSave(d); }
+      else if (a === 'cbodel') { cbOwnerSave(d, true); }
       else if (a === 'ifby') { IF.by = d.k; drawIf(); }
       else if (a === 'exnadd') { var ph = (($('exnp') || {}).value || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); if (ph.length !== 10) { toast('Enter a 10-digit phone number.'); return; } exnSave(ph, (($('exnl') || {}).value || '').trim(), true); }
       else if (a === 'exndel') { if (confirm('Score calls from ' + fphone(d.p) + ' again?')) exnSave(d.p, null, false); }
