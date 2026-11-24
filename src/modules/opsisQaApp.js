@@ -782,6 +782,10 @@ export function mountOpsisQA(ROOT, cfg) {
   // Same playbook as the credit-card push: low QA and/or low booking rate = a 15–20 minute coaching session, plus a few
   // specific kudos. Thresholds are placeholders until Becky and Rob set the targets (COACH_T).
   var COACH_T = { qa: 80, book: 60, minOpps: 5 };
+  // Coaching session (Becky 11/24): "Build the session" always starts a fresh Ask AI chat, and "Export session" on the card
+  // exports the newest plan built for this CSR and date range (with the "Why … is trending" summary).
+  function sessQ(agent) { return 'Give me a 15–20 minute coaching plan for ' + agent + ': the 2 things to work on with call examples, and 2 specific kudos.'; }
+  var SESS = {};
   function coachFlag(f, agent) {
     var el = $('fcoach'); if (!el) return;
     var c = (f.kpis || {}).cur || {}, qa = c.avg != null ? Number(c.avg) : null, br = pct(c.booked, c.decided);
@@ -797,7 +801,7 @@ export function mountOpsisQA(ROOT, cfg) {
     }
     var why = [lowQa ? 'QA ' + Math.round(qa) + ' (target ' + COACH_T.qa + ')' : null, lowBk ? 'booking ' + Math.round(br) + '% (target ' + COACH_T.book + '%)' : null].filter(Boolean).join(' · ');
     el.innerHTML = '<div class="oq-card" style="border-color:#F1C9A8;background:#FFF7EF"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><h2 class="ttl" style="margin:0">Coaching session: 15–20 minutes</h2><p class="sub">' + esc(agent) + ' · ' + esc(why) + ' · ' + esc(rangeLabel()) + '</p></div>' +
-      '<button class="sel btnd" data-ask="' + esc('Give me a 15–20 minute coaching plan for ' + agent + ': the 2 things to work on with call examples, and 2 specific kudos.') + '">Build the session</button></div>' +
+      '<div class="row" style="gap:8px"><button class="sel" data-act="sessexp" data-sa="' + esc(agent) + '" title="The “Why … is trending” summary and the coaching plan, as a PDF to share">Export session</button><button class="sel btnd" data-ask="' + esc(sessQ(agent)) + '">Build the session</button></div></div>' +
       '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:10px">' +
       '<div><div class="cap">Work on</div><ul style="margin:6px 0 0 18px;font-size:13.5px;line-height:1.6">' + (worst.length ? worst.map(function (s) { return '<li><button class="lnk" data-step="' + s.key + '" data-sagent="' + esc(agent) + '">' + esc(nm(s)) + '</button>: done on ' + Math.round(s.rate) + '% of calls · ' + fmt(s.missed) + ' missed</li>'; }).join('') : '<li>Review the low-scoring calls below</li>') + '</ul></div>' +
       '<div><div class="cap">Kudos to give</div><ul style="margin:6px 0 0 18px;font-size:13.5px;line-height:1.6">' + (kudos || '<li>Find one recent call they handled well</li>') + '</ul></div></div></div>';
@@ -3853,9 +3857,9 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   // Ask AI answer export (Rob 11/24). Same look as the panel: the "Why … is trending this way" summary from that page
   // (when the question was asked from a CSR or brand page), then the question and the answer. "open call" becomes a real link.
-  function askExport(mi, fmt) {
-    var m = S.ask.msgs[mi]; if (!m || m.error) return;
-    var cx = m.ctx || {}, q = cx.q || ((S.ask.msgs[mi - 1] || {}).content) || '';
+  function askExport(mi, fmt, mObj) {
+    var m = mObj || S.ask.msgs[mi]; if (!m || m.error) return;
+    var cx = m.ctx || {}, q = cx.q || (mi != null ? (S.ask.msgs[mi - 1] || {}).content : '') || '';
     var plan = /coaching plan/i.test(q), nm = (q.match(/coaching plan for (.+?)(?::|\.|$)/i) || [])[1];
     var label = plan ? 'Coaching plan – ' + (nm || cx.title || 'CSR') : 'Ask AI' + (cx.title ? ' – ' + cx.title : '');
     var base = location.origin + location.pathname + location.search + '#v=calls&call=';
@@ -5674,9 +5678,10 @@ export function mountOpsisQA(ROOT, cfg) {
     if (!A.msgs.length) h += '<p class="mut" style="font-size:13px">Ask anything about your calls, brands and CSRs. Answers are built from your live call data.</p><div style="display:flex;flex-direction:column;gap:6px">' + suggestList().map(function (q) { return '<button class="chip" data-ask="' + esc(q) + '">' + esc(q) + '</button>'; }).join('') + '</div>';
     A.msgs.forEach(function (m, mi) {
       if (m.role === 'user') h += '<div style="align-self:flex-end;background:var(--side);color:#fff;border-radius:14px 14px 4px 14px;padding:10px 14px;max-width:85%;font-size:13.5px">' + esc(m.content) + '</div>';
-      else h += '<div class="ai" style="max-width:100%"><div class="md">' + (m.error ? '<span style="color:#A8441A">' + esc(m.content) + '</span>' : md(m.content)) + '</div>' +
-        // Rob 11/24: every answer can be exported (with the "Why … is trending this way" summary when asked from a CSR or brand page).
-        (m.error ? '' : '<div class="row" style="gap:6px;margin-top:10px;align-items:center"><span class="mut" style="font-size:12.5px">Export</span>' + [['xlsx', 'Excel'], ['csv', 'CSV'], ['pdf', 'PDF']].map(function (f) { return '<button class="sel" data-act="askexp" data-mi="' + mi + '" data-fmt="' + f[0] + '" style="min-height:32px;padding:4px 12px;font-size:12.5px">' + f[1] + '</button>'; }).join('') + '</div>') +
+      else h += '<div class="ai" style="max-width:100%">' +
+        // Rob 11/24: every answer can be exported (with the "Why … is trending this way" summary when asked from a CSR or brand page). Becky 11/24: at the top.
+        (m.error ? '' : '<div class="row" style="gap:6px;margin-bottom:10px;align-items:center"><span class="mut" style="font-size:12.5px">Export</span>' + [['xlsx', 'Excel'], ['csv', 'CSV'], ['pdf', 'PDF']].map(function (f) { return '<button class="sel" data-act="askexp" data-mi="' + mi + '" data-fmt="' + f[0] + '" style="min-height:32px;padding:4px 12px;font-size:12.5px">' + f[1] + '</button>'; }).join('') + '</div>') +
+        '<div class="md">' + (m.error ? '<span style="color:#A8441A">' + esc(m.content) + '</span>' : md(m.content)) + '</div>' +
         ((m.downloads || []).length ? '<div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">' + m.downloads.map(function (d, di) { return '<button class="sel btnd" data-act="askdl" data-mi="' + mi + '" data-di="' + di + '" style="justify-content:flex-start;gap:8px;text-align:left"' + (RP.busy ? ' disabled' : '') + '><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>Download ' + esc(d.label) + ' (' + (d.format === 'xlsx' ? 'Excel' : String(d.format || 'pdf').toUpperCase()) + ')</button>'; }).join('') + '<span class="mut" style="font-size:12px">' + fdate(m.downloads[0].start) + ' – ' + fdate(m.downloads[0].end) + '</span></div>' : '') + '</div>';
     });
     if (A.busy) h += '<div class="ai"><span class="dots"><span></span><span></span><span></span></span> <span class="mut" style="font-size:13px">Looking through your calls…</span></div>';
@@ -5690,6 +5695,7 @@ export function mountOpsisQA(ROOT, cfg) {
     q = (q || '').trim(); if (!q) return;
     if (phoneQ(q)) { openCalls({ q: q }); return; }
     var A = S.ask; A.open = true; S.callId = null;
+    var isSess = /^Give me a 15–20 minute coaching plan for /.test(q); if (isSess) A.msgs = [];
     var history = A.msgs.filter(function (m) { return !m.error; }).slice(-6).map(function (m) { return { role: m.role, content: m.content }; });
     A.msgs.push({ role: 'user', content: q }); A.busy = true; askPanel();
     var pg = S.view === 'brand' || S.view === 'csr' ? { view: S.view, brand: S.brand || null, agent: S.view === 'csr' ? (S.agent || null) : null } : null;
@@ -5697,7 +5703,9 @@ export function mountOpsisQA(ROOT, cfg) {
     var actx = { q: q, start: S.start, end: S.end, brands: S.brands.slice(), kind: pg && anm ? S.view : null, name: anm || null, title: anm ? (S.view === 'brand' ? short(anm) : anm) : null,
       whyKey: anm ? 'why7|' + S.view + '|' + anm + '|' + S.start + '|' + S.end : null };
     api({ action: 'ask', question: q, history: history, start: S.start, end: S.end, brands: S.brands.length ? S.brands : null, page: pg, dl: 1 }).then(function (r) {
-      A.msgs.push({ role: 'assistant', content: r.answer, downloads: Array.isArray(r.downloads) ? r.downloads : [], ctx: actx }); A.busy = false; if (A.open) askPanel();
+      var am = { role: 'assistant', content: r.answer, downloads: Array.isArray(r.downloads) ? r.downloads : [], ctx: actx }; A.msgs.push(am);
+      if (isSess && r.answer) SESS[q + '|' + actx.start + '|' + actx.end] = am;
+      A.busy = false; if (A.open) askPanel();
     }).catch(function (e) { A.msgs.push({ role: 'assistant', content: e.message, error: true }); A.busy = false; if (A.open) askPanel(); });
   }
 
@@ -6427,6 +6435,7 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'jvsave') { jvSave(d.jt); }
       else if (a === 'rpdl') { rpDownload(d.r, d.f); }
       else if (a === 'askexp') { askExport(+d.mi, d.fmt); }
+      else if (a === 'sessexp') { var sm = SESS[sessQ(d.sa) + '|' + S.start + '|' + S.end]; if (!sm) toast('Build the session first, then export it here.'); else askExport(null, 'pdf', sm); }
       else if (a === 'askdl') { var am = S.ask.msgs[+d.mi]; if (am && am.downloads) askDownload(am.downloads[+d.di]); }
       else if (a === 'rpweek') { var wk0 = ($('rpwk') || {}).value || lastMon(); RP.week = wk0; RP.wkb = ($('rpwkb') || {}).value || ''; var ww = pdfWin(); if (ww) { RP.busy = 'week'; drawReporting(); opWeek(ww, wk0, RP.wkb || (LOCK || null)).then(function () { RP.busy = ''; drawReporting(); }).catch(function (e) { try { ww.close(); } catch (x) {} RP.busy = ''; drawReporting(); toast(e.message || 'Couldn’t build that report.'); }); } }
       else if (a === 'qsinsedit') { QSE.ins = true; drawQs(); }
