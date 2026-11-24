@@ -180,7 +180,7 @@ export function mountOpsisQA(ROOT, cfg) {
       connect: 'M12 22v-5M9 8V2M15 8V2M18 8v4a6 6 0 0 1-12 0V8z', kb: 'M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2z', settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
       hub: 'M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z', hubask: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', hubwins: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3',
       scorecards: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8 11h8M8 15h8M8 19h5', reporting: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3', money: 'M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5s-5 1.6-5 3.5 2.2 3.2 5 3.5 5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5', team: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M17 11a3 3 0 1 0 0-6M22 20v-1a5 5 0 0 0-4-4.9', qasettings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0M15 4v4M9 10v4M18 16v4'
-    }[k];
+    }[k] || (k === 'callbacks' ? 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2zM15 3v6h6M21 3l-6 6' : '');
   }
 
   // ---------------- nav + top bar ----------------
@@ -190,7 +190,7 @@ export function mountOpsisQA(ROOT, cfg) {
   // Practice + AI CSR are added after the pilot check (see vPractice access below).
   var NAV = CFG.csrSelf ? [['', [['hub', 'Home'], ['hubask', 'Ask my coach'], ['hubwins', 'My wins']]]] : [['', [['overview', 'Overview']].concat(!OPSIS && CFG.bizReview && (ROLE === 'admin' || CFG.staff) && !(CFG.portalRole === 'rm' || CFG.portalRole === 'gm') ? [['reviews', 'Business reviews']] : [])
     .concat([['insights', 'Insights']]).concat(CFG.mountExt ? [['trends', 'Call trends']] : []).concat(CFG.phone === false ? [] : [['phone', 'Phone stats']]).concat(LOCK ? [] : [['brands', W_BRANDS]])
-    .concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['pricetalk', 'Price talk'], ['money', 'Revenue']].concat(CFG.leadTime ? [['leadtime', 'Booking lead time']] : []))
+    .concat([['csrs', W_CSRS], ['calls', 'Call reviews']]).concat(CFG.callbacks && ROLE !== 'viewer' ? [['callbacks', 'Callbacks']] : []).concat(OPSIS ? [] : [['cardcap', 'Card capture'], ['pricetalk', 'Price talk'], ['money', 'Revenue']].concat(CFG.leadTime ? [['leadtime', 'Booking lead time']] : []))
     .concat(!OPSIS && (!LOCK || CFG.supervisor) && ROLE !== 'viewer' ? [['calib', 'Calibration']] : [])
     .concat(!OPSIS && CFG.supervisor && CFG.coachHistory ? [['coach', 'Coach view']] : [])
     .concat(OPSIS ? [] : [['hub', 'Coaching Hub']])
@@ -211,7 +211,7 @@ export function mountOpsisQA(ROOT, cfg) {
   if (COACH_ROLE && CFG.myBrands) CFG.myBrands().then(function (b) { if (b && b.length > 1) { MYBR = b; try { render(); } catch (e) {} } }).catch(function () {});
   // Becky 11/18 (S2L-12): RMs/GMs also see AI Speed to Lead — read-only for their brand (opsis-portal-ops: can_edit is admin only,
   // dialer campaigns hidden for non-staff).
-  var MGR_NAV = ['overview', 'trends', 'coach', 'hub', 'coachclips', 'tasks', 'receptionist', 'aistl', 'supervisor', 'wallboard', 'myphone', 'wfm', 'intraday'];
+  var MGR_NAV = ['overview', 'trends', 'callbacks', 'coach', 'hub', 'coachclips', 'tasks', 'receptionist', 'aistl', 'supervisor', 'wallboard', 'myphone', 'wfm', 'intraday'];
   // reachable by drilling down from the dashboard, but not in the sidebar
   var MGR_OK = MGR_NAV.concat(['brand', 'csr', 'calls', 'hubqs', 'repeat', 'kpi']).concat(TILE_VIEWS);
   function mgrNav() { if (!MGR) return; NAV = [['', NAV[0][1].filter(function (n) { return MGR_NAV.indexOf(n[0]) >= 0; })]]; }
@@ -1948,6 +1948,68 @@ export function mountOpsisQA(ROOT, cfg) {
     LOCS.busy = true; locCard();
     CFG.locationsSet(L).then(function (r) { LOCS.busy = false; LOCS.d.locations = r || L; locCard(); toast('Locations saved.'); })
       .catch(function (e) { LOCS.busy = false; locCard(); toast(e.message); });
+  }
+  // ---------- Callbacks (Rob 11/23, item 4) ----------
+  // Opportunity calls that didn't book and are worth a call back (customer will call back, we'll call them back,
+  // cut off / dropped, winnable…), minus anyone who booked on a later call. The same list is emailed each morning
+  // to each brand's callback owner.
+  var CB = { d: null, key: '' };
+  function vCallbacks(tok) {
+    setMain(crumb([['Callbacks']]) + '<div class="oq-card" id="cbwrap">' + skel(30, 10) + '</div>');
+    if (!CFG.callbacks) { $('cbwrap').innerHTML = 'This page isn’t available here.'; return; }
+    var w0 = win(), key = [w0.start, w0.end, (w0.brands || []).join('|')].join('~');
+    CFG.callbacks(w0).then(function (r) { if (tok !== T) return; CB.d = r || { rows: [] }; CB.key = key; drawCallbacks(); })
+      .catch(function (e) { if (tok === T && $('cbwrap')) $('cbwrap').innerHTML = errBox(e); });
+  }
+  function drawCallbacks() {
+    var w = $('cbwrap'); if (!w || !CB.d) return; var d = CB.d, rows = d.rows || [], own = d.owners || {}, ed = d.can_edit;
+    var by = {}; rows.forEach(function (r) { (by[r.brand] = by[r.brand] || []).push(r); });
+    var brands = Object.keys(by).sort();
+    var tm = function (iso) { if (!iso) return ''; try { return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }); } catch (x) { return ''; } };
+    var h = '<h2 class="ttl">Callbacks</h2><p class="sub">Customers who needed service, didn’t book, and haven’t booked since. ' + fmt(rows.length) + ' in this date range. Each brand’s list is also emailed at 7am ET to the people you set below.</p>';
+    if (!rows.length) { w.innerHTML = h + '<p class="mut" style="margin-top:14px">Nobody to call back in this date range.</p>'; return; }
+    h += brands.map(function (b, i) {
+      var list = by[b], em = (own[b] || []).join(', ');
+      return '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line2)"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><b style="font-size:15px">' + esc(b) + '</b> <span class="mut">· ' + list.length + ' to call back</span></div>' +
+        (ed ? '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><label class="mut" for="cbo' + i + '" style="font-size:12px">Email the list to</label><input id="cbo' + i + '" class="oq-field" style="width:280px" placeholder="name@company.com, another@company.com" value="' + esc(em) + '"><button class="sel" data-act="cbosave" data-i="' + i + '" data-b="' + esc(b) + '" style="padding:6px 10px;font-size:12px">Save</button></div>'
+          : '<span class="mut" style="font-size:12px">' + (em ? 'Emailed to ' + esc(em) : 'No one gets this list by email yet') + '</span>') + '</div>' +
+        '<div style="overflow-x:auto;margin-top:8px"><table class="tbl" style="font-size:13px"><thead><tr><th>Customer</th><th>Called</th><th>CSR</th><th>Why it didn’t book</th><th>What they needed</th><th></th></tr></thead><tbody>' +
+        list.map(function (r) { return '<tr><td><b>' + esc(r.customer || 'Unknown name') + '</b><div class="num">' + (r.phone ? esc(fphone(r.phone)) : '<span style="color:#B4461F">no number</span>') + '</div></td><td class="mut" style="white-space:nowrap">' + esc(tm(r.started_at)) + '</td><td>' + esc(r.agent || '—') + '</td><td>' + esc(r.reason) + '</td><td style="max-width:360px">' + esc(String(r.what || r.summary || '').slice(0, 200)) + '</td><td><button class="sel" data-call="' + esc(r.review_id) + '" style="padding:4px 10px;font-size:12px">Listen</button></td></tr>'; }).join('') +
+        '</tbody></table></div></div>';
+    }).join('');
+    w.innerHTML = h;
+  }
+  function cbOwnerSave(d) {
+    var v = (($('cbo' + d.i) || {}).value || '').split(/[,;\s]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+    var bad = v.filter(function (x) { return !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x); });
+    if (bad.length) { toast('Check this email: ' + bad[0]); return; }
+    CFG.callbackOwnerSet(d.b, v).then(function () { CB.d.owners = CB.d.owners || {}; CB.d.owners[d.b] = v; toast(v.length ? 'Saved. ' + d.b + '’s list goes to ' + v.join(', ') + ' each morning.' : 'Saved. ' + d.b + '’s list won’t be emailed.'); })
+      .catch(function (e) { toast(e.message); });
+  }
+  // ---------- Numbers we never score + excluded-call check (Rob 11/23, items 10 & 11) ----------
+  var EXN = { d: null, busy: false }, EXA = { d: null };
+  function exnCard() {
+    var el = $('exnset'); if (!el || !CFG.excludedNumbers) return;
+    var head = '<div class="oq-card" style="margin-top:16px"><h2 class="ttl">Numbers we never score</h2><p class="sub">Vendors, delivery drivers, solicitors and your own staff. Calls from these numbers are left out of scores, booking rate, revenue and coaching.</p>';
+    if (!EXN.d) { el.innerHTML = head + skel(20, 2) + '</div>'; CFG.excludedNumbers().then(function (r) { EXN.d = r || { numbers: [] }; exnCard(); }).catch(function (e) { el.innerHTML = head + '<p style="color:#A8441A">' + esc(e.message) + '</p></div>'; }); return; }
+    var d = EXN.d, ed = d.can_edit, L = d.numbers || [];
+    el.innerHTML = head + (L.length ? '<div style="margin-top:10px">' + L.map(function (n) { return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line2)"><div><b class="num">' + esc(fphone(n.phone)) + '</b>' + (n.label ? ' · ' + esc(n.label) : '') + '<div class="mut" style="font-size:12px">Added ' + (n.created_at ? ago(n.created_at) : '') + (n.added_by ? ' by ' + esc(n.added_by) : '') + '</div></div>' + (ed ? '<button class="sel" data-act="exndel" data-p="' + esc(n.phone) + '" style="padding:5px 10px;font-size:12px">Score it again</button>' : '') + '</div>'; }).join('') + '</div>' : '<p class="mut" style="margin-top:10px">No numbers yet.</p>') +
+      (ed ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:flex-end"><div><label class="l" for="exnp">Phone number</label><input id="exnp" class="oq-field" style="width:170px" placeholder="(555) 555-1234"></div><div style="flex:1 1 220px"><label class="l" for="exnl">Who is it?</label><input id="exnl" class="oq-field" placeholder="e.g. Freight carrier, parts vendor"></div><button class="sel btnd" data-act="exnadd"' + (EXN.busy ? ' disabled' : '') + '>' + (EXN.busy ? 'Saving…' : 'Add number') + '</button></div><p class="mut" style="font-size:12px;margin-top:6px">Applies to new calls right away. Past calls from the number are left out within a few minutes.</p>' : '<p class="mut" style="font-size:12.5px;margin-top:8px">Only account admins can change this.</p>') + '</div>';
+  }
+  function exnSave(phone, label, active) {
+    EXN.busy = true; exnCard();
+    CFG.excludedNumberSet(phone, label, active).then(function () { EXN.busy = false; EXN.d = null; exnCard(); toast(active === false ? 'That number will be scored again.' : 'Added. Calls from that number won’t be scored.'); })
+      .catch(function (e) { EXN.busy = false; exnCard(); toast(e.message); });
+  }
+  function exAuditCard() {
+    var el = $('exaudit'); if (!el || !CFG.excludedAudit) return;
+    var end = addDays(todayET(), -1), start = addDays(end, -6);
+    var head = '<div class="oq-card" style="margin-top:16px"><h2 class="ttl">Left-out calls check</h2><p class="sub">The last 7 days (' + esc(start) + ' to ' + esc(end) + '): every call we left out of scoring and why, with a sample to spot-check. Anything that looks like a real customer should be scored.</p>';
+    if (!EXA.d) { el.innerHTML = head + skel(20, 3) + '</div>'; CFG.excludedAudit({ start: start, end: end }).then(function (r) { EXA.d = r || {}; exAuditCard(); }).catch(function (e) { el.innerHTML = head + '<p style="color:#A8441A">' + esc(e.message) + '</p></div>'; }); return; }
+    var d = EXA.d, why = d.by_reason || [], smp = d.sample || [], mm = d.mismatches || [];
+    el.innerHTML = head + '<div style="margin-top:10px;font-size:13.5px"><b>' + fmt(d.excluded_total || 0) + '</b> calls left out' + (why.length ? ': ' + why.map(function (x) { return esc(x.reason) + ' (' + x.n + ')'; }).join(' · ') : '') + '</div>' +
+      (mm.length ? '<div class="banner" style="margin-top:10px">' + mm.length + ' call' + (mm.length > 1 ? 's' : '') + ' were marked as a sales opportunity in the review but not counted in reporting. Let the Opsis CX Support team know so they can check them.</div>' : '<div class="mut" style="font-size:12.5px;margin-top:6px">Every sales opportunity in the reviews is counted in reporting.</div>') +
+      (smp.length ? '<div style="margin-top:10px">' + smp.slice(0, 15).map(function (x) { return '<button class="click" data-call="' + esc(x.review_id || '') + '" style="all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:block;padding:9px 0;border-top:1px solid var(--line2)"><b>' + esc(short(x.brand || '')) + '</b> · ' + esc(x.call_date) + (x.phone ? ' · <span class="num">' + esc(fphone(x.phone)) + '</span>' : '') + ' · <span class="mut">' + esc(x.reason) + '</span><div class="mut" style="font-size:12.5px">' + esc(String(x.summary || '').slice(0, 220)) + '</div></button>'; }).join('') + '</div>' : '') + '</div>';
   }
   function recapCard() {
     var el = $('recapset'); if (!el || !CFG.recapSettings) return;
@@ -5801,7 +5863,7 @@ export function mountOpsisQA(ROOT, cfg) {
     if (S.view !== 'practice' && PR.live && PR.live.state === 'ringing') prCancel();
     if (CFG.csrSelf && !/^hub/.test(S.view)) S.view = 'hub';
     T++; var tok = T; if (EXT) { try { EXT(); } catch (x) {} EXT = null; } if (S.view === 'brands' && LOCK) S.view = 'overview'; if (MGR && MGR_OK.indexOf(S.view) < 0) S.view = 'overview'; if (COACH_ROLE && COACH_NAV.concat(['csr', 'hubqs', 'kpi', 'repeat']).indexOf(S.view) < 0) S.view = 'coach'; renderNav(); renderWho(); writeHash(); trackHist();
-    var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, coach: vCoach, reviews: vReviews, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, insights: vInsights, kb: vKb, connect: vConnect, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, supervisor: function () { vExt('supervisor'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, tasks: vTasks, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
+    var v = { overview: vOverview, dash: vDash, brands: vBrands, brand: function (t) { vFocus(t, 'brand'); }, csr: function (t) { vFocus(t, 'csr'); }, csrs: vCsrs, coach: vCoach, reviews: vReviews, phone: vPhone, leadtime: vLeadTime, repeat: vRepeat, calls: vCalls, callbacks: vCallbacks, insights: vInsights, kb: vKb, connect: vConnect, team: vTeam, brandset: vBrandSet, qasettings: vQaSettings, scorecards: vScorecards, aistl: function () { vExt('aistl'); }, wfm: function () { vExt('wfm'); }, wallboard: function () { vExt('wallboard'); }, supervisor: function () { vExt('supervisor'); }, myphone: function () { vExt('myphone'); }, phonesetup: function () { vExt('phonesetup'); }, trends: function () { vExt('trends'); }, coachclips: function () { vExt('coachclips'); }, mycoach: function () { vExt('mycoach'); }, intraday: function () { vExt('intraday'); }, callflow: function () { vExt('callflow'); }, reporting: vReporting, tasks: vTasks, money: vMoney, cardcap: vCard, pricetalk: vPrice, practice: vPractice, receptionist: vRecep, calib: vCalib, kpi: vKpi, hub: vHub, hubask: vHub, hubwins: vHub, hubqs: vHubQs }[S.view] || vOverview;
     var gk = GATE[S.view];
     if (gk && CFG.features && !(FEAT && FEAT[gk])) {
       if (!FEAT) { setMain('<div class="oq-card">' + skel(30, 4) + '</div>'); featLoad().then(function () { if (tok === T) render(); }); return; }
@@ -6162,6 +6224,9 @@ export function mountOpsisQA(ROOT, cfg) {
       else if (a === 'rasave') { rcAlertsSave(); }
       else if (a === 'rcpsave') { recapSave(); }
       else if (a === 'locsave') { locSave(); }
+      else if (a === 'cbosave') { cbOwnerSave(d); }
+      else if (a === 'exnadd') { var ph = (($('exnp') || {}).value || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); if (ph.length !== 10) { toast('Enter a 10-digit phone number.'); return; } exnSave(ph, (($('exnl') || {}).value || '').trim(), true); }
+      else if (a === 'exndel') { if (confirm('Score calls from ' + fphone(d.p) + ' again?')) exnSave(d.p, null, false); }
       else if (/^ob(go|min|open|hide|show)$/.test(a)) { obAct(a, d); }
       else if (a === 'featcard') { el.disabled = true; CFG.featureSet('card_capture', true).then(function () { FEAT_AT = 0; return featLoad(); }).then(function () { toast('Card capture is on.'); render(); }).catch(function (e) { el.disabled = false; toast(e.message); }); }
       else if (a === 'ccprov' || a === 'ccsave' || a === 'ccrm' || a === 'cctest') { ccAct(a, d); }

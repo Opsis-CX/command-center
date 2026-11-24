@@ -273,6 +273,30 @@ export default function OpsisQAPortal({ clientId = null, logo, hasCsrs = false, 
         const { error } = await supabase.rpc('qa_source_remove', { p_client: clientId || me.client, p_id: id })
         if (error) throw new Error(error.message || 'Could not disconnect.')
       },
+      // Callback list + never-score numbers + excluded-call audit (Rob 11/23, items 4, 10, 11)
+      callbacks: csrSelf ? null : async ({ start, end, brands }) => {
+        const { data, error } = await supabase.rpc('qa_callback_list', { p_client: clientId || me.client, p_from: start, p_to: end, p_brands: brands && brands.length ? brands : null })
+        if (error) throw new Error(error.message || 'Could not load the callback list.')
+        return data
+      },
+      callbackOwnerSet: csrSelf ? null : async (brand, emails) => {
+        const { error } = await supabase.rpc('qa_callback_owner_set', { p_client: clientId || me.client, p_brand: brand, p_emails: emails })
+        if (error) throw new Error(error.message || 'Could not save.')
+      },
+      excludedNumbers: csrSelf ? null : async () => {
+        const { data, error } = await supabase.rpc('qa_excluded_numbers_list', { p_client: clientId || me.client })
+        if (error) throw new Error(error.message)
+        return data
+      },
+      excludedNumberSet: csrSelf ? null : async (phone, label, active) => {
+        const { error } = await supabase.rpc('qa_excluded_numbers_set', { p_client: clientId || me.client, p_phone: phone, p_label: label || null, p_active: active !== false })
+        if (error) throw new Error(error.message || 'Could not save that number.')
+      },
+      excludedAudit: csrSelf ? null : async ({ start, end }) => {
+        const { data, error } = await supabase.rpc('qa_excluded_audit', { p_client: clientId || me.client, p_from: start, p_to: end, p_sample: 25 })
+        if (error) throw new Error(error.message)
+        return data
+      },
       // Your locations (Becky 11/23)
       locationsGet: csrSelf ? null : async () => {
         const { data, error } = await supabase.rpc('qa_locations_get', { p_client: clientId || me.client })
