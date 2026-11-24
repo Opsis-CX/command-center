@@ -213,8 +213,10 @@ export function mountOpsisQA(ROOT, cfg) {
   // dialer campaigns hidden for non-staff).
   var MGR_NAV = ['overview', 'trends', 'callbacks', 'coach', 'hub', 'coachclips', 'tasks', 'receptionist', 'aistl', 'supervisor', 'wallboard', 'myphone', 'wfm', 'intraday'];
   // reachable by drilling down from the dashboard, but not in the sidebar
+  // Becky 11/24 (go-live RT-16): RMs get Phone setup for their brand (the server already scopes it); GMs don't.
+  if (MGR && CFG.portalRole === 'rm') MGR_NAV.push('phonesetup');
   var MGR_OK = MGR_NAV.concat(['brand', 'csr', 'calls', 'hubqs', 'repeat', 'kpi']).concat(TILE_VIEWS);
-  function mgrNav() { if (!MGR) return; NAV = [['', NAV[0][1].filter(function (n) { return MGR_NAV.indexOf(n[0]) >= 0; })]]; }
+  function mgrNav() { if (!MGR) return; NAV = [['', [].concat.apply([], NAV.map(function (sec) { return sec[1]; })).filter(function (n) { return MGR_NAV.indexOf(n[0]) >= 0; })]]; }
   mgrNav();
   function renderWho() {
     var w = $('oqwho'); if (!w) return;
