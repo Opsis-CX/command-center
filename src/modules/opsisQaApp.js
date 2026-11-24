@@ -4331,8 +4331,9 @@ export function mountOpsisQA(ROOT, cfg) {
   function playBtn(rid, color, label) {
     var a = HUB.audio[rid];
     if (a && a.url) { var np = (a.parts || []).length, pi = a.pi || 0, cur = pi ? a.parts[pi - 1].url : a.url;
-      return '<div style="display:flex;flex-direction:column;gap:4px"><audio controls autoplay data-hubchain="' + rid + '" src="' + esc(cur + (!pi && a.at ? '#t=' + Math.max(0, a.at - 2) : '')) + '" style="width:min(460px,72vw);height:48px"></audio>' +
-        (np ? '<div class="mut" style="font-size:11.5px">Part ' + (pi + 1) + ' of ' + (np + 1) + ' · the call continued after a hold or callback, and plays straight through' + (pi < np ? ' · <button class="more" data-hubnext="' + rid + '" style="font-size:11.5px">Skip to part ' + (pi + 2) + '</button>' : '') + '</div>' : '') + '</div>'; }
+      var mmss = function (x) { x = Math.round(+x || 0); return Math.floor(x / 60) + ':' + ('0' + x % 60).slice(-2); };
+      var chips = np ? '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="cap" style="font-size:10.5px">Whole call · ' + (np + 1) + ' parts</span>' + [{ l: 'First call' }].concat(a.parts.map(function (p, k) { return { l: (k === 0 ? 'Callback' : 'Callback ' + (k + 1)) + (p.secs ? ' · ' + mmss(p.secs) : '') }; })).map(function (c, k) { var on = k === pi; return '<button data-hubpart="' + rid + '|' + k + '" style="all:unset;cursor:pointer;font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid ' + (on ? '#14302A' : 'var(--line2)') + ';background:' + (on ? '#14302A' : 'transparent') + ';color:' + (on ? '#fff' : 'inherit') + '">' + (on ? '▶ ' : '') + esc(c.l) + '</button>'; }).join('') + '</div><div class="mut" style="font-size:11.5px">The customer was cut off or put on hold and the CSR picked back up. The parts play one after another.</div>' : '';
+      return '<div style="display:flex;flex-direction:column;gap:6px">' + chips + '<audio controls autoplay data-hubchain="' + rid + '" src="' + esc(cur + (!pi && a.at ? '#t=' + Math.max(0, a.at - 2) : '')) + '" style="width:min(460px,72vw);height:48px"></audio></div>'; }
     return '<button class="hubplay" data-hubplay="' + rid + '" aria-label="' + esc(label || 'Play call') + '" style="width:44px;height:44px;border-radius:999px;border:0;background:' + color + ';display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">' + (a && a.busy ? '<span class="dots"><span></span><span></span><span></span></span>' : PLAY) + '</button>';
   }
 
@@ -4726,7 +4727,7 @@ export function mountOpsisQA(ROOT, cfg) {
       HUB.pendingAt = HUB.pendingAt || {}; HUB.pendingAt[rid0] = at0;
       var pb0 = document.querySelector('[data-hubslot="' + rid0 + '"] [data-hubplay]'); if (pb0) pb0.click(); return;
     }
-    if ((x = t.closest('[data-hubnext]'))) { hubNextPart(x.getAttribute('data-hubnext')); return; }
+    if ((x = t.closest('[data-hubpart]'))) { var hp = x.getAttribute('data-hubpart').split('|'), ha = HUB.audio[hp[0]]; if (ha) { ha.pi = +hp[1]; ha.at = 0; document.querySelectorAll('[data-hubslot="' + hp[0] + '"]').forEach(function (sl) { sl.innerHTML = playBtn(hp[0], '#14302A'); }); } return; }
     if ((x = t.closest('[data-hubplay]'))) {
       var rid = x.getAttribute('data-hubplay'); if (HUB.audio[rid] && HUB.audio[rid].busy) return;
       HUB.audio[rid] = { busy: true }; var slot = function () { document.querySelectorAll('[data-hubslot="' + rid + '"]').forEach(function (s) { s.innerHTML = playBtn(rid, s.querySelector('[data-hubplay]') ? s.querySelector('[data-hubplay]').style.background : '#14302A'); }); };

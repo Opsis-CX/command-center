@@ -30,6 +30,7 @@ Deno.serve(async (req) => {
       const u = data?.signedUrl; if (!u) continue;
       parts.push({ url: u.startsWith("http") ? u : `${SB_URL}${u.startsWith("/") ? "" : "/"}${u}`, offset: Number(l.leg_offset_sec) || 0, secs: Number(l.duration_seconds) || 0 });
     }
+    console.log(JSON.stringify({ review: p.id, legs: (legs || []).length, parts: parts.length }));
     return json({ url: cj.url, parts });
   } catch (e) { return json({ error: String((e as Error)?.message ?? e) }, 500); }
 });
