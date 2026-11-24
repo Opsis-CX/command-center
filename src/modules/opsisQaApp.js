@@ -3857,8 +3857,17 @@ export function mountOpsisQA(ROOT, cfg) {
     var whyP = cx.whyKey && whyCache[cx.whyKey] ? whyCache[cx.whyKey].then(function (r) { return whyTidy(r.answer); }).catch(function () { return null; }) : Promise.resolve(null);
     var linkify = function (h) { return h.replace(/<span class="lnk" data-call="([0-9a-f-]{36})"[^>]*>open call ↗<\/span>/gi, function (x, id) { return '<a href="' + esc(base + id) + '" style="color:#2F7D5B;font-weight:600">open call ↗</a>'; }); };
     var plain = function (t) { return String(t || '').split('\n').map(function (l) { return l.replace(/\[call:([0-9a-f-]{36})\]/gi, function (x, id) { return base + id; }).replace(/\*\*/g, '').replace(/^\s*#{1,4}\s+/, '').replace(/^(\s*)[-*]\s+/, '$1• ').replace(/\s+$/, ''); }).filter(function (l) { return l.trim() && !/^(-{3,}|\*{3,})$/.test(l.trim()); }).map(function (l) { return [l]; }); };
+    // Call IDs the AI copied wrong are looked up by their start so every "open call" link in the export works.
+    var fixIds = function (t) {
+      t = String(t || ''); var bad = [], re = /\[call:\s*([0-9a-f]{8}-[0-9a-f]{4})[0-9a-f-]*\]/gi, mm;
+      while ((mm = re.exec(t))) if (!/^\[call:[0-9a-f-]{36}\]$/i.test(mm[0]) && bad.indexOf(mm[1]) < 0) bad.push(mm[1]);
+      if (!bad.length) return Promise.resolve(t);
+      var cfrom = new Date(Date.parse((cx.end || S.end) + 'T12:00:00Z') - 400 * 864e5).toISOString().slice(0, 10);
+      return Promise.all(bad.map(function (b) { return api({ action: 'calls', q: b, start: cfrom, end: todayET(), limit: 2 }).then(function (r) { var rw = (r && r.rows) || []; return rw.length === 1 ? rw[0].id : null; }).catch(function () { return null; }); }))
+        .then(function (ids) { bad.forEach(function (b, i) { t = t.replace(new RegExp('\\[call:\\s*' + b + '[0-9a-f-]*\\]', 'gi'), function (x) { return /^\[call:[0-9a-f-]{36}\]$/i.test(x) ? x : (ids[i] ? '[call:' + ids[i] + ']' : ''); }); }); return t; });
+    };
     toast('Preparing the export…');
-    whyP.then(function (why) {
+    Promise.all([whyP.then(function (w) { return w ? fixIds(w) : null; }), fixIds(m.content)]).then(function (got) { var why = got[0]; m = Object.assign({}, m, { content: got[1] });
       if (fmt === 'pdf') {
         var box = document.createElement('div');
         box.innerHTML = (why ? '<div class="oq-card"><h2 class="ttl" style="margin:0 0 8px">Why ' + esc(cx.title) + ' is trending this way</h2><div class="md">' + linkify(md(why)) + '</div></div>' : '') +
@@ -5626,8 +5635,11 @@ export function mountOpsisQA(ROOT, cfg) {
   }
   function md(t) {
     var s = esc(soften(t));
-    s = s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    // Bold that runs onto the next line is still bold (Rob 11/24), and no stray ** is ever shown.
+    s = s.replace(/\*\*([^*]+?)\*\*/g, function (x, b) { return '<b>' + b.replace(/\s*\n\s*/g, ' ') + '</b>'; }).replace(/\*\*/g, '');
     s = s.replace(/\[call:([0-9a-f-]{36})\]/gi, '<span class="lnk" data-call="$1" role="button" tabindex="0">open call ↗</span>');
+    // A call ID the AI copied wrong (Rob 11/24): still an "open call" link; it's found by the start of the ID when clicked.
+    s = s.replace(/\[call:\s*([0-9a-f]{8}-[0-9a-f]{4})[0-9a-f-]*\]/gi, '<span class="lnk" data-call="pre:$1" role="button" tabindex="0">open call ↗</span>').replace(/\[call:[^\]]{0,60}\]/gi, '');
     // Lists (Becky 11/2): indented "  - " lines become sub-bullets under the bullet above them.
     var lines = s.split(/\n/), out = '', depth = 0, liOpen = [];
     var closeTo = function (d) { while (depth > d) { if (liOpen[depth]) out += '</li>'; liOpen[depth] = false; out += '</ul>'; depth--; } };
@@ -6322,6 +6334,10 @@ export function mountOpsisQA(ROOT, cfg) {
     if (d.go) { if (S.ask.open || S.callId) closeLayer(); if (d.go === 'hubqs') { HQ.csr = null; HQ.topic = null; } go(d.go); }
     else if (d.brand !== undefined && !d.outcome) { closeLayer(); S.brand = d.brand; go('brand'); }
     else if (d.agent !== undefined) { closeLayer(); S.agent = d.agent; go('csr'); }
+    else if (d.call && d.call.indexOf('pre:') === 0) { var cpre = d.call.slice(4), cfrom = new Date(Date.parse(S.end + 'T12:00:00Z') - 400 * 864e5).toISOString().slice(0, 10);
+      api({ action: 'calls', q: cpre, start: cfrom, end: todayET(), limit: 2 }).then(function (r) { var rw = (r && r.rows) || [];
+        if (rw.length !== 1) { toast('Couldn’t find that call. Open it from the CSR’s call list.'); return; }
+        S.fromAsk = !!S.ask.open; S.ask.open = false; S.callId = rw[0].id; callDrawer(); }).catch(function () { toast('Couldn’t open that call. Try again.'); }); }
     else if (d.call) { S.fromAsk = !!S.ask.open || (!!S.fromAsk && !!S.callId); S.ask.open = false; S.callId = d.call; callDrawer(); }
     else if (d.change !== undefined) { S.change = +d.change; changeModal(); }
     else if (d.kpi) { if (kpiGo(d.kpi)) return;
